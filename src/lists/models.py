@@ -4,7 +4,8 @@ import requests
 from django.conf import settings
 from django.core.cache import cache
 from django.db import models, transaction
-from django.db.models import Count, F, Max, OuterRef, Prefetch, Q, Subquery
+from django.db.models import Count, F, Max, OuterRef, Q, Subquery
+from django.db.models.functions import Coalesce
 from django.urls import reverse
 
 from app.models import Item, MediaTypes, Sources
@@ -19,6 +20,7 @@ from lists import smart_rules
 # titles (a wide banner for some, a square for others), so it does not hold up
 # as Key Art.
 IGDB_ARTWORK_TYPE_KEY_ART = 2
+IGDB_CAROUSEL_FAILURE_TTL = 60 * 5
 
 # Acceptable image aspect ratio range for list artwork: from 3:2 (1.5) up to
 # 16:9 (1.777..., allowing a small rounding margin up to 1.778).
@@ -40,24 +42,23 @@ class CustomListManager(models.Manager):
 
         return (
             queryset.select_related("owner")
-            .prefetch_related(
-                "collaborators",
-                Prefetch(
-                    "items",
-                    queryset=Item.objects.order_by("-customlistitem__date_added"),
-                ),
-                Prefetch(
-                    "customlistitem_set",
-                    queryset=CustomListItem.objects.order_by("-date_added"),
-                ),
-            )
+            .prefetch_related("collaborators")
             .distinct()
         )
 
     def get_user_lists_with_stats(self, user, search=""):
         """Return user lists annotated with items_count and latest_update."""
         return self.get_user_lists(user, search=search).annotate(
-            items_count=Count("items", distinct=True),
+            items_count=Coalesce(
+                Subquery(
+                    CustomListItem.objects.filter(custom_list_id=OuterRef("pk"))
+                    .order_by()
+                    .values("custom_list_id")
+                    .annotate(total=Count("pk"))
+                    .values("total"),
+                ),
+                0,
+            ),
             latest_update=Subquery(
                 CustomListItem.objects.filter(
                     custom_list=OuterRef("pk"),
@@ -118,6 +119,7 @@ class CustomList(models.Model):
         ("local", "Local"),
         ("trakt", "Trakt"),
         ("mdblist", "MDBList"),
+        ("wetrakr", "WeTrakr"),
     ]
 
     VISIBILITY_CHOICES = [
@@ -179,6 +181,11 @@ class CustomList(models.Model):
         blank=True,
         default=dict,
         help_text="Saved filter criteria for smart lists.",
+    )
+    tiers = models.JSONField(
+        blank=True,
+        default=list,
+        help_text="Tier names and colours for the Tiers view; empty uses the defaults.",
     )
 
     objects = CustomListManager()
@@ -403,43 +410,10 @@ class CustomList(models.Model):
         return first_item.image
 
     def _get_tmdb_backdrop(self, media_type, media_id):
-        """Get backdrop image URL from TMDB for movies and TV shows.
+        """Delegate shared TMDB artwork fetching outside list persistence."""
+        from app.backdrops import get_tmdb_backdrop
 
-        Uses caching to avoid repeated API calls for the same item.
-        """
-        cache_key = f"tmdb_backdrop_{media_type}_{media_id}"
-        cached_backdrop = cache.get(cache_key)
-        if cached_backdrop is not None:
-            return cached_backdrop
-
-        try:
-            from app.providers import tmdb
-
-            if media_type == MediaTypes.MOVIE.value:
-                url = f"{tmdb.base_url}/movie/{media_id}"
-            else:
-                url = f"{tmdb.base_url}/tv/{media_id}"
-
-            params = dict(tmdb.base_params())
-            response = services.api_request(
-                Sources.TMDB.value,
-                "GET",
-                url,
-                params=params,
-            )
-
-            backdrop_path = response.get("backdrop_path")
-            if backdrop_path:
-                backdrop_url = f"https://image.tmdb.org/t/p/w1280{backdrop_path}"
-                # Cache for 7 days (same as TMDB metadata cache)
-                cache.set(cache_key, backdrop_url, 60 * 60 * 24 * 7)
-                return backdrop_url
-        except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
-            pass
-
-        # Cache the absence of backdrop to avoid repeated failed calls
-        cache.set(cache_key, settings.IMG_NONE, 60 * 60 * 24)
-        return settings.IMG_NONE
+        return get_tmdb_backdrop(media_type, media_id)
 
     def _get_igdb_backdrop(self, media_id):
         """Get widescreen backdrop image URL from IGDB for games.
@@ -860,7 +834,7 @@ class CustomList(models.Model):
         return settings.IMG_NONE
 
     def _get_igdb_carousel_media(self, media_id):
-        """Return {"video": {"key", "name"}|None, "photos": [image_id, ...]}.
+        """Return the game's video, photo image ids, and hero image id.
 
         Reuses the same games/artworks lookup as ``_get_igdb_backdrop`` but
         returns every usable image (Key Art first, then other artworks, then
@@ -880,13 +854,16 @@ class CustomList(models.Model):
 
         logger = logging.getLogger(__name__)
 
-        cache_key = f"igdb_carousel_v2_{media_id}"
+        cache_key = f"igdb_carousel_v4_{media_id}"
         cached = cache.get(cache_key)
         if cached is not None:
             return cached
 
         photos = []
         video = None
+        # A failed lookup is cached only briefly: an IGDB error says nothing
+        # about whether the game has screenshots and a trailer.
+        failed = False
         try:
             from app.providers import igdb
 
@@ -928,6 +905,7 @@ class CustomList(models.Model):
                 logger.warning(
                     "IGDB game_videos lookup failed for game %s: %s", media_id, error
                 )
+                failed = True
                 videos_response = []
             videos = [v for v in (videos_response or []) if v.get("video_id")]
             best_video = next(
@@ -935,14 +913,19 @@ class CustomList(models.Model):
                 next(iter(videos), None),
             )
             if best_video:
-                video = {"key": best_video["video_id"], "name": best_video.get("name", "")}
+                video = {
+                    "key": best_video["video_id"],
+                    "name": best_video.get("name", ""),
+                }
 
             game_response = response[0] if response else {}
             artworks_raw = game_response.get("artworks") or []
             screenshots_raw = game_response.get("screenshots") or []
 
             artwork_ids = [a["id"] for a in artworks_raw if a.get("id")]
-            artwork_image_ids = {a["id"]: a["image_id"] for a in artworks_raw if a.get("image_id")}
+            artwork_image_ids = {
+                a["id"]: a["image_id"] for a in artworks_raw if a.get("image_id")
+            }
             screenshot_image_ids = [
                 s["image_id"] for s in screenshots_raw if s.get("image_id")
             ]
@@ -972,6 +955,7 @@ class CustomList(models.Model):
                             media_id,
                             error,
                         )
+                        failed = True
                         continue
                     for artwork in details or []:
                         if artwork.get("image_id"):
@@ -991,16 +975,25 @@ class CustomList(models.Model):
                 )
             )
         except Exception:
+            failed = True
             logger.warning(
-                "Failed to fetch IGDB carousel media for game %s", media_id, exc_info=True
+                "Failed to fetch IGDB carousel media for game %s",
+                media_id,
+                exc_info=True,
             )
 
-        data = {"video": video, "photos": photos}
-        cache.set(
-            cache_key,
-            data,
-            60 * 60 * 24 * 7 if (video or photos) else 60 * 60 * 24,
-        )
+        data = {
+            "video": video,
+            "photos": photos,
+            "hero_image_id": next(iter(photos), None),
+        }
+        if failed:
+            ttl = IGDB_CAROUSEL_FAILURE_TTL
+        elif video or photos:
+            ttl = 60 * 60 * 24 * 7
+        else:
+            ttl = 60 * 60 * 24
+        cache.set(cache_key, data, ttl)
         return data
 
     def _check_igdb_image_aspect_ratio(self, image_id, media_id, image_type_label):
@@ -1241,6 +1234,17 @@ class CustomListItem(models.Model):
         help_text="The user who added this item to the list",
     )
     date_added = models.DateTimeField(auto_now_add=True)
+    tier = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        help_text="Id of the tier this item is placed in; blank means Unranked.",
+    )
+    rank = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Position of this item in an outside ranking, such as #81 of 100.",
+    )
 
     objects = CustomListItemManager()
 

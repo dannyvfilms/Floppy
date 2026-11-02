@@ -18,10 +18,12 @@ from django.db import connection, reset_queries
 from django.db.models import Model
 from django.test import Client
 
+from users.models import HomeScreenRow
+
 ENDPOINTS = [
     ("GET", "/settings/home-screen"),
     ("GET", "/"),
-    ("GET", "/home/rest/"),
+    ("GET", "/home/row/{row_id}/"),
     ("GET", "/medialist/tv"),
     ("GET", "/medialist/season"),
     ("GET", "/medialist/anime"),
@@ -98,6 +100,11 @@ class Command(BaseCommand):
 
         client = Client()
         client.force_login(user)
+        home_row = (
+            HomeScreenRow.objects.filter(user=user, enabled=True)
+            .order_by("media_type", "position", "id")
+            .first()
+        )
 
         runs = options["runs"]
         verbose = options["verbose"]
@@ -122,7 +129,8 @@ class Command(BaseCommand):
         self.stdout.write(header)
         self.stdout.write(divider)
 
-        for method, path in ENDPOINTS:
+        for method, route in ENDPOINTS:
+            path = route.format(row_id=home_row.id if home_row else 0)
             wall_times = []
             query_counts = []
             sql_times = []

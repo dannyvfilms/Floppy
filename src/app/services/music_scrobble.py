@@ -27,8 +27,10 @@ from app.models import (
 from app.providers import musicbrainz
 from app.services.music import (
     get_artist_hero_image,
+    populate_album_implied_genres,
     prefetch_album_covers,
     refresh_album_cover_art,
+    store_matched_genres,
     sync_artist_discography,
     sync_music_item_genres_from_album,
 )
@@ -68,6 +70,13 @@ class MusicPlaybackEvent:
     completed: bool = False
     played_at: timezone.datetime | None = None
     defer_cover_prefetch: bool = False
+    # How this play was created ("koito", "lastfm", "listenbrainz", "manual",
+    # …). Distinct from ResolvedMusicMetadata.source (the metadata provider,
+    # e.g. "musicbrainz") and stored on Music.entry_source.
+    entry_source: str = ""
+    # ListenBrainz additional_info.origin_url. Empty when the client
+    # did not send one. Hooks key off this; core code does not.
+    origin_url: str = ""
 
 
 @dataclass
@@ -156,6 +165,17 @@ def record_music_playback(event: MusicPlaybackEvent) -> Music | None:
 
     This resolves canonical metadata (MusicBrainz when possible), ensures
     Artist/Album/Track/Item existence, and updates the per-user Music row.
+    Provider enrichment (artist lookup, discography sync and cover prefetch)
+    runs after that transaction commits: it makes several rate-limited HTTP
+    requests, and holding SQLite's single write lock across them starves every
+    other writer until the network finishes. An album saved without genres is
+    then filled from its MusicBrainz release group, outside the write
+    transaction.
+    The play then copies the album's genres, or the artist's when the album still
+    has none. After that, any genre list found on the album, item, track, or
+    artist is stored on the others that are still empty.
+    A client origin URL is stored on the Music row when the scrobble sent one,
+    in the same save as the play so history gets one row per play.
     """
     played_at = event.played_at or timezone.now()
 
@@ -194,6 +214,11 @@ def record_music_playback(event: MusicPlaybackEvent) -> Music | None:
     with transaction.atomic():
         artist, artist_created, artist_mbid_attached = _get_or_create_artist(metadata)
         album, album_created = _get_or_create_album(metadata, artist)
+        # Creating the item copies the artist's genres onto an empty album, so
+        # note now whether the release group still needs to be asked.
+        album_needs_genre_fill = bool(
+            not album.genres and album.musicbrainz_release_group_id
+        )
         track = _get_or_create_track(metadata, album)
         item = _get_or_create_item(metadata, track, album)
         music = _update_music_entry(
@@ -203,33 +228,73 @@ def record_music_playback(event: MusicPlaybackEvent) -> Music | None:
             return None
         _ensure_trackers(event.user, artist, album, played_at)
 
-        if metadata.musicbrainz_artist_id and not getattr(
-            event, "defer_cover_prefetch", False
-        ):
-            _sync_artist_metadata(
-                artist, metadata.musicbrainz_artist_id, force=artist_created
-            )
-            if (
-                artist_created or artist_mbid_attached or album_created
-            ) and not _is_various_artist(artist):
-                try:
-                    sync_artist_discography(
-                        artist, force=artist_created or artist_mbid_attached
-                    )
-                    dedupe_artist_albums(artist)
-                    force_cover_prefetch = True
-                except Exception as exc:  # pragma: no cover - defensive network guard
-                    logger.debug(
-                        "Failed discography sync for %s: %s",
-                        artist,
-                        exception_summary(exc),
-                    )
-        elif not getattr(event, "defer_cover_prefetch", False):
-            _enrich_missing_artist_metadata(artist, album, track, music, metadata)
+    enrich = not getattr(event, "defer_cover_prefetch", False)
+    if enrich and metadata.musicbrainz_artist_id:
+        _sync_artist_metadata(
+            artist, metadata.musicbrainz_artist_id, force=artist_created
+        )
+        if (
+            artist_created or artist_mbid_attached or album_created
+        ) and not _is_various_artist(artist):
+            try:
+                sync_artist_discography(
+                    artist, force=artist_created or artist_mbid_attached
+                )
+                dedupe_artist_albums(artist)
+                force_cover_prefetch = True
+            except Exception as exc:  # pragma: no cover - defensive network guard
+                logger.debug(
+                    "Failed discography sync for %s: %s",
+                    artist,
+                    exception_summary(exc),
+                )
+    elif enrich:
+        _enrich_missing_artist_metadata(artist, album, track, music, metadata)
 
-        if not getattr(event, "defer_cover_prefetch", False):
-            _maybe_refresh_album_cover(album)
-            _prefetch_missing_covers(artist, force=force_cover_prefetch)
+    if enrich:
+        _maybe_refresh_album_cover(album)
+        _prefetch_missing_covers(artist, force=force_cover_prefetch)
+
+    if album and enrich:
+        if album_needs_genre_fill:
+            try:
+                # The album may already hold the artist's genres, which
+                # populate_album_implied_genres would keep, so put the release
+                # group's own list on the album first.
+                release_group_genres = musicbrainz.get_release_group_genres(
+                    album.musicbrainz_release_group_id,
+                )
+                if release_group_genres:
+                    album.genres = list(release_group_genres)
+                    album.save(update_fields=["genres"])
+                populate_album_implied_genres(album)
+            except Exception as exc:  # pragma: no cover - defensive network guard
+                logger.debug(
+                    "Failed album genre fill for %s: %s",
+                    album,
+                    exception_summary(exc),
+                )
+        sync_music_item_genres_from_album(item, album)
+
+    if event.completed:
+        from app.signals_music import music_listen_recorded
+
+        # send_robust: a failing hook is logged, never a failed scrobble.
+        for receiver, result in music_listen_recorded.send_robust(
+            sender=Music, music=music, event=event
+        ):
+            if isinstance(result, Exception):
+                logger.error(
+                    "Music listen hook %r failed: %s",
+                    receiver,
+                    exception_summary(result),
+                )
+
+    # A listen hook may have written genres, so match them after it has run.
+    for row in (item, album, track, artist):
+        if row is not None and row.pk:
+            row.refresh_from_db(fields=["genres"])
+    store_matched_genres(artist=artist, album=album, track=track, item=item)
 
     return music
 
@@ -1060,6 +1125,14 @@ def _get_or_create_item(
     return item
 
 
+def _storable_origin_url(event: MusicPlaybackEvent) -> str:
+    """Return the event's origin URL, or "" when it would not fit the column."""
+    url = event.origin_url
+    if len(url) > Music._meta.get_field("origin_url").max_length:
+        return ""
+    return url
+
+
 def _update_music_entry(
     event: MusicPlaybackEvent,
     metadata: ResolvedMusicMetadata,
@@ -1091,6 +1164,8 @@ def _update_music_entry(
             "progress": 1,
             "start_date": played_at,
             "end_date": played_at,
+            "entry_source": event.entry_source,
+            "origin_url": _storable_origin_url(event),
         }
         import_run_id = import_progress.get_current_import_run_id()
         if import_run_id:
@@ -1124,6 +1199,9 @@ def _update_music_entry(
         changed = True
     if music.track_id != track.id:
         music.track = track
+        changed = True
+    if event.entry_source and music.entry_source != event.entry_source:
+        music.entry_source = event.entry_source
         changed = True
 
     if event.completed:
@@ -1160,6 +1238,10 @@ def _update_music_entry(
         # (same track within 2 minutes). Different tracks always get separate history records.
         if music.end_date != played_at:
             music.end_date = played_at
+            changed = True
+        origin_url = _storable_origin_url(event)
+        if origin_url and music.origin_url != origin_url:
+            music.origin_url = origin_url
             changed = True
         if not music.start_date:
             music.start_date = played_at
@@ -1621,8 +1703,9 @@ def _sync_artist_metadata(artist: Artist, musicbrainz_id: str, force: bool = Fal
         updates["country"] = data["country"]
     if data.get("image"):
         updates["image"] = data["image"]
-    if data.get("genres"):
-        updates["genres"] = data["genres"]
+    genre_names = [g.get("name") for g in data.get("genres") or [] if g.get("name")]
+    if genre_names:
+        updates["genres"] = genre_names
 
     changed_fields = []
     for field_name, value in updates.items():

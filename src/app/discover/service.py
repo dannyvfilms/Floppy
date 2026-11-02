@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
+from contextvars import ContextVar
 from datetime import timedelta
 
 from django.conf import settings
@@ -49,7 +51,10 @@ from app.discover.movie_comfort import (
     _entry_phase_evidence,
     _phase_affinity_maps,
 )
-from app.discover.profile import get_or_compute_taste_profile
+from app.discover.profile import (
+    get_or_compute_taste_profile,
+    preload_tv_activity_dates,
+)
 from app.discover.provider_candidates import (
     _mal_anime_fallback_candidates,
     _provider_row_candidates,
@@ -107,7 +112,14 @@ from app.models import (
 
 logger = logging.getLogger(__name__)
 
-STALE_REFRESH_LOCK_SECONDS = 60
+# Held from the moment a row refresh is queued until the task finishes (which
+# deletes it), so a page view cannot queue a second copy while the first waits
+# behind a long task. The TTL only covers a task that never reports back.
+STALE_REFRESH_LOCK_SECONDS = 10 * 60
+# Rows a library-based candidate pool reads. The visible row is 12 items, and
+# an Item row is wide (synopsis, a dozen JSON columns), so an unbounded read
+# grew a refresh task by hundreds of MiB on a large library.
+COMFORT_LIBRARY_ENTRY_LIMIT = 1500
 ROW_CANDIDATE_BUFFER_MULTIPLIER = 5
 TOP_PICKS_MAX_ANCHORS = 5
 TOP_PICKS_PLANNING_MAX_VISIBLE = 6
@@ -159,9 +171,11 @@ def _recent_completed_tag_coverage(
         recent_queryset = recent_queryset.filter(
             _activity_filter_query(model, cutoff, newer_than=True),
         )
+    recent_entries = list(recent_queryset.order_by(*_activity_ordering(model))[:300])
+    preload_tv_activity_dates(recent_entries)
     recent_entries = [
         entry
-        for entry in recent_queryset.order_by(*_activity_ordering(model))[:300]
+        for entry in recent_entries
         if (
             _entry_activity_datetime(entry)
             and _entry_activity_datetime(entry) >= cutoff
@@ -205,6 +219,7 @@ def _comfort_candidates(
         rated_queryset = rated_queryset.filter(
             _activity_filter_query(model, cutoff, newer_than=False),
         )
+    rated_queryset = rated_queryset[:COMFORT_LIBRARY_ENTRY_LIMIT]
 
     unrated_cutoff = now - timedelta(days=max(older_than_days, 90))
     unrated_queryset = (
@@ -220,6 +235,11 @@ def _comfort_candidates(
         unrated_queryset = unrated_queryset.filter(
             _activity_filter_query(model, unrated_cutoff, newer_than=False),
         )
+    unrated_queryset = unrated_queryset[:COMFORT_LIBRARY_ENTRY_LIMIT]
+
+    rated_queryset = list(rated_queryset)
+    unrated_queryset = list(unrated_queryset)
+    preload_tv_activity_dates(rated_queryset + unrated_queryset)
 
     rated_entries = []
     for entry in rated_queryset:
@@ -827,21 +847,79 @@ def _blocked_statuses_for_row(row_definition: RowDefinition) -> set[str] | None:
     return None
 
 
+# Set while a refresh task re-renders the tab after rebuilding its own rows.
+# That render meets every other stale row; queueing a refresh for each chained
+# task after task (286 in four hours of one log), and a row that cannot be
+# rebuilt kept the chain alive. Page views still queue stale rows.
+_stale_refresh_suppressed: ContextVar[bool] = ContextVar(
+    "discover_stale_refresh_suppressed", default=False
+)
+
+
+@contextlib.contextmanager
+def stale_refresh_suppressed():
+    """Render rows without queueing refreshes for the stale ones met."""
+    token = _stale_refresh_suppressed.set(True)
+    try:
+        yield
+    finally:
+        _stale_refresh_suppressed.reset(token)
+
+
+def row_refresh_lock_key(
+    user_id: int, media_type: str, row_key: str, show_more: bool
+) -> str:
+    """Return the key that holds one queued row refresh."""
+    return f"discover:refresh:{user_id}:{media_type}:{row_key}:{int(show_more)}"
+
+
+def rows_pending_key(user_id: int, media_type: str, show_more: bool) -> str:
+    """Return the counter of row refreshes queued for one tab."""
+    return f"discover:rows_pending:{user_id}:{media_type}:{int(show_more)}"
+
+
+def release_row_refresh(
+    user_id: int, media_type: str, row_keys: list[str], show_more: bool
+) -> bool:
+    """Drop a finished row refresh's locks; True if it was the tab's last one queued.
+
+    Only the last of several queued row refreshes needs to rebuild the tab: the
+    others would each assemble the whole tab from the same rows again.
+    """
+    for row_key in row_keys:
+        cache.delete(row_refresh_lock_key(user_id, media_type, row_key, show_more))
+    pending_key = rows_pending_key(user_id, media_type, show_more)
+    try:
+        remaining = cache.decr(pending_key)
+    except ValueError:
+        return True
+    if remaining is None or remaining <= 0:
+        cache.delete(pending_key)
+        return True
+    return False
+
+
 def _queue_stale_refresh(
     user_id: int, media_type: str, row_key: str, show_more: bool
 ) -> None:
-    lock_key = f"discover:refresh:{user_id}:{media_type}:{row_key}:{int(show_more)}"
+    if _stale_refresh_suppressed.get():
+        return
+    lock_key = row_refresh_lock_key(user_id, media_type, row_key, show_more)
     if not cache.add(lock_key, True, timeout=STALE_REFRESH_LOCK_SECONDS):
         return
 
     if getattr(settings, "TESTING", False):
         return
 
+    pending_key = rows_pending_key(user_id, media_type, show_more)
+    cache.add(pending_key, 0, timeout=STALE_REFRESH_LOCK_SECONDS)
     try:
         from app.tasks import refresh_discover_rows
 
+        cache.incr(pending_key)
         refresh_discover_rows.delay(user_id, media_type, [row_key], show_more=show_more)
     except Exception as error:
+        release_row_refresh(user_id, media_type, [row_key], show_more)
         logger.warning(
             "discover_refresh_enqueue_failed user_id=%s media_type=%s row_key=%s error=%s",
             user_id,

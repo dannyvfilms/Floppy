@@ -5,7 +5,7 @@ import uuid
 from collections import defaultdict
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.db.models import CheckConstraint, Q, UniqueConstraint
 from django.utils import translation
 from unidecode import unidecode
@@ -16,6 +16,40 @@ from app.mixins import CalendarTriggerMixin
 from app.models.choices import MediaTypes, Sources
 
 logger = logging.getLogger(__name__)
+
+
+SYNC_IDENTITY_FIELDS = frozenset({
+    "source", "media_id", "media_type", "library_media_type", "season_number",
+    "episode_number", "episode_order", "episode_order_id", "provider_external_ids",
+})
+
+
+class ItemQuerySet(models.QuerySet):
+    """Invalidate strict snapshots when an item's actionable identity changes."""
+
+    def update(self, **kwargs):
+        """Cover identity rewrites that bypass model-save signals."""
+        if not SYNC_IDENTITY_FIELDS.intersection(kwargs):
+            return super().update(**kwargs)
+        from app.services.sync_lock import invalidate_item_contexts
+
+        with transaction.atomic():
+            ids = list(self.values_list("pk", flat=True))
+            invalidate_item_contexts(ids)
+            return super().update(**kwargs)
+
+    def delete(self):
+        """Acquire affected users' barriers in order before cascading deletes."""
+        from app.services.sync_lock import invalidate_item_contexts
+
+        with transaction.atomic():
+            item_ids = list(self.values_list("pk", flat=True))
+            invalidate_item_contexts(item_ids)
+            self._sync_deleting_item_ids = frozenset(item_ids)
+            try:
+                return super().delete()
+            finally:
+                del self._sync_deleting_item_ids
 
 
 class Item(CalendarTriggerMixin, models.Model):
@@ -166,6 +200,43 @@ class Item(CalendarTriggerMixin, models.Model):
         blank=True,
         help_text="User rating count from IGDB metadata",
     )
+    opencritic_id = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Matched OpenCritic game ID",
+    )
+    opencritic_score = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="OpenCritic top critic average (0-100)",
+    )
+    opencritic_percent_recommended = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Share of OpenCritic critics who recommend the game",
+    )
+    opencritic_tier = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="OpenCritic tier: Mighty, Strong, Fair or Weak",
+    )
+    opencritic_review_count = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Number of top critic reviews on OpenCritic",
+    )
+    opencritic_url = models.URLField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="OpenCritic page for the matched game",
+    )
+    opencritic_checked_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When OpenCritic was last asked about this game",
+    )
     trakt_popularity_score = models.FloatField(
         null=True,
         blank=True,
@@ -201,6 +272,18 @@ class Item(CalendarTriggerMixin, models.Model):
         blank=True,
         default="",
         help_text="Provider collection/franchise name",
+    )
+    provider_franchise_id = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        help_text="Provider franchise id",
+    )
+    provider_franchise_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Provider franchise name",
     )
     # When provider metadata was last written to this row. Null means it has
     # not been refreshed since this field existed, which is a different claim
@@ -288,6 +371,8 @@ class Item(CalendarTriggerMixin, models.Model):
             "structure, so future runs don't keep retrying it"
         ),
     )
+
+    objects = models.Manager.from_queryset(ItemQuerySet)()
 
     class Meta:
         """Meta options for the model."""
@@ -396,6 +481,21 @@ class Item(CalendarTriggerMixin, models.Model):
                 fields=["media_id", "media_type", "source"],
                 name="app_item_media_lookup_idx",
             ),
+            # Library, search and released-episode queries filter by
+            # media_type first. Without a media_type-leading index they scan
+            # the whole (~2 KB/row) table; the trailing columns also cover the
+            # per-show released-episode aggregate without reading item rows.
+            models.Index(
+                fields=[
+                    "media_type",
+                    "media_id",
+                    "source",
+                    "season_number",
+                    "episode_number",
+                    "release_datetime",
+                ],
+                name="app_item_type_lookup_idx",
+            ),
         ]
         ordering = ["media_id"]
 
@@ -408,10 +508,20 @@ class Item(CalendarTriggerMixin, models.Model):
                 name += f"E{self.episode_number}"
         return name
 
+    @transaction.atomic
     def save(self, *args, **kwargs):
         """Save the item, ensuring JSONField arrays are never None."""
         if not self.library_media_type:
             self.library_media_type = self.media_type
+
+        update_fields = kwargs.get("update_fields")
+        if self.pk and (update_fields is None or SYNC_IDENTITY_FIELDS.intersection(update_fields)):
+            fields = sorted(SYNC_IDENTITY_FIELDS - {"episode_order"})
+            previous = Item.objects.filter(pk=self.pk).values(*fields).first()
+            if previous and any(previous[field] != getattr(self, field) for field in fields):
+                from app.services.sync_lock import invalidate_item_contexts
+
+                invalidate_item_contexts([self.pk])
 
         # Ensure all JSONField arrays are lists, never None
         json_array_fields = [
@@ -435,12 +545,28 @@ class Item(CalendarTriggerMixin, models.Model):
             "provider_game_lengths",
             "watch_providers",
         ]
+        update_fields = kwargs.get("update_fields")
+        deferred_fields = self.get_deferred_fields()
         for field_name in json_object_fields:
+            if (
+                update_fields is not None
+                and field_name not in update_fields
+                and field_name in deferred_fields
+            ):
+                continue
             value = getattr(self, field_name, None)
             if value is None:
                 setattr(self, field_name, {})
 
         super().save(*args, **kwargs)
+
+    @transaction.atomic
+    def delete(self, *args, **kwargs):
+        """Serialize catalog deletion before its collector touches tracking rows."""
+        from app.services.sync_lock import invalidate_item_contexts
+
+        invalidate_item_contexts([self.pk])
+        return super().delete(*args, **kwargs)
 
     @classmethod
     def _normalize_title_value(cls, value):
@@ -782,6 +908,17 @@ class Item(CalendarTriggerMixin, models.Model):
                     media_id=self.media_id,
                     source=self.source,
                     media_type=MediaTypes.TV.value,
+                )
+            except Item.MultipleObjectsReturned:
+                # The show also exists in another library bucket (e.g. "season").
+                tv_item = (
+                    Item.objects.filter(
+                        media_id=self.media_id,
+                        source=self.source,
+                        media_type=MediaTypes.TV.value,
+                    )
+                    .order_by("id")
+                    .first()
                 )
             except Item.DoesNotExist:
                 # Get metadata for the TV show

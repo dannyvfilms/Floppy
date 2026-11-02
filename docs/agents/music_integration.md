@@ -507,6 +507,8 @@ path("details/music/album/<int:album_id>/releases", views.list_music_releases, n
 path("details/music/album/<int:album_id>/release", views.set_music_release, name="set_music_release"),
 ```
 
+A track detail page uses the same shared media details shell, nested under its album: `/details/music/artist/<artist_id>/<artist_slug>/album/<album_id>/<album_slug>/track/<track_id>/<track_slug>/`. `music/track/<track_id>/` redirects there. Genre chips show `Track.genres` when that list has entries, otherwise the album's genres.
+
 ## Templates
 
 ### Artist Detail (`src/templates/app/music_artist_detail.html`)
@@ -550,6 +552,12 @@ Reusable component for displaying album cards:
 - `artist_track_modal.html`: Same pattern as `fill_track.html` for TV
 - `album_track_modal.html`: Same pattern for albums
 - `fill_track_song.html`: Same pattern as `fill_track_episode.html` for tracks
+
+Track notes are edited from album track rows or the track detail page through
+`GET/POST music/track/<track_id>/notes/`. They use the current user's `Music.notes`
+and the shared Markdown editor. Notes saves do not create listen history rows;
+an unplayed track gets a Planning entry without a listen, and its first listen
+completes that entry while preserving its notes.
 
 ### Music List (`src/templates/app/media_list.html`)
 

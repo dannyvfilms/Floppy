@@ -11,9 +11,26 @@
     </div>
     <div class="flex flex-col md:flex-row gap-8">
       <div class="md:w-64 shrink-0">
-        <div class="bg-[var(--color-surface)] rounded-lg overflow-hidden sticky top-20">
+        <div class="bg-[var(--color-surface)] rounded-lg overflow-hidden sticky top-20"
+             x-data="{ open: false }">
+          {# Phones: show only the current page as a dropdown so the settings sit right under the title #}
+          <button type="button"
+                  class="md:hidden w-full flex items-center justify-between px-4 py-3 text-sm cursor-pointer text-[var(--color-text)]"
+                  :aria-expanded="open"
+                  aria-controls="settings-nav"
+                  @click="open = !open">
+            <span class="flex items-center space-x-3"
+                  x-html="$refs.settingsNav.querySelector('[aria-current]')?.innerHTML || '{% translate "Menu" %}'"></span>
+            <span :class="open && 'rotate-180'">{% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}</span>
+          </button>
           {# hx-boost: swap the body instead of reloading on settings navigation #}
-          <nav class="p-2 space-y-1" hx-boost="true">
+          <nav id="settings-nav"
+               x-ref="settingsNav"
+               :class="{ 'settings-nav-collapsed': !open }"
+               class="settings-nav-collapsed p-2 space-y-1"
+               hx-boost="true">
+            <p class="px-2 pt-1 pb-1 text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">{% translate "General" %}</p>
+
             {% url 'account' as account_url %}
             <a href="{{ account_url }}"
                {% if request.path == account_url %}aria-current="page"{% endif %}
@@ -30,20 +47,30 @@
               <span>{% translate "Preferences" %}</span>
             </a>
 
-            {% url 'appearance' as appearance_url %}
-            <a href="{{ appearance_url }}"
-               {% if request.path == appearance_url %}aria-current="page"{% endif %}
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == appearance_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
-              {% include "app/icons/sun.svg" with classes="w-5 h-5" %}
-              <span>Appearance</span>
-            </a>
-
             {% url 'notifications' as notifications_url %}
             <a href="{{ notifications_url }}"
                {% if request.path == notifications_url %}aria-current="page"{% endif %}
                class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == notifications_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
               {% include "app/icons/bell.svg" with classes="w-5 h-5" %}
               <span>{% translate "Notifications" %}</span>
+            </a>
+
+            <p class="px-2 pt-3 pb-1 text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">{% translate "Display" %}</p>
+
+            {% url 'appearance' as appearance_url %}
+            <a href="{{ appearance_url }}"
+               {% if request.path == appearance_url %}aria-current="page"{% endif %}
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == appearance_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
+              {% include "app/icons/sun.svg" with classes="w-5 h-5" %}
+              <span>{% translate "Appearance" %}</span>
+            </a>
+
+            {% url 'cards' as cards_url %}
+            <a href="{{ cards_url }}"
+               {% if request.resolver_match.url_name == 'cards' or request.resolver_match.url_name == 'cards_type' %}aria-current="page"{% endif %}
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.resolver_match.url_name == 'cards' or request.resolver_match.url_name == 'cards_type' %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
+              {% include "app/icons/grid.svg" with classes="w-5 h-5" %}
+              <span>{% translate "Media Cards" %}</span>
             </a>
 
             {% url 'sidebar' as sidebar_url %}
@@ -62,45 +89,33 @@
               <span>{% translate "Home Screen" %}</span>
             </a>
 
-            {% url 'integrations' as integrations_url %}
-            <a href="{{ integrations_url }}"
-               {% if request.path == integrations_url %}aria-current="page"{% endif %}
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == integrations_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
+            <p class="px-2 pt-3 pb-1 text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">{% translate "Providers & Data" %}</p>
+            <a href="{% url 'providers' %}"
+               {% if request.resolver_match.url_name == 'providers' or request.resolver_match.url_name == 'provider_detail' %}aria-current="page"{% endif %}
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 text-sm {% if request.resolver_match.url_name == 'providers' or request.resolver_match.url_name == 'provider_detail' %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
               {% include "app/icons/database.svg" with classes="w-5 h-5" %}
-              <span>{% translate "Integrations" %}</span>
+              <span>{% translate "Providers" %}</span>
+            </a>
+            <a href="{% url 'provider_activity' %}"
+               {% if request.resolver_match.url_name == 'provider_activity' %}aria-current="page"{% endif %}
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 text-sm {% if request.resolver_match.url_name == 'provider_activity' %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
+              {% include "app/icons/clock.svg" with classes="w-5 h-5" %}
+              <span>{% translate "Activity" %}</span>
+            </a>
+            <a href="{% url 'data_management' %}"
+               {% if request.resolver_match.url_name == 'data_management' or request.resolver_match.url_name == 'rss_settings' %}aria-current="page"{% endif %}
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 text-sm {% if request.resolver_match.url_name == 'data_management' or request.resolver_match.url_name == 'rss_settings' %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
+              {% include "app/icons/database.svg" with classes="w-5 h-5" %}
+              <span>{% translate "Data Management" %}</span>
+            </a>
+            <a href="{% url 'access_tokens' %}"
+               {% if request.resolver_match.url_name == 'access_tokens' or request.resolver_match.url_name == 'oauth_applications' %}aria-current="page"{% endif %}
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 text-sm {% if request.resolver_match.url_name == 'access_tokens' or request.resolver_match.url_name == 'oauth_applications' %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
+              {% include "app/icons/padlock.svg" with classes="w-5 h-5" %}
+              <span>{% translate "Access & Tokens" %}</span>
             </a>
 
-            {% url 'metadata_settings' as metadata_url %}
-            <a href="{{ metadata_url }}"
-               {% if request.path == metadata_url %}aria-current="page"{% endif %}
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == metadata_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
-              {% include "app/icons/key.svg" with classes="w-5 h-5" %}
-              <span>{% translate "Metadata" %}</span>
-            </a>
-
-            {% url 'rss_settings' as rss_url %}
-            <a href="{{ rss_url }}"
-               {% if request.path == rss_url %}aria-current="page"{% endif %}
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == rss_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
-              {% include "app/icons/rss.svg" with classes="w-5 h-5" %}
-              <span>RSS</span>
-            </a>
-
-            {% url 'import_data' as import_url %}
-            <a href="{{ import_url }}"
-               {% if request.path == import_url %}aria-current="page"{% endif %}
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == import_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
-              {% include "app/icons/import.svg" with classes="w-5 h-5" %}
-              <span>{% translate "Import Data" %}</span>
-            </a>
-
-            {% url 'export_data' as export_url %}
-            <a href="{{ export_url }}"
-               {% if request.path == export_url %}aria-current="page"{% endif %}
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == export_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
-              {% include "app/icons/export.svg" with classes="w-5 h-5" %}
-              <span>{% translate "Export Data" %}</span>
-            </a>
+            <p class="px-2 pt-3 pb-1 text-xs font-medium uppercase tracking-wide text-[var(--color-text-muted)]">{% translate "System" %}</p>
 
             {% url 'advanced' as advanced_url %}
             <a href="{{ advanced_url }}"

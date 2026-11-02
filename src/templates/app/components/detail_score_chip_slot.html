@@ -1,6 +1,15 @@
+{% load derived_tv_ratings %}
 <div id="detail-score-chip-slot-{{ media_type }}-{{ media.media_id }}-{{ media.source }}"
      {% if score_chip_slot_oob %}hx-swap-oob="outerHTML"{% endif %}>
-  {% if user_medias and current_instance and not public_view|default:False %}
-    {% include "app/components/detail_score_chip.html" with current_instance=current_instance media_type=media_type user=user csrf_token=csrf_token %}
+  {% if media_type == "tv" or media_type == "season" %}
+    {% if not public_view|default:False %}
+      {% derived_tv_rating user media_type media as derived_tv_score %}
+    {% endif %}
+  {% endif %}
+  {% if not user.ratings_enabled %}
+  {% elif user_medias and current_instance and not public_view|default:False %}
+    {% include "app/components/detail_score_chip.html" with current_instance=current_instance media_type=media_type user=user csrf_token=csrf_token derived_tv_score=derived_tv_score %}
+  {% else %}
+    {% include "app/components/derived_tv_rating_detail.html" with derived_tv_score=derived_tv_score only %}
   {% endif %}
 </div>

@@ -86,79 +86,64 @@
   
 <div class="history-page">
   {# Month-based navigation header #}
-  {# Left = toward present (newer), Right = toward past (older) #}
+  {# Left = toward past (older), Right = toward present (newer) #}
   {% if use_month_view %}
     <div class="flex items-center justify-between gap-3 sm:gap-6 mb-6">
-      {# Left side: First (current month) + Newer month #}
+      {# Left side: Last (back one year) + Older month #}
       <div class="flex items-center gap-1 sm:gap-2">
-        {# First button - go to current month #}
-        {% if not is_current_month %}
-          <a href="?year={{ current_year }}&m={{ current_month_num }}{% if month_nav_query %}&{{ month_nav_query }}{% endif %}"
-             class="flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer text-sm"
-             aria-label="{% translate "Go to current month" %}"
-             title="{% translate "Go to current month" %}">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5">
-              <path d="m11 17-5-5 5-5"></path>
-              <path d="m18 17-5-5 5-5"></path>
-            </svg>
-            <span>{{ current_year }}</span>
-          </a>
-        {% else %}
-          <span class="flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] cursor-not-allowed text-sm">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5">
-              <path d="m11 17-5-5 5-5"></path>
-              <path d="m18 17-5-5 5-5"></path>
-            </svg>
-            <span>{{ current_year }}</span>
-          </span>
-        {% endif %}
+        {# Last button - go back 1 year from current view #}
+        <a href="?year={{ view_year|add:'-1' }}&m={{ view_month }}{% if month_nav_query %}&{{ month_nav_query }}{% endif %}"
+           class="max-[24rem]:hidden flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer text-sm"
+           aria-label="{% translate "Go back one year" %}"
+           title="{% translate "Go back one year" %}">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="m11 17-5-5 5-5"></path><path d="m18 17-5-5 5-5"></path></svg>
+          <span>{{ view_year|add:'-1' }}</span>
+        </a>
 
-        {# Newer month button (toward present) #}
-        {% if show_next_month %}
-          <a href="?year={{ next_year }}&m={{ next_month }}{% if month_nav_query %}&{{ month_nav_query }}{% endif %}"
-             class="flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer text-sm"
-             aria-label="{% blocktranslate trimmed with value_1=next_month_name %}Go to {{ value_1 }}{% endblocktranslate %}">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5">
-              <path d="m15 18-6-6 6-6"></path>
-            </svg>
-            <span>{{ next_month_name }}</span>
-          </a>
-        {% else %}
-          <span class="flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] cursor-not-allowed text-sm">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5">
-              <path d="m15 18-6-6 6-6"></path>
-            </svg>
-            <span>{{ next_month_name }}</span>
-          </span>
-        {% endif %}
+        {# Older month button (toward past) #}
+        <a href="?year={{ prev_year }}&m={{ prev_month }}{% if month_nav_query %}&{{ month_nav_query }}{% endif %}"
+           class="flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer text-sm"
+           aria-label="{% blocktranslate trimmed with value_1=prev_month_name %}Go to {{ value_1 }}{% endblocktranslate %}">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="m15 18-6-6 6-6"></path></svg>
+          <span>{{ prev_month_name }}</span>
+        </a>
       </div>
 
       {# Center: Current month display #}
       <h2 class="text-base sm:text-xl font-semibold text-[var(--color-text)] text-center whitespace-nowrap px-2 sm:px-4">{{ month_name }}</h2>
 
-      {# Right side: Older month + Last (earliest) #}
+      {# Right side: Newer month + First (current month) #}
       <div class="flex items-center gap-1 sm:gap-2">
-        {# Older month button (toward past) #}
-        <a href="?year={{ prev_year }}&m={{ prev_month }}{% if month_nav_query %}&{{ month_nav_query }}{% endif %}"
-           class="flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer text-sm"
-           aria-label="{% blocktranslate trimmed with value_1=prev_month_name %}Go to {{ value_1 }}{% endblocktranslate %}">
-          <span>{{ prev_month_name }}</span>
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5">
-            <path d="m9 18 6-6-6-6"></path>
-          </svg>
-        </a>
+        {# Newer month button (toward present) #}
+        {% if show_next_month %}
+          <a href="?year={{ next_year }}&m={{ next_month }}{% if month_nav_query %}&{{ month_nav_query }}{% endif %}"
+             class="flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer text-sm"
+             aria-label="{% blocktranslate trimmed with value_1=next_month_name %}Go to {{ value_1 }}{% endblocktranslate %}">
+            <span>{{ next_month_name }}</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="m9 18 6-6-6-6"></path></svg>
+          </a>
+        {% else %}
+          <span class="flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] cursor-not-allowed text-sm">
+            <span>{{ next_month_name }}</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="m9 18 6-6-6-6"></path></svg>
+          </span>
+        {% endif %}
 
-        {# Last button - go back 1 year from current view #}
-        <a href="?year={{ view_year|add:'-1' }}&m={{ view_month }}{% if month_nav_query %}&{{ month_nav_query }}{% endif %}"
-           class="flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer text-sm"
-           aria-label="{% translate "Go back one year" %}"
-           title="{% translate "Go back one year" %}">
-          <span>{{ view_year|add:'-1' }}</span>
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5">
-            <path d="m13 17 5-5-5-5"></path>
-            <path d="m6 17 5-5-5-5"></path>
-          </svg>
-        </a>
+        {# First button - go to current month #}
+        {% if not is_current_month %}
+          <a href="?year={{ current_year }}&m={{ current_month_num }}{% if month_nav_query %}&{{ month_nav_query }}{% endif %}"
+             class="max-[24rem]:hidden flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer text-sm"
+             aria-label="{% translate "Go to current month" %}"
+             title="{% translate "Go to current month" %}">
+            <span>{{ current_year }}</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="m13 17 5-5-5-5"></path><path d="m6 17 5-5-5-5"></path></svg>
+          </a>
+        {% else %}
+          <span class="max-[24rem]:hidden flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] cursor-not-allowed text-sm">
+            <span>{{ current_year }}</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="m13 17 5-5-5-5"></path><path d="m6 17 5-5-5-5"></path></svg>
+          </span>
+        {% endif %}
       </div>
     </div>
   {% endif %}
@@ -394,7 +379,7 @@
 </div>
 
 {# History filter FAB + modal #}
-{% translate "Activity (watched)" as media_i18n_19 %}{% translate "TV Show" as media_i18n_20 %}{% translate "Movie" as media_i18n_21 %}{% translate "Anime" as media_i18n_22 %}{% translate "Game" as media_i18n_23 %}{% translate "Music" as media_i18n_24 %}{% translate "Book" as media_i18n_25 %}{% translate "Manga" as media_i18n_26 %}{% translate "Comic" as media_i18n_27 %}{% translate "Podcast" as media_i18n_28 %}{% translate "Board Game" as media_i18n_29 %}{% translate "Release dates" as media_i18n_30 %}<div x-data="{
+{% translate "Name this view" as history_save_view_prompt %}{% translate "Activity (watched)" as media_i18n_19 %}{% translate "TV Show" as media_i18n_20 %}{% translate "Movie" as media_i18n_21 %}{% translate "Anime" as media_i18n_22 %}{% translate "Game" as media_i18n_23 %}{% translate "Music" as media_i18n_24 %}{% translate "Book" as media_i18n_25 %}{% translate "Manga" as media_i18n_26 %}{% translate "Comic" as media_i18n_27 %}{% translate "Podcast" as media_i18n_28 %}{% translate "Board Game" as media_i18n_29 %}{% translate "Release dates" as media_i18n_30 %}{% translate "Video" as media_i18n_video %}<div x-data="{
   open: false,
   startDate: '',
   endDate: '',
@@ -426,6 +411,7 @@
     { value: 'manga', label: '{{ media_i18n_26|escapejs }}' },
     { value: 'comic', label: '{{ media_i18n_27|escapejs }}' },
     { value: 'podcast', label: '{{ media_i18n_28|escapejs }}' },
+    { value: 'video', label: '{{ media_i18n_video|escapejs }}' },
     { value: 'boardgame', label: '{{ media_i18n_29|escapejs }}' },
   ],
   get activeCount() {
@@ -455,6 +441,31 @@
     if (this.selectedImpliedGenres.length) p.set('implied_genre', this.selectedImpliedGenres.join(','));
     const qs = p.toString();
     window.location.href = '{% url 'history' %}' + (qs ? '?' + qs : '');
+  },
+  saveView() {
+    const name = window.prompt('{{ history_save_view_prompt|escapejs }}');
+    if (!name || !name.trim()) { return; }
+    const filters = new URLSearchParams();
+    if (this.startDate) filters.set('start-date', this.startDate);
+    if (this.endDate)   filters.set('end-date', this.endDate);
+    if (this.selectedMediaTypes.length) filters.set('media_type', this.selectedMediaTypes.join(','));
+    if (this.historyMode && this.historyMode !== 'activity') filters.set('history_mode', this.historyMode);
+    if (this.selectedGenres.length) filters.set('genre', this.selectedGenres.join(','));
+    if (this.selectedImpliedGenres.length) filters.set('implied_genre', this.selectedImpliedGenres.join(','));
+    const body = new URLSearchParams();
+    body.set('media_type', 'history');
+    body.set('name', name.trim());
+    body.set('query', filters.toString());
+    return fetch('{% url "saved_view_create" %}', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+      body,
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.url) { window.location.href = data.url; }
+        else if (data.error) { window.alert(data.error); }
+      });
   },
   clear() {
     const p = new URLSearchParams(window.location.search);
@@ -574,7 +585,7 @@
 }">
   {# FAB button #}
   <button @click="open = true"
-          class="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg flex items-center justify-center cursor-pointer transition-colors"
+          class="fixed bottom-6 right-[max(1.5rem,var(--safe-right))] z-40 w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg flex items-center justify-center cursor-pointer transition-colors"
           title="{% translate "Filter history" %}"
           aria-label="{% translate "Filter history" %}">
     {% include "app/icons/funnel.svg" with classes="w-5 h-5" %}
@@ -804,6 +815,10 @@
           <button @click="clear()"
                   class="flex-1 px-4 py-2 rounded-md border border-gray-600 text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:border-gray-400 text-sm transition-colors cursor-pointer">
             {% translate "Clear filters" %}
+          </button>
+          <button @click="saveView()"
+                  class="flex-1 px-4 py-2 rounded-md border border-gray-600 text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:border-gray-400 text-sm transition-colors cursor-pointer">
+            {% translate "Save view" %}
           </button>
           <button @click="apply()"
                   class="flex-1 px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors cursor-pointer">

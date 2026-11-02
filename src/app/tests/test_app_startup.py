@@ -39,6 +39,7 @@ class AppStartupTests(TestCase):
             patch.object(config, "_schedule_igdb_rating_backfill_reconcile"),
             patch.object(config, "_schedule_provider_backfill_reconcile"),
             patch.object(config, "_schedule_external_ids_backfill_reconcile"),
+            patch.object(config, "_schedule_game_groups_backfill_reconcile"),
         ):
             config.ready()
 
@@ -244,6 +245,25 @@ class AppStartupTests(TestCase):
             priority=settings.CELERY_TASK_PRIORITY_BACKGROUND,
         )
         mock_should_run.assert_not_called()
+
+    @patch("app.tasks_game_groups.reconcile_game_groups_backfill.apply_async")
+    def test_schedule_game_groups_backfill_reconcile_enqueues_once(
+        self,
+        mock_apply_async,
+    ):
+        from app.tasks_game_groups import GAME_GROUPS_BACKFILL_VERSION
+
+        cache.delete(f"game_groups_backfilled_v{GAME_GROUPS_BACKFILL_VERSION}")
+        config = FloppyAppConfig("app", import_module("app"))
+
+        config._schedule_game_groups_backfill_reconcile()
+        config._schedule_game_groups_backfill_reconcile()
+
+        mock_apply_async.assert_called_once_with(
+            kwargs={"strategy_version": GAME_GROUPS_BACKFILL_VERSION},
+            countdown=STARTUP_SWEEP_COUNTDOWNS["game_groups"],
+            priority=settings.CELERY_TASK_PRIORITY_BACKGROUND,
+        )
 
     def test_settings_include_external_ids_backfill_reconcile_fallback_schedule(self):
         schedule = settings.CELERY_BEAT_SCHEDULE[

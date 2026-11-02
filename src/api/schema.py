@@ -36,10 +36,28 @@ class LiveSchemaView(SpectacularAPIView):
         OpenApiJsonRenderer2,
     ]
 
+    # ``URL_FORMAT_OVERRIDE`` is disabled project-wide, so ``?format=`` is
+    # honoured here only. Other values fall back to Accept negotiation (#1049).
+    FORMAT_QUERY_RENDERERS = {
+        "json": OpenApiJsonRenderer2,
+        "yaml": OpenApiTextYamlRenderer,
+    }
+
+    def perform_content_negotiation(self, request, force=False):
+        """Let ``?format=json|yaml`` pick the renderer; otherwise use Accept."""
+        renderer_class = self.FORMAT_QUERY_RENDERERS.get(request.query_params.get("format"))
+        if renderer_class is not None:
+            renderer = renderer_class()
+            return renderer, renderer.media_type
+        return super().perform_content_negotiation(request, force)
+
     def get(self, request, *args, **kwargs):
         """Serve dynamic OpenAPI schema with text/yaml content-type and inline disposition."""
         response = super().get(request, *args, **kwargs)
-        response["Content-Disposition"] = 'inline; filename="openapi-live.yaml"'
+        is_json = request.accepted_renderer.format == "json"
+        response["Content-Disposition"] = (
+            f'inline; filename="openapi-live.{"json" if is_json else "yaml"}"'
+        )
         return response
 
 
@@ -54,6 +72,15 @@ MEDIA_TYPE_PARAM = OpenApiParameter(
     "addressed via separate path segments under `tv`.",
 )
 
+LIBRARY_MEDIA_TYPE_PARAM = OpenApiParameter(
+    name="library_media_type",
+    type=str,
+    location=OpenApiParameter.QUERY,
+    required=False,
+    description="Library the tv show, season or episode is stored in. Set to "
+    "`anime` for titles in the Anime library; omitted means the regular TV library.",
+)
+
 MEDIA_TYPE_COMPLETE_PARAM = OpenApiParameter(
     name="media_type",
     type=str,
@@ -63,7 +90,8 @@ MEDIA_TYPE_COMPLETE_PARAM = OpenApiParameter(
         "Media type, including `season` and `episode`. POST to a media-type "
         "collection creates a new consumption; omitted status defaults to "
         "Planning. Use the history/{consumption_id} route to update one "
-        "specific existing consumption."
+        "specific existing consumption. A `video` is created by its first "
+        "play (`/videos/{source}/{media_id}/plays/`), not by this POST."
     ),
 )
 
@@ -92,6 +120,18 @@ MEDIA_LIST_FILTER_PARAMS = [
         type=str,
         location=OpenApiParameter.QUERY,
         enum=["all", "rated", "not_rated"],
+    ),
+    OpenApiParameter(
+        name="rating_min",
+        type=float,
+        location=OpenApiParameter.QUERY,
+        description="Match items rated at or above this score (0-10).",
+    ),
+    OpenApiParameter(
+        name="rating_max",
+        type=float,
+        location=OpenApiParameter.QUERY,
+        description="Match items rated at or below this score (0-10).",
     ),
     OpenApiParameter(
         name="collection",
@@ -128,6 +168,75 @@ MEDIA_LIST_FILTER_PARAMS = [
         type=str,
         location=OpenApiParameter.QUERY,
         description="Match items completed on or before this date (YYYY-MM-DD).",
+    ),
+    OpenApiParameter(
+        name="release_date_from",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="Match items released on or after this date (YYYY-MM-DD).",
+    ),
+    OpenApiParameter(
+        name="release_date_to",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="Match items released on or before this date (YYYY-MM-DD).",
+    ),
+    OpenApiParameter(
+        name="date_added_from",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="Match items added to the library on or after this date (YYYY-MM-DD).",
+    ),
+    OpenApiParameter(
+        name="date_added_to",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="Match items added to the library on or before this date (YYYY-MM-DD).",
+    ),
+    OpenApiParameter(
+        name="completed_date_within",
+        type=int,
+        location=OpenApiParameter.QUERY,
+        description=(
+            "Match the last N units instead of a completed_date_from/_to range "
+            "(1-999); see completed_date_within_unit."
+        ),
+    ),
+    OpenApiParameter(
+        name="completed_date_within_unit",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        enum=["days", "weeks", "months", "years"],
+    ),
+    OpenApiParameter(
+        name="release_date_within",
+        type=int,
+        location=OpenApiParameter.QUERY,
+        description=(
+            "Match the last N units instead of a release_date_from/_to range "
+            "(1-999); see release_date_within_unit."
+        ),
+    ),
+    OpenApiParameter(
+        name="release_date_within_unit",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        enum=["days", "weeks", "months", "years"],
+    ),
+    OpenApiParameter(
+        name="date_added_within",
+        type=int,
+        location=OpenApiParameter.QUERY,
+        description=(
+            "Match the last N units instead of a date_added_from/_to range "
+            "(1-999); see date_added_within_unit."
+        ),
+    ),
+    OpenApiParameter(
+        name="date_added_within_unit",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        enum=["days", "weeks", "months", "years"],
     ),
     OpenApiParameter(
         name="release",
@@ -201,6 +310,7 @@ MEDIA_LIST_FILTER_PARAMS = [
             "date_added",
             "start_date",
             "end_date",
+            "last_watched",
             "next_episode_air_date",
             "time_left",
             "added",

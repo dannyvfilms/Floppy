@@ -404,6 +404,10 @@ if (!window.__floppyDateTimePickerBound) {
       if (!pairedInput || pairedInput === this.$refs.hiddenInput) {
         return;
       }
+      if (pairedInput.value) {
+        // Don't overwrite a date the user (or an earlier quick action) already set.
+        return;
+      }
 
       if (window.Alpine) {
         try {
@@ -480,8 +484,8 @@ if (!window.__floppyDateTimePickerBound) {
       return this.suggestionLabel || gettext("Suggested date");
     },
 
-    applySuggestion() {
-      const iso = this.resolvedSuggestionDate();
+    applySuggestion(date) {
+      const iso = date || this.resolvedSuggestionDate();
       if (!iso) {
         return;
       }
@@ -632,10 +636,17 @@ if (!window.__floppyDateTimePickerBound) {
 
     clear() {
       if (!this.value) {
+        // None on an empty End date still counts: the user wants no date.
+        if (this.fieldName === "end_date") {
+          window.trackModalMarkEndCleared?.(this.$refs.hiddenInput.closest("form"));
+        }
         this.closePicker();
         return;
       }
 
+      if (this.fieldName === "end_date") {
+        window.trackModalMarkEndCleared?.(this.$refs.hiddenInput.closest("form"));
+      }
       this.value = "";
       this.$refs.hiddenInput.value = "";
       this.syncFromValue();

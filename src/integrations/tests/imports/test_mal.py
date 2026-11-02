@@ -10,6 +10,7 @@ from django.test import TestCase, tag
 
 from app.models import (
     Anime,
+    DeletedMedia,
     Item,
     Manga,
     MediaTypes,
@@ -39,9 +40,9 @@ class ImportMAL(TestCase):
     @patch("requests.Session.get")
     def test_import_animelist(self, mock_request):
         """Basic test importing anime and manga from MyAnimeList."""
-        with Path(mock_path / "import_mal_anime.json").open() as file:
+        with Path(mock_path / "import_mal_anime.json").open(encoding="utf-8") as file:
             anime_response = json.load(file)
-        with Path(mock_path / "import_mal_manga.json").open() as file:
+        with Path(mock_path / "import_mal_manga.json").open(encoding="utf-8") as file:
             manga_response = json.load(file)
 
         anime_mock = MagicMock()
@@ -92,6 +93,32 @@ class ImportMAL(TestCase):
         self.assertEqual(erased_item.localized_title, "Erased")
         self.assertEqual(erased_item.original_title, "Boku dake ga Inai Machi")
 
+    @patch("requests.Session.get")
+    def test_import_does_not_bring_back_a_deleted_anime(self, mock_request):
+        """An anime the user deleted by hand stays deleted across syncs (#1133)."""
+        with Path(mock_path / "import_mal_anime.json").open(encoding="utf-8") as file:
+            anime_response = json.load(file)
+        with Path(mock_path / "import_mal_manga.json").open(encoding="utf-8") as file:
+            manga_response = json.load(file)
+        anime_mock = MagicMock()
+        anime_mock.json.return_value = anime_response
+        manga_mock = MagicMock()
+        manga_mock.json.return_value = manga_response
+        mock_request.side_effect = [anime_mock, manga_mock]
+        DeletedMedia.objects.create(
+            user=self.user,
+            media_type=MediaTypes.ANIME.value,
+            source=Sources.MAL.value,
+            media_id="31043",
+        )
+
+        mal.importer("bloodthirstiness", self.user, "new")
+
+        self.assertEqual(Anime.objects.filter(user=self.user).count(), 5)
+        self.assertFalse(
+            Anime.objects.filter(user=self.user, item__media_id="31043").exists(),
+        )
+
     @tag("network")
     def test_user_not_found(self):
         """Test that an error is raised if the user is not found."""
@@ -106,7 +133,7 @@ class ImportMAL(TestCase):
     @patch("integrations.imports.mal.MyAnimeListImporter._get_whole_response")
     def test_private_manga_list_is_skipped_with_warning(self, mock_get_response):
         """A private manga list is skipped with a warning, anime still imports."""
-        with Path(mock_path / "import_mal_anime.json").open() as file:
+        with Path(mock_path / "import_mal_anime.json").open(encoding="utf-8") as file:
             anime_response = json.load(file)
 
         forbidden_response = MagicMock()
@@ -148,9 +175,9 @@ class ImportMAL(TestCase):
             score=5,  # stale score — should be overwritten
         )
 
-        with Path(mock_path / "import_mal_anime.json").open() as file:
+        with Path(mock_path / "import_mal_anime.json").open(encoding="utf-8") as file:
             anime_response = json.load(file)
-        with Path(mock_path / "import_mal_manga.json").open() as file:
+        with Path(mock_path / "import_mal_manga.json").open(encoding="utf-8") as file:
             manga_response = json.load(file)
 
         anime_mock = MagicMock()

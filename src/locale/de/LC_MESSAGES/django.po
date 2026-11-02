@@ -660,7 +660,7 @@ msgstr "Abgeschlossen"
 #: app/models/choices.py:59 users/models.py:137 users/models.py:303
 #: users/models.py:401
 msgid "In Progress"
-msgstr "In Bearbeitung"
+msgstr "Laufend"
 
 #: app/models/choices.py:60 templates/users/integrations.html:1264
 #: users/models.py:138 users/models.py:400
@@ -3291,7 +3291,7 @@ msgstr "Laufende Wiedergabe"
 #: templates/app/components/fill_track_song.html:106
 #: templates/users/integrations.html:1269
 msgid "In progress"
-msgstr "In Bearbeitung"
+msgstr "Laufend"
 
 #: templates/app/components/fill_track_song.html:126
 msgid "Previous Plays"
@@ -10645,7 +10645,7 @@ msgid ""
 "the"
 msgstr ""
 "Installiere das Floppy Scrobbler-Add-on in Stremio, um Filme und Folgen beim"
-" Wiedergabestart als „In Bearbeitung“ zu markieren. Kombiniere es mit dem "
+" Wiedergabestart als „Laufend“ zu markieren. Kombiniere es mit dem "
 "Stremio-Import auf der"
 
 #: templates/users/integrations.html:1077
@@ -10691,7 +10691,7 @@ msgid ""
 "Playback start marks the item in progress; the recurring library import "
 "marks items watched."
 msgstr ""
-"Der Wiedergabestart markiert den Eintrag als „In Bearbeitung“. Der "
+"Der Wiedergabestart markiert den Eintrag als „Laufend“. Der "
 "regelmäßige Bibliotheksimport markiert Einträge als gesehen."
 
 #: templates/users/integrations.html:1102
@@ -12201,3 +12201,46 @@ msgstr "90 Tage"
 #, python-format
 msgid "Server Default (%(language)s)"
 msgstr "Serverstandard (%(language)s)"
+
+#: templates/app/search.html
+msgid "Searching your library only: items you track, collect or tag. Pick a media type to search online."
+msgstr "Es wird nur in deiner Bibliothek gesucht: Titel, die du verfolgst, gesammelt oder mit Tags versehen hast. Wähle einen Medientyp, um online zu suchen."
+
+#: templates/app/search.html
+msgid "Search online"
+msgstr "Online suchen"
+
+#: templates/app/search.html
+#: templates/app/components/search_suggestions.html
+#, python-format
+msgid "Nothing in your library matches &ldquo;%(value_1)s&rdquo;. Pick a media type to search online."
+msgstr "In deiner Bibliothek passt nichts zu &ldquo;%(value_1)s&rdquo;. Wähle einen Medientyp, um online zu suchen."
+
+#: templates/app/components/search_suggestions.html
+#, python-format
+msgid "See all library results for &ldquo;%(value_1)s&rdquo;"
+msgstr "Alle Bibliotheksergebnisse für &ldquo;%(value_1)s&rdquo; anzeigen"
+
+
+#: templates/users/home_screen.html users/models.py
+msgid "Up Next"
+msgstr "Als Nächstes"
+
+#: app/templatetags/app_tags.py
+msgid "Behind"
+msgstr "Ungesehen"
+
+#: app/templatetags/app_tags.py
+msgid "day"
+msgid_plural "days"
+msgstr[0] "Tag"
+msgstr[1] "Tage"
+
+#: users/home_screen.py
+msgid "Up Next requires the TV library."
+msgstr "Für „Als Nächstes“ muss die Serienbibliothek aktiviert sein."
+
+
+#: users/home_screen.py
+msgid "All media supports library and Up Next rows."
+msgstr "Alle Medien unterstützt Bibliothekszeilen und „Als Nächstes“."

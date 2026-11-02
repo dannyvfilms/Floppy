@@ -96,10 +96,12 @@ def _reconcile_collection_entry(*, user, item):
     if entry is None:
         entry = CollectionEntry.objects.create(user=user, item=item)
 
-    best_state = _get_best_state(states)
-    resolved_quality = (best_state.quality_label if best_state else "") or ""
-    if entry.resolution != resolved_quality:
-        entry.resolution = resolved_quality
+    # An empty quality label means unknown (Jellyfin webhooks, Mylar3,
+    # Kapowarr): it neither blanks nor outranks a resolution set by hand,
+    # through the API or by another source.
+    best_state = _get_best_state([state for state in states if state.quality_label])
+    if best_state and entry.resolution != best_state.quality_label:
+        entry.resolution = best_state.quality_label
         entry.save(update_fields=["resolution", "updated_at"])
 
     return entry
@@ -132,6 +134,42 @@ def upsert_collection_source_state(
         return _reconcile_collection_entry(user=user, item=item)
 
     return retry_on_lock(_upsert_state)
+
+
+def prune_collection_source_states(
+    *,
+    user,
+    source: str,
+    source_instance_id: int | None,
+    keep_item_ids,
+) -> int:
+    """Drop this instance's states for items it no longer reports as owned.
+
+    Scoped to the caller's ``source`` and ``source_instance_id``: a Radarr run
+    can never prune another source's snapshots, another instance's snapshots,
+    or a collection entry that has no source snapshot behind it. Call only
+    after a complete read of the instance; an item missing from a partial or
+    failed run is not proof that the server deleted it.
+    """
+    stale = (
+        CollectionSourceState.objects.filter(
+            user=user,
+            source=source,
+            source_instance_id=source_instance_id,
+        )
+        .exclude(item_id__in=keep_item_ids)
+        .select_related("item")
+    )
+    removed = 0
+    for state in stale:
+        remove_collection_source_state(
+            user=user,
+            item=state.item,
+            source=source,
+            source_instance_id=source_instance_id,
+        )
+        removed += 1
+    return removed
 
 
 def remove_collection_source_state(

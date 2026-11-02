@@ -1,4 +1,4 @@
-"""statistics.py — Core statistics orchestration for Cursor.
+"""statistics.py — Core statistics orchestration for Floppy.
 
 The heavy lifting has been extracted into focused submodules:
   - stats_utils.py    shared pure utilities (parse_runtime_to_minutes, etc.)
@@ -523,6 +523,7 @@ from app.stats_reading import (  # noqa: E402,F401
     _format_reading_unit,
     _normalize_item_author_names,
     _reading_entry_in_range,
+    _reading_entry_range_filter,
     get_reading_consumption_stats,
 )
 from app.stats_score import (  # noqa: E402,F401

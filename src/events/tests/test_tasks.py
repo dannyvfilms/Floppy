@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -38,16 +38,91 @@ class ReloadCalendarTaskTests(TestCase):
         mock_fetch.assert_called_once_with(user=None, items_to_process=[])
         mock_auto_pause.assert_called_once_with()
 
+    @patch("events.tasks.get_items_to_process", return_value=[])
     @patch("events.tasks.auto_pause.auto_pause_stale_items")
     @patch("events.tasks.fetch_releases")
-    def test_auto_pause_skipped_for_single_user(self, mock_fetch, mock_auto_pause):
+    def test_auto_pause_skipped_for_single_user(
+        self, mock_fetch, mock_auto_pause, mock_select
+    ):
         mock_fetch.return_value = "ok"
 
         result = reload_calendar(user_id=self.user.id)
 
         self.assertEqual(result, "ok")
-        mock_fetch.assert_called_once_with(user=self.user, items_to_process=None)
+        mock_select.assert_called_once_with(self.user)
+        mock_fetch.assert_called_once_with(user=self.user, items_to_process=[])
         mock_auto_pause.assert_not_called()
+
+    @override_settings(CALENDAR_RELOAD_CHUNK_SIZE=2)
+    @patch("app.tasks.backfill_item_metadata_task.apply_async")
+    @patch("events.tasks.auto_pause.auto_pause_stale_items")
+    @patch("events.tasks.fetch_releases", return_value="ok")
+    def test_user_refresh_preserves_selection_order_and_context_across_chunks(
+        self, mock_fetch, mock_auto_pause, mock_backfill
+    ):
+        items = Item.objects.bulk_create(
+            [
+                Item(
+                    media_id=f"chunk-{index}",
+                    source=Sources.IGDB.value,
+                    media_type=MediaTypes.GAME.value,
+                    title=f"Game {index}",
+                )
+                for index in range(5)
+            ]
+        )
+        selected = [items[4], items[1], items[3], items[0], items[2]]
+        pending = []
+        with (
+            patch("events.tasks.get_items_to_process", return_value=selected) as select,
+            patch("events.tasks.reload_calendar.delay", side_effect=lambda **kw: pending.append(kw)) as delay,
+        ):
+            # Legacy User arguments must become JSON-safe IDs in continuations.
+            reload_calendar(user=self.user)
+            while pending:
+                reload_calendar(**pending.pop(0))
+
+        select.assert_called_once_with(self.user)
+        self.assertEqual(
+            delay.call_args_list,
+            [
+                call(user_id=self.user.pk, item_ids=[item.pk for item in selected[2:]]),
+                call(user_id=self.user.pk, item_ids=[selected[4].pk]),
+            ],
+        )
+        self.assertEqual(
+            mock_fetch.call_args_list,
+            [
+                call(user=self.user, items_to_process=selected[start : start + 2])
+                for start in (0, 2, 4)
+            ],
+        )
+        mock_auto_pause.assert_not_called()
+        mock_backfill.assert_not_called()
+
+    @override_settings(CALENDAR_RELOAD_CHUNK_SIZE=0)
+    @patch("events.tasks.reload_calendar.delay")
+    @patch("events.tasks.fetch_releases", return_value="ok")
+    def test_user_chunking_can_be_disabled(self, mock_fetch, mock_delay):
+        items = [Item(pk=index) for index in range(3)]
+        with patch("events.tasks.get_items_to_process", return_value=items):
+            self.assertEqual(reload_calendar(user_id=self.user.pk), "ok")
+        mock_fetch.assert_called_once_with(user=self.user, items_to_process=items)
+        mock_delay.assert_not_called()
+
+    @override_settings(CALENDAR_RELOAD_CHUNK_SIZE=1)
+    @patch("events.tasks.reload_calendar.delay")
+    @patch("events.tasks.fetch_releases", side_effect=RuntimeError("controlled failure"))
+    def test_user_chunk_failure_does_not_publish_continuation(
+        self, mock_fetch, mock_delay
+    ):
+        with (
+            patch("events.tasks.get_items_to_process", return_value=[Item(pk=1), Item(pk=2)]),
+            self.assertRaisesMessage(RuntimeError, "controlled failure"),
+        ):
+            reload_calendar(user_id=self.user.pk)
+        mock_fetch.assert_called_once()
+        mock_delay.assert_not_called()
 
     @patch("events.tasks.auto_pause.auto_pause_stale_items")
     @patch("events.tasks.fetch_releases")

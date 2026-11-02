@@ -1,5 +1,6 @@
 import json
 import zipfile
+from datetime import UTC, datetime
 from io import BytesIO
 from unittest.mock import Mock, patch
 
@@ -231,6 +232,66 @@ class ImportTraktExport(TestCase):
             Status.COMPLETED.value,
         )
 
+    def test_rows_written_after_the_snapshot_are_reused_not_inserted(self):
+        """A tracking row added mid-import must not abort the bulk save (#1518).
+
+        Imports decide what is new against a snapshot taken at the start of the
+        run. A webhook or sync can store the same show while a long import is
+        still preparing it; the queued duplicate then hit
+        ``UNIQUE(user, item)`` and failed the whole import.
+        """
+        item = Item.objects.create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Raced Show",
+            image="",
+        )
+        season_item = Item.objects.create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Raced Show",
+            image="",
+        )
+        stored_tv = TV.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+        )
+        stored_season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=stored_tv,
+            status=Status.COMPLETED.value,
+        )
+
+        queued_tv = TV(item=item, user=self.user, status=Status.IN_PROGRESS.value)
+        queued_season = Season(
+            item=season_item,
+            user=self.user,
+            related_tv=queued_tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        helpers.bulk_create_media(
+            {
+                MediaTypes.TV.value: [queued_tv],
+                MediaTypes.SEASON.value: [queued_season],
+            },
+            self.user,
+        )
+
+        self.assertEqual(TV.objects.filter(user=self.user, item=item).count(), 1)
+        self.assertEqual(Season.objects.filter(user=self.user, item=season_item).count(), 1)
+        self.assertEqual(queued_tv.pk, stored_tv.pk)
+        self.assertEqual(queued_season.pk, stored_season.pk)
+        # Reuse keeps the row the other writer stored, including its status.
+        self.assertEqual(
+            TV.objects.get(user=self.user, item=item).status,
+            Status.COMPLETED.value,
+        )
+
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_history_creates_movie_and_episodes(self, mock_get_metadata):
         """Watch history creates Movie/Episode rows and rolls progress up."""
@@ -276,6 +337,36 @@ class ImportTraktExport(TestCase):
             TV.objects.get(user=self.user, item__media_id="12345").status,
             Status.COMPLETED.value,
         )
+
+    @patch("integrations.imports.trakt.HISTORY_LOG_EVERY", 2)
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_import_logs_stages_and_progress_not_every_entry(self, mock_get_metadata):
+        """A long export leaves one line per stage, not one line per watch."""
+        mock_get_metadata.side_effect = _metadata_side_effect
+        export = _zip_bytes(
+            {
+                "user-profile.json": {"username": "someone"},
+                "watched-history-1.json": [
+                    {
+                        "type": "episode",
+                        "watched_at": f"2023-01-0{number}T00:00:00.000Z",
+                        "episode": {"season": 1, "number": number, "title": "Ep"},
+                        "show": _show(),
+                    }
+                    for number in (1, 2, 3, 4)
+                ],
+            },
+        )
+
+        with self.assertLogs("integrations.imports.trakt", level="INFO") as logs:
+            importer(export, self.user, "new")
+
+        output = "\n".join(logs.output)
+        self.assertNotIn("Processing episode", output)
+        self.assertEqual(output.count("Trakt history progress"), 2)
+        for stage in ("history", "collection", "save media", "finish shows"):
+            self.assertIn(f"Trakt import stage started: {stage}", output)
+            self.assertIn(f"Trakt import stage finished: {stage} in", output)
 
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_history_is_replayed_oldest_first(self, mock_get_metadata):
@@ -508,6 +599,90 @@ class ImportTraktExport(TestCase):
             1,
         )
 
+    def _collection_shows_export(self, show_last_collected_at=None):
+        show_entry = {
+            "type": "show",
+            "show": _show(),
+            "seasons": [
+                {
+                    "number": 1,
+                    "episodes": [
+                        {"number": 1, "collected_at": "2024-07-17T14:25:07.000Z"},
+                        {"number": 2, "collected_at": "2024-07-18T10:00:00.000Z"},
+                    ],
+                },
+            ],
+        }
+        if show_last_collected_at:
+            show_entry["last_collected_at"] = show_last_collected_at
+        return _zip_bytes({"collection-shows.json": [show_entry]})
+
+    def _rollup_dates(self):
+        return {
+            entry.item.media_type: entry.collected_at
+            for entry in CollectionEntry.objects.filter(user=self.user).exclude(
+                item__media_type=MediaTypes.EPISODE.value,
+            )
+        }
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_collection_rollups_keep_historical_dates(self, mock_get_metadata):
+        """Season and show entries use Trakt dates, not the import time."""
+        mock_get_metadata.side_effect = _metadata_side_effect
+
+        importer(
+            self._collection_shows_export("2024-07-19T00:00:00.000Z"),
+            self.user,
+            "new",
+        )
+
+        dates = self._rollup_dates()
+        self.assertEqual(
+            dates[MediaTypes.SEASON.value],
+            datetime(2024, 7, 18, 10, 0, tzinfo=UTC),
+        )
+        self.assertEqual(
+            dates[MediaTypes.TV.value],
+            datetime(2024, 7, 19, 0, 0, tzinfo=UTC),
+        )
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_collection_show_date_falls_back_to_newest_episode(
+        self,
+        mock_get_metadata,
+    ):
+        """Without last_collected_at the show uses its newest episode date."""
+        mock_get_metadata.side_effect = _metadata_side_effect
+
+        importer(self._collection_shows_export(), self.user, "new")
+
+        self.assertEqual(
+            self._rollup_dates()[MediaTypes.TV.value],
+            datetime(2024, 7, 18, 10, 0, tzinfo=UTC),
+        )
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_overwrite_corrects_existing_rollup_dates(self, mock_get_metadata):
+        """Re-importing in overwrite mode fixes dates set to the import time."""
+        mock_get_metadata.side_effect = _metadata_side_effect
+        export = self._collection_shows_export("2024-07-19T00:00:00.000Z")
+
+        importer(export, self.user, "new")
+        CollectionEntry.objects.filter(user=self.user).update(
+            collected_at=datetime(2026, 10, 3, tzinfo=UTC),
+        )
+        importer(export, self.user, "overwrite")
+
+        dates = self._rollup_dates()
+        self.assertEqual(
+            dates[MediaTypes.TV.value],
+            datetime(2024, 7, 19, 0, 0, tzinfo=UTC),
+        )
+        self.assertEqual(
+            dates[MediaTypes.SEASON.value],
+            datetime(2024, 7, 18, 10, 0, tzinfo=UTC),
+        )
+
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_hidden_progress_marks_show_dropped(self, mock_get_metadata):
         """hidden-progress-watched is read even though there is no OAuth token."""
@@ -665,6 +840,49 @@ class ImportTraktExport(TestCase):
         importer(_zip_bytes(files), self.user, "new")
 
         self.assertEqual(Episode.objects.filter(item__media_id="12345").count(), 1)
+
+    @patch("integrations.imports.trakt.item_merge.find_tvdb_counterpart")
+    @patch("integrations.imports.trakt.tvdb.enabled", return_value=True)
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_reimport_into_library_tracked_via_tvdb(
+        self, mock_get_metadata, _mock_tvdb_enabled, mock_find,
+    ):
+        """A show already tracked on its TVDB Item is reused, never queued again."""
+        def warm_cache_like_tmdb(media_type, tmdb_id, title, season_number=None):
+            # The TVDB id is only known once TMDB metadata has been cached.
+            if media_type == MediaTypes.TV.value:
+                cache.set(
+                    f"{Sources.TMDB.value}_{MediaTypes.TV.value}_{tmdb_id}",
+                    {"tvdb_id": "999"},
+                )
+            return _metadata_side_effect(media_type, tmdb_id, title, season_number)
+
+        mock_get_metadata.side_effect = warm_cache_like_tmdb
+        self.user.tv_metadata_source_default = Sources.TVDB.value
+        self.user.save()
+        tvdb_item = Item.objects.create(media_id="999", source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value, title="Test Show", image="")
+        tvdb_season = Item.objects.create(media_id="999", source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value, season_number=1, title="Test Show", image="")
+        tv = TV.objects.create(item=tvdb_item, user=self.user, status=Status.PLANNING.value)
+        Season.objects.create(item=tvdb_season, user=self.user, related_tv=tv, status=Status.PLANNING.value)
+        def find(_id, media_type, season_number=None, **_k):
+            return {MediaTypes.TV.value: tvdb_item, MediaTypes.SEASON.value: tvdb_season}.get(media_type)
+        mock_find.side_effect = find
+        files = {
+            "watched-history-1.json": [{"type": "episode", "watched_at": "2023-01-01T00:00:00.000Z",
+                "episode": {"season": 1, "number": 1, "title": "One"}, "show": _show()}],
+            "watchlist.json": [
+                {"type": "show", "listed_at": "2023-01-01T00:00:00.000Z", "show": _show()},
+                {"type": "season", "listed_at": "2023-01-01T00:00:00.000Z", "show": _show(), "season": {"number": 1}},
+            ],
+        }
+        for mode in ("new", "overwrite", "new"):
+            with self.subTest(mode=mode):
+                importer(_zip_bytes(files), self.user, mode)
+                self.assertEqual(TV.objects.filter(user=self.user).count(), 1)
+                self.assertEqual(Season.objects.filter(user=self.user).count(), 1)
+                self.assertEqual(Episode.objects.count(), 1)
 
 
 class TraktExportUploadViewTests(TestCase):

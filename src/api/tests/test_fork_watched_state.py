@@ -7,10 +7,12 @@ reason the endpoint exists separately from the playback and history routes.
 
 import datetime
 import logging
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from app.models import (
@@ -23,7 +25,7 @@ from app.models import (
     WatchStateChange,
     WatchStateOrigin,
 )
-from app.services.watch_state import effective_state
+from app.services.watch_state import effective_state, record_state_change
 from integrations.models import (
     CAPABILITY_WATCHED_READ,
     StateConflict,
@@ -226,6 +228,24 @@ class SetStateTests(WatchedStateAPITestCase):
 
         self.assertTrue(response.json()["unchanged"])
 
+    def test_repeating_watched_a_second_later_is_still_unchanged(self):
+        """Re-sending the same state must not depend on the clock ticking over."""
+        clock = [timezone.now().replace(microsecond=0)]
+        with patch("django.utils.timezone.now", side_effect=lambda: clock[0]):
+            self.client.put(
+                self.url,
+                data={"watched": True},
+                content_type="application/json",
+            )
+            clock[0] += datetime.timedelta(seconds=2)
+            response = self.client.put(
+                self.url,
+                data={"watched": True},
+                content_type="application/json",
+            )
+
+        self.assertTrue(response.json()["unchanged"])
+
     def test_another_user_cannot_read_or_set_this_state(self):
         other = get_user_model().objects.create_user(username="other")
         self.client.put(
@@ -293,6 +313,37 @@ class ChangeFeedTests(WatchedStateAPITestCase):
         payload = self.client.get(reverse("api_sync_changes")).json()
 
         self.assertEqual(payload["results"], [])
+
+
+class ChangeFeedEpisodeIdentityTests(WatchedStateAPITestCase):
+    def test_an_episode_change_names_its_season_and_episode(self):
+        """Episodes share their show's media_id, so the feed must say which one."""
+        Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+            provider_external_ids={"tmdb_id": 1396, "imdb_id": "tt0903747"},
+        )
+        episode = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Episode 3",
+            season_number=2,
+            episode_number=3,
+        )
+        record_state_change(
+            self.user,
+            episode,
+            watched=True,
+            origin_kind=WatchStateOrigin.LOCAL_API.value,
+        )
+
+        row = self.client.get(reverse("api_sync_changes")).json()["results"][-1]
+
+        self.assertEqual((row["season_number"], row["episode_number"]), (2, 3))
+        self.assertEqual(row["ids"], {"tmdb": "1396", "imdb": "tt0903747"})
 
 
 class ConnectionsTests(WatchedStateAPITestCase):

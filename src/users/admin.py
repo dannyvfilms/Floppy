@@ -63,7 +63,6 @@ class CustomUserAdmin(UserAdmin):
                 "is_staff",
                 "is_active",
                 "id",
-                "progress_bar",
             }:
                 continue
 

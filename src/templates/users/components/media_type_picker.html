@@ -1,8 +1,10 @@
+{% load i18n %}
 {% load user_tags %}
 {% load app_tags %}
 {% comment %}
 Reusable media-type multi-select grid with drag-to-reorder.
-Used by Settings > Sidebar and by the setup wizard's "choose what to
+Used by Settings > Sidebar (which also passes `show_discover_toggle` to add a
+Discover on/off card) and by the setup wizard's "choose what to
 track" step. Expects `media_types` (ordered list of MediaTypes values)
 and `user` in context; renders into a form that also submits
 `sidebar_media_type_order` and `media_types_checkboxes`. Optional
@@ -11,6 +13,23 @@ and `user` in context; renders into a form that also submits
 {% endcomment %}
 <input type="hidden" name="sidebar_media_type_order" value="{{ media_types|join:',' }}" data-sidebar-order-input>
 <div class="grid gap-3 {{ grid_cols_class|default:"md:grid-cols-3" }}" data-sidebar-order-list>
+  {% if show_discover_toggle %}
+    <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
+      <div class="flex items-center text-[var(--color-text-muted)]">
+        <span class="w-4 h-4 mr-2" aria-hidden="true"></span>
+        {% include "app/icons/four-square.svg" with classes="w-5 h-5" %}
+        <span class="text-[var(--color-text-secondary)] text-sm ml-2">{% translate "Discover" %}</span>
+      </div>
+      <label class="relative inline-flex items-center cursor-pointer">
+        <input class="sr-only peer"
+               type="checkbox"
+               name="show_discover"
+               {% if user.show_discover %}checked{% endif %}>
+        <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
+        </div>
+      </label>
+    </div>
+  {% endif %}
   {% for media_type in media_types %}
     <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md" data-sidebar-media-type="{{ media_type }}">
       <div class="flex items-center text-[var(--color-text-muted)]">

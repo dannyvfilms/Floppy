@@ -35,7 +35,7 @@
                   hx-target="#history-{{ entry.id }}"
                   hx-swap="outerHTML">{% include "app/icons/trashcan.svg" with classes="w-5 h-5" %}</button>
         </div>
-        {% for change in entry.changes %}<p class="text-[var(--color-text)]">{{ change.description }}</p>{% endfor %}
+        {% for change in entry.changes %}<p class="text-[var(--color-text)]">{{ change.description|translate_history_description }}</p>{% endfor %}
       </li>
     {% empty %}
       <li class="bg-[var(--color-surface-strong)] p-4 rounded-lg text-center text-[var(--color-text-muted)]">{% translate "You haven't started tracking it yet." %}</li>

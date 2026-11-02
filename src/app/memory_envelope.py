@@ -30,13 +30,18 @@ event is emitted only when a boundary crosses one of the thresholds in
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import os
 import re
 import time
+from contextlib import ExitStack
 from dataclasses import dataclass
 
 from django.conf import settings
+from django.db import connections
+
+from app import db_diagnostics, request_timing
 
 logger = logging.getLogger(__name__)
 
@@ -431,6 +436,92 @@ _task_samples: dict[str, tuple[MemorySample, float]] = {}
 _MAX_TRACKED_TASKS = 64
 
 
+@dataclass
+class _TaskTiming:
+    task_id: str
+    tally: dict
+    token: contextvars.Token
+    wrappers: ExitStack
+    started: float
+    cpu_started: float
+    rss_started: int | None = None
+    queries: int = 0
+
+
+_task_timings = contextvars.ContextVar("task_performance_timings", default=())
+
+
+def task_timing_started(task_id: str) -> None:
+    """Open context-local I/O accounting; never record task arguments."""
+    if not settings.PERF_LOG_ENABLED:
+        return
+    active = _task_timings.get()
+    if len(active) >= _MAX_TRACKED_TASKS:
+        return
+    request_timing.install_boundaries()
+    tally, token = request_timing.begin()
+    sample = _TaskTiming(
+        task_id, tally, token, ExitStack(), time.perf_counter(), time.thread_time(),
+        rss_started=_process_rss_bytes(),
+    )
+
+    def count_query(execute, sql, params, many, context):
+        # Eager tasks can nest. Only the innermost task owns a query.
+        if not _task_timings.get() or _task_timings.get()[-1] is not sample:
+            return execute(sql, params, many, context)
+        sample.queries += 1
+        with request_timing.boundary("db"):
+            return db_diagnostics.track_query(execute, sql, params, many, context)
+
+    try:
+        for connection in connections.all():
+            sample.wrappers.enter_context(connection.execute_wrapper(count_query))
+    except Exception:
+        sample.wrappers.close()
+        request_timing.end(token)
+        raise
+    _task_timings.set((*active, sample))
+
+
+def task_timing_finished(task_id: str, task_name: str, state: str | None = None) -> None:
+    """Close accounting before emitting one summary for a slow task."""
+    active = _task_timings.get()
+    if not active or active[-1].task_id != task_id:
+        return
+    sample = active[-1]
+    duration_ms = (time.perf_counter() - sample.started) * 1000
+    cpu_ms = (time.thread_time() - sample.cpu_started) * 1000
+    try:
+        sample.wrappers.close()
+    finally:
+        request_timing.end(sample.token)
+        _task_timings.set(active[:-1])
+    if duration_ms < settings.PERF_LOG_SLOW_TASK_MS:
+        return
+    spans = sample.tally["boundaries"]
+    fields = " ".join(
+        f"{name}_ms={spans.get(name, 0.0) * 1000:.1f} "
+        f"{name}_calls={sample.tally['boundary_calls'].get(name, 0)}"
+        for name in sorted({"db", "provider", "cache", "broker", "db_connect", "render", *spans})
+    )
+    logger.info(
+        "slow_task name=%s task_id=%s state=%s duration_ms=%.1f cpu_ms=%.1f "
+        "queries=%s provider_calls=%s unclassified_ms=%.1f "
+        "rss_delta_bytes=%s process_hwm_bytes=%s %s",
+        task_name,
+        task_id,
+        state or "unknown",
+        duration_ms,
+        cpu_ms,
+        sample.queries,
+        sample.tally["calls"],
+        max(0.0, duration_ms - sum(spans.values()) * 1000),
+        _delta(_process_rss_bytes(), sample.rss_started),
+        _process_hwm_bytes(),
+        fields,
+    )
+
+
 def task_started(task_id: str) -> None:
     """Record the opening sample for a task."""
     if len(_task_samples) >= _MAX_TRACKED_TASKS:
@@ -459,21 +550,31 @@ def task_finished(task_id: str, task_name: str, state: str | None = None) -> Non
 
 def connect_celery_signals() -> None:
     """Wire the task boundaries up, once, if instrumentation is enabled."""
-    if not enabled():
+    if not enabled() and not settings.PERF_LOG_ENABLED:
         return
     from celery.signals import task_postrun, task_prerun
 
     def _prerun(task_id=None, **_kwargs):
         if task_id:
-            task_started(task_id)
+            try:
+                task_timing_started(task_id)
+                if enabled():
+                    task_started(task_id)
+            except Exception:  # instrumentation must never fail a task
+                logger.exception("task boundary instrumentation failed")
 
     def _postrun(task_id=None, task=None, state=None, **_kwargs):
         if not task_id:
             return
         try:
-            task_finished(task_id, getattr(task, "name", "<unknown>"), state)
+            task_timing_finished(task_id, getattr(task, "name", "<unknown>"), state)
         except Exception:  # never fail a task on instrumentation
-            logger.exception("memory_high_water task reporting failed")
+            logger.exception("task performance reporting failed")
+        if enabled():
+            try:
+                task_finished(task_id, getattr(task, "name", "<unknown>"), state)
+            except Exception:  # never fail a task on instrumentation
+                logger.exception("memory_high_water task reporting failed")
 
     # weak=False: the handlers are closures with no other reference, so the
     # default weak connection would let them be collected immediately.

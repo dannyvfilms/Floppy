@@ -1,8 +1,10 @@
 # FORK: recurring-schedule coverage for the Audiobookshelf connect/import views.
+import tempfile
 from unittest.mock import Mock, patch
 
 import requests
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
@@ -101,6 +103,16 @@ class AudiobookshelfScheduleTests(TestCase):
         self.assertIsNotNone(task.interval)
         self.assertEqual(task.interval.every, 15)
 
+    @patch("integrations.views.tasks.import_audiobookshelf.delay")
+    def test_manual_import_and_disconnect_return_to_safe_provider_page(self, mock_import):
+        AudiobookshelfAccount.objects.create(user=self.user, base_url=BASE_URL, api_token="encrypted")
+        next_url = reverse("provider_detail", args=["audiobookshelf"]) + "?tab=import"
+        response = self.client.post(reverse("import_audiobookshelf"), {"next": next_url})
+        self.assertRedirects(response, next_url, fetch_redirect_response=False)
+        mock_import.assert_called_once()
+        response = self.client.post(reverse("audiobookshelf_disconnect"), {"next": "https://evil.example/"})
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
+
     def test_disconnect_removes_schedule(self):
         """Disconnecting deletes the recurring periodic task."""
         AudiobookshelfAccount.objects.create(
@@ -136,6 +148,12 @@ class AudiobookshelfCoverProxyTests(TestCase):
 
     def setUp(self):
         """Create a connected Audiobookshelf account to proxy covers for."""
+        cache.clear()
+        data_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(data_dir.cleanup)
+        settings_override = override_settings(FLOPPY_DATA_DIR=data_dir.name)
+        settings_override.enable()
+        self.addCleanup(settings_override.disable)
         self.user = get_user_model().objects.create_user(username="abs-cover")
         self.account = AudiobookshelfAccount.objects.create(
             user=self.user,
@@ -196,6 +214,7 @@ class AudiobookshelfCoverProxyTests(TestCase):
             headers={"Authorization": f"Bearer {API_TOKEN}"},
             timeout=15,
             stream=True,
+            allow_redirects=False,
         )
 
     def test_returns_404_for_invalid_token(self):
@@ -240,6 +259,168 @@ class AudiobookshelfCoverProxyTests(TestCase):
 
         self.assertPlaceholder(response)
         self.assertIn("request failed", "\n".join(logs.output))
+
+    @patch("integrations.views.requests.get")
+    def test_unreachable_server_backs_off_the_remaining_covers(self, mock_get):
+        """After one timeout, the next covers skip ABS instead of each waiting.
+
+        Every poster on a page held a web worker for the full timeout while
+        the server was down (#1307).
+        """
+        mock_get.side_effect = requests.ReadTimeout("Read timed out.")
+
+        with self.assertLogs("integrations.views", level="WARNING"):
+            first = self.client.get(self._cover_url("item-1"))
+        second = self.client.get(self._cover_url("item-2"))
+
+        self.assertPlaceholder(first)
+        self.assertPlaceholder(second)
+        mock_get.assert_called_once()
+
+    @patch("integrations.views.requests.get")
+    def test_body_stalling_mid_stream_serves_placeholder_and_backs_off(
+        self,
+        mock_get,
+    ):
+        """Headers arrive but the body stalls: same placeholder and backoff."""
+        upstream = self._mock_upstream(headers={"Content-Type": "image/jpeg"})
+
+        def stalled(chunk_size):
+            yield b"partial"
+            raise requests.ConnectionError("Read timed out.")
+
+        upstream.iter_content = stalled
+        mock_get.return_value = upstream
+
+        with self.assertLogs("integrations.views", level="WARNING"):
+            first = self.client.get(self._cover_url("item-1"))
+        second = self.client.get(self._cover_url("item-2"))
+
+        self.assertPlaceholder(first)
+        self.assertPlaceholder(second)
+        mock_get.assert_called_once()
+        upstream.close.assert_called_once()
+
+    @patch("integrations.views.requests.get")
+    def test_backoff_lapses_and_covers_load_again(self, mock_get):
+        """Once the backoff expires the real cover is fetched again."""
+        mock_get.side_effect = requests.ReadTimeout("Read timed out.")
+        with self.assertLogs("integrations.views", level="WARNING"):
+            self.client.get(self._cover_url("item-1"))
+
+        cache.delete(f"abs_cover_backoff:{self.account.id}")
+        mock_get.side_effect = None
+        mock_get.return_value = self._mock_upstream(
+            content=b"fake-image-bytes",
+            headers={"Content-Type": "image/webp"},
+        )
+
+        response = self.client.get(self._cover_url("item-2"))
+
+        self.assertEqual(response.content, b"fake-image-bytes")
+
+    @patch("integrations.views.requests.get")
+    def test_fresh_stored_cover_is_served_without_calling_abs(self, mock_get):
+        """Once a cover has loaded, the next request does not reach ABS."""
+        mock_get.return_value = self._mock_upstream(
+            content=b"fake-image-bytes",
+            headers={"Content-Type": "image/webp"},
+        )
+        self.client.get(self._cover_url("item-1"))
+
+        response = self.client.get(self._cover_url("item-1"))
+
+        self.assertEqual(response.content, b"fake-image-bytes")
+        self.assertEqual(response["Content-Type"], "image/webp")
+        self.assertEqual(response["X-Content-Type-Options"], "nosniff")
+        mock_get.assert_called_once()
+
+    @patch("integrations.views.requests.get")
+    def test_stored_cover_is_served_while_abs_is_down(self, mock_get):
+        """An old stored copy beats the placeholder when ABS times out (#1307)."""
+        mock_get.return_value = self._mock_upstream(
+            content=b"fake-image-bytes",
+            headers={"Content-Type": "image/webp"},
+        )
+        self.client.get(self._cover_url("item-1"))
+        mock_get.reset_mock()
+        mock_get.return_value = None
+        mock_get.side_effect = requests.ReadTimeout("Read timed out.")
+
+        with patch.object(image_cache, "STORED_COVER_FRESH_SECONDS", 0):
+            with self.assertLogs("integrations.views", level="WARNING"):
+                response = self.client.get(self._cover_url("item-1"))
+            during_backoff = self.client.get(self._cover_url("item-1"))
+
+        mock_get.assert_called_once()
+        self.assertEqual(response.content, b"fake-image-bytes")
+        self.assertEqual(during_backoff.content, b"fake-image-bytes")
+
+    @patch("integrations.views.requests.get")
+    def test_stale_stored_cover_is_replaced_by_a_new_one(self, mock_get):
+        """After the fresh window, ABS is asked again and a changed cover wins."""
+        mock_get.return_value = self._mock_upstream(
+            content=b"old-cover",
+            headers={"Content-Type": "image/png"},
+        )
+        self.client.get(self._cover_url("item-1"))
+        mock_get.return_value = self._mock_upstream(
+            content=b"new-cover",
+            headers={"Content-Type": "image/jpeg"},
+        )
+
+        with patch.object(image_cache, "STORED_COVER_FRESH_SECONDS", 0):
+            refreshed = self.client.get(self._cover_url("item-1"))
+        again = self.client.get(self._cover_url("item-1"))
+
+        self.assertEqual(refreshed.content, b"new-cover")
+        self.assertEqual(again.content, b"new-cover")
+        self.assertEqual(again["Content-Type"], "image/jpeg")
+        self.assertEqual(mock_get.call_count, 2)
+
+    @patch("integrations.views.requests.get")
+    def test_refused_cover_is_never_stored(self, mock_get):
+        """Only validated images are kept; a refused type still gets the placeholder."""
+        mock_get.return_value = self._mock_upstream(
+            content=b"<svg/>",
+            headers={"Content-Type": "image/svg+xml"},
+        )
+        with self.assertLogs("integrations.views", level="WARNING"):
+            self.client.get(self._cover_url("item-1"))
+        mock_get.side_effect = requests.ReadTimeout("Read timed out.")
+
+        with self.assertLogs("integrations.views", level="WARNING"):
+            response = self.client.get(self._cover_url("item-1"))
+
+        self.assertPlaceholder(response)
+
+    @patch("integrations.views.requests.get")
+    def test_deleted_account_does_not_serve_its_stored_cover(self, mock_get):
+        """Disconnecting the account stops its covers, stored or not."""
+        mock_get.return_value = self._mock_upstream(
+            content=b"fake-image-bytes",
+            headers={"Content-Type": "image/webp"},
+        )
+        url = self._cover_url("item-1")
+        self.client.get(url)
+        self.account.delete()
+
+        with self.assertLogs("integrations.views", level="WARNING"):
+            response = self.client.get(url)
+
+        self.assertPlaceholder(response)
+
+    @patch("integrations.views.requests.get")
+    def test_cover_is_not_fetched_from_a_forbidden_server_address(self, mock_get):
+        """The cover proxy goes through the self-hosted policy like the importer."""
+        self.account.base_url = "http://169.254.169.254"
+        self.account.save(update_fields=["base_url"])
+
+        with self.assertLogs("integrations.views", level="WARNING"):
+            response = self.client.get(self._cover_url())
+
+        self.assertPlaceholder(response)
+        mock_get.assert_not_called()
 
     @patch("integrations.views.requests.get")
     def test_rejects_non_image_content_type(self, mock_get):

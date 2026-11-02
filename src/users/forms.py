@@ -135,7 +135,7 @@ class NotificationSettingsForm(forms.ModelForm):
                 },
             ),
             "playback_webhook_url": forms.URLInput(
-                attrs={"placeholder": "https://example.com/playback"},
+                attrs={"placeholder": _("https://example.com/playback")},
             ),
             # `render_value=False`: the whole point of moving the credential out
             # of the URL is that the page stops showing it, so a screenshot or a
@@ -143,7 +143,7 @@ class NotificationSettingsForm(forms.ModelForm):
             # into the HTML, not even masked.
             "playback_webhook_secret": forms.PasswordInput(
                 render_value=False,
-                attrs={"placeholder": "Leave blank to keep the current secret"},
+                attrs={"placeholder": _("Leave blank to keep the current secret")},
             ),
         }
 
@@ -266,7 +266,9 @@ class PasswordRecoveryForm(SetPasswordForm):
         authenticator_code = cleaned_data.get("authenticator_code", "").strip()
 
         user = User.objects.filter(username__iexact=username).first()
-        if user is None:
+        # The demo password is public, so an authenticator someone attached to
+        # it must not become a way to reset it.
+        if user is None or user.is_demo:
             raise ValidationError(self.error_messages["invalid_recovery"])
 
         has_valid_authenticator_code = (

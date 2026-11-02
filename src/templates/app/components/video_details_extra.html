@@ -1,0 +1,3 @@
+{% load app_tags %}{% load i18n %}
+{% if avatar %}<div id="video-channel-avatar" hx-swap-oob="innerHTML"><img data-media-artwork class="w-full h-full object-cover" src="{{ avatar|image_url }}" alt="{% translate 'Channel artwork' %}"></div>{% endif %}
+{% if description %}<div id="video-synopsis-content" hx-swap-oob="innerHTML">{% include "app/components/detail_synopsis.html" with media=description_media %}</div>{% endif %}

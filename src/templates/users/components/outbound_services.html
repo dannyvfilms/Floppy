@@ -1,0 +1,15 @@
+{% load i18n %}
+{% load user_tags %}
+{# Services that take Floppy's plays, statuses and ratings: one row each, same shape as the Metadata rows. Details live in the modal. #}
+<div class="bg-[var(--color-surface)] rounded-lg p-6">
+  <div class="flex items-center mb-1">
+    {% include "app/icons/export.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
+    <h2 class="text-xl font-semibold">{% translate "Send to Services" %}</h2>
+  </div>
+  <p class="text-[var(--color-text-muted)] text-sm mb-4">{% translate "Send what you track in Floppy to other services." %}</p>
+  <div class="space-y-3">
+    {% for service in outbound_services %}
+      {% include "users/components/provider_row.html" with provider=service outbound_entry=True %}
+    {% endfor %}
+  </div>
+</div>

@@ -233,7 +233,7 @@ class PublicListFeed(Feed):
         list_items = list(
             CustomListItem.objects.filter(custom_list=obj)
             .select_related("item")
-            .order_by("-date_added")
+            .order_by("date_added", "pk")
         )
         self._attach_owner_media_statuses(list_items, obj.owner)
         self._attach_show_titles(list_items)

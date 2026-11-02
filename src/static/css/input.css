@@ -1,10 +1,148 @@
 @import "tailwindcss" source("../../");
+@source not "../ui";
 
 @theme {
   --breakpoint-xs: 30rem;
 }
 
+.home-settings-row-controls .filter-control > .absolute {
+  right: 0;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+[data-home-section-list] .sortable-ghost {
+  opacity: 0.4;
+}
+
+[data-home-section-list] .sortable-chosen {
+  outline: 1px solid var(--color-surface-hover);
+}
+
+@media (max-width: 63.999rem) {
+  .home-settings-row-body {
+    height: auto;
+    min-height: 2.5rem;
+  }
+
+  .home-settings-row-body > div {
+    flex-wrap: wrap;
+    padding-block: 0.25rem;
+  }
+
+  /* Title and delete button share the first line; the filters follow as chips. */
+  .home-settings-row-title {
+    flex: 1 1 calc(100% - 2.75rem);
+    min-width: 0;
+  }
+
+  .home-settings-row-controls {
+    display: contents;
+  }
+
+  .home-settings-row-controls > button:last-child {
+    order: 1;
+  }
+
+  .home-settings-row-controls > :not(:last-child) {
+    order: 2;
+  }
+
+  .home-settings-chip {
+    border: 1px solid var(--color-surface-border);
+    background: var(--color-panel);
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+  }
+
+  .home-settings-chip svg {
+    margin-left: 0.25rem;
+  }
+
+  .home-settings-row-controls .filter-control {
+    position: static;
+  }
+
+  .home-settings-row-controls .filter-control > .absolute {
+    left: 0;
+    width: auto;
+    max-width: 100%;
+  }
+}
+
+/* Below md the settings menu collapses into a dropdown (see users/base.html). */
+@media (max-width: 47.999rem) {
+  .settings-nav-collapsed {
+    display: none;
+  }
+}
+
+/* Only Safari's measured side rail gets document overflow. The app shell keeps
+   its viewport width; this column has no content or touch targets. */
+html[data-safari-rail] {
+  overflow-x: hidden;
+}
+
+html[data-safari-rail]:not([data-safari-rail-zoomed]),
+html[data-safari-rail]:not([data-safari-rail-zoomed]) body {
+  touch-action: pan-y pinch-zoom;
+}
+
+#safari-rail {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  overflow: clip;
+  pointer-events: none;
+}
+
+#safari-rail > .safari-rail__header {
+  position: absolute;
+  top: 0;
+  width: 100%;
+  z-index: 50;
+  /* A sticky/fixed copy is excluded from Safari's rail paint. Move ordinary
+     document paint with the root scroll timeline to follow the real header. */
+  animation: safari-rail-header linear both;
+  animation-timeline: scroll(root block);
+}
+
+/* Safari samples a fixed black scrim as an opaque rail tint. Paint the same
+   clickable scrim in document space instead, spanning both page and rail. */
+html[data-safari-rail] .app-menu-overlay {
+  position: absolute;
+  right: calc(-1 * var(--safari-rail-width));
+  bottom: auto;
+  height: var(--safari-rail-height);
+}
+
+html[data-safari-rail] .detail-mobile-hero {
+  overflow: visible;
+}
+
+html[data-safari-rail] .detail-mobile-hero__backdrop {
+  /* Grow symmetrically so artwork stays centred on the original safe area.
+     The left excess is off-screen; only the right side fills the rail. */
+  left: calc(-1 * var(--safari-rail-width));
+  right: calc(-1 * var(--safari-rail-width));
+  /* The blur's scale also scales its mask past the clipping edge. Fade the
+     unscaled wrapper to zero there so no horizontal seam remains. */
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 4rem), transparent);
+}
+
+@keyframes safari-rail-header {
+  to {
+    transform: translateY(var(--rail-scroll));
+  }
+}
+
 :root {
+  /* Screen edges the camera or system UI covers; 0 on screens without them. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --header-safe-top: var(--safe-top);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
   --color-surface: #2a2f35;
   --color-surface-strong: #39404b;
   --color-surface-hover: #454d5a;
@@ -24,6 +162,7 @@
   /* Lifted from #9ca3af: that value reached only 4.1:1 on --color-surface-strong,
      the raised surface settings cards use, so muted copy missed WCAG AA there. */
   --color-text-muted: #adb5bd;
+  --color-success-text: #6ee7b7;
   --color-warning-text: #fde68a;
   --color-info-text: #c7d2fe;
   --color-error-text: #fca5a5;
@@ -66,6 +205,7 @@
     --color-text: #1f2937;
     --color-text-secondary: #374151;
     --color-text-muted: #4b5563;
+    --color-success-text: #047857;
     --color-warning-text: #92400e;
     --color-info-text: #3730a3;
     --color-error-text: #b91c1c;
@@ -103,6 +243,7 @@ html.light {
   --color-text: #1f2937;
   --color-text-secondary: #374151;
   --color-text-muted: #4b5563;
+  --color-success-text: #047857;
   --color-warning-text: #92400e;
   --color-info-text: #3730a3;
   --color-error-text: #b91c1c;
@@ -139,6 +280,7 @@ html.dark {
   --color-text: #f3f4f6;
   --color-text-secondary: #d1d5db;
   --color-text-muted: #adb5bd;
+  --color-success-text: #6ee7b7;
   --color-warning-text: #fde68a;
   --color-info-text: #c7d2fe;
   --color-error-text: #fca5a5;
@@ -414,15 +556,13 @@ html.custom {
   color-scheme: dark;
 }
 
-html :where(
-  .rounded,
+html :where(.rounded,
   .rounded-sm,
   .rounded-md,
   .rounded-lg,
   .rounded-xl,
   .rounded-2xl,
-  .rounded-3xl
-) {
+  .rounded-3xl) {
   border-radius: var(--theme-radius);
 }
 
@@ -431,6 +571,7 @@ html :where(
     opacity: 0;
     transform: translateY(var(--motion-distance));
   }
+
   to {
     opacity: 1;
     transform: none;
@@ -442,13 +583,14 @@ html :where(
     opacity: 0;
     transform: translateY(var(--motion-distance)) scale(0.992);
   }
+
   to {
     opacity: 1;
     transform: none;
   }
 }
 
-main > .container,
+main>.container,
 .preferences-page {
   /*
    * `backwards`, not `both`: the `to` keyframe (opacity:1, transform:none)
@@ -471,15 +613,13 @@ main > .container,
   transition-timing-function: var(--motion-ease);
 }
 
-:where(
-  .media-card,
+:where(.media-card,
   .search-result-card,
   .search-result-card-square,
   .media-card-poster,
   .preferences-section,
   [class*="bg-[var(--color-surface)]"],
-  [class*="bg-[var(--color-panel)]"]
-) {
+  [class*="bg-[var(--color-panel)]"]) {
   transition:
     transform var(--motion-duration) var(--motion-ease),
     box-shadow var(--motion-duration) var(--motion-ease),
@@ -487,9 +627,18 @@ main > .container,
     background-color var(--motion-duration) var(--motion-ease);
 }
 
-.media-grid > *,
-.detail-media-grid > *,
-.home-row-scrollbar-hidden > * {
+[x-show^="activeModal ==="] {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+}
+
+.media-grid>*,
+.detail-media-grid>*,
+.home-row-scrollbar-hidden>* {
   /* See the `theme-reveal` animation above for why this is `backwards`,
      not `both`: it's the same containing-block hazard, and this is the
      more impactful instance of it, since it pins every card's grid
@@ -498,10 +647,21 @@ main > .container,
   animation: theme-soft-pop var(--motion-duration) var(--motion-ease) backwards;
 }
 
-.media-grid > :nth-child(2n),
-.detail-media-grid > :nth-child(2n) { animation-delay: 35ms; }
-.media-grid > :nth-child(3n),
-.detail-media-grid > :nth-child(3n) { animation-delay: 70ms; }
+.media-grid> :nth-child(2n),
+.detail-media-grid> :nth-child(2n) {
+  animation-delay: 35ms;
+}
+
+.media-grid> :nth-child(3n),
+.detail-media-grid> :nth-child(3n) {
+  animation-delay: 70ms;
+}
+
+/* Cached posters must not replay the page/card entrance on every navigation. */
+main > .container:has(img[data-artwork-ready="true"]),
+:is(.media-grid, .detail-media-grid, .home-row-scrollbar-hidden) > :has(img[data-artwork-ready="true"]) {
+  animation: none;
+}
 
 .media-card-hover-outline::after {
   content: "";
@@ -558,11 +718,9 @@ main > .container,
 }
 
 html:is(.glass, .custom) [class*="bg-[var(--color-surface)]"] {
-  background-color: color-mix(
-    in srgb,
-    var(--color-surface) var(--theme-surface-opacity),
-    transparent
-  );
+  background-color: color-mix(in srgb,
+      var(--color-surface) var(--theme-surface-opacity),
+      transparent);
   backdrop-filter: blur(var(--theme-blur)) saturate(145%);
   -webkit-backdrop-filter: blur(var(--theme-blur)) saturate(145%);
 }
@@ -574,19 +732,18 @@ html:is(.glass, .custom) [class*="bg-[var(--color-surface)]"] {
  * (via their `bg-[var(--color-surface)]` class) and nest fixed modal
  * overlays, so under glass/custom themes every card would permanently
  * capture its own modal instead of letting it use the viewport. Keep the
- * tinted background but drop the blur specifically on cards.
+ * tinted background but drop the blur specifically on cards. Use `:is` so
+ * this override matches the surface rule's specificity; `:where` loses to it.
  */
-html:is(.glass, .custom) :where(.media-card, .search-result-card, .search-result-card-square) {
+html:is(.glass, .custom) :is(.media-card, .search-result-card, .search-result-card-square) {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
 html:is(.glass, .custom) [class*="bg-[var(--color-panel)]"] {
-  background-color: color-mix(
-    in srgb,
-    var(--color-panel) var(--theme-surface-opacity),
-    transparent
-  );
+  background-color: color-mix(in srgb,
+      var(--color-panel) var(--theme-surface-opacity),
+      transparent);
   backdrop-filter: blur(var(--theme-blur)) saturate(145%);
   -webkit-backdrop-filter: blur(var(--theme-blur)) saturate(145%);
 }
@@ -606,18 +763,53 @@ html.glass [class*="bg-[var(--color-sidebar)]"] {
   background: linear-gradient(135deg, #f8f9fa 0 50%, #212529 50%);
 }
 
-.theme-swatch-light { background: linear-gradient(135deg, #f8f9fa 0 65%, #4f46e5 65%); }
-.theme-swatch-dark { background: linear-gradient(135deg, #212529 0 65%, #4a9eff 65%); }
-.theme-swatch-catppuccin_mocha { background: linear-gradient(135deg, #1e1e2e 0 52%, #cba6f7 52% 76%, #89b4fa 76%); }
-.theme-swatch-dracula { background: linear-gradient(135deg, #282a36 0 52%, #bd93f9 52% 76%, #ff79c6 76%); }
-.theme-swatch-nord { background: linear-gradient(135deg, #2e3440 0 52%, #88c0d0 52% 76%, #eceff4 76%); }
-.theme-swatch-gruvbox { background: linear-gradient(135deg, #282828 0 52%, #fabd2f 52% 76%, #83a598 76%); }
-.theme-swatch-oled { background: linear-gradient(135deg, #000000 0 65%, #22d3ee 65%); }
-.theme-swatch-glass { background: radial-gradient(circle at 30% 25%, #67e8f9, transparent 38%), linear-gradient(135deg, #0d1122 0 55%, #8b7cff 100%); }
-.theme-swatch-plex { background: linear-gradient(135deg, #0f0f0f 0 65%, #e5a00d 65%); }
-.theme-swatch-projector { background: linear-gradient(135deg, #15130f 0 65%, #f2a93b 65%); }
-.theme-swatch-video_store { background: linear-gradient(135deg, #10132b 0 50%, #ff4fa3 50% 75%, #58e1d4 75%); }
-.theme-swatch-custom { background: conic-gradient(#ff4fa3, #58e1d4, #f2a93b, #4f46e5, #ff4fa3); }
+.theme-swatch-light {
+  background: linear-gradient(135deg, #f8f9fa 0 65%, #4f46e5 65%);
+}
+
+.theme-swatch-dark {
+  background: linear-gradient(135deg, #212529 0 65%, #4a9eff 65%);
+}
+
+.theme-swatch-catppuccin_mocha {
+  background: linear-gradient(135deg, #1e1e2e 0 52%, #cba6f7 52% 76%, #89b4fa 76%);
+}
+
+.theme-swatch-dracula {
+  background: linear-gradient(135deg, #282a36 0 52%, #bd93f9 52% 76%, #ff79c6 76%);
+}
+
+.theme-swatch-nord {
+  background: linear-gradient(135deg, #2e3440 0 52%, #88c0d0 52% 76%, #eceff4 76%);
+}
+
+.theme-swatch-gruvbox {
+  background: linear-gradient(135deg, #282828 0 52%, #fabd2f 52% 76%, #83a598 76%);
+}
+
+.theme-swatch-oled {
+  background: linear-gradient(135deg, #000000 0 65%, #22d3ee 65%);
+}
+
+.theme-swatch-glass {
+  background: radial-gradient(circle at 30% 25%, #67e8f9, transparent 38%), linear-gradient(135deg, #0d1122 0 55%, #8b7cff 100%);
+}
+
+.theme-swatch-plex {
+  background: linear-gradient(135deg, #0f0f0f 0 65%, #e5a00d 65%);
+}
+
+.theme-swatch-projector {
+  background: linear-gradient(135deg, #15130f 0 65%, #f2a93b 65%);
+}
+
+.theme-swatch-video_store {
+  background: linear-gradient(135deg, #10132b 0 50%, #ff4fa3 50% 75%, #58e1d4 75%);
+}
+
+.theme-swatch-custom {
+  background: conic-gradient(#ff4fa3, #58e1d4, #f2a93b, #4f46e5, #ff4fa3);
+}
 
 /* Theme toggle icon swap: mirrors the dark/light/system resolution used for
    the --color-* tokens above, so the button's icon matches the active theme
@@ -646,6 +838,24 @@ html.light .theme-toggle-icon-moon {
 
 [x-cloak] {
   display: none !important;
+}
+
+[x-show^="activeModal ==="] {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+}
+
+[x-show^="activeModal ==="] {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
 }
 
 /* Navigation progress for boosted links.
@@ -692,6 +902,7 @@ html.light .theme-toggle-icon-moon {
 /* Movement is the signal here, so remove it when the reader asks for less
    motion and hold a steady bar instead. */
 @media (prefers-reduced-motion: reduce) {
+
   .nav-progress-bar,
   .nav-progress.is-complete .nav-progress-bar {
     transition: none;
@@ -756,6 +967,33 @@ html.light .theme-toggle-icon-moon {
   filter: brightness(1.08);
 }
 
+.detail-provider-score-card__source {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+
+.detail-provider-score-card__graph {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.125rem;
+  color: inherit;
+  text-align: left;
+}
+
+@media (min-width: 640px) {
+  .detail-provider-score-card__graph {
+    gap: 0.5rem;
+  }
+}
+
+.detail-provider-score-card__prompt {
+  display: none;
+}
+
 .clip-half {
   clip-path: inset(0 50% 0 0);
 }
@@ -811,7 +1049,7 @@ html.light .theme-toggle-icon-moon {
   gap: 0.75rem;
 }
 
-.preferences-grid > div {
+.preferences-grid>div {
   min-width: 0;
   margin: 0;
   padding: 0.8rem;
@@ -819,17 +1057,17 @@ html.light .theme-toggle-icon-moon {
   border-radius: 0.375rem;
 }
 
-.preferences-grid > div > div:first-child {
+.preferences-grid>div>div:first-child {
   min-width: 0;
 }
 
-.preferences-grid > div label,
-.preferences-grid > div > div:first-child label {
+.preferences-grid>div label,
+.preferences-grid>div>div:first-child label {
   line-height: 1.35;
 }
 
-.preferences-grid > div .relative > button,
-.preferences-section > .p-4 > button {
+.preferences-grid>div .relative>button,
+.preferences-section>.p-4>button {
   min-height: 2.25rem;
 }
 
@@ -842,6 +1080,42 @@ html.light .theme-toggle-icon-moon {
 .preferences-display-grid > div:nth-child(7) { grid-area: progress; }
 .preferences-display-grid > div:nth-child(8) { grid-area: title; }
 .preferences-display-grid > div:nth-child(9) { grid-area: talent; }
+.preferences-display-grid > div:nth-child(10) { grid-area: chips; }
+
+.media-type-chip {
+  position: absolute;
+  top: 0.3rem;
+  left: 0.3rem;
+  z-index: 20;
+  padding: 0.1rem 0.3rem;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  font-size: 0.48rem;
+  font-weight: 750;
+  line-height: 1.15;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(0.35rem);
+}
+
+.media-type-chip--solid {
+  color: var(--media-type-chip-contrast);
+  background: var(--media-type-chip-color);
+  border-color: var(--media-type-chip-color);
+}
+
+.media-type-chip--soft {
+  color: color-mix(in srgb, var(--media-type-chip-color) 65%, var(--color-text));
+  background: color-mix(in srgb, var(--media-type-chip-color) 22%, var(--color-page-bg));
+  border-color: color-mix(in srgb, var(--media-type-chip-color) 58%, transparent);
+}
+
+.media-type-chip--outline {
+  color: color-mix(in srgb, var(--media-type-chip-color) 65%, var(--color-text));
+  background: color-mix(in srgb, var(--color-page-bg) 78%, transparent);
+  border-color: var(--media-type-chip-color);
+}
 
 .preferences-actions {
   position: sticky;
@@ -894,6 +1168,7 @@ html.light .theme-toggle-icon-moon {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .preferences-actions,
   .preferences-actions-status-dot {
     transition: none !important;
@@ -911,14 +1186,15 @@ html.light .theme-toggle-icon-moon {
       "date time"
       "title talent"
       "subtitle mobile"
-      "progress progress";
+      "progress progress"
+      "chips chips";
   }
 
-  .preferences-metadata-grid > div:nth-child(3) {
+  .preferences-metadata-grid>div:nth-child(3) {
     grid-column: 1 / -1;
   }
 
-  .preferences-metadata-grid > div:nth-child(3) > .grid {
+  .preferences-metadata-grid>div:nth-child(3)>.grid {
     gap: 0.75rem;
   }
 }
@@ -928,7 +1204,7 @@ html.light .theme-toggle-icon-moon {
     grid-template-areas: none;
   }
 
-  .preferences-display-grid > div {
+  .preferences-display-grid>div {
     grid-area: auto !important;
   }
 
@@ -937,12 +1213,12 @@ html.light .theme-toggle-icon-moon {
     flex-direction: column;
   }
 
-  .preferences-actions > div:last-child,
+  .preferences-actions>div:last-child,
   .preferences-actions button {
     width: 100%;
   }
 
-  .preferences-actions > div:last-child {
+  .preferences-actions>div:last-child {
     justify-content: flex-end;
   }
 }
@@ -950,6 +1226,8 @@ html.light .theme-toggle-icon-moon {
 /* Modal max height with padding from viewport */
 .modal-max-height {
   max-height: calc(100vh - 4rem);
+  /* iOS Safari counts vh with the toolbar hidden; dvh follows the visible height. */
+  max-height: calc(100dvh - 4rem);
 }
 
 /* Custom date/time picker: trigger + popover/sheet */
@@ -983,11 +1261,30 @@ html.light .theme-toggle-icon-moon {
   overflow-x: auto;
 }
 
-.date-picker-quick-action {
-  min-height: 2.75rem;
+.date-picker-empty-label {
+  display: none;
+  align-items: center;
   flex: 0 0 auto;
   padding: 0.375rem;
-  border: 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+@media (min-width: 40rem) {
+  .date-picker-empty-label {
+    display: flex;
+  }
+}
+
+.date-picker-quick-action {
+  align-self: center;
+  min-height: 2rem;
+  flex: 0 0 auto;
+  margin-inline-start: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.375rem;
   color: var(--color-text);
   font-size: 0.875rem;
   white-space: nowrap;
@@ -1174,13 +1471,35 @@ html.light .theme-toggle-icon-moon {
 .detail-carousel-grid__header {
   grid-area: header;
   margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+#detail-carousel-logo-slot {
+  display: none;
+}
+
+/* A broad shadow behind hero metadata has no visible panel edge. */
+.detail-carousel-grid:is(:has(.detail-mobile-hero), :has(.detail-carousel-preview--overview)) [id^="detail-activity-subtitle-slot"] > div {
+  position: relative;
+  isolation: isolate;
+}
+
+.detail-carousel-grid:is(:has(.detail-mobile-hero), :has(.detail-carousel-preview--overview)) [id^="detail-activity-subtitle-slot"] > div::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -0.75rem -1rem;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 55%);
+  filter: blur(2rem);
+  pointer-events: none;
 }
 
 /* detail_action_buttons.html's own wrapper still carries the mt-5/mb-6
    classes it needs for the non-carousel branch's sm:contents mobile
    reordering (see detail_score_and_actions.html); neutralize them here so
    they don't inflate this header row's height. */
-.detail-carousel-grid__header .shrink-0 > div {
+.detail-carousel-grid__header .shrink-0>div {
   margin-top: 0;
   margin-bottom: 0;
 }
@@ -1194,9 +1513,41 @@ html.light .theme-toggle-icon-moon {
    classes it needs for the non-carousel branch's sm:contents mobile
    reordering (see detail_score_and_actions.html); neutralize them here so
    they don't stack with this grid item's own margin-top. */
-.detail-carousel-grid__chips > div {
+.detail-carousel-grid__chips>div {
   margin-top: 0;
   margin-bottom: 0;
+}
+
+.detail-progress-card-slot,
+.detail-personal-score-card,
+.detail-score-card-nav {
+  display: none;
+}
+
+/* Phones: the chip row scrolls inside itself instead of widening the page. */
+.detail-score-card-row {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.detail-score-card-row::-webkit-scrollbar {
+  display: none;
+}
+
+/* Same edge fade as the thumbnail strip, only on the side that has more to scroll to. */
+.detail-score-card-row {
+  --row-fade-left: #000;
+  --row-fade-right: #000;
+
+  mask-image: linear-gradient(to right, var(--row-fade-left), #000 2.5rem, #000 calc(100% - 2.5rem), var(--row-fade-right));
+}
+
+.detail-score-card-row--fade-left {
+  --row-fade-left: transparent;
+}
+
+.detail-score-card-row--fade-right {
+  --row-fade-right: transparent;
 }
 
 .detail-carousel-grid__synopsis {
@@ -1204,7 +1555,838 @@ html.light .theme-toggle-icon-moon {
   margin-top: 1.5rem;
 }
 
+.detail-promoted-content {
+  display: none;
+}
+
+/* Phone header (below md). Two shapes:
+   - Compact, the default: poster at 40% of the width with title, year and
+     runtime beside it; chips and actions follow, then the synopsis.
+   - Backdrop, once the carousel fragment brings a hero (.detail-mobile-hero):
+     no poster; the clear logo (or the title as text) sits on the vertical 50%
+     line, where the sharp backdrop fades into the same blurred extension the
+     desktop overview uses. Movies and TV reserve this shape up front
+     (.detail-hero-pending) so the page does not jump when the art arrives.
+   Both reposition one shared set of includes, like the desktop grid. */
+@media (max-width: 767.98px) {
+  .detail-carousel-grid,
+  .detail-flat-top {
+    --hero-line: calc(47dvh - 4rem - var(--header-safe-top));
+    --hero-pad-y: 1.5rem;
+    --hero-gutter-l: max(1rem, var(--safe-left));
+    --hero-gutter-r: max(1rem, var(--safe-right));
+  }
+
+  .detail-mobile-meta {
+    margin-top: 0.25rem;
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+  }
+
+  .detail-carousel-grid,
+  .detail-flat-top {
+    display: grid;
+    position: relative;
+    grid-template-columns: 40% minmax(0, 1fr);
+    column-gap: 1rem;
+    row-gap: 0;
+    align-items: start;
+  }
+
+  .detail-carousel-grid {
+    grid-template-areas:
+      "poster title"
+      "actions actions"
+      "chips chips"
+      "synopsis synopsis";
+  }
+
+  .detail-carousel-grid__header {
+    display: contents;
+  }
+
+  .detail-carousel-grid__poster,
+  .detail-flat-top__poster {
+    max-width: 250px;
+    margin: 0;
+  }
+
+  .detail-carousel-grid__title,
+  .detail-flat-top__title {
+    grid-area: title;
+    align-self: center;
+    text-align: left;
+  }
+
+  .detail-carousel-grid__title .text-center,
+  .detail-flat-top__title .text-center {
+    text-align: left;
+  }
+
+  .detail-carousel-grid__title [id^="detail-activity-subtitle-slot"] button,
+  .detail-flat-top__title [id^="detail-activity-subtitle-slot"] button {
+    justify-content: flex-start;
+    align-items: flex-start;
+  }
+
+  .detail-carousel-grid__title h1,
+  .detail-flat-top__title h1 {
+    font-size: 1.5rem;
+    line-height: 1.2;
+  }
+
+  .detail-carousel-grid__actions {
+    grid-area: actions;
+    margin-top: 1rem;
+  }
+
+  .detail-carousel-grid__chips {
+    margin-top: 1rem;
+  }
+
+  .detail-flat-top__poster {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .detail-flat-top__title {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .detail-flat-top__info {
+    display: contents;
+  }
+
+  .detail-flat-top__info > :not(.detail-flat-top__title),
+  .detail-flat-top__info > div.flex > * {
+    grid-column: 1 / -1;
+  }
+
+  .detail-flat-top .detail-score-card-shell {
+    margin: 0 0 1.25rem;
+  }
+
+  /* Backdrop hero. The carousel pane stays hidden; only the hero shows. */
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__carousel,
+  .detail-carousel-grid:has(.detail-mobile-hero) #detail-carousel-wrap {
+    display: contents;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-content {
+    display: none;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero),
+  .detail-carousel-grid.detail-hero-pending {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: max(0px, calc(var(--hero-line) - var(--hero-pad-y) - 2.75rem)) auto;
+    grid-template-areas:
+      "gap"
+      "title"
+      "actions"
+      "chips"
+      "synopsis";
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__poster,
+  .detail-carousel-grid.detail-hero-pending .detail-carousel-grid__poster {
+    display: none;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__title,
+  .detail-carousel-grid.detail-hero-pending .detail-carousel-grid__title {
+    z-index: 2;
+    text-align: center;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__title .text-center,
+  .detail-carousel-grid.detail-hero-pending .detail-carousel-grid__title .text-center {
+    text-align: center;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__title [id^="detail-activity-subtitle-slot"] button,
+  .detail-carousel-grid.detail-hero-pending .detail-carousel-grid__title [id^="detail-activity-subtitle-slot"] button {
+    justify-content: center;
+    align-items: center;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__title h1,
+  .detail-carousel-grid.detail-hero-pending .detail-carousel-grid__title h1 {
+    font-size: 2.25rem;
+    font-weight: 800;
+    line-height: 1.1;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__title h1 {
+    color: white;
+    text-shadow: 0 2px 8px rgb(0 0 0 / 70%);
+  }
+
+  /* Anchor the logo's bottom on the hero line so short and tall logos leave
+     the same half-rem gap before the subtitle. */
+  .detail-carousel-grid:has(.detail-mobile-hero__logo) .detail-carousel-grid__title {
+    padding-top: 3.25rem;
+  }
+
+  .detail-carousel-grid.detail-hero-pending .detail-carousel-grid__title {
+    padding-top: 3.25rem;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero__logo) .detail-carousel-grid__title h1 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-mobile-meta,
+  .detail-carousel-grid:has(.detail-mobile-hero) [id^="detail-activity-subtitle-slot"] > div {
+    color: white;
+    text-shadow: 0 1px 4px rgb(0 0 0 / 80%);
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__chips,
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__actions {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* The links and tags popups open downward from the actions row, so the row
+     must stack above the chips and synopsis that follow it (and the title
+     above it) or their content shows through the popup. */
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__actions {
+    z-index: 3;
+  }
+
+  /* An open season menu must escape the title's lower stacking layer. */
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__title:has([aria-haspopup="listbox"][aria-expanded="true"]) {
+    z-index: 4;
+  }
+
+  /* Hero metadata uses one wrapping line at every phone width. */
+  .detail-carousel-grid:has(.detail-mobile-hero) [id^="detail-activity-subtitle-slot"] button {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) [id^="detail-activity-subtitle-slot"] > div {
+    container-type: normal;
+    margin-bottom: 0;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-activity-mobile-meta {
+    display: inline;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero):has(.detail-activity-mobile-meta) .detail-mobile-meta {
+    display: none;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) [id^="detail-activity-subtitle-slot"] button > .text-gray-600 {
+    display: inline;
+  }
+
+  /* Keep the subtitle with its controls rather than adding both wrapper gaps. */
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__actions {
+    margin-top: 0.5rem;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__actions > div > .mt-4 {
+    margin: 0;
+  }
+
+  /* Same blurred extension as the desktop overview, then fades into the page. */
+  .detail-mobile-hero {
+    position: absolute;
+    z-index: 0;
+    top: calc(-1 * var(--hero-pad-y));
+    right: calc(-1 * var(--hero-gutter-r));
+    left: calc(-1 * var(--hero-gutter-l));
+    height: calc(100dvh - 4rem - var(--header-safe-top));
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .detail-mobile-hero img {
+    position: absolute;
+  }
+
+  .detail-mobile-hero__backdrop {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
+
+  .detail-mobile-hero__blur {
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scale(1.15);
+    filter: blur(56px) brightness(0.9);
+    mask-image: linear-gradient(to bottom, #000 0%, #000 45%, rgb(0 0 0 / 70%) 70%, rgb(0 0 0 / 30%) 88%, transparent 100%);
+  }
+
+  /* Faded over its lower 60% so the seam to the blur is hard to find. */
+  .detail-mobile-hero__sharp {
+    top: 0;
+    left: 0;
+    width: 100%;
+    object-fit: cover;
+    height: calc(var(--hero-line) + 9rem);
+    mask-image: linear-gradient(to bottom, #000 0%, #000 38%, rgb(0 0 0 / 85%) 50%, rgb(0 0 0 / 60%) 62%, rgb(0 0 0 / 35%) 74%, rgb(0 0 0 / 15%) 87%, transparent 100%);
+  }
+
+  .detail-mobile-hero__logo {
+    top: var(--hero-line);
+    /* Centred on the content box (inside the safe area), not on the full-bleed hero. */
+    left: calc(50% + (var(--hero-gutter-l) - var(--hero-gutter-r)) / 2);
+    width: calc((100% - var(--hero-gutter-l) - var(--hero-gutter-r)) * 0.66);
+    max-height: 6rem;
+    transform: translate(-50%, -100%);
+    object-fit: contain;
+    filter: drop-shadow(0 2px 8px rgb(0 0 0 / 70%));
+  }
+}
+
+@media (min-width: 640px) and (max-width: 767.98px) {
+  .detail-carousel-grid,
+  .detail-flat-top {
+    --hero-gutter-l: max(2rem, var(--safe-left));
+    --hero-gutter-r: max(2rem, var(--safe-right));
+  }
+}
+
+/* An unfolded phone in portrait (about 600px and up) has room to keep the poster
+   beside the title, actions and chips instead of stacking them: the desktop
+   arrangement at phone size. Compact only; the backdrop hero is already full width. */
+@media (min-width: 600px) and (max-width: 767.98px) {
+  :root {
+    --header-safe-top: 0px;
+  }
+
+  /* Leave a four-rem gap centred on the unfolded screen's horizontal crease. */
+  .detail-carousel-grid:has(.detail-mobile-hero__logo) {
+    --hero-line: calc(50dvh - 6rem - var(--header-safe-top));
+  }
+
+  .detail-mobile-hero__logo {
+    top: calc(var(--hero-line) - 2.5rem);
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) [id^="detail-activity-subtitle-slot"] button,
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-mobile-meta {
+    font-size: 1rem;
+    line-height: 1.5;
+    letter-spacing: normal;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero__logo) .detail-carousel-grid__title {
+    padding-top: 6.75rem;
+  }
+
+  .detail-carousel-grid.detail-hero-pending .detail-carousel-grid__title {
+    padding-top: 6.75rem;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero__logo) .detail-carousel-grid__title > .mb-3 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .detail-carousel-grid:not(:has(.detail-mobile-hero)):not(.detail-hero-pending),
+  .detail-flat-top {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+
+  .detail-carousel-grid:not(:has(.detail-mobile-hero)):not(.detail-hero-pending),
+  .detail-flat-top {
+    column-gap: 1.5rem;
+  }
+
+  .detail-carousel-grid:not(:has(.detail-mobile-hero)):not(.detail-hero-pending) {
+    grid-template-rows: auto auto 1fr auto;
+    grid-template-areas:
+      "poster title"
+      "poster actions"
+      "poster chips"
+      "synopsis synopsis";
+  }
+
+  .detail-carousel-grid:not(:has(.detail-mobile-hero)):not(.detail-hero-pending) .detail-carousel-grid__title,
+  .detail-flat-top__title {
+    align-self: start;
+  }
+
+  .detail-carousel-grid__actions > div,
+  .detail-carousel-grid__actions > div > .mt-4 {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .detail-carousel-grid__actions > div > .w-full,
+  .detail-carousel-grid__actions > div > .mt-4 > .w-full {
+    width: auto;
+  }
+
+  .detail-carousel-grid__actions > div > .mt-4 {
+    margin: 0;
+  }
+
+  .detail-carousel-grid__actions > div > .mt-4 > .flex > * {
+    flex: none;
+  }
+
+  .detail-carousel-grid__actions > div > .mt-4 > .flex .h-11 {
+    width: 2.75rem;
+  }
+
+  /* Seven icons need 356px at the default gap; the column beside the poster is 334px at 600px. */
+  .detail-carousel-grid:not(:has(.detail-mobile-hero)) .detail-carousel-grid__actions > div > .mt-4 > .flex {
+    gap: 0.25rem;
+  }
+
+  .detail-carousel-grid__actions [data-track-action-root],
+  .detail-carousel-grid__actions [x-data*="editTrackOpen"] {
+    width: auto;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__actions > div > .mt-4 {
+    width: 100%;
+    flex-wrap: nowrap;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__actions > div > .mt-4 > .w-full {
+    flex: 1 0 auto;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__actions > div > .mt-4 > .flex {
+    flex: 2 1 auto;
+    min-width: 0;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__actions > div > .mt-4 > .flex > * {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__actions > div > .mt-4 > .flex .h-11 {
+    width: 100%;
+    height: 3.25rem;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__actions [data-track-action-root] > button {
+    width: 100%;
+    height: 3.25rem;
+    font-size: 1.125rem;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__actions [data-track-action-root] {
+    width: 100%;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__actions .h-11 > svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .detail-flat-top__poster {
+    grid-row: 1 / span 5;
+  }
+
+  .detail-flat-top__info > :not(.detail-flat-top__title):not(.mb-6),
+  .detail-flat-top__info > div.flex > * {
+    grid-column: 2;
+  }
+
+  .detail-flat-top__info > .mb-6 {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Keep the unfolded portrait hero's proportions when its outer display is
+   rotated to landscape. Only the viewport becomes shorter; controls stay below
+   the fold and remain available by scrolling. */
+@media (min-width: 600px) and (max-width: 767.98px) and (orientation: landscape) {
+  .app-topbar__inner {
+    padding-right: 1rem;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero__logo) {
+    --hero-line: calc(70vw - 6rem - var(--header-safe-top));
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero__logo) .detail-mobile-hero {
+    height: calc(140vw - 4rem - var(--header-safe-top));
+  }
+}
+
+/* The unfolded display's iOS status controls share the navigation row. Reserve
+   their width only when the device reports a top system inset. */
+@media (min-width: 600px) and (max-width: 767.98px) and (orientation: portrait) {
+  .app-topbar__inner {
+    padding-right: max(1rem, var(--safe-right), min(8rem, calc(var(--safe-top) * 4)));
+  }
+}
+
+@media (max-width: 599.98px) {
+  /* Give the progress row breathing room near the bottom of the phone screen. */
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__chips {
+    margin-top: clamp(3rem, 8dvh, 5rem);
+  }
+}
+
+/* Phones: the same cards as the desktop carousel, for the compact header and the backdrop hero alike. */
+@media (max-width: 767.98px) {
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-score-card-shell {
+    --detail-card-height: calc(375px / 4);
+    --detail-card-width: calc(var(--detail-card-height) * 16 / 9);
+    --detail-card-gap: 0.5rem;
+
+    position: relative;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-score-card-row {
+    height: var(--detail-card-height);
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: var(--detail-card-gap);
+    overflow-x: auto;
+    overflow-y: hidden;
+    margin: 0;
+    scrollbar-width: none;
+    scroll-behavior: smooth;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-progress-card-slot:has(.detail-progress-card) {
+    display: block;
+    flex: none;
+    width: calc(2 * var(--detail-card-width) + var(--detail-card-gap));
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-progress-card,
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card,
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-personal-score-card {
+    height: var(--detail-card-height);
+    border: 1px solid var(--color-surface-border);
+    border-radius: 0.75rem;
+    background: var(--color-surface);
+    box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-progress-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto 1fr;
+    align-items: center;
+    gap: 0.5rem 1rem;
+    padding: 1rem;
+    border-color: rgb(16 185 129 / 26%);
+    background: rgb(16 185 129 / 10%);
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-score-card-row > .relative,
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-score-card-row > a.detail-provider-score-card,
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-score-card-row > [id^="detail-score-chip-slot"]:has(.detail-derived-score-card),
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-personal-score-slot {
+    flex: none;
+    width: var(--detail-card-width);
+    min-width: var(--detail-card-width);
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card {
+    --detail-card-accent: 34 211 238;
+
+    display: grid;
+    width: 100%;
+    grid-template-columns: 2.25rem minmax(0, 1fr);
+    grid-template-rows: 1.5rem 1.25rem 0;
+    align-content: center;
+    gap: 0.125rem 0.625rem;
+    padding: 0.75rem;
+    text-align: left;
+    border-color: rgb(var(--detail-card-accent) / 26%);
+    background: rgb(var(--detail-card-accent) / 10%);
+    transition: grid-template-rows 180ms ease;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card--trakt {
+    --detail-card-accent: 251 113 133;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card--imdb {
+    --detail-card-accent: 251 191 36;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card--mal,
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card--igdb {
+    --detail-card-accent: 129 140 248;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card--opencritic {
+    --detail-card-accent: 251 146 60;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card__source {
+    grid-column: 1;
+    grid-row: 1 / 4;
+    width: 2.25rem;
+    height: 2.25rem;
+    margin: 0;
+    justify-self: center;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card__graph {
+    grid-column: 2;
+    grid-row: 1 / 4;
+    display: grid;
+    grid-template-rows: 1.5rem 1.25rem 0;
+    align-content: center;
+    gap: 0.125rem;
+    width: 100%;
+    padding: 0;
+    transition: grid-template-rows 180ms ease;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card__score {
+    grid-row: 1;
+    font-size: 1.125rem;
+    line-height: 1.5rem;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card__separator {
+    display: none;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card__count {
+    grid-row: 2;
+    font-size: 0.75rem;
+    line-height: 1.25rem;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card__prompt {
+    grid-row: 3;
+    display: block;
+    overflow: hidden;
+    max-height: 0;
+    color: var(--color-text);
+    font-size: 0.65rem;
+    font-weight: 600;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translateY(0.4rem);
+    transition: opacity 180ms ease, transform 180ms ease, max-height 180ms ease;
+    pointer-events: none;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-derived-score-card {
+    display: grid;
+    width: 100%;
+    height: var(--detail-card-height);
+    grid-template-columns: 2.25rem minmax(0, 1fr);
+    grid-template-rows: 1.5rem 1.25rem;
+    align-content: center;
+    gap: 0.125rem 0.625rem;
+    padding: 0.75rem;
+    border: 1px solid rgb(251 191 36 / 26%);
+    border-radius: 0.75rem;
+    background: rgb(251 191 36 / 10%);
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-derived-score-card > span:nth-of-type(2) {
+    grid-column: 1;
+    grid-row: 1 / 3;
+    width: 2.25rem;
+    height: 2.25rem;
+    margin: 0;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-derived-score-card > span:nth-of-type(3) {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 1.125rem;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-derived-score-card > span:nth-of-type(4) {
+    display: none;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-derived-score-card > span:last-child {
+    grid-column: 2;
+    grid-row: 2;
+    overflow: hidden;
+    font-size: 0.75rem;
+    text-overflow: ellipsis;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card > span:nth-of-type(2) {
+    grid-column: 1;
+    grid-row: 1 / 3;
+    width: 2.25rem;
+    height: 2.25rem;
+    margin: 0;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card > span:nth-of-type(3) {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 1.125rem;
+    line-height: 1.5rem;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card > span:nth-of-type(4):not(:last-child) {
+    display: none;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card > span:last-child {
+    grid-column: 2;
+    grid-row: 2;
+    font-size: 0.75rem;
+    line-height: 1.25rem;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-personal-score-slot > button {
+    display: none;
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-personal-score-card {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.75rem;
+    border-color: rgb(251 191 36 / 26%);
+    background: rgb(251 191 36 / 10%);
+  }
+
+  :is(.detail-carousel-grid, .detail-flat-top) .detail-personal-score-slot:has(.detail-personal-score-card--wide) {
+    width: calc(2 * var(--detail-card-width) + var(--detail-card-gap));
+  }
+
+  /* Reveal-on-hover only where there is a real hover; a tap leaves :hover stuck on touch. */
+  @media (hover: hover) {
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover,
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within {
+      grid-template-rows: 1.5rem 1.25rem 1rem;
+    }
+
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover .detail-provider-score-card__graph,
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within .detail-provider-score-card__graph {
+      grid-template-rows: 1.5rem 1.25rem 1rem;
+    }
+
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover .detail-provider-score-card__prompt,
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within .detail-provider-score-card__prompt {
+      max-height: 1rem;
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+@media (min-width: 600px) and (max-width: 767.98px) {
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) ~ #detail-secondary-content .detail-promoted-content {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: start;
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .detail-promoted-facts:not([hidden]) {
+    display: contents;
+  }
+
+  .detail-promoted-fact {
+    min-width: 0;
+    max-width: 24rem;
+  }
+
+  .detail-promoted-fact__label,
+  .detail-promoted-fact__value {
+    display: block;
+    overflow-wrap: anywhere;
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+  }
+
+  .detail-promoted-fact__label {
+    margin-bottom: 0.25rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+  }
+
+  .detail-promoted-fact__full-label,
+  .detail-promoted-fact__runtime-separator {
+    display: none;
+  }
+
+  .detail-promoted-fact__compact-label {
+    display: inline;
+  }
+
+  .detail-promoted-fact__compact-break {
+    display: initial;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) ~ #detail-secondary-content .detail-sidebar-fact--promoted,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) ~ #detail-secondary-content .detail-sidebar-details:not(:has(.detail-sidebar-fact:not(.detail-sidebar-fact--promoted))) {
+    display: none;
+  }
+
+  .detail-secondary-sidebar {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: 1rem;
+  }
+
+  .detail-secondary-sidebar > * {
+    grid-column: 1 / -1;
+  }
+
+  .detail-secondary-sidebar > :is(.detail-sidebar-genres, .detail-sidebar-studios, [data-detail-section="collection"]):not([hidden]) {
+    grid-column: auto;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .detail-secondary-sidebar > :is(.detail-sidebar-genres, .detail-sidebar-studios, [data-detail-section="collection"]) > .rounded-lg {
+    flex: 1;
+    text-align: left;
+  }
+
+  .detail-sidebar-genres > h2,
+  .detail-sidebar-studios > h2 {
+    display: flex;
+    align-items: center;
+    min-height: 2rem;
+  }
+
+  .detail-sidebar-genres > .rounded-lg > div {
+    justify-content: flex-start;
+  }
+}
+
 @media (min-width: 768px) {
+  /* Desktop subtitles wrap naturally; size containment can collapse a title
+     whose heading is hidden behind the clear logo. */
+  [id^="detail-activity-subtitle-slot"] > div {
+    container-type: normal;
+  }
+
   /* Default to the pre-carousel arrangement -- poster beside the
      title/chips/synopsis column, carousel pane hidden -- so a page whose
      carousel hasn't resolved yet (or never will) never shows the carousel's
@@ -1212,7 +2394,8 @@ html.light .theme-toggle-icon-moon {
      hold a trailer/photos does the :has() rule below expand into the
      carousel's own two-row layout. */
   .detail-carousel-grid {
-    column-gap: 2.5rem;
+    column-gap: 1rem;
+    row-gap: 1rem;
     grid-template-columns: 250px minmax(0, 1fr);
     grid-template-areas: "poster header" "poster chips" "poster synopsis";
   }
@@ -1221,23 +2404,816 @@ html.light .theme-toggle-icon-moon {
     margin-top: 0;
   }
 
+  /* Deferred galleries reserve their final rows before HTMX responds. The
+     hidden preview and strip keep the initial grid from switching after the
+     poster and metadata have already painted. */
+  .detail-carousel-pending {
+    visibility: hidden;
+  }
+
+  .detail-carousel-grid.detail-hero-pending #detail-carousel-logo-slot {
+    display: flex;
+    align-items: flex-end;
+    min-height: 7rem;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) #detail-carousel-logo-slot:has(.detail-carousel-overview-logo) {
+    display: flex;
+    align-items: flex-end;
+    min-height: 7rem;
+  }
+
   /* Carousel confirmed non-empty: expand to the carousel's own two-row
      layout (title/actions spanning full width, carousel next to the
      poster) instead of the pre-carousel column arrangement above. */
   .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) {
     grid-template-areas:
-      "poster carousel"
+      "poster preview"
+      "strip strip"
       "header header"
       "chips chips"
       "synopsis synopsis";
   }
 
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-carousel-grid__carousel {
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-carousel-grid__chips {
+    position: relative;
+    z-index: 3;
+    margin-top: 0;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-carousel-grid__header {
+    position: relative;
+    z-index: 4;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) ~ #detail-secondary-content .detail-promoted-content {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 1rem 2rem;
+    margin-bottom: 1.75rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) ~ #detail-secondary-content .detail-sidebar-studios-heading {
+    margin-top: 0;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) ~ #detail-secondary-content .detail-sidebar-genres:not(.detail-sidebar-genres--in-tooltip) ~ .detail-sidebar-studios .detail-sidebar-studios-heading {
+    margin-top: 1.5rem;
+  }
+
+  .detail-promoted-facts:not([hidden]) {
+    display: contents;
+  }
+
+  .detail-promoted-fact {
+    min-width: 0;
+    flex: 0 1 auto;
+    max-width: 24rem;
+  }
+
+  .detail-promoted-fact__label,
+  .detail-promoted-fact__value {
     display: block;
+    overflow-wrap: anywhere;
+  }
+
+  .detail-promoted-fact__label {
+    margin-bottom: 0.375rem;
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .detail-promoted-fact__value {
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) ~ #detail-secondary-content .detail-sidebar-genres--in-tooltip,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) ~ #detail-secondary-content .detail-sidebar-fact--promoted,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) ~ #detail-secondary-content .detail-sidebar-details:not(:has(.detail-sidebar-fact:not(.detail-sidebar-fact--promoted))) .detail-sidebar-details-heading,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) ~ #detail-secondary-content .detail-sidebar-details-card:not(:has(.detail-sidebar-fact:not(.detail-sidebar-fact--promoted))) {
+    display: none;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-carousel-grid__carousel {
+    display: contents;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) #detail-carousel-wrap,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-carousel-content {
+    display: contents;
+  }
+
+  .detail-carousel-preview {
+    grid-area: preview;
+    height: 375px;
+    min-height: 0;
+  }
+
+  .detail-carousel-grid:is(:has(.detail-carousel-overview-logo), :has(.video-channel-avatar)) {
+    isolation: isolate;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)):is(:has(.detail-carousel-overview-logo), :has(.video-channel-avatar):has(.detail-carousel-preview--overview)) {
+    grid-template-areas:
+      "poster preview"
+      "strip strip"
+      "chips chips"
+      "synopsis synopsis";
+  }
+
+  main:has(.detail-carousel-overview-extension) {
+    overflow-x: clip;
+  }
+
+  .detail-carousel-grid:is(:has(.detail-carousel-overview-logo), :has(.video-channel-avatar)) .detail-carousel-grid__poster {
+    position: relative;
+    z-index: 2;
+  }
+
+  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header {
+    grid-area: preview;
+    z-index: 3;
+    align-self: end;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 1.25rem;
+    pointer-events: none;
+  }
+
+  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header > .min-w-0 {
+    display: block;
+    flex: none;
+    width: 100%;
+  }
+
+  .detail-carousel-grid:has(.detail-carousel-overview-logo):has(.detail-carousel-preview--overview) .detail-carousel-grid__header > .min-w-0 > :not([id^="detail-activity-subtitle-slot"], #detail-carousel-logo-slot) {
+    display: none;
+  }
+
+  .detail-carousel-grid:has(.detail-carousel-overview-logo):has(.detail-carousel-preview--overview) #detail-carousel-logo-slot {
+    display: block;
+    margin-bottom: 0.75rem;
+  }
+
+  .detail-carousel-grid:has(.detail-carousel-preview--overview) [id^="detail-activity-subtitle-slot"] > div {
+    margin-bottom: 0;
+    color: white;
+    text-shadow: 0 1px 4px rgb(0 0 0 / 80%);
+  }
+
+  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header * {
+    pointer-events: auto;
+  }
+
+  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header .shrink-0 {
+    margin: 0;
+  }
+
+  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header .shrink-0 > div > .mt-4 {
+    margin-top: 0;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)):has(.detail-carousel-overview-logo):has(.detail-carousel-preview--bounded) {
+    grid-template-areas:
+      "poster preview"
+      "strip strip"
+      "chips chips"
+      "synopsis synopsis";
+  }
+
+  .detail-carousel-grid:has(.detail-carousel-overview-logo):has(.detail-carousel-preview--bounded) .detail-carousel-grid__header {
+    display: none;
+  }
+
+  .detail-carousel-preview--overview {
+    overflow: visible;
+    background: transparent;
+    z-index: 1;
+  }
+
+  .detail-carousel-preview--bounded {
+    overflow: visible;
+    border-radius: 0.75rem;
+    background: var(--color-surface);
+    z-index: 1;
+  }
+
+  .detail-carousel-preview--bounded > .detail-carousel-main-image,
+  .detail-carousel-preview--bounded > .detail-carousel-video-poster,
+  .detail-carousel-preview--bounded > iframe {
+    overflow: hidden;
+    border-radius: 0.75rem;
+    background: var(--color-surface);
+  }
+
+  /* The sharp image reaches one third into the poster; blur fills below it. */
+  .detail-carousel-preview--overview .detail-carousel-main-image--overview,
+  .detail-carousel-preview .detail-carousel-overview-extension {
+    position: absolute;
+    top: -3rem;
+    max-width: none !important;
+    object-fit: cover;
+    object-position: right top;
+    pointer-events: none;
+  }
+
+  .detail-carousel-preview--overview .detail-carousel-main-image--overview {
+    z-index: 1;
+    top: 50%;
+    transform: translateY(-50%);
+    left: calc(-83.333px - 1rem);
+    /* Keep the left edge fixed while centering the image on the preview. */
+    width: calc(100% + 166.666px + 2rem) !important;
+    height: auto !important;
+    object-fit: contain;
+    mask-image:
+      linear-gradient(to right, transparent, #000 5.2rem, #000 calc(100% - 14rem), transparent calc(100% - 4.2rem)),
+      linear-gradient(to bottom, transparent, #000 12%, #000 55%, rgb(0 0 0 / 92%) 65%, rgb(0 0 0 / 65%) 75%, rgb(0 0 0 / 30%) 86%, transparent 97%);
+    mask-composite: intersect;
+  }
+
+  .detail-carousel-preview .detail-carousel-overview-extension {
+    z-index: 0;
+    left: calc(-250px - 14rem);
+    width: calc(100% + 250px + 28rem) !important;
+    height: calc(100% + 3rem + 1rem + 5.875rem + 12rem) !important;
+    filter: blur(56px) brightness(0.9);
+    /* Fade out sideways well beyond the content column so wide screens show no hard edge. */
+    mask-image:
+      linear-gradient(to right, transparent, #000 10rem, #000 calc(100% - 10rem), transparent),
+      linear-gradient(to bottom, #000 60%, transparent 100%);
+    mask-composite: intersect;
+    opacity: var(--detail-blur-opacity, 1);
+    transition: opacity 500ms ease;
+  }
+
+  .detail-carousel-preview--bounded {
+    --detail-blur-opacity: 0.85;
+  }
+
+  .detail-carousel-preview .detail-carousel-overview-extension--outgoing {
+    transition: none;
+  }
+
+  .detail-carousel-preview .detail-carousel-overview-extension--outgoing.detail-carousel-overview-extension--active {
+    opacity: 0;
+    transition: opacity 500ms ease;
+  }
+
+  .detail-carousel-preview .detail-carousel-overview-extension--incoming {
+    opacity: 0;
+    transition: none;
+  }
+
+  .detail-carousel-preview .detail-carousel-overview-extension--incoming.detail-carousel-overview-extension--active {
+    opacity: var(--detail-blur-opacity, 1);
+    transition: opacity 500ms ease;
+  }
+
+  .detail-carousel-overview-logo {
+    display: block;
+    width: min(40%, 32rem);
+    max-height: 7rem;
+    object-fit: contain;
+    object-position: left center;
+    filter: drop-shadow(0 2px 8px rgb(0 0 0 / 70%));
+  }
+
+
+  .detail-carousel-strip-wrap {
+    grid-area: strip;
+    position: relative;
+    z-index: 2;
+    height: calc(375px / 4);
+    isolation: isolate;
+  }
+
+  .detail-carousel-strip {
+    --strip-fade-left: #000;
+    --strip-fade-right: #000;
+
+    height: 100%;
+    overflow-y: hidden;
+    padding-block: 0;
+    scroll-behavior: smooth;
+    mask-image: linear-gradient(to right, var(--strip-fade-left), #000 8rem, #000 calc(100% - 8rem), var(--strip-fade-right));
+  }
+
+  .detail-carousel-strip--fade-left {
+    --strip-fade-left: transparent;
+  }
+
+  .detail-carousel-strip--fade-right {
+    --strip-fade-right: transparent;
+  }
+
+  .detail-carousel-strip > button {
+    height: 100%;
+    width: auto;
+  }
+
+  .detail-carousel-overview-caption {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0.25rem;
+    background: linear-gradient(to bottom, transparent 20%, rgb(0 0 0 / 8%) 40%, rgb(0 0 0 / 28%) 60%, rgb(0 0 0 / 55%) 80%, rgb(0 0 0 / 78%));
+  }
+
+  .detail-carousel-strip-nav {
+    position: absolute;
+    top: 50%;
+    z-index: 100;
+    display: flex;
+    width: 2.25rem;
+    height: 2.25rem;
+    align-items: center;
+    justify-content: center;
+    transform: translateY(-50%);
+    border-radius: 9999px;
+    background: rgb(0 0 0 / 65%);
+    color: white;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: background-color 150ms ease;
+  }
+
+  .detail-carousel-strip-nav:hover {
+    background: rgb(0 0 0 / 85%);
+  }
+
+  .detail-carousel-strip-nav--left {
+    left: 0.5rem;
+  }
+
+  .detail-carousel-strip-nav--right {
+    right: 0.5rem;
   }
 
   .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-carousel-grid__header {
     margin-top: 1.5rem;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-score-card-shell {
+    --detail-card-height: calc(375px / 4);
+    --detail-card-width: calc(var(--detail-card-height) * 16 / 9);
+    --detail-card-gap: 0.5rem;
+
+    position: relative;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-score-card-row {
+    height: var(--detail-card-height);
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: var(--detail-card-gap);
+    overflow-x: auto;
+    overflow-y: hidden;
+    margin: 0;
+    scrollbar-width: none;
+    scroll-behavior: smooth;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-progress-card-slot:has(.detail-progress-card) {
+    display: block;
+    flex: none;
+    width: calc(2 * var(--detail-card-width) + var(--detail-card-gap));
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-progress-card,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-personal-score-card {
+    height: var(--detail-card-height);
+    border: 1px solid var(--color-surface-border);
+    border-radius: 0.75rem;
+    background: var(--color-surface);
+    box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-progress-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto 1fr;
+    align-items: center;
+    gap: 0.5rem 1rem;
+    padding: 1rem;
+    border-color: rgb(16 185 129 / 26%);
+    background: rgb(16 185 129 / 10%);
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-score-card-row > .relative,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-score-card-row > a.detail-provider-score-card,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-score-card-row > [id^="detail-score-chip-slot"]:has(.detail-derived-score-card),
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-personal-score-slot {
+    flex: none;
+    width: var(--detail-card-width);
+    min-width: var(--detail-card-width);
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card {
+    --detail-card-accent: 34 211 238;
+
+    display: grid;
+    width: 100%;
+    grid-template-columns: 2.25rem minmax(0, 1fr);
+    grid-template-rows: 1.5rem 1.25rem 0;
+    align-content: center;
+    gap: 0.125rem 0.625rem;
+    padding: 0.75rem;
+    text-align: left;
+    border-color: rgb(var(--detail-card-accent) / 26%);
+    background: rgb(var(--detail-card-accent) / 10%);
+    transition: grid-template-rows 180ms ease;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within {
+    grid-template-rows: 1.5rem 1.25rem 1rem;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card--trakt {
+    --detail-card-accent: 251 113 133;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card--imdb {
+    --detail-card-accent: 251 191 36;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card--mal,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card--igdb {
+    --detail-card-accent: 129 140 248;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card--opencritic {
+    --detail-card-accent: 251 146 60;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card__source {
+    grid-column: 1;
+    grid-row: 1 / 4;
+    width: 2.25rem;
+    height: 2.25rem;
+    margin: 0;
+    justify-self: center;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card__graph {
+    grid-column: 2;
+    grid-row: 1 / 4;
+    display: grid;
+    grid-template-rows: 1.5rem 1.25rem 0;
+    align-content: center;
+    gap: 0.125rem;
+    width: 100%;
+    padding: 0;
+    transition: grid-template-rows 180ms ease;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover .detail-provider-score-card__graph,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within .detail-provider-score-card__graph {
+    grid-template-rows: 1.5rem 1.25rem 1rem;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card__score {
+    grid-row: 1;
+    font-size: 1.125rem;
+    line-height: 1.5rem;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card__separator {
+    display: none;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card__count {
+    grid-row: 2;
+    font-size: 0.75rem;
+    line-height: 1.25rem;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card__prompt {
+    grid-row: 3;
+    display: block;
+    overflow: hidden;
+    max-height: 0;
+    color: var(--color-text);
+    font-size: 0.65rem;
+    font-weight: 600;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translateY(0.4rem);
+    transition: opacity 180ms ease, transform 180ms ease, max-height 180ms ease;
+    pointer-events: none;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover .detail-provider-score-card__prompt,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within .detail-provider-score-card__prompt {
+    max-height: 1rem;
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-derived-score-card {
+    display: grid;
+    width: 100%;
+    height: var(--detail-card-height);
+    grid-template-columns: 2.25rem minmax(0, 1fr);
+    grid-template-rows: 1.5rem 1.25rem;
+    align-content: center;
+    gap: 0.125rem 0.625rem;
+    padding: 0.75rem;
+    border: 1px solid rgb(251 191 36 / 26%);
+    border-radius: 0.75rem;
+    background: rgb(251 191 36 / 10%);
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-derived-score-card > span:nth-of-type(2) {
+    grid-column: 1;
+    grid-row: 1 / 3;
+    width: 2.25rem;
+    height: 2.25rem;
+    margin: 0;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-derived-score-card > span:nth-of-type(3) {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 1.125rem;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-derived-score-card > span:nth-of-type(4) {
+    display: none;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-derived-score-card > span:last-child {
+    grid-column: 2;
+    grid-row: 2;
+    overflow: hidden;
+    font-size: 0.75rem;
+    text-overflow: ellipsis;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card > span:nth-of-type(2) {
+    grid-column: 1;
+    grid-row: 1 / 3;
+    width: 2.25rem;
+    height: 2.25rem;
+    margin: 0;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card > span:nth-of-type(3) {
+    grid-column: 2;
+    grid-row: 1;
+    font-size: 1.125rem;
+    line-height: 1.5rem;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card > span:nth-of-type(4):not(:last-child) {
+    display: none;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card > span:last-child {
+    grid-column: 2;
+    grid-row: 2;
+    font-size: 0.75rem;
+    line-height: 1.25rem;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-personal-score-slot > button {
+    display: none;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-personal-score-card {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.75rem;
+    border-color: rgb(251 191 36 / 26%);
+    background: rgb(251 191 36 / 10%);
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-personal-score-slot:has(.detail-personal-score-card--wide) {
+    width: calc(2 * var(--detail-card-width) + var(--detail-card-gap));
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-score-card-nav {
+    position: absolute;
+    top: 50%;
+    z-index: 2;
+    display: flex;
+    width: 2.25rem;
+    height: 2.25rem;
+    align-items: center;
+    justify-content: center;
+    transform: translateY(-50%);
+    border-radius: 9999px;
+    background: rgb(0 0 0 / 75%);
+    color: white;
+    cursor: pointer;
+  }
+
+  .detail-score-card-nav--left { left: 0.5rem; }
+  .detail-score-card-nav--right { right: 0.5rem; }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)):has(.detail-progress-card) .detail-activity-progress-text,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)):has(.detail-progress-card) .detail-activity-progress-separator,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)):has(.detail-progress-card) .detail-activity-duration-separator--progress-only,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)):has(.detail-progress-card) [id^="season-progress-desktop-"],
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)):has(.detail-progress-card) .detail-season-progress-date-separator,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)):has(.detail-progress-card) .detail-season-progress-history--no-dates,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)):has(.detail-progress-card) .detail-season-progress-leading-separator:has(+ .detail-season-progress-history--no-dates) {
+    display: none;
+  }
+}
+
+/* Keep the poster, preview and thumbnails in proportion on unfolded landscape
+   phones, leaving space for the complete progress row below the gallery. */
+@media (min-width: 768px) and (max-width: 1065px) and (orientation: landscape) and (max-height: 750px) {
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-carousel-preview {
+    height: 330px;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-carousel-strip-wrap {
+    height: calc(330px / 4);
+  }
+
+  .detail-carousel-preview--overview .detail-carousel-main-image--overview {
+    left: calc(-73.333px - 1rem);
+    width: calc(100% + 146.666px + 2rem) !important;
+  }
+}
+
+/* Chip, progress and rating card internals; only ever inside a card, so no media gate. */
+.detail-score-card-row::-webkit-scrollbar {
+  display: none;
+}
+
+.detail-progress-card__title {
+  grid-column: 1 / -1;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.detail-progress-card__sub {
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.detail-progress-card__bar {
+  position: relative;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: var(--color-surface-muted);
+}
+
+.detail-progress-card__bar > span:not(.progress-glow) {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #10b981;
+}
+
+/* An open rewatch pass: a bright glowing line drawn over the watched-once bar. */
+.progress-glow {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 9999px;
+  background: #a7f3d0;
+  box-shadow: 0 0 6px 1px rgb(110 231 183 / 85%), 0 0 14px 3px rgb(16 185 129 / 55%);
+  animation: progress-glow 2.4s ease-in-out infinite;
+}
+
+/* The same glow on an episode already watched again in the open pass. */
+.progress-glow-chip {
+  box-shadow: 0 0 6px 1px rgb(110 231 183 / 70%);
+}
+
+@keyframes progress-glow {
+  50% {
+    box-shadow: 0 0 9px 2px rgb(110 231 183 / 100%), 0 0 20px 5px rgb(16 185 129 / 70%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-glow {
+    animation: none;
+  }
+}
+
+.detail-progress-card__value {
+  font-size: 1.125rem;
+  color: var(--color-text);
+}
+
+.detail-personal-score-card__prompt,
+.detail-personal-score-card__meta {
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-personal-score-card__prompt {
+  color: var(--color-text);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.detail-personal-score-card__stars {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.125rem;
+}
+
+.detail-personal-score-card__star {
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.detail-personal-score-card__star:hover,
+.detail-personal-score-card__star--hover {
+  color: #facc15;
+}
+
+.detail-personal-score-card__rated {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 2.25rem minmax(0, 1fr);
+  grid-template-rows: 1.5rem 1.25rem;
+  align-items: center;
+  gap: 0.125rem 0.625rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.detail-personal-score-card__icon {
+  display: flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  grid-row: 1 / 3;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: rgb(245 158 11 / 18%);
+}
+
+.detail-personal-score-card__value {
+  color: var(--color-text);
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+@media (min-width: 768px) {
+  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__actions {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__actions > div > .mt-4 {
+    width: 100%;
+    flex-wrap: nowrap;
+  }
+
+  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__actions > div > .mt-4 > .flex {
+    flex: 0 1 15.75rem;
+    min-width: 0;
+    flex-wrap: nowrap;
+  }
+
+  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__actions > div > .mt-4 > .flex > * {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__actions .h-11 {
+    width: 100%;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1065px) {
+  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header .shrink-0 > div > .mt-4,
+  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header .shrink-0 > div > .mt-4 > .flex {
+    gap: 0.25rem;
   }
 }
 
@@ -1335,11 +3311,7 @@ html.light .theme-toggle-icon-moon {
   }
 }
 
-.media-card .media-status-chip,
-.media-card .media-score-chip,
-.media-card .media-progress-chip,
-.media-card .media-time-left-chip,
-.media-card .media-repeat-chip {
+.media-card .media-status-chip {
   z-index: 6;
 }
 
@@ -1435,12 +3407,12 @@ html.light .theme-toggle-icon-moon {
 .search-result-card .media-card-title-row {
   overflow: clip;
   align-items: flex-start;
-  max-height: var(--card-title-line);
+  max-height: calc(var(--card-title-rest-lines, 1) * var(--card-title-line));
   transition: max-height 0.2s ease;
 }
 
 .search-result-card:hover .media-card-title-row {
-  max-height: calc(3 * var(--card-title-line));
+  max-height: calc(var(--card-title-hover-lines, 3) * var(--card-title-line));
 }
 
 .search-result-card .media-card-title,
@@ -1498,6 +3470,9 @@ html.light .theme-toggle-icon-moon {
   margin-top: 0;
   overflow: hidden;
   opacity: 0;
+  color: rgba(255, 255, 255, 0.82);
+  font-weight: 400;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
   transition: max-height 0.2s ease, margin-top 0.2s ease, opacity 0.2s ease;
 }
 
@@ -1552,12 +3527,12 @@ html.light .theme-toggle-icon-moon {
 .search-result-card-square .media-card-title-row {
   overflow: clip;
   align-items: flex-start;
-  max-height: var(--card-title-line);
+  max-height: calc(var(--card-title-rest-lines, 1) * var(--card-title-line));
   transition: max-height 0.2s ease;
 }
 
 .search-result-card-square:hover .media-card-title-row {
-  max-height: calc(3 * var(--card-title-line));
+  max-height: calc(var(--card-title-hover-lines, 3) * var(--card-title-line));
 }
 
 .search-result-card-square .media-card-title,
@@ -1602,6 +3577,127 @@ html.light .theme-toggle-icon-moon {
   opacity: 0;
 }
 
+/*
+ * Title treatment from the card settings. Unset variables keep today's look:
+ * one ellipsis line at rest, three wrapped lines when the row opens.
+ */
+.search-result-card.media-card-title-stay:hover .media-card-title-row,
+.search-result-card-square.media-card-title-stay:hover .media-card-title-row {
+  max-height: calc(var(--card-title-rest-lines, 1) * var(--card-title-line));
+}
+
+.search-result-card.media-card-title-stay:hover .media-card-title[title],
+.search-result-card-square.media-card-title-stay:hover .media-card-title[title],
+.search-result-card.media-card-title-stay:hover .media-card-title[title]:hover,
+.search-result-card-square.media-card-title-stay:hover .media-card-title[title]:hover {
+  color: transparent;
+}
+
+.search-result-card.media-card-title-stay:hover .media-card-title[title]::before,
+.search-result-card-square.media-card-title-stay:hover .media-card-title[title]::before {
+  opacity: 1;
+}
+
+.search-result-card.media-card-title-wrap .media-card-title[title],
+.search-result-card-square.media-card-title-wrap .media-card-title[title],
+.search-result-card.media-card-title-clip .media-card-title[title],
+.search-result-card-square.media-card-title-clip .media-card-title[title],
+.search-result-card.media-card-title-multiline .media-card-title[title],
+.search-result-card-square.media-card-title-multiline .media-card-title[title] {
+  color: #fff;
+}
+
+.search-result-card.media-card-title-wrap .media-card-title[title]::before,
+.search-result-card-square.media-card-title-wrap .media-card-title[title]::before,
+.search-result-card.media-card-title-clip .media-card-title[title]::before,
+.search-result-card-square.media-card-title-clip .media-card-title[title]::before,
+.search-result-card.media-card-title-multiline .media-card-title[title]::before,
+.search-result-card-square.media-card-title-multiline .media-card-title[title]::before {
+  content: none;
+}
+
+.search-result-card.media-card-title-wrap .media-card-title,
+.search-result-card-square.media-card-title-wrap .media-card-title,
+.search-result-card.media-card-title-multiline .media-card-title,
+.search-result-card-square.media-card-title-multiline .media-card-title {
+  -webkit-line-clamp: var(--card-title-rest-lines, 1);
+  line-clamp: var(--card-title-rest-lines, 1);
+}
+
+.search-result-card.media-card-title-bleed:hover .media-card-title,
+.search-result-card-square.media-card-title-bleed:hover .media-card-title {
+  -webkit-line-clamp: var(--card-title-hover-lines, 3);
+  line-clamp: var(--card-title-hover-lines, 3);
+}
+
+.search-result-card.media-card-title-clip.media-card-title-bleed:hover .media-card-title,
+.search-result-card-square.media-card-title-clip.media-card-title-bleed:hover .media-card-title {
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  text-overflow: clip;
+  white-space: normal;
+  max-height: calc(var(--card-title-hover-lines, 3) * var(--card-title-line));
+}
+
+.search-result-card.media-card-title-clip .media-card-title,
+.search-result-card-square.media-card-title-clip .media-card-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+}
+
+.search-result-card.media-card-title-clip.media-card-title-multiline .media-card-title,
+.search-result-card-square.media-card-title-clip.media-card-title-multiline .media-card-title {
+  white-space: normal;
+  max-height: calc(var(--card-title-rest-lines, 1) * var(--card-title-line));
+}
+
+.search-result-card.media-card-title-clip.media-card-title-multiline.media-card-title-bleed:hover .media-card-title,
+.search-result-card-square.media-card-title-clip.media-card-title-multiline.media-card-title-bleed:hover .media-card-title {
+  max-height: calc(var(--card-title-hover-lines, 3) * var(--card-title-line));
+}
+
+.search-result-card.media-card-title-lines-all .media-card-title-row,
+.search-result-card-square.media-card-title-lines-all .media-card-title-row,
+.search-result-card.media-card-title-lines-all:hover .media-card-title-row,
+.search-result-card-square.media-card-title-lines-all:hover .media-card-title-row,
+.search-result-card.media-card-title-lines-all.media-card-title-stay:hover .media-card-title-row,
+.search-result-card-square.media-card-title-lines-all.media-card-title-stay:hover .media-card-title-row {
+  max-height: none;
+}
+
+.search-result-card.media-card-title-lines-all .media-card-title,
+.search-result-card-square.media-card-title-lines-all .media-card-title,
+.search-result-card.media-card-title-lines-all.media-card-title-clip .media-card-title,
+.search-result-card-square.media-card-title-lines-all.media-card-title-clip .media-card-title,
+.search-result-card.media-card-title-lines-all.media-card-title-clip.media-card-title-multiline .media-card-title,
+.search-result-card-square.media-card-title-lines-all.media-card-title-clip.media-card-title-multiline .media-card-title {
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  max-height: none;
+  white-space: normal;
+}
+
+.search-result-card.media-card-title-hover-all.media-card-title-bleed:hover .media-card-title-row,
+.search-result-card-square.media-card-title-hover-all.media-card-title-bleed:hover .media-card-title-row {
+  max-height: none;
+}
+
+.search-result-card.media-card-title-hover-all.media-card-title-bleed:hover .media-card-title,
+.search-result-card-square.media-card-title-hover-all.media-card-title-bleed:hover .media-card-title,
+.search-result-card.media-card-title-hover-all.media-card-title-clip.media-card-title-bleed:hover .media-card-title,
+.search-result-card-square.media-card-title-hover-all.media-card-title-clip.media-card-title-bleed:hover .media-card-title,
+.search-result-card.media-card-title-hover-all.media-card-title-clip.media-card-title-multiline.media-card-title-bleed:hover .media-card-title,
+.search-result-card-square.media-card-title-hover-all.media-card-title-clip.media-card-title-multiline.media-card-title-bleed:hover .media-card-title {
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  max-height: none;
+  white-space: normal;
+}
+
 .search-result-card-square .media-card-body {
   position: absolute;
   bottom: 0;
@@ -1615,6 +3711,9 @@ html.light .theme-toggle-icon-moon {
   margin-top: 0;
   overflow: hidden;
   opacity: 0;
+  color: rgba(255, 255, 255, 0.82);
+  font-weight: 400;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
   transition: max-height 0.2s ease, margin-top 0.2s ease, opacity 0.2s ease;
 }
 
@@ -1631,6 +3730,7 @@ html.light .theme-toggle-icon-moon {
 }
 
 @supports (interpolate-size: allow-keywords) {
+
   .search-result-card .media-card-year,
   .search-result-card-square .media-card-year {
     interpolate-size: allow-keywords;
@@ -1658,11 +3758,7 @@ html.light .theme-toggle-icon-moon {
 
 /* Keep revealed controls above the title gradient and poster badges. */
 .media-card.media-card-revealed .media-card-body,
-.media-card.media-card-revealed .media-status-chip,
-.media-card.media-card-revealed .media-score-chip,
-.media-card.media-card-revealed .media-progress-chip,
-.media-card.media-card-revealed .media-time-left-chip,
-.media-card.media-card-revealed .media-repeat-chip {
+.media-card.media-card-revealed .media-status-chip {
   z-index: 4;
 }
 
@@ -1674,9 +3770,10 @@ html.light .theme-toggle-icon-moon {
  * so nothing moves until the card is actually opened.
  */
 @media (pointer: coarse) {
+
   .search-result-card:hover .media-card-title-row,
   .search-result-card-square:hover .media-card-title-row {
-    max-height: var(--card-title-line);
+    max-height: calc(var(--card-title-rest-lines, 1) * var(--card-title-line));
   }
 
   .search-result-card:hover .media-card-title[title],
@@ -1701,6 +3798,18 @@ html.light .theme-toggle-icon-moon {
     opacity: 0;
   }
 
+  .search-result-card:hover .media-card-progress-bar,
+  .search-result-card-square:hover .media-card-progress-bar {
+    opacity: 0;
+  }
+
+  .search-result-card.media-card-revealed .media-card-progress-bar,
+  .search-result-card-square.media-card-revealed .media-card-progress-bar,
+  .search-result-card .media-card-progress-bar.media-card-progress-dormant,
+  .search-result-card-square .media-card-progress-bar.media-card-progress-dormant {
+    opacity: 1;
+  }
+
   .search-result-card.media-card-revealed:not(.media-card-subtitle-always) .media-card-year,
   .search-result-card-square.media-card-revealed:not(.media-card-subtitle-always) .media-card-year {
     max-height: 2lh;
@@ -1709,6 +3818,7 @@ html.light .theme-toggle-icon-moon {
   }
 
   @supports (interpolate-size: allow-keywords) {
+
     .search-result-card.media-card-revealed:not(.media-card-subtitle-always) .media-card-year,
     .search-result-card-square.media-card-revealed:not(.media-card-subtitle-always) .media-card-year {
       max-height: max-content;
@@ -1717,7 +3827,7 @@ html.light .theme-toggle-icon-moon {
 
   .search-result-card.media-card-revealed .media-card-title-row,
   .search-result-card-square.media-card-revealed .media-card-title-row {
-    max-height: calc(3 * var(--card-title-line));
+    max-height: calc(var(--card-title-hover-lines, 3) * var(--card-title-line));
   }
 
   .search-result-card.media-card-revealed .media-card-title[title],
@@ -1742,6 +3852,73 @@ html.light .theme-toggle-icon-moon {
   .search-result-card-square.media-card-revealed .media-card-title[title]::before {
     transition: none;
   }
+
+  .search-result-card.media-card-title-wrap:hover .media-card-title[title],
+  .search-result-card-square.media-card-title-wrap:hover .media-card-title[title],
+  .search-result-card.media-card-title-clip:hover .media-card-title[title],
+  .search-result-card-square.media-card-title-clip:hover .media-card-title[title],
+  .search-result-card.media-card-title-multiline:hover .media-card-title[title],
+  .search-result-card-square.media-card-title-multiline:hover .media-card-title[title] {
+    color: #fff;
+  }
+
+  .search-result-card.media-card-revealed.media-card-title-stay .media-card-title-row,
+  .search-result-card-square.media-card-revealed.media-card-title-stay .media-card-title-row {
+    max-height: calc(var(--card-title-rest-lines, 1) * var(--card-title-line));
+  }
+
+  .search-result-card.media-card-revealed.media-card-title-stay .media-card-title[title],
+  .search-result-card.media-card-revealed.media-card-title-stay .media-card-title[title]:hover,
+  .search-result-card-square.media-card-revealed.media-card-title-stay .media-card-title[title],
+  .search-result-card-square.media-card-revealed.media-card-title-stay .media-card-title[title]:hover {
+    color: transparent;
+  }
+
+  .search-result-card.media-card-revealed.media-card-title-stay .media-card-title[title]::before,
+  .search-result-card-square.media-card-revealed.media-card-title-stay .media-card-title[title]::before {
+    opacity: 1;
+  }
+
+  .search-result-card.media-card-revealed.media-card-title-lines-all .media-card-title-row,
+  .search-result-card-square.media-card-revealed.media-card-title-lines-all .media-card-title-row,
+  .search-result-card.media-card-revealed.media-card-title-hover-all.media-card-title-bleed .media-card-title-row,
+  .search-result-card-square.media-card-revealed.media-card-title-hover-all.media-card-title-bleed .media-card-title-row {
+    max-height: none;
+  }
+}
+
+.search-result-card .media-card-progress-bar,
+.search-result-card-square .media-card-progress-bar {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+@media (pointer: fine) {
+  .search-result-card:hover .media-card-progress-bar,
+  .search-result-card-square:hover .media-card-progress-bar {
+    opacity: 1;
+  }
+}
+
+.search-result-card.media-card-revealed .media-card-progress-bar,
+.search-result-card-square.media-card-revealed .media-card-progress-bar,
+.search-result-card .media-card-progress-bar.media-card-progress-dormant,
+.search-result-card-square .media-card-progress-bar.media-card-progress-dormant {
+  opacity: 1;
+}
+
+.search-result-card .media-card-year.media-card-line-dormant,
+.search-result-card-square .media-card-year.media-card-line-dormant,
+.search-result-card:hover .media-card-year.media-card-line-dormant,
+.search-result-card-square:hover .media-card-year.media-card-line-dormant,
+.search-result-card.media-card-revealed .media-card-year.media-card-line-dormant,
+.search-result-card-square.media-card-revealed .media-card-year.media-card-line-dormant {
+  max-height: none;
+  margin-top: 0.25rem;
+  opacity: 1;
+  color: #fff;
+  font-weight: 600;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
 }
 
 .stat-scroll-safe.stat-tooltip-safe {
@@ -1854,31 +4031,6 @@ html.light .theme-toggle-icon-moon {
     gap: calc(var(--spacing) * 3);
   }
 
-  /* Mobile grid layout preference */
-  [data-mobile-grid="comfortable"] .media-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-
-  [data-mobile-grid="comfortable"] .detail-media-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-
-  [data-mobile-grid="comfortable"] .home-row-card {
-    width: calc((100% - calc(var(--spacing) * 4)) / 2) !important;
-  }
-
-  [data-mobile-grid="compact"] .media-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-  }
-
-  [data-mobile-grid="compact"] .detail-media-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-  }
-
-  [data-mobile-grid="compact"] .home-row-card {
-    width: calc((100% - calc(var(--spacing) * 8)) / 3) !important;
-  }
-
   /* Active playback card spanning */
   [data-mobile-grid="comfortable"] [data-active-playback-card] {
     grid-column: span 2 !important;
@@ -1928,31 +4080,6 @@ html.light .theme-toggle-icon-moon {
     background-color: transparent !important;
     padding: 0 !important;
     border-radius: 0 !important;
-  }
-
-  .media-progress-chip[data-progress-chip-mode="conditional"] {
-    display: none !important;
-  }
-
-  .media-progress-chip[data-progress-chip-mode="conditional"][data-mobile-show="true"] {
-    display: flex !important;
-  }
-
-  .media-time-left-chip[data-time-left-mode="conditional"] {
-    display: none !important;
-  }
-
-  .media-time-left-chip[data-time-left-mode="conditional"][data-mobile-show="true"] {
-    display: flex !important;
-  }
-
-  .media-score-chip[data-score-chip-mode="conditional"] {
-    display: none !important;
-  }
-
-  .media-score-chip[data-score-chip-mode="conditional"][data-mobile-show="true"] {
-    display: flex !important;
-    top: calc(var(--spacing) * 2) !important;
   }
 
   .media-status-chip[data-mobile-hide-on-mobile="true"] {
@@ -2126,6 +4253,32 @@ html.light .theme-toggle-icon-moon {
   }
 }
 
+/* Keep phone cards the same size when rotating or unfolding: extra width
+   reveals more cards. Only screens too narrow for the preferred column count
+   reduce the size. Tablets keep the desktop card size: their extra room goes
+   to more cards, not smaller ones, and phone-sized cards leave the progress
+   controls wider than the card. */
+@media (max-width: 600px), (orientation: landscape) and (pointer: coarse) and (max-width: 1000px) and (max-height: 720px), (orientation: landscape) and (hover: none) and (max-width: 1000px) and (max-height: 720px) {
+  body {
+    --card-cols: 3;
+    --card-cap: 6.75rem;
+  }
+
+  body[data-mobile-grid="comfortable"] {
+    --card-cols: 2;
+    --card-cap: 10.5rem;
+  }
+
+  [data-mobile-grid] .media-grid,
+  [data-mobile-grid] .detail-media-grid {
+    grid-template-columns: repeat(auto-fill, min(calc((100% - (var(--card-cols) - 1) * 0.75rem) / var(--card-cols)), var(--card-cap))) !important;
+  }
+
+  [data-mobile-grid] .home-row-card {
+    width: min(calc((100% - (var(--card-cols) - 1) * 1rem) / var(--card-cols)), var(--card-cap)) !important;
+  }
+}
+
 @media (min-width: 769px) {
   .stat-scroll-safe {
     max-width: none;
@@ -2264,4 +4417,256 @@ html.light .theme-toggle-icon-moon {
 [data-horizontal-drag="true"]:focus-visible {
   outline: 2px solid var(--color-link);
   outline-offset: 2px;
+}
+
+/*
+ * The rating button in a card's title row. When the item is unrated it shows an
+ * empty star, only while the card is hovered (or the button has focus); touch
+ * screens have no hover, so it stays faintly visible there.
+ */
+.media-card-rate-empty {
+  opacity: 0;
+  transition: opacity 150ms ease-in-out;
+}
+
+/* Follow the tracking fragment as HTMX updates an episode in place. */
+.episode-card-actions:has([data-episode-has-data="true"]) {
+  grid-column: 2;
+  justify-self: end;
+}
+
+/* Centered under the text on mobile only; right-aligned from the md breakpoint. */
+@media (min-width: 768px) {
+  .episode-card-actions {
+    justify-self: end;
+  }
+}
+
+.media-card-rate-empty .media-card-rate-star svg {
+  fill: none;
+}
+
+.media-card-rate-empty:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .media-card:hover .media-card-rate-empty,
+  .episode-card:hover .media-card-rate-empty {
+    opacity: 1;
+  }
+}
+
+@media (pointer: coarse) {
+  .media-card-rate-empty {
+    opacity: 0.6;
+  }
+}
+
+/* Title line counts for hand-rolled cards (see card_title_classes). */
+.media-card-title-rest-1 { --card-title-rest-lines: 1; }
+.media-card-title-rest-2 { --card-title-rest-lines: 2; }
+.media-card-title-rest-3 { --card-title-rest-lines: 3; }
+.media-card-title-hover-1 { --card-title-hover-lines: 1; }
+.media-card-title-hover-2 { --card-title-hover-lines: 2; }
+.media-card-title-hover-3 { --card-title-hover-lines: 3; }
+
+/* Tier board on a list page (lists/components/tier_board.html). */
+.tier-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  min-height: 3.25rem;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+}
+
+.tier-label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.375rem;
+  border: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+button.tier-label {
+  cursor: pointer;
+}
+
+.tier-label-edit {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  opacity: 0.35;
+}
+
+button.tier-label:hover .tier-label-edit,
+button.tier-label:focus-visible .tier-label-edit {
+  opacity: 0.9;
+}
+
+.tier-drop {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 0.5rem;
+  min-height: 3.25rem;
+  min-width: 0;
+  padding: 0.375rem 0.5rem;
+}
+
+.tier-tile {
+  position: relative;
+  width: 5.5rem;
+  flex: none;
+  cursor: grab;
+}
+
+.tier-tile .media-card-year,
+.tier-tile .media-card-lines {
+  display: none;
+}
+
+/* A slightly shorter poster keeps rows compact; empty tiers collapse. */
+.tier-tile .media-card {
+  aspect-ratio: 3 / 4;
+}
+
+/* A small poster: the title gets a full line and the rating sits under it. */
+.tier-tile .media-card-body {
+  padding: 0.375rem;
+}
+
+.tier-tile .search-result-card .media-card-title-row,
+.tier-tile .search-result-card:hover .media-card-title-row {
+  flex-wrap: wrap;
+  gap: 0 0.25rem;
+  max-height: none;
+}
+
+.tier-tile .media-card-title {
+  width: 100%;
+  font-size: 0.6875rem;
+  line-height: 1.2;
+}
+
+.tier-move {
+  position: absolute;
+  right: 0.25rem;
+  bottom: 0.25rem;
+  z-index: 20;
+  display: flex;
+  padding: 0.25rem;
+  border-radius: 9999px;
+  background: rgb(10 12 18 / 0.75);
+  color: #fff;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.tier-tile:hover .tier-move,
+.tier-move:focus-visible {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .tier-move {
+    opacity: 0.85;
+  }
+}
+
+.tier-unranked {
+  margin-top: 0.875rem;
+  border: 2px dashed var(--color-surface-border);
+  border-radius: 0.625rem;
+  background: var(--color-surface-dim);
+}
+
+.tier-unranked .tier-drop {
+  min-height: 4rem;
+}
+
+@media (max-width: 560px) {
+  .tier-row {
+    grid-template-columns: 60px minmax(0, 1fr);
+    min-height: 3rem;
+  }
+
+  .tier-label {
+    font-size: 1.0625rem;
+  }
+
+  .tier-drop {
+    gap: 0.375rem;
+    padding: 0.3125rem 0.375rem;
+  }
+
+  .tier-tile {
+    width: 4.25rem;
+  }
+}
+
+/* Video thumbnails retain their image; only dedicated video rows are wide. */
+.search-result-card.video-card-landscape {
+  aspect-ratio: 16 / 9;
+}
+.search-result-card.video-card .media-card-poster {
+  object-fit: contain !important;
+}
+
+/* Landscape video needs more width than poster artwork at the same density. */
+.media-grid.media-grid-video {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)) !important;
+}
+.home-row-card.home-row-card-video {
+  width: 17rem;
+}
+/* Mixed shelves share the poster height while retaining native artwork shapes. */
+.home-row-card.home-row-card-mixed-square {
+  width: 16.5rem;
+}
+.home-row-card.home-row-card-mixed-video {
+  width: 29.333333rem;
+}
+.home-row-card-mixed-video .video-card {
+  aspect-ratio: 16 / 9;
+}
+@media (max-width: 600px), (orientation: landscape) and (pointer: coarse) and (max-width: 1000px) and (max-height: 720px), (orientation: landscape) and (hover: none) and (max-width: 1000px) and (max-height: 720px) {
+  [data-mobile-grid] .media-grid.media-grid-video {
+    grid-template-columns: repeat(auto-fill, min(calc((100% - 0.75rem) / 2), 10.5rem)) !important;
+  }
+  [data-mobile-grid] .home-row-card.home-row-card-video {
+    width: min(calc((100% - 1rem) / 2), 10.5rem) !important;
+  }
+  [data-mobile-grid] .home-row-card.home-row-card-mixed-square {
+    width: calc(min((100% - (var(--card-cols) - 1) * 1rem) / var(--card-cols), var(--card-cap)) * 1.5) !important;
+  }
+  [data-mobile-grid] .home-row-card.home-row-card-mixed-video {
+    width: calc(min((100% - (var(--card-cols) - 1) * 1rem) / var(--card-cols), var(--card-cap)) * 8 / 3) !important;
+  }
+}
+
+/* Video channels use square artwork in the shared details layout. */
+.video-channel-avatar {
+  aspect-ratio: 1;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 4rem;
+}
+@media (min-width: 768px) {
+  .detail-carousel-grid:has(.video-channel-avatar):has(.detail-carousel-preview--overview) .detail-carousel-grid__title {
+    color: white;
+    text-shadow: 0 1px 4px rgb(0 0 0 / 80%);
+  }
 }

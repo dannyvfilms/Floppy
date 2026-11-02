@@ -11,13 +11,10 @@
   <head>
     {# Required meta tags #}
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="keywords" content="Floppy, Media Tracker">
     <meta name="description" content="Search and track media on Floppy.">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="mobile-web-app-title" content="Floppy">
-
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-title" content="Floppy">
@@ -34,14 +31,17 @@
     <link rel="stylesheet"
           type="text/css"
           href="{% static 'css/main.css' %}{% get_static_file_mtime 'css/main.css' %}">
+    <link rel="stylesheet" href="{% static 'ui/settings-islands.css' %}{% get_static_file_mtime 'ui/settings-islands.css' %}">
+    <script type="module" src="{% static 'ui/settings-islands.js' %}{% get_static_file_mtime 'ui/settings-islands.js' %}"></script>
     {% djdt_enabled as djdt_is_enabled %}
     {% if djdt_is_enabled %}
       <link rel="stylesheet" href="{% static 'debug_toolbar/css/toolbar.css' %}">
       <script type="module" src="{% static 'debug_toolbar/js/toolbar.js' %}"></script>
     {% endif %}
 
-    <script src="{% url 'javascript-catalog' %}"></script>
-    <script src="{% static 'js/libraries/htmx-2.0.4.min.js' %}"></script>
+    <script defer src="{% javascript_catalog_url %}"></script>
+    <script defer src="{% static 'js/libraries/htmx-2.0.4.min.js' %}"></script>
+    <script src="{% static 'js/artwork-loading.js' %}{% get_static_file_mtime 'js/artwork-loading.js' %}"></script>
     <script>
       (function() {
         function getCookie(name) {
@@ -73,13 +73,14 @@
             if (!xhr) {
               return;
             }
-            const body = xhr.responseText || "";
-            if (body.indexOf('name="floppy-page" content="entrance"') === -1) {
-              return;
+            const body = event.detail.serverResponse || xhr.responseText || "";
+            // Match the actual meta element, not this guard's own script.
+            const page = new DOMParser().parseFromString(body, "text/html");
+            if (page.querySelector('meta[name="floppy-page"][content="entrance"]')) {
+              event.detail.shouldSwap = false;
+              event.detail.isError = false;
+              window.location.assign(xhr.responseURL || "{% url 'account_login' %}");
             }
-            event.detail.shouldSwap = false;
-            event.detail.isError = false;
-            window.location.assign(xhr.responseURL || "{% url 'account_login' %}");
           });
 
           document.body.addEventListener("htmx:configRequest", function(event) {
@@ -120,11 +121,12 @@
     <script src="{% static 'js/libraries/lazysizes-5.3.2.min.js' %}" async></script>
     <script defer
             src="{% static 'js/image-fallback.js' %}{% get_static_file_mtime 'js/image-fallback.js' %}"></script>
-    {# ZXing library for barcode decoding #}
-    <script src="{% static 'js/libraries/zxing-library-0.21.3.min.js' %}"
-            onload="console.log('ZXing library loaded');"></script>
-    <script src="{% static 'js/barcode-scanner.js' %}{% get_static_file_mtime 'js/barcode-scanner.js' %}"
-            onload="console.log('barcode-scanner.js loaded, barcodeScannerUtils available:', typeof window.barcodeScannerUtils);"></script>
+    <script defer
+            src="{% static 'js/safari-rail.js' %}{% get_static_file_mtime 'js/safari-rail.js' %}"></script>
+    {# Barcode scanning loads the ZXing library on first use, not on every page. #}
+    <script defer
+            src="{% static 'js/barcode-scanner.js' %}{% get_static_file_mtime 'js/barcode-scanner.js' %}"
+            data-zxing-src="{% static 'js/libraries/zxing-library-0.21.3.min.js' %}"></script>
 
     <link rel="apple-touch-icon"
           sizes="180x180"
@@ -187,6 +189,8 @@
 
   <body data-mobile-grid="{% if user.is_authenticated %}{{ user.mobile_grid_layout }}{% else %}compact{% endif %}"
         data-quick-season-mobile="{% if user.is_authenticated %}{% if user.quick_season_update_mobile == 'season_update' or user.quick_season_update_mobile == 'both' %}true{% else %}false{% endif %}{% else %}false{% endif %}">
+    {% block alphabet_filter %}{% endblock alphabet_filter %}
+    {% include "app/components/ui_asset_refresh.html" %}
     {% comment %}
       Navigation progress. Boosted links replace the page with a background
       request, so the browser shows no spinner and no stop button. Without
@@ -208,18 +212,20 @@
        hx-preserve="true"></p>
     {% block body %}
       {# Main container for the layout #}
-      <div class="flex min-h-screen bg-[var(--color-page-bg)] text-[var(--color-text)]"
+      <div class="app-shell flex min-h-screen bg-[var(--color-page-bg)] text-[var(--color-text)]"
            x-data="{ isMobileMenuOpen: false }">
 
         {# Mobile menu overlay #}
         <div x-show="isMobileMenuOpen"
-             class="fixed inset-0 bg-black/50 z-30 lg:hidden"
+             class="app-menu-overlay fixed inset-0 bg-black/50 z-[42] lg:hidden"
              @click="isMobileMenuOpen = false"></div>
 
         {# Sidebar #}
         {% if not public_view|default:False %}
-          <aside class="fixed top-0 left-0 z-40 h-screen w-64 bg-[var(--color-sidebar)] transform transition-transform duration-300 ease-in-out border-r border-[var(--color-border)] -translate-x-full lg:translate-x-0 lg:sticky flex flex-col"
-                 :class="isMobileMenuOpen ? 'translate-x-0' : ''">
+          <aside class="fixed top-0 left-0 z-[43] h-dvh w-64 pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)] bg-[var(--color-sidebar)] transform transition-[transform,translate,visibility] duration-300 ease-in-out border-r border-[var(--color-border)] -translate-x-full lg:translate-x-0 lg:sticky flex flex-col"
+                 :class="isMobileMenuOpen ? 'translate-x-0' : 'max-lg:invisible'"
+                 x-data="sidebarNavigation('{{ user.pk|escapejs }}')"
+                 @sidebar-lists-changed.window="onPinnedListsChanged()">
             <div class="h-16 border-b border-[var(--color-border)] flex items-center px-6">
               <h1 class="flex items-center">
                 {% if user.is_authenticated and user.logo_style == 'monochrome' %}
@@ -229,21 +235,22 @@
                        height="48"
                        class="h-9 w-[158px] object-cover object-center">
                 {% else %}
-                <img src="{% static 'img/floppy-logo.png' %}"
-                     srcset="{% static 'img/floppy-logo.png' %} 1x,
-                             {% static 'img/floppy-logo@2x.png' %} 2x"
-                     alt="Floppy"
-                     width="158"
-                     height="48"
-                     class="h-9 w-auto">
+                  <img src="{% static 'img/floppy-logo.png' %}"
+                       srcset="{% static 'img/floppy-logo.png' %} 1x,
+                               {% static 'img/floppy-logo@2x.png' %} 2x"
+                       alt="Floppy"
+                       width="158"
+                       height="48"
+                       class="h-9 w-auto">
                 {% endif %}
               </h1>
             </div>
             {# hx-boost: swap the body instead of reloading on sidebar navigation #}
-            <nav class="p-4 flex-1 overflow-y-auto"
+            <nav id="sidebar-nav"
+                 class="p-4 flex-1 min-h-0 overflow-y-auto"
                  hx-boost="true"
                  style="-webkit-overflow-scrolling: touch">
-              <ul class="space-y-1 mb-6">
+              <ul class="space-y-1">
                 <li>
                   <a href="{% url 'home' %}"
                      class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == "/" %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
@@ -258,148 +265,57 @@
                   </a>
                 </li>
 
-                {% url 'discover' as discover_url %}
-                <li>
-                  <a href="{{ discover_url }}"
-                     class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == discover_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                    {% if request.path|str_equals:discover_url %}
-                      {% include "app/icons/four-square.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
-                    {% else %}
-                      {% include "app/icons/four-square.svg" with classes="w-5 h-5" %}
-                    {% endif %}
-                    <span>{% trans "Discover" %}</span>
-                  </a>
-                </li>
+                {% if user.show_discover %}
+                  {% url 'discover' as discover_url %}
+                  <li>
+                    <a href="{{ discover_url }}"
+                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == discover_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                      {% if request.path|str_equals:discover_url %}
+                        {% include "app/icons/four-square.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
+                      {% else %}
+                        {% include "app/icons/four-square.svg" with classes="w-5 h-5" %}
+                      {% endif %}
+                      <span>{% trans "Discover" %}</span>
+                    </a>
+                  </li>
+                {% endif %}
 
                 {% get_sidebar_media_types user as sidebar_media_types %}
                 {% for item in sidebar_media_types %}
-                  <li>
-                    <a href="{% url 'medialist' media_type=item.media_type %}"
-                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if media_type == item.media_type %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                      {% icon item.media_type is_active=media_type|str_equals:item.media_type %}
-                      <span>{{ item.display_name }}</span>
-                    </a>
-                  </li>
+                  {% if item.saved_views %}
+                    {% url 'medialist' media_type=item.media_type as media_list_url %}
+                    {% include "app/components/sidebar_saved_views.html" with group_key=item.media_type group_url=media_list_url group_label=item.display_name group_current=media_type|str_equals:item.media_type saved_views=item.saved_views %}
+                  {% else %}
+                    <li>
+                      <a href="{% url 'medialist' media_type=item.media_type %}"
+                         class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if media_type == item.media_type %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                        {% icon item.media_type is_active=media_type|str_equals:item.media_type %}
+                        <span>{{ item.display_name }}</span>
+                      </a>
+                    </li>
+                  {% endif %}
                 {% endfor %}
               </ul>
 
-              <div class="border-t border-[var(--color-border)] pt-4">
-                <ul class="space-y-1">
-                  {% url 'create_entry' as create_entry_url %}
-                  {% url 'history' as history_url %}
-                  {% url 'calendar' as calendar_url %}
-                  <li>
-                    <a href="{{ calendar_url }}"
-                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == calendar_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                      {% if request.path|str_equals:calendar_url %}
-                        {% include "app/icons/calendar.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
+            </nav>
 
-                      {% else %}
-                        {% include "app/icons/calendar.svg" with classes="w-5 h-5" %}
-
-                      {% endif %}
-                      <span>{% trans "Calendar" %}</span>
-                    </a>
-                  </li>
-
-                  {% url 'collection_list' as collection_list_url %}
-                  <li>
-                    <a href="{{ collection_list_url }}"
-                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == collection_list_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                      {% if request.path|str_equals:collection_list_url %}
-                        {% include "app/icons/cube.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
-
-                      {% else %}
-                        {% include "app/icons/cube.svg" with classes="w-5 h-5" %}
-
-                      {% endif %}
-                      <span>{% trans "Collection" %}</span>
-                    </a>
-                  </li>
-
-                  <li>
-                    <a href="{{ create_entry_url }}"
-                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == create_entry_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                      {% if request.path|str_equals:create_entry_url %}
-                        {% include "app/icons/circle-plus.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
-
-                      {% else %}
-                        {% include "app/icons/circle-plus.svg" with classes="w-5 h-5" %}
-
-                      {% endif %}
-                      <span>{% trans "Custom" context "navigation" %}</span>
-                    </a>
-                  </li>
-
-                  <li>
-                    <a href="{{ history_url }}"
-                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == history_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                      {% icon 'history' is_active=request.path|str_equals:history_url %}
-                      <span>{% trans "History" %}</span>
-                    </a>
-                  </li>
-
-                  {% url 'rapid_rating' as rapid_rating_url %}
-                  <li>
-                    <a href="{{ rapid_rating_url }}"
-                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == rapid_rating_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                      {% if request.path|str_equals:rapid_rating_url %}
-                        {% include "app/icons/star.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
-
-                      {% else %}
-                        {% include "app/icons/star.svg" with classes="w-5 h-5" %}
-
-                      {% endif %}
-                      <span>{% trans "Rapid Rating" %}</span>
-                    </a>
-                  </li>
-
-                  {% url 'lists' as lists_url %}
-                  <li>
-                    <a href="{{ lists_url }}"
-                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == lists_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                      {% if request.path|str_equals:lists_url %}
-                        {% include "app/icons/folder-plus.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
-
-                      {% else %}
-                        {% include "app/icons/folder-plus.svg" with classes="w-5 h-5" %}
-
-                      {% endif %}
-                      <span>{% trans "Lists" %}</span>
-                    </a>
-                  </li>
-
-                  {% url 'statistics' as statistics_url %}
-                  <li>
-                    <a href="{{ statistics_url }}"
-                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == statistics_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                      {% if request.path|str_equals:statistics_url %}
-                        {% include "app/icons/bars-pyramid.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
-
-                      {% else %}
-                        {% include "app/icons/bars-pyramid.svg" with classes="w-5 h-5" %}
-
-                      {% endif %}
-                      <span>{% trans "Statistics" %}</span>
-                    </a>
-                  </li>
-
-                  {% url 'tag_index' as tag_index_url %}
-                  <li>
-                    <a href="{{ tag_index_url }}"
-                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == tag_index_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                      {% if request.path|str_equals:tag_index_url %}
-                        {% include "app/icons/tag.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
-
-                      {% else %}
-                        {% include "app/icons/tag.svg" with classes="w-5 h-5" %}
-
-                      {% endif %}
-                      <span>{% trans "Tags" %}</span>
-                    </a>
-                  </li>
-                </ul>
-              </div>
+            <nav class="border-t border-[var(--color-border)] px-4 py-4"
+                 hx-boost="true"
+                 x-cloak
+                 x-show="navOpen || pinned.length"
+                 x-transition:enter="transition duration-200"
+                 x-transition:leave="transition duration-200">
+                <div x-ref="navigationItems" class="overflow-y-auto max-h-[40dvh]"
+                     style="-webkit-overflow-scrolling: touch">
+                  <div x-cloak x-sidebar-reveal="navOpen">
+                    <ul class="space-y-1">
+                      {% include "app/components/sidebar_navigation_items.html" with pinned_section=False %}
+                    </ul>
+                  </div>
+                  <ul class="space-y-1">
+                    {% include "app/components/sidebar_navigation_items.html" with pinned_section=True %}
+                  </ul>
+                </div>
             </nav>
 
             {% if request.user.is_authenticated and request.user.onboarding_status == "in_progress" %}
@@ -408,6 +324,17 @@
 
             <div class="p-4 border-t border-[var(--color-border)] mt-auto">
               <div class="space-y-2">
+                <div x-cloak x-show="hasUnpinned()">
+                    <button type="button"
+                            class="flex w-full items-center gap-3 px-4 py-2 rounded-md text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)] cursor-pointer"
+                            :aria-expanded="navOpen.toString()"
+                            @click="navOpen = !navOpen; if (navOpen) $nextTick(() => { $refs.navigationItems.scrollTop = $refs.navigationItems.scrollHeight })">
+                      <span class="transition-transform duration-200" :class="navOpen ? '' : 'rotate-180'">
+                        {% include "app/icons/chevron-down.svg" with classes="w-5 h-5" %}
+                      </span>
+                      <span>{% trans "Explore" %}</span>
+                    </button>
+                </div>
                 {% url 'account' as account_url %}
                 {% url 'notifications' as notifications_url %}
                 {% url 'sidebar' as sidebar_url %}
@@ -416,11 +343,19 @@
                 {% url 'integrations' as integrations_url %}
                 {% url 'import_data' as import_url %}
                 {% url 'export_data' as export_url %}
+                {% url 'mal_export' as mal_export_url %}
                 {% url 'ui_preferences' as ui_preferences_url %}
+                {% url 'appearance' as appearance_url %}
+                <a href="{% url 'appearance' %}"
+                   hx-boost="true"
+                   class="lg:hidden flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == appearance_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                  {% include "app/icons/moon.svg" with classes="w-5 h-5" %}
+                  <span>{% trans "Appearance" %}</span>
+                </a>
                 <a href="{{ account_url }}"
                    hx-boost="true"
-                   class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == account_url or request.path == notifications_url or request.path == sidebar_url or request.path == ui_preferences_url or request.path == preferences_url or request.path == home_screen_url or request.path == integrations_url or request.path == import_url or request.path == export_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                  {% if request.path == account_url or request.path == notifications_url or request.path == sidebar_url or request.path == ui_preferences_url or request.path == preferences_url or request.path == home_screen_url or request.path == integrations_url or request.path == import_url or request.path == export_url %}
+                   class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == account_url or request.path == notifications_url or request.path == sidebar_url or request.path == ui_preferences_url or request.path == preferences_url or request.path == home_screen_url or request.path == integrations_url or request.path == import_url or request.path == export_url or request.path == mal_export_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                  {% if request.path == account_url or request.path == notifications_url or request.path == sidebar_url or request.path == ui_preferences_url or request.path == preferences_url or request.path == home_screen_url or request.path == integrations_url or request.path == import_url or request.path == export_url or request.path == mal_export_url %}
                     {% include "app/icons/settings.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
 
                   {% else %}
@@ -447,13 +382,16 @@
         {# Main content #}
         <div class="flex-1 flex flex-col min-h-screen min-w-0">
           {# Top bar #}
-          <div class="sticky top-0 z-50 bg-[var(--color-sidebar)] border-b border-[var(--color-border)] shadow-md">
-            <div class="container mx-auto px-4">
+          <div class="app-topbar sticky top-0 z-50 pt-[var(--header-safe-top)] bg-[var(--color-sidebar)] border-b border-[var(--color-border)] shadow-md">
+            <div class="app-topbar__inner container mx-auto max-lg:max-w-none pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]">
               <div class="flex items-center justify-between lg:justify-center gap-2 h-16 min-w-0">
                 {# Mobile: sidebar toggle button #}
                 {% if not public_view|default:False %}
                   <button @click="isMobileMenuOpen = !isMobileMenuOpen"
-                          class="lg:hidden pe-3 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors duration-200">
+                          :aria-expanded="isMobileMenuOpen"
+                          aria-controls="sidebar-nav"
+                          aria-label="{% translate 'Toggle navigation menu' %}"
+                          class="lg:hidden pe-3 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-(--color-accent) rounded-sm cursor-pointer">
                     {% include "app/icons/hamburger.svg" with classes="w-6 h-6" %}
 
                   </button>
@@ -468,10 +406,10 @@
 
                 {# Search bar #}
                 {% if not public_view|default:False %}
-                  <div class="relative grow min-w-0 max-w-2xl">
+                  <div class="relative grow min-w-0 max-w-2xl max-lg:max-w-none">
                     <form method="get"
                           action="{% url 'search' %}"
-                          x-data="{ isOpen: false, selectedType: { display: '{{ search_type|media_type_readable_plural }}', value: '{{ search_type }}' }, mediaTypes: {% get_search_media_types user as search_types %}{{ search_types }}, getPlaceholder() { return interpolate(gettext('Search %(media)s in your library or online...'), {media: this.selectedType.display}, true) }, barcodeScanning: false, barcodeError: null, barcodePreview: null, explicitSubmitTriggered: false, async handleBarcodeImage(event) { if (!event || !event.target) { console.error('[BARCODE] Invalid event or event.target'); return; } if (event.target.tagName !== 'INPUT' || event.target.type !== 'file') { console.error('[BARCODE] Event not from file input. TagName:', event.target.tagName, 'Type:', event.target.type); return; } if (event.target !== this.$refs.barcodeInput) { console.error('[BARCODE] Event not from barcode input ref'); return; } console.log('handleBarcodeImage called', event); const file = event.target.files?.[0]; if (!file) { console.log('No file selected'); return; } console.log('File selected:', file.name, file.type); this.barcodeScanning = true; this.barcodeError = null; this.barcodePreview = URL.createObjectURL(file); try { console.log('Checking for barcodeScannerUtils:', typeof window.barcodeScannerUtils); if (!window.barcodeScannerUtils) { throw new Error(gettext('Barcode scanner utilities not loaded. Please refresh the page.')); } console.log('Starting barcode decode...'); const isbn = await window.barcodeScannerUtils.decodeBarcodeFromFile(file); console.log('Decode result:', isbn); if (isbn) { const barcodeInput = event.target; let form = this.$root; if (!form || form.tagName !== 'FORM' || !form.contains(barcodeInput)) { form = barcodeInput.closest('form'); } if (!form || form.tagName !== 'FORM') { console.error('[FORM] Could not find valid form element'); return; } const searchInput = form.querySelector('input[name=q]'); const formContainsBarcodeInput = form.contains(barcodeInput); if (!searchInput || !formContainsBarcodeInput) { console.error('[FORM] Form validation failed - missing search input or barcode input not in form. Search input:', searchInput, 'Form contains barcode input:', formContainsBarcodeInput); return; } console.log('[FORM] ISBN received, form element:', form, 'tagName:', form.tagName); console.log('[FORM] Search input found:', searchInput); searchInput.value = isbn; console.log('[FORM] Set input value to:', isbn, 'Current value:', searchInput.value); this.explicitSubmitTriggered = true; console.log('[FORM] Submitting form...'); form.submit(); console.log('[FORM] Form submit called'); } else { this.barcodeError = gettext('Could not read barcode from image. Please try again or enter ISBN manually.'); } } catch (error) { console.error('Barcode scan error:', error); this.barcodeError = gettext('Error scanning barcode: ') + (error.message || gettext('Please try again.')); } finally { this.barcodeScanning = false; } }, clearBarcodeError() { this.barcodeError = null; this.barcodePreview = null; if (this.$refs.barcodeInput) { this.$refs.barcodeInput.value = ''; } }, selectType(type) { this.selectedType = type; this.isOpen = false; const input = this.$refs.searchInput; if (input && input.value.trim()) { this.$nextTick(() => this.$root.submit()); } }, handleFormSubmit(event) { if (event.currentTarget !== this.$el) { return true; } if (event.submitter && !this.$el.contains(event.submitter)) { console.log('[FORM] Submitter not in search form, allowing'); return true; } if (event.submitter && !this.$el.contains(event.submitter)) { console.log('[FORM] Submitter not in search form, allowing'); return true; } if (this.explicitSubmitTriggered) { this.explicitSubmitTriggered = false; return true; } if (event.submitter && event.submitter === this.$refs.searchButton) { return true; } if (!event.submitter) { const searchInput = this.$el.querySelector('input[name=q]'); if (searchInput && document.activeElement === searchInput) { return true; } } console.log('[FORM] Form submission prevented - not from search button or Enter key in search input'); event.preventDefault(); event.stopPropagation(); return false; }, init() { console.log('Search form Alpine.js initialized'); this.explicitSubmitTriggered = false; } }"
+                          x-data="{ isOpen: false, selectedType: { display: '{{ search_type|media_type_readable_plural }}', value: '{{ search_type }}' }, mediaTypes: {% get_search_media_types user as search_types %}{{ search_types }}, getPlaceholder() { if (this.selectedType.value === 'all') { return gettext('Search your whole library...'); } if (window.matchMedia('(max-width: 639px)').matches) { return interpolate(gettext('Search %(media)s...'), {media: this.selectedType.display}, true); } return interpolate(gettext('Search %(media)s in your library or online...'), {media: this.selectedType.display}, true) }, barcodeScanning: false, barcodeError: null, barcodePreview: null, explicitSubmitTriggered: false, async handleBarcodeImage(event) { if (!event || !event.target) { console.error('[BARCODE] Invalid event or event.target'); return; } if (event.target.tagName !== 'INPUT' || event.target.type !== 'file') { console.error('[BARCODE] Event not from file input. TagName:', event.target.tagName, 'Type:', event.target.type); return; } if (event.target !== this.$refs.barcodeInput) { console.error('[BARCODE] Event not from barcode input ref'); return; } console.log('handleBarcodeImage called', event); const file = event.target.files?.[0]; if (!file) { console.log('No file selected'); return; } console.log('File selected:', file.name, file.type); this.barcodeScanning = true; this.barcodeError = null; this.barcodePreview = URL.createObjectURL(file); try { console.log('Checking for barcodeScannerUtils:', typeof window.barcodeScannerUtils); if (!window.barcodeScannerUtils) { throw new Error(gettext('Barcode scanner utilities not loaded. Please refresh the page.')); } console.log('Starting barcode decode...'); const isbn = await window.barcodeScannerUtils.decodeBarcodeFromFile(file); console.log('Decode result:', isbn); if (isbn) { const barcodeInput = event.target; let form = this.$root; if (!form || form.tagName !== 'FORM' || !form.contains(barcodeInput)) { form = barcodeInput.closest('form'); } if (!form || form.tagName !== 'FORM') { console.error('[FORM] Could not find valid form element'); return; } const searchInput = form.querySelector('input[name=q]'); const formContainsBarcodeInput = form.contains(barcodeInput); if (!searchInput || !formContainsBarcodeInput) { console.error('[FORM] Form validation failed - missing search input or barcode input not in form. Search input:', searchInput, 'Form contains barcode input:', formContainsBarcodeInput); return; } console.log('[FORM] ISBN received, form element:', form, 'tagName:', form.tagName); console.log('[FORM] Search input found:', searchInput); searchInput.value = isbn; console.log('[FORM] Set input value to:', isbn, 'Current value:', searchInput.value); this.explicitSubmitTriggered = true; console.log('[FORM] Submitting form...'); form.submit(); console.log('[FORM] Form submit called'); } else { this.barcodeError = gettext('Could not read barcode from image. Please try again or enter ISBN manually.'); } } catch (error) { console.error('Barcode scan error:', error); this.barcodeError = gettext('Error scanning barcode: ') + (error.message || gettext('Please try again.')); } finally { this.barcodeScanning = false; } }, clearBarcodeError() { this.barcodeError = null; this.barcodePreview = null; if (this.$refs.barcodeInput) { this.$refs.barcodeInput.value = ''; } }, selectType(type) { this.selectedType = type; this.isOpen = false; const input = this.$refs.searchInput; if (input && input.value.trim()) { this.$nextTick(() => this.$root.submit()); } }, handleFormSubmit(event) { if (event.currentTarget !== this.$el) { return true; } if (event.submitter && !this.$el.contains(event.submitter)) { console.log('[FORM] Submitter not in search form, allowing'); return true; } if (event.submitter && !this.$el.contains(event.submitter)) { console.log('[FORM] Submitter not in search form, allowing'); return true; } if (this.explicitSubmitTriggered) { this.explicitSubmitTriggered = false; return true; } if (event.submitter && event.submitter === this.$refs.searchButton) { return true; } if (!event.submitter) { const searchInput = this.$el.querySelector('input[name=q]'); if (searchInput && document.activeElement === searchInput) { return true; } } console.log('[FORM] Form submission prevented - not from search button or Enter key in search input'); event.preventDefault(); event.stopPropagation(); return false; }, init() { console.log('Search form Alpine.js initialized'); this.explicitSubmitTriggered = false; } }"
                           @submit="handleFormSubmit($event)"
                           @click.away="document.getElementById('search-suggestions').innerHTML = ''">
                       <div class="flex">
@@ -479,6 +417,7 @@
                           {# Search input #}
                           <input type="search"
                                  id="global-search"
+                                 aria-label="{% translate 'Search your library or online' %}"
                                  name="q"
                                  x-ref="searchInput"
                                  value="{{ request.GET.q }}"
@@ -493,22 +432,23 @@
                                  hx-target="#search-suggestions"
                                  hx-swap="innerHTML"
                                  hx-include="[name='media_type']"
-                                 class="w-full py-2 pl-10 pr-4 text-sm text-[var(--color-text-secondary)] bg-[var(--color-panel)] rounded-l-md focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:ring-inset placeholder-[var(--color-text-muted)]"
-                                 :class="selectedType.value === 'book' ? 'pr-10' : ''">
+                                 class="w-full py-2 pl-10 pr-4 text-sm text-[var(--color-text-secondary)] bg-[var(--color-panel)] rounded-l-md focus:outline-none focus:ring-2 focus:ring-(--color-accent) focus:ring-inset placeholder-[var(--color-text-muted)]"
+                                 :class="['book', 'manga', 'comic', 'comicissue'].includes(selectedType.value) ? 'pr-10' : ''">
                           <button type="submit"
                                   x-ref="searchButton"
-                                  class="absolute left-2 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors duration-200 focus:outline-none cursor-pointer">
+                                  aria-label="{% translate 'Search' %}"
+                                  class="absolute left-2 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-(--color-accent) rounded-sm cursor-pointer">
                             {% include "app/icons/magnifying-glass.svg" with classes="w-5 h-5" %}
 
                           </button>
-                          {# Camera button (only visible for books) #}
+                          {# Camera button (only visible for types sold with a book barcode) #}
                           <button type="button"
-                                  x-show="selectedType.value === 'book'"
+                                  x-show="['book', 'manga', 'comic', 'comicissue'].includes(selectedType.value)"
                                   @click="$refs.barcodeInput?.click()"
                                   x-bind:disabled="barcodeScanning"
-                                  class="absolute right-2 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors duration-200 focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                  class="absolute right-2 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-(--color-accent) rounded-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                   title="{% translate "Scan barcode" %}"
-                                  aria-label="{% translate "Scan book barcode" %}">
+                                  aria-label="{% translate "Scan barcode" %}">
                             <span x-show="barcodeScanning" class="block">
                               <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-[var(--color-text-muted)]"></div>
                             </span>
@@ -530,8 +470,9 @@
                         <button type="button"
                                 @click="isOpen = !isOpen"
                                 @click.away="isOpen = false"
-                                class="flex items-center justify-between shrink-0 px-3 sm:px-4 py-2 text-sm text-[var(--color-text-secondary)] bg-[var(--color-panel)] rounded-r-md focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:ring-inset hover:bg-[var(--color-surface)] transition-colors duration-200 cursor-pointer">
-                          <span class="whitespace-nowrap" x-text="selectedType.display"></span>
+                                class="flex items-center justify-between shrink-0 px-3 sm:px-4 py-2 text-sm text-[var(--color-text-secondary)] bg-[var(--color-panel)] rounded-r-md focus:outline-none focus:ring-2 focus:ring-(--color-accent) focus:ring-inset hover:bg-[var(--color-surface)] transition-colors duration-200 cursor-pointer">
+                          <span class="whitespace-nowrap max-[24rem]:sr-only"
+                                x-text="selectedType.display"></span>
                           {% include "app/icons/chevron-down.svg" with classes="w-4 h-4 ml-2" %}
 
                         </button>
@@ -573,17 +514,6 @@
                   </div>
                 {% endif %}
 
-                {# Mobile: theme toggle as a flex item so it can't overlap the search/media-type controls #}
-                {% if user.is_authenticated and user.theme|is_basic_theme %}
-                  <button type="button"
-                          onclick="floppyToggleTheme()"
-                          class="lg:hidden shrink-0 p-2 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)] transition-colors duration-200 cursor-pointer"
-                          title="{% translate "Toggle theme" %}"
-                          aria-label="{% translate "Toggle theme" %}">
-                    {% include "app/icons/sun.svg" with classes="w-5 h-5 theme-toggle-icon-sun" %}
-                    {% include "app/icons/moon.svg" with classes="w-5 h-5 theme-toggle-icon-moon" %}
-                  </button>
-                {% endif %}
               </div>
             </div>
 
@@ -600,7 +530,10 @@
           </div>
 
           <main class="flex-1 relative bg-[var(--color-page-bg)]">
-            <div class="container mx-auto px-4 py-6 mt-4 sm:px-8 sm:py-12 sm:mt-6">
+            <div class="container mx-auto max-lg:max-w-none pt-6 pb-[max(1.5rem,var(--safe-bottom))] sm:pb-[max(3rem,var(--safe-bottom))] pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))] sm:pl-[max(2rem,var(--safe-left))] sm:pr-[max(2rem,var(--safe-right))]">
+              {% if request.user.is_superuser and RELEASE_TAG %}
+                {% include "users/components/update_banner.html" %}
+              {% endif %}
               {% block content %}
               {% endblock content %}
             </div>
@@ -659,6 +592,8 @@
          aria-atomic="true">
       <div class="w-full max-w-xl px-4 space-y-2 pointer-events-auto"></div>
     </div>
+
+    <script src="{% static 'js/libraries/sortablejs-1.15.3.min.js' %}"></script>
 
     {% block js %}
     {% endblock js %}
@@ -831,6 +766,51 @@
     </script>
 
     <script>
+      // A transient database conflict must not turn a fragment into an error page.
+      if (!window.__floppyDatabaseRetryBound) {
+        window.__floppyDatabaseRetryBound = true;
+        const attempts = new WeakMap();
+
+        document.body.addEventListener("htmx:responseError", (event) => {
+          const xhr = event.detail.xhr;
+          const config = event.detail.requestConfig || {};
+          if (!xhr || xhr.getResponseHeader("X-Floppy-Transient-DB") !== "contention"
+              || String(config.verb || "").toLowerCase() !== "get") return;
+
+          const target = event.detail.target;
+          if (!target || !target.isConnected) return;
+          const attempt = attempts.get(target) || 0;
+          attempts.set(target, attempt + 1);
+          if (!target.hasChildNodes()) {
+            const status = document.createElement("p");
+            status.setAttribute("role", "status");
+            status.textContent = gettext("Loading. Please wait…");
+            target.append(status);
+          }
+          const retryUrl = new URL(xhr.responseURL);
+          retryUrl.searchParams.delete("org.htmx.cache-buster");
+          retryUrl.searchParams.delete("cache_bust");
+          const url = retryUrl.toString();
+          const swap = event.detail.elt?.getAttribute("hx-swap") || "innerHTML";
+          const delay = Math.min(5000, 250 * 2 ** Math.min(attempt, 5));
+          setTimeout(() => {
+            if (!target.isConnected) return;
+            if (config.boosted) {
+              window.location.replace(url);
+            } else {
+              htmx.ajax("GET", url, { target, swap });
+            }
+          }, delay);
+        });
+
+        document.body.addEventListener("htmx:afterSwap", (event) => {
+          if (event.detail.target) attempts.delete(event.detail.target);
+        });
+        try { sessionStorage.removeItem("floppy-db-retry:" + location.href); } catch (error) { /* storage disabled */ }
+      }
+    </script>
+
+    <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
           navigator.serviceWorker
@@ -849,10 +829,18 @@
     <script src="{% static 'js/dateTimePicker.js' %}{% get_static_file_mtime 'js/dateTimePicker.js' %}"></script>
     <script src="{% static 'js/sessionHistory.js' %}{% get_static_file_mtime 'js/sessionHistory.js' %}"></script>
     <script src="{% static 'js/episodeBulkTrackForm.js' %}{% get_static_file_mtime 'js/episodeBulkTrackForm.js' %}"></script>
+    <script src="{% static 'js/episodeOrderReview.js' %}{% get_static_file_mtime 'js/episodeOrderReview.js' %}"></script>
+    <script src="{% static 'js/matchFixReview.js' %}{% get_static_file_mtime 'js/matchFixReview.js' %}"></script>
     <script src="{% static 'js/bulkSelection.js' %}{% get_static_file_mtime 'js/bulkSelection.js' %}"></script>
+    <script src="{% static 'js/libraryFilterState.js' %}{% get_static_file_mtime 'js/libraryFilterState.js' %}"></script>
+    <script src="{% static 'js/savedViews.js' %}{% get_static_file_mtime 'js/savedViews.js' %}"></script>
     <script src="{% static 'js/collectionCustomFields.js' %}{% get_static_file_mtime 'js/collectionCustomFields.js' %}"></script>
+    {# Loaded globally so a boosted Statistics body swap cannot run Alpine before these define its controller (#1667). #}
+    <script src="{% static 'js/stats-media-merge.js' %}{% get_static_file_mtime 'js/stats-media-merge.js' %}"></script>
+    <script src="{% static 'js/date-range.js' %}{% get_static_file_mtime 'js/date-range.js' %}"></script>
     <script src="{% static 'js/searchShortcut.js' %}{% get_static_file_mtime 'js/searchShortcut.js' %}"></script>
     <script src="{% static 'js/searchAutocomplete.js' %}{% get_static_file_mtime 'js/searchAutocomplete.js' %}"></script>
     <script src="{% static 'js/horizontal-scroll.js' %}{% get_static_file_mtime 'js/horizontal-scroll.js' %}"></script>
+    <script src="{% static 'js/keepPopupsOnScreen.js' %}{% get_static_file_mtime 'js/keepPopupsOnScreen.js' %}"></script>
   </body>
 </html>

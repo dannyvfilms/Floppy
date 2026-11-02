@@ -20,6 +20,7 @@ from django.db import connection, reset_queries
 from django.test import RequestFactory, TestCase, tag
 from django.test.utils import override_settings
 
+from app.media_list_filters import media_list_entries_for_items
 from app.models import (
     BasicMedia,
     Item,
@@ -393,31 +394,24 @@ class MaterializationWasteTests(TestCase):
         with override_settings(DEBUG=True):
             reset_queries()
             start = time.perf_counter()
-            with patch.object(
-                BasicMedia.objects,
-                "get_media_list",
-                wraps=BasicMedia.objects.get_media_list,
-            ) as get_media_list:
+            with patch(
+                "app.media_list_views.media_list_entries_for_items",
+                wraps=media_list_entries_for_items,
+            ) as hydrate:
                 response = self.client.get("/medialist/movie", follow=True)
             elapsed_ms = (time.perf_counter() - start) * 1000
             queries = connection.queries[:]
 
         sql_ms = sum(float(q["time"]) for q in queries) * 1000
-        sql_calls = [
-            call
-            for call in get_media_list.call_args_list
-            if call.kwargs.get("sql_limit") is not None
-        ]
+        hydrated = [len(call.args[1]) for call in hydrate.call_args_list]
         print("\n[PERF] SQL-first pagination (1000 items, page 1 of 32):")
         print(f"  Wall-clock:   {elapsed_ms:.0f}ms")
         print(f"  SQL time:     {sql_ms:.0f}ms")
         print(f"  Python time:  {elapsed_ms - sql_ms:.0f}ms")
-        print(f"  SQL-paginated calls: {len(sql_calls)}")
+        print(f"  Items hydrated: {hydrated}")
         self.assertEqual(response.context["media_list"].paginator.count, 1000)
         self.assertEqual(len(response.context["media_list"].object_list), 32)
-        self.assertTrue(sql_calls)
-        self.assertEqual(sql_calls[0].kwargs["sql_limit"], 32)
-        self.assertEqual(sql_calls[0].kwargs["sql_offset"], 0)
+        self.assertEqual(hydrated, [32])
         self.assertTrue(
             any("LIMIT 32" in query["sql"].upper() for query in queries),
             "the visible tracker query should contain the SQL page limit",
@@ -428,22 +422,12 @@ class MaterializationWasteTests(TestCase):
 
         with override_settings(DEBUG=True):
             reset_queries()
-            with patch.object(
-                BasicMedia.objects,
-                "get_media_list",
-                wraps=BasicMedia.objects.get_media_list,
-            ) as get_media_list:
-                second_response = self.client.get(
-                    "/medialist/movie?page=2",
-                    follow=True,
-                )
+            second_response = self.client.get(
+                "/medialist/movie?page=2",
+                follow=True,
+            )
             second_queries = connection.queries[:]
 
-        second_sql_calls = [
-            call
-            for call in get_media_list.call_args_list
-            if call.kwargs.get("sql_limit") is not None
-        ]
         self.assertEqual(
             len(second_response.context["media_list"].object_list),
             32,
@@ -454,8 +438,6 @@ class MaterializationWasteTests(TestCase):
                 for entry in second_response.context["media_list"].object_list
             )
         )
-        self.assertTrue(second_sql_calls)
-        self.assertEqual(second_sql_calls[0].kwargs["sql_offset"], 32)
         self.assertTrue(
             any("OFFSET 32" in query["sql"].upper() for query in second_queries),
             "the second page should advance the SQL offset",

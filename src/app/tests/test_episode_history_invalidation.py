@@ -174,6 +174,32 @@ class EpisodeHistoryInvalidationTests(TransactionTestCase):
         self.assertIsNone(cache.get(new_key))
         self._assert_current_history()
 
+    def test_reopened_episode_moves_to_the_day_it_started(self):
+        """An open play is listed on its start day, like a movie (issue #1278)."""
+        old_key, new_key, _old_payload, _new_payload = self._warm_old_and_new_days()
+
+        self.episode.status = Status.IN_PROGRESS.value
+        self.episode.end_date = None
+        self.episode.start_date = self.new_date
+        self.episode.save(update_fields=["status", "end_date", "start_date"])
+
+        self.assertIsNone(cache.get(old_key))
+        self.assertIsNone(cache.get(new_key))
+        self._assert_current_history()
+        history_days, _meta = history_cache.get_month_history(
+            self.user,
+            self.new_date.year,
+            self.new_date.month,
+            logging_style_override=self.logging_style,
+        )
+        statuses = [
+            entry.get("status")
+            for day in history_days
+            for entry in day["entries"]
+            if entry["instance_id"] == self.episode.id
+        ]
+        self.assertEqual(statuses, [Status.IN_PROGRESS.value])
+
     def test_episode_invalidation_runs_only_after_outer_transaction_commits(self):
         old_key, new_key, old_payload, new_payload = self._warm_old_and_new_days()
 

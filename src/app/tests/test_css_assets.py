@@ -103,3 +103,67 @@ class IconSizingContractTests(SimpleTestCase):
             "Inline <svg> needs a width/height attribute or a w-/h-/size- "
             f"class or it fills its container on iOS: {unsized}",
         )
+
+
+class PhoneLayoutCssContractTests(SimpleTestCase):
+    """Phone and unfolded-phone rules that only exist in CSS.
+
+    There is no browser in CI, so these pin the rules a simulator pass asked for.
+    Each pattern must be in input.css and in the committed main.css, so editing
+    the source without rebuilding the output fails here too.
+    """
+
+    RULES = {
+        "hero logo centres on the content box, not the full-bleed hero": (
+            r"left: calc\(50% \+ \(var\(--hero-gutter-l\) - var\(--hero-gutter-r\)\) / 2\)"
+        ),
+        "phones share card widths in either orientation": (
+            r"\(max-width: 600px\), \(orientation: landscape\) and "
+            r"\(pointer: coarse\) and \(max-width: 1000px\) and "
+            r"\(max-height: 720px\)"
+        ),
+        "compact cards keep the narrow phone size": r"--card-cap: 6\.75rem",
+        "comfortable cards keep a fixed size": r"--card-cap: 10\.5rem",
+        "grid tracks are fixed at the cap, not stretched with 1fr": (
+            r"repeat\(auto-fill, min\(calc\([^;]*var\(--card-cap\)\)\) !important"
+        ),
+        "rating chips sit below the action row on phones": (
+            r'"actions actions"\s+"chips chips"\s+"synopsis synopsis"'
+        ),
+        "chip row fades only on the side that has more to scroll to": (
+            r"\.detail-score-card-row--fade-left \{\s+--row-fade-left: transparent"
+        ),
+        "phone chip cards only reveal on hover where hover exists": (
+            r"@media \(hover: hover\) \{\s+:is\(\.detail-carousel-grid, \.detail-flat-top\) "
+            r"\.detail-provider-score-card\.group:has\(\.detail-provider-score-card__prompt\):hover"
+        ),
+        "phone chip cards only open a third line when they have a graph prompt": (
+            r"\.detail-provider-score-card\.group:has\(\.detail-provider-score-card__prompt\):"
+            r"focus-within \.detail-provider-score-card__graph"
+        ),
+        "unfolded portrait keeps the poster beside the info": (
+            r"@media \(min-width: 600px\) and \(max-width: 767\.98px\)"
+        ),
+        "phone hero actions stack above the chips so the links popup is not see-through": (
+            r"\.detail-carousel-grid:has\(\.detail-mobile-hero\) "
+            r"\.detail-carousel-grid__actions \{\s+z-index: 3;"
+        ),
+    }
+
+    def test_rules_are_in_source_and_build(self):
+        css_dir = Path(settings.BASE_DIR) / "static" / "css"
+        for name in ("input.css", "main.css"):
+            css = (css_dir / name).read_text(encoding="utf-8")
+            for rule, pattern in self.RULES.items():
+                self.assertRegex(css, pattern, f"{name}: {rule}")
+
+    def test_hover_reveal_is_never_unconditional(self):
+        """Chips with no series graph (IGDB, MAL, OpenCritic) must not move on hover."""
+        css_dir = Path(settings.BASE_DIR) / "static" / "css"
+        for name in ("input.css", "main.css"):
+            css = (css_dir / name).read_text(encoding="utf-8")
+            self.assertNotRegex(
+                css,
+                r"\.detail-provider-score-card\.group:(hover|focus-within)",
+                f"{name}: a hover rule on the chip is missing the graph-prompt guard",
+            )

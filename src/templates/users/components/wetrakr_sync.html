@@ -1,0 +1,115 @@
+{% load i18n %}
+{# Body of the WeTrakr modal; the shell is outbound_service_modal.html. #}
+<p class="text-sm text-[var(--color-text-muted)]">
+  {% translate "Send the movies and episodes you watch, your statuses and your ratings to WeTrakr. Each play keeps the date you watched it. Imports are never sent on their own." %}
+</p>
+{% with account=wetrakr_sync.account %}
+  {% if provider_tab == "activity" %}
+    {% include "users/components/outbound_service_activity.html" with counts=wetrakr_sync.counts recent=wetrakr_sync.recent last_flushed=wetrakr_sync.binding.last_flushed_at %}
+  {% else %}
+  {% if account.is_pending %}
+    {% if not provider_tab or provider_tab == "connection" %}
+    <div class="rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 space-y-2"
+         x-data="{
+           interval: {{ account.device_interval }},
+           async tick() {
+             try {
+               const response = await fetch('{% url 'wetrakr_poll' %}', {method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'}});
+               const data = await response.json();
+               if (data.state !== 'pending') { window.location.reload(); return; }
+               this.interval = data.interval || this.interval;
+             } catch (error) { /* keep waiting */ }
+             setTimeout(() => this.tick(), this.interval * 1000);
+           }
+         }"
+         x-init="setTimeout(() => tick(), interval * 1000)">
+      <p class="text-sm text-[var(--color-text)] font-medium">{% translate "Open WeTrakr and enter this code to approve Floppy:" %}</p>
+      <p class="text-2xl font-mono tracking-widest text-[var(--color-text)]">{{ account.user_code }}</p>
+      <p class="text-sm"><a href="{{ account.verification_url }}" target="_blank" rel="noopener noreferrer" class="text-[var(--color-link)] hover:underline">{{ account.verification_url }}</a></p>
+      <p class="text-xs text-[var(--color-text-muted)]">{% translate "This page connects on its own once you approve." %}</p>
+      <form method="post" action="{% url 'wetrakr_cancel' %}">
+        {% csrf_token %}
+        <button type="submit" class="text-sm text-[var(--color-link)] hover:underline cursor-pointer">{% translate "Cancel" %}</button>
+      </form>
+    </div>
+    {% else %}
+      <p class="text-sm"><a class="text-[var(--color-link)] underline" href="{% url 'provider_detail' 'wetrakr' %}?tab=connection">{% translate "Finish authorizing WeTrakr on the Connection tab." %}</a></p>
+    {% endif %}
+  {% elif account.is_connected or account.connection_broken and account.refresh_token %}
+    {% if account.connection_broken %}
+      <div class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-[var(--color-warning-text)]">{% translate "WeTrakr rejected your login. Disconnect and connect again." %}</div>
+    {% elif account.last_error_message %}
+      <div class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-[var(--color-warning-text)]">{{ account.last_error_message }}</div>
+    {% endif %}
+    {% if not provider_tab or provider_tab == "sync" %}
+    <form method="post" action="{% url 'wetrakr_settings' %}" class="space-y-2">
+      {% csrf_token %}
+      <label class="flex items-center gap-2 text-sm text-[var(--color-text)]">
+        <input type="checkbox" name="plays" {% if wetrakr_sync.enabled.plays %}checked{% endif %}>
+        {% translate "Send movies and episodes I watch" %}
+      </label>
+      <label class="flex items-center gap-2 text-sm text-[var(--color-text)] pl-6">
+        <input type="checkbox" name="removals" {% if wetrakr_sync.enabled.removals %}checked{% endif %}>
+        {% translate "Remove a play when I delete it here" %}
+      </label>
+      <label class="flex items-center gap-2 text-sm text-[var(--color-text)]">
+        <input type="checkbox" name="statuses" {% if wetrakr_sync.enabled.statuses %}checked{% endif %}>
+        {% translate "Send Planning, Paused and Dropped" %}
+      </label>
+      <label class="flex items-center gap-2 text-sm text-[var(--color-text)]">
+        <input type="checkbox" name="ratings" {% if wetrakr_sync.enabled.ratings %}checked{% endif %}>
+        {% translate "Send my movie and show ratings" %}
+      </label>
+      <div>
+        <label class="block text-sm text-[var(--color-text-muted)] mb-2" for="wetrakr-schedule">{% translate "Send" %}</label>
+        <select id="wetrakr-schedule" name="schedule" class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600">
+          {% for value, label in wetrakr_sync.schedules %}
+            <option value="{{ value }}" {% if wetrakr_sync.binding.delivery_schedule == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <p class="text-xs text-[var(--color-text-muted)]">{% translate "WeTrakr works out Watching and Completed itself from your plays." %}</p>
+      <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm cursor-pointer">{% translate "Save" %}</button>
+    </form>
+    {% if wetrakr_sync.any_enabled %}
+      <form method="post" action="{% url 'wetrakr_export' %}" class="space-y-2"
+            x-data
+            @submit="if (!confirm('{% blocktranslate with plays=wetrakr_sync.preview.plays statuses=wetrakr_sync.preview.statuses %}Send {{ plays }} dated plays and {{ statuses }} statuses to WeTrakr?{% endblocktranslate %}')) $event.preventDefault()">
+        {% csrf_token %}
+        <p class="text-xs text-[var(--color-text-muted)]">
+          {% blocktranslate with plays=wetrakr_sync.preview.plays statuses=wetrakr_sync.preview.statuses %}Send your existing library once: {{ plays }} dated plays and {{ statuses }} statuses, plus your ratings. It shows on WeTrakr with the dates you watched.{% endblocktranslate %}
+          {% if wetrakr_sync.preview.undated %}
+            {% blocktranslate count undated=wetrakr_sync.preview.undated %}{{ undated }} play has no date and is left out.{% plural %}{{ undated }} plays have no date and are left out.{% endblocktranslate %}
+          {% endif %}
+        </p>
+        <button type="submit" class="w-full px-4 py-2 rounded-lg text-sm bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] cursor-pointer">{% translate "Send existing library" %}</button>
+      </form>
+    {% endif %}
+    {% endif %}
+    {% if not provider_tab or provider_tab == "activity" %}
+      {% include "users/components/outbound_service_activity.html" with counts=wetrakr_sync.counts recent=wetrakr_sync.recent last_flushed=wetrakr_sync.binding.last_flushed_at %}
+    {% endif %}
+    {% if not provider_tab or provider_tab == "connection" %}
+    <form method="post" action="{% url 'wetrakr_disconnect' %}">
+      {% csrf_token %}
+      <button type="submit" class="text-sm text-[var(--color-link)] hover:underline cursor-pointer">{% translate "Disconnect WeTrakr" %}</button>
+    </form>
+    {% endif %}
+  {% elif wetrakr_sync.has_key %}
+    {% if not provider_tab or provider_tab == "connection" %}
+    <form method="post" action="{% url 'wetrakr_connect' %}">
+      {% csrf_token %}
+      <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm cursor-pointer">{% translate "Connect WeTrakr" %}</button>
+    </form>
+    {% else %}
+      <p class="text-sm"><a class="text-[var(--color-link)] underline" href="{% url 'provider_detail' 'wetrakr' %}?tab=connection">{% translate "Connect WeTrakr to use outbound sync." %}</a></p>
+    {% endif %}
+  {% else %}
+    <div class="rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 text-xs text-gray-300">
+      {% translate "WeTrakr gives out app keys on request. Once you have one, add it under" %}
+      <a href="{% url 'provider_detail' 'wetrakr' %}?tab=connection" class="text-[var(--color-link)] hover:underline">{% translate "Connection credentials" %}</a>
+      {% translate "and come back to connect." %}
+    </div>
+  {% endif %}
+  {% endif %}
+{% endwith %}

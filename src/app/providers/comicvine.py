@@ -312,9 +312,11 @@ def get_people_full(response):
     return people_full
 
 
-def get_volume_issues(volume_id, limit=100, user=None):
-    """Get the list of issues for a comic volume, sorted by issue number."""
+def get_volume_issues(volume_id, limit=100, user=None, offset=0):
+    """Get one page of a comic volume's issues, sorted by issue number."""
     cache_key = f"{Sources.COMICVINE.value}_volume_{volume_id}_issues"
+    if offset:
+        cache_key = f"{cache_key}_offset_{offset}"
     data = cache.get(cache_key)
     cache_hit = data is not None
 
@@ -326,6 +328,7 @@ def get_volume_issues(volume_id, limit=100, user=None):
             "filter": f"volume:{volume_id}",
             "sort": "issue_number:asc",
             "limit": limit,
+            "offset": offset,
         }
 
         try:

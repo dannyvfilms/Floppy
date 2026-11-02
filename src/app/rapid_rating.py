@@ -27,7 +27,11 @@ def _safe_int(value):
 def _display_factor(user):
     """Convert stored 10-point score arithmetic to the user's display scale."""
     try:
-        return Decimal(1) / 2 if int(user.rating_scale_max) == RATING_SCALE_FIVE else Decimal(1)
+        return (
+            Decimal(1) / 2
+            if int(user.rating_scale_max) == RATING_SCALE_FIVE
+            else Decimal(1)
+        )
     except (TypeError, ValueError, AttributeError):
         return Decimal(1)
 
@@ -215,17 +219,14 @@ def _tv_filter_options(user, selected_show_id):
 
 
 def _tv_queue(user, selected_show_id, selected_season_id, rating_state, order):
-    qs = (
-        Episode.objects.filter(
-            related_season__user=user,
-            related_season__related_tv__user=user,
-            status="Completed",
-        )
-        .select_related(
-            "item",
-            "related_season__item",
-            "related_season__related_tv__item",
-        )
+    qs = Episode.objects.filter(
+        related_season__user=user,
+        related_season__related_tv__user=user,
+        status="Completed",
+    ).select_related(
+        "item",
+        "related_season__item",
+        "related_season__related_tv__item",
     )
 
     if selected_show_id:
@@ -342,10 +343,13 @@ def rapid_rating(request):
     selected_show_id = _safe_int(request.GET.get("show"))
     selected_season_id = _safe_int(request.GET.get("season"))
 
-    if selected_show_id and not TV.objects.filter(
-        pk=selected_show_id,
-        user=request.user,
-    ).exists():
+    if (
+        selected_show_id
+        and not TV.objects.filter(
+            pk=selected_show_id,
+            user=request.user,
+        ).exists()
+    ):
         selected_show_id = None
         selected_season_id = None
 

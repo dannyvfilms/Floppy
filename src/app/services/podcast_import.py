@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 
 from app.log_safety import exception_summary
-from app.models import PodcastShow
+from app.models import Item, MediaTypes, PodcastEpisode, PodcastShow, Sources
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,158 @@ def find_existing_show(itunes_id: str, rss_feed_url: str) -> PodcastShow | None:
         if existing:
             return existing
     return PodcastShow.objects.filter(podcast_uuid=f"itunes:{itunes_id}").first()
+
+
+def resolve_show_for_media_id(
+    media_id: str,
+    source: str = Sources.POCKETCASTS.value,
+) -> PodcastShow | None:
+    """Return the show a podcast route's media_id names, importing it if needed.
+
+    Podcast search results carry the provider's identifier: an iTunes
+    collection id for Pocket Casts, or the RSS feed URL for GPodder. Imported
+    shows are stored under their own ``podcast_uuid``, so both forms have to
+    resolve to the same show before the track and list modals can act on it.
+    """
+    media_id = str(media_id)
+    show = PodcastShow.objects.filter(podcast_uuid=media_id).first()
+    if show is not None:
+        return show
+    if PodcastEpisode.objects.filter(
+        episode_uuid=media_id,
+        show__source=source,
+    ).exists():
+        return None
+    if source == Sources.POCKETCASTS.value and media_id.isdigit():
+        return import_show_from_itunes_id(media_id)
+    if source == Sources.GPODDER.value:
+        return import_show_from_feed_url(media_id)
+    return None
+
+
+def _stored_show_for_search_id(media_id: str) -> PodcastShow | None:
+    """Return the stored show a raw search id names, without any network call."""
+    from integrations.gpodder_api import normalize_external_url
+    from integrations.imports.gpodder import show_key_for_feed
+
+    if media_id.isdigit():
+        return PodcastShow.objects.filter(podcast_uuid=f"itunes:{media_id}").first()
+    normalized = normalize_external_url(media_id) or media_id
+    return (
+        PodcastShow.objects.filter(rss_feed_url__in={media_id, normalized}).first()
+        or PodcastShow.objects.filter(
+            podcast_uuid=show_key_for_feed(normalized),
+        ).first()
+    )
+
+
+def merge_stray_podcast_items(items=None) -> int:
+    """Fold show Items filed under a raw search id into the show's own Item.
+
+    Quick-add once stored a searched podcast under the provider id (an iTunes
+    id or feed URL) instead of the show's ``podcast_uuid``, leaving a second
+    Item that carried the list entry but none of the show's tracking. Only
+    strays whose show is already stored are repaired, so this never touches
+    the network; returns how many were merged or re-keyed.
+    """
+    from app.services import item_merge
+
+    strays = items
+    if strays is None:
+        strays = Item.objects.filter(
+            media_type=MediaTypes.PODCAST.value,
+            episode_number__isnull=True,
+            season_number__isnull=True,
+        )
+    repaired = 0
+    for stray in list(strays):
+        media_id = str(stray.media_id)
+        if not (media_id.isdigit() or media_id.startswith(("http://", "https://"))):
+            continue
+        if PodcastShow.objects.filter(podcast_uuid=media_id).exists():
+            continue
+        show = _stored_show_for_search_id(media_id)
+        if show is None:
+            continue
+        keeper = (
+            Item.objects.filter(
+                media_id=show.podcast_uuid,
+                media_type=MediaTypes.PODCAST.value,
+                source=stray.source,
+                episode_number__isnull=True,
+                season_number__isnull=True,
+            )
+            .exclude(pk=stray.pk)
+            .first()
+        )
+        if keeper is not None:
+            item_merge.merge_item(stray, keeper)
+        else:
+            stray.media_id = show.podcast_uuid
+            stray.save(update_fields=["media_id"])
+        repaired += 1
+    return repaired
+
+
+def import_show_from_feed_url(feed_url: str) -> PodcastShow:
+    """Return the GPodder show for a feed URL, importing it if needed.
+
+    Public GPodder search results identify a podcast by its RSS feed rather
+    than an id Floppy already stores, so the feed is the only thing available
+    to look up or create the show with.
+    """
+    from django.utils.text import slugify
+
+    from app.fork_services_podcast import refresh_show_episodes_from_rss
+    from integrations import podcast_rss
+    from integrations.gpodder_api import normalize_external_url
+    from integrations.imports.gpodder import show_key_for_feed
+
+    feed_url = (feed_url or "").strip()
+    if not feed_url:
+        no_feed_error = "Could not find an RSS feed for this podcast."
+        raise PodcastImportError(no_feed_error)
+
+    normalized_feed = normalize_external_url(feed_url) or feed_url
+    show = PodcastShow.objects.filter(rss_feed_url=feed_url).first()
+    if show is None and normalized_feed != feed_url:
+        show = PodcastShow.objects.filter(rss_feed_url=normalized_feed).first()
+    if show is None:
+        show = PodcastShow.objects.filter(
+            podcast_uuid=show_key_for_feed(normalized_feed),
+        ).first()
+    if show is not None:
+        return show
+
+    metadata, episodes_data = podcast_rss.fetch_feed_from_rss(feed_url)
+    if not metadata and not episodes_data:
+        read_error = f"Could not read the RSS feed for {feed_url}."
+        raise PodcastImportError(read_error)
+
+    title = metadata.get("title") or "Unknown Podcast"
+    show = PodcastShow.objects.create(
+        podcast_uuid=show_key_for_feed(normalized_feed),
+        source=Sources.GPODDER.value,
+        title=title[:255],
+        slug=slugify(title)[:255],
+        author=(metadata.get("author") or "")[:255],
+        image=metadata.get("image") or "",
+        description=metadata.get("description") or "",
+        language=(metadata.get("language") or "")[:10],
+        rss_feed_url=feed_url,
+        website_url=metadata.get("website_url") or "",
+    )
+
+    try:
+        refresh_show_episodes_from_rss(show, episodes_data)
+    except Exception as e:
+        logger.warning(
+            "Failed to import episodes from RSS feed for %s: %s",
+            show.title,
+            exception_summary(e),
+        )
+
+    return show
 
 
 def import_show_from_itunes_id(itunes_id: str) -> PodcastShow:

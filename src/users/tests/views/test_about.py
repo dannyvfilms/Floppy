@@ -43,6 +43,18 @@ class AboutViewTests(TestCase):
                 self.assertEqual(icon.get("aria-hidden"), "true")
                 self.assertEqual(icon.get("focusable"), "false")
 
+    def test_sponsor_link_is_attributed_and_leaves_no_paywall_doubt(self):
+        response = self.client.get(reverse("about"))
+
+        soup = BeautifulSoup(response.content, "html.parser")
+        link = soup.find(
+            "a",
+            href=lambda h: h and h.endswith("github.com/sponsors/dannyvfilms?metadata_source=app-about"),
+        )
+        self.assertIsNotNone(link)
+        self.assertEqual(link["rel"], ["noopener", "noreferrer"])
+        self.assertContains(response, "no paid features")
+
     def test_about_documents_installing_floppy_as_a_pwa(self):
         response = self.client.get(reverse("about"))
 
@@ -132,3 +144,20 @@ class AboutViewTests(TestCase):
         for wrapper in wrappers:
             with self.subTest(classes=wrapper.get("class")):
                 self.assertIn("relative", wrapper.get("class"))
+
+    def test_about_invites_sponsorship_with_a_subtle_inline_link(self):
+        response = self.client.get(reverse("about"))
+
+        soup = BeautifulSoup(response.content, "html.parser")
+        link = next(
+            link
+            for link in soup.find_all("a")
+            if link.get("href")
+            == "https://github.com/sponsors/dannyvfilms?metadata_source=app-about-description"
+        )
+        self.assertEqual(link.get("rel"), ["noopener", "noreferrer"])
+        self.assertIn(
+            "Floppy is free and supported by users like you",
+            link.parent.get_text(" ", strip=True),
+        )
+        self.assertNotIn("began as a fork", response.content.decode())

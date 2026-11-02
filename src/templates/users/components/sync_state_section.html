@@ -1,4 +1,4 @@
-{% load user_tags %}
+{% load i18n user_tags %}
 {% comment %}
 Watched-state synchronization settings, one card per connection.
 
@@ -14,10 +14,9 @@ Two things this section is careful about:
      x-show="activeIntegration === 'all' || activeIntegration === 'sync'">
   <div class="flex items-start justify-between mb-4">
     <div>
-      <h2 class="text-xl font-semibold text-[var(--color-text)]">Watched-state sync</h2>
+      <h2 class="text-xl font-semibold text-[var(--color-text)]">{% translate "Watched-state sync" %}</h2>
       <p class="text-sm text-[var(--color-text-muted)] mt-1">
-        Keep completion state in step with your media servers. History imports
-        are configured separately, per connection.
+        {% blocktranslate trimmed %}Keep completion state in step with your media servers. History imports are configured separately, per connection.{% endblocktranslate %}
       </p>
     </div>
   </div>
@@ -70,9 +69,10 @@ Two things this section is careful about:
     </div>
   {% endif %}
 
+  {% if not activity_conflicts_only %}
   {% if not sync_bindings %}
     <p class="text-sm text-[var(--color-text-muted)]">
-      No connections yet. Connect a media server above and it will appear here.
+      {% translate "No connections yet. Connect a media server above and it will appear here." %}
     </p>
   {% else %}
     <div class="space-y-4">
@@ -85,7 +85,7 @@ Two things this section is careful about:
                 {% if row.kill_switch %}
                   <span class="px-2 py-0.5 text-xs rounded bg-amber-500/20 text-[var(--color-warning-text)]">Paused</span>
                 {% elif row.is_operational %}
-                  <span class="px-2 py-0.5 text-xs rounded bg-emerald-500/10 text-emerald-300">Active</span>
+                  <span class="px-2 py-0.5 text-xs rounded bg-emerald-500/10" style="color: var(--color-status-clean)">Active</span>
                 {% else %}
                   <span class="px-2 py-0.5 text-xs rounded bg-[var(--color-surface-muted)] text-[var(--color-text-secondary)]">
                     {{ row.binding.get_status_display }}
@@ -170,7 +170,7 @@ Two things this section is careful about:
                   <span class="text-[var(--color-text-muted)]">{{ capability.label }}</span>
                   <span class="text-[var(--color-text-muted)]">— not verified for this provider yet</span>
                 {% elif capability.approved %}
-                  <span class="text-emerald-300">On</span>
+                  <span style="color: var(--color-status-clean)">On</span>
                   <span class="text-[var(--color-text-secondary)]">{{ capability.label }}</span>
                 {% elif capability.supported %}
                   <span class="text-[var(--color-text-muted)]">Off</span>
@@ -186,4 +186,5 @@ Two things this section is careful about:
       {% endfor %}
     </div>
   {% endif %}
+{% endif %}
 </div>

@@ -5,11 +5,13 @@ from datetime import datetime
 
 from django.apps import apps
 from django.utils import timezone
-from django.utils.dateparse import parse_date
+from django.utils.dateparse import parse_date, parse_datetime
 
 import app
 from app.models import MediaTypes, Sources, Status
+from app.providers import hardcover as hardcover_provider
 from app.providers import services
+from app.services.synced_status import keep_held_status
 from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
@@ -17,12 +19,26 @@ from integrations.imports.helpers import MediaImportError, MediaImportUnexpected
 logger = logging.getLogger(__name__)
 
 RATING_HALF_SCALE_MAX = 5
+ENTRY_SOURCE = "hardcover"
+# Hardcover's user_books.status_id; 6 (Ignored) is deliberately not tracked.
+STATUS_BY_ID = {
+    1: Status.PLANNING.value,
+    2: Status.IN_PROGRESS.value,
+    3: Status.COMPLETED.value,
+    4: Status.PAUSED.value,
+    5: Status.DROPPED.value,
+}
 
 
 def importer(file, user, mode):
     """Import media from CSV file using the class-based importer."""
     csv_importer = HardcoverImporter(file, user, mode)
     return csv_importer.import_data()
+
+
+def sync_importer(identifier, user, mode):
+    """Sync the user's Hardcover library through Hardcover's official API."""
+    return HardcoverAccountSync(user, mode).import_data()
 
 
 class HardcoverImporter:
@@ -203,6 +219,7 @@ class HardcoverImporter:
             "want to read": Status.PLANNING.value,
             "currently reading": Status.IN_PROGRESS.value,
             "read": Status.COMPLETED.value,
+            "paused": Status.PAUSED.value,
             "did not finish": Status.DROPPED.value,
         }
 
@@ -278,3 +295,127 @@ class HardcoverImporter:
         instance._history_date = most_recent_date or timezone.now()
 
         return instance
+
+
+class HardcoverAccountSync(HardcoverImporter):
+    """Keep books in step with the user's Hardcover library (official API).
+
+    Books Floppy doesn't track yet are always added. Books it already tracks
+    change only in "overwrite" mode, where Hardcover wins for status, rating,
+    dates and progress, except that a Paused, Dropped or Completed status chosen
+    in Floppy stays until Hardcover shows later activity (``keep_held_status``).
+    Notes are only written when an entry is first created. Nothing is deleted.
+    """
+
+    def __init__(self, user, mode="new"):
+        """Initialize the sync for one user and import mode."""
+        super().__init__(None, user, mode)
+
+    def import_data(self):
+        """Fetch the Hardcover library and write every changed entry."""
+        try:
+            entries = hardcover_provider.fetch_user_books(self.user)
+        except services.ProviderAPIError as error:
+            msg = f"Could not read your Hardcover library: {error}"
+            raise MediaImportError(msg) from error
+
+        counts = defaultdict(int)
+        total = len(entries)
+        for i, entry in enumerate(entries, start=1):
+            import_progress.report(i, total, "Hardcover")
+            try:
+                self._sync_entry(entry, counts)
+            except services.ProviderAPIError:
+                self.warnings.append(
+                    f"Couldn't load Hardcover book {entry.get('book_id')}",
+                )
+                counts["skipped"] += 1
+        return dict(counts), "\n".join(dict.fromkeys(self.warnings))
+
+    def _sync_entry(self, entry, counts):
+        """Write one Hardcover library entry, counting the outcome."""
+        status = STATUS_BY_ID.get(entry.get("status_id"))
+        book_id = entry.get("book_id")
+        if status is None or not book_id:
+            return
+
+        item = self._item_for(str(book_id))
+        if item is None:
+            self.warnings.append(f"Couldn't load Hardcover book {book_id}")
+            counts["skipped"] += 1
+            return
+
+        model = app.models.Book
+        existing = model.objects.filter(user=self.user, item=item).first()
+        if existing and self.mode != "overwrite":
+            counts["unchanged"] += 1
+            return
+        defaults = keep_held_status(
+            existing,
+            self._entry_defaults(entry, status, existing),
+            parse_datetime(entry.get("updated_at") or ""),
+        )
+        if existing and all(
+            getattr(existing, field) == value for field, value in defaults.items()
+        ):
+            counts["unchanged"] += 1
+            return
+
+        notes = (entry.get("review_raw") or entry.get("private_notes") or "").strip()
+        model.objects.update_or_create(
+            user=self.user,
+            item=item,
+            defaults=defaults,
+            create_defaults={**defaults, "notes": notes, "entry_source": ENTRY_SOURCE},
+        )
+        counts[MediaTypes.BOOK.value] += 1
+        counts["updated" if existing else "created"] += 1
+
+    def _item_for(self, book_id):
+        """Return the Hardcover book item, loading its metadata when new."""
+        item = app.models.Item.objects.filter(
+            source=Sources.HARDCOVER.value,
+            media_type=MediaTypes.BOOK.value,
+            media_id=book_id,
+        ).first()
+        if item:
+            return item
+        book = self._resolve_book({"Hardcover Book ID": book_id}, Sources.HARDCOVER)
+        return self._create_or_update_item(book)[0] if book else None
+
+    def _entry_defaults(self, entry, status, existing):
+        """Work out the tracking fields Hardcover implies for one entry."""
+        reads = entry.get("user_book_reads") or []
+        held_progress = existing.progress if existing else 0
+        if status == Status.COMPLETED.value:
+            pages = int((entry.get("book") or {}).get("pages") or 0)
+            progress = pages or held_progress
+            end_date = self._parse_hardcover_date(entry.get("last_read_date")) or (
+                existing.end_date if existing else None
+            )
+        else:
+            read_pages = [
+                read["progress_pages"]
+                for read in reads
+                if read.get("progress_pages")
+            ]
+            progress = int(read_pages[-1]) if read_pages else held_progress
+            end_date = None
+
+        started = [
+            self._parse_hardcover_date(read.get("started_at")) for read in reads
+        ]
+        start_date = self._parse_hardcover_date(
+            entry.get("first_started_reading_date"),
+        ) or min((date for date in started if date), default=None)
+
+        defaults = {
+            "status": status,
+            "progress": progress,
+            "start_date": start_date or (existing.start_date if existing else None),
+            "end_date": end_date,
+        }
+        score = self._parse_rating(entry.get("rating"))
+        if score is not None:
+            defaults["score"] = score
+        return defaults

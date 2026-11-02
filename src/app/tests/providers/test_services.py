@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -82,15 +83,37 @@ class ServicesTests(TestCase):
         self.assertEqual(kwargs["data"], {"form_data": "value"})
         self.assertIn("timeout", kwargs)
 
+    @patch("app.providers.services.session.put")
+    def test_api_request_put(self, mock_put):
+        """Test the api_request function with PUT method."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": "test"}
+        mock_put.return_value = mock_response
+
+        result = services.api_request(
+            "TEST",
+            "PUT",
+            "https://example.com/api",
+            data={"form_data": "value"},
+        )
+
+        self.assertEqual(result, {"data": "test"})
+        mock_put.assert_called_once()
+        _, kwargs = mock_put.call_args
+        self.assertEqual(kwargs["url"], "https://example.com/api")
+        self.assertEqual(kwargs["data"], {"form_data": "value"})
+        self.assertIn("timeout", kwargs)
+
     def tearDown(self):
-        """Avoid leaking the tmdb proxy cache key between tests."""
+        """Avoid leaking the tmdb proxy cache keys between tests."""
         cache.delete("tmdb_proxy_url")
+        cache.delete(services.TMDB_PROXY_CACHE_KEY)
         super().tearDown()
 
     @patch("app.providers.services.session.get")
     def test_api_request_uses_configured_tmdb_proxy(self, mock_get):
-        """TMDB requests should route through a configured user's proxy URL."""
-        User.objects.create_user(
+        """TMDB requests should route through a superuser's proxy URL."""
+        User.objects.create_superuser(
             username="proxy-user",
             password="testpass123",
             tmdb_proxy_url=encrypt("socks5://127.0.0.1:1080"),
@@ -108,6 +131,57 @@ class ServicesTests(TestCase):
         )
 
     @patch("app.providers.services.session.get")
+    def test_api_request_ignores_non_superuser_tmdb_proxy(self, mock_get):
+        """A regular user's stored proxy must not route instance-wide traffic."""
+        User.objects.create_user(
+            username="member",
+            password="testpass123",
+            tmdb_proxy_url=encrypt("socks5://attacker:1080"),
+        )
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": "test"}
+        mock_get.return_value = mock_response
+
+        services.api_request(Sources.TMDB.value, "GET", "https://example.com/api")
+
+        _, kwargs = mock_get.call_args
+        self.assertNotIn("proxies", kwargs)
+
+    @patch("app.providers.services.session.get")
+    def test_api_request_ignores_pre_upgrade_cached_proxy(self, mock_get):
+        """A warm pre-policy cache entry must never become the effective proxy."""
+        User.objects.create_user(
+            username="member",
+            password="testpass123",
+            tmdb_proxy_url=encrypt("socks5://attacker:1080"),
+        )
+        cache.set("tmdb_proxy_url", "socks5://attacker:1080", 60)
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": "test"}
+        mock_get.return_value = mock_response
+
+        services.api_request(Sources.TMDB.value, "GET", "https://example.com/api")
+
+        _, kwargs = mock_get.call_args
+        self.assertNotIn("proxies", kwargs)
+        self.assertEqual(cache.get(services.TMDB_PROXY_CACHE_KEY), "")
+
+    def test_tmdb_proxy_prefers_lowest_pk_superuser(self):
+        """The selection is deterministic when several superusers set one."""
+        User.objects.create_superuser(
+            username="first-admin",
+            password="testpass123",
+            tmdb_proxy_url=encrypt("socks5://first:1080"),
+        )
+        User.objects.create_superuser(
+            username="second-admin",
+            password="testpass123",
+            tmdb_proxy_url=encrypt("socks5://second:1080"),
+        )
+
+        self.assertEqual(services._get_tmdb_proxy_url(), "socks5://first:1080")
+
+    @patch("app.providers.services.session.get")
     def test_api_request_omits_proxies_when_not_configured(self, mock_get):
         """No proxy should be applied when no user has one configured."""
         mock_response = MagicMock()
@@ -122,7 +196,7 @@ class ServicesTests(TestCase):
     @patch("app.providers.services.session.get")
     def test_api_request_only_proxies_tmdb_provider(self, mock_get):
         """Non-TMDB providers should not pick up the TMDB proxy setting."""
-        User.objects.create_user(
+        User.objects.create_superuser(
             username="proxy-user",
             password="testpass123",
             tmdb_proxy_url=encrypt("socks5://127.0.0.1:1080"),
@@ -153,14 +227,16 @@ class ServicesTests(TestCase):
         self.assertIsNone(cm.exception.status_code)
         self.assertIn("Could not reach", str(cm.exception))
 
-    @patch("app.providers.services.time.sleep")
     @patch("app.providers.services.session.get")
-    def test_api_request_retries_transient_http_errors(
-        self,
-        mock_get,
-        mock_sleep,
-    ):
+    def test_api_request_retries_transient_http_errors(self, mock_get):
         """Transient upstream 5xx responses should be retried before failing."""
+        # Swap the module's own `time` name, not the process-wide time.sleep,
+        # so sleeps from background threads are not counted.
+        fake_time = MagicMock(wraps=time)
+        mock_sleep = fake_time.sleep
+        patcher = patch("app.providers.services.time", fake_time)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         failed_response = MagicMock()
         failed_response.status_code = 502
         failed_response.headers = {}
@@ -424,6 +500,20 @@ class ServicesTests(TestCase):
 
         mock_anime.assert_called_once_with("1")
 
+    @patch("app.providers.mangabaka.manga")
+    def test_get_media_metadata_manga_mangabaka(self, mock_manga):
+        """Test the get_media_metadata function for manga from MangaBaka."""
+        mock_manga.return_value = {"title": "Test Manga"}
+
+        result = services.get_media_metadata(
+            MediaTypes.MANGA.value,
+            "1",
+            Sources.MANGABAKA.value,
+        )
+
+        self.assert_metadata_title_payload(result, "Test Manga")
+        mock_manga.assert_called_once_with("1")
+
     @patch("app.providers.mangaupdates.manga")
     def test_get_media_metadata_manga_mangaupdates(self, mock_manga):
         """Test the get_media_metadata function for manga from MangaUpdates."""
@@ -539,7 +629,9 @@ class ServicesTests(TestCase):
 
         self.assert_metadata_title_payload(result, "Test Season")
 
-        mock_tv_with_seasons.assert_called_once_with("1", [1], None)
+        mock_tv_with_seasons.assert_called_once_with(
+            "1", [1], None, missing_seasons=set()
+        )
 
     @patch("app.providers.tmdb.episode")
     def test_get_media_metadata_episode(self, mock_episode):
@@ -744,6 +836,53 @@ class ServicesTests(TestCase):
         self.assertEqual(result["details"]["show_title"], show.title)
         self.assertEqual(result["details"]["duration"], episode.duration)
 
+    @patch("app.services.podcast_import.import_show_from_itunes_id")
+    def test_get_media_metadata_podcast_itunes_search_id_resolves_show(
+        self, mock_import
+    ):
+        """Search results carry an iTunes id; resolve it to the show catalog row."""
+        show = PodcastShow.objects.create(
+            podcast_uuid="itunes:1532744254",
+            source=Sources.POCKETCASTS.value,
+            title="Sternstunde Philosophie",
+            author="SRF",
+            image="https://example.com/show.jpg",
+        )
+        mock_import.return_value = show
+
+        result = services.get_media_metadata(
+            MediaTypes.PODCAST.value,
+            "1532744254",
+            Sources.POCKETCASTS.value,
+        )
+
+        self.assertEqual(result["media_id"], show.podcast_uuid)
+        self.assertEqual(result["title"], show.title)
+        self.assertEqual(result["details"]["show_uuid"], show.podcast_uuid)
+        mock_import.assert_called_once_with("1532744254")
+
+    @patch("app.services.podcast_import.import_show_from_feed_url")
+    def test_get_media_metadata_gpodder_feed_url_resolves_show(self, mock_import):
+        """GPodder search results carry a feed URL; resolve it to the show row."""
+        show = PodcastShow.objects.create(
+            podcast_uuid="gp_show",
+            source=Sources.GPODDER.value,
+            title="Linux Outlaws",
+            rss_feed_url="https://example.com/linux.xml",
+        )
+        mock_import.return_value = show
+
+        result = services.get_media_metadata(
+            MediaTypes.PODCAST.value,
+            "https://example.com/linux.xml",
+            Sources.GPODDER.value,
+        )
+
+        self.assertEqual(result["media_id"], show.podcast_uuid)
+        self.assertEqual(result["title"], show.title)
+        self.assertEqual(result["details"]["show_uuid"], show.podcast_uuid)
+        mock_import.assert_called_once_with("https://example.com/linux.xml")
+
     def test_get_media_metadata_podcast_deleted_episode_is_not_found(self):
         """Deleted podcast episodes should not resolve as generic media."""
         show = PodcastShow.objects.create(
@@ -853,6 +992,19 @@ class ServicesTests(TestCase):
         self.assertEqual(context.exception.status_code, 404)
 
     @patch("app.providers.services.musicbrainz.recording")
+    def test_get_media_metadata_music_title_slug_is_not_requested(self, mock_recording):
+        """A long title-like id passed the old length check and earned a 400."""
+        with self.assertRaises(services.ProviderAPIError) as context:
+            services.get_media_metadata(
+                MediaTypes.MUSIC.value,
+                "the-lord-of-the-rings-the-fellowship-of-the-ring",
+                Sources.MUSICBRAINZ.value,
+            )
+
+        self.assertEqual(context.exception.status_code, 404)
+        mock_recording.assert_not_called()
+
+    @patch("app.providers.services.musicbrainz.recording")
     def test_get_media_metadata_music_provider_not_found_is_propagated(
         self,
         mock_recording,
@@ -925,6 +1077,21 @@ class ServicesTests(TestCase):
         self.assertEqual(result, {"results": []})
         mock_search.assert_called_once_with(MediaTypes.ANIME.value, "test", 1, None)
 
+    @patch("app.providers.mangabaka.search")
+    def test_search_manga_mangabaka(self, mock_search):
+        """Test the search function for manga from MangaBaka."""
+        mock_search.return_value = [{"title": "Test Manga"}]
+
+        result = services.search(
+            MediaTypes.MANGA.value,
+            "test",
+            1,
+            source=Sources.MANGABAKA.value,
+        )
+
+        self.assertEqual(result, [{"title": "Test Manga"}])
+        mock_search.assert_called_once_with("test", 1)
+
     @patch("app.providers.mangaupdates.search")
     def test_search_manga_mangaupdates(self, mock_search):
         """Test the search function for manga from MangaUpdates."""
@@ -982,6 +1149,22 @@ class ServicesTests(TestCase):
         result = services.search(MediaTypes.GAME.value, "test", 1)
 
         self.assertEqual(result, [{"title": "Test Game"}])
+
+        mock_search.assert_called_once_with("test", 1, user=None)
+
+    @patch("app.providers.gpodder.search")
+    def test_search_podcast_gpodder(self, mock_search):
+        """Test that the GPodder source dispatches to the GPodder provider."""
+        mock_search.return_value = {"results": [{"title": "Test Podcast"}]}
+
+        result = services.search(
+            MediaTypes.PODCAST.value,
+            "test",
+            1,
+            source=Sources.GPODDER.value,
+        )
+
+        self.assertEqual(result, {"results": [{"title": "Test Podcast"}]})
 
         mock_search.assert_called_once_with("test", 1)
 
@@ -1055,7 +1238,9 @@ class ServicesTests(TestCase):
         )
 
         self.assertEqual(result, [{"title": "Google result"}])
-        mock_google_search.assert_called_once_with("9780123456789", 1, language=None, user=None)
+        mock_google_search.assert_called_once_with(
+            "9780123456789", 1, language=None, user=None
+        )
         mock_hardcover_search.assert_not_called()
         mock_isbn_search.assert_not_called()
 

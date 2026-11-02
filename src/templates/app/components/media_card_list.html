@@ -9,10 +9,9 @@
   <div class="flex items-center p-4 gap-4">
     <div class="shrink-0 relative">
       <a href="{{ item|media_url }}" hx-boost="true">
-        <img alt="{{ resolved_item_title|default:title }}"
-             class="lazyload w-16 h-24 object-cover rounded shadow-md bg-[var(--color-surface-alt)]"
-             data-src="{{ item.image|image_url }}"
-             src="{{ IMG_NONE }}">
+        <img data-media-artwork loading="lazy" decoding="sync" alt="{{ resolved_item_title|default:title }}"
+             class="w-16 h-24 object-cover rounded shadow-md bg-[var(--color-surface-alt)]"
+             src="{{ item.image|image_url }}">
       </a>
     </div>
 
@@ -100,6 +99,7 @@
               </span>
             {% endif %}
           </h3>
+          {% card_lines item.media_type item %}
           {% if matched_title and matched_title != resolved_item_title|default:title %}
             <p class="text-xs text-[var(--color-text-muted)] mb-2 line-clamp-1" title="{% blocktranslate trimmed with value_1=matched_title %}Matched on {{ value_1 }}{% endblocktranslate %}">
               {% blocktranslate trimmed with value_1=matched_title %}Matched: {{ value_1 }}{% endblocktranslate %}
@@ -124,7 +124,7 @@
           <button class="p-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer"
                   title="{% translate "Add to tracker" %}"
                   hx-get="{% media_view_url 'track_modal' item %}"
-                  hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}", "instance_id": "{{ media.id }}"}'
+                  hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"{% if media %}, "instance_id": "{{ media.id }}"{% endif %}}'
                   hx-target="#{% component_id 'track' item media.id %}"
                   hx-trigger="click once"
                   @click="trackOpen = true">{% include "app/icons/edit.svg" with classes="w-4 h-4" %}</button>
@@ -167,7 +167,7 @@
        @keydown.escape.window="listsOpen = false"
        @mousedown.self="listsOpen = false"
        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-    <div class="w-96 max-h-[90vh] px-4 md:px-0 relative z-60">
+    <div class="w-96 max-h-[90dvh] px-4 md:px-0 relative z-60">
       <div id="{% component_id 'lists' item %}"></div>
     </div>
   </div>

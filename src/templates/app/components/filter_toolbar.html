@@ -113,11 +113,7 @@
       <div id="result-count"
            data-result-count
            class="result-count-badge result-count-desktop px-4 py-2 bg-[var(--color-surface)] rounded-md text-[var(--color-text-secondary)] text-sm font-semibold">
-        {% if media_list.paginator %}
-          {{ media_list.paginator.count }}
-        {% else %}
-          {{ media_list|length }}
-        {% endif %}
+        {{ result_count }}
       </div>
 
       <div class="ml-auto flex items-center gap-2 shrink-0">

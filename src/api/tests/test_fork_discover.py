@@ -2,7 +2,9 @@
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
 
-from app.models import CollectionEntry, DiscoverFeedback, MediaTypes
+from app.discover.schemas import CandidateItem, RowResult
+from app.models import CollectionEntry, DiscoverFeedback, MediaTypes, Sources
+from app.providers import services
 
 from .base import FloppyApiTestCase
 
@@ -86,6 +88,20 @@ class DiscoverTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, HTTP.ACCEPTED)
         mock_schedule.assert_called_once()
 
+    def test_endpoints_404_when_discover_turned_off(self):
+        """Discover off applies to the REST endpoints too, not just the web page."""
+        self.user1.show_discover = False
+        self.user1.save(update_fields=["show_discover"])
+
+        for method, name in (
+            ("get", "api_discover"),
+            ("post", "api_discover_refresh"),
+            ("get", "api_discover_hidden"),
+        ):
+            with self.subTest(name=name):
+                response = self.call_api(method, name, headers=self.auth_headers)
+                self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+
     def test_hide_and_unhide_item(self):
         """POST discover/hidden toggles NOT_INTERESTED feedback."""
         item = self.items_by_type[MediaTypes.MOVIE.value][0]
@@ -150,6 +166,19 @@ class HomeTests(FloppyApiTestCase):
         self.assertIn("ids", row_item["item"])
         self.assertIn("image", row_item["item"])
 
+    def test_home_hides_seasons_group_when_seasons_disabled(self):
+        """Home follows the sidebar: no Seasons group once Seasons is off (#1560)."""
+
+        def group_types():
+            response = self.call_api("get", "api_home", headers=self.auth_headers)
+            self.assertEqual(response.status_code, HTTP.OK)
+            return [group["media_type"] for group in response.json()["groups"]]
+
+        self.assertIn(MediaTypes.SEASON.value, group_types())
+        self.user1.season_enabled = False
+        self.user1.save(update_fields=["season_enabled"])
+        self.assertNotIn(MediaTypes.SEASON.value, group_types())
+
     def test_home_invalid_limit_rejected(self):
         """Non-numeric limits return 400."""
         response = self.call_api(
@@ -159,3 +188,167 @@ class HomeTests(FloppyApiTestCase):
             headers=self.auth_headers,
         )
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+
+
+class RecommendationsTests(FloppyApiTestCase):
+    """GET recommendations: the flat Top Picks list with provider ids."""
+
+    def _row(self, key, *items):
+        return RowResult(
+            key=key,
+            title=key,
+            mission="",
+            why="",
+            source="local",
+            items=list(items),
+        )
+
+    def _pick(self, media_id, title, media_type=MediaTypes.MOVIE.value):
+        return CandidateItem(
+            media_type=media_type,
+            source=Sources.TMDB.value,
+            media_id=media_id,
+            title=title,
+            release_date="2020-01-01",
+            genres=["Drama"],
+        )
+
+    def _get(self, params=None):
+        return self.call_api(
+            "get",
+            "api_recommendations",
+            params=params,
+            headers=self.auth_headers,
+        )
+
+    def test_returns_top_picks_with_ids(self):
+        """Only the Top Picks row is returned, with stored ids when known."""
+        stored = self.items_by_type[MediaTypes.MOVIE.value][0]
+        stored.provider_external_ids = {"imdb_id": "tt0111161", "tmdb_id": "701"}
+        stored.save(update_fields=["provider_external_ids"])
+        rows = [
+            self._row("trending_right_now", self._pick("1", "Trending")),
+            self._row(
+                "top_picks_for_you",
+                self._pick(stored.media_id, "Stored"),
+                self._pick("9001", "Fetched"),
+            ),
+        ]
+        metadata = {"provider_external_ids": {"imdb_id": "tt9999999"}}
+        with (
+            patch("api.fork_views_discover._discover_response_rows", return_value=rows),
+            patch(
+                "api.fork_views_discover.services.get_media_metadata",
+                return_value=metadata,
+            ) as mock_metadata,
+        ):
+            response = self._get({"media_type": MediaTypes.MOVIE.value})
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        results = response.json()["results"]
+        self.assertEqual([r["title"] for r in results], ["Stored", "Fetched"])
+        self.assertEqual(results[0]["ids"], {"tmdb": "701", "imdb": "tt0111161"})
+        self.assertEqual(results[1]["ids"], {"imdb": "tt9999999", "tmdb": "9001"})
+        mock_metadata.assert_called_once()
+
+    def test_tv_ids_include_tvdb(self):
+        """TV picks carry the TVDB id a media-server plugin matches on."""
+        rows = [
+            self._row(
+                "top_picks_for_you",
+                self._pick("555", "Show", media_type=MediaTypes.TV.value),
+            ),
+        ]
+        metadata = {"provider_external_ids": {"tvdb_id": 81189, "imdb_id": "tt0903747"}}
+        with (
+            patch("api.fork_views_discover._discover_response_rows", return_value=rows),
+            patch(
+                "api.fork_views_discover.services.get_media_metadata",
+                return_value=metadata,
+            ),
+        ):
+            response = self._get({"media_type": MediaTypes.TV.value})
+
+        self.assertEqual(
+            response.json()["results"][0]["ids"],
+            {"imdb": "tt0903747", "tvdb": "81189", "tmdb": "555"},
+        )
+
+    def test_tvdb_source_keeps_its_id_when_lookup_fails(self):
+        """A TVDB-sourced pick still reports its TVDB id without provider data."""
+        pick = CandidateItem(
+            media_type=MediaTypes.TV.value,
+            source=Sources.TVDB.value,
+            media_id="81189",
+            title="TVDB Show",
+        )
+        rows = [self._row("top_picks_for_you", pick)]
+        with (
+            patch("api.fork_views_discover._discover_response_rows", return_value=rows),
+            patch(
+                "api.fork_views_discover.services.get_media_metadata",
+                side_effect=services.ProviderAPIError(Sources.TVDB.value, None),
+            ),
+        ):
+            response = self._get({"media_type": MediaTypes.TV.value})
+
+        self.assertEqual(response.json()["results"][0]["ids"], {"tvdb": "81189"})
+
+    def test_provider_failure_keeps_pick(self):
+        """A provider outage drops the extra ids but keeps the recommendation."""
+        rows = [self._row("top_picks_for_you", self._pick("42", "Offline"))]
+        with (
+            patch("api.fork_views_discover._discover_response_rows", return_value=rows),
+            patch(
+                "api.fork_views_discover.services.get_media_metadata",
+                side_effect=services.ProviderAPIError(Sources.TMDB.value, None),
+            ),
+        ):
+            response = self._get()
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response.json()["results"][0]["ids"], {"tmdb": "42"})
+
+    def test_pagination(self):
+        """Limit and offset page through the picks."""
+        rows = [
+            self._row(
+                "top_picks_for_you",
+                *[self._pick(str(n), f"Movie {n}") for n in range(1, 4)],
+            ),
+        ]
+        with (
+            patch("api.fork_views_discover._discover_response_rows", return_value=rows),
+            patch(
+                "api.fork_views_discover.services.get_media_metadata",
+                return_value={},
+            ),
+        ):
+            response = self._get({"limit": 2, "offset": 2})
+
+        payload = response.json()
+        self.assertEqual(payload["pagination"]["total"], 3)
+        self.assertEqual([r["title"] for r in payload["results"]], ["Movie 3"])
+
+    def test_no_top_picks_row_is_empty(self):
+        """A tab without a Top Picks row returns an empty list."""
+        with patch(
+            "api.fork_views_discover._discover_response_rows",
+            return_value=[],
+        ):
+            response = self._get()
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response.json()["results"], [])
+
+    def test_unsupported_media_type_rejected(self):
+        """Only movie and tv are supported."""
+        response = self._get({"media_type": MediaTypes.GAME.value})
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+
+    def test_discover_off_is_not_found(self):
+        """Users who turned Discover off get a 404, like the Discover API."""
+        self.user1.show_discover = False
+        self.user1.save(update_fields=["show_discover"])
+        response = self._get()
+        self.assertEqual(response.status_code, HTTP.NOT_FOUND)

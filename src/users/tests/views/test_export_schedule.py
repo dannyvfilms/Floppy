@@ -1,9 +1,11 @@
 import json
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
@@ -94,7 +96,7 @@ class ExportScheduleTests(TestCase):
             {"frequency": "once"},
         )
 
-        self.assertRedirects(response, reverse("export_data"))
+        self.assertRedirects(response, reverse("export_data"), fetch_redirect_response=False)
         self.assertEqual(PeriodicTask.objects.count(), 0)
         self.assertIn(
             "Select at least one media type, Custom Lists, or Collection to export.",
@@ -127,7 +129,7 @@ class ExportScheduleTests(TestCase):
 
     def test_export_page_describes_and_blocks_empty_selection(self):
         """The export page explains valid selections and disables empty submits."""
-        response = self.client.get(reverse("export_data"))
+        response = self.client.get(reverse("data_management"))
 
         self.assertContains(
             response,
@@ -175,11 +177,11 @@ class ExportScheduleTests(TestCase):
             enabled=True,
         )
 
-        response = self.client.get(reverse("export_data"))
+        response = self.client.get(reverse("data_management"))
 
         self.assertContains(response, "Media Types: All")
         self.assertContains(response, "Media Types: None (Lists/Collection only)")
-        self.assertContains(response, "Collection: Included")
+        self.assertContains(response, "<div>Collection: Included</div>", html=True)
 
     def test_recurring_export_creates_schedule_and_returns_csv(self):
         """Recurring export should create schedule and return immediate CSV."""
@@ -217,5 +219,86 @@ class ExportScheduleTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, reverse("export_data"))
+        self.assertRedirects(response, reverse("export_data"), fetch_redirect_response=False)
         self.assertEqual(PeriodicTask.objects.count(), 0)
+
+
+class DatabaseSnapshotStatusTests(SimpleTestCase):
+    @override_settings(USING_SQLITE_DATABASE=True)
+    def test_counts_only_published_snapshot_files(self):
+        from users.views import _db_snapshot_status
+
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            override_settings(BACKUP_DIR=temporary),
+        ):
+            directory = Path(temporary) / "database"
+            directory.mkdir()
+            (directory / "good.sqlite3").touch()
+            (directory / ".interrupted.sqlite3.tmp").touch()
+            (directory / ".hidden.sqlite3").touch()
+            (directory / "unrelated.txt").touch()
+            (directory / "link.sqlite3").symlink_to(directory / "good.sqlite3")
+            status = _db_snapshot_status()
+        self.assertTrue(status["supported"])
+        self.assertEqual(status["file_count"], 1)
+
+    @override_settings(USING_SQLITE_DATABASE=False)
+    def test_postgres_does_not_claim_automatic_database_backups(self):
+        from django.template.loader import render_to_string
+
+        from users.views import _db_snapshot_status
+
+        status = _db_snapshot_status()
+        self.assertEqual(status, {"supported": False})
+        rendered = render_to_string(
+            "users/export_data.html",
+            {"db_snapshot_status": status, "media_type": "movie"},
+        )
+        self.assertIn("PostgreSQL database backups are not managed by Floppy", rendered)
+        self.assertNotIn(
+            "Floppy separately writes a verified database snapshot", rendered
+        )
+
+
+class BackupPanelPropsTests(SimpleTestCase):
+    def _backup(self, freshness):
+        return {
+            "path": "/b/alice",
+            "freshness": freshness,
+            "destination": {"writable": True, "free_bytes": 2048},
+        }
+
+    def test_failure_newer_than_success_is_a_warning(self):
+        from users.views import backup_panel_props
+
+        fresh = {
+            "last_success_age_seconds": 7200,
+            "last_success_name": "a.csv",
+            "last_failure_age_seconds": 60,
+            "last_failure": "disk full",
+            "failing": True,
+        }
+        sections = backup_panel_props(self._backup(fresh), {"supported": False})
+        tones = [line["tone"] for line in sections[0]["lines"]]
+        self.assertIn("warning", tones)
+        self.assertIn("PostgreSQL", sections[1]["intro"])
+
+    def test_no_history_says_so_and_disabled_snapshot_is_flagged(self):
+        from users.views import backup_panel_props
+
+        empty = {
+            "last_success_age_seconds": None,
+            "last_failure_age_seconds": None,
+            "failing": False,
+        }
+        snapshot = {
+            "supported": True,
+            "enabled": False,
+            "path": "/b/database",
+            "freshness": empty,
+            "destination": {"writable": True, "free_bytes": None},
+        }
+        sections = backup_panel_props(self._backup(empty), snapshot)
+        self.assertEqual(sections[0]["lines"][0]["tone"], "warning")
+        self.assertIn("Disabled", sections[1]["lines"][0]["text"])

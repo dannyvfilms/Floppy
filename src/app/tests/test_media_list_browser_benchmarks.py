@@ -10,12 +10,13 @@ import json
 import os
 import time
 import unittest
+from urllib.parse import urlsplit
 
 from django.contrib.auth import get_user_model
-from django.contrib.staticfiles.testing import StaticLiveServerTestCase
-from django.test import tag
+from django.test import override_settings, tag
 
 from app.models import Item, MediaTypes
+from app.tests.live_server import SerialStaticLiveServerTestCase
 from app.tests.test_query_counts import (
     seed_anime_library,
     seed_movie_library,
@@ -31,7 +32,8 @@ except ImportError:  # pragma: no cover - optional benchmark dependency
 
 
 @tag("slow", "benchmark", "playwright")
-class MediaListBrowserBenchmarkTests(StaticLiveServerTestCase):
+@override_settings(ALLAUTH_TRUSTED_CLIENT_IP_HEADER=None)
+class MediaListBrowserBenchmarkTests(SerialStaticLiveServerTestCase):
     """Measure navigation cost and follow-up release-year requests in a browser."""
 
     @classmethod
@@ -41,28 +43,9 @@ class MediaListBrowserBenchmarkTests(StaticLiveServerTestCase):
             raise unittest.SkipTest("RUN_PLAYWRIGHT_BENCHMARKS is not set")
         if sync_playwright is None:
             raise unittest.SkipTest("Playwright is not installed")
-        cls.playwright = sync_playwright().start()
-        cls.browser = cls.playwright.chromium.launch()
-
-    @classmethod
-    def tearDownClass(cls):
-        if hasattr(cls, "browser"):
-            cls.browser.close()
-        if hasattr(cls, "playwright"):
-            cls.playwright.stop()
-        super().tearDownClass()
 
     def setUp(self):
-        self.page = self.browser.new_page()
         self.release_year_requests: list[str] = []
-        self.page.on(
-            "requestfinished",
-            lambda request: (
-                self.release_year_requests.append(request.url)
-                if "/api/fetch_release_year" in request.url
-                else None
-            ),
-        )
         self.credentials = {
             "username": f"benchmark-{self._testMethodName}",
             "password": "12345",
@@ -94,6 +77,34 @@ class MediaListBrowserBenchmarkTests(StaticLiveServerTestCase):
                 ).order_by("id")[:6]
             ],
         )
+        # Playwright's sync driver keeps an asyncio loop active on this thread.
+        # Finish ORM seeding before starting it, and stop it before Django flushes.
+        self.playwright = sync_playwright().start()
+        self.addCleanup(self.playwright.stop)
+        self.browser = self.playwright.chromium.launch()
+        self.addCleanup(self.browser.close)
+        self.page = self.browser.new_page()
+        self.page.route(
+            "**/*",
+            lambda route: (
+                route.continue_()
+                if urlsplit(route.request.url).netloc
+                == urlsplit(self.live_server_url).netloc
+                else route.fulfill(
+                    status=200,
+                    content_type="image/svg+xml",
+                    body='<svg xmlns="http://www.w3.org/2000/svg" width="64" height="96"/>',
+                )
+            ),
+        )
+        self.page.on(
+            "requestfinished",
+            lambda request: (
+                self.release_year_requests.append(request.url)
+                if "/api/fetch_release_year" in request.url
+                else None
+            ),
+        )
         self.page.goto(f"{self.live_server_url}/")
         self.page.get_by_placeholder("Enter your username").fill(
             self.credentials["username"],
@@ -102,6 +113,7 @@ class MediaListBrowserBenchmarkTests(StaticLiveServerTestCase):
             self.credentials["password"],
         )
         self.page.get_by_role("button", name="Sign in").click()
+        self.page.wait_for_url(f"{self.live_server_url}/")
 
     def tearDown(self):
         self.page.close()
@@ -109,7 +121,11 @@ class MediaListBrowserBenchmarkTests(StaticLiveServerTestCase):
     def _measure_navigation(self, path: str) -> dict[str, int | float | str]:
         self.release_year_requests.clear()
         started_at = time.perf_counter()
-        self.page.goto(f"{self.live_server_url}{path}", wait_until="networkidle")
+        response = self.page.goto(
+            f"{self.live_server_url}{path}", wait_until="networkidle"
+        )
+        self.assertEqual(response.status, 200)
+        self.assertEqual(urlsplit(self.page.url).path, urlsplit(path).path)
         duration_ms = (time.perf_counter() - started_at) * 1000
         html = self.page.content()
         return {

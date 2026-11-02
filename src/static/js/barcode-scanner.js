@@ -3,9 +3,45 @@
  * Uses ZXing library to decode barcodes from uploaded photos
  */
 
+// ZXing is a 336 KB library needed only after someone picks a photo to scan,
+// so it is not in every page's <head>: base.html names its URL on this
+// script's tag and the first scan loads it.
+const ZXING_SRC =
+  typeof document !== 'undefined' && document.currentScript
+    ? document.currentScript.dataset.zxingSrc
+    : null;
+let zxingLoading = null;
+
+function loadZXing() {
+  if (typeof window.ZXing !== 'undefined') {
+    return Promise.resolve();
+  }
+  if (!ZXING_SRC) {
+    return Promise.reject(new Error('ZXing library URL is not configured'));
+  }
+  if (!zxingLoading) {
+    zxingLoading = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = ZXING_SRC;
+      script.onload = () => resolve();
+      script.onerror = () => {
+        zxingLoading = null;
+        reject(new Error('ZXing library failed to load'));
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return zxingLoading;
+}
+
 // Barcode scanning functionality using ZXing
 async function initBarcodeScanner() {
-  // ZXing is loaded from a self-hosted static library in base.html
+  try {
+    await loadZXing();
+  } catch (error) {
+    console.error('[BARCODE] Could not load ZXing:', error);
+    return null;
+  }
   console.log('[BARCODE] initBarcodeScanner called, window.ZXing:', typeof window.ZXing, window.ZXing ? 'exists' : 'undefined');
   if (typeof window.ZXing === 'undefined') {
     console.error('[BARCODE] ZXing library not loaded - make sure the script tag loaded correctly');

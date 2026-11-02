@@ -119,8 +119,7 @@ class PromptCaptureTests(SimpleTestCase):
 
     def test_ask_choice_captures_a_typed_number(self):
         output = run_over_pty(
-            'ask_choice PICK "Pick one" a "a|Alpha|" "b|Beta|"\n'
-            'echo "GOT:[$PICK]"\n',
+            'ask_choice PICK "Pick one" a "a|Alpha|" "b|Beta|"\necho "GOT:[$PICK]"\n',
             sends=[b"2\n"],
         )
         self.assertIn("GOT:[b]", output)
@@ -293,6 +292,29 @@ class InstallerShellSyntaxTests(SimpleTestCase):
         self.assertTrue(ROOT.joinpath("scripts", "install.sh").stat().st_mode & 0o111)
 
 
+class WindowsInstallerTests(SimpleTestCase):
+    """scripts/install.ps1 runs under Windows PowerShell 5.1, which CI lacks.
+
+    The default Windows shell rejects PowerShell 7 syntax at parse time, before
+    a single line runs - the failure a first-time Windows user hit with the
+    Bash one-liner. These checks keep the script inside 5.1's grammar and on
+    the same image as the Bash installer.
+    """
+
+    text = (ROOT / "scripts" / "install.ps1").read_text(encoding="utf-8")
+
+    def test_no_powershell_7_only_syntax(self):
+        code = "\n".join(line.split("#", 1)[0] for line in self.text.splitlines())
+        for token in ("&&", "||", "??", "$IsWindows", "-AsHashtable"):
+            with self.subTest(token=token):
+                self.assertNotIn(token, code)
+
+    def test_image_matches_the_bash_installer(self):
+        common = (INSTALL_DIR / "common.sh").read_text(encoding="utf-8")
+        image = re.search(r"FLOPPY_IMAGE=\$\{FLOPPY_IMAGE:-([^}]+)\}", common).group(1)
+        self.assertIn(f"else {{ '{image}' }}", self.text)
+
+
 class RenderTemplateTests(SimpleTestCase):
     def test_placeholders_are_replaced_including_paths_with_spaces(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -318,6 +340,78 @@ class RenderTemplateTests(SimpleTestCase):
             output = root / "out"
             run_helper(f'render_template "{template}" "{output}" "A=1"', root)
             self.assertEqual(output.read_text(encoding="utf-8"), "a=1 b=@@B@@\n")
+
+
+class DockerStateTests(SimpleTestCase):
+    """The Docker check names what is wrong instead of guessing "stopped"."""
+
+    def _state(self, docker_body):
+        """Return docker_state's answer with a fake `docker` first on PATH."""
+        with tempfile.TemporaryDirectory() as tmp:
+            shim = Path(tmp) / "docker"
+            shim.write_text(f"#!/bin/sh\n{docker_body}\n", encoding="utf-8")
+            shim.chmod(0o755)
+            return run_helper(
+                f'PATH="{tmp}:$PATH"; docker_state',
+                tmp,
+            )
+
+    def test_working_docker_is_ready(self):
+        self.assertEqual(self._state("exit 0"), "ready")
+
+    def test_no_docker_is_missing(self):
+        out = run_helper("have() { return 1; }; docker_state", ROOT)
+        self.assertEqual(out, "missing")
+
+    def test_permission_denied_is_no_permission(self):
+        body = (
+            '[ "$1" = info ] && { echo "permission denied while trying to '
+            'connect to the Docker daemon socket" >&2; exit 1; }; exit 0'
+        )
+        self.assertEqual(self._state(body), "no-permission")
+
+    def test_unreachable_daemon_is_stopped(self):
+        body = (
+            '[ "$1" = info ] && { echo "Cannot connect to the Docker daemon '
+            'at unix:///var/run/docker.sock. Is the docker daemon running?" '
+            '>&2; exit 1; }; exit 0'
+        )
+        self.assertEqual(self._state(body), "stopped")
+
+    def test_missing_compose_plugin_is_no_compose(self):
+        body = '[ "$1" = compose ] && exit 1; exit 0'
+        self.assertEqual(self._state(body), "no-compose")
+
+    def test_any_other_failure_is_an_error_not_stopped(self):
+        body = (
+            '[ "$1" = info ] && { echo "request returned 500 for API route" '
+            '>&2; exit 1; }; exit 0'
+        )
+        self.assertEqual(self._state(body), "error")
+
+    def test_every_state_has_plain_wording(self):
+        for state in (
+            "ready",
+            "missing",
+            "stopped",
+            "no-permission",
+            "no-compose",
+            "error",
+        ):
+            text = run_helper(f"docker_state_text {state}", ROOT)
+            self.assertGreater(len(text), 10, state)
+            self.assertNotIn("-", text.split()[0], state)
+
+    def test_error_detail_quotes_docker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            shim = Path(tmp) / "docker"
+            shim.write_text(
+                '#!/bin/sh\necho "plugin exploded" >&2\nexit 1\n',
+                encoding="utf-8",
+            )
+            shim.chmod(0o755)
+            out = run_helper(f'PATH="{tmp}:$PATH"; docker_error_detail', tmp)
+        self.assertIn("plugin exploded", out)
 
 
 class InstallStateTests(SimpleTestCase):
@@ -569,7 +663,9 @@ class GeneratedSupervisorTests(SimpleTestCase):
         )
         # Unquoted, because Supervisor takes these options literally: quoting
         # them would make the quotes part of the path.
-        self.assertEqual(parser["supervisord"]["logfile"], f"{root}/logs/supervisord.log")
+        self.assertEqual(
+            parser["supervisord"]["logfile"], f"{root}/logs/supervisord.log"
+        )
 
     def test_optional_workers_follow_the_resource_profile(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -614,13 +710,25 @@ class GeneratedNginxTests(SimpleTestCase):
         self.assertIn(f'alias "{root}/repo/src/staticfiles/";', conf)
         self.assertIn("server 127.0.0.1:8001;", conf)
 
-    def test_access_log_keeps_query_strings_out(self):
+    def test_access_log_keeps_urls_and_referrers_out(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            conf = self.render(Path(temp_dir))
-        self.assertIn("$request_method $uri $server_protocol", conf)
-        self.assertNotIn("$request ", conf)
-        self.assertNotIn("$query_string", conf)
-        self.assertNotIn("$http_referer", conf)
+            generated = self.render(Path(temp_dir))
+        for conf in (generated, (ROOT / "nginx.conf").read_text()):
+            with self.subTest(configuration=conf[:60]):
+                self.assertIn("$request_method $server_protocol", conf)
+                self.assertIn('"" "same-origin";', conf)
+                self.assertIn(
+                    "add_header Referrer-Policy $floppy_referrer_policy always;", conf
+                )
+                self.assertIn("proxy_hide_header Referrer-Policy;", conf)
+                for variable in (
+                    "$uri",
+                    "$request_uri",
+                    "$request ",
+                    "$query_string",
+                    "$http_referer",
+                ):
+                    self.assertNotIn(variable, conf)
 
 
 class GeneratedServiceUnitTests(SimpleTestCase):

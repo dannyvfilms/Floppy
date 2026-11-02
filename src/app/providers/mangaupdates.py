@@ -6,7 +6,7 @@ import requests
 from django.conf import settings
 from django.core.cache import cache
 
-from app import helpers
+from app import helpers, request_timing
 from app.models import MediaTypes, Sources
 from app.providers import services
 
@@ -105,6 +105,7 @@ def search(query, page):
     return data
 
 
+@request_timing.timed_provider_call
 def manga(media_id):
     """Get metadata for a manga from MangaUpdates."""
     return asyncio.run(async_manga(media_id))

@@ -6,15 +6,141 @@ it: a cache failure degrades to a miss, and the paths that use the cache for
 control flow rather than caching resolve it deliberately.
 """
 
+from contextvars import Context
+from datetime import timedelta
+from socketserver import BaseRequestHandler, ThreadingTCPServer
+from threading import Event, Thread
+from time import monotonic
 from unittest import mock
 
 import redis
-from django.test import RequestFactory, SimpleTestCase, TestCase
+from django.test import RequestFactory, SimpleTestCase, TestCase, tag
+from django.utils import timezone
 
 from app import backfill_queue, interactive_requests, tasks_providers
+from app.cache_safety import (
+    CacheConnectionPool,
+    CacheCooldownLogFilter,
+    CacheCoolingDownError,
+    CacheRedis,
+)
 from app.interactive_requests import interactive_request_active
 from app.models import Item, MediaTypes, Sources
 from app.providers import services
+
+
+class CacheCooldownTests(SimpleTestCase):
+    """One connection failure must not become hundreds of timed waits."""
+
+    def test_requests_during_cooldown_do_not_extend_it(self):
+        """A steady flow of cache reads still permits a recovery probe."""
+        pool = CacheConnectionPool()
+        client = CacheRedis(connection_pool=pool)
+        clock = [10]
+        with (
+            mock.patch("app.cache_safety.time.monotonic", side_effect=lambda: clock[0]),
+            mock.patch("redis.connection.Connection.connect", side_effect=redis.ConnectionError("dns failure")) as connect,
+        ):
+            for now in (10, 11, 12):
+                clock[0] = now
+                with self.assertRaises(redis.ConnectionError):
+                    client.get("optional-data")
+            self.assertEqual(connect.call_count, 2)
+            self.assertEqual(pool._unavailable_until, 14)
+
+    def test_strict_backend_raises_and_optional_backend_returns_default(self):
+        """No swallowed failure is mistaken for an acquired cache lock."""
+        from django_redis.cache import RedisCache
+        from django_redis.exceptions import ConnectionInterrupted
+
+        for ignore in (True, False):
+            backend = RedisCache("redis://unused:6379/15", {"OPTIONS": {"IGNORE_EXCEPTIONS": ignore}})
+            failure = ConnectionInterrupted(connection=None)
+            failure.__cause__ = redis.ConnectionError("cache unavailable")
+            with mock.patch.object(backend.client, "get", side_effect=failure):
+                if ignore:
+                    self.assertEqual(backend.get("optional", "fallback"), "fallback")
+                else:
+                    with self.assertRaises(redis.ConnectionError):
+                        backend.get("optional")
+
+    def test_command_failure_cools_down_pool_and_reset_clears_it(self):
+        """A connected socket's timeout also avoids repeated waits."""
+        pool = CacheConnectionPool()
+        client = CacheRedis(connection_pool=pool)
+        with mock.patch("redis.Redis.execute_command", side_effect=redis.TimeoutError("read timeout")):
+            with self.assertRaises(redis.TimeoutError):
+                client.get("optional")
+        self.assertGreater(pool._unavailable_until, 0)
+        pool.reset()
+        self.assertEqual(pool._unavailable_until, 0)
+
+    def test_only_synthetic_outage_tracebacks_are_suppressed(self):
+        """Retain genuine Redis failures for diagnosis."""
+        from django_redis.exceptions import ConnectionInterrupted
+
+        filter_ = CacheCooldownLogFilter()
+        for error, expected in ((CacheCoolingDownError("cooldown"), False), (redis.TimeoutError("timeout"), True)):
+            wrapped = ConnectionInterrupted(connection=None)
+            wrapped.__cause__ = error
+            self.assertEqual(filter_.filter(mock.Mock(exc_info=(type(wrapped), wrapped, None))), expected)
+
+    @tag("slow", "benchmark")
+    def test_half_dead_server_only_consumes_one_socket_timeout(self):
+        """Bound repeated cache attempts against a TCP server that never replies."""
+        stop = Event()
+        connections = []
+
+        class SilentRedis(BaseRequestHandler):
+            def handle(self):
+                connections.append(1)
+                stop.wait(5)
+
+        with ThreadingTCPServer(("127.0.0.1", 0), SilentRedis) as server:
+            thread = Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+            thread.start()
+            pool = CacheConnectionPool(
+                host="127.0.0.1", port=server.server_address[1],
+                socket_timeout=0.05, socket_connect_timeout=0.05,
+                retry_on_timeout=False,
+            )
+            client = CacheRedis(connection_pool=pool)
+            try:
+                started = monotonic()
+                for _ in range(100):
+                    with self.assertRaises((redis.ConnectionError, redis.TimeoutError)):
+                        client.get("optional")
+                elapsed = monotonic() - started
+                self.assertEqual(len(connections), 1)
+                self.assertGreaterEqual(elapsed, 0.04)
+                self.assertLess(elapsed, 1)
+            finally:
+                stop.set()
+                pool.disconnect()
+                server.shutdown()
+                thread.join(timeout=2)
+
+
+class CachedSessionOutageTests(TestCase):
+    """Cache degradation must still use signed, unexpired database sessions."""
+
+    def test_unavailable_cache_preserves_valid_session_but_rejects_expired_session(self):
+        """Never synthesize authenticated state when Redis cannot answer."""
+        from django.contrib.sessions.backends.cached_db import SessionStore
+        from django.contrib.sessions.models import Session
+        from django.core.cache import cache
+
+        store = SessionStore()
+        store["_auth_user_id"] = "42"
+        store.save()
+        key = store.session_key
+        with (
+            mock.patch.object(cache, "get", return_value=None),
+            mock.patch.object(cache, "set", return_value=None),
+        ):
+            self.assertEqual(SessionStore(key).load()["_auth_user_id"], "42")
+            Session.objects.filter(session_key=key).update(expire_date=timezone.now() - timedelta(seconds=1))
+            self.assertEqual(SessionStore(key).load(), {})
 
 
 class InteractiveMarkerTests(SimpleTestCase):
@@ -290,6 +416,74 @@ class BackfillQueueBehaviourTests(TestCase):
         self.assertFalse(more)
         self.assertEqual(backfill_queue.depth(self.QUEUE), 0)
 
+    def test_take_holds_the_queue_claim_while_a_batch_runs(self):
+        """A concurrent enqueue must not start a drain alongside the running one."""
+        drain = mock.Mock()
+        backfill_queue.enqueue(
+            self.QUEUE, self.SCHEDULED, [1, 2, 3], ttl=60, drain_task=drain
+        )
+        drain.reset_mock()
+
+        batch, _ = backfill_queue.take(self.QUEUE, self.SCHEDULED, 2)
+        self.assertEqual(len(batch), 2)
+        backfill_queue.enqueue(
+            self.QUEUE, self.SCHEDULED, [4], ttl=60, drain_task=drain
+        )
+        drain.apply_async.assert_not_called()
+
+    def test_drain_schedules_the_continuation_only_after_the_batch(self):
+        """The next drain must not start while this one still fetches metadata."""
+        drain = mock.Mock()
+        backfill_queue.enqueue(
+            self.QUEUE, self.SCHEDULED, range(4), ttl=60, drain_task=drain
+        )
+        drain.reset_mock()
+
+        with backfill_queue.drain(
+            self.QUEUE, self.SCHEDULED, 2, drain_task=drain
+        ) as batch:
+            self.assertEqual(len(batch), 2)
+            drain.apply_async.assert_not_called()
+
+        drain.apply_async.assert_called_once_with(countdown=10, kwargs={})
+
+    def test_drain_releases_the_claim_when_the_queue_is_empty(self):
+        """An empty queue must be claimable again by the next enqueue."""
+        drain = mock.Mock()
+        backfill_queue.enqueue(
+            self.QUEUE, self.SCHEDULED, [1], ttl=60, drain_task=drain
+        )
+        drain.reset_mock()
+
+        with backfill_queue.drain(
+            self.QUEUE, self.SCHEDULED, 10, drain_task=drain
+        ) as batch:
+            self.assertEqual(batch, [1])
+        drain.apply_async.assert_not_called()
+
+        backfill_queue.enqueue(
+            self.QUEUE, self.SCHEDULED, [2], ttl=60, drain_task=drain
+        )
+        drain.apply_async.assert_called_once()
+
+    def test_drain_picks_up_work_enqueued_while_it_ran(self):
+        """Work that lands mid-batch is drained after it, not lost or doubled."""
+        drain = mock.Mock()
+        backfill_queue.enqueue(
+            self.QUEUE, self.SCHEDULED, [1], ttl=60, drain_task=drain
+        )
+        drain.reset_mock()
+
+        with backfill_queue.drain(
+            self.QUEUE, self.SCHEDULED, 10, drain_task=drain
+        ) as batch:
+            self.assertEqual(batch, [1])
+            backfill_queue.enqueue(
+                self.QUEUE, self.SCHEDULED, [2], ttl=60, drain_task=drain
+            )
+            drain.apply_async.assert_not_called()
+        drain.apply_async.assert_called_once()
+
     def test_string_members_survive_the_round_trip(self):
         """Episode season keys are encoded tokens, not integers."""
         drain = mock.Mock()
@@ -309,3 +503,111 @@ class BackfillQueueBehaviourTests(TestCase):
             self.assertEqual(backfill_queue.namespaced("q"), "inst_a:q")
         with self.settings(REDIS_PREFIX=None):
             self.assertEqual(backfill_queue.namespaced("q"), "q")
+
+    def test_deferred_publication_persists_members_without_an_import_sized_buffer(self):
+        drain = mock.Mock()
+        with backfill_queue.defer_backfill_publication():
+            for member in range(1000):
+                backfill_queue.enqueue(
+                    self.QUEUE, self.SCHEDULED, [member], ttl=60, drain_task=drain
+                )
+            self.assertEqual(backfill_queue.depth(self.QUEUE), 1000)
+            self.assertEqual(len(backfill_queue._deferred_drains.get()), 1)
+            drain.apply_async.assert_not_called()
+        drain.apply_async.assert_called_once_with(countdown=10, kwargs={})
+
+    def test_nested_scope_only_publishes_on_outer_exit(self):
+        drain = mock.Mock()
+        with backfill_queue.defer_backfill_publication():
+            with backfill_queue.defer_backfill_publication():
+                backfill_queue.enqueue(
+                    self.QUEUE, self.SCHEDULED, [1], ttl=60, drain_task=drain
+                )
+            drain.apply_async.assert_not_called()
+        drain.apply_async.assert_called_once()
+
+    def test_marker_expiration_during_a_long_import_does_not_publish_again(self):
+        drain = mock.Mock()
+        with backfill_queue.defer_backfill_publication():
+            for member in range(5):
+                # Model the 30-second marker expiring between slow batches.
+                backfill_queue.clear(self.SCHEDULED)
+                backfill_queue.enqueue(
+                    self.QUEUE, self.SCHEDULED, [member], ttl=60, drain_task=drain
+                )
+            drain.apply_async.assert_not_called()
+        drain.apply_async.assert_called_once()
+        self.assertEqual(backfill_queue.members(self.QUEUE), set(range(5)))
+
+    def test_exception_still_publishes_persisted_work(self):
+        drain = mock.Mock()
+        with self.assertRaisesMessage(ValueError, "import failed"):
+            with backfill_queue.defer_backfill_publication():
+                backfill_queue.enqueue(
+                    self.QUEUE, self.SCHEDULED, [1], ttl=60, drain_task=drain
+                )
+                raise ValueError("import failed")
+        drain.apply_async.assert_called_once()
+        self.assertEqual(backfill_queue.members(self.QUEUE), {1})
+        self.assertIsNone(backfill_queue._deferred_drains.get())
+
+    def test_broker_failure_does_not_mask_import_failure_or_skip_other_queues(self):
+        failing = mock.Mock()
+        failing.apply_async.side_effect = RuntimeError("broker unavailable")
+        healthy = mock.Mock()
+        with (
+            self.assertLogs("app.backfill_queue", level="ERROR"),
+            self.assertRaisesMessage(ValueError, "import failed"),
+        ):
+            with backfill_queue.defer_backfill_publication():
+                backfill_queue.enqueue(
+                    self.QUEUE, self.SCHEDULED, [1], ttl=60, drain_task=failing
+                )
+                backfill_queue.enqueue(
+                    self.QUEUE,
+                    self.SCHEDULED + ":other",
+                    [2],
+                    ttl=60,
+                    drain_task=healthy,
+                )
+                raise ValueError("import failed")
+        self.addCleanup(backfill_queue.clear, self.SCHEDULED + ":other")
+        healthy.apply_async.assert_called_once()
+        self.assertEqual(backfill_queue.members(self.QUEUE), {1, 2})
+
+    def test_an_independent_context_keeps_normal_publication(self):
+        drain = mock.Mock()
+        with backfill_queue.defer_backfill_publication():
+            Context().run(
+                backfill_queue.enqueue,
+                self.QUEUE,
+                self.SCHEDULED,
+                [1],
+                ttl=60,
+                drain_task=drain,
+            )
+            drain.apply_async.assert_called_once()
+
+    def test_unavailable_redis_does_not_claim_work_was_persisted(self):
+        drain = mock.Mock()
+        with (
+            backfill_queue.defer_backfill_publication(),
+            mock.patch.object(backfill_queue, "_client", return_value=None),
+        ):
+            self.assertFalse(
+                backfill_queue.enqueue(
+                    self.QUEUE, self.SCHEDULED, [1], ttl=60, drain_task=drain
+                )
+            )
+        drain.apply_async.assert_not_called()
+
+    def test_descriptor_bound_overflow_publishes_normally(self):
+        drain = mock.Mock()
+        with (
+            mock.patch.object(backfill_queue, "MAX_DEFERRED_DRAINS", 0),
+            backfill_queue.defer_backfill_publication(),
+        ):
+            backfill_queue.enqueue(
+                self.QUEUE, self.SCHEDULED, [1], ttl=60, drain_task=drain
+            )
+            drain.apply_async.assert_called_once()

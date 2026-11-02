@@ -1,11 +1,11 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 from django.contrib.auth import get_user_model
 from django.template.loader import render_to_string
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.test.client import RequestFactory
 from django.urls import reverse
 from django.utils import timezone
@@ -21,9 +21,22 @@ from app.models import (
     Sources,
     Status,
     Studio,
+    Track,
 )
 from app.templatetags import app_tags
 from users.models import DateFormatChoices, TimeFormatChoices
+
+
+class FutureDateTests(SimpleTestCase):
+    def test_only_known_dates_after_today_are_future(self):
+        today = timezone.localdate()
+        for value in (None, "", "invalid", "2026-02-30", today, today - timedelta(days=1)):
+            with self.subTest(value=value):
+                self.assertFalse(app_tags.is_future_date(value))
+        tomorrow = today + timedelta(days=1)
+        self.assertTrue(app_tags.is_future_date(tomorrow))
+        self.assertTrue(app_tags.is_future_date(tomorrow.isoformat()))
+        self.assertTrue(app_tags.is_future_date(datetime.combine(tomorrow, datetime.min.time(), tzinfo=UTC)))
 
 
 class AppTagsTests(TestCase):
@@ -104,6 +117,14 @@ class AppTagsTests(TestCase):
         result = app_tags.get_static_file_mtime("nonexistent.css")
         self.assertEqual(result, "")
 
+    def test_related_section_label(self):
+        """DLCs keep their acronym casing; other sections are title-cased."""
+        self.assertEqual(app_tags.related_section_label("dlcs"), "DLCs")
+        self.assertEqual(
+            app_tags.related_section_label("standalone_expansions"),
+            "Standalone Expansions",
+        )
+
     def test_no_underscore(self):
         """Test the no_underscore filter."""
         self.assertEqual(app_tags.no_underscore("hello_world"), "hello world")
@@ -134,6 +155,29 @@ class AppTagsTests(TestCase):
         self.assertEqual(app_tags.slug("★★★"), "%E2%98%85%E2%98%85%E2%98%85")
         self.assertEqual(app_tags.slug("[Oshi no Ko]"), "oshi-no-ko")
         self.assertEqual(app_tags.slug("_____"), "_____")
+
+    def test_slug_is_one_path_segment(self):
+        """Titles made of path characters still produce a usable URL segment."""
+        self.assertEqual(app_tags.slug("/"), "2f")
+        self.assertEqual(app_tags.slug("//"), "2f2f")
+        self.assertEqual(app_tags.slug("."), "2e")
+        self.assertEqual(app_tags.slug(".."), "2e2e")
+        self.assertEqual(app_tags.slug("..."), "...")
+
+    def test_media_url_episode_titled_slash(self):
+        """An episode titled "/" links to its page instead of raising (#1322)."""
+        episode = {
+            "media_type": MediaTypes.EPISODE.value,
+            "source": Sources.TMDB.value,
+            "media_id": "1411",
+            "title": "/",
+            "season_number": 3,
+            "episode_number": 17,
+        }
+
+        url = app_tags.media_url(episode)
+
+        self.assertEqual(url, "/details/tmdb/tv/1411/2f/season/3/episode/17")
 
     def test_title_preserve_acronyms(self):
         """Test acronym-preserving title casing."""
@@ -399,6 +443,27 @@ class AppTagsTests(TestCase):
             ),
         )
 
+    def test_music_track_url_returns_nested_canonical_details_path(self):
+        """Music tracks should resolve under their album on the shared route."""
+        artist = Artist.objects.create(name="The Amazing Artist")
+        album = Album.objects.create(title="First Record", artist=artist)
+        track = Track.objects.create(album=album, title="Opening Song")
+
+        self.assertEqual(
+            app_tags.music_track_url(track),
+            reverse(
+                "music_track_details",
+                kwargs={
+                    "artist_id": artist.id,
+                    "artist_slug": "the-amazing-artist",
+                    "album_id": album.id,
+                    "album_slug": "first-record",
+                    "track_id": track.id,
+                    "track_slug": "opening-song",
+                },
+            ),
+        )
+
     def test_studio_url_returns_canonical_details_path(self):
         """Studio objects should resolve to the canonical shared details route."""
         studio = Studio.objects.create(
@@ -467,7 +532,6 @@ class AppTagsTests(TestCase):
                 "user": self.user,
                 "title": item.title,
                 "show_status_chip": False,
-                "show_progress_chip": False,
             },
             request=request,
         )
@@ -516,7 +580,6 @@ class AppTagsTests(TestCase):
                 "user": self.user,
                 "title": item.title,
                 "show_status_chip": False,
-                "show_progress_chip": False,
                 "from_grid": True,
             },
             request=request,
@@ -646,7 +709,6 @@ class AppTagsTests(TestCase):
                 "title": item.title,
                 "from_grid": True,
                 "show_status_chip": False,
-                "show_progress_chip": False,
             },
             request=request,
         )
@@ -763,7 +825,6 @@ class AppTagsTests(TestCase):
                 "title": self.tv_item.title,
                 "from_grid": True,
                 "show_status_chip": False,
-                "show_progress_chip": False,
                 "enable_bulk_select": True,
             },
             request=request,
@@ -1947,6 +2008,102 @@ class SafeCountFilterTests(TestCase):
         self.assertEqual(app_tags.safe_count("TBA"), 0)
 
 
+class DetailPromotedFactsTests(TestCase):
+    def test_media_type_field_priority_and_missing_values(self):
+        details_by_type = {
+            MediaTypes.TV.value: {
+                "format": "TV",
+                "first_air_date": "2022-02-03",
+                "last_air_date": "2026-09-16",
+                "status": "Returning Series",
+                "runtime": "48m",
+                "total_runtime": "25h 34min",
+                "episodes": 32,
+                "country": "United States of America",
+                "languages": ["English"],
+            },
+            MediaTypes.MOVIE.value: {
+                "format": "Movie",
+                "release_date": "1991-11-21",
+                "status": "Released",
+                "runtime": "1h 15min",
+                "certification": "PG",
+                "country": "United States of America",
+                "languages": ["English"],
+            },
+            MediaTypes.SEASON.value: {
+                "first_air_date": "2022-02-03",
+                "last_air_date": "2022-03-31",
+                "episodes": 8,
+                "runtime": "47m",
+                "total_runtime": "6h 16min",
+            },
+            MediaTypes.GAME.value: {
+                "release_date": "2025-03-18",
+                "platforms": ["Windows", "PlayStation 5"],
+                "format": "Main Game",
+            },
+        }
+        expected_keys = {
+            MediaTypes.TV.value: [
+                "status",
+                "air_dates",
+                "total_runtime",
+                "locale",
+            ],
+            MediaTypes.MOVIE.value: [
+                "format",
+                "release_date",
+                "status",
+                "runtime",
+                "certification",
+                "locale",
+            ],
+            MediaTypes.SEASON.value: [
+                "air_dates",
+                "episodes",
+                "total_runtime",
+            ],
+            MediaTypes.GAME.value: ["release_date", "platforms", "format"],
+        }
+
+        for media_type, details in details_by_type.items():
+            with self.subTest(media_type=media_type):
+                promotion = app_tags.detail_promoted_facts(media_type, details)
+                self.assertEqual(
+                    [field["key"] for field in promotion["fields"]],
+                    expected_keys[media_type],
+                )
+
+        missing = app_tags.detail_promoted_facts(
+            MediaTypes.TV.value,
+            {"format": "TV", "runtime": None, "country": ""},
+        )
+        self.assertEqual([field["key"] for field in missing["fields"]], ["format"])
+        self.assertEqual(missing["suppressed_keys"], {"format"})
+        tv_facts = app_tags.detail_promoted_facts(
+            MediaTypes.TV.value,
+            {
+                "format": "TV",
+                "status": "Returning Series",
+                "country": "United States of America",
+                "languages": ["English", "French"],
+            },
+        )
+        self.assertEqual(tv_facts["fields"][0]["label"], "TV series status")
+        self.assertEqual(
+            tv_facts["fields"][-1]["value"],
+            {"languages": ["English", "French"], "country": "United States of America"},
+        )
+        movie_facts = app_tags.detail_promoted_facts(
+            MediaTypes.MOVIE.value,
+            {"runtime": "1h 42m", "total_runtime": "1h 42min"},
+        )
+        self.assertEqual(movie_facts["suppressed_keys"], {"runtime", "total_runtime"})
+        self.assertEqual(app_tags.country_code("United States of America"), "US")
+        self.assertEqual(app_tags.country_code("Canada"), "CA")
+
+
 class DetailScoreChipsTemplateTests(TestCase):
     """Non-numeric provider score_count must not crash blocktranslate (#1147).
 
@@ -1988,3 +2145,139 @@ class DetailScoreChipsTemplateTests(TestCase):
     def test_numeric_score_count_still_renders(self):
         html = self._render(42)
         self.assertIn("42", html)
+
+    def test_chip_row_fades_the_edge_it_can_scroll_towards(self):
+        html = self._render(42)
+        self.assertIn("'detail-score-card-row--fade-left': hasOverflow && !atStart", html)
+        self.assertIn("'detail-score-card-row--fade-right': hasOverflow && !atEnd", html)
+        # Layout can change after init (carousel arrives, Duo unfolds).
+        self.assertIn("new ResizeObserver(() => updateScroll()).observe($refs.scoreRow)", html)
+
+
+class DetailActivitySubtitleTemplateTests(SimpleTestCase):
+    """The phone subtitle breaks at the bullet on narrow widths instead of wrapping mid-date."""
+
+    def _render(self, **subtitle):
+        return render_to_string(
+            "app/components/detail_activity_subtitle.html",
+            {
+                "activity_subtitle": subtitle,
+                "media": {"media_id": "1", "source": "tmdb"},
+                "media_type": MediaTypes.MOVIE.value,
+                "MediaTypes": MediaTypes,
+                "user": None,
+            },
+        )
+
+    def test_duration_subtitle_stacks_when_its_box_is_narrow(self):
+        html = self._render(
+            duration_text="52h 42min watched",
+            primary_text="Progress: 35/44",
+            date_start=None,
+            date_end=None,
+        )
+        self.assertIn("@container", html)
+        self.assertIn("@max-[26rem]:flex-col", html)
+
+    def test_bullet_is_hidden_while_stacked(self):
+        html = self._render(
+            duration_text="1h watched",
+            date_start=date(2020, 10, 10),
+            date_end=date(2026, 9, 26),
+        )
+        self.assertIn("text-gray-600 @max-[26rem]:hidden", html)
+
+
+class EntrySourceLabelTests(TestCase):
+    """Test the entry_source_label display filter (issue #1258)."""
+
+    def test_built_in_lowercase_sources_are_capitalized(self):
+        self.assertEqual(app_tags.entry_source_label("plex"), "Plex")
+        self.assertEqual(app_tags.entry_source_label("jellyfin"), "Jellyfin")
+
+    def test_special_casing_and_underscores(self):
+        self.assertEqual(app_tags.entry_source_label("lastfm"), "Last.fm")
+        self.assertEqual(app_tags.entry_source_label("imdb"), "IMDb")
+        self.assertEqual(
+            app_tags.entry_source_label("jellyfin_playback_reporting"),
+            "Jellyfin playback reporting",
+        )
+
+    def test_user_typed_text_is_kept_as_typed(self):
+        self.assertEqual(app_tags.entry_source_label("Theatre"), "Theatre")
+        self.assertEqual(app_tags.entry_source_label("my BluRay"), "my BluRay")
+
+    def test_empty_values(self):
+        self.assertEqual(app_tags.entry_source_label(""), "")
+        self.assertEqual(app_tags.entry_source_label(None), "")
+
+
+class DetailActionRowTests(SimpleTestCase):
+    """Which icons the detail action row shows, and which fold into More on phones."""
+
+    def row(
+        self,
+        *,
+        source=Sources.TMDB.value,
+        media_type="movie",
+        seerr=False,
+        links=False,
+        podcast_show=None,
+    ):
+        user = SimpleNamespace(
+            seerr_url="https://seerr.test" if seerr else "",
+            seerr_api_key="key" if seerr else "",
+            seerr_user_id=1 if seerr else None,
+        )
+        context = {
+            "request": SimpleNamespace(user=user),
+            "detail_link_sections": [{"title": "Links"}] if links else [],
+            "podcast_show": podcast_show,
+        }
+        return app_tags.detail_action_row(context, {"source": source}, media_type)
+
+    def test_plain_page_keeps_every_icon_inline(self):
+        row = self.row()
+        self.assertEqual(row["overflow"], [])
+        self.assertFalse(row["link"])
+        self.assertFalse(row["seerr"])
+
+    def test_manual_items_have_no_sync_icon(self):
+        self.assertFalse(self.row(source=Sources.MANUAL.value)["sync"])
+        self.assertTrue(self.row()["sync"])
+
+    def test_seerr_needs_a_configured_server_and_a_tmdb_movie_or_show(self):
+        self.assertTrue(self.row(seerr=True)["seerr"])
+        self.assertTrue(self.row(seerr=True, media_type="tv")["seerr"])
+        self.assertFalse(self.row(seerr=False)["seerr"])
+        self.assertFalse(self.row(seerr=True, media_type="season")["seerr"])
+        self.assertFalse(self.row(seerr=True, source=Sources.MAL.value)["seerr"])
+
+    def test_podcast_shows_have_no_notes_icon(self):
+        self.assertFalse(self.row(podcast_show=object())["notes"])
+        self.assertTrue(self.row()["notes"])
+
+    def test_five_icons_do_not_overflow(self):
+        # tags, notes, lists, history, sync
+        self.assertEqual(self.row()["overflow"], [])
+        # tags, notes, lists, history (manual: no sync) + links
+        self.assertEqual(
+            self.row(source=Sources.MANUAL.value, links=True)["overflow"], []
+        )
+
+    def test_six_icons_move_the_last_two_into_more(self):
+        row = self.row(links=True)
+        self.assertEqual(row["overflow"], ["history", "sync"])
+
+    def test_seven_icons_move_the_last_three_into_more(self):
+        row = self.row(links=True, seerr=True)
+        self.assertEqual(row["overflow"], ["seerr", "history", "sync"])
+
+    def test_overflow_never_holds_the_first_four_icons(self):
+        for links in (False, True):
+            for seerr in (False, True):
+                for source in (Sources.TMDB.value, Sources.MANUAL.value):
+                    overflow = self.row(links=links, seerr=seerr, source=source)[
+                        "overflow"
+                    ]
+                    self.assertTrue(set(overflow) <= {"history", "seerr", "sync"})

@@ -95,6 +95,7 @@ from app.collection_views import (
     collection_remove_season,
     collection_status_api,
     collection_update,
+    collection_update_season,
 )
 from app.columns import (
     resolve_column_config,
@@ -150,6 +151,7 @@ from app.forms import (
     CollectionEntryForm,
     EpisodeForm,
     ManualItemForm,
+    PodcastShowTrackerForm,
     get_form_class,
 )
 from app.history_views import (
@@ -194,6 +196,7 @@ from app.metadata_sync_views import (
     search_library_move_candidates,
     search_remap_candidates,
     set_hardcover_edition,
+    switch_tv_provider,
     sync_metadata,
     update_item_image,
     update_manual_item_metadata,
@@ -251,8 +254,10 @@ from app.music_views import (
     _music_album_detail_url,
     _music_artist_detail_url,
     _music_bulk_redirect_url,
+    _music_track_detail_url,
     _render_music_album_details,
     _render_music_artist_details,
+    _render_music_track_details,
     _render_music_tracker_modal,
     album_detail,
     artist_delete,
@@ -263,9 +268,12 @@ from app.music_views import (
     create_artist_from_search,
     music_album_details,
     music_artist_details,
+    music_track_details,
+    music_track_notes,
     prefetch_artist_covers,
     prefetch_artist_relation_images,
     sync_artist_discography_view,
+    track_detail,
 )
 from app.people_views import person_detail, studio_detail
 from app.podcast_views import (
@@ -395,7 +403,12 @@ from integrations import anime_mapping
 from integrations.models import CollectionSourceState
 from lists.models import CustomList
 from lists.views_helpers import get_public_list_for_item
-from users.home_screen import build_home_page_groups
+from users.home_screen import (
+    build_home_page_groups,
+    build_home_page_manifest,
+    build_home_row,
+    warm_first_group_split,
+)
 from users.models import (
     HomeSortChoices,
     MediaSortChoices,
@@ -404,6 +417,10 @@ from users.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# The Trakt series graph polls every 5 seconds while ratings are missing; this
+# bounds it to about a minute per page view.
+TRAKT_SERIES_GRAPH_MAX_POLLS = 12
 
 
 @login_not_required
@@ -425,19 +442,58 @@ def home(request):
             load_row_offset = max(int(request.GET.get("offset", "0")), 0)
         except (TypeError, ValueError):
             load_row_offset = 0
+        try:
+            # A random shelf's shuffle, carried by its load-more requests so
+            # later pages continue the same order.
+            load_row_seed = int(request.GET.get("seed", ""))
+        except (TypeError, ValueError):
+            load_row_seed = None
 
-        # First paint renders only the first group; the rest hydrates via
-        # home_rest_fragment. Row-append requests build only their target shelf.
+        # First paint renders only the first group; the rest arrive one row
+        # at a time via home_row_fragment. Row-append requests build only
+        # their target shelf.
         defer_remaining_groups = load_row_id is None
-        home_groups = build_home_page_groups(
-            request.user,
-            items_limit,
-            load_row_id=load_row_id,
-            load_row_offset=load_row_offset,
-            append_only=bool(request.headers.get("HX-Request") and load_row_id),
-            only_row_id=load_row_id if request.headers.get("HX-Request") else None,
-            first_group_only=defer_remaining_groups,
+        manifest = (
+            build_home_page_manifest(request.user)
+            if defer_remaining_groups
+            else None
         )
+        deferred_source = []
+        if manifest is not None:
+            # The shell renders a group only if its shelves are already
+            # cached; cold shelves load as their own fragments.
+            inline_index, defer_from = warm_first_group_split(
+                request.user, manifest, items_limit
+            )
+            deferred_source = manifest[defer_from:]
+            groups = [manifest[inline_index]] if inline_index is not None else []
+        else:
+            groups = None
+        home_groups = (
+            build_home_page_groups(
+                request.user,
+                items_limit,
+                load_row_id=load_row_id,
+                load_row_offset=load_row_offset,
+                load_row_seed=load_row_seed,
+                append_only=bool(request.headers.get("HX-Request") and load_row_id),
+                only_row_id=load_row_id if request.headers.get("HX-Request") else None,
+                first_group_only=defer_remaining_groups,
+                groups=groups,
+            )
+            if groups != []
+            else []
+        )
+
+        deferred_groups = [
+            {
+                "media_type": group["media_type"],
+                "label": group["label"],
+                "icon_svg": group["icon_svg"],
+                "row_ids": [row.id for row in group["rows"]],
+            }
+            for group in deferred_source
+        ]
 
         if request.headers.get("HX-Request") and load_row_id:
             target_row = next(
@@ -467,24 +523,20 @@ def home(request):
             # response to keep it in sync.
             response["X-Home-Row-Total"] = str(target_row["total"])
             response["X-Home-Row-Loaded"] = str(target_row["loaded_count"])
+            response["X-Home-Row-Seed"] = str(target_row.get("seed", 0))
             return response
 
         context = {
             "user": request.user,
             "home_groups": home_groups,
             "items_limit": items_limit,
-            "active_playback_card": live_playback.build_home_playback_card(
+            "active_playback_cards": live_playback.build_home_playback_cards(
                 request.user
             ),
             "MediaTypes": MediaTypes,
             "IMG_NONE": settings.IMG_NONE,
-            "defer_remaining_groups": defer_remaining_groups and bool(home_groups),
-            "artwork_poll_row_ids": [
-                row["row_id"]
-                for group in home_groups
-                for row in group["rows"]
-                if row.get("poll_for_covers")
-            ],
+            "defer_remaining_groups": bool(deferred_groups),
+            "deferred_groups": deferred_groups,
         }
         return render(request, "app/home.html", context)
     except OperationalError:
@@ -495,36 +547,31 @@ def home(request):
             "home_groups": [],
             "items_limit": 14,
             "database_error": True,
-            "active_playback_card": None,
+            "active_playback_cards": [],
             "MediaTypes": MediaTypes,
             "IMG_NONE": settings.IMG_NONE,
             "defer_remaining_groups": False,
-            "artwork_poll_row_ids": [],
+            "deferred_groups": [],
         }
         return render(request, "app/home.html", context)
 
 
 @require_GET
-def home_rest_fragment(request):
-    """Deferred home content: every group after the first.
-
-    The shell renders the first group synchronously; this fragment supplies
-    the rest (served from the per-row cache when warm) plus an out-of-band
-    update of the artwork poller covering all groups.
-    """
-    home_groups = build_home_page_groups(request.user, items_limit=14)
+def home_row_fragment(request, row_id: int):
+    """One deferred Home row, fetched independently as its data becomes ready."""
+    try:
+        row = build_home_row(request.user, row_id, items_limit=14)
+    except OperationalError:
+        logger.exception("Database error in deferred home row")
+        return HttpResponse(status=503)
+    if row is None:
+        return HttpResponse("")
     return render(
         request,
-        "app/components/home_rest_fragment.html",
+        "app/components/_scrollable_row.html",
         {
+            "row": row,
             "user": request.user,
-            "home_groups": home_groups[1:],
-            "artwork_poll_row_ids": [
-                row["row_id"]
-                for group in home_groups
-                for row in group["rows"]
-                if row.get("poll_for_covers")
-            ],
             "MediaTypes": MediaTypes,
             "IMG_NONE": settings.IMG_NONE,
             "return_url": reverse("home"),
@@ -608,11 +655,20 @@ def home_rows_artwork_refresh(request):
     """
     raw_ids = request.GET.get("ids", "")
     row_ids = {int(part) for part in raw_ids.split(",") if part.strip().isdigit()}
+    # Deferred rows can still be loading after the first poll. Keep polling
+    # cheaply until they settle instead of re-arming the poller from each
+    # row fragment (which would replace the poller and re-render rows).
+    raw_pending = request.GET.get("pending", "")
+    rows_pending = raw_pending.isdigit() and int(raw_pending) > 0
     if not row_ids:
         return render(
             request,
             "app/components/home_artwork_poller.html",
-            {"poll_row_ids": []},
+            {
+                "poll_row_ids": [],
+                "active": rows_pending,
+                "retry_soon": rows_pending,
+            },
         )
 
     cover_state = _artwork_cover_fingerprint(request.user)
@@ -625,7 +681,11 @@ def home_rows_artwork_refresh(request):
         return render(
             request,
             "app/components/home_artwork_poller.html",
-            {"poll_row_ids": sorted(row_ids)},
+            {
+                "poll_row_ids": sorted(row_ids),
+                "active": rows_pending,
+                "retry_soon": rows_pending,
+            },
         )
 
     home_groups = build_home_page_groups(
@@ -660,6 +720,8 @@ def home_rows_artwork_refresh(request):
             "poll_row_ids": sorted(
                 row["row_id"] for row in rows if row.get("poll_for_covers")
             ),
+            "active": rows_pending,
+            "retry_soon": rows_pending,
         },
         request=request,
     )
@@ -719,13 +781,25 @@ def trakt_series_graph_fragment(request, source, media_id):
         include_unrated=True,
     )
 
-    poll_for_graph = Item.objects.filter(
-        media_id=str(media_id),
-        source=source,
-        media_type=MediaTypes.EPISODE.value,
-        season_number__gt=0,
-        trakt_rating__isnull=True,
-    ).exists()
+    # Unaired episodes never get a Trakt rating, and some aired ones never
+    # collect votes, so polling stops on its own after a bounded number of
+    # tries instead of every 5 seconds for as long as the page stays open.
+    try:
+        attempt = max(int(request.GET.get("attempt", 0)), 0)
+    except (TypeError, ValueError):
+        attempt = 0
+    poll_for_graph = (
+        attempt < TRAKT_SERIES_GRAPH_MAX_POLLS
+        and Item.objects.filter(
+            media_id=str(media_id),
+            source=source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number__gt=0,
+            trakt_rating__isnull=True,
+        )
+        .exclude(release_datetime__gt=timezone.now())
+        .exists()
+    )
 
     return render(
         request,
@@ -733,6 +807,7 @@ def trakt_series_graph_fragment(request, source, media_id):
         {
             "graph_data": graph_data,
             "poll_for_graph": poll_for_graph,
+            "next_attempt": attempt + 1,
             "source": source,
             "media_id": media_id,
         },
@@ -740,15 +815,15 @@ def trakt_series_graph_fragment(request, source, media_id):
 
 
 def active_playback_fragment(request):
-    """HTMX fragment: return the active playback card or empty response."""
-    card = live_playback.build_home_playback_card(request.user)
-    if not card:
+    """HTMX fragment: return the active playback cards or empty response."""
+    cards = live_playback.build_home_playback_cards(request.user)
+    if not cards:
         return HttpResponse("")
     return render(
         request,
-        "app/components/active_playback_card.html",
+        "app/components/active_playback_cards.html",
         {
-            "active_playback_card": card,
+            "active_playback_cards": cards,
         },
     )
 
@@ -814,11 +889,30 @@ def episode_details(
     public_list_view = request.GET.get("public_view") == "1"
     public_view = is_anonymous or public_list_view
 
+    # Match season/media detail pages: honor the user's metadata language
+    # (and any per-show override) instead of always using TMDB_LANG.
+    show_media_type = (
+        MediaTypes.ANIME.value
+        if parent_media_type == MediaTypes.ANIME.value
+        else MediaTypes.TV.value
+    )
+    show_item = Item.objects.filter(
+        media_id=media_id,
+        source=source,
+        media_type=show_media_type,
+    ).first()
+    metadata_language = metadata_resolution.metadata_language_default(
+        None if is_anonymous else request.user,
+        show_item,
+    )
+
     tv_with_seasons_metadata = services.get_media_metadata(
         "tv_with_seasons",
         media_id,
         source,
         [season_number],
+        language=metadata_language,
+        user=None if is_anonymous else request.user,
     )
     season_key = f"season/{season_number}"
     season_metadata = tv_with_seasons_metadata.get(season_key) or {}
@@ -889,7 +983,12 @@ def episode_details(
     episode_metadata = {}
     if source == Sources.TMDB.value:
         with contextlib.suppress(Exception):
-            episode_metadata = tmdb.episode(media_id, season_number, episode_number)
+            episode_metadata = tmdb.episode(
+                media_id,
+                season_number,
+                episode_number,
+                language=metadata_language,
+            )
 
     episode_item_qs = Item.objects.filter(
         media_id=media_id,
@@ -1126,7 +1225,7 @@ def music_bulk_save(request):
             )
             return response
         messages.error(request, gettext("Start and end dates are required."))
-        return redirect(request.POST.get("return_url") or "/")
+        return redirect(helpers.safe_return_url(request, request.POST.get("return_url")))
 
     try:
         first_season_number = int(request.POST["first_season_number"])
@@ -1146,7 +1245,7 @@ def music_bulk_save(request):
             )
             return response
         messages.error(request, gettext("Invalid track range."))
-        return redirect(request.POST.get("return_url") or "/")
+        return redirect(helpers.safe_return_url(request, request.POST.get("return_url")))
 
     track_count = max(int(request.POST.get("episode_count") or 0), 0)
     write_mode = request.POST.get("write_mode", "add")
@@ -1196,7 +1295,44 @@ def music_bulk_save(request):
         request,
         gettext("Adding plays to %(value_1)s tracks.") % {"value_1": track_count},
     )
-    return redirect(request.POST.get("return_url") or "/")
+    return redirect(helpers.safe_return_url(request, request.POST.get("return_url")))
+
+
+def _create_manual_podcast_show(request, form):
+    """Create a manual podcast as a show plus the user's show tracker.
+
+    Podcasts are tracked at the show level (PodcastShow/PodcastShowTracker), so
+    a custom entry has to create those instead of the legacy per-episode Item
+    and Podcast rows the generic manual path would otherwise produce.
+    """
+    updated_request = request.POST.copy()
+    updated_request["show_id"] = "0"
+    tracker_form = PodcastShowTrackerForm(updated_request, user=request.user)
+
+    if not tracker_form.is_valid():
+        logger.error(tracker_form.errors.as_json())
+        helpers.form_error_messages(tracker_form, request)
+        return redirect("create_entry")
+
+    item = form.save()
+    show = PodcastShow.objects.create(
+        podcast_uuid=item.media_id,
+        source=Sources.MANUAL.value,
+        title=item.title,
+        image=item.image or "",
+        description=item.synopsis or "",
+    )
+
+    tracker = tracker_form.save(commit=False)
+    tracker.user = request.user
+    tracker.show = show
+    tracker.save()
+
+    msg = gettext("%(value_1)s added successfully.") % {"value_1": item}
+    messages.success(request, msg)
+    logger.info(msg)
+
+    return redirect("create_entry")
 
 
 @require_http_methods(["GET", "POST"])
@@ -1204,7 +1340,14 @@ def create_entry(request):
     """Return the form for manually adding media items."""
     if request.method == "GET":
         media_types = MediaTypes.values
-        return render(request, "app/create_entry.html", {"media_types": media_types})
+        return render(
+            request,
+            "app/create_entry.html",
+            {
+                "media_types": media_types,
+                "default_status": helpers.default_status_for_new_entry(),
+            },
+        )
 
     # Process the form submission
     form = ManualItemForm(request.POST, user=request.user)
@@ -1213,6 +1356,9 @@ def create_entry(request):
         logger.error(form.errors.as_json())
         helpers.form_error_messages(form, request)
         return redirect("create_entry")
+
+    if form.cleaned_data["media_type"] == MediaTypes.PODCAST.value:
+        return _create_manual_podcast_show(request, form)
 
     # Try to save the item
     try:
@@ -1377,29 +1523,29 @@ def history_modal(
             episode_number=episode_number,
         )
 
+    if hasattr(user_medias, "order_by"):
+        # Number instances in the order they were added: date order puts an
+        # entry without an end date first or last depending on the database.
+        user_medias = user_medias.order_by("created_at", "pk")
     try:
         total_medias = user_medias.count()
     except TypeError:
         total_medias = len(user_medias)
     timeline_entries = []
-    for index, media in enumerate(user_medias, start=1):
-        # Filter history to only include records with end_date (completed plays)
-        # This prevents showing invalid history records from in-progress episodes
-        history = (
-            media.history.filter(end_date__isnull=False)
-            if hasattr(media.history, "filter")
-            else [h for h in media.history.all() if h.end_date]
+    for media_entry_number, media in enumerate(user_medias, start=1):
+        history = media.history.all()
+        if media_type == MediaTypes.PODCAST.value:
+            # Pocket Casts sync writes a record for every partial listen; only
+            # records with an end date describe a listen.
+            history = history.filter(end_date__isnull=False)
+        timeline_entries.extend(
+            history_processor.process_history_entries(
+                history,
+                media_type,
+                media_entry_number,
+                request.user,
+            ),
         )
-        if history:
-            media_entry_number = total_medias - index + 1
-            timeline_entries.extend(
-                history_processor.process_history_entries(
-                    history,
-                    media_type,
-                    media_entry_number,
-                    request.user,
-                ),
-            )
     return render(
         request,
         "app/components/fill_history.html",
@@ -1880,99 +2026,29 @@ def cache_status(request):
                 }
             )
 
-        cache_key = statistics_cache._cache_key(request.user.id, range_name)
-        refresh_lock_key = statistics_cache._refresh_lock_key(
-            request.user.id, range_name
+        # Reports the published snapshot and never touches a running sync. A
+        # stale snapshot only makes sure a sync is queued; the page itself
+        # polls this only after a manual Refresh or for a never-built range.
+        from app import statistics_sync
+
+        entry = statistics_sync.load_snapshot_meta(request.user.id, range_name)
+        is_stale = statistics_sync.entry_is_stale(entry, user_id=request.user.id)
+        if is_stale:
+            statistics_sync.ensure_sync(request.user.id, urgent=entry is None)
+        sync_running = statistics_sync.sync_is_running(request.user.id)
+        built_at = entry.get("built_at") if entry else None
+        recently_built = bool(
+            built_at and timezone.now() - built_at < timedelta(seconds=60)
         )
-        cache_entry = cache.get(cache_key)
-        refresh_lock = cache.get(refresh_lock_key)
-        if refresh_lock and statistics_cache._lock_is_stale(refresh_lock):
-            cache.delete(refresh_lock_key)
-            refresh_lock = None
-
-        any_range_refreshing = statistics_cache._any_range_refreshing(request.user.id)
-        metadata_lock, metadata_built_at, metadata_recently_built = (
-            statistics_cache._metadata_refresh_status(request.user.id)
-        )
-        metadata_refreshing = metadata_lock is not None
-
-        refresh_scheduled = False
-        if cache_entry:
-            built_at = cache_entry.get("built_at")
-            is_stale = statistics_cache.is_statistics_cache_stale(
-                cache_entry, request.user.id
-            )
-            recently_built = False
-            age = None
-            if built_at:
-                age = timezone.now() - built_at
-                # Consider cache "recently built" if it was built in the last 60 seconds
-                # This helps catch refreshes that completed just before or during page load
-                recently_built = age < timedelta(seconds=60)
-
-            if not is_stale and refresh_lock:
-                cache.delete(refresh_lock_key)
-                refresh_lock = None
-            elif is_stale and refresh_lock is None:
-                refresh_scheduled = statistics_cache.schedule_statistics_refresh(
-                    request.user.id,
-                    range_name,
-                    allow_inline=False,
-                )
-                refresh_lock = (
-                    cache.get(refresh_lock_key) if refresh_scheduled else refresh_lock
-                )
-
-            is_refreshing = (
-                refresh_lock is not None or refresh_scheduled or metadata_refreshing
-            )
-            return JsonResponse(
-                {
-                    "exists": True,
-                    "built_at": built_at.isoformat() if built_at else None,
-                    "is_stale": is_stale,
-                    "is_refreshing": is_refreshing,
-                    "recently_built": recently_built,
-                    "any_range_refreshing": any_range_refreshing,
-                    "refresh_scheduled": refresh_scheduled,
-                    "metadata_refreshing": metadata_refreshing,
-                    "metadata_built_at": metadata_built_at.isoformat()
-                    if metadata_built_at
-                    else None,
-                    "metadata_recently_built": metadata_recently_built,
-                }
-            )
-        refresh_scheduled = False
-        if refresh_lock is None:
-            # True cold miss (no cache entry, no active lock). This is the normal
-            # state right after a bulk import, but it's also what a lost refresh
-            # looks like (task never dequeued, worker restarted mid-task, etc.).
-            # Re-schedule defensively; schedule_statistics_refresh() is debounced
-            # via its own lock/dedupe keys, so polling this repeatedly is safe.
-            refresh_scheduled = statistics_cache.schedule_statistics_refresh(
-                request.user.id,
-                range_name,
-                allow_inline=False,
-            )
-            refresh_lock = (
-                cache.get(refresh_lock_key) if refresh_scheduled else refresh_lock
-            )
-
-        is_refreshing = refresh_lock is not None or metadata_refreshing
         return JsonResponse(
             {
-                "exists": False,
-                "built_at": None,
-                "is_stale": False,
-                "is_refreshing": is_refreshing,
-                "recently_built": False,
-                "any_range_refreshing": any_range_refreshing,
-                "refresh_scheduled": refresh_scheduled,
-                "metadata_refreshing": metadata_refreshing,
-                "metadata_built_at": metadata_built_at.isoformat()
-                if metadata_built_at
-                else None,
-                "metadata_recently_built": metadata_recently_built,
+                "exists": entry is not None,
+                "built_at": built_at.isoformat() if built_at else None,
+                "is_stale": bool(entry) and is_stale,
+                "is_refreshing": is_stale,
+                "recently_built": recently_built,
+                "any_range_refreshing": sync_running,
+                "refresh_scheduled": False,
             }
         )
 
@@ -2159,6 +2235,7 @@ __all__ = [
     "_music_album_detail_url",
     "_music_artist_detail_url",
     "_music_bulk_redirect_url",
+    "_music_track_detail_url",
     "_normalize_detail_link_brand_key",
     "_normalize_statistics_compare_mode",
     "_paginate_detail_episodes",
@@ -2169,6 +2246,7 @@ __all__ = [
     "_render_discover_rows_fragment",
     "_render_music_album_details",
     "_render_music_artist_details",
+    "_render_music_track_details",
     "_render_music_tracker_modal",
     "_render_podcast_show_track_modal",
     "_render_standard_track_modal",
@@ -2213,6 +2291,7 @@ __all__ = [
     "collection_remove_season",
     "collection_status_api",
     "collection_update",
+    "collection_update_season",
     "comicvine",
     "config",
     "create_album_from_search",
@@ -2263,6 +2342,8 @@ __all__ = [
     "move_library_item",
     "music_album_details",
     "music_artist_details",
+    "music_track_details",
+    "music_track_notes",
     "openlibrary",
     "parse_date",
     "person_detail",
@@ -2304,6 +2385,7 @@ __all__ = [
     "stats",
     "studio_detail",
     "suppress_media_cache_change_signals",
+    "switch_tv_provider",
     "sync_album_metadata_view",
     "sync_artist_discography_view",
     "sync_metadata",
@@ -2316,6 +2398,7 @@ __all__ = [
     "tags_modal",
     "time",
     "toggle_pinned_provider",
+    "track_detail",
     "track_modal",
     "trakt_popularity_service",
     "update_album_score",

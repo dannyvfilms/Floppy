@@ -99,6 +99,7 @@ class LastFMScrobbleProcessor:
             completed=True,  # All Last.fm scrobbles are completed
             played_at=played_at,
             defer_cover_prefetch=fast_mode,
+            entry_source="lastfm",
         )
 
         # Record the scrobble

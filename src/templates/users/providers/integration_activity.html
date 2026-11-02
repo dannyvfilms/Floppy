@@ -1,0 +1,42 @@
+{% load i18n static app_tags user_tags %}
+<div x-data="{ activeIntegration: 'all' }">
+    {% if match_review_references %}
+      <section class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-5">
+        <h2 class="text-lg font-semibold">{% translate "Matching review" %}</h2>
+        <p class="mt-1 text-sm text-[var(--color-text-secondary)]">{% translate "These provider identities were not safe to match automatically." %}</p>
+        <div class="mt-4 space-y-2">
+          {% for reference in match_review_references %}
+            <div class="flex flex-wrap items-center justify-between gap-3 rounded-md bg-[var(--color-surface)] p-3 text-sm">
+              <span>{{ reference.metadata.title|default:reference.external_identity }} ({{ reference.integration }})</span>
+              <span class="flex gap-2">
+                {% if reference.matched_item %}<a class="text-[var(--color-link)] hover:underline" href="{% url 'match_fix' reference.matched_item.id %}">{% translate "Fix match" %}</a>{% endif %}
+                <form method="post" action="{% url 'match_reference_status' reference.id 'ignored' %}">{% csrf_token %}<button class="text-[var(--color-text-muted)] hover:text-[var(--color-text)]" type="submit">{% translate "Ignore" %}</button></form>
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+    {% if match_saved_references %}
+      <section class="rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] p-5">
+        <h2 class="text-lg font-semibold">{% translate "Saved match decisions" %}</h2>
+        <p class="mt-1 text-sm text-[var(--color-text-secondary)]">{% translate "These decisions are applied to future Plex and Trakt imports." %}</p>
+        <div class="mt-4 space-y-2">
+          {% for reference in match_saved_references %}
+            <div class="flex flex-wrap items-center justify-between gap-3 rounded-md bg-[var(--color-surface-strong)] p-3 text-sm">
+              <span>{{ reference.metadata.title|default:reference.external_identity }} ({{ reference.integration }})</span>
+              <span class="flex items-center gap-3">
+                <span class="text-[var(--color-text-muted)]">{{ reference.get_review_status_display }}</span>
+                {% with ref_item=reference.corrected_item|default:reference.matched_item %}
+                  {% if ref_item %}<a class="text-[var(--color-link)] hover:underline" href="{% url 'match_fix' ref_item.id %}">{% translate "Edit" %}</a>{% endif %}
+                {% endwith %}
+                <form method="post" action="{% url 'match_reference_status' reference.id 'remove' %}">{% csrf_token %}<button class="text-[var(--color-text-muted)] hover:text-[var(--color-text)]" type="submit">{% translate "Remove" %}</button></form>
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+{% if sync_conflicts %}{% include "users/components/sync_state_section.html" with activity_conflicts_only=True %}{% endif %}
+
+</div>

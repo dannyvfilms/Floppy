@@ -1,6 +1,6 @@
 {% comment %}
-  Shared home group loop — used by the home shell (first group) and by
-  home_rest_fragment (remaining groups).
+  Shared home group loop — the home shell renders the first group here;
+  later groups use home_deferred_groups.html so each row can load on its own.
   Context: home_groups, user
 {% endcomment %}
 {% for group in home_groups %}

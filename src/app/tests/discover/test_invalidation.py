@@ -211,7 +211,7 @@ class DiscoverInvalidationSignalTests(TestCase):
     @patch("app.signals.discover_tab_cache.invalidate_for_media_change")
     @patch("app.models.Item.fetch_releases")
     @patch("app.models.providers.services.get_media_metadata")
-    def test_active_discover_priority_delays_history_and_statistics_refreshes(
+    def test_active_discover_priority_delays_history_and_marks_statistics_days(
         self,
         mock_get_media_metadata,
         _mock_fetch_releases,
@@ -274,11 +274,9 @@ class DiscoverInvalidationSignalTests(TestCase):
             day_values=[expected_day_key],
             reason="movie_change",
         )
-        mock_schedule_all_ranges_refresh.assert_called_once_with(
-            self.user.id,
-            debounce_seconds=20,
-            countdown=20,
-        )
+        # Marking the day is what queues the Statistics sync; there is no
+        # separate range refresh to delay.
+        mock_schedule_all_ranges_refresh.assert_not_called()
 
     @patch("app.signals._handle_media_cache_change")
     @patch("app.models.Item.fetch_releases")

@@ -14,7 +14,7 @@
 {% elif results %}
   <div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
     {% for result in results %}
-      {% include "app/components/media_card.html" with item=result.item title=result.item.title media=result.media user=user is_recommend_mode=True secondary_color=True from_grid=True search_preview_url=request.path search_modal_target="#add-item-modal-container" %}
+      {% media_card "search_modal" item=result.item title=result.item.title media=result.media search_preview_url=request.path search_modal_target="#add-item-modal-container" %}
     {% endfor %}
   </div>
 

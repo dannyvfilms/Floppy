@@ -473,6 +473,37 @@ class HistoryRefreshSchedulingTests(TestCase):
             priority=settings.CELERY_TASK_PRIORITY_BACKGROUND,
         )
 
+    @patch("app.tasks.repair_history_day_cache_coverage_task.apply_async")
+    @patch(
+        "app.history_cache.repair_history_day_cache_coverage",
+        return_value={"rebuilt": 0, "remaining": 10},
+    )
+    def test_repair_history_day_cache_coverage_task_backs_off_when_stalled(
+        self,
+        _mock_repair_history_day_cache_coverage,
+        mock_apply_async,
+    ):
+        tasks.repair_history_day_cache_coverage_task(self.user.id, "repeats")
+
+        self.assertEqual(
+            mock_apply_async.call_args.kwargs["countdown"],
+            tasks.HISTORY_COVERAGE_REPAIR_STALLED_REQUEUE_SECONDS,
+        )
+
+    @patch("app.tasks.repair_history_day_cache_coverage_task.apply_async")
+    @patch(
+        "app.history_cache.repair_history_day_cache_coverage",
+        return_value={"rebuilt": 0, "remaining": 0},
+    )
+    def test_repair_history_day_cache_coverage_task_stops_when_covered(
+        self,
+        _mock_repair_history_day_cache_coverage,
+        mock_apply_async,
+    ):
+        tasks.repair_history_day_cache_coverage_task(self.user.id, "repeats")
+
+        mock_apply_async.assert_not_called()
+
 
 class MusicHistoryOwnershipTests(TestCase):
     def setUp(self):

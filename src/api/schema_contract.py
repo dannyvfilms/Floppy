@@ -19,17 +19,82 @@ VERIFIED_OPERATIONS = frozenset(
     | {
         ("/api/v1/info/", "GET"),
         ("/apis/listenbrainz/1/submit-listens/", "POST"),
+        ("/apis/listenbrainz/1/user/{username}/listens/", "GET"),
+        ("/apis/listenbrainz/1/stats/user/{username}/artists/", "GET"),
+        ("/apis/listenbrainz/1/stats/user/{username}/release-groups/", "GET"),
+        ("/apis/listenbrainz/1/stats/user/{username}/recordings/", "GET"),
+        ("/apis/listenbrainz/1/stats/user/{username}/genre-activity/", "GET"),
         ("/apis/listenbrainz/1/validate-token/", "GET"),
+        ("/api/v1/sync/bootstrap/", "POST"),
+        ("/api/v1/sync/snapshot/", "GET"),
+        ("/api/v1/sync/changes/", "GET"),
+        ("/api/v1/sync/progress-changes/", "GET"),
     }
 )
 
+INTEGRATION_GUIDE = """\
+Verified consumer subset covering MCP HTTP operations, public grounding \
+information, and ListenBrainz-compatible authentication.
+
+## Start here
+
+- This document is the reviewed contract: `/api/openapi.yaml` (YAML). Browsable \
+index: `/api/docs/`.
+- `/api/schema/` is the full, unreviewed diagnostic schema (about 200 KB). \
+It is YAML by default; request JSON with `?format=json` or \
+`Accept: application/json`, or YAML with `?format=yaml`. Other `format` \
+values fall back to Accept negotiation.
+- Authenticate with `Authorization: Bearer <token>` or `X-API-Key: <token>`.
+
+## Vocabulary
+
+- `media_type`: the kind of media (`movie`, `tv`, `game`, ...). Path segment.
+- `source`: the provider that owns `media_id` (`tmdb`, `igdb`, `manual`, ...). \
+It is called `source` everywhere in this API, including search; there is no \
+`provider` field on the wire.
+- `media_id`: the provider's id for the item, always a string in paths.
+- Statuses are written as an integer code (0 Planning, 1 In progress, \
+2 Paused, 3 Completed, 4 Dropped) or its case-insensitive label.
+
+## Golden path: add a play to a game
+
+1. `GET /api/v1/search/{media_type}/?search=...` (optionally `&source=...`) \
+and take `source` and `media_id` from the chosen result.
+2. `GET /api/v1/media/{media_type}/{source}/{media_id}/state/`. `tracked: false` \
+with `consumptions: []` means the item is real but you have not tracked it. \
+Each entry in `consumptions` has its own `consumption_id`.
+3. `POST /api/v1/media/{media_type}/` with `source` and `media_id` appends a \
+new consumption; it never overwrites an existing one. Omitted `status` means \
+Planning.
+4. `PATCH /api/v1/media/{media_type}/{source}/{media_id}/history/{consumption_id}/` \
+changes exactly one consumption. Re-read `state` to verify.
+
+## Errors
+
+Error bodies keep their `detail` text and HTTP status. Where recovery differs \
+they add a stable `code`:
+
+| `code` | Status | Meaning |
+| --- | --- | --- |
+| `MEDIA_NOT_FOUND` | 404 | No such item (the provider does not know the id, \
+or a manual item does not exist). Do not retry. |
+| `MEDIA_NOT_TRACKED` | 404 | The item may exist but you have not tracked it; \
+track it first. |
+| `CONSUMPTION_NOT_FOUND` | 404 | `consumption_id` is not one of this item's \
+entries; re-read `state`. |
+| `INVALID_STATUS` | 400 | `status` is not a code 0-4 or a known label. |
+| `PROVIDER_UNAVAILABLE` | 503 | The metadata provider failed; \
+`retryable: true`. |
+| `DATABASE_BUSY` | 503 | The database was locked; retry GET requests after \
+`Retry-After`. |
+
+Responses without a `code` (for example other 400 validation errors) are \
+described by `detail` only.
+"""
+
 STATIC_SPECTACULAR_SETTINGS = {
     "TITLE": "Floppy verified MCP and grounding API",
-    "DESCRIPTION": (
-        "Verified consumer subset covering MCP HTTP operations, public grounding "
-        "information, and ListenBrainz-compatible authentication. The full "
-        "diagnostic API schema remains available at /api/schema/."
-    ),
+    "DESCRIPTION": INTEGRATION_GUIDE,
     "VERSION": "1.0.0",
     "COMPONENT_SPLIT_PATCH": False,
     "SERVERS": [{"url": "../"}],
@@ -382,8 +447,6 @@ EXPECTED_SCHEMA_ERRORS: frozenset[SchemaFinding] = frozenset(
         ("api.fork_views_integrations.ImportDispatchView", "serializer-unresolved"),
         ("api.fork_views_lists.ListActivityView", "serializer-unresolved"),
         ("api.fork_views_lists.ListCollaboratorsView", "serializer-unresolved"),
-        ("api.fork_views_lists.ListItemsOrderView", "serializer-unresolved"),
-        ("api.fork_views_lists.ListItemsReorderView", "serializer-unresolved"),
         (
             "api.fork_views_lists.ListRecommendationDecisionView",
             "serializer-unresolved",
@@ -422,10 +485,6 @@ EXPECTED_SCHEMA_ERRORS: frozenset[SchemaFinding] = frozenset(
         ),
         ("api.fork_views_podcast.PodcastShowsView", "serializer-unresolved"),
         (
-            "api.fork_views_progress_changes.ProgressChangeFeedView",
-            "serializer-unresolved",
-        ),
-        (
             "api.fork_views_statistics.StatisticsOverviewView",
             "serializer-unresolved",
         ),
@@ -439,10 +498,6 @@ EXPECTED_SCHEMA_ERRORS: frozenset[SchemaFinding] = frozenset(
         ),
         ("api.fork_views_watched_state.SyncConflictsView", "serializer-unresolved"),
         ("api.fork_views_watched_state.SyncConnectionsView", "serializer-unresolved"),
-        (
-            "api.fork_views_watched_state.WatchedStateChangeFeedView",
-            "serializer-unresolved",
-        ),
         ("api.fork_views_watched_state.WatchedStateView", "serializer-unresolved"),
         ("api.fork_views_tracking.HistoryRecordView", "serializer-unresolved"),
         ("api.fork_views_tracking.HistoryView", "serializer-unresolved"),
@@ -471,7 +526,6 @@ EXPECTED_SCHEMA_ERRORS: frozenset[SchemaFinding] = frozenset(
         ("api.views.InfoView", "serializer-unresolved"),
         ("api.views.ListDetailView", "serializer-unresolved"),
         ("api.views.ListItemView", "serializer-unresolved"),
-        ("api.views.ListItemsView", "serializer-unresolved"),
         ("api.views.ListsView", "serializer-unresolved"),
         ("api.views.MediaChangesHistoryView", "serializer-unresolved"),
         ("api.views.MediaEpisodeListDetailView", "serializer-unresolved"),
@@ -480,7 +534,6 @@ EXPECTED_SCHEMA_ERRORS: frozenset[SchemaFinding] = frozenset(
         ("api.views.MediaListDetailView", "serializer-unresolved"),
         ("api.views.MediaListsView", "serializer-unresolved"),
         ("api.views.MediaSeasonChangesHistoryView", "serializer-unresolved"),
-        ("api.views.MediaSeasonEpisodesView", "serializer-unresolved"),
         ("api.views.MediaSeasonListDetailView", "serializer-unresolved"),
         ("api.views.MediaSeasonListsView", "serializer-unresolved"),
         ("api.views.MediaSeasonSyncView", "serializer-unresolved"),

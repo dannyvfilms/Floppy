@@ -1,0 +1,11 @@
+# Disposable SQLite variant. Compose 2.24.4+ supports !override.
+# Use scripts/constrained_benchmark.sh --database sqlite; never production data.
+services:
+  floppy:
+    environment:
+      DB_HOST: ""
+    depends_on: !override
+      redis:
+        condition: service_started
+  db:
+    profiles: [postgres]

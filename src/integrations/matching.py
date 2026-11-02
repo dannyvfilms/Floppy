@@ -3,8 +3,21 @@
 import re
 import unicodedata
 
-_TRAILING_YEAR_RE = re.compile(r"\s*(?:\(\d{4}\)|\[\d{4}\])\s*$")
+_TRAILING_YEAR_RE = re.compile(r"\s*(?:\((\d{4})\)|\[(\d{4})\])\s*$")
 _NON_WORD_RE = re.compile(r"[^\w]+", re.UNICODE)
+
+
+def split_title_year(value):
+    """Split ``"Title (YYYY)"`` into ``("Title", "YYYY")``.
+
+    Media servers append the first-release year to disambiguate same-title
+    works. Providers index the bare title, and the year identifies the work.
+    """
+    value = (value or "").strip()
+    match = _TRAILING_YEAR_RE.search(value)
+    if not match or match.start() == 0:
+        return value, None
+    return value[: match.start()], match.group(1) or match.group(2)
 
 
 def normalize_title(value):
@@ -48,9 +61,15 @@ def unique_title_match(results, title, *, year=None):
     provider ids remain ambiguous even when their display titles are identical;
     callers must queue those rows for review instead of guessing.
     """
+    candidates = title_matches(results, title, year=year)
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def title_matches(results, title, *, year=None):
+    """Return every exact normalized-title result, one per provider id."""
     normalized_title = normalize_title(title)
     if not normalized_title:
-        return None
+        return []
 
     expected_year = str(year) if year not in (None, "") else None
     candidates = []
@@ -79,4 +98,4 @@ def unique_title_match(results, title, *, year=None):
         seen_ids.add(result_id)
         candidates.append(result)
 
-    return candidates[0] if len(candidates) == 1 else None
+    return candidates

@@ -190,6 +190,13 @@
     });
   }
 
+  function syncEmptyHomeGroups() {
+    document.querySelectorAll('[data-home-deferred-group]').forEach(group => {
+      const hasContent = group.querySelector('[data-home-row-slot], [data-home-row-wrapper], [data-home-row-failed]');
+      group.toggleAttribute('hidden', !hasContent);
+    });
+  }
+
   function formatPlaybackClock(totalSeconds) {
     const clamped = Math.max(0, Math.floor(totalSeconds || 0));
     const hours = Math.floor(clamped / 3600);
@@ -234,6 +241,31 @@
     }
   }
 
+  // Several cards scroll sideways. Each keeps the width a lone card always had,
+  // which the page's own grid decides, so read it off a hidden probe grid that
+  // sits beside the row and obeys the same rules.
+  function syncActivePlaybackColumns() {
+    const container = document.getElementById('active-playback-container');
+    if (!container) return;
+    let probe = document.getElementById('active-playback-probe');
+    if (!probe) {
+      probe = document.createElement('div');
+      probe.id = 'active-playback-probe';
+      probe.className = 'media-grid';
+      probe.setAttribute('aria-hidden', 'true');
+      probe.style.cssText = 'height:0;overflow:hidden;visibility:hidden;pointer-events:none;margin:0 !important';
+      probe.innerHTML = '<div data-active-playback-card data-active-playback-probe></div>';
+      container.after(probe);
+    }
+    const item = probe.firstElementChild;
+    if (!item) return;
+    const width = Math.round(item.getBoundingClientRect().width);
+    if (width > 0 && container.dataset.cardWidth !== String(width)) {
+      container.dataset.cardWidth = String(width);
+      container.style.setProperty('--playback-card-w', `${width}px`);
+    }
+  }
+
   function initActivePlaybackTicker() {
     // Timer id lives on window so a re-executed copy of this script can
     // still clear the interval started by a previous page.
@@ -243,7 +275,8 @@
     }
 
     const tick = () => {
-      const cards = document.querySelectorAll('[data-active-playback-card]');
+      syncActivePlaybackColumns();
+      const cards = document.querySelectorAll('[data-active-playback-card]:not([data-active-playback-probe])');
       cards.forEach(updateActivePlaybackCard);
     };
 
@@ -255,6 +288,18 @@
     loadVisibleReleaseYears();
     initHomeRowInfiniteScroll();
     initActivePlaybackTicker();
+    scheduleActivePlaybackPoll();
+  }
+
+  function scheduleActivePlaybackPoll(delay = 10000) {
+    const container = document.getElementById('active-playback-container');
+    if (!container || container._playbackPending || container._playbackPollTimer) return;
+    container._playbackPollTimer = setTimeout(() => {
+      container._playbackPollTimer = null;
+      if (container.isConnected && !container._playbackPending) {
+        htmx.trigger(container, 'playback-poll');
+      }
+    }, delay);
   }
 
   if (document.readyState === 'loading') {
@@ -268,8 +313,33 @@
   if (!window.__floppyHomeRowEventsBound) {
   window.__floppyHomeRowEventsBound = true;
 
+  function retryDeferredHomeRow(event) {
+    const slot = event.detail.elt;
+    if (!slot || !slot.matches('[data-home-row-slot]')) return;
+    const retries = Number.parseInt(slot.dataset.retries || '0', 10);
+    if (retries >= 2) {
+      slot.classList.remove('animate-pulse');
+      slot.removeAttribute('aria-busy');
+      slot.textContent = slot.dataset.homeRowErrorLabel || 'Unable to load this row.';
+      // Stop counting a failed row as pending so the artwork poller can settle.
+      slot.removeAttribute('data-home-row-slot');
+      slot.setAttribute('data-home-row-failed', '');
+      return;
+    }
+    slot.dataset.retries = String(retries + 1);
+    setTimeout(() => htmx.trigger(slot, 'load'), 2000 * (retries + 1));
+  }
+  document.body.addEventListener('htmx:responseError', retryDeferredHomeRow);
+  document.body.addEventListener('htmx:sendError', retryDeferredHomeRow);
+
   document.body.addEventListener('htmx:beforeRequest', function(event) {
     const row = event.detail.elt;
+    if (row && row.id === 'active-playback-container') {
+      clearTimeout(row._playbackPollTimer);
+      row._playbackPollTimer = null;
+      row._playbackPending = true;
+      row._playbackStarted = performance.now();
+    }
     if (row && row.matches('[data-home-row="true"]')) {
       row.dataset.loading = 'true';
       row.dataset.pendingOffset = row.dataset.loadedCount || '0';
@@ -278,11 +348,24 @@
 
   document.body.addEventListener('htmx:afterRequest', function(event) {
     const row = event.detail.elt;
+    if (row && row.id === 'active-playback-container') {
+      row._playbackPending = false;
+      const slow = performance.now() - row._playbackStarted >= 10000;
+      const failed = !event.detail.successful;
+      row._playbackBackoff = slow || failed
+        ? Math.min(30000, (row._playbackBackoff || 10000) * 2)
+        : 10000;
+      scheduleActivePlaybackPoll(row._playbackBackoff);
+    }
     if (row && row.matches('[data-home-row="true"]')) {
       const xhr = event.detail.xhr;
       const freshTotal = xhr && xhr.getResponseHeader('X-Home-Row-Total');
       if (freshTotal !== null && freshTotal !== undefined) {
         row.dataset.totalCount = freshTotal;
+      }
+      const freshSeed = xhr && xhr.getResponseHeader('X-Home-Row-Seed');
+      if (freshSeed !== null && freshSeed !== undefined) {
+        row.dataset.seed = freshSeed;
       }
       row.dataset.loading = 'false';
     }
@@ -295,6 +378,7 @@
   });
 
   document.body.addEventListener('htmx:afterSwap', function(event) {
+    syncEmptyHomeGroups();
     const row = event.detail.target;
     if (row && row.matches('[data-home-row="true"]')) {
       const isFullReload = row.dataset.fullReload === 'true';
@@ -331,6 +415,7 @@
       });
     }
     setTimeout(() => {
+      syncEmptyHomeGroups();
       loadVisibleReleaseYears();
       initHomeRowInfiniteScroll();
       initActivePlaybackTicker();

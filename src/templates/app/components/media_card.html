@@ -13,7 +13,8 @@
         {% with item|alternative_title:user as resolved_alt_title %}
           {% season_card_title item as resolved_season_card_title %}
           {% with hover_action_mode|default:'standard' as resolved_hover_action_mode %}
-      <div class="media-card {% if secondary_color %}bg-[var(--color-surface-strong)]{% else %}bg-[var(--color-surface)]{% endif %} rounded-lg overflow-hidden shadow-lg relative {% if active %}ring-2 ring-indigo-700{% endif %} {% if from_grid %}media-card-hover-outline transition-all {% if resolved_media_type == 'podcast' or resolved_media_type == 'music' %}search-result-card-square{% else %}search-result-card{% endif %}{% endif %} {% if user.media_card_subtitle_display == 'always' %}media-card-subtitle-always{% elif show_episode_identity|default:False and resolved_media_type == MediaTypes.EPISODE.value %}media-card-subtitle-always{% endif %} {% if recommend_mode %}cursor-pointer{% endif %}{% if user.clickable_media_cards %} media-card-hide-overlay{% endif %} group"
+      <div class="media-card {% if secondary_color %}bg-[var(--color-surface-strong)]{% else %}bg-[var(--color-surface)]{% endif %} rounded-lg overflow-hidden shadow-lg relative {% if active %}ring-2 ring-indigo-700{% endif %} {% if from_grid %}media-card-hover-outline transition-all {% if resolved_media_type == 'podcast' or resolved_media_type == 'music' %}search-result-card-square{% else %}search-result-card{% endif %}{% if resolved_media_type == "video" %} video-card{% if video_landscape %} video-card-landscape{% endif %}{% endif %}{% endif %} {% if card_display == 'always' %}media-card-subtitle-always{% elif show_episode_identity|default:False and resolved_media_type == MediaTypes.EPISODE.value %}media-card-subtitle-always{% endif %} {% if recommend_mode %}cursor-pointer{% endif %}{% if user.clickable_media_cards %} media-card-hide-overlay{% endif %} media-card-title-{{ card_title.overflow|default:'ellipsis' }} media-card-title-{{ card_title.hover|default:'bleed' }}{% if card_title.lines == 'all' or card_title.lines|default:1 > 1 %} media-card-title-multiline{% endif %}{% if card_title.lines == 'all' %} media-card-title-lines-all{% endif %}{% if card_title.hover_lines == 'all' %} media-card-title-hover-all{% endif %} group"
+           style="{% if card_title.lines != 'all' %}--card-title-rest-lines: {{ card_title.lines|default:1 }};{% endif %}{% if card_title.hover_lines != 'all' %}--card-title-hover-lines: {{ card_title.hover_lines|default:3 }};{% endif %}"
            data-media-type="{{ item.media_type }}"
            {% if recommend_mode %}hx-get="{% if resolved_search_preview_url %}{{ resolved_search_preview_url }}{% else %}{% url 'recommend_search' recommend_list_id %}{% endif %}?show_preview=true&media_id={{ item.media_id }}&media_type={{ item.media_type }}&source={{ item.source }}&title={{ resolved_item_title|default:title|urlencode }}&image={{ item.image|urlencode }}&q={{ query|urlencode }}&search_media_type={{ media_type|urlencode }}&page={{ page }}" hx-target="{{ resolved_search_modal_target }}" hx-swap="innerHTML"{% endif %}
            x-data="{ trackOpen: false, listsOpen: false, revealed: false, tapToReveal(e) { if (this.revealed) { if (e.target.closest('button, a, input, select, textarea')) { return; } const link = this.$root.querySelector('.media-card-overlay a[href]') || this.$root.querySelector('a.media-card-title[href]'); if (link) { e.preventDefault(); e.stopPropagation(); link.click(); } return; } if (!window.matchMedia('(pointer: coarse)').matches || this.$root.classList.contains('media-card-hide-overlay') || !this.$root.querySelector('.media-card-overlay'){% if enable_bulk_select %} || this.selectMode{% endif %}) { return; } e.preventDefault(); e.stopPropagation(); this.revealed = true; window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: this.$root })); } }"
@@ -26,37 +27,51 @@
         <div class="media-card-visual relative">
           {% if recommend_mode %}
             <div class="cursor-pointer">
-              <img alt="{% if resolved_media_type == MediaTypes.SEASON.value %}{{ season_card_title_override|default:resolved_season_card_title }}{% else %}{{ resolved_item_title|default:title }}{% endif %}"
-                   class="media-card-poster lazyload w-full {% if from_grid %}{% if resolved_media_type == 'podcast' or resolved_media_type == 'music' %}aspect-[1/1]{% else %}aspect-[2/3] aspect-2/3{% endif %}{% else %}h-48{% endif %} bg-[var(--color-surface-alt)] {% if image_override|default:item.image|default:IMG_NONE != IMG_NONE %}object-cover{% endif %}"
+              <img decoding="sync" alt="{% if resolved_media_type == MediaTypes.SEASON.value %}{{ season_card_title_override|default:resolved_season_card_title }}{% else %}{{ resolved_item_title|default:title }}{% endif %}"
+                   class="media-card-poster w-full {% if from_grid %}{% if resolved_media_type == 'podcast' or resolved_media_type == 'music' %}aspect-[1/1]{% else %}aspect-[2/3] aspect-2/3{% endif %}{% else %}h-48{% endif %} bg-[var(--color-surface-alt)] {% if image_override|default:item.image|default:IMG_NONE != IMG_NONE %}object-cover{% endif %}"
                    src="{{ image_override|default:item.image|default:IMG_NONE|image_url }}"
                    data-image-source="{{ image_source|default:'primary' }}"
                    loading="lazy">
             </div>
           {% else %}
-            <a href="{% if media.album %}{{ media.album|music_album_url }}{% elif media.artist %}{{ media.artist|music_artist_url }}{% elif use_podcast_show|default:False and podcast_show %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=podcast_show.podcast_uuid title=podcast_show.slug|default:podcast_show.title|default:podcast_show.podcast_uuid|slug %}{% elif public_list_reference %}{{ item|media_url }}?public_view=1&amp;public_list={{ public_list_reference|urlencode }}{% elif public_view|default:False %}{{ item|media_url }}?public_view=1{% else %}{{ item|media_url }}{% endif %}"
+            <a href="{% if media.card_tile_url %}{{ media.card_tile_url }}{% elif media.album %}{{ media.album|music_album_url }}{% elif media.artist %}{{ media.artist|music_artist_url }}{% elif use_podcast_show|default:False and podcast_show %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=podcast_show.podcast_uuid title=podcast_show.slug|default:podcast_show.title|default:podcast_show.podcast_uuid|slug %}{% elif public_list_reference %}{{ item|media_url }}?public_view=1&amp;public_list={{ public_list_reference|urlencode }}{% elif public_view|default:False %}{{ item|media_url }}?public_view=1{% else %}{{ item|media_url }}{% endif %}"
                {% if enable_bulk_select %}@click="if (selectMode) { $event.preventDefault(); toggleItemSelected({{ item.id }}) }"{% endif %}>
               {% if enable_bulk_select %}
-                <div class="absolute top-2 left-2 z-10" x-cloak x-show="selectMode" @click.stop.prevent>
+                <div class="absolute top-2 left-2 z-10" x-cloak x-show="selectMode" @click.stop>
                   <input type="checkbox"
                          class="cursor-pointer w-5 h-5"
                          :checked="isItemSelected({{ item.id }})"
                          @change="toggleItemSelected({{ item.id }})">
                 </div>
               {% endif %}
-              <img alt="{% if use_podcast_show|default:False and podcast_show %}{{ podcast_show.title }}{% elif resolved_media_type == MediaTypes.SEASON.value %}{{ season_card_title_override|default:resolved_season_card_title }}{% else %}{{ resolved_item_title|default:title }}{% endif %}"
-                   class="media-card-poster {% if hover_action_mode != 'discover' %}lazyload{% endif %} w-full {% if from_grid %}{% if resolved_media_type == 'podcast' or resolved_media_type == 'music' %}aspect-[1/1]{% else %}aspect-[2/3] aspect-2/3{% endif %}{% else %}h-48{% endif %} bg-[var(--color-surface-alt)] {% if image_override|default:item.image|default:IMG_NONE != IMG_NONE %}object-cover{% endif %}"
+              <img decoding="sync" alt="{% if use_podcast_show|default:False and podcast_show %}{{ podcast_show.title }}{% elif resolved_media_type == MediaTypes.SEASON.value %}{{ season_card_title_override|default:resolved_season_card_title }}{% else %}{{ resolved_item_title|default:title }}{% endif %}"
+                   class="media-card-poster w-full {% if from_grid %}{% if resolved_media_type == 'podcast' or resolved_media_type == 'music' %}aspect-[1/1]{% else %}aspect-[2/3] aspect-2/3{% endif %}{% else %}h-48{% endif %} bg-[var(--color-surface-alt)] {% if image_override|default:item.image|default:IMG_NONE != IMG_NONE %}object-cover{% endif %}"
                    data-image-source="{{ image_source|default:'primary' }}"
-                   {% if hover_action_mode == 'discover' %}
-                   src="{% if use_podcast_show|default:False and podcast_show and podcast_show.image %}{{ podcast_show.image|image_url }}{% else %}{{ image_override|default:item.image|default:IMG_NONE|image_url }}{% endif %}"
-                   {% else %}
-                   data-src="{% if use_podcast_show|default:False and podcast_show and podcast_show.image %}{{ podcast_show.image|image_url }}{% else %}{{ image_override|default:item.image|default:IMG_NONE|image_url }}{% endif %}"
-                   src="{{ IMG_NONE }}"
-                   {% endif %}>
+                   src="{% if use_podcast_show|default:False and podcast_show and podcast_show.image %}{{ podcast_show.image|image_url }}{% elif resolved_media_type == 'video' %}{{ image_override|default:item.image|default:IMG_NONE|youtube_landscape_thumbnail|image_url }}{% else %}{{ image_override|default:item.image|default:IMG_NONE|image_url }}{% endif %}"
+                   {% if resolved_media_type == 'video' %}data-image-fallback="{{ image_override|default:item.image|default:IMG_NONE|image_url }}" data-image-fallback-on-small="true"{% endif %}
+                   loading="lazy">
             </a>
           {% endif %}
 
-          {% if show_status_chip|default_if_none:True %}
-            {% include "app/components/media_card_status_chip.html" with media=media current_sort_value=current_sort_value recommend_mode=recommend_mode show_next_event_chip=show_next_event_chip Status=Status only %}
+          {% if show_media_type_chip|default:False %}
+            {% with media_type_chip_type|default:resolved_media_type as resolved_media_type_chip %}
+              {% home_media_type_chip user resolved_media_type_chip as media_type_chip %}
+              <div class="media-type-chip media-type-chip--{{ media_type_chip.style }}"
+                   data-media-type-chip="{{ resolved_media_type_chip }}"
+                   data-media-type-chip-style="{{ media_type_chip.style }}"
+                   style="--media-type-chip-color: {{ media_type_chip.color }}; --media-type-chip-contrast: {{ media_type_chip.contrast }}">
+                <span>{{ resolved_media_type_chip|media_type_readable }}</span>
+              </div>
+            {% endwith %}
+          {% elif show_status_chip|default_if_none:True %}
+            {% include "app/components/media_card_status_chip.html" with item=item media=media current_sort_value=current_sort_value recommend_mode=recommend_mode show_next_event_chip=show_next_event_chip show_episode_queue=show_episode_queue Status=Status only %}
+          {% endif %}
+
+          {# Bottom corner, so it never sits under the next-episode link at the top right. #}
+          {% if credit.watched_person_runtime_display %}
+            <span class="absolute bottom-3 right-2 z-10 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md shadow-md">
+              {{ credit.watched_person_runtime_display }}
+            </span>
           {% endif %}
 
           {% if resolved_media_type == MediaTypes.SEASON.value and item.provider_metadata_status == "local_only_missing_season" %}
@@ -72,53 +87,24 @@
             </div>
           {% endif %}
 
-          {% if media %}
-            {% if show_progress_chip|default_if_none:True %}
-              {% with aggregated_progress=media|safe_attr:"aggregated_progress" %}
-                {% if aggregated_progress and resolved_media_type != MediaTypes.MOVIE.value and resolved_media_type != MediaTypes.GAME.value %}
-                  {# Don't show progress chip for Seasons - progress is shown in hover subtitle #}
-                  {% if resolved_media_type != MediaTypes.SEASON.value %}
-                    <div class="absolute top-2 right-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md">
-                      <span class="text-sm text-[var(--color-text)]">
-                        {{ media.formatted_aggregated_progress }}
-                        {% if media.max_progress and not media.progress_is_percentage %}/ {{ media.formatted_max_progress }}{% endif %}
-                      </span>
-                    </div>
-                  {% endif %}
-                {% elif media.progress and resolved_media_type != MediaTypes.MOVIE.value %}
-                  {% if resolved_media_type != MediaTypes.GAME.value or not aggregated_progress %}
-                    {# Don't show progress chip for Seasons - progress is shown in hover subtitle #}
-                    {% if resolved_media_type != MediaTypes.SEASON.value %}
-                      <div class="media-progress-chip absolute top-2 right-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md"
-                           data-progress-chip-mode="{{ progress_chip_mode|default:'always' }}"
-                           data-mobile-show="{% if current_sort_value == 'progress' %}true{% else %}false{% endif %}">
-                        <span class="text-sm text-[var(--color-text)]">
-                          {{ media.formatted_progress }}
-                          {% if media.max_progress and not media.progress_is_percentage %}/ {{ media.formatted_max_progress }}{% endif %}
-                        </span>
-                      </div>
-                    {% endif %}
-                  {% endif %}
-                {% endif %}
-              {% endwith %}
+          {% if media and show_episode_queue and media.next_episode_queue %}
+            {# Up Next: the Behind or countdown chip takes the next-episode slot and links the same way. #}
+            {% episode_queue_url item media as queue_href %}
+            {% episode_queue_label media as queue_label %}
+            {% if queue_href %}
+              <a href="{{ queue_href }}"
+                 hx-disable
+                 class="absolute top-2 right-2 z-20 bg-gray-900/90 hover:bg-indigo-600 text-white text-[11px] font-medium px-2 py-1 rounded-md flex items-center gap-0.5 shadow-md transition-colors"
+                 data-episode-queue="true"
+                 title="{% translate "Jump to next episode" %}">
+                <span>{{ queue_label }}</span>
+                {% include "app/icons/chevron-right.svg" with classes="w-3 h-3" %}
+              </a>
+            {% else %}
+              <span class="absolute top-2 right-2 z-20 bg-gray-900/90 text-white text-[11px] font-medium px-2 py-1 rounded-md shadow-md"
+                    data-episode-queue="true">{{ queue_label }}</span>
             {% endif %}
-
-            {# Time Left display for time_left sort #}
-            {# Hide chip in media grid (shown in context row instead when sorted by time_left) #}
-            {% if media and media.episodes_left > 0 %}
-              {% if resolved_media_type == MediaTypes.TV.value or resolved_media_type == MediaTypes.SEASON.value %}
-                {% if not from_grid %}
-                  <div class="media-time-left-chip absolute top-2 right-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md"
-                       data-time-left-mode="{{ time_left_chip_mode|default:'always' }}"
-                       data-mobile-show="{% if current_sort_value == 'time_left' %}true{% else %}false{% endif %}">
-                    <span class="text-sm text-[var(--color-text)]">{{ media.time_left_display|default:media.formatted_time_left }}</span>
-                  </div>
-                {% endif %}
-              {% endif %}
-            {% endif %}
-
-            {# Repeat chip removed from poster grid cards to reduce crowding. #}
-
+          {% elif media %}
             {# Next-episode quick-link — shown when preference includes "next_episode" or "both" #}
             {% if not recommend_mode and not public_view|default:False and user.is_authenticated %}
               {% if user.quick_season_update_mobile == 'next_episode' or user.quick_season_update_mobile == 'both' %}
@@ -145,14 +131,14 @@
             {% endif %}
           {% endif %}
 
-          {# Inset progress bar at the bottom edge of the poster for in-progress/paused media (gated by the per-user progress_bar preference) #}
-          {% if media and user.progress_bar %}
+          {# Inset progress bar at the bottom edge of the poster for in-progress/paused media (gated by the type profile's progress field) #}
+          {% if media and card_show_progress %}
             {% with bar_status=media.aggregated_status|default:media.status %}
               {% if bar_status == Status.IN_PROGRESS.value or bar_status == Status.PAUSED.value %}
                 {% if resolved_media_type == MediaTypes.PODCAST.value %}
                   {% with progress_percent=media|safe_attr:"progress_percentage" %}
                     {% if progress_percent is not None %}
-                      <div class="media-card-progress-bar absolute bottom-0 left-0 right-0 h-1 bg-gray-900/60 z-20">
+                      <div class="media-card-progress-bar absolute bottom-0 left-0 right-0 h-1 bg-gray-900/60 z-20{% if card_progress_display == 'dormant' %} media-card-progress-dormant{% endif %}">
                         <div class="h-full {% if bar_status == Status.PAUSED.value %}bg-indigo-500/40{% else %}bg-indigo-500{% endif %} transition-[width] duration-300 ease-out"
                              style="width: {{ progress_percent }}%"></div>
                       </div>
@@ -161,14 +147,14 @@
                 {% elif resolved_media_type != MediaTypes.MOVIE.value and media.max_progress and media.progress %}
                   {% with count_percent=media|safe_attr:"progress_percentage" %}
                     {% if count_percent is not None %}
-                      <div class="media-card-progress-bar absolute bottom-0 left-0 right-0 h-1 bg-gray-900/60 z-20">
+                      <div class="media-card-progress-bar absolute bottom-0 left-0 right-0 h-1 bg-gray-900/60 z-20{% if card_progress_display == 'dormant' %} media-card-progress-dormant{% endif %}">
                         <div class="h-full {% if bar_status == Status.PAUSED.value %}bg-indigo-500/40{% else %}bg-indigo-500{% endif %} transition-[width] duration-300 ease-out"
                              style="width: {{ count_percent }}%"></div>
                       </div>
                     {% else %}
                       {% widthratio media.progress media.max_progress 100 as progress_percent %}
                       {# Any overshoot (progress > max) renders as a full bar — the card's overflow-hidden clips it. #}
-                      <div class="media-card-progress-bar absolute bottom-0 left-0 right-0 h-1 bg-gray-900/60 z-20">
+                      <div class="media-card-progress-bar absolute bottom-0 left-0 right-0 h-1 bg-gray-900/60 z-20{% if card_progress_display == 'dormant' %} media-card-progress-dormant{% endif %}">
                         <div class="h-full {% if bar_status == Status.PAUSED.value %}bg-indigo-500/40{% else %}bg-indigo-500{% endif %} transition-[width] duration-300 ease-out"
                              style="width: {{ progress_percent }}%"></div>
                       </div>
@@ -179,14 +165,14 @@
             {% endwith %}
           {% endif %}
 
-          {% if not recommend_mode and not public_view|default:False %}
+          {% if not recommend_mode and not public_view|default:False and resolved_hover_action_mode != 'none' %}
             <div class="media-card-overlay absolute inset-0 flex items-center justify-center transition-opacity duration-200 ease-in-out{% if user.clickable_media_cards %} pointer-coarse:hidden{% endif %}"
                  :class="revealed ? 'opacity-100 pointer-events-auto media-card-overlay-revealed' : 'opacity-0 pointer-events-none'"
                  {% if enable_bulk_select %}x-show="!selectMode"{% endif %}>
               {# Darkening background layer #}
               <div class="absolute inset-0 bg-black/50 z-0"></div>
 
-              <a href="{% if media.album %}{{ media.album|music_album_url }}{% elif media.artist %}{{ media.artist|music_artist_url }}{% elif use_podcast_show|default:False and podcast_show %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=podcast_show.podcast_uuid title=podcast_show.slug|default:podcast_show.title|default:podcast_show.podcast_uuid|slug %}{% else %}{{ item|media_url }}{% endif %}" class="absolute inset-0 z-0"></a>
+              <a href="{% if media.card_tile_url %}{{ media.card_tile_url }}{% elif media.album %}{{ media.album|music_album_url }}{% elif media.artist %}{{ media.artist|music_artist_url }}{% elif use_podcast_show|default:False and podcast_show %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=podcast_show.podcast_uuid title=podcast_show.slug|default:podcast_show.title|default:podcast_show.podcast_uuid|slug %}{% else %}{{ item|media_url }}{% endif %}" class="absolute inset-0 z-0"></a>
 
               <div class="relative z-10 flex w-full max-w-full flex-wrap items-center justify-center gap-2.5 px-2"
                    {% if list_ordering_enabled|default:False %}
@@ -216,7 +202,7 @@
                           title="{% translate "Add to custom lists" %}"
                           hx-get="{% media_view_url 'lists_modal' item %}"
                           hx-vals='{"return_url": "{{ card_return_url|urlencode }}"}'
-                          hx-target="#{% component_id 'lists' item %}"
+                          hx-target="#{% component_id 'lists' item %}{% if card_uid %}-{{ card_uid }}{% endif %}"
                           hx-trigger="click once"
                           @click="listsOpen = true">
                     {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
@@ -236,7 +222,7 @@
                           title="{% if media %}Watched{% else %}Mark watched{% endif %}"
                           hx-get="{% url 'track_modal' source=item.source media_type='episode' media_id=item.media_id season_number=item.season_number %}"
                           hx-vals='{"return_url": "{{ card_return_url|urlencode }}", "episode_number": "{{ item.episode_number }}"{% if media %}, "instance_id": "{{ media.id }}"{% else %}, "is_create": "1"{% endif %}}'
-                          hx-target="#{% component_id 'track' item media.id %}"
+                          hx-target="#{% component_id 'track' item media.id %}{% if card_uid %}-{{ card_uid }}{% endif %}"
                           hx-trigger="click once"
                           @click="trackOpen = true">
                     {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
@@ -251,7 +237,7 @@
                           title="{% translate "Add to custom lists" %}"
                           hx-get="{% media_view_url 'lists_modal' item %}"
                           hx-vals='{"return_url": "{{ card_return_url|urlencode }}"}'
-                          hx-target="#{% component_id 'lists' item %}"
+                          hx-target="#{% component_id 'lists' item %}{% if card_uid %}-{{ card_uid }}{% endif %}"
                           hx-trigger="click once"
                           @click="listsOpen = true">
                     {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
@@ -270,7 +256,7 @@
                             title="{% translate "Edit tracking" %}"
                             hx-get="{% url 'podcast_show_track_modal' podcast_show.id %}"
                             hx-vals='{"return_url": "{{ card_return_url|urlencode }}"{% if home_row_id %}, "home_row_id": "{{ home_row_id }}"{% endif %}}'
-                            hx-target="#podcast-show-track-modal-{{ podcast_show.id }}-{{ media.id }}"
+                            hx-target="#podcast-show-track-modal-{{ podcast_show.id }}-{{ media.id }}{% if home_row_id %}-home-{{ home_row_id }}{% endif %}"
                             hx-trigger="click once"
                             @click="trackOpen = true">
                       {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
@@ -280,7 +266,7 @@
                             title="{% translate "Edit tracking" %}"
                             hx-get="{% url 'album_track_modal' media.album.id %}"
                             hx-vals='{"return_url": "{{ card_return_url|urlencode }}"{% if home_row_id %}, "home_row_id": "{{ home_row_id }}"{% endif %}}'
-                            hx-target="#album-track-modal-{{ media.album.id }}"
+                            hx-target="#album-track-modal-{{ media.album.id }}{% if home_row_id %}-home-{{ home_row_id }}{% endif %}"
                             hx-trigger="click once"
                             @click="trackOpen = true">
                       {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
@@ -290,7 +276,7 @@
                             title="{% translate "Edit tracking" %}"
                             hx-get="{% url 'artist_track_modal' media.artist.id %}"
                             hx-vals='{"return_url": "{{ card_return_url|urlencode }}"{% if home_row_id %}, "home_row_id": "{{ home_row_id }}"{% endif %}}'
-                            hx-target="#artist-track-modal-{{ media.artist.id }}"
+                            hx-target="#artist-track-modal-{{ media.artist.id }}{% if home_row_id %}-home-{{ home_row_id }}{% endif %}"
                             hx-trigger="click once"
                             @click="trackOpen = true">
                       {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
@@ -299,8 +285,8 @@
                     <button class="p-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer"
                             title="{% translate "Add to tracker" %}"
                             hx-get="{% media_view_url 'track_modal' item %}"
-                            hx-vals='{"return_url": "{{ card_return_url|urlencode }}", "instance_id": "{{ media.id }}"{% if home_row_id %}, "home_row_id": "{{ home_row_id }}"{% endif %}}'
-                            hx-target="#{% component_id 'track' item media.id %}"
+                            hx-vals='{"return_url": "{{ card_return_url|urlencode }}"{% if media %}, "instance_id": "{{ media.id }}"{% endif %}{% if home_row_id %}, "home_row_id": "{{ home_row_id }}"{% endif %}}'
+                            hx-target="#{% component_id 'track' item media.id %}{% if card_uid %}-{{ card_uid }}{% endif %}"
                             hx-trigger="click once"
                             @click="trackOpen = true">
                       {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
@@ -311,7 +297,7 @@
                           title="{% translate "Add to custom lists" %}"
                           hx-get="{% media_view_url 'lists_modal' item %}"
                           hx-vals='{"return_url": "{{ card_return_url|urlencode }}"}'
-                          hx-target="#{% component_id 'lists' item %}"
+                          hx-target="#{% component_id 'lists' item %}{% if card_uid %}-{{ card_uid }}{% endif %}"
                           hx-trigger="click once"
                           @click="listsOpen = true">
                     {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
@@ -389,11 +375,19 @@
             {% with formatted_score=media|safe_attr:"formatted_score" %}
               {% with rating_value=aggregated_score|default_if_none:formatted_score %}
             <div class="media-card-title-row flex items-center gap-2 min-w-0">
-              {% if recommend_mode %}
+              {% if media.card_links %}
+                <div class="min-w-0 flex-1">
+                  {% for part in media.card_links %}
+                    <a href="{{ part.url }}"
+                       class="{% if forloop.first %}media-card-title block text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-1{% else %}mt-0.5 block text-xs text-[var(--color-text-muted)] hover:text-[var(--color-link)] line-clamp-1{% endif %}"
+                       title="{{ part.label }}">{{ part.label }}</a>
+                  {% endfor %}
+                </div>
+              {% elif recommend_mode %}
                 <h3 class="media-card-title font-medium text-[var(--color-text)] line-clamp-1 text-sm leading-tight min-w-0"
                     title="{% if resolved_media_type == MediaTypes.SEASON.value %}{{ season_card_title_override|default:resolved_season_card_title }}{% else %}{{ resolved_item_title|default:title }}{% endif %}">{% if resolved_media_type == MediaTypes.SEASON.value %}{{ season_card_title_override|default:resolved_season_card_title }}{% else %}{{ resolved_item_title|default:title }}{% endif %}</h3>
               {% else %}
-                <a href="{% if media.album %}{{ media.album|music_album_url }}{% elif media.artist %}{{ media.artist|music_artist_url }}{% elif use_podcast_show|default:False and podcast_show %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=podcast_show.podcast_uuid title=podcast_show.slug|default:podcast_show.title|default:podcast_show.podcast_uuid|slug %}{% elif public_list_reference %}{{ item|media_url }}?public_view=1&amp;public_list={{ public_list_reference|urlencode }}{% elif public_view|default:False %}{{ item|media_url }}?public_view=1{% else %}{{ item|media_url }}{% endif %}"
+                <a href="{% if media.card_tile_url %}{{ media.card_tile_url }}{% elif media.album %}{{ media.album|music_album_url }}{% elif media.artist %}{{ media.artist|music_artist_url }}{% elif use_podcast_show|default:False and podcast_show %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=podcast_show.podcast_uuid title=podcast_show.slug|default:podcast_show.title|default:podcast_show.podcast_uuid|slug %}{% elif public_list_reference %}{{ item|media_url }}?public_view=1&amp;public_list={{ public_list_reference|urlencode }}{% elif public_view|default:False %}{{ item|media_url }}?public_view=1{% else %}{{ item|media_url }}{% endif %}"
                    class="media-card-title text-sm font-semibold text-[var(--color-text)] {% if not public_view|default:False %}hover:text-[var(--color-link)]{% endif %} transition duration-300 line-clamp-1 min-w-0"
                    title="{% if resolved_media_type == MediaTypes.SEASON.value %}{{ season_card_title_override|default:resolved_season_card_title }}{% else %}{{ resolved_item_title|default:title }}{% endif %}">{% if resolved_media_type == MediaTypes.SEASON.value %}{{ season_card_title_override|default:resolved_season_card_title }}{% else %}{{ resolved_item_title|default:title }}{% endif %}</a>
               {% endif %}
@@ -474,11 +468,16 @@
                 </span>
               {% endif %}
               {% if media %}
-                <span id="media-card-rating-{{ media.id }}">
-                  {% include "app/components/media_card_rating.html" %}
+                <span id="{% item_slot_id 'media-card-rating' item %}">
+                  {% if not public_view|default:False and not recommend_mode and not rating_read_only|default:False and not use_podcast_show|default:False %}
+                    {% url 'update_media_score' item.media_type media.id as card_rate_url %}
+                  {% endif %}
+                  {% include "app/components/media_card_rating.html" with rate_url=card_rate_url|default:"" %}
                 </span>
               {% else %}
-                {% include "app/components/media_card_rating.html" %}
+                <span id="{% item_slot_id 'media-card-rating' item %}">
+                  {% include "app/components/media_card_rating.html" %}
+                </span>
               {% endif %}
             </div>
               {% endwith %}
@@ -546,6 +545,10 @@
                     {% endif %}
                   {% endwith %}
                 </p>
+              {% elif card_use_lines %}
+                {% for line in card_line_list %}
+                  <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1 line-clamp-1{% if line.dormant %} media-card-line-dormant{% endif %}">{% for part in line.parts %}{% if not forloop.first %} · {% endif %}{% if part.score %}<span class="inline-flex items-center gap-0.5 text-yellow-300 align-middle">{% include "app/icons/star.svg" with classes="w-3 h-3 text-yellow-400 fill-current" %}<span class="font-medium">{{ part.text }}</span></span>{% else %}{{ part.text }}{% endif %}{% endfor %}</p>
+                {% endfor %}
               {% elif release_year %}
                 {% with aggregated_progress=media|safe_attr:"aggregated_progress" %}
                   <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">
@@ -665,7 +668,8 @@
               {% endif %}
             {% endif %}
           {% endwith %}
-          {% if duration %}<p class="text-xs text-[var(--color-text-muted)] mt-1">{{ duration }}</p>{% endif %}
+
+          {% if credit %}{% card_lines 'person' credit %}{% endif %}
 
           {# Aggregated chips already cover repeats; no extra text block. #}
         </div>
@@ -679,13 +683,13 @@
           <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
                style="width: min(96vw, 72rem);">
             {% if use_podcast_show|default:False and podcast_show %}
-              <div id="podcast-show-track-modal-{{ podcast_show.id }}-{{ media.id }}"></div>
+              <div id="podcast-show-track-modal-{{ podcast_show.id }}-{{ media.id }}{% if home_row_id %}-home-{{ home_row_id }}{% endif %}"></div>
             {% elif media|safe_attr:"home_music_card" and media.album %}
-              <div id="album-track-modal-{{ media.album.id }}"></div>
+              <div id="album-track-modal-{{ media.album.id }}{% if home_row_id %}-home-{{ home_row_id }}{% endif %}"></div>
             {% elif media|safe_attr:"home_music_card" and media.artist %}
-              <div id="artist-track-modal-{{ media.artist.id }}"></div>
+              <div id="artist-track-modal-{{ media.artist.id }}{% if home_row_id %}-home-{{ home_row_id }}{% endif %}"></div>
             {% else %}
-              <div id="{% component_id 'track' item media.id %}"></div>
+              <div id="{% component_id 'track' item media.id %}{% if card_uid %}-{{ card_uid }}{% endif %}"></div>
             {% endif %}
           </div>
         </div>
@@ -696,8 +700,8 @@
              @keydown.escape.window="listsOpen = false"
              @mousedown.self="listsOpen = false"
              class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div class="w-96 max-h-[90vh] px-4 md:px-0 relative z-60">
-            <div id="{% component_id 'lists' item %}"></div>
+          <div class="w-96 max-h-[90dvh] px-4 md:px-0 relative z-60">
+            <div id="{% component_id 'lists' item %}{% if card_uid %}-{{ card_uid }}{% endif %}"></div>
           </div>
         </div>
 

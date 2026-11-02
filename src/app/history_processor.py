@@ -1,5 +1,6 @@
 from django.apps import apps
 from django.template.defaultfilters import pluralize
+from django.utils.translation import gettext
 
 from app import config, helpers
 from app.models import MediaTypes, Status
@@ -9,14 +10,11 @@ from app.templatetags import app_tags
 def process_history_entries(history_records, media_type, media_entry_number, user):
     """Process all history records into timeline entries."""
     timeline_entries = []
-    last = history_records.first()
-
-    for _ in range(history_records.count()):
-        entry = process_history_entry((last, last.prev_record), media_type, user)
+    for record in history_records:
+        entry = process_history_entry((record, record.prev_record), media_type, user)
         if entry["changes"]:
             entry["media_entry_number"] = media_entry_number
             timeline_entries.append(entry)
-        last = last.prev_record
 
     return timeline_entries
 
@@ -79,6 +77,9 @@ def organize_changes(changes, media_type, user):
     for change in changes:
         if change.field == "progress" and media_type == MediaTypes.MOVIE.value:
             continue
+        # An episode's `dropped` flag mirrors its status, which is shown.
+        if change.field == "dropped" and media_type == MediaTypes.EPISODE.value:
+            continue
 
         change_data = {
             "description": format_description(
@@ -116,19 +117,29 @@ def collect_creation_changes(new_record, history_model, media_type, user):
         "other_changes": [],
     }
 
+    is_episode = media_type == MediaTypes.EPISODE.value
+    # A finished episode play always says when it finished, even without a
+    # date, and its status goes without saying. Any other status, such as an
+    # open play, is shown instead (issue #1278).
+    episode_finished = is_episode and getattr(new_record, "status", None) in {
+        Status.COMPLETED.value,
+        None,
+    }
+
     for field in history_model._meta.get_fields():
         if (
             field.name.startswith("history_")
             or field.name == "id"
             or not hasattr(new_record, field.attname)
             or (field.name == "progress" and media_type == MediaTypes.MOVIE.value)
+            # An episode's `dropped` flag mirrors its status.
+            or (is_episode and field.name == "dropped")
+            or (episode_finished and field.name == "status")
         ):
             continue
 
         value = getattr(new_record, field.attname, None)
-        if not value and not (
-            media_type == MediaTypes.EPISODE.value and field.name == "end_date"
-        ):
+        if not value and not (episode_finished and field.name == "end_date"):
             continue
 
         change_data = {
@@ -164,10 +175,12 @@ def apply_date_status_integration(changes, user):
         and status_change
         and status_change["new"] == Status.IN_PROGRESS.value
     ):
-        date_changes["start_date"]["description"] = (
-            f"Started on "
-            f"{app_tags.datetime_format(date_changes['start_date']['new'], user)}"
+        formatted_date = app_tags.datetime_format(
+            date_changes["start_date"]["new"], user
         )
+        date_changes["start_date"]["description"] = gettext(
+            "Started on %(date)s"
+        ) % {"date": formatted_date}
         changes["status_change"] = None
 
     # Process end date with status
@@ -176,10 +189,12 @@ def apply_date_status_integration(changes, user):
         and status_change
         and status_change["new"] == Status.COMPLETED.value
     ):
-        date_changes["end_date"]["description"] = (
-            f"Finished on "
-            f"{app_tags.datetime_format(date_changes['end_date']['new'], user)}"
+        formatted_date = app_tags.datetime_format(
+            date_changes["end_date"]["new"], user
         )
+        date_changes["end_date"]["description"] = gettext(
+            "Finished on %(date)s"
+        ) % {"date": formatted_date}
         changes["status_change"] = None
 
 
@@ -248,6 +263,9 @@ def format_description(field_name, old_value, new_value, media_type=None, user=N
 
         if field_name == "notes":
             return "Added notes"
+
+        if field_name == "entry_source":
+            return f"Added via {new_value}" if new_value else "Source not recorded"
 
         return f"Set {field_name.replace('_', ' ').lower()} to {new_value}"
 
@@ -319,5 +337,53 @@ def format_description(field_name, old_value, new_value, media_type=None, user=N
             return "Removed notes"
         return "Updated notes"
 
+    if field_name == "entry_source":
+        if not new_value:
+            return "Source cleared"
+        return f"Source changed to {new_value}"
+
     field_label = field_name.replace("_", " ").lower()
     return f"Updated {field_label} from {old_value} to {new_value}"
+
+
+# Recorded on history rows the user makes through the track form, so the
+# status log can tell their edits apart from automatic ones (#1133).
+USER_EDIT_REASON = "you"
+STATUS_LOG_LENGTH = 5
+STATUS_HISTORY_TAB_LENGTH = 50
+_STATUS_LOG_SCAN = 500
+
+
+def status_change_log(media, limit=STATUS_LOG_LENGTH):
+    """Return the latest status changes of a tracked entry, newest first.
+
+    Each change says what made it (the history change reason), so a user
+    whose show keeps flipping back can see which sync did it.
+    """
+    history = getattr(media, "history", None)
+    if history is None or not hasattr(history, "order_by"):
+        return []
+
+    rows = list(
+        history.order_by("-history_date", "-history_id").values_list(
+            "history_date",
+            "status",
+            "history_change_reason",
+        )[:_STATUS_LOG_SCAN],
+    )
+    rows.reverse()
+
+    changes = []
+    previous_status = None
+    for index, (history_date, status, reason) in enumerate(rows):
+        if index == 0 or status != previous_status:
+            changes.append(
+                {
+                    "date": history_date,
+                    "old": previous_status if index else None,
+                    "new": status,
+                    "reason": reason or "",
+                },
+            )
+        previous_status = status
+    return list(reversed(changes))[:limit]

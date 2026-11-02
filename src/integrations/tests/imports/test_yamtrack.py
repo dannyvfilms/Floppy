@@ -66,6 +66,28 @@ class ImportYamtrack(TestCase):
             24,
         )
 
+    def test_csv_cannot_overwrite_another_users_shared_metadata(self):
+        """Importing private tracking data must preserve existing catalog data."""
+        existing_movie = Movie.objects.get(user=self.user)
+        original_item = existing_movie.item
+        original_title, original_image = original_item.title, original_item.image
+        other_user = get_user_model().objects.create_user(username="other")
+        payload = BytesIO(
+            (
+                "media_id,source,media_type,title,image,season_number,episode_number,score,progress,status,start_date,end_date,notes,progressed_at\n"
+                f"{original_item.media_id},tmdb,movie,Overwritten,https://attacker.example/image,,,,1,Completed,,,,\n"
+            ).encode()
+        )
+
+        yamtrack.importer(payload, other_user, "overwrite")
+
+        original_item.refresh_from_db()
+        self.assertEqual(original_item.title, original_title)
+        self.assertEqual(original_item.image, original_image)
+        self.assertTrue(
+            Movie.objects.filter(user=other_user, item=original_item).exists()
+        )
+
     def test_historical_records(self):
         """Test historical records creation during import."""
         anime = Anime.objects.filter(user=self.user).first()
@@ -149,7 +171,7 @@ class ImportYamtrack(TestCase):
 
 
 class ImportYamtrackNewModeHealsMissingChildren(TestCase):
-    """"new" mode must add seasons/episodes an already-tracked show lacks.
+    """ "new" mode must add seasons/episodes an already-tracked show lacks.
 
     Regression test: the existence check used to collapse to "does the
     parent show exist", so an already-tracked show blocked every
@@ -292,6 +314,50 @@ class ImportYamtrackEpisodeHistoryDate(TestCase):
         self.assertEqual(warnings, "")
         game = Game.objects.get(user=self.user)
         self.assertIsNotNone(game.history.get().history_date)
+
+    def test_overwrite_mode_replaces_game_sessions(self):
+        """Overwrite mode wipes old game sessions instead of appending to them.
+
+        Games have no unique(user, item) constraint - each session is its
+        own Game row, the same way a rewatched episode is its own Episode
+        row (#1183). Regression test for #1231: two session rows sharing
+        the same media_id (distinguished only by progressed_at) both got
+        queued for the overwrite-mode delete, then the second row
+        incorrectly undid the first row's queued delete, thinking it was a
+        later-batch repeat of an already-recreated item. The old session
+        survived and the new ones just piled on top of it.
+        """
+        original_csv = """media_id,source,media_type,title,image,season_number,episode_number,score,progress,status,start_date,end_date,notes,progressed_at
+1234,igdb,game,Some Game,https://image.url,,,,30,In progress,,,,2025-01-01T10:00:00+00:00
+"""
+        yamtrack.importer(BytesIO(original_csv.encode()), self.user, "new")
+        self.assertEqual(Game.objects.filter(user=self.user).count(), 1)
+
+        overwrite_csv = """media_id,source,media_type,title,image,season_number,episode_number,score,progress,status,start_date,end_date,notes,progressed_at
+1234,igdb,game,Some Game,https://image.url,,,,60,In progress,,,,2025-02-01T10:00:00+00:00
+1234,igdb,game,Some Game,https://image.url,,,,90,Completed,,,,2025-02-02T10:00:00+00:00
+"""
+        counts, warnings = yamtrack.importer(
+            BytesIO(overwrite_csv.encode()),
+            self.user,
+            "overwrite",
+        )
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(counts["game"], 2)
+        games = Game.objects.filter(user=self.user)
+        self.assertEqual(games.count(), 2)
+        self.assertEqual(set(games.values_list("progress", flat=True)), {3600, 5400})
+        history_dates = {
+            game.history.get().history_date for game in games
+        }
+        self.assertEqual(
+            history_dates,
+            {
+                datetime(2025, 2, 1, 10, 0, tzinfo=UTC),
+                datetime(2025, 2, 2, 10, 0, tzinfo=UTC),
+            },
+        )
 
 
 class ImportYamtrackRaggedRows(TestCase):
@@ -515,6 +581,8 @@ class ImportYamtrackStatusNormalization(TestCase):
 class ImportYamtrackStatuslessRoundTrip(TestCase):
     """A rating-only media row survives an export/import cycle without a status."""
 
+    SCORED_AT = datetime(2021, 6, 1, 12, 0, tzinfo=UTC)
+
     def setUp(self):
         """Export a statusless, rated movie for a second user to import."""
         self.exporter = get_user_model().objects.create_user(
@@ -538,6 +606,7 @@ class ImportYamtrackStatuslessRoundTrip(TestCase):
             user=self.exporter,
             status=None,
             score=8,
+            scored_at=self.SCORED_AT,
         )
         self.csv_bytes = "".join(exports.generate_rows(self.exporter)).encode("utf-8")
 
@@ -548,6 +617,24 @@ class ImportYamtrackStatuslessRoundTrip(TestCase):
         movie = Movie.objects.get(user=self.importer_user)
         self.assertIsNone(movie.status)
         self.assertEqual(movie.score, 8)
+
+    def test_rating_time_round_trips(self):
+        """A restored rating keeps when it was given, not the import time (#1280)."""
+        yamtrack.importer(BytesIO(self.csv_bytes), self.importer_user, "new")
+
+        movie = Movie.objects.get(user=self.importer_user)
+        self.assertEqual(movie.scored_at, self.SCORED_AT)
+
+    def test_cleared_rating_time_round_trips(self):
+        """A cleared rating keeps its time, so the removal still syncs."""
+        Movie.objects.filter(user=self.exporter).update(score=None)
+        csv_bytes = "".join(exports.generate_rows(self.exporter)).encode("utf-8")
+
+        yamtrack.importer(BytesIO(csv_bytes), self.importer_user, "new")
+
+        movie = Movie.objects.get(user=self.importer_user)
+        self.assertIsNone(movie.score)
+        self.assertEqual(movie.scored_at, self.SCORED_AT)
 
 
 class ImportYamtrackTagsRoundTrip(TestCase):
@@ -1134,4 +1221,3 @@ class ImportYamtrackMediaIdValidation(TestCase):
         mock_search.assert_not_called()
         movie = Movie.objects.get(user=self.user)
         self.assertEqual(movie.item.media_id, "603")
-

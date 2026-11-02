@@ -3,11 +3,14 @@ from unittest.mock import patch
 
 from celery import states
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
+from django.core.cache import cache
+from django.db import connection, transaction
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from django_celery_results.models import TaskResult
 
-from app import signals, tasks
+from app import backfill_queue, cache_utils, signals, tasks
+from app.mixins import disable_fetch_releases
 from app.models import (
     CREDITS_BACKFILL_VERSION,
     CreditRoleType,
@@ -16,9 +19,11 @@ from app.models import (
     MediaTypes,
     MetadataBackfillField,
     MetadataBackfillState,
+    Movie,
     Person,
     PersonGender,
     Sources,
+    Status,
 )
 from integrations.tasks import scheduled_backup_export
 
@@ -251,6 +256,54 @@ class TaskResultCleanupTests(TestCase):
 
 
 class ItemSignalTests(TestCase):
+    @override_settings(TESTING=False)
+    @patch("app.tasks_genre.populate_genre_backfill_queue.apply_async")
+    @patch("app.tasks_credits.populate_credits_backfill_queue.apply_async")
+    @patch("app.tasks_runtime.populate_runtime_backfill_queue.apply_async")
+    def test_bulk_boundary_persists_production_item_enrichment_before_publication(
+        self, runtime_drain, credits_drain, genre_drain
+    ):
+        from app.tasks_credits import (
+            CREDITS_BACKFILL_ITEMS_QUEUE_KEY,
+            CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY,
+        )
+        from app.tasks_genre import (
+            GENRE_BACKFILL_ITEMS_QUEUE_KEY,
+            GENRE_BACKFILL_ITEMS_SCHEDULED_KEY,
+        )
+        from app.tasks_runtime import (
+            RUNTIME_BACKFILL_ITEMS_QUEUE_KEY,
+            RUNTIME_BACKFILL_ITEMS_SCHEDULED_KEY,
+        )
+
+        queue_pairs = (
+            (RUNTIME_BACKFILL_ITEMS_QUEUE_KEY, RUNTIME_BACKFILL_ITEMS_SCHEDULED_KEY),
+            (GENRE_BACKFILL_ITEMS_QUEUE_KEY, GENRE_BACKFILL_ITEMS_SCHEDULED_KEY),
+            (CREDITS_BACKFILL_ITEMS_QUEUE_KEY, CREDITS_BACKFILL_ITEMS_SCHEDULED_KEY),
+        )
+        for pair in queue_pairs:
+            backfill_queue.clear(*pair)
+        self.addCleanup(lambda: [backfill_queue.clear(*pair) for pair in queue_pairs])
+        with disable_fetch_releases(), backfill_queue.defer_backfill_publication():
+            with self.captureOnCommitCallbacks(execute=True):
+                item_ids = {
+                    Item.objects.create(
+                        media_id=str(3900 + index),
+                        source=Sources.TMDB.value,
+                        media_type=MediaTypes.TV.value,
+                        title="Bulk signal show",
+                        image="https://example.com/show.jpg",
+                    ).pk
+                    for index in range(20)
+                }
+            for queue_key, _ in queue_pairs:
+                self.assertEqual(backfill_queue.members(queue_key), item_ids)
+            for drain in (runtime_drain, genre_drain, credits_drain):
+                drain.assert_not_called()
+            self.assertEqual(len(backfill_queue._deferred_drains.get()), 3)
+        for drain in (runtime_drain, genre_drain, credits_drain):
+            drain.assert_called_once_with(countdown=10, kwargs={})
+
     def test_item_save_does_not_delete_current_genre_state_on_unrelated_update(self):
         item = Item.objects.create(
             media_id="3001",
@@ -308,12 +361,13 @@ class ItemSignalTests(TestCase):
         )
         mock_enqueue_genre_backfill_items.reset_mock()
 
-        signals.schedule_runtime_backfill_on_item_save(
-            sender=Item,
-            instance=item,
-            created=False,
-            update_fields={"media_id"},
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            signals.schedule_runtime_backfill_on_item_save(
+                sender=Item,
+                instance=item,
+                created=False,
+                update_fields={"media_id"},
+            )
 
         self.assertFalse(
             MetadataBackfillState.objects.filter(
@@ -322,6 +376,115 @@ class ItemSignalTests(TestCase):
             ).exists(),
         )
         mock_enqueue_genre_backfill_items.assert_called_once_with([item.id])
+
+
+@override_settings(TESTING=False)
+class ItemBackfillCommitTests(TransactionTestCase):
+    """Keep Redis and broker work outside an Item's writer transaction."""
+
+    def test_metadata_enqueue_runs_after_commit_and_not_after_rollback(self):
+        """Do not publish uncommitted Items or hold a writer during enqueue."""
+        observed = []
+        with (
+            disable_fetch_releases(),
+            patch("app.tasks.enqueue_runtime_backfill_items", side_effect=lambda ids: observed.append((ids, connection.in_atomic_block))),
+            patch("app.tasks.enqueue_genre_backfill_items"),
+            patch("app.tasks.enqueue_credits_backfill_items"),
+            # Run the deferred task inline so the test does not depend on
+            # whether Celery is eager when it runs.
+            patch(
+                "app.tasks.enqueue_item_backfills.delay",
+                side_effect=tasks.enqueue_item_backfills.run,
+            ),
+        ):
+            with transaction.atomic():
+                item = Item.objects.create(
+                    media_id="commit-diagnostic", source=Sources.TMDB.value,
+                    media_type=MediaTypes.TV.value, title="Committed show",
+                )
+                self.assertEqual(observed, [])
+            self.assertEqual(observed, [([item.pk], False)])
+
+            with self.assertRaisesMessage(ValueError, "rollback"):
+                with transaction.atomic():
+                    Item.objects.create(
+                        media_id="rollback-diagnostic", source=Sources.TMDB.value,
+                        media_type=MediaTypes.TV.value, title="Rolled back show",
+                    )
+                    message = "rollback"
+                    raise ValueError(message)
+            self.assertEqual(len(observed), 1)
+            self.assertFalse(Item.objects.filter(media_id="rollback-diagnostic").exists())
+
+
+class MediaRuntimeCacheCommitTests(TransactionTestCase):
+    """Clear runtime caches again once a media write commits."""
+
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        for target, return_value in (
+            ("app.models.providers.services.get_media_metadata", {"max_progress": 1}),
+            ("app.history_cache_lifecycle.schedule_history_refresh", True),
+            ("app.signals.statistics_cache.schedule_all_ranges_refresh", True),
+        ):
+            patcher = patch(target, return_value=return_value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.user = get_user_model().objects.create_user(username="runtime-commit")
+        with disable_fetch_releases():
+            self.item = Item.objects.create(
+                media_id="runtime-commit",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Runtime Commit",
+            )
+
+    def _warm(self, payload):
+        keys = {
+            "media": f"runtime-commit-media-{self.user.id}",
+            "home": f"runtime-commit-home-{self.user.id}",
+        }
+        for key in keys.values():
+            cache.set(key, payload)
+        cache_utils.register_media_list_cache_key(self.user.id, keys["media"])
+        cache_utils.register_home_row_cache_key(self.user.id, keys["home"])
+        return keys
+
+    def _save_movie(self):
+        with disable_fetch_releases():
+            Movie.objects.create(
+                item=self.item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+            )
+
+    def test_entry_cached_before_commit_is_cleared_after_commit(self):
+        keys = self._warm({"stale": True})
+        with transaction.atomic():
+            self._save_movie()
+            for key in keys.values():
+                self.assertIsNone(cache.get(key))
+            # A concurrent reader re-caches the pre-write state before commit.
+            self._warm({"pre_commit": True})
+            for key in keys.values():
+                self.assertEqual(cache.get(key), {"pre_commit": True})
+
+        for key in keys.values():
+            self.assertIsNone(cache.get(key))
+
+    def test_rollback_does_not_run_the_commit_clear(self):
+        self._warm({"stale": True})
+        with self.assertRaisesMessage(ValueError, "rollback"), transaction.atomic():
+            self._save_movie()
+            # Rebuilt from committed state, which the rollback keeps current.
+            keys = self._warm({"committed": True})
+            message = "rollback"
+            raise ValueError(message)
+
+        self.assertFalse(Movie.objects.filter(user=self.user).exists())
+        for key in keys.values():
+            self.assertEqual(cache.get(key), {"committed": True})
 
 
 class CreditsBackfillSignalTests(TestCase):

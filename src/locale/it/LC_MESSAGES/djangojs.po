@@ -1,0 +1,1750 @@
+# Italian translations for Floppy.
+# Copyright (C) 2026 Floppy contributors
+# This file is distributed under the same license as the Floppy package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Floppy\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-10-15 15:32+0000\n"
+"PO-Revision-Date: 2026-10-19 11:55+0000\n"
+"Last-Translator: Floppy contributors\n"
+"Language-Team: Italian\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: inline_translation_extraction/templates/app/components/filter_menu.html.js:2
+#: inline_translation_extraction/templates/events/calendar.html.js:3
+#: static/js/libraryFilterState.js:72 static/js/libraryFilterState.js:77
+#: static/js/libraryFilterState.js:230
+msgid "All"
+msgstr "Tutti"
+
+#: inline_translation_extraction/templates/app/components/filter_menu.html.js:3
+#, javascript-format
+msgid "%s Selected"
+msgstr "%s selezionato"
+
+#: inline_translation_extraction/templates/app/components/filter_menu.html.js:4
+#: inline_translation_extraction/templates/users/home_screen.html.js:27
+#: static/js/libraryFilterState.js:82 static/js/libraryFilterState.js:87
+msgid "Any"
+msgstr "Qualsiasi"
+
+#: inline_translation_extraction/templates/app/components/filter_menu.html.js:5
+#: static/js/statistics-charts.js:58 static/js/statistics-charts.js:715
+msgid "Unknown"
+msgstr "Sconosciuto"
+
+#: inline_translation_extraction/templates/app/components/filter_menu.html.js:6
+#: static/js/libraryFilterState.js:206 static/js/statistics-charts.js:51
+msgid "Completed"
+msgstr "Completato"
+
+#: inline_translation_extraction/templates/app/components/filter_menu.html.js:7
+msgid "Range"
+msgstr "Ampiezza"
+
+#: inline_translation_extraction/templates/app/components/filter_menu.html.js:8
+#: inline_translation_extraction/templates/users/components/plex_library_selector.html.js:2
+#: inline_translation_extraction/templates/users/integrations.html.js:6
+msgid "Hide all"
+msgstr "Nascondi tutto"
+
+#: inline_translation_extraction/templates/app/components/filter_menu.html.js:9
+#: inline_translation_extraction/templates/users/components/plex_library_selector.html.js:3
+#: inline_translation_extraction/templates/users/integrations.html.js:7
+msgid "Show all"
+msgstr "Mostra tutto"
+
+#: inline_translation_extraction/templates/app/components/filter_menu.html.js:10
+#: inline_translation_extraction/templates/events/calendar.html.js:2
+msgid "Status"
+msgstr "Stato"
+
+#: inline_translation_extraction/templates/app/components/filter_menu.html.js:11
+#: static/js/libraryFilterState.js:184
+msgid "Pick a year…"
+msgstr "Scegli un anno.."
+
+#: inline_translation_extraction/templates/app/components/filter_menu.html.js:12
+msgid "Unpin"
+msgstr "Un giorno"
+
+#: inline_translation_extraction/templates/app/components/filter_menu.html.js:13
+msgid "Pin to promote out of More"
+msgstr "Pin per promuovere fuori di Più"
+
+#: inline_translation_extraction/templates/app/statistics.html.js:2
+msgid "%(percent)s of activity"
+msgstr "%(percent)s di attività"
+
+#: inline_translation_extraction/templates/base.html.js:2
+msgid "Search your whole library..."
+msgstr "Cerca tutta la tua biblioteca..."
+
+#: inline_translation_extraction/templates/base.html.js:3
+msgid "Search %(media)s..."
+msgstr "Cerca %(media)s..."
+
+#: inline_translation_extraction/templates/base.html.js:4
+msgid "Search %(media)s in your library or online..."
+msgstr "Cerca %(media)s nella tua libreria o online..."
+
+#: inline_translation_extraction/templates/base.html.js:5
+msgid "Barcode scanner utilities not loaded. Please refresh the page."
+msgstr ""
+"Utilità dello scanner di codici a barre non caricate. Si prega di aggiornare"
+" la pagina."
+
+#: inline_translation_extraction/templates/base.html.js:6
+msgid ""
+"Could not read barcode from image. Please try again or enter ISBN manually."
+msgstr ""
+"Non poteva leggere il codice a barre dall'immagine. Si prega di riprovare o "
+"inserire manualmente ISBN."
+
+#: inline_translation_extraction/templates/base.html.js:7
+msgid "Error scanning barcode: "
+msgstr "Codice a barre di scansione errore:"
+
+#: inline_translation_extraction/templates/base.html.js:8
+msgid "Please try again."
+msgstr "Per favore riprovate."
+
+#: inline_translation_extraction/templates/base.html.js:9
+msgid "Loading page"
+msgstr "Pagina di caricamento"
+
+#: inline_translation_extraction/templates/base.html.js:10
+msgid "Loading. Please wait…"
+msgstr "Caricamento. Ti prego, aspetta.."
+
+#: inline_translation_extraction/templates/events/calendar.html.js:4
+#: inline_translation_extraction/templates/users/home_screen.html.js:28
+#: inline_translation_extraction/templates/users/preferences.html.js:35
+msgid "None"
+msgstr "Nessuno"
+
+#: inline_translation_extraction/templates/integrations/trakt_device_code.html.js:2
+#: inline_translation_extraction/templates/users/components/import_activity.html.js:7
+msgid "Copied!"
+msgstr "Ricevuto"
+
+#: inline_translation_extraction/templates/integrations/trakt_device_code.html.js:3
+msgid "Copy code"
+msgstr "Codice copia"
+
+#: inline_translation_extraction/templates/users/about.html.js:2
+msgid "Error loading schema: "
+msgstr "Schema di caricamento degli errori:"
+
+#: inline_translation_extraction/templates/users/about.html.js:3
+msgid "Installing Floppy. Look for it alongside your other apps."
+msgstr "Installazione di Floppy. Cercalo accanto alle altre applicazioni."
+
+#: inline_translation_extraction/templates/users/about.html.js:4
+msgid ""
+"Installation dismissed. You can still add Floppy using the steps below."
+msgstr ""
+"Installazione respinta. Puoi ancora aggiungere Floppy utilizzando i passaggi"
+" sottostanti."
+
+#: inline_translation_extraction/templates/users/about.html.js:5
+msgid ""
+"Your browser could not open the install prompt. Use the steps below instead."
+msgstr ""
+"Il browser non potrebbe aprire il prompt di installazione. Utilizzare i "
+"passaggi sottostanti invece."
+
+#: inline_translation_extraction/templates/users/about.html.js:6
+msgid "Verified API Schema (OpenAPI 3.0.3)"
+msgstr "Schema API verificato (OpenAPI 3.0.3)"
+
+#: inline_translation_extraction/templates/users/about.html.js:7
+msgid "Domain Context (JSON-LD 1.1)"
+msgstr "Contesto di dominio (JSON-LD 1.1)"
+
+#: inline_translation_extraction/templates/users/about.html.js:8
+msgid "Full Diagnostic API Schema (Live OpenAPI)"
+msgstr "Schema API diagnostico completo (Live OpenAPI)"
+
+#: inline_translation_extraction/templates/users/about.html.js:9
+msgid "Live"
+msgstr "Live"
+
+#: inline_translation_extraction/templates/users/about.html.js:10
+msgid "Asynchronous Channels (AsyncAPI 3.0.0)"
+msgstr "Canali asincroni (AsyncAPI 3.0.0)"
+
+#: inline_translation_extraction/templates/users/about.html.js:11
+msgid "AsyncAPI"
+msgstr "ASSISTENZA"
+
+#: inline_translation_extraction/templates/users/about.html.js:12
+msgid "Copied to clipboard!"
+msgstr "Attaccato a appunti!"
+
+#: inline_translation_extraction/templates/users/about.html.js:13
+msgid "Copy to clipboard"
+msgstr "Copia a clipboard"
+
+#: inline_translation_extraction/templates/users/about.html.js:14
+msgid "Schema copied to clipboard"
+msgstr "Schema copiato a clipboard"
+
+#: inline_translation_extraction/templates/users/advanced.html.js:2
+msgid ""
+"Clear all cached external images? They will be downloaded again if caching "
+"remains enabled."
+msgstr ""
+"Cancellare tutte le immagini esterne cache? Essi saranno scaricati di nuovo "
+"se il caching rimane abilitato."
+
+#: inline_translation_extraction/templates/users/advanced.html.js:3
+msgid "Choose a media type..."
+msgstr "Scegli un tipo di supporto..."
+
+#: inline_translation_extraction/templates/users/appearance.html.js:2
+#, javascript-format
+msgid "%s color"
+msgstr "%s colore"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:3
+#: inline_translation_extraction/templates/users/preferences.html.js:2
+msgid "System default"
+msgstr "Di default del sistema"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:4
+#: inline_translation_extraction/templates/users/preferences.html.js:4
+msgid "Light"
+msgstr "Chiaro"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:5
+#: inline_translation_extraction/templates/users/preferences.html.js:3
+msgid "Dark"
+msgstr "Scuro"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:6
+msgid "Catppuccin Mocha"
+msgstr "Catppuccin Mocha"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:7
+msgid "Dracula"
+msgstr "Dracula"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:8
+msgid "Nord"
+msgstr "Nord"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:9
+msgid "Gruvbox"
+msgstr "Gruvbox"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:10
+msgid "OLED"
+msgstr "OLED"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:11
+msgid "Glass cinema"
+msgstr "Cinema di vetro"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:12
+msgid "Plex inspired"
+msgstr "Plex ispirato"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:13
+msgid "Projector"
+msgstr "Progetto"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:14
+msgid "Video store"
+msgstr "Video store"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:15
+msgid "Custom palette"
+msgstr "tavolozza personalizzata"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:16
+msgid "Page"
+msgstr "Pagina"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:17
+msgid "Cards"
+msgstr "Carte"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:18
+msgid "Panels"
+msgstr "Pannelli"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:19
+msgid "Text"
+msgstr "Testo"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:20
+msgid "Muted text"
+msgstr "Testo mutato"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:21
+msgid "Accent"
+msgstr "Accent"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:22
+msgid "Text on accent"
+msgstr "Testo sull'accento"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:23
+msgid "Corner radius"
+msgstr "raggio d'angolo"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:24
+msgid "Backdrop blur"
+msgstr "Arrotondamento sul retro"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:25
+msgid "Surface opacity"
+msgstr "Opacità di superficie"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:26
+msgid "Films, books and manga"
+msgstr "Film, libri e manga"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:27
+msgid "Series and seasons"
+msgstr "Serie e stagioni"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:28
+#: inline_translation_extraction/templates/users/import_data.html.js:6
+#: static/js/statistics-charts.js:49
+msgid "Games"
+msgstr "Giochi"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:29
+#: static/js/statistics-charts.js:61
+msgid "Episodes"
+msgstr "Episodi"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:30
+msgid "Comic volumes"
+msgstr "Volumes comic"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:31
+msgid "Comic issues"
+msgstr "Questioni legate"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:32
+msgid "Music albums"
+msgstr "Album musicali"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:33
+msgid "Music artists"
+msgstr "Artisti musicali"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:34
+#: inline_translation_extraction/templates/users/import_data.html.js:7
+#: static/js/statistics-charts.js:40
+msgid "Podcasts"
+msgstr "Podcasts"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:35
+msgid "People"
+msgstr "Persone"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:36
+msgid "Studios"
+msgstr "Studios"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:37
+msgid "Information column"
+msgstr "Colonna informativa"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:38
+msgid "Main content"
+msgstr "Contenuto principale"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:39
+msgid "Your history"
+msgstr "La tua storia"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:40
+msgid "Details"
+msgstr "Dettagli"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:41
+msgid "Genres"
+msgstr "Generi"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:42
+msgid "Collection"
+msgstr "Collezione"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:43
+msgid "Notes"
+msgstr "Note"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:44
+msgid "Related titles"
+msgstr "Titoli correlati"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:45
+msgid "Cast"
+msgstr "Cast"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:46
+msgid "Crew"
+msgstr "Crew"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:47
+msgid "Recommendations"
+msgstr "Raccomandazione"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:48
+msgid "Seasons"
+msgstr "Stagioni"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:49
+msgid "Play times"
+msgstr "Tempo di gioco"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:50
+msgid "Content"
+msgstr "Contenuto"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:51
+msgid "Issues"
+msgstr "Questioni"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:52
+msgid "Authors"
+msgstr "Autori"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:53
+msgid "Tracks"
+msgstr "Tracce"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:54
+msgid "Related artists"
+msgstr "Artisti correlati"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:55
+msgid "Discography"
+msgstr "Discografia"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:56
+msgid "Profile"
+msgstr "Profilo"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:57
+msgid "Biography and facts"
+msgstr "Biografia e fatti"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:58
+msgid "Filmography"
+msgstr "Filmografia"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:59
+msgid "Overview and facts"
+msgstr "Panoramica e fatti"
+
+#: inline_translation_extraction/templates/users/appearance.html.js:60
+msgid "Works"
+msgstr "Lavori"
+
+#: inline_translation_extraction/templates/users/components/form_save_bar.html.js:2
+msgid "Unsaved changes"
+msgstr "Cambiamenti non salvati"
+
+#: inline_translation_extraction/templates/users/components/form_save_bar.html.js:3
+msgid "All changes saved"
+msgstr "Tutte le modifiche salvate"
+
+#: inline_translation_extraction/templates/users/components/form_save_bar.html.js:4
+msgid "Save your preferences to keep your changes."
+msgstr "Salva le tue preferenze per mantenere le tue modifiche."
+
+#: inline_translation_extraction/templates/users/components/form_save_bar.html.js:5
+msgid "Your preferences are up to date."
+msgstr "Le tue preferenze sono aggiornate."
+
+#: inline_translation_extraction/templates/users/components/import_activity.html.js:2
+msgid "Cancel this import?"
+msgstr "Annullare l'importazione?"
+
+#: inline_translation_extraction/templates/users/components/import_activity.html.js:3
+msgid "Hide failed items"
+msgstr "Nascondi oggetti falliti"
+
+#: inline_translation_extraction/templates/users/components/import_activity.html.js:4
+msgid "Show failed items"
+msgstr "Mostra elementi falliti"
+
+#: inline_translation_extraction/templates/users/components/import_activity.html.js:5
+msgid "Hide traceback"
+msgstr "Nascondi il tracciato"
+
+#: inline_translation_extraction/templates/users/components/import_activity.html.js:6
+msgid "Show traceback"
+msgstr "Mostra il tracciato"
+
+#: inline_translation_extraction/templates/users/components/import_activity.html.js:8
+msgid "Copy"
+msgstr "Copia"
+
+#: inline_translation_extraction/templates/users/components/import_activity.html.js:9
+msgid "Remove the items this import created? This cannot be undone."
+msgstr ""
+"Rimuovere gli elementi creati da questa importazione? Questo non può essere "
+"annullato."
+
+#: inline_translation_extraction/templates/users/components/import_activity.html.js:10
+#, javascript-format
+msgid "Permanently delete all %s items imported from this source?"
+msgstr ""
+"Eliminare permanentemente tutti gli elementi %s importati da questa fonte?"
+
+#: inline_translation_extraction/templates/users/components/import_activity.html.js:11
+msgid ""
+"Artists and albums left with no tracks are removed from your library too."
+msgstr ""
+"Gli artisti e gli album lasciati senza tracce vengono rimossi anche dalla "
+"libreria."
+
+#: inline_translation_extraction/templates/users/components/import_activity.html.js:12
+msgid "This cannot be undone."
+msgstr "Questo non può essere annullato."
+
+#: inline_translation_extraction/templates/users/export_data.html.js:2
+msgid "Export Once"
+msgstr "Esportazione"
+
+#: inline_translation_extraction/templates/users/export_data.html.js:3
+msgid "Every Day"
+msgstr "Ogni giorno"
+
+#: inline_translation_extraction/templates/users/export_data.html.js:4
+msgid "Every 2 Days"
+msgstr "Ogni 2 giorni"
+
+#: inline_translation_extraction/templates/users/export_data.html.js:5
+msgid "Weekly"
+msgstr "Settimanale"
+
+#: inline_translation_extraction/templates/users/export_data.html.js:6
+msgid "Hide details"
+msgstr "Nascondi i dettagli"
+
+#: inline_translation_extraction/templates/users/export_data.html.js:7
+msgid "Show details"
+msgstr "Mostra dettagli"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:2
+msgid "label color"
+msgstr "etichetta colore"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:3
+msgid "Collapse section"
+msgstr "Sezione del crollo"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:4
+msgid "Expand section"
+msgstr "Sezione ampliata"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:5
+#, javascript-format
+msgid "Search %s..."
+msgstr "Cerca %s..."
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:6
+msgid "Choose List"
+msgstr "Scegli la lista"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:7
+msgid "Smart list"
+msgstr "Lista intelligente"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:8
+msgid "Manual list"
+msgstr "Elenco manuale"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:9
+msgid "No list selected yet"
+msgstr "Nessun elenco selezionato"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:10
+msgid "Album"
+msgstr "Album"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:11
+msgid "Artist"
+msgstr "Artista"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:12
+msgid "Track"
+msgstr "Tracciamento"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:13
+msgid "Album, artist, and track"
+msgstr "Album, artista e traccia"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:14
+msgid "Library Row"
+msgstr "Libreria fila"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:15
+msgid "List / Smart List"
+msgstr "Elenco / Lista intelligente"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:16
+msgid "Recently Played"
+msgstr "Giocato di recente"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:17
+msgid "Recently Played - Not Rated"
+msgstr "Giocato di recente - Non valutato"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:18
+#: static/js/collectionCustomFields.js:134
+msgid "Media types"
+msgstr "Tipi di media"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:19
+msgid "No media"
+msgstr "Nessun supporto"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:20
+msgid "Not tagged"
+msgstr "Non etichettato"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:21
+msgid "Tags"
+msgstr "Tag"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:22
+msgid " or "
+msgstr "o"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:23
+msgid "Sort"
+msgstr "Ordina"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:24
+#, javascript-format
+msgid "%s status"
+msgid_plural "%s Statuses"
+msgstr[0] "Stato"
+msgstr[1] "Stato"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:25
+msgid "Library"
+msgstr "Libreria"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:26
+msgid "Not tagged "
+msgstr "Non etichettato"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:29
+#, javascript-format
+msgid "%s tag"
+msgid_plural "%s Tags"
+msgstr[0] "%s tag"
+msgstr[1] "%s Tags"
+
+#: inline_translation_extraction/templates/users/home_screen.html.js:30
+#: inline_translation_extraction/templates/users/integrations.html.js:11
+#: static/js/statistics-charts.js:52
+msgid "In progress"
+msgstr "In corso"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:2
+msgid "All Sources"
+msgstr "Tutte le fonti"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:3
+msgid "Movies & TV"
+msgstr "Film e TV"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:4
+msgid "Anime & Manga"
+msgstr "Anime & Manga"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:5
+msgid "Books & Comics"
+msgstr "Libri e elementi"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:8
+#: static/js/statistics-charts.js:38
+msgid "Music"
+msgstr "Musica"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:9
+msgid "Backups"
+msgstr "Backup"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:10
+msgid "Update"
+msgstr "Aggiorna"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:11
+msgid "Sync Now"
+msgstr "Traduzione:"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:12
+msgid "Enable Sync"
+msgstr "Attiva Sync"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:13
+msgid "Import"
+msgstr "Importa"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:14
+msgid "Connected"
+msgstr "Collegato"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:15
+msgid "Connection failed"
+msgstr "Connessione non riuscita"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:16
+msgid "Checking"
+msgstr "Controllo"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:17
+msgid "Disconnected"
+msgstr "Scollegato"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:18
+msgid "All libraries"
+msgstr "Tutte le biblioteche"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:19
+msgid "No libraries selected"
+msgstr "Nessuna libreria selezionata"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:20
+#, javascript-format
+msgid "%s library selected"
+msgid_plural "%s libraries selected"
+msgstr[0] "%s libreria selezionata"
+msgstr[1] "librerie selezionate"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:21
+msgid "Unknown library"
+msgstr "Libreria sconosciuta"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:22
+msgid "Could not verify Plex connection."
+msgstr "Non è possibile verificare la connessione Plex."
+
+#: inline_translation_extraction/templates/users/import_data.html.js:23
+msgid "Could not load Plex libraries."
+msgstr "Non poteva caricare librerie Plex."
+
+#: inline_translation_extraction/templates/users/import_data.html.js:24
+msgid "Showing "
+msgstr "Mostrare"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:25
+#, javascript-format
+msgid "Set content type for %s"
+msgstr "Impostare il tipo di contenuto per %s"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:26
+msgid "Auto-detect"
+msgstr "Rilevamento automatico"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:27
+msgid "Audiobooks"
+msgstr "Audiolibri"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:28
+msgid "Use email and password instead"
+msgstr "Utilizzare e-mail e password invece"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:29
+msgid "Use an auth key instead"
+msgstr "Utilizzare una chiave auth invece"
+
+#: inline_translation_extraction/templates/users/import_data.html.js:30
+msgid "Connected! Reloading…"
+msgstr "Collegato! Ricaricare.."
+
+#: inline_translation_extraction/templates/users/import_data.html.js:31
+msgid "Login timed out. Please try again."
+msgstr "E' arrivato il momento. Per favore riprovate."
+
+#: inline_translation_extraction/templates/users/import_data.html.js:32
+msgid "Login failed."
+msgstr "L'accesso è fallito."
+
+#: inline_translation_extraction/templates/users/import_data.html.js:33
+msgid "Sync played games and hours played from your Xbox account now."
+msgstr "Sync ha giocato giochi e ore giocate dal tuo account Xbox ora."
+
+#: inline_translation_extraction/templates/users/import_data.html.js:34
+msgid ""
+"Sync played games and hours played from your Xbox account on a schedule."
+msgstr ""
+"Sync ha giocato giochi e ore giocate dal tuo account Xbox in un programma."
+
+#: inline_translation_extraction/templates/users/import_data.html.js:35
+msgid "Schedule Sync"
+msgstr "Programma Sync"
+
+#: inline_translation_extraction/templates/users/integrations.html.js:2
+msgid "No libraries available"
+msgstr "Nessuna libreria disponibile"
+
+#: inline_translation_extraction/templates/users/integrations.html.js:3
+#: inline_translation_extraction/templates/users/preferences.html.js:45
+msgid "All Libraries"
+msgstr "Tutte le biblioteche"
+
+#: inline_translation_extraction/templates/users/integrations.html.js:4
+msgid "No Libraries"
+msgstr "Nessuna biblioteca"
+
+#: inline_translation_extraction/templates/users/integrations.html.js:5
+#, javascript-format
+msgid "%s selected"
+msgstr "%s selezionato"
+
+#: inline_translation_extraction/templates/users/integrations.html.js:8
+msgid "Enabled - Allow Seerr to automatically add media"
+msgstr "Abilitato - Consenti a Seerr di aggiungere automaticamente i supporti"
+
+#: inline_translation_extraction/templates/users/integrations.html.js:9
+msgid "Disabled - Do not allow Seerr to add media"
+msgstr "Disabili - Non permettere a Seerr di aggiungere i media"
+
+#: inline_translation_extraction/templates/users/integrations.html.js:10
+#: static/js/statistics-charts.js:53
+msgid "Planning"
+msgstr "In programma"
+
+#: inline_translation_extraction/templates/users/onboarding/components/connect_form.html.js:2
+msgid "Connecting…"
+msgstr "Collegamento.."
+
+#: inline_translation_extraction/templates/users/onboarding/components/connect_form.html.js:3
+msgid "Connect"
+msgstr "Collegamento"
+
+#: inline_translation_extraction/templates/users/onboarding/components/connect_oauth.html.js:2
+msgid "Redirecting…"
+msgstr "Ridirezione.."
+
+#: inline_translation_extraction/templates/users/onboarding/components/connect_oauth.html.js:3
+msgid "Connect "
+msgstr "Collegamento"
+
+#: inline_translation_extraction/templates/users/onboarding/components/connect_trakt.html.js:2
+#: inline_translation_extraction/templates/users/onboarding/components/connect_upload.html.js:2
+msgid "Uploading…"
+msgstr "Caricamento.."
+
+#: inline_translation_extraction/templates/users/onboarding/components/connect_trakt.html.js:3
+msgid "Select Export File"
+msgstr "Selezionare Esporta file"
+
+#: inline_translation_extraction/templates/users/onboarding/components/connect_upload.html.js:3
+msgid "Select File"
+msgstr "Selezionare File"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:5
+msgid "Monochrome"
+msgstr "Monocromatico"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:6
+msgid "Colorful"
+msgstr "Colorante"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:7
+msgid "System default — Aug 12, 2025 / 12 Aug 2025"
+msgstr "Di default del sistema — Aug 12, 2025 / 12 Aug 2025"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:8
+msgid "ISO 8601 — 2025-08-12"
+msgstr "ISO 8601 — 2025-08-12"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:9
+msgid "Month D, YYYY — Aug 12, 2025"
+msgstr "Mese D, YYYY — 12 agosto 2025"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:10
+msgid "D Mon YYYY — 12 Aug 2025"
+msgstr "D Anno YYYYY — 12 Aug 2025"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:11
+msgid "M/D/YYYY — 08/12/2025"
+msgstr "M/D/YYYYY — 08/12/2025"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:12
+msgid "D/M/YYYY — 12/08/2025"
+msgstr "D/M/YYYYY — 12/08/2025"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:13
+msgid "DD.MM.YYYY — 12.08.2025"
+msgstr "DD.MM.YYYYY — 12.08.2025"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:14
+msgid "YYYY/MM/DD — 2025/08/12"
+msgstr "YYYY/MM/DD — 2025/08/12"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:15
+msgid "System default — 6:45 PM / 18:45"
+msgstr "Di default del sistema — 6:45 PM / 18:45"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:16
+msgid "12-hour (h:mm AM/PM) — 6:45 PM"
+msgstr "12 ore (h:mm AM/PM) — 18:45 PM"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:17
+msgid "12-hour, leading zero (hh:mm AM/PM) — 06:45 PM"
+msgstr "12 ore, zero leader (hh:mm AM/PM) — 06:45 PM"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:18
+msgid "24-hour (HH:mm) — 18:45"
+msgstr "24 ore (HH:mm) — 18:45"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:19
+msgid "24-hour with seconds (HH:mm:ss) — 18:45:00"
+msgstr "24 ore con secondi (HH:mm:ss) — 18:45:00"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:20
+msgid "Comfortable (2 columns)"
+msgstr "Confortevole (2 colonne)"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:21
+msgid "Compact (3 columns)"
+msgstr "Compatto (3 colonne)"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:22
+msgid "Show Original Titles"
+msgstr "Mostra titoli originali"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:23
+msgid "Auto (if available)"
+msgstr "Auto (se disponibile)"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:24
+msgid "Show Localized Titles"
+msgstr "Mostra titoli localizzati"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:25
+msgid "Time"
+msgstr "Ora"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:26
+msgid "Titles"
+msgstr "Titoli"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:27
+#: static/js/statistics-charts.js:60
+msgid "Plays"
+msgstr "Gioca"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:28
+msgid "Enabled - hide completed items"
+msgstr "Abilitato - nascondere oggetti completati"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:29
+msgid "Disabled - show completed items"
+msgstr "Disabili - mostra elementi completati"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:30
+msgid "Enabled - show recommendations"
+msgstr "Abilitato - mostrare raccomandazioni"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:31
+msgid "Disabled - hide recommendations"
+msgstr "Disabili - nascondere raccomandazioni"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:32
+msgid "1-10 stars"
+msgstr "1-10 stelle"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:33
+msgid "1-5 stars"
+msgstr "1-5 stelle"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:34
+msgid "Disabled"
+msgstr "Disabilitato"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:36
+msgid "Quick Season Update buttons only"
+msgstr "Solo pulsanti di aggiornamento della stagione rapida"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:37
+msgid "Next Episode button only"
+msgstr "Elemento successivo solo"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:38
+msgid "Both"
+msgstr "Entrambi"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:39
+msgid "Sessions — new entry per play; exact history"
+msgstr "Sessioni — nuova voce per gioco; storia esatta"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:40
+msgid "Repeats — update one entry; spreads time across range"
+msgstr "Ripeti — aggiorna una voce; diffonde il tempo attraverso l'intervallo"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:41
+msgid "Pages/Issues/Chapters"
+msgstr "Pagine/Estratti/Capitoli"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:42
+msgid "Percentage"
+msgstr "Percentuale"
+
+#: inline_translation_extraction/templates/users/preferences.html.js:43
+msgid "Enabled. Click to add additional rule."
+msgstr "Abilitato. Fare clic per aggiungere la regola aggiuntiva."
+
+#: inline_translation_extraction/templates/users/preferences.html.js:44
+msgid "Disabled. Click to add rule."
+msgstr "Disabili. Fare clic per aggiungere la regola."
+
+#: static/js/bulkSelection.js:88 static/js/bulkSelection.js:94
+msgid "The bulk action failed."
+msgstr "L'azione di massa fallì."
+
+#: static/js/bulkSelection.js:90
+msgid "Bulk action completed."
+msgstr "Azione Bulk completata."
+
+#: static/js/calendar.js:239
+msgid "View activity for %(date)s"
+msgstr "Vedi l'attività per %(date)s"
+
+#: static/js/collectionCustomFields.js:141
+msgid "%(count)s selected"
+msgstr "%(count)s selezionato"
+
+#: static/js/collectionCustomFields.js:147
+msgid "Every group needs a name."
+msgstr "Ogni gruppo ha bisogno di un nome."
+
+#: static/js/collectionCustomFields.js:151
+msgid "Every field needs a label."
+msgstr "Ogni campo ha bisogno di un'etichetta."
+
+#: static/js/collectionCustomFields.js:154
+msgid "\"%(label)s\" needs at least one media type."
+msgstr "\"%(label)s\" ha bisogno di almeno un tipo di media."
+
+#: static/js/collectionCustomFields.js:228
+#: static/js/collectionCustomFields.js:234
+msgid "Could not save custom fields."
+msgstr "Non poteva salvare campi personalizzati."
+
+#: static/js/copy-item.js:71
+msgid ""
+"Could not copy to clipboard. Please select the text and press Ctrl+C/Cmd+C "
+"to copy."
+msgstr ""
+"Non poteva copiare a clipboard. Selezionare il testo e premere Ctrl+C/Cmd+C "
+"per copiare."
+
+#: static/js/date-range.js:77
+msgid "Today"
+msgstr "Oggi"
+
+#: static/js/date-range.js:78
+msgid "Yesterday"
+msgstr "Ieri"
+
+#: static/js/date-range.js:79
+msgid "This week"
+msgstr "Questa settimana"
+
+#: static/js/date-range.js:80
+msgid "Last 7 days"
+msgstr "Ultimi 7 giorni"
+
+#: static/js/date-range.js:81
+msgid "Month to date"
+msgstr "Mese fino ad oggi"
+
+#: static/js/date-range.js:82
+msgid "Last 30 days"
+msgstr "Ultimi 30 giorni"
+
+#: static/js/date-range.js:83
+msgid "Last 90 days"
+msgstr "Ultimo 90 giorni"
+
+#: static/js/date-range.js:84
+msgid "Year to date"
+msgstr "Anno di data"
+
+#: static/js/date-range.js:85
+msgid "Last 6 months"
+msgstr "Ultimi 6 mesi"
+
+#: static/js/date-range.js:86
+msgid "Last 12 months"
+msgstr "Ultimo 12 mesi"
+
+#: static/js/date-range.js:87 static/js/date-range.js:676
+msgid "All time"
+msgstr "Tutto il tempo"
+
+#: static/js/date-range.js:91 static/js/date-range.js:493
+msgid "Previous period"
+msgstr "Periodo precedente"
+
+#: static/js/date-range.js:92
+msgid "Last year"
+msgstr "Ultimo anno"
+
+#: static/js/date-range.js:93
+msgid "No comparison"
+msgstr "Nessun confronto"
+
+#: static/js/date-range.js:151 static/js/date-range.js:182
+msgid "hrs"
+msgstr "ore"
+
+#: static/js/date-range.js:160
+msgid "Per Year"
+msgstr "Per anno"
+
+#: static/js/date-range.js:161
+msgid "Per Month"
+msgstr "Per mese"
+
+#: static/js/date-range.js:162 static/js/date-range.js:185
+msgid "Per Day"
+msgstr "Per giorno"
+
+#: static/js/date-range.js:182
+msgid "min"
+msgstr "min"
+
+#: static/js/date-range.js:185
+msgid "Average Playtime"
+msgstr "Tempo medio di gioco"
+
+#: static/js/date-range.js:191
+msgid "Average Length"
+msgstr "Lunghezza media"
+
+#: static/js/date-range.js:191 static/js/statistics-charts.js:63
+msgid "Pages"
+msgstr "Pagine"
+
+#: static/js/date-range.js:232 static/js/date-range.js:233
+#: static/js/date-range.js:236
+msgid "titles"
+msgstr "titoli"
+
+#: static/js/date-range.js:232
+msgid "films"
+msgstr "film"
+
+#: static/js/date-range.js:232
+msgid "shows"
+msgstr "spettacoli"
+
+#: static/js/date-range.js:232
+msgid "games"
+msgstr "Giochi"
+
+#: static/js/date-range.js:233
+msgid "books"
+msgstr "libri"
+
+#: static/js/date-range.js:233
+msgid "albums"
+msgstr "album"
+
+#: static/js/date-range.js:233
+msgid "podcasts"
+msgstr "podcasts"
+
+#: static/js/date-range.js:234
+msgid "comics"
+msgstr "fumetti"
+
+#: static/js/date-range.js:234
+msgid "manga"
+msgstr "Manga"
+
+#: static/js/date-range.js:241 static/js/date-range.js:252
+msgid "stories, ideas, and worlds"
+msgstr "storie, idee e mondi"
+
+#: static/js/date-range.js:242
+msgid "film and storytelling"
+msgstr "film e narrazione"
+
+#: static/js/date-range.js:243
+msgid "episodes and seasons"
+msgstr "episodi e stagioni"
+
+#: static/js/date-range.js:244
+msgid "play and adventure"
+msgstr "gioco e avventura"
+
+#: static/js/date-range.js:245
+msgid "reading and discovery"
+msgstr "lettura e scoperta"
+
+#: static/js/date-range.js:246
+msgid "anime and storytelling"
+msgstr "anime e narrazione"
+
+#: static/js/date-range.js:247
+msgid "music and discovery"
+msgstr "musica e scoperta"
+
+#: static/js/date-range.js:248
+msgid "listening and learning"
+msgstr "ascolto e apprendimento"
+
+#: static/js/date-range.js:249
+msgid "comics and art"
+msgstr "fumetti e arte"
+
+#: static/js/date-range.js:250
+msgid "manga and art"
+msgstr "manga e arte"
+
+#: static/js/date-range.js:447
+msgid "All media"
+msgstr "Tutti i media"
+
+#: static/js/date-range.js:449
+msgid "Types"
+msgstr "Tipi"
+
+#: static/js/date-range.js:479
+msgid "Custom range"
+msgstr "Gamma personalizzata"
+
+#: static/js/date-range.js:484 static/js/date-range.js:616
+#: static/js/date-range.js:787
+msgid "All activity"
+msgstr "Tutte le attività"
+
+#: static/js/date-range.js:670
+msgid "Failed to save compare mode"
+msgstr "Non riuscito a salvare la modalità di confronto"
+
+#: static/js/dateTimePicker.js:484
+msgid "Suggested date"
+msgstr "Data consigliata"
+
+#: static/js/episodeBulkTrackForm.js:13
+msgid "Choose the first and last item to log a bulk play range."
+msgstr ""
+"Scegliere il primo e l'ultimo elemento per registrare un intervallo di gioco"
+" di massa."
+
+#: static/js/episodeBulkTrackForm.js:47
+msgid "episode"
+msgstr "episodio"
+
+#: static/js/episodeBulkTrackForm.js:51
+msgid "episodes"
+msgstr "episodi"
+
+#: static/js/episodeBulkTrackForm.js:55
+msgid "air date"
+msgstr "data dell'aria"
+
+#: static/js/episodeBulkTrackForm.js:155
+msgid "Choose a valid ordered range to log plays."
+msgstr "Scegli un intervallo ordinato valido per registrare i giochi."
+
+#: static/js/episodeBulkTrackForm.js:165
+msgid "the target dates within the selected date range"
+msgstr ""
+"le date di destinazione all'interno dell'intervallo di date selezionato"
+
+#: static/js/episodeBulkTrackForm.js:166
+msgid "an even distribution across the date range"
+msgstr "una distribuzione uniforme attraverso l'intervallo di date"
+
+#: static/js/episodeBulkTrackForm.js:168
+msgid ""
+"This will replace plays for %(count)s ordered item using %(distribution)s."
+msgid_plural ""
+"This will replace plays for %(count)s ordered items using %(distribution)s."
+msgstr[0] ""
+"Questo sostituirà i giochi per l'elemento ordinato %(count)s usando "
+"%(distribution)s."
+msgstr[1] ""
+"Questo sostituirà i giochi per gli elementi ordinati %(count)s usando "
+"%(distribution)s."
+
+#: static/js/episodeBulkTrackForm.js:169
+msgid "This will add plays for %(count)s ordered item using %(distribution)s."
+msgid_plural ""
+"This will add plays for %(count)s ordered items using %(distribution)s."
+msgstr[0] ""
+"Questo aggiungerà giochi per l'elemento ordinato %(count)s usando "
+"%(distribution)s."
+msgstr[1] ""
+"Questo aggiungerà giochi per gli elementi ordinati %(count)s usando "
+"%(distribution)s."
+
+#: static/js/episodeBulkTrackForm.js:182
+msgid "%(count)s selected item has no target date."
+msgid_plural "%(count)s selected items have no target date."
+msgstr[0] "%(count)s elemento selezionato non ha data di destinazione."
+msgstr[1] "Gli elementi selezionati %(count)s non hanno data di destinazione."
+
+#: static/js/episodeBulkTrackForm.js:185
+msgid "Saving will fall back to even distribution."
+msgstr "Il risparmio tornerà alla distribuzione uniforme."
+
+#: static/js/episodeBulkTrackForm.js:194
+msgid ""
+"This will delete %(count)s existing play in the selected range before adding"
+" the new ordered pass."
+msgid_plural ""
+"This will delete %(count)s existing plays in the selected range before "
+"adding the new ordered pass."
+msgstr[0] ""
+"Questo cancellerà il gioco esistente %(count)s nell'intervallo selezionato "
+"prima di aggiungere il nuovo passaggio ordinato."
+msgstr[1] ""
+"Questo cancellerà i giochi esistenti %(count)s nell'intervallo selezionato "
+"prima di aggiungere il nuovo passaggio ordinato."
+
+#: static/js/episodeBulkTrackForm.js:195
+msgid "No existing plays are currently logged in the selected range."
+msgstr ""
+"Nessun gioco esistente è attualmente registrato nell'intervallo selezionato."
+
+#: static/js/episodeBulkTrackForm.js:201
+msgid ""
+"This range already has %(count)s logged play. New plays will be appended in "
+"order."
+msgid_plural ""
+"This range already has %(count)s logged plays. New plays will be appended in"
+" order."
+msgstr[0] ""
+"Questo intervallo ha già %(count)s gioco registrato. Nuovi giochi saranno "
+"allegati in ordine."
+msgstr[1] ""
+"Questo intervallo ha già %(count)s giochi registrati. Nuovi giochi saranno "
+"allegati in ordine."
+
+#: static/js/libraryFilterState.js:73
+msgid "Rated"
+msgstr "Tasso"
+
+#: static/js/libraryFilterState.js:74
+msgid "Not Rated"
+msgstr "Non valutato"
+
+#: static/js/libraryFilterState.js:78
+msgid "Collected"
+msgstr "Collezionato"
+
+#: static/js/libraryFilterState.js:79
+msgid "Not Collected"
+msgstr "Non collezionato"
+
+#: static/js/libraryFilterState.js:83
+msgid "Not Caught Up"
+msgstr "Non ho preso"
+
+#: static/js/libraryFilterState.js:84
+msgid "Caught Up"
+msgstr "Creduto"
+
+#: static/js/libraryFilterState.js:88
+msgid "Released"
+msgstr "Rilasciato"
+
+#: static/js/libraryFilterState.js:89
+msgid "Not Released"
+msgstr "Non rilasciato"
+
+#: static/js/libraryFilterState.js
+msgid "Item"
+msgstr "Elemento"
+
+#: static/js/libraryFilterState.js
+msgid "Collection/Series"
+msgstr "Collezione/Serie"
+
+#: static/js/libraryFilterState.js
+msgid "Franchise"
+msgstr "Franchise"
+
+#: static/js/libraryFilterState.js:150
+msgid "All Types"
+msgstr "Tutti i tipi"
+
+#: static/js/libraryFilterState.js:151
+msgid "No Types"
+msgstr "Nessun tipo"
+
+#: static/js/libraryFilterState.js:154
+msgid "1 Type"
+msgstr "1 Tipo"
+
+#: static/js/libraryFilterState.js:156
+msgid "%(count)s Types"
+msgstr "Tipologie"
+
+#: static/js/libraryFilterState.js:197
+msgid "Implied: "
+msgstr "Implied:"
+
+#: static/js/libraryFilterState.js:198
+msgid "Unknown Year"
+msgstr "Anno sconosciuto"
+
+#: static/js/libraryFilterState.js:202
+msgid "Release"
+msgstr "Comunicato"
+
+#: static/js/libraryFilterState.js:204
+msgid "Added"
+msgstr "Aggiunto"
+
+#: static/js/markdown-editor.js:68
+msgid "image"
+msgstr "immagine"
+
+#: static/js/markdown-editor.js:141
+msgid "bold text"
+msgstr "testo in grassetto"
+
+#: static/js/markdown-editor.js:144
+msgid "italic text"
+msgstr "testo italico"
+
+#: static/js/markdown-editor.js:149 static/js/markdown-editor.js:151
+msgid "code"
+msgstr "codice"
+
+#: static/js/markdown-editor.js:159
+msgid "link text"
+msgstr "link testo testo"
+
+#: static/js/markdown-editor.js:213
+msgid "Nothing to preview yet."
+msgstr "Ancora niente da vedere."
+
+#: static/js/mediaStatusDateHandler.js:281
+msgid "Dismiss notification"
+msgstr "Annulla notifica"
+
+#: static/js/statistics-charts.js:32
+msgid "TV Show"
+msgstr "Serie TV"
+
+#: static/js/statistics-charts.js:33
+msgid "TV Shows"
+msgstr "Serie TV"
+
+#: static/js/statistics-charts.js:34
+msgid "TV Season"
+msgstr "Stagione TV"
+
+#: static/js/statistics-charts.js:35
+msgid "Movie"
+msgstr "Film"
+
+#: static/js/statistics-charts.js:36
+msgid "Movies"
+msgstr "Film"
+
+#: static/js/statistics-charts.js:37
+msgid "Anime"
+msgstr "Anime"
+
+#: static/js/statistics-charts.js:39
+msgid "Podcast"
+msgstr "Podcast"
+
+#: static/js/statistics-charts.js:41
+msgid "Book"
+msgstr "Libro"
+
+#: static/js/statistics-charts.js:42
+msgid "Books"
+msgstr "Libri"
+
+#: static/js/statistics-charts.js:43
+msgid "Comic"
+msgstr "Fumetto"
+
+#: static/js/statistics-charts.js:44
+msgid "Comics"
+msgstr "Fumetti"
+
+#: static/js/statistics-charts.js:45
+msgid "Comic Issue"
+msgstr "Questioni generali"
+
+#: static/js/statistics-charts.js:46
+msgid "Board Game"
+msgstr "Gioco d'azzardo"
+
+#: static/js/statistics-charts.js:47
+msgid "Board Games"
+msgstr "Giochi da tavolo"
+
+#: static/js/statistics-charts.js:48
+msgid "Game"
+msgstr "Gioco"
+
+#: static/js/statistics-charts.js:50
+msgid "Manga"
+msgstr "Manga"
+
+#: static/js/statistics-charts.js:54
+msgid "Paused"
+msgstr "In pausa"
+
+#: static/js/statistics-charts.js:55
+msgid "Dropped"
+msgstr "Abbandonato"
+
+#: static/js/statistics-charts.js:56
+msgid "Repeating"
+msgstr "In ripasso"
+
+#: static/js/statistics-charts.js:57
+msgid "Other"
+msgstr "Altro"
+
+#: static/js/statistics-charts.js:59 static/js/statistics-charts.js:1734
+msgid "Items"
+msgstr "Elementi"
+
+#: static/js/statistics-charts.js:62
+msgid "Chapters"
+msgstr "Capitolo"
+
+#: static/js/statistics-charts.js:64 static/js/statistics-charts.js:579
+msgid "Hours"
+msgstr "Ore"
+
+#: static/js/statistics-charts.js:65
+msgid "Minutes"
+msgstr "Minuti"
+
+#: static/js/statistics-charts.js:66
+msgid "Movie Plays"
+msgstr "Giochi di film"
+
+#: static/js/statistics-charts.js:67
+msgid "Episode Plays"
+msgstr "Episodio gioca"
+
+#: static/js/statistics-charts.js:68
+msgid "Anime Plays"
+msgstr "Anime gioca"
+
+#: static/js/statistics-charts.js:69
+msgid "Music Plays"
+msgstr "Giochi musicali"
+
+#: static/js/statistics-charts.js:70
+msgid "Podcast Plays"
+msgstr "Podcast Gioca"
+
+#: static/js/statistics-charts.js:71
+msgid "Pages Read"
+msgstr "Pagine Leggi"
+
+#: static/js/statistics-charts.js:72
+msgid "Chapters Read"
+msgstr "Capitoli Leggi"
+
+#: static/js/statistics-charts.js:139
+msgid "Score: %(score)s"
+msgstr "Punteggio:"
+
+#: static/js/statistics-charts.js:141
+msgid "Score: %(lower)s–%(upper)s"
+msgstr "Punteggio: ⟦0––%(upper)s"
+
+#: static/js/statistics-charts.js:327
+msgid "Score"
+msgstr "Voto"
+
+#: static/js/statistics-charts.js:334
+msgid "Number of Items"
+msgstr "Numero di elementi"
+
+#: static/js/statistics-charts.js:341
+msgid "Average Score: %(score)s / %(max)s (%(count)s item)"
+msgid_plural "Average Score: %(score)s / %(max)s (%(count)s items)"
+msgstr[0] "Punteggio medio: %(score)s / %(max)s (elemento%(count)s)"
+msgstr[1] "Punteggio medio: %(score)s / %(max)s (%(count)s elementi)"
+
+#: static/js/statistics-charts.js:708
+msgid "Avg/day: %(band)s"
+msgstr "Avg/giorno: %(band)s"
+
+#: static/js/statistics-charts.js:864
+msgid "No activity data for this range."
+msgstr "Nessun dato di attività per questo range."
+
+#: static/js/statistics-charts.js:906
+msgid "%(day)s %(hour)s:00 — %(count)s session"
+msgid_plural "%(day)s %(hour)s:00 — %(count)s sessions"
+msgstr[0] "%(day)s %(hour)s:00 — %(count)s sessione"
+msgstr[1] "%(day)s %(hour)s:00 — Sessioni %(count)s"
+
+#: static/js/statistics-charts.js:925
+msgid "Low"
+msgstr "Basso"
+
+#: static/js/statistics-charts.js:937
+msgid "High"
+msgstr "Alto"
+
+#: static/js/statistics-charts.js:1039 static/js/statistics-charts.js:1164
+msgid "%(count)sh"
+msgstr "%(count) sh"
+
+#: static/js/statistics-charts.js:1072
+msgid "No data for this filter."
+msgstr "Nessun dato per questo filtro."
+
+#: static/js/statistics-charts.js:1146 static/js/statistics-charts.js:1150
+#: static/js/statistics-charts.js:1168
+msgid "%(hours)sh %(minutes)smin"
+msgstr "%(hours) sh %(minutes) smin"
+
+#: static/js/statistics-charts.js:1148 static/js/statistics-charts.js:1165
+msgid "%(count)smin"
+msgstr "%(count) smin"
+
+#: static/js/statistics-charts.js:1162
+msgid "%(count)smo"
+msgstr "%(count) smo"
+
+#: static/js/statistics-charts.js:1163
+msgid "%(count)sd"
+msgstr "%(count) sd"
+
+#: static/js/statistics-charts.js:1331
+msgid "Top Genres"
+msgstr "Top Genres"
+
+#: static/js/statistics-charts.js:1332
+msgid "Where your %(type)s hours go."
+msgstr "Dove vanno le tue ore %(type)s."
+
+#: static/js/statistics-charts.js:1339 static/js/statistics-charts.js:1388
+msgid "total"
+msgstr "totale"
+
+#: static/js/statistics-charts.js:1348
+msgid "Hours by Media Type"
+msgstr "Ore di Media Tipo"
+
+#: static/js/statistics-charts.js:1349
+msgid "Where your hours go."
+msgstr "Dove vanno le tue ore."
+
+#: static/js/statistics-charts.js:1377
+msgid "No time data available for this filter."
+msgstr "Nessun dato di tempo disponibile per questo filtro."
+
+#: static/js/statistics-charts.js:1404
+msgid "No time data available for this range."
+msgstr "Nessun dato di tempo disponibile per questa gamma."
+
+#: static/js/statistics-charts.js:1470
+msgid "total items"
+msgstr "totale"
+
+#: static/js/statistics-charts.js:1563
+msgid "%(type)s status breakdown."
+msgstr "Ripartizione dello stato %(type)s."
+
+#: static/js/statistics-charts.js:1564
+msgid "What portion of your library is in each state."
+msgstr "Quale parte della tua biblioteca è in ogni stato."
+
+#: static/js/statistics-charts.js:1571 static/js/statistics-charts.js:1814
+msgid "No status data available for this filter."
+msgstr "Nessun dato di stato disponibile per questo filtro."
+
+#: static/js/statistics-charts.js:1603 static/js/statistics-charts.js:1896
+msgid "No status data available for this range."
+msgstr "Nessun dato di stato disponibile per questa gamma."
+
+#: static/js/statistics-charts.js:1648
+msgid "How your %(count)s rated item (%(type)s) is distributed."
+msgid_plural "How your %(count)s rated items (%(type)s) are distributed."
+msgstr[0] ""
+"Come il vostro elemento valutato %(count)s (%(type)s) è distribuito."
+msgstr[1] ""
+"Come vengono distribuiti i tuoi elementi classificati %(count)s (%(type)s)."
+
+#: static/js/statistics-charts.js:1649
+msgid "How your %(count)s rated item is distributed."
+msgid_plural "How your %(count)s rated items are distributed."
+msgstr[0] "Come il vostro elemento valutato %(count)s è distribuito."
+msgstr[1] "Come vengono distribuiti i tuoi elementi classificati %(count)s."
+
+#: static/js/statistics-charts.js:1660
+msgid "No ratings yet for this filter."
+msgstr "Non ci sono ancora valutazioni per questo filtro."
+
+#: static/js/statistics-charts.js:1724
+msgid "Rating %(rating)s"
+msgstr "Valutazione %(rating)s"
+
+#: static/js/statistics-charts.js:1725
+msgid "%(count)s item"
+msgid_plural "%(count)s items"
+msgstr[0] "Elemento"
+msgstr[1] "%(count)s elementi"
+
+#: static/js/statistics-charts.js:1766
+msgid "No ratings yet."
+msgstr "Non ci sono ancora valutazioni."
+
+#: static/js/statistics-charts.js:1795
+msgid "%(type)s status counts."
+msgstr "Lo stato conta."
+
+#: static/js/statistics-charts.js:1796
+msgid "Breakdown by type across all status states."
+msgstr "Ripartizione per tipo in tutti gli stati di stato."
+
+#: static/js/statistics-charts.js:1834
+msgid "Total"
+msgstr "Totale"
+
+#: static/js/statistics-charts.js:1935
+msgid "of titles"
+msgstr "di titoli"
+
+#~ msgid "Sync played games and hours played from your PlayStation account now."
+#~ msgstr ""
+
+#~ msgid ""
+#~ "Sync played games and hours played from your PlayStation account on a "
+#~ "schedule."
+#~ msgstr ""
+
+#~ msgid "Always visible"
+#~ msgstr ""
+
+#~ msgid "On hover"
+#~ msgstr ""
+
+#: templates/users/home_screen.html
+msgid "Up Next"
+msgstr "Da guardare"

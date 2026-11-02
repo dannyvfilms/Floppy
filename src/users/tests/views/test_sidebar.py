@@ -19,6 +19,12 @@ class SidebarViewTests(TestCase):
         self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
 
+    def test_sidebar_no_longer_contains_feed_settings(self):
+        response = self.client.get(reverse("sidebar"))
+        self.assertNotContains(response, 'name="show_up_next"')
+        self.assertNotContains(response, 'name="episode_feed_columns"')
+        self.assertNotContains(response, 'href="/up-next"')
+
     def test_preferences_get(self):
         """Test GET request to preferences view."""
         response = self.client.get(reverse("preferences"))
@@ -122,6 +128,41 @@ class SidebarViewTests(TestCase):
         self.assertEqual(len(messages), 1)
         self.assertIn("Settings updated", str(messages[0]))
 
+    def test_sidebar_post_turns_discover_off_and_on(self):
+        """The Show Discover switch is saved from the Sidebar settings page."""
+        self.assertTrue(self.user.show_discover)
+
+        response = self.client.post(reverse("sidebar"), {})
+        self.assertRedirects(response, reverse("sidebar"))
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.show_discover)
+
+        self.client.post(reverse("sidebar"), {"show_discover": "on"})
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.show_discover)
+
+    def test_sidebar_link_hidden_when_discover_off(self):
+        """The sidebar shows the Discover link only while Discover is on."""
+        discover_link = f'href="{reverse("discover")}"'
+        self.assertContains(self.client.get(reverse("home")), discover_link)
+
+        self.user.show_discover = False
+        self.user.save(update_fields=["show_discover"])
+        self.assertNotContains(self.client.get(reverse("home")), discover_link)
+
+    def test_preferences_post_turns_recommendations_off(self):
+        """The Recommendations preference is saved from the Preferences page."""
+        self.assertTrue(self.user.show_recommendations)
+
+        self.client.post(reverse("preferences"), {"show_recommendations": "0"})
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.show_recommendations)
+
+        # A post that omits the field (e.g. the theme toggle) leaves it alone.
+        self.client.post(reverse("preferences"), {"theme": "dark"})
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.show_recommendations)
+
     def test_sidebar_post_demo_user(self):
         """Test POST request from a demo user to preferences."""
         self.user.is_demo = True
@@ -148,7 +189,7 @@ class SidebarViewTests(TestCase):
     @override_settings(TVDB_API_KEY="")
     def test_metadata_settings_flags_tvdb_as_not_configured(self):
         """TVDB should still be listed for TV, just flagged as not configured."""
-        response = self.client.get(reverse("metadata_settings"))
+        response = self.client.get(reverse("provider_detail", args=["tmdb"]) + "?tab=metadata")
 
         self.assertEqual(response.status_code, 200)
         tv_entry = next(
@@ -170,7 +211,7 @@ class SidebarViewTests(TestCase):
         self.user.movie_enabled = True
         self.user.save(update_fields=["movie_enabled"])
 
-        response = self.client.get(reverse("metadata_settings"))
+        response = self.client.get(reverse("provider_detail", args=["tmdb"]) + "?tab=metadata")
 
         media_types = [
             entry["media_type"] for entry in response.context["provider_summary"]
@@ -191,7 +232,7 @@ class SidebarViewTests(TestCase):
             reverse("set_media_type_provider", args=[MediaTypes.TV.value]),
             {"source": MetadataSourceDefaultChoices.TVDB},
         )
-        self.assertRedirects(response, reverse("metadata_settings"))
+        self.assertRedirects(response, reverse("metadata_settings"), fetch_redirect_response=False)
 
         response = self.client.post(
             reverse("set_media_type_provider", args=[MediaTypes.ANIME.value]),
@@ -200,7 +241,7 @@ class SidebarViewTests(TestCase):
                 "anime_library_mode": AnimeLibraryModeChoices.BOTH,
             },
         )
-        self.assertRedirects(response, reverse("metadata_settings"))
+        self.assertRedirects(response, reverse("metadata_settings"), fetch_redirect_response=False)
 
         self.user.refresh_from_db()
         self.assertEqual(

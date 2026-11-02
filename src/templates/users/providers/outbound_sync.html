@@ -1,0 +1,10 @@
+{% load i18n user_tags %}
+{% for service in outbound_services %}
+  <section class="{% if not provider_navigation %}bg-[var(--color-surface)] rounded-lg p-6 {% endif %}space-y-3">
+    <div class="flex items-center justify-between">
+      {% source_display service.slug as logo_html %}{{ logo_html }}
+      {% include "users/components/outbound_service_status.html" %}
+    </div>
+    {% include service.body %}
+  </section>
+{% endfor %}

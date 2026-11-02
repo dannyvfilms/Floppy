@@ -3,7 +3,8 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from integrations.jellyfin_client import JellyfinClientError
+from integrations.imports.helpers import MediaImportError
+from integrations.jellyfin_client import JellyfinAuthError, JellyfinClientError
 from integrations.models import ImportRun, JellyfinAccount
 from integrations.tasks._jellyfin_pull import pull_jellyfin_history
 
@@ -259,3 +260,83 @@ class PullJellyfinHistoryTaskTests(TestCase):
         self.account.refresh_from_db()
         self.assertTrue(self.account.connection_broken)
         self.assertIn("bad key", self.account.last_pull_error_message)
+
+
+@patch(
+    "integrations.imports.jellyfin_playback_reporting.decrypt_or_raise",
+    return_value="api-key",
+)
+@patch("integrations.tasks._jellyfin_pull.decrypt_or_raise", return_value="api-key")
+class PullJellyfinConnectionHealthTests(TestCase):
+    """A transient pull failure must never latch ``connection_broken`` (#1267)."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="pull-health-user")
+        self.account = JellyfinAccount.objects.create(
+            user=self.user,
+            base_url="https://jellyfin.example",
+            api_key="encrypted",
+            jellyfin_user_id="jf-user",
+        )
+
+    @patch("integrations.jellyfin_client.JellyfinClient.iter_library_items")
+    @patch(
+        "integrations.jellyfin_client.JellyfinClient.probe_playback_reporting",
+        return_value=False,
+    )
+    def test_timeout_records_error_without_marking_broken(
+        self,
+        mock_probe,
+        mock_library,
+        *mocks,
+    ):
+        mock_library.side_effect = JellyfinClientError("Read timed out")
+
+        with self.assertRaises(MediaImportError):
+            pull_jellyfin_history(self.user.id)
+
+        self.account.refresh_from_db()
+        self.assertFalse(self.account.connection_broken)
+        self.assertIn("Read timed out", self.account.last_pull_error_message)
+
+    @patch("integrations.jellyfin_client.JellyfinClient.iter_library_items")
+    @patch(
+        "integrations.jellyfin_client.JellyfinClient.probe_playback_reporting",
+        return_value=False,
+    )
+    @patch("integrations.jellyfin_client.JellyfinClient.healthcheck")
+    def test_broken_account_heals_when_probe_succeeds(
+        self,
+        mock_health,
+        mock_probe,
+        mock_library,
+        *mocks,
+    ):
+        self.account.connection_broken = True
+        self.account.save(update_fields=["connection_broken"])
+        mock_health.return_value = {"Id": "server"}
+        mock_library.return_value = []
+
+        pull_jellyfin_history(self.user.id)
+
+        self.account.refresh_from_db()
+        self.assertFalse(self.account.connection_broken)
+        self.assertIsNotNone(self.account.last_pull_at)
+
+    @patch("integrations.jellyfin_client.JellyfinClient.iter_library_items")
+    @patch("integrations.jellyfin_client.JellyfinClient.healthcheck")
+    def test_broken_account_stays_broken_when_probe_is_rejected(
+        self,
+        mock_health,
+        mock_library,
+        *mocks,
+    ):
+        self.account.connection_broken = True
+        self.account.save(update_fields=["connection_broken"])
+        mock_health.side_effect = JellyfinAuthError("bad key")
+
+        pull_jellyfin_history(self.user.id)
+
+        mock_library.assert_not_called()
+        self.account.refresh_from_db()
+        self.assertTrue(self.account.connection_broken)

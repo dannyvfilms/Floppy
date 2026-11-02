@@ -1,7 +1,9 @@
 """Functions that build per-entry history dicts for each media type."""
 
 import logging
+from collections import defaultdict
 
+from django.apps import apps
 from django.conf import settings
 from django.utils import formats
 
@@ -22,6 +24,19 @@ MINUTES_PER_HOUR = 60
 
 
 # ── Model serializers ─────────────────────────────────────────────────────────
+
+
+def _entry_dates(record, *, added_from=None):
+    """Return the tracking dates a History card can show as card properties.
+
+    ``added_from`` supplies created_at when ``record`` is a history row, which
+    does not store it.
+    """
+    return {
+        "created_at": getattr(added_from or record, "created_at", None),
+        "start_date": getattr(record, "start_date", None),
+        "end_date": getattr(record, "end_date", None),
+    }
 
 
 def _serialize_item(item):
@@ -86,6 +101,74 @@ def _attach_entry_score(entry, media):
     if score is not None:
         entry["score"] = score
     return entry
+
+
+def flat_anime_episode_watches(records):
+    """Return ``{anime_id: [(episode_number, watched_at), ...]}`` for flat anime.
+
+    A flat entry stores progress, not episodes, so each rise in its change log
+    dates the episodes it covered. A rise saved after the entry's own end date
+    (an import of an old watch) is dated on that end date. Each episode keeps
+    its latest date, and only episodes up to the current progress are kept, so
+    a lowered progress drops the ones above it. An entry with no change log
+    dates every episode on its end or start date.
+    """
+    records = [record for record in records if (record.progress or 0) > 0]
+    if not records:
+        return {}
+    HistoricalAnime = apps.get_model("app", "HistoricalAnime")
+    rows = (
+        HistoricalAnime.objects.filter(id__in=[record.id for record in records])
+        .order_by("history_date", "history_id")
+        .values_list("id", "progress", "end_date", "history_date")
+    )
+    dated_by_id = defaultdict(dict)
+    previous_progress = {}
+    for anime_id, row_progress, row_end_date, history_date in rows:
+        progress = row_progress or 0
+        before = previous_progress.get(anime_id, 0)
+        previous_progress[anime_id] = progress
+        if progress <= before:
+            continue
+        watched_at = min(history_date, row_end_date) if row_end_date else history_date
+        for episode_number in range(before + 1, progress + 1):
+            dated_by_id[anime_id][episode_number] = watched_at
+
+    watches = {}
+    for record in records:
+        dated = dated_by_id.get(record.id)
+        if not dated:
+            fallback = record.end_date or record.start_date
+            if not fallback:
+                continue
+            dated = dict.fromkeys(range(1, record.progress + 1), fallback)
+        watches[record.id] = sorted(
+            (number, watched_at)
+            for number, watched_at in dated.items()
+            if number <= record.progress
+        )
+    return watches
+
+
+def flat_anime_episode_entries(entry, watches, final_episode):
+    """Split a flat anime card into one card per dated episode.
+
+    The entry's score stays on the card of its last watched episode only.
+    """
+    cards = []
+    for episode_number, watched_at in watches:
+        card = {
+            **entry,
+            "episode_label": f"E{episode_number:02d}",
+            "episode_code": f"E{episode_number:02d}",
+            "episode_number": episode_number,
+            "played_at_local": _localize_datetime(watched_at),
+            "entry_key": f"{entry['entry_key']}-e{episode_number}",
+        }
+        if episode_number != final_episode:
+            card.pop("score", None)
+        cards.append(card)
+    return cards
 
 
 def _serialize_show(show):
@@ -177,7 +260,9 @@ def _get_episode_display_title(episode, episode_title_map=None):
 
 
 def _build_episode_entry(episode, episode_title_map=None):
-    played_at_local = _localize_datetime(episode.end_date or episode.created_at)
+    played_at_local = _localize_datetime(
+        episode.end_date or episode.start_date or episode.created_at
+    )
     if not played_at_local:
         return None
 
@@ -233,13 +318,16 @@ def _build_episode_entry(episode, episode_title_map=None):
         # arbitrary order the query happened to return them in.
         "season_number": episode_item.season_number if episode_item else None,
         "episode_number": episode_item.episode_number if episode_item else None,
+        "status": episode.status,
         "played_at_local": played_at_local,
+        **_entry_dates(episode),
         "runtime_minutes": runtime_minutes,
         "runtime_display": helpers.minutes_to_hhmm(runtime_minutes)
         if runtime_minutes
         else None,
         "instance_id": episode.id,
         "entry_key": str(episode.id),
+        "entry_source": episode.entry_source,
     }
     _attach_entry_score(entry, episode)
     if genres:
@@ -271,12 +359,14 @@ def _build_movie_entry(movie):
         "episode_label": None,
         "episode_code": None,
         "played_at_local": played_at_local,
+        **_entry_dates(movie),
         "runtime_minutes": runtime_minutes,
         "runtime_display": helpers.minutes_to_hhmm(runtime_minutes)
         if runtime_minutes
         else None,
         "instance_id": movie.id,
         "entry_key": str(movie.id),
+        "entry_source": movie.entry_source,
     }
     _attach_entry_score(entry, movie)
     if genres:
@@ -284,6 +374,37 @@ def _build_movie_entry(movie):
     if implied_genres:
         entry["implied_genres"] = implied_genres
     return entry
+
+
+def _build_video_play_entry(play):
+    """One history row per video play.
+
+    @param play - VideoPlay with video and item selected.
+    @returns Entry dict, or None when the play has no timestamp.
+    """
+    video = play.video
+    played_at_local = _localize_datetime(play.end_date or video.created_at)
+    if not played_at_local:
+        return None
+    runtime_minutes = video.length_seconds // 60 if video.length_seconds else None
+    return {
+        "media_type": MediaTypes.VIDEO.value,
+        "item": _serialize_item(video.item),
+        "poster": video.item.image or settings.IMG_NONE,
+        "title": video.item.title,
+        "display_title": video.item.title,
+        "status": video.status,
+        "play_count": 1,
+        "episode_label": video.channel or None,
+        "episode_code": None,
+        "played_at_local": played_at_local,
+        **_entry_dates(play, added_from=video),
+        "runtime_minutes": runtime_minutes,
+        "runtime_display": helpers.minutes_to_hhmm(runtime_minutes) if runtime_minutes else None,
+        "instance_id": play.id,
+        "entry_key": f"video:{play.id}",
+        "entry_source": "youtube",
+    }
 
 
 # ── Music builders ────────────────────────────────────────────────────────────
@@ -426,6 +547,8 @@ def _build_music_album_entries(
         "episode_label": None,
         "episode_code": None,
         "played_at_local": latest_time,  # Use latest play for sorting
+        **_entry_dates(primary_music),
+        "end_date": latest_time,
         "runtime_minutes": total_runtime_minutes,
         "runtime_display": helpers.minutes_to_hhmm(total_runtime_minutes)
         if total_runtime_minutes

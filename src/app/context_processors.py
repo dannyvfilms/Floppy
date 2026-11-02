@@ -5,6 +5,7 @@ from django.utils.functional import SimpleLazyObject
 
 from app.models import MediaTypes, Sources, Status
 from users.helpers import is_first_run
+from users.release_notes import release_tag
 
 
 def export_vars(request):
@@ -17,6 +18,7 @@ def export_vars(request):
         "FORK_OWNER_NAME": settings.FORK_OWNER_NAME,
         "FORK_OWNER_URL": settings.FORK_OWNER_URL,
         "IS_FIRST_RUN": SimpleLazyObject(is_first_run),
+        "RELEASE_TAG": release_tag(settings.VERSION),
     }
 
 

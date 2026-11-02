@@ -15,7 +15,9 @@ from django.conf import settings
 from django.utils import timezone
 
 from app.models import Book, Item, MediaTypes, Sources, Status
+from app.services.synced_status import keep_held_status
 from integrations import plex_cover
+from integrations.imports.helpers import stamp_entry_source
 
 logger = logging.getLogger(__name__)
 
@@ -197,10 +199,14 @@ def upsert_plex_audiobook(
     book, _ = Book.objects.update_or_create(
         user=user,
         item=item,
-        defaults={
-            "progress": progress_minutes,
-            "status": status,
-            "end_date": listened_at if all_played else None,
-        },
+        defaults=keep_held_status(
+            Book.objects.filter(user=user, item=item).first(),
+            {
+                "progress": progress_minutes,
+                "status": status,
+                "end_date": listened_at if all_played else None,
+            },
+            listened_at,
+        ),
     )
-    return book
+    return stamp_entry_source(book, "plex")

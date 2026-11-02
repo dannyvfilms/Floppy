@@ -1,0 +1,11 @@
+{% load i18n %}
+<div class="provider-page">
+  {% include "users/providers/header_fallback.html" %}
+  {% if provider_tab == 'overview' %}
+    {% include "users/providers/content_legacy.html" %}
+  {% else %}
+    {# React replaces this body with different controls; keep it unseen unless the mount never happens. #}
+    <div class="provider-fallback-pending">{% include "users/providers/content_legacy.html" %}</div>
+    <noscript><style>.provider-fallback-pending { visibility: visible; animation: none; }</style></noscript>
+  {% endif %}
+</div>

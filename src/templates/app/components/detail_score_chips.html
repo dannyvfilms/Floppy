@@ -5,21 +5,30 @@
 {% load humanize %}
 {% load static %}
 {# Score chips #}
-{% if media.score_count is not None or trakt_score or imdb_score or mal_score or user_medias and current_instance and not public_view|default:False %}
-  <div class="order-2 mt-0 mb-5 flex w-full items-center justify-start gap-2 sm:order-1 sm:mt-4 sm:flex-wrap">
+{% if media.score_count is not None or trakt_score or imdb_score or mal_score or opencritic_score or user_medias and current_instance and not public_view|default:False and user.ratings_enabled %}
+  <div class="detail-score-card-shell order-2 mt-0 mb-5 w-full sm:order-1 sm:mt-4"
+       x-data="{ hasOverflow: false, atStart: true, atEnd: true, updateScroll() { const row = this.$refs.scoreRow; this.hasOverflow = row.scrollWidth > row.clientWidth + 2; this.atStart = row.scrollLeft < 2; this.atEnd = row.scrollLeft + row.clientWidth >= row.scrollWidth - 2 } }"
+       x-init="$nextTick(() => { updateScroll(); new ResizeObserver(() => updateScroll()).observe($refs.scoreRow) })"
+       @resize.window.debounce.100ms="updateScroll()"
+       @htmx:afterSwap.window="$nextTick(() => updateScroll())">
+  <div class="detail-score-card-row flex w-full items-center justify-start gap-2 sm:flex-wrap"
+       x-ref="scoreRow"
+       :class="{ 'detail-score-card-row--fade-left': hasOverflow && !atStart, 'detail-score-card-row--fade-right': hasOverflow && !atEnd }"
+       @scroll.passive="updateScroll(); $dispatch('detail-score-row-scroll')">
+    {% if media_type == MediaTypes.TV.value or media_type == MediaTypes.SEASON.value %}
+      {% include "app/components/detail_progress_card_slot.html" with media=media media_type=media_type current_instance=current_instance public_view=public_view only %}
+    {% endif %}
     {% if media.score_count is not None %}
+      {% with link_url=detail_link_sections|detail_link_url:display_provider %}
       <div class="relative"
            x-data="{ graphOpen: false }"
-           @mouseenter="graphOpen = true"
-           @mouseleave="graphOpen = false"
-           @click.outside="graphOpen = false">
-        <button type="button"
-                class="inline-flex h-[1.875rem] min-w-0 cursor-help items-center gap-0.5 overflow-hidden rounded-full border border-cyan-400/18 bg-cyan-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm transition-colors duration-150 sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm"
-                title="{% blocktranslate trimmed with value_1=display_provider|source_readable %}{{ value_1 }} series ratings{% endblocktranslate %}"
-                :aria-expanded="graphOpen.toString()"
-                aria-haspopup="true">
+           @detail-score-row-scroll.window="graphOpen = false"
+           @resize.window="graphOpen = false"
+           @keydown.escape.window="graphOpen = false">
+        <div class="detail-provider-score-card detail-provider-score-card--{{ display_provider }} group inline-flex h-[1.875rem] min-w-0 items-center gap-0.5 overflow-hidden rounded-full md:rounded-xl border border-cyan-400/18 bg-cyan-500/[0.07] pl-0 pr-1.5 text-white shadow-sm transition-colors duration-150 sm:h-8 sm:gap-2 sm:pr-3">
+          {% if link_url %}<a href="{{ link_url }}" target="_blank" rel="noopener noreferrer" aria-label="{% blocktranslate trimmed with value_1=display_provider|source_readable %}Open {{ value_1 }} source page{% endblocktranslate %}" class="detail-provider-score-card__source">{% else %}<span class="detail-provider-score-card__source">{% endif %}
           <span class="sr-only">{% blocktranslate trimmed with value_1=display_provider|source_readable %}{{ value_1 }} score{% endblocktranslate %}</span>
-          <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-cyan-400/28 bg-cyan-500/14 sm:h-8 sm:w-8">
+          <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-cyan-400/28 bg-cyan-500/14 sm:h-8 sm:w-8 md:m-0 md:h-9 md:w-9">
             {% if display_provider == Sources.TMDB.value %}
               <img src="{% static 'img/tmdb-logo.png' %}"
                    alt=""
@@ -39,66 +48,72 @@
               <span class="text-[9px] font-black tracking-[0.12em] text-cyan-100">{{ display_provider|upper|slice:":4" }}</span>
             {% endif %}
           </span>
+          {% if link_url %}</a>{% else %}</span>{% endif %}
+          {% if provider_series_graph_data %}<button type="button" @click="graphOpen = true" aria-label="{% translate 'View Series Graph' %}" class="detail-provider-score-card__graph">{% else %}<div class="detail-provider-score-card__graph">{% endif %}
           {% if media.score is not None %}
-            <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{{ media.score }}</span>
+            <span class="detail-provider-score-card__score text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{{ media.score }}</span>
           {% else %}
-            <span class="text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
+            <span class="detail-provider-score-card__score text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
           {% endif %}
-          <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
-          <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{% blocktranslate trimmed with value_1=media.score_count|intcomma count count=media.score_count|safe_count %}{{ value_1 }} vote{% plural %}{{ value_1 }} votes{% endblocktranslate %}</span>
-        </button>
+          <span class="detail-provider-score-card__separator text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
+          <span class="detail-provider-score-card__count truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{% blocktranslate trimmed with value_1=media.score_count|intcomma count count=media.score_count|safe_count %}{{ value_1 }} vote{% plural %}{{ value_1 }} votes{% endblocktranslate %}</span>
+          {% if provider_series_graph_data %}<span class="detail-provider-score-card__prompt">{% translate "View series graph" %}</span></button>{% else %}</div>{% endif %}
+        </div>
         {% if provider_series_graph_data %}
-          {% include "app/components/series_graph_tooltip.html" with graph_data=provider_series_graph_data provider_label=display_provider only %}
+          {% include "app/components/series_graph_tooltip.html" with graph_data=provider_series_graph_data provider_label=display_provider source_url=link_url only %}
         {% endif %}
       </div>
+      {% endwith %}
     {% endif %}
 
     {% if trakt_score %}
+      {% with trakt_url=detail_link_sections|detail_link_url:"trakt" %}
       <div class="relative"
            x-data="{ graphOpen: false }"
-           @mouseenter="graphOpen = true"
-           @mouseleave="graphOpen = false"
-           @click.outside="graphOpen = false">
-        <button type="button"
-                class="inline-flex h-[1.875rem] min-w-0 cursor-help items-center gap-0.5 overflow-hidden rounded-full border border-rose-400/18 bg-rose-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm transition-colors duration-150 sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm"
-                title="{% translate "Trakt series ratings" %}"
-                :aria-expanded="graphOpen.toString()"
-                aria-haspopup="true">
+           @detail-score-row-scroll.window="graphOpen = false"
+           @resize.window="graphOpen = false"
+           @keydown.escape.window="graphOpen = false">
+        <div class="detail-provider-score-card detail-provider-score-card--trakt group inline-flex h-[1.875rem] min-w-0 items-center gap-0.5 overflow-hidden rounded-full md:rounded-xl border border-rose-400/18 bg-rose-500/[0.07] pl-0 pr-1.5 text-white shadow-sm transition-colors duration-150 sm:h-8 sm:gap-2 sm:pr-3">
+          {% if trakt_url %}<a href="{{ trakt_url }}" target="_blank" rel="noopener noreferrer" aria-label="{% translate 'Open Trakt source page' %}" class="detail-provider-score-card__source">{% else %}<span class="detail-provider-score-card__source">{% endif %}
           <span class="sr-only">{% translate "Trakt score" %}</span>
-          <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-rose-400/28 bg-rose-500/14 sm:h-8 sm:w-8">
+          <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-rose-400/28 bg-rose-500/14 sm:h-8 sm:w-8 md:m-0 md:h-9 md:w-9">
             <img src="{% static 'img/trakt-logo.svg' %}"
                  alt=""
                  aria-hidden="true"
                  class="h-3.5 w-3.5 object-contain sm:h-4 sm:w-4">
           </span>
+          {% if trakt_url %}</a>{% else %}</span>{% endif %}
+          {% if media_type == MediaTypes.TV.value or media_type == MediaTypes.SEASON.value or media_type == MediaTypes.ANIME.value %}<button type="button" x-ref="scoreAnchor" @click="graphOpen = true" aria-label="{% translate 'View Series Graph' %}" class="detail-provider-score-card__graph">{% else %}<div class="detail-provider-score-card__graph">{% endif %}
           {% if trakt_score.rating is not None %}
-            <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{{ trakt_score.rating }}</span>
+            <span class="detail-provider-score-card__score text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{{ trakt_score.rating }}</span>
           {% else %}
-            <span class="text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
+            <span class="detail-provider-score-card__score text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
           {% endif %}
-          <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
-          <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{% blocktranslate trimmed with value_1=trakt_score.rating_count|intcomma count count=trakt_score.rating_count %}{{ value_1 }} rating{% plural %}{{ value_1 }} ratings{% endblocktranslate %}</span>
-        </button>
+          <span class="detail-provider-score-card__separator text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
+          <span class="detail-provider-score-card__count truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{% blocktranslate trimmed with value_1=trakt_score.rating_count|intcomma count count=trakt_score.rating_count %}{{ value_1 }} rating{% plural %}{{ value_1 }} ratings{% endblocktranslate %}</span>
+          {% if media_type == MediaTypes.TV.value or media_type == MediaTypes.SEASON.value or media_type == MediaTypes.ANIME.value %}<span class="detail-provider-score-card__prompt">{% translate "View series graph" %}</span></button>{% else %}</div>{% endif %}
+        </div>
         {% if media_type == MediaTypes.TV.value or media_type == MediaTypes.SEASON.value or media_type == MediaTypes.ANIME.value %}
-          {# Always render tooltip shell; inner content polls /api/trakt-series-graph/ live #}
-          <div x-show="graphOpen"
+          {# The modal content polls /api/trakt-series-graph/ only while the modal is open. #}
+          <template x-teleport="body">
+          <div x-show="graphOpen" @click.self="graphOpen = false"
                x-cloak
-               x-transition:enter="transition ease-out duration-150"
-               x-transition:enter-start="opacity-0 -translate-y-1"
-               x-transition:enter-end="opacity-100 translate-y-0"
-               x-transition:leave="transition ease-in duration-100"
-               x-transition:leave-start="opacity-100 translate-y-0"
-               x-transition:leave-end="opacity-0 -translate-y-1"
-               class="absolute left-0 top-full z-20 mt-2 rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm"
-               style="min-width: max-content">
-            <div id="trakt-series-graph-{{ display_provider }}-{{ media.media_id }}"
-                 hx-get="{% url 'trakt_series_graph_fragment' source=display_provider media_id=media.media_id %}"
-                 hx-trigger="load delay:300ms, every 5s"
-                 hx-target="this"
-                 hx-swap="outerHTML">
+               x-transition.opacity
+               class="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4">
+            <div role="dialog" aria-modal="true" aria-labelledby="trakt-series-graph-title-{{ media.media_id }}" class="max-h-[90dvh] w-full max-w-4xl overflow-auto rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)] p-4 shadow-2xl sm:p-6">
               <div class="mb-2 flex items-center justify-between gap-3">
-                <div class="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">{% translate "Series Graph" %}</div>
+                <h2 id="trakt-series-graph-title-{{ media.media_id }}" class="text-lg font-semibold text-[var(--color-text)]">{% translate "Series Graph" %}</h2>
+                {% if trakt_url %}<a href="{{ trakt_url }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm font-medium text-[var(--color-text)] hover:bg-rose-500/20"><img src="{% static 'img/trakt-logo.svg' %}" alt="" aria-hidden="true" class="h-4 w-4 object-contain">{% translate "Trakt" %}</a>{% endif %}
+                <button type="button" @click="graphOpen = false" aria-label="{% translate 'Close Series Graph' %}" class="rounded-lg p-2 text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]">{% include "app/icons/x.svg" with classes="h-5 w-5" %}</button>
               </div>
+              {# x-if mounts the poller only while open; htmx does not scan Alpine-inserted DOM, so x-init processes it. Closing removes it and stops polling. #}
+              <template x-if="graphOpen">
+              <div x-init="htmx.process($el)">
+              <div id="trakt-series-graph-{{ display_provider }}-{{ media.media_id }}"
+                   hx-get="{% url 'trakt_series_graph_fragment' source=display_provider media_id=media.media_id %}"
+                   hx-trigger="load delay:300ms, every 5s"
+                   hx-target="this"
+                   hx-swap="outerHTML">
               <div class="flex items-center gap-2 py-5 px-1 text-xs text-[var(--color-text-muted)]">
                 <span class="flex gap-1">
                   <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-500"
@@ -110,48 +125,55 @@
                 </span>
                 {% translate "Building series graph…" %}
               </div>
+              </div>
+              </div>
+              </template>
             </div>
           </div>
+          </template>
         {% elif trakt_series_graph_data %}
-          {% include "app/components/series_graph_tooltip.html" with graph_data=trakt_series_graph_data provider_label="Trakt" only %}
+          {% include "app/components/series_graph_tooltip.html" with graph_data=trakt_series_graph_data provider_label="Trakt" source_url=trakt_url only %}
         {% endif %}
       </div>
+      {% endwith %}
     {% endif %}
 
     {% if imdb_score %}
+      {% with link_url=detail_link_sections|detail_link_url:"imdb" %}
       <div class="relative"
            x-data="{ graphOpen: false }"
-           @mouseenter="graphOpen = true"
-           @mouseleave="graphOpen = false"
-           @click.outside="graphOpen = false">
-        <button type="button"
-                class="inline-flex h-[1.875rem] min-w-0 cursor-help items-center gap-0.5 overflow-hidden rounded-full border border-amber-400/18 bg-amber-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm transition-colors duration-150 sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm"
-                title="{% translate "IMDb ratings" %}"
-                :aria-expanded="graphOpen.toString()"
-                aria-haspopup="true">
+           @detail-score-row-scroll.window="graphOpen = false"
+           @resize.window="graphOpen = false"
+           @keydown.escape.window="graphOpen = false">
+        <div class="detail-provider-score-card detail-provider-score-card--imdb group inline-flex h-[1.875rem] min-w-0 items-center gap-0.5 overflow-hidden rounded-full md:rounded-xl border border-amber-400/18 bg-amber-500/[0.07] pl-0 pr-1.5 text-white shadow-sm transition-colors duration-150 sm:h-8 sm:gap-2 sm:pr-3">
+          {% if link_url %}<a href="{{ link_url }}" target="_blank" rel="noopener noreferrer" aria-label="{% translate 'Open IMDb source page' %}" class="detail-provider-score-card__source">{% else %}<span class="detail-provider-score-card__source">{% endif %}
           <span class="sr-only">{% translate "IMDb score" %}</span>
-          <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-amber-400/28 bg-amber-500/14 sm:h-8 sm:w-8">
+          <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-amber-400/28 bg-amber-500/14 sm:h-8 sm:w-8 md:m-0 md:h-9 md:w-9">
             <img src="{% static 'img/imdb-logo.png' %}"
                  alt=""
                  aria-hidden="true"
                  class="h-3.5 w-3.5 object-contain sm:h-4 sm:w-4">
           </span>
+          {% if link_url %}</a>{% else %}</span>{% endif %}
+          {% if imdb_series_graph_data %}<button type="button" @click="graphOpen = true" aria-label="{% translate 'View Series Graph' %}" class="detail-provider-score-card__graph">{% else %}<div class="detail-provider-score-card__graph">{% endif %}
           {% if imdb_score.rating is not None %}
-            <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{{ imdb_score.rating }}</span>
+            <span class="detail-provider-score-card__score text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{{ imdb_score.rating }}</span>
           {% else %}
-            <span class="text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
+            <span class="detail-provider-score-card__score text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
           {% endif %}
-          <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
-          <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{% blocktranslate trimmed with value_1=imdb_score.rating_count|intcomma count count=imdb_score.rating_count %}{{ value_1 }} rating{% plural %}{{ value_1 }} ratings{% endblocktranslate %}</span>
-        </button>
+          <span class="detail-provider-score-card__separator text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
+          <span class="detail-provider-score-card__count truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{% blocktranslate trimmed with value_1=imdb_score.rating_count|intcomma count count=imdb_score.rating_count %}{{ value_1 }} rating{% plural %}{{ value_1 }} ratings{% endblocktranslate %}</span>
+          {% if imdb_series_graph_data %}<span class="detail-provider-score-card__prompt">{% translate "View series graph" %}</span></button>{% else %}</div>{% endif %}
+        </div>
         {% if imdb_series_graph_data %}
-          {% include "app/components/series_graph_tooltip.html" with graph_data=imdb_series_graph_data provider_label="IMDb" only %}
+          {% include "app/components/series_graph_tooltip.html" with graph_data=imdb_series_graph_data provider_label="IMDb" source_url=link_url only %}
         {% endif %}
       </div>
+      {% endwith %}
     {% endif %}
 
     {% if mal_score %}
-      <div class="inline-flex h-[1.875rem] min-w-0 shrink-0 items-center gap-0.5 overflow-hidden rounded-full border border-indigo-400/18 bg-indigo-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm">
+      {% with link_url=detail_link_sections|detail_link_url:"mal" %}<{% if link_url %}a href="{{ link_url }}" target="_blank" rel="noopener noreferrer"{% else %}div{% endif %} class="detail-provider-score-card detail-provider-score-card--mal inline-flex h-[1.875rem] min-w-0 shrink-0 items-center gap-0.5 overflow-hidden rounded-full border border-indigo-400/18 bg-indigo-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm">
         <span class="sr-only">{% translate "MyAnimeList score" %}</span>
         <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-indigo-400/28 bg-indigo-500/14 sm:h-8 sm:w-8">
           <img src="{% static 'img/myanimelist-logo.svg' %}"
@@ -159,15 +181,55 @@
                aria-hidden="true"
                class="h-3.5 w-3.5 object-contain sm:h-4 sm:w-4">
         </span>
-        {% if mal_score.rating is not None %}
-          <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{{ mal_score.rating }}</span>
-        {% endif %}
+        <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{{ mal_score.rating|default:"-" }}</span>
         <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
         <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{% blocktranslate trimmed with value_1=mal_score.rating_count|intcomma count count=mal_score.rating_count %}{{ value_1 }} rating{% plural %}{{ value_1 }} ratings{% endblocktranslate %}</span>
-      </div>
+      </{% if link_url %}a{% else %}div{% endif %}>{% endwith %}
+    {% endif %}
+
+    {% if opencritic_score %}
+      <a href="{{ opencritic_score.url }}"
+         target="_blank"
+         rel="noopener noreferrer"
+         title="{% if opencritic_score.percent_recommended is not None %}{% blocktranslate trimmed with value_1=opencritic_score.percent_recommended %}OpenCritic: {{ value_1 }}% of critics recommend{% endblocktranslate %}{% else %}{% translate "OpenCritic top critic average" %}{% endif %}"
+         class="detail-provider-score-card detail-provider-score-card--opencritic inline-flex h-[1.875rem] min-w-0 shrink-0 items-center gap-0.5 overflow-hidden rounded-full border border-orange-400/18 bg-orange-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm">
+        <span class="sr-only">{% translate "OpenCritic score" %}</span>
+        <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-orange-400/28 bg-orange-500/14 sm:h-8 sm:w-8">
+          <img src="{% static 'img/opencritic-logo.svg' %}"
+               alt=""
+               aria-hidden="true"
+               class="h-3.5 w-3.5 object-contain sm:h-4 sm:w-4">
+        </span>
+        <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{{ opencritic_score.score }}</span>
+        {% if opencritic_score.tier or opencritic_score.percent_recommended is not None %}
+          <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
+          <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">
+            {% if opencritic_score.tier %}
+              {{ opencritic_score.tier }}
+            {% else %}
+              {% blocktranslate trimmed with value_1=opencritic_score.percent_recommended %}{{ value_1 }}% recommend{% endblocktranslate %}
+            {% endif %}
+          </span>
+        {% else %}
+          <span class="text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{% translate "Top critic average" %}</span>
+        {% endif %}
+      </a>
     {% endif %}
 
     {% include "app/components/detail_score_chip_slot.html" with media=media current_instance=current_instance media_type=media_type user=user user_medias=user_medias public_view=public_view csrf_token=csrf_token only %}
 
+  </div>
+  <button type="button"
+          class="detail-score-card-nav detail-score-card-nav--left"
+          x-show="hasOverflow && !atStart"
+          x-cloak
+          @click="$refs.scoreRow.scrollLeft -= $refs.scoreRow.clientWidth * 0.8"
+          aria-label="{% translate 'Scroll scores left' %}">{% include "app/icons/chevron-left.svg" with classes="w-5 h-5" %}</button>
+  <button type="button"
+          class="detail-score-card-nav detail-score-card-nav--right"
+          x-show="hasOverflow && !atEnd"
+          x-cloak
+          @click="$refs.scoreRow.scrollLeft += $refs.scoreRow.clientWidth * 0.8"
+          aria-label="{% translate 'Scroll scores right' %}">{% include "app/icons/chevron-right.svg" with classes="w-5 h-5" %}</button>
   </div>
 {% endif %}

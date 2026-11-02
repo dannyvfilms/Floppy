@@ -165,3 +165,20 @@ class AnimeMappingSnapshotTests(SimpleTestCase):
         elapsed = perf_counter() - started
 
         self.assertLess(elapsed, 0.05)
+
+
+class SeriesToMalEpisodeTests(SimpleTestCase):
+    """Outbound episode mapping resolves only unambiguous targets."""
+
+    def test_multi_id_range_only_blocks_the_episodes_it_covers(self):
+        """Regression: any multi-id descriptor made the whole season unmappable."""
+        from integrations.webhooks import anime_mappings
+
+        mapping = {"tmdb_show:1:s1": {"mal:100": {"1-12": "1-12"}, "mal:200,201": {"13": "1"}}}
+
+        self.assertEqual(
+            anime_mappings.get_mal_id_from_series(mapping, "tmdb", "1", 1, 5), (100, 5),
+        )
+        self.assertEqual(
+            anime_mappings.get_mal_id_from_series(mapping, "tmdb", "1", 1, 13), (None, None),
+        )

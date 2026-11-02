@@ -1,46 +1,104 @@
 """Tasks consumed by the dedicated interactive Celery worker."""
 
+import logging
+import os
+import time
+
 from celery import shared_task
+
+logger = logging.getLogger(__name__)
 
 
 @shared_task(name="Resolve live playback image")
-def resolve_playback_image(user_id: int):
+def resolve_playback_image(user_id: int, slot: str | None = None):
     """Resolve artwork for a cached live playback state in the background."""
     from app import live_playback
 
-    live_playback.resolve_state_image(user_id)
+    live_playback.resolve_state_image(user_id, slot)
 
 
-@shared_task(name="app.tasks.refresh_statistics_cache_task")
-def refresh_statistics_cache_task(user_id: int, range_name: str, force: bool = False):
-    """Plan a resumable Statistics refresh run and queue its first chunk.
+@shared_task(name="app.tasks.statistics_sync_task")
+def statistics_sync_task(user_id: int):
+    """Rebuild a user's dirty Statistics days and stale ranges, within a budget.
 
-    This used to rebuild the whole range inline, which owned the single-slot
-    interactive worker for the entire rebuild. It now only plans the run; the
-    days are built by ``continue_statistics_refresh_task``, one bounded chunk
-    per message, so latency-sensitive work can land in between.
+    Runs out of time by queueing its own follow-up; if that message is ever
+    lost, ``reconcile_statistics_sync_task`` finds the unfinished work.
     """
-    from app import statistics_refresh_run
+    from app import statistics_sync
 
-    statistics_refresh_run.start_chunked_run(user_id, range_name, force=force)
+    statistics_sync.sync_task_body(user_id)
 
 
+@shared_task(name="Refresh statistics talent fragment", ignore_result=True)
+def refresh_statistics_talent_fragment_task(
+    user_id: int,
+    range_name=None,
+    start_date_str=None,
+    end_date_str=None,
+    compare_mode_param=None,
+):
+    """Rebuild a Statistics talent section the viewer is already seeing a copy of."""
+    from django.contrib.auth import get_user_model
+
+    from app.statistics_views import build_talent_fragment
+
+    user = get_user_model().objects.filter(pk=user_id).first()
+    if user is None:
+        return
+    build_talent_fragment(
+        user, range_name, start_date_str, end_date_str, compare_mode_param
+    )
+
+
+@shared_task(name="app.tasks.mark_credits_statistics_refresh", ignore_result=True)
+def mark_credits_statistics_refresh(user_id: int):
+    """Record the credits change left behind by a coalesced backfill batch."""
+    from app import statistics_sync
+
+    statistics_sync.mark_credits_statistics_refresh(user_id)
+
+
+# A reconcile is one query and a bounded fan-out of cache writes, so a run that
+# exceeds this is wedged (a held SQLite writer, a hung Redis call), not busy.
+# The hard limit kills the child; the soft one cannot interrupt a C-level wait.
 @shared_task(
-    name="app.tasks.continue_statistics_refresh_task",
-    bind=True,
-    max_retries=3,
-    default_retry_delay=5,
+    name="Reconcile statistics sync",
+    ignore_result=True,
+    soft_time_limit=60,
+    time_limit=120,
 )
-def continue_statistics_refresh_task(self, user_id: int, range_name: str, run_id: str):
-    """Advance one chunk of a Statistics refresh run, then release the worker.
+def reconcile_statistics_sync_task():
+    """Queue a sync for every user whose Statistics trail their changes.
 
-    A chunk that raises is retried a bounded number of times. The run's cursor
-    is only advanced by a chunk that completed, so a retry redoes exactly the
-    failed chunk and never re-counts a finished one.
+    Periodic recovery runs on the default worker. Viewer-requested syncs
+    select the interactive lane independently.
     """
-    from app import statistics_refresh_run
+    from app import statistics_sync
 
-    try:
-        statistics_refresh_run.advance_chunked_run(user_id, range_name, run_id)
-    except Exception as exc:
-        raise self.retry(exc=exc) from exc
+    started = time.monotonic()
+    logger.info("reconcile_statistics_sync start pid=%s", os.getpid())
+    queued = statistics_sync.reconcile()
+    logger.info(
+        "reconcile_statistics_sync finish queued=%s duration_ms=%.0f",
+        queued,
+        (time.monotonic() - started) * 1000,
+    )
+
+
+# Retired names from the chunked refresh run. Kept registered for one release
+# so messages queued by the previous version drain into a sync instead of
+# failing as unregistered tasks.
+@shared_task(name="app.tasks.refresh_statistics_cache_task")
+def refresh_statistics_cache_task(user_id: int, range_name: str = "", force=False):
+    """Retired: queue a Statistics sync."""
+    from app import statistics_sync
+
+    statistics_sync.sync_task_body(user_id)
+
+
+@shared_task(name="app.tasks.continue_statistics_refresh_task")
+def continue_statistics_refresh_task(user_id: int, range_name="", run_id=""):
+    """Retired: queue a Statistics sync."""
+    from app import statistics_sync
+
+    statistics_sync.sync_task_body(user_id)

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
 from django.apps import apps
@@ -87,7 +89,47 @@ def _item_tag_map(user, item_ids: list[int]) -> dict[int, list[str]]:
     return mapping
 
 
+# One Discover rebuild reads the credits of the same library items for several
+# rows; inside this scope each item's credits are read once.
+_credit_maps_scope: ContextVar[dict | None] = ContextVar(
+    "discover_credit_maps_scope", default=None
+)
+
+
+@contextmanager
+def credit_maps_scope():
+    """Share per-item credit feature maps between the calls of one rebuild."""
+    token = _credit_maps_scope.set({})
+    try:
+        yield
+    finally:
+        _credit_maps_scope.reset(token)
+
+
 def _item_credit_feature_maps(
+    item_ids: list[int],
+) -> tuple[dict[int, list[str]], dict[int, list[str]], dict[int, list[str]]]:
+    scope = _credit_maps_scope.get()
+    if scope is None:
+        return _read_item_credit_feature_maps(item_ids)
+    missing = [item_id for item_id in item_ids if item_id not in scope]
+    if missing:
+        maps = _read_item_credit_feature_maps(missing)
+        for item_id in missing:
+            scope[item_id] = tuple(m.get(item_id) for m in maps)
+    people_map: dict[int, list[str]] = defaultdict(list)
+    directors_map: dict[int, list[str]] = defaultdict(list)
+    lead_cast_map: dict[int, list[str]] = defaultdict(list)
+    for item_id in item_ids:
+        for target, values in zip(
+            (people_map, directors_map, lead_cast_map), scope[item_id], strict=True
+        ):
+            if values:
+                target[item_id] = list(values)
+    return people_map, directors_map, lead_cast_map
+
+
+def _read_item_credit_feature_maps(
     item_ids: list[int],
 ) -> tuple[dict[int, list[str]], dict[int, list[str]], dict[int, list[str]]]:
     people_map: dict[int, list[str]] = defaultdict(list)
@@ -111,17 +153,37 @@ def _item_credit_feature_maps(
             "person__name",
         )
     )
-    for item_id, role_type, role, department, person_name_raw in credit_entries:
-        person_name = normalize_person_name(person_name_raw or "")
+    # Stream the rows, and share one string per name: a library holds hundreds
+    # of thousands of credits but far fewer distinct people.
+    shared_names: dict[str, str] = {}
+    # Names and role triples repeat across hundreds of thousands of credits;
+    # normalize each distinct value once.
+    normalized_names: dict[str, str] = {}
+    director_roles: dict[tuple, bool] = {}
+    for (
+        item_id,
+        role_type,
+        role,
+        department,
+        person_name_raw,
+    ) in credit_entries.iterator(chunk_size=5000):
+        person_name = normalized_names.get(person_name_raw)
+        if person_name is None:
+            person_name = normalize_person_name(person_name_raw or "")
+            person_name = shared_names.setdefault(person_name, person_name)
+            normalized_names[person_name_raw] = person_name
         if not person_name:
             continue
         if person_name not in people_seen[item_id]:
             people_seen[item_id].add(person_name)
             people_map[item_id].append(person_name)
-        if (
-            is_director_credit(role_type, role, department)
-            and person_name not in directors_seen[item_id]
-        ):
+        role_key = (role_type, role, department)
+        is_director = director_roles.get(role_key)
+        if is_director is None:
+            is_director = director_roles[role_key] = is_director_credit(
+                role_type, role, department
+            )
+        if is_director and person_name not in directors_seen[item_id]:
             directors_seen[item_id].add(person_name)
             directors_map[item_id].append(person_name)
         if (

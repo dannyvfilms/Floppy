@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from app import config
+from app.helpers import minutes_to_hhmm
 from app.models import (
     TV,
     AlbumTracker,
@@ -33,6 +34,7 @@ from app.models import (
     Season,
     Sources,
     Status,
+    Video,
 )
 
 CHOICE_PAIR_LENGTH = 2
@@ -293,6 +295,10 @@ class RatingScaleFormMixin:
     def _apply_rating_scale(self):
         if not self.user or "score" not in self.fields:
             return
+        if not self.user.ratings_enabled:
+            # Dropping the field keeps the stored score untouched on save.
+            del self.fields["score"]
+            return
         scale_max = self.user.rating_scale_max
         self.fields["score"].widget.attrs.update(
             {
@@ -348,6 +354,7 @@ class MediaForm(RatingScaleFormMixin, forms.ModelForm):
             "start_date",
             "end_date",
             "notes",
+            "entry_source",
         ]
         widgets = {
             "score": forms.NumberInput(
@@ -367,6 +374,20 @@ class MediaForm(RatingScaleFormMixin, forms.ModelForm):
             "notes": forms.Textarea(
                 attrs={"placeholder": _("Add any notes or comments..."), "rows": "5"},
             ),
+            "entry_source": forms.TextInput(
+                attrs={
+                    "placeholder": _("e.g. Plex, Jellyfin, Theatre..."),
+                    # A plain text input's native Enter-to-submit can bypass
+                    # htmx's own submit handling (issue: Enter here fell back
+                    # to a raw form POST/navigation instead of the AJAX
+                    # save). Route Enter through the same requestSubmit()
+                    # path a real click on the submit button uses.
+                    "@keydown.enter.prevent": "$el.closest('form').requestSubmit()",
+                },
+            ),
+        }
+        labels = {
+            "entry_source": _("Source"),
         }
 
     def __init__(self, *args, **kwargs):
@@ -401,16 +422,58 @@ class MediaForm(RatingScaleFormMixin, forms.ModelForm):
             current_image = self.instance.item.image
             if current_image and current_image != settings.IMG_NONE:
                 self.initial.setdefault("image_url", current_image)
+        # Audiobookshelf and Plex covers are Floppy's own proxy paths, which the
+        # URL field rejects. Prefilling one made every save of that item fail,
+        # with the error hidden on the Metadata tab (#1316). Blank means
+        # "keep the current image".
+        if not str(self.initial.get("image_url") or "").startswith(
+            ("http://", "https://"),
+        ):
+            self.initial.pop("image_url", None)
 
     def clean_image_url(self):
         """Normalize optional image URL input."""
         return (self.cleaned_data.get("image_url") or "").strip()
 
 
-class MangaForm(MediaForm):
-    """Form for manga."""
+class ReadingForm(MediaForm):
+    """Shared base for books, comics and manga: adds the time spent reading."""
+
+    reading_time = CustomDurationField(
+        required=False,
+        widget=forms.TextInput(attrs={"placeholder": _("hh:mm or 111 minutes")}),
+        label=_("Reading time"),
+    )
 
     class Meta(MediaForm.Meta):
+        """Put reading time right after progress."""
+
+        fields = [
+            "score",
+            "progress",
+            "reading_time",
+            "status",
+            "start_date",
+            "end_date",
+            "notes",
+            "entry_source",
+        ]
+
+    def __init__(self, *args, **kwargs):
+        """Drop reading time for audiobooks, whose progress already is the time."""
+        super().__init__(*args, **kwargs)
+        item = getattr(self.instance, "item", None)
+        if item is not None and item.format == "audiobook":
+            del self.fields["reading_time"]
+        elif self.instance.reading_time:
+            # The field reads bare numbers as hours, so never show raw minutes.
+            self.initial["reading_time"] = minutes_to_hhmm(self.instance.reading_time)
+
+
+class MangaForm(ReadingForm):
+    """Form for manga."""
+
+    class Meta(ReadingForm.Meta):
         """Bind form to model."""
 
         model = Manga
@@ -453,6 +516,7 @@ class MovieForm(MediaForm):
             "start_date",
             "end_date",
             "notes",
+            "entry_source",
         ]
 
 
@@ -504,10 +568,10 @@ class BoardgameForm(MediaForm):
         }
 
 
-class BookForm(MediaForm):
+class BookForm(ReadingForm):
     """Form for books."""
 
-    class Meta(MediaForm.Meta):
+    class Meta(ReadingForm.Meta):
         """Bind form to model."""
 
         model = Book
@@ -528,10 +592,10 @@ class BookForm(MediaForm):
             )
 
 
-class ComicForm(MediaForm):
+class ComicForm(ReadingForm):
     """Form for comics."""
 
-    class Meta(MediaForm.Meta):
+    class Meta(ReadingForm.Meta):
         """Bind form to model."""
 
         model = Comic
@@ -575,7 +639,7 @@ class TvForm(MediaForm):
         """Bind form to model."""
 
         model = TV
-        fields = ["score", "status", "notes"]
+        fields = ["score", "status", "notes", "entry_source"]
 
 
 class SeasonForm(MediaForm):
@@ -597,6 +661,7 @@ class SeasonForm(MediaForm):
             "score",
             "status",
             "notes",
+            "entry_source",
         ]
 
 
@@ -617,7 +682,7 @@ class EpisodeForm(RatingScaleFormMixin, forms.ModelForm):
         """Bind form to model."""
 
         model = Episode
-        fields = ("score", "status", "start_date", "end_date", "notes")
+        fields = ("score", "status", "start_date", "end_date", "notes", "entry_source")
         widgets = {
             "score": forms.NumberInput(
                 attrs={"min": 0, "max": 10, "step": 0.1, "placeholder": "0-10"},
@@ -629,6 +694,15 @@ class EpisodeForm(RatingScaleFormMixin, forms.ModelForm):
             "notes": forms.Textarea(
                 attrs={"placeholder": _("Add any notes or comments..."), "rows": "5"},
             ),
+            "entry_source": forms.TextInput(
+                attrs={
+                    "placeholder": _("e.g. Plex, Jellyfin, Theatre..."),
+                    "@keydown.enter.prevent": "$el.closest('form').requestSubmit()",
+                },
+            ),
+        }
+        labels = {
+            "entry_source": _("Source"),
         }
 
     def __init__(self, *args, **kwargs):
@@ -945,6 +1019,17 @@ class BulkEpisodeTrackForm(forms.Form):
         return cleaned_data
 
 
+class MusicTrackNotesForm(forms.ModelForm):
+    """Edit a song's notes independently of its listens."""
+
+    class Meta:
+        """Bind only the existing per-user notes field."""
+
+        model = Music
+        fields = ("notes",)
+        widgets = MediaForm.Meta.widgets
+
+
 class MusicForm(MediaForm):
     """Form for music tracks."""
 
@@ -966,6 +1051,18 @@ class PodcastForm(MediaForm):
         model = Podcast
         labels = {
             "progress": _("Progress (Minutes)"),
+        }
+
+
+class VideoForm(MediaForm):
+    """Form for videos."""
+
+    class Meta(MediaForm.Meta):
+        """Bind form to model."""
+
+        model = Video
+        labels = {
+            "progress": _("Progress (Seconds)"),
         }
 
 
@@ -1146,7 +1243,7 @@ class CollectionEntryForm(forms.ModelForm):
                 attrs={"placeholder": "9.99", "step": "0.01", "min": "0"},
             ),
             "purchase_location": forms.TextInput(
-                attrs={"placeholder": "Amazon, Steam, Best Buy"},
+                attrs={"placeholder": "Steam, NAS, Home, Storage"},
             ),
         }
 
@@ -1201,7 +1298,9 @@ class CollectionEntryForm(forms.ModelForm):
                     normalized.append((option[0], option[1]))
                 else:
                     normalized.append((option, option))
-            current_value = getattr(self.instance, field_name, None)
+            current_value = getattr(
+                self.instance, field_name, None
+            ) or self.initial.get(field_name)
             existing_values = {str(value) for value, _ in normalized}
             if current_value and str(current_value) not in existing_values:
                 normalized.append((current_value, current_value))

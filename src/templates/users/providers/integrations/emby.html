@@ -1,0 +1,45 @@
+{% load i18n static app_tags user_tags %}
+    {# Emby #}
+    <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
+         x-show="activeIntegration === 'all' || activeIntegration === 'emby'"
+         x-transition.opacity.duration.150ms>
+      <div class="flex items-center mb-3">
+        {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
+        <h3 class="text-base font-medium">{% translate "Emby Integration" %}</h3>
+      </div>
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">{% translate "Connect Emby to automatically track your watching progress." %}</p>
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
+        <h4 class="text-sm font-medium mb-3">{% translate "Setup Instructions" %}</h4>
+        <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
+          <li>{% translate "In Emby, go to" %} <strong>{% translate "Settings > Notifications" %}</strong>.</li>
+          <li>{% translate "Click" %} <strong>{% translate "Add Notification" %}</strong>.</li>
+          <li>
+            {% translate "Configure the notification with the following settings:" %}
+            <ul class="list-disc list-inside ml-6 mt-2 space-y-2 text-[var(--color-text-muted)]">
+              <li>{% translate "Request content type:" %} <strong>{% translate "multipart/form-data" %}</strong></li>
+              <li>{% translate "Events:" %} <strong>{% translate "Play" %}</strong> {% translate "and" %} <strong>{% translate "Stop" %}</strong></li>
+              <li>{% translate "Limit user events to: your Emby user" %}</li>
+              <li><strong>{% translate "Limit library events to" %}</strong> {% translate "and" %} <strong>{% translate "Limit devices events to" %}</strong> {% translate "are optional." %}</li>
+            </ul>
+          </li>
+          <li>
+            {% translate "Set the webhook URL to:" %}
+            {# djlint:off #}
+            <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
+              <input readonly
+                     id="emby-webhook-url"
+                     class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono"
+                     type="text"
+                     value="{% url 'emby_webhook' request.user.token as emby_webhook_path %}{% absolute_app_url emby_webhook_path %}">
+              <span class="flex items-center cursor-pointer group"
+                    title="{% translate "Copy" %}"
+                    data-copy-target="#emby-webhook-url">
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
+              </span>
+            </div>
+            {# djlint:on #}
+          </li>
+        </ol>
+      </div>
+    </div>
+

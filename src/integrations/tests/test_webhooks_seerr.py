@@ -3,7 +3,7 @@ from unittest.mock import patch
 from django.test import TestCase
 from django.urls import reverse
 
-from app.models import TV, Item, Movie, Status
+from app.models import TV, Item, MediaTypes, Movie, Sources, Status
 from users.models import User
 
 
@@ -119,3 +119,51 @@ class SeerrWebhookTests(TestCase):
         tv = TV.objects.first()
         self.assertEqual(tv.status, Status.IN_PROGRESS.value)
         self.assertIsNotNone(tv.start_date)
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_dual_bucket_show_tracks_without_multiple_objects_returned(
+        self, mock_meta
+    ):
+        mock_meta.return_value = {
+            "title": "Dual Bucket Show",
+            "image": "https://example.com/dual.jpg",
+        }
+
+        # A show can legitimately have Item rows in both the "tv" and
+        # "season" library buckets (see issue #1015). A bucket-unaware
+        # get_or_create on (media_id, source, media_type) raises
+        # MultipleObjectsReturned in this state.
+        Item.objects.create(
+            media_id="888",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Dual Bucket Show",
+            image="https://example.com/dual.jpg",
+            library_media_type="",
+        )
+        Item.objects.create(
+            media_id="888",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Dual Bucket Show",
+            image="https://example.com/dual.jpg",
+            library_media_type=MediaTypes.SEASON.value,
+        )
+
+        payload = {
+            "media_type": "tv",
+            "media_tmdbid": "888",
+            "media_status": "PENDING",
+            "requestedBy_username": "alice",
+        }
+
+        resp = self.client.post(
+            self._url(), data=payload, content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        self.assertEqual(TV.objects.count(), 1)
+        tv = TV.objects.first()
+        self.assertEqual(tv.user_id, self.user.id)
+        self.assertEqual(tv.status, Status.PLANNING.value)
+        self.assertEqual(Item.objects.filter(media_id="888").count(), 2)

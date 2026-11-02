@@ -18,6 +18,8 @@
        selectedSort: '{{ studio_sort_by|default:"plays"|escapejs }}',
        selectedLabel: '',
        loading: false,
+       refreshQueued: false,
+       mediaTypeTimer: null,
        currentRangeName: '{{ selected_range_name|default:""|escapejs }}',
        currentStartDate: '{{ start_date_str|default:""|escapejs }}',
        currentEndDate: '{{ end_date_str|default:""|escapejs }}',
@@ -27,7 +29,9 @@
          this.selectedMediaType = new URLSearchParams(window.location.search).get('media-type') || 'all';
          window.addEventListener('stats-media-type-changed', () => {
            this.selectedMediaType = new URLSearchParams(window.location.search).get('media-type') || 'all';
-           this.refresh();
+           // Several types can be ticked in quick succession: wait for the last tick.
+           clearTimeout(this.mediaTypeTimer);
+           this.mediaTypeTimer = setTimeout(() => this.refresh(), 300);
          });
          // The initial server render is always the unfiltered all-types aggregate —
          // if the page loaded with a media-type already in the URL (reload,
@@ -39,6 +43,8 @@
        },
        async refresh() {
          if (this.loading) {
+           // A request is running; run once more when it ends so the latest selection wins.
+           this.refreshQueued = true;
            return;
          }
          const previousSort = this.selectedSort;
@@ -82,6 +88,10 @@
            console.error('Failed to refresh studio footprint:', error);
          } finally {
            this.loading = false;
+           if (this.refreshQueued) {
+             this.refreshQueued = false;
+             this.refresh();
+           }
          }
        },
        async setSort(sortBy, label) {

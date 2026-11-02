@@ -1,0 +1,40 @@
+{% load i18n %}
+{% comment %}
+  Deferred Home groups. Each row is a placeholder that fetches itself, so
+  rows appear as their own data becomes ready while configured order stays
+  fixed. Empty rows remove their placeholder; _scrollable_row_js.html hides
+  a group once all of its rows resolved to empty.
+
+  Context: deferred_groups, user
+{% endcomment %}
+{% for group in deferred_groups %}
+  <section class="space-y-4" data-home-deferred-group>
+    {% if user.home_show_media_type_headers %}
+      <div data-home-group-header
+           class="flex items-center gap-2 border-b border-[var(--color-surface-strong)] pb-3">
+        <span class="text-[var(--color-link)]">{{ group.icon_svg|safe }}</span>
+        <h2 class="text-3xl font-semibold text-[var(--color-text)]">{{ group.label }}</h2>
+      </div>
+    {% endif %}
+    <div class="space-y-3">
+      {% for row_id in group.row_ids %}
+        {% widthratio forloop.counter0 1 120 as row_delay %}
+        <div data-home-row-slot
+             data-home-row-error-label="{% translate "Unable to load this row." %}"
+             class="space-y-2 animate-pulse"
+             aria-busy="true"
+             hx-get="{% url 'home_row_fragment' row_id %}"
+             hx-trigger="load delay:{{ row_delay }}ms"
+             hx-swap="outerHTML">
+          <div class="h-6 w-40 bg-gray-700 rounded"></div>
+          <div class="flex gap-4 overflow-hidden">
+            <div class="home-row-card w-44 aspect-[41/64] self-start shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
+            <div class="home-row-card w-44 aspect-[41/64] self-start shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
+            <div class="home-row-card w-44 aspect-[41/64] self-start shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
+            <div class="home-row-card w-44 aspect-[41/64] self-start shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+{% endfor %}

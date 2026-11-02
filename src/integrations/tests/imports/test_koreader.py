@@ -1,9 +1,11 @@
 """Tests for the KOReader sync importer."""
 
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
+from django.utils import timezone
 
 from app.models import Book, Item, MediaTypes, Sources, Status
 from app.providers import services
@@ -130,6 +132,35 @@ class KoreaderImporterTests(TestCase):
         media = Book.objects.get(user=self.user, item=self.item)
         self.assertEqual(media.status, Status.IN_PROGRESS.value)
         self.assertEqual(media.progress, 200)
+        self.assertEqual(media.entry_source, "koreader")
+
+    @patch("integrations.imports.koreader.KoreaderClient.probe_list_support")
+    @patch("integrations.imports.koreader.KoreaderClient.get_progress")
+    def test_sync_keeps_a_status_the_user_set(self, mock_progress, mock_probe):
+        """Reading from before a pause does not undo it (#1316)."""
+        mock_probe.return_value = False
+        KoreaderDocumentLink.objects.create(
+            user=self.user,
+            item=self.item,
+            document_hash=DOCUMENT_HASH,
+        )
+        book = Book.objects.create(
+            user=self.user,
+            item=self.item,
+            status=Status.DROPPED.value,
+            progress=100,
+        )
+        mock_progress.return_value = {
+            "document": DOCUMENT_HASH,
+            "percentage": 0.5,
+            "timestamp": (timezone.now() - timedelta(minutes=5)).timestamp(),
+        }
+
+        KoreaderImporter(self.user).import_data()
+
+        book.refresh_from_db()
+        self.assertEqual(book.status, Status.DROPPED.value)
+        self.assertEqual(book.progress, 200)
 
     @patch("integrations.imports.koreader.KoreaderClient.probe_list_support")
     @patch("integrations.imports.koreader.KoreaderClient.get_progress")

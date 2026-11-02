@@ -149,7 +149,8 @@ class CustomListFormTest(TestCase):
         self.assertTrue(custom_list.is_smart)
         self.assertEqual(custom_list.smart_media_types, [])
         self.assertEqual(custom_list.smart_excluded_media_types, [])
-        self.assertEqual(custom_list.smart_filters, {})
+        # No rules yet, only the evaluation semantics a new list starts on.
+        self.assertEqual(custom_list.smart_filters, {"semantics_version": "2"})
 
     def test_custom_list_form_clears_smart_fields_when_disabled(self):
         """Disabling smart mode should clear saved smart rule data."""

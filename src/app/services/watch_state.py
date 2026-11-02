@@ -20,7 +20,7 @@ from contextvars import ContextVar
 from uuid import uuid4
 
 from django.apps import apps
-from django.db import transaction
+from django.db import models, transaction
 from django.db.models import Max, Min
 
 from app.models.choices import MediaTypes, Status
@@ -30,6 +30,7 @@ from app.models.watch_state import (
     WatchStateSequence,
     calculate_state_digest,
 )
+from app.services.sync_lock import lock_sequence
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,30 @@ def projection_suspended() -> bool:
     return _SUSPEND_PROJECTION.get()
 
 
+_IMPORTING = ContextVar("watch_state_importing", default=False)
+
+
+@contextmanager
+def importing_watch_state():
+    """Mark changes projected inside the block as coming from an import.
+
+    Importers write through the same projection as the UI, so a changed play
+    looks identical either way. Marking them lets a destination that only wants
+    real-time plays (see ``ACCEPTS_IMPORTED_CHANGES`` on adapters) skip a bulk
+    import instead of mistaking a whole library for something just watched.
+    """
+    token = _IMPORTING.set(True)
+    try:
+        yield
+    finally:
+        _IMPORTING.reset(token)
+
+
+def is_importing_watch_state() -> bool:
+    """Return whether the current block is an import (see importing_watch_state)."""
+    return _IMPORTING.get()
+
+
 def allocate_sequence(user) -> int:
     """Return the next server sequence for this user.
 
@@ -92,10 +117,7 @@ def allocate_sequence(user) -> int:
     that user. Callers must already be inside the transaction that writes the
     change, otherwise the ordering guarantee is lost.
     """
-    sequence_row, _ = WatchStateSequence.objects.get_or_create(user=user)
-    sequence_row = WatchStateSequence.objects.select_for_update().get(
-        pk=sequence_row.pk,
-    )
+    sequence_row = lock_sequence(user.pk)
     sequence_row.last_sequence += 1
     sequence_row.save(update_fields=["last_sequence"])
     return sequence_row.last_sequence
@@ -104,10 +126,25 @@ def allocate_sequence(user) -> int:
 class ProjectedState:
     """The state derived from the legacy stores for one (user, item)."""
 
-    __slots__ = ("first_watched_at", "last_watched_at", "play_count", "watched")
+    __slots__ = (
+        "first_watched_at",
+        "last_watched_at",
+        "play_count",
+        "play_dates",
+        "watched",
+    )
 
-    def __init__(self, *, watched, play_count, first_watched_at, last_watched_at):
-        """Store the derived values."""
+    def __init__(
+        self,
+        *,
+        watched,
+        play_count,
+        first_watched_at,
+        last_watched_at,
+        play_dates=(),
+    ):
+        """Store the derived values; ``play_dates`` lists each dated play."""
+        self.play_dates = list(play_dates)
         self.watched = watched
         self.play_count = play_count
         self.first_watched_at = first_watched_at
@@ -124,7 +161,11 @@ def _derive_movie(user, item):
     """
     movie_model = apps.get_model(app_label="app", model_name=MediaTypes.MOVIE.value)
     rows = movie_model.objects.filter(user=user, item=item).prefetch_related("plays")
+    return _movie_state(rows)
 
+
+def _movie_state(rows):
+    """Merge the plays of one item's Movie rows (``plays`` prefetched)."""
     dates = []
     play_count = 0
     completed = False
@@ -144,6 +185,7 @@ def _derive_movie(user, item):
         play_count=play_count,
         first_watched_at=min(dates) if dates else None,
         last_watched_at=max(dates) if dates else None,
+        play_dates=dates,
     )
 
 
@@ -170,14 +212,18 @@ def _derive_episode(user, item):
         play_count=play_count,
         first_watched_at=min(dates) if dates else None,
         last_watched_at=max(dates) if dates else None,
+        play_dates=dates,
     )
 
 
 def _derive_flat(user, item):
     """Derive state for a type where a repeat is a duplicate row."""
     model = apps.get_model(app_label="app", model_name=item.media_type)
-    rows = model.objects.filter(user=user, item=item)
+    return _flat_state(model.objects.filter(user=user, item=item))
 
+
+def _flat_state(rows):
+    """Count the Completed rows of one item."""
     completed_dates = []
     play_count = 0
     for row in rows:
@@ -191,6 +237,7 @@ def _derive_flat(user, item):
         play_count=play_count,
         first_watched_at=min(completed_dates) if completed_dates else None,
         last_watched_at=max(completed_dates) if completed_dates else None,
+        play_dates=completed_dates,
     )
 
 
@@ -205,7 +252,8 @@ def derive_state(user, item):
 
 def _should_emit_changes(user) -> bool:
     """Return whether this user's local movements are recorded as changes."""
-    return WatchStateSequence.objects.filter(user=user, emit_changes=True).exists()
+    row = lock_sequence(user.pk)
+    return row.emit_changes or row.api_feed_enabled
 
 
 def _project_as_change(user, item, derived):
@@ -223,7 +271,11 @@ def _project_as_change(user, item, derived):
         watched=derived.watched,
         play_count=derived.play_count,
         watched_at=derived.last_watched_at,
-        origin_kind=WatchStateOrigin.LOCAL_UI.value,
+        origin_kind=(
+            WatchStateOrigin.IMPORT.value
+            if is_importing_watch_state()
+            else WatchStateOrigin.LOCAL_UI.value
+        ),
         origin_key="local",
     )
     state = result.state
@@ -233,6 +285,7 @@ def _project_as_change(user, item, derived):
     return state
 
 
+@transaction.atomic
 def project_watch_state(
     user,
     item,
@@ -259,6 +312,7 @@ def project_watch_state(
 
     from app.models.watch_state import WatchStateOrigin
 
+    sequence_row = lock_sequence(user.pk)
     derived = derive_state(user, item)
     digest = calculate_state_digest(
         derived.watched,
@@ -282,8 +336,19 @@ def project_watch_state(
             "origin_key": origin_key,
         },
     )
-    if created or state.state_digest == digest:
+    if created:
+        if sequence_row.api_feed_enabled:
+            from app.services.sync_lock import invalidate_contexts
+
+            invalidate_contexts(sequence_row)
         return state
+    if state.state_digest == digest:
+        return state
+
+    if sequence_row.api_feed_enabled:
+        from app.services.sync_lock import invalidate_contexts
+
+        invalidate_contexts(sequence_row)
 
     state.watched = derived.watched
     state.play_count = derived.play_count
@@ -306,6 +371,82 @@ def project_watch_state(
         ],
     )
     return state
+
+
+def project_watch_states_bulk(user, items):
+    """Project many items of one user with a handful of queries.
+
+    Same result as ``project_watch_state`` per item for the quiet (non-emitting)
+    case: movies and flat types are derived from one read per media type and the
+    missing ``WatchState`` rows are inserted together. Episodes, users with a
+    synchronizing connection (their projection must record changes), and rows
+    whose stored digest moved fall back to the per-item path.
+    """
+    if user is None or projection_suspended():
+        return
+    from app.models.watch_state import WatchStateOrigin
+
+    items = [item for item in items if item.media_type in PROJECTED_MEDIA_TYPES]
+    if not items:
+        return
+    if WatchStateSequence.objects.filter(user=user).filter(
+        models.Q(emit_changes=True) | models.Q(api_feed_enabled=True),
+    ).exists():
+        for item in items:
+            project_watch_state(user, item)
+        return
+
+    by_type = {}
+    for item in items:
+        by_type.setdefault(item.media_type, []).append(item)
+
+    derived = {}
+    for media_type, group in by_type.items():
+        if media_type == MediaTypes.EPISODE.value:
+            for item in group:
+                project_watch_state(user, item)
+            continue
+        model = apps.get_model(app_label="app", model_name=media_type)
+        rows = model.objects.filter(user=user, item__in=group)
+        if media_type == MediaTypes.MOVIE.value:
+            rows = rows.prefetch_related("plays")
+        rows_by_item = {}
+        for row in rows:
+            rows_by_item.setdefault(row.item_id, []).append(row)
+        calc = _movie_state if media_type == MediaTypes.MOVIE.value else _flat_state
+        for item in group:
+            derived[item.pk] = (item, calc(rows_by_item.get(item.pk, [])))
+
+    existing = {
+        state.item_id: state
+        for state in WatchState.objects.filter(user=user, item_id__in=list(derived))
+    }
+    to_create = []
+    for item_id, (item, state_value) in derived.items():
+        digest = calculate_state_digest(
+            state_value.watched,
+            state_value.play_count,
+            state_value.last_watched_at,
+        )
+        state = existing.get(item_id)
+        if state is None:
+            to_create.append(
+                WatchState(
+                    user=user,
+                    item=item,
+                    watched=state_value.watched,
+                    play_count=state_value.play_count,
+                    first_watched_at=state_value.first_watched_at,
+                    last_watched_at=state_value.last_watched_at,
+                    state_digest=digest,
+                    origin_kind=WatchStateOrigin.BACKFILL.value,
+                    origin_key="",
+                ),
+            )
+        elif state.state_digest != digest:
+            project_watch_state(user, item)
+    if to_create:
+        WatchState.objects.bulk_create(to_create, ignore_conflicts=True)
 
 
 def project_watch_state_for_change(user, item, **kwargs):
@@ -381,6 +522,7 @@ def record_state_change(
         WatchStateChangeKind,
     )
 
+    lock_sequence(user.pk)
     kind = kind or WatchStateChangeKind.UPSERT.value
 
     if origin_event_id:

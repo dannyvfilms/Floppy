@@ -2,7 +2,8 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.db import connection
+from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
 from app.models import (
@@ -779,3 +780,79 @@ class MusicScrobbleServiceTests(TestCase):
         self.assertEqual(music.album.id, rich.id)
         self.assertEqual(music.track.id, rich_track.id)
         self.assertEqual(music.track.album_id, rich.id)
+
+
+class MusicScrobbleTransactionScopeTests(TransactionTestCase):
+    """Provider enrichment must not run while SQLite holds the write lock."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="music_scope_user",
+            password="password",
+        )
+        self.user.music_enabled = True
+        self.user.save()
+
+    @patch("app.services.music_scrobble.prefetch_album_covers")
+    @patch("app.services.music_scrobble.refresh_album_cover_art")
+    @patch("app.services.music_scrobble.dedupe_artist_albums")
+    @patch("app.services.music_scrobble.sync_artist_discography")
+    @patch("app.services.music_scrobble.musicbrainz.get_artist")
+    @patch("app.services.music_scrobble.musicbrainz.recording")
+    def test_provider_enrichment_runs_after_the_write_transaction(
+        self,
+        mock_recording,
+        mock_get_artist,
+        mock_sync_discography,
+        mock_dedupe,
+        mock_refresh_cover,
+        mock_prefetch,
+    ):
+        """A slow provider call must not queue every other writer behind it."""
+        mock_recording.return_value = {
+            "title": "Scope Track",
+            "_artist_name": "Scope Artist",
+            "_artist_id": "artist-scope",
+            "_album_title": "Scope Album",
+            "_album_id": "album-scope",
+            "image": "",
+            "genres": [],
+            "details": {"duration_minutes": 4},
+        }
+
+        provider_calls = []
+
+        def observe(name, result=None):
+            provider_calls.append((name, connection.in_atomic_block))
+            return result
+
+        mock_get_artist.side_effect = lambda *args, **kwargs: observe(
+            "get_artist", {"country": "US"}
+        )
+        mock_sync_discography.side_effect = lambda *args, **kwargs: observe(
+            "sync_artist_discography", 1
+        )
+        mock_dedupe.side_effect = lambda *args, **kwargs: observe("dedupe")
+        mock_refresh_cover.side_effect = lambda *args, **kwargs: observe("cover")
+        mock_prefetch.side_effect = lambda *args, **kwargs: observe("prefetch")
+
+        event = MusicPlaybackEvent(
+            user=self.user,
+            artist_name="Scope Artist",
+            album_title="Scope Album",
+            track_title="Scope Track",
+            duration_ms=None,
+            plex_rating_key="plex-scope",
+            external_ids={"musicbrainz_recording": "rec-scope"},
+            completed=True,
+            played_at=timezone.now().replace(second=0, microsecond=0),
+        )
+
+        record_music_playback(event)
+
+        self.assertTrue(provider_calls)
+        self.assertEqual(
+            [name for name, in_atomic in provider_calls if in_atomic],
+            [],
+            "provider enrichment ran inside the database write transaction",
+        )

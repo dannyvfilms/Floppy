@@ -4,12 +4,12 @@ import re
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.test import tag
 from django.urls import reverse
 from playwright.sync_api import expect, sync_playwright
 
 from app.models import Item, MediaTypes
+from app.tests.live_server import SerialStaticLiveServerTestCase
 from lists.models import CustomList, CustomListItem
 
 PERFECT_BLUE_MEDIA_ID = "437"
@@ -63,7 +63,7 @@ PERFECT_BLUE_METADATA = {
 
 
 @tag("slow", "playwright")
-class IntegrationTest(StaticLiveServerTestCase):
+class IntegrationTest(SerialStaticLiveServerTestCase):
     """Integration tests for the application."""
 
     @classmethod
@@ -136,6 +136,17 @@ class IntegrationTest(StaticLiveServerTestCase):
         button.scroll_into_view_if_needed()
         button.dispatch_event("click")
 
+    def wait_for_htmx_settle(self, locator):
+        """Wait until htmx has wired the content it just swapped into ``locator``.
+
+        htmx processes a swap's new ``hx-*`` attributes in its settle step,
+        ``defaultSettleDelay`` (20 ms) after the content appears, and marks the
+        target ``htmx-settling`` until then. A click in that window lands on a
+        button with no ``hx-post`` bound yet and is dropped without a request,
+        so a test that clicks as soon as the text is visible must wait here.
+        """
+        expect(locator).not_to_have_class(re.compile(r"\bhtmx-(swapping|settling)\b"))
+
     def search_and_submit(self, query):
         """Run a global search via the submit button.
 
@@ -166,14 +177,21 @@ class IntegrationTest(StaticLiveServerTestCase):
         self.page.locator("li").filter(has_text=re.compile(r"^Anime$")).click()
         self.search_and_submit("perfect blue")
         self.click_card_lists_action()
-        expect(self.page.locator("#lists-anime-437")).to_contain_text(
+        expect(self.page.locator('[id^="lists-anime-437-"]')).to_contain_text(
             "You haven't created any lists yet.",
         )
+
+    def _open_lists_from_sidebar(self):
+        """Navigate through Explore unless Lists is already visible."""
+        link = self.page.get_by_role("link", name="Lists", exact=True)
+        if not link.is_visible():
+            self.page.get_by_role("button", name="Explore").click()
+        link.click()
 
     def test_flow(self):
         """Test the flow of adding an item to a list and editing the list."""
         # Create list
-        self.page.get_by_role("link", name="Lists").click()
+        self._open_lists_from_sidebar()
         self.page.get_by_role("button", name="New List").click()
         expect(self.page.locator("h2", has_text="Create New List")).to_be_visible()
         self.page.locator("#id_name").click()
@@ -186,16 +204,18 @@ class IntegrationTest(StaticLiveServerTestCase):
         self.page.locator("li").filter(has_text=re.compile(r"^Anime$")).click()
         self.search_and_submit("perfect blue")
         self.click_card_lists_action()
-        expect(self.page.locator("#lists-anime-437")).to_contain_text("Lists test Add")
+        expect(self.page.locator('[id^="lists-anime-437-"]')).to_contain_text("Lists test Add")
+        self.wait_for_htmx_settle(self.page.locator('[id^="lists-anime-437-"]'))
         self.page.get_by_role("button", name="Add item to test", exact=True).click()
-        expect(self.page.locator("#lists-anime-437")).to_contain_text("Remove")
-        self.page.locator("#lists-anime-437").get_by_role("button").first.click()
+        expect(self.page.locator('[id^="lists-anime-437-"]')).to_contain_text("Remove")
+        self.page.locator('[id^="lists-anime-437-"]').get_by_role("button").first.click()
 
         # Edit list
-        self.page.get_by_role("link", name="Lists").click()
+        self._open_lists_from_sidebar()
         expect(self.page.locator("#lists-grid")).to_contain_text("test")
         expect(self.page.locator("#lists-grid")).to_contain_text("1 item")
-        self.page.get_by_role("button", name="Edit test", exact=True).click()
+        self.page.get_by_role("button", name="Options for test", exact=True).click()
+        self.page.get_by_role("button", name="Settings", exact=True).click()
         expect(self.page.locator("#lists-grid")).to_contain_text("Edit List")
         self.page.locator("#id_1_name").click()
         self.page.locator("#id_1_name").fill("test rename")
@@ -211,12 +231,24 @@ class IntegrationTest(StaticLiveServerTestCase):
             image=PERFECT_BLUE_SEARCH_RESULT["image"],
         )
 
-        for index, viewport in enumerate(
-            (
-                {"width": 1280, "height": 800},
-                {"width": 390, "height": 844},
-            ),
-        ):
+        viewports = (
+            {"width": 1280, "height": 800},
+            {"width": 390, "height": 844},
+        )
+        # The live server shares the test's one in-memory SQLite connection, so
+        # every write happens before any page opens; a write from this thread
+        # while a page is requesting raised "database table is locked".
+        custom_lists = []
+        for index in range(len(viewports)):
+            custom_list = CustomList.objects.create(
+                name=f"count-test-{index}",
+                owner=self.user,
+            )
+            CustomListItem.objects.create(custom_list=custom_list, item=item)
+            custom_lists.append(custom_list)
+
+        for index, viewport in enumerate(viewports):
+            custom_list = custom_lists[index]
             page = self.context.new_page()
             self.addCleanup(page.close)
             refresh_requests = []
@@ -248,11 +280,6 @@ class IntegrationTest(StaticLiveServerTestCase):
             page.on("response", record_toggle_response)
             self.addCleanup(page.remove_listener, "response", record_toggle_response)
 
-            custom_list = CustomList.objects.create(
-                name=f"count-test-{index}",
-                owner=self.user,
-            )
-            CustomListItem.objects.create(custom_list=custom_list, item=item)
             list_url = (
                 f"{self.live_server_url}"
                 f"{reverse('list_detail', args=[custom_list.public_reference])}"
@@ -277,7 +304,7 @@ class IntegrationTest(StaticLiveServerTestCase):
             page.locator(
                 '.media-card-overlay button[title="Add to custom lists"]',
             ).first.dispatch_event("click")
-            modal = page.locator("#lists-anime-437")
+            modal = page.locator('[id^="lists-anime-437-"]')
             expect(modal).to_contain_text("Remove")
             toggle_button = modal.locator(
                 f'button[aria-label="Remove item from {custom_list.name}"]'
@@ -308,3 +335,37 @@ class IntegrationTest(StaticLiveServerTestCase):
             page.wait_for_function("window.__listCountUpdates >= 1")
             expect(count).to_have_text("0 items")
             self.assertEqual(page.evaluate("window.__listCountUpdates"), 1)
+            # The live server shares the test's one in-memory SQLite
+            # connection. A page left open keeps issuing requests (polling,
+            # service worker), and the next pass writes a list from this
+            # thread, which intermittently failed with "database table is
+            # locked". Let the page go quiet and close it before looping on.
+            page.wait_for_load_state("networkidle")
+            page.close()
+
+    def test_ticking_a_card_checkbox_selects_the_item(self):
+        """In Select Items mode the card's own checkbox selects the item."""
+        item = Item.objects.create(
+            media_id=PERFECT_BLUE_MEDIA_ID,
+            source="mal",
+            media_type=MediaTypes.ANIME.value,
+            title="Perfect Blue",
+            image=PERFECT_BLUE_SEARCH_RESULT["image"],
+        )
+        custom_list = CustomList.objects.create(name="Select test", owner=self.user)
+        CustomListItem.objects.create(custom_list=custom_list, item=item)
+        list_url = (
+            f"{self.live_server_url}"
+            f"{reverse('list_detail', args=[custom_list.public_reference])}"
+        )
+        self.page.goto(list_url)
+
+        self.page.get_by_role("button", name="Select Items").click()
+        checkbox = self.page.locator("#items-view input[type=checkbox]").first
+        checkbox.click()
+
+        # The checkbox sits inside the card's link; a click on it used to be
+        # cancelled, so it never ticked (the rest of the card still worked).
+        expect(checkbox).to_be_checked()
+        expect(self.page.get_by_text("1 selected")).to_be_visible()
+        self.assertEqual(self.page.url, list_url)

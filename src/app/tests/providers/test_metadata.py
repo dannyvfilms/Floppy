@@ -1723,6 +1723,9 @@ class Metadata(TestCase):
                     {"name": "Open world"},
                 ],
                 "platforms": [{"name": "PC"}],
+                "franchise": {"id": 10, "name": "The Witcher"},
+                "franchises": [{"id": 10, "name": "The Witcher"}],
+                "collections": [{"id": 20, "name": "The Witcher Series"}],
                 "involved_companies": [
                     {
                         "company": {
@@ -1754,6 +1757,12 @@ class Metadata(TestCase):
         self.assertEqual(response["details"]["format"], "Main game")
         self.assertEqual(response["details"]["release_date"], "2015-05-19")
         self.assertEqual(response["details"]["companies"], "CD Projekt Red")
+        self.assertEqual(response["provider_franchise_id"], "10")
+        self.assertEqual(response["provider_franchise_name"], "The Witcher")
+        self.assertEqual(response["provider_collection_id"], "20")
+        self.assertEqual(
+            response["provider_collection_name"], "The Witcher Series"
+        )
         self.assertEqual(
             response["details"]["themes"],
             ["Action", "Fantasy", "Open world"],
@@ -1836,6 +1845,49 @@ class Metadata(TestCase):
         )
         self.assertEqual(response["games"][0]["role"], "Publisher")
         self.assertEqual(response["games"][1]["role"], "Developer, Publisher")
+
+    @patch("app.providers.igdb.requests.get")
+    def test_get_steam_dlcs(self, mock_get):
+        """Steam DLC ids are resolved to names, links and images, then cached."""
+        cache.delete("steam_dlcs_v1_100")
+
+        def fake_get(_url, params, timeout):
+            app_id = str(params["appids"])
+            data = {
+                "100": {"dlc": [101, 102]},
+                "101": {"name": "Map Pack", "header_image": "https://img/101.jpg"},
+                "102": {},
+            }[app_id]
+            response = MagicMock()
+            response.json.return_value = {app_id: {"success": True, "data": data}}
+            return response
+
+        mock_get.side_effect = fake_get
+
+        dlcs = igdb.get_steam_dlcs("100")
+
+        self.assertEqual(
+            dlcs,
+            [
+                {
+                    "title": "Map Pack",
+                    "image": "https://img/101.jpg",
+                    "url": "https://store.steampowered.com/app/101/",
+                },
+            ],
+        )
+        calls = mock_get.call_count
+        igdb.get_steam_dlcs("100")
+        self.assertEqual(mock_get.call_count, calls)
+
+    @patch("app.providers.igdb.requests.get")
+    def test_get_steam_dlcs_failure_is_not_cached(self, mock_get):
+        """A Steam outage returns nothing and is retried on the next call."""
+        cache.delete("steam_dlcs_v1_200")
+        mock_get.side_effect = requests.exceptions.ConnectionError()
+
+        self.assertEqual(igdb.get_steam_dlcs("200"), [])
+        self.assertIsNone(cache.get("steam_dlcs_v1_200"))
 
     def test_game_non_numeric_id_raises_value_error(self):
         """Non-numeric IGDB IDs should raise ValueError before any API call."""
@@ -1998,6 +2050,24 @@ class Metadata(TestCase):
             mock_api_request.call_args.kwargs["params"]["sort"],
             "issue_number:asc",
         )
+
+    @patch("app.providers.comicvine.services.api_request")
+    def test_comic_volume_issues_request_a_later_page(self, mock_api_request):
+        """A later page sends its offset and does not reuse the first page's cache."""
+        volume_id = "paged-volume-test"
+        first_key = f"{Sources.COMICVINE.value}_volume_{volume_id}_issues"
+        second_key = f"{first_key}_offset_100"
+        comicvine.cache.set(first_key, [{"issue_number": "1"}])
+        self.addCleanup(comicvine.cache.delete, first_key)
+        self.addCleanup(comicvine.cache.delete, second_key)
+        mock_api_request.return_value = {
+            "results": [{"id": 101, "name": "Issue 101", "issue_number": "101"}],
+        }
+
+        result = comicvine.get_volume_issues(volume_id, offset=100)
+
+        self.assertEqual([issue["issue_number"] for issue in result], ["101"])
+        self.assertEqual(mock_api_request.call_args.kwargs["params"]["offset"], 100)
 
     @patch("app.providers.comicvine.services.api_request")
     def test_comic_volume_issues_sort_cached_data(self, mock_api_request):

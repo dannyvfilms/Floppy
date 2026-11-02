@@ -12522,3 +12522,46 @@ msgstr "90 jours"
 #, python-format
 msgid "Server Default (%(language)s)"
 msgstr "Valeur du serveur (%(language)s)"
+
+#: templates/app/search.html
+msgid "Searching your library only: items you track, collect or tag. Pick a media type to search online."
+msgstr "Recherche uniquement dans votre bibliothèque : éléments que vous suivez, collectionnez ou étiquetez. Choisissez un type de média pour rechercher en ligne."
+
+#: templates/app/search.html
+msgid "Search online"
+msgstr "Rechercher en ligne"
+
+#: templates/app/search.html
+#: templates/app/components/search_suggestions.html
+#, python-format
+msgid "Nothing in your library matches &ldquo;%(value_1)s&rdquo;. Pick a media type to search online."
+msgstr "Rien dans votre bibliothèque ne correspond à &ldquo;%(value_1)s&rdquo;. Choisissez un type de média pour rechercher en ligne."
+
+#: templates/app/components/search_suggestions.html
+#, python-format
+msgid "See all library results for &ldquo;%(value_1)s&rdquo;"
+msgstr "Afficher tous les résultats de la bibliothèque pour &ldquo;%(value_1)s&rdquo;"
+
+
+#: templates/users/home_screen.html users/models.py
+msgid "Up Next"
+msgstr "À suivre"
+
+#: app/templatetags/app_tags.py
+msgid "Behind"
+msgstr "Non vus"
+
+#: app/templatetags/app_tags.py
+msgid "day"
+msgid_plural "days"
+msgstr[0] "jour"
+msgstr[1] "jours"
+
+#: users/home_screen.py
+msgid "Up Next requires the TV library."
+msgstr "« À suivre » nécessite la bibliothèque de séries."
+
+
+#: users/home_screen.py
+msgid "All media supports library and Up Next rows."
+msgstr "Tous les médias prend en charge les lignes de bibliothèque et « À suivre »."

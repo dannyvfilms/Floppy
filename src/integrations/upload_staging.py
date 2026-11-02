@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import errno
 import logging
 import os
 import tempfile
@@ -33,6 +34,23 @@ def staging_directory() -> Path:
     with contextlib.suppress(OSError):
         directory.chmod(0o700)
     return directory
+
+
+def staging_failure_message(error: OSError) -> str:
+    """Say why an upload could not be staged; a full disk is only one cause (#1455)."""
+    folder = Path(settings.FLOPPY_DATA_DIR) / STAGING_DIRECTORY_NAME
+    summary = "The upload could not be queued."
+    if error.errno in {errno.ENOSPC, errno.EDQUOT}:
+        return f"{summary} The disk is full. Free some space and try again."
+    if error.errno in {errno.EACCES, errno.EPERM}:
+        return (
+            f"{summary} Floppy does not have permission to write to {folder}. "
+            "Give that folder to the PUID and PGID the container runs as."
+        )
+    if error.errno == errno.EROFS:
+        return f"{summary} {folder} is on a read-only filesystem."
+    reason = error.strerror or type(error).__name__
+    return f"{summary} Writing to {folder} failed: {reason}."
 
 
 def _suffix_for_upload(upload_name) -> str:

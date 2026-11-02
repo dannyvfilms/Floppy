@@ -2,16 +2,23 @@
 {% load i18n %}
 
 {% load static %}
-{% load app_tags %}
+{% load app_tags alphabet_tags %}
 
 {% block title %}
   {{ custom_list }} - Floppy
 {% endblock title %}
 
 {# djlint:off #}
+{% block alphabet_filter %}{% alphabet_filter "filter-form" %}{% endblock alphabet_filter %}
+
 {% block content %}
+  <div class="alphabet-surface">
+  {% include "app/components/filter_toolbar_scripts.html" %}
+  {% url 'list_detail' custom_list.public_reference as list_filter_endpoint %}
   {# Form CSS lives in the content block so boosted navigation keeps it #}
   {% if form %}{{ form.media.css }}{% endif %}
+  {# Editors' bulk selection spans the header too: its Select Items button lives there. #}
+  {% if can_edit %}<div x-data="bulkSelection('list-bulk-action-data', 'bulk-action-refresh')">{% endif %}
   <div class="mb-6">
     <div class="w-full min-w-0">
       <div class="mb-2 flex flex-wrap items-center gap-3">
@@ -87,6 +94,9 @@
                  x-transition:leave="transition ease-in duration-75"
                  x-transition:leave-start="transform opacity-100 scale-100"
                  x-transition:leave-end="transform opacity-0 scale-95">
+              {% if request.user.is_authenticated %}
+                {% include "lists/components/sidebar_pin_action.html" %}
+              {% endif %}
               <a href="{% url 'list_add_item' custom_list.id %}"
                  class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
                 {% translate "Add New Item" %}
@@ -152,6 +162,9 @@
                  x-transition:leave="transition ease-in duration-75"
                  x-transition:leave-start="transform opacity-100 scale-100"
                  x-transition:leave-end="transform opacity-0 scale-95">
+              {% if request.user.is_authenticated %}
+                {% include "lists/components/sidebar_pin_action.html" %}
+              {% endif %}
               {% if recommendation_count > 0 %}
                 <a href="{% url 'recommend_item' custom_list.id %}"
                    class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
@@ -213,6 +226,9 @@
              x-transition:leave="transition ease-in duration-75"
              x-transition:leave-start="transform opacity-100 scale-100"
              x-transition:leave-end="transform opacity-0 scale-95">
+              {% if request.user.is_authenticated %}
+                {% include "lists/components/sidebar_pin_action.html" %}
+              {% endif %}
           <a href="{% url 'list_add_item' custom_list.id %}"
              class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
             {% translate "Add New Item" %}
@@ -277,6 +293,9 @@
              x-transition:leave="transition ease-in duration-75"
              x-transition:leave-start="transform opacity-100 scale-100"
              x-transition:leave-end="transform opacity-0 scale-95">
+              {% if request.user.is_authenticated %}
+                {% include "lists/components/sidebar_pin_action.html" %}
+              {% endif %}
           {% if recommendation_count > 0 %}
             <a href="{% url 'recommend_item' custom_list.id %}"
                class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
@@ -314,7 +333,12 @@
   {% endif %}
   {% if custom_list.description %}<p class="mb-6 text-[var(--color-text-muted)]">{{ custom_list.description }}</p>{% endif %}
 
-  {% translate "All Types" as media_i18n_16 %}{% translate "Status" as media_i18n_74 %}{% translate " Statuses" as media_i18n_75 %}<div x-data="{
+  {% translate "All Types" as media_i18n_16 %}{% translate "Status" as media_i18n_74 %}{% translate " Statuses" as media_i18n_75 %}{{ list_filter_state|json_script:"list-filter-state" }}<div x-data="{
+    ...libraryFilterState(
+      JSON.parse(document.getElementById('list-filter-state').textContent),
+      JSON.parse(document.getElementById('list-filter-data')?.textContent || '{}'),
+      { available: [{% for entry in media_type_breakdown %}{ value: '{{ entry.value }}', label: '{{ entry.value|media_type_readable|escapejs }}' }{% if not forloop.last %}, {% endif %}{% endfor %}] },
+    ),
     showModal: false,
     isOrderEditing: false,
     canEdit: {% if can_edit %}true{% else %}false{% endif %},
@@ -322,42 +346,21 @@
     direction: '{{ current_direction|default:'desc' }}',
     layout: '{{ current_layout|default:'grid' }}',
     renderedLayout: '{{ current_layout|default:'grid' }}',
-    statuses: [
-      {% for value in current_statuses %}
-        '{{ value }}'{% if not forloop.last %},{% endif %}
-      {% endfor %}
-    ],
-    type: '{{ request.GET.type|default:'all' }}',
     query: '{{ request.GET.q|default:''|escapejs }}',
     searchMode: false,
-    mediaTypeLabels: {
-      {% for media_type in media_types %}'{{ media_type }}': '{{ media_type|media_type_readable_plural }}',{% endfor %}
-      'all': '{{ media_i18n_16|escapejs }}'
-    },
     statusLabels: {
       {% for value, label in status_choices %}'{{ value }}': '{% translate label as media_dynamic_label %}{{ media_dynamic_label|escapejs }}',{% endfor %}
     },
     sortLabels: {
       {% for value, label in sort_choices %}'{{ value }}': '{% translate label as media_dynamic_label %}{{ media_dynamic_label|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}
     },
-    getMediaTypeLabel() {
-      return this.mediaTypeLabels[this.type] || this.type;
-    },
     getStatusLabel() {
       if (this.statuses.length === 0) return '{{ media_i18n_74|escapejs }}';
       if (this.statuses.length === 1) return this.statusLabels[this.statuses[0]] || this.statuses[0];
       return this.statuses.length + '{{ media_i18n_75|escapejs }}';
     },
-    isStatusSelected(value) { return this.statuses.includes(value); },
-    toggleStatus(value) {
-      if (this.statuses.includes(value)) {
-        this.statuses = this.statuses.filter((s) => s !== value);
-      } else {
-        this.statuses = [...this.statuses, value];
-      }
-    },
     defaultDirection(value) {
-      return ['title', 'media_type', 'release_date', 'start_date'].includes(value) ? 'asc' : 'desc';
+      return ['title', 'media_type', 'release_date', 'start_date', 'tier'].includes(value) ? 'asc' : 'desc';
     },
     setSort(value) {
       if (value === 'custom') {
@@ -376,7 +379,7 @@
     }
   }"
        x-init="
-         $refs.itemsView.addEventListener('htmx:afterSwap', () => {
+         document.getElementById('items-view').addEventListener('htmx:afterSwap', () => {
            renderedLayout = layout;
            if (isOrderEditing) initListSortable(layout);
          });
@@ -384,22 +387,9 @@
        "
        @open-list-edit-modal.window="showModal = true">
 
-    {% if can_edit %}
-      <div x-data="bulkSelection('list-bulk-action-data', 'bulk-action-refresh')">
-    {% endif %}
 
     <!-- Form to manage state -->
-    <form id="filter-form" class="hidden">
-      <input type="hidden" name="sort" x-model="sort">
-      <input type="hidden" name="direction" x-model="direction">
-      <input type="hidden" name="layout" x-model="layout">
-      <input type="hidden" name="type" x-model="type">
-      <template x-for="s in statuses" :key="`status-${s}`">
-        <input type="hidden" name="status" :value="s">
-      </template>
-      <input type="hidden" name="status" value="all" :disabled="statuses.length > 0">
-      <input type="hidden" name="q" x-model="query">
-    </form>
+    {% include "app/components/filter_form.html" with filter_search_name="q" filter_search_var="query" filter_show_ranges=True filter_show_completed_date=True filter_platform_multi=False filter_show_media_types=True filter_data=list_filter_data %}
     {% if can_edit %}
       <button id="bulk-action-refresh"
               type="button"
@@ -477,51 +467,7 @@
         </div>
 
         <div class="contents" x-cloak x-show="!searchMode">
-          {# Filter by Type #}
-          <div class="relative filter-control" x-data="{ open: false }">
-            <button class="flex items-center gap-2 px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
-                    @click="open = !open"
-                    type="button">
-              {% include "app/icons/funnel.svg" with classes="w-4 h-4" %}
-              <span class="text-sm" x-text="getMediaTypeLabel(type)"></span>
-              <svg xmlns="http://www.w3.org/2000/svg"
-                   viewBox="0 0 20 20"
-                   class="w-4 h-4"
-                   aria-hidden="true">
-                <path d="M10 14 L4.5 7 H15.5 Z" fill="currentColor"></path>
-              </svg>
-            </button>
-
-            <div class="absolute left-0 mt-2 py-1 w-48 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden z-50 border border-gray-700"
-                 x-cloak
-                 x-show="open"
-                 @click.outside="open = false"
-                 x-transition:enter="transition ease-out duration-100"
-                 x-transition:enter-start="transform opacity-0 scale-95"
-                 x-transition:enter-end="transform opacity-100 scale-100"
-                 x-transition:leave="transition ease-in duration-75"
-                 x-transition:leave-start="transform opacity-100 scale-100"
-                 x-transition:leave-end="transform opacity-0 scale-95">
-              <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
-                      hx-target="#items-view"
-                      hx-include="#filter-form"
-                      hx-indicator="#loading-indicator"
-                      class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                      :class="type === 'all' ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
-                      @click="type = 'all'; open = false"
-                      type="button">{% translate "All" %}</button>
-              {% for media_type in media_types %}
-                <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
-                        hx-target="#items-view"
-                        hx-include="#filter-form"
-                        hx-indicator="#loading-indicator"
-                        class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                        :class="type === '{{ media_type }}' ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
-                        @click="type = '{{ media_type }}'; open = false"
-                        type="button">{{ media_type|media_type_readable_plural }}</button>
-              {% endfor %}
-            </div>
-          </div>
+          {% include "app/components/filter_menu.html" with filter_show_completed_date=True filter_hx_endpoint=list_filter_endpoint filter_hx_target="#items-view" filter_form_id="filter-form" filter_data_id="list-filter-data" filter_show_ranges=True filter_show_media_types=True filter_data=list_filter_data %}
 
           {# Filter by Status #}
           <div class="relative filter-control" x-data="{ open: false }">
@@ -578,12 +524,13 @@
 
           {# Sort by #}
           <div class="relative filter-control"
-               x-data="{ sortOpen: false, orderOpen: false }"
-               @click.outside="sortOpen = false; orderOpen = false">
+               x-show="layout !== 'tiers'"
+               x-data="{ sortOpen: false }"
+               @click.outside="sortOpen = false">
             <button class="h-10 flex items-center gap-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer"
                     x-cloak
                     x-show="sort === 'custom' && canEdit && isOrderEditing"
-                    @click="isOrderEditing = false; sortOpen = false; orderOpen = false"
+                    @click="isOrderEditing = false; sortOpen = false"
                     type="button">
               {% include "app/icons/checkmark.svg" with classes="w-4 h-4" %}
               <span class="text-sm">{% translate "Done Editing Order" %}</span>
@@ -592,11 +539,18 @@
             <div class="inline-flex"
                  x-cloak
                  x-show="!(sort === 'custom' && canEdit && isOrderEditing)">
-              <button class="flex items-center gap-2 px-2 py-2 transition-colors cursor-pointer"
-                      :class="sort === 'custom' && canEdit ? 'rounded-l-md bg-indigo-600 text-white hover:bg-indigo-700' : 'rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)]'"
-                      @click="sortOpen = !sortOpen; orderOpen = false"
+              <button class="flex items-center gap-2 px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                      @click="sortOpen = !sortOpen"
                       type="button">
                 <span class="text-sm" x-text="sortLabels[sort] || sort"></span>
+                <svg xmlns="http://www.w3.org/2000/svg"
+                     viewBox="0 0 20 20"
+                     class="w-4 h-4"
+                     x-cloak
+                     x-show="sort === 'custom' && canEdit"
+                     aria-hidden="true">
+                  <path d="M10 14 L4.5 7 H15.5 Z" fill="currentColor"></path>
+                </svg>
                 <span class="inline-flex items-center" x-cloak x-show="sort !== 'custom' || !canEdit">
                   <svg xmlns="http://www.w3.org/2000/svg"
                        viewBox="0 0 20 20"
@@ -613,14 +567,6 @@
                     <path d="M10 15 L4 5 H16 Z" fill="currentColor"></path>
                   </svg>
                 </span>
-              </button>
-              <button class="flex items-center px-2 py-2 rounded-r-md border-l border-indigo-500 bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer"
-                      x-cloak
-                      x-show="sort === 'custom' && canEdit"
-                      @click="orderOpen = !orderOpen; sortOpen = false"
-                      aria-label="{% translate "Custom sort options" %}"
-                      type="button">
-                {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
               </button>
             </div>
 
@@ -640,25 +586,14 @@
                         hx-indicator="#loading-indicator"
                         class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
                         :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
-                        @click="setSort('{{ value }}'); sortOpen = false; orderOpen = false"
+                        @click="setSort('{{ value }}'); sortOpen = false"
                         type="button">{% translate label %}</button>
               {% endfor %}
-            </div>
-
-            <div class="absolute right-0 z-50 mt-2 w-56 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden border border-gray-700"
-                 x-cloak
-                 x-show="orderOpen && sort === 'custom' && canEdit && !isOrderEditing"
-                 x-transition:enter="transition ease-out duration-100"
-                 x-transition:enter-start="transform opacity-0 scale-95"
-                 x-transition:enter-end="transform opacity-100 scale-100"
-                 x-transition:leave="transition ease-in duration-75"
-                 x-transition:leave-start="transform opacity-100 scale-100"
-                 x-transition:leave-end="transform opacity-0 scale-95">
-              <button class="w-full text-left px-3 py-2 text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
-                      @click="isOrderEditing = true; orderOpen = false; sortOpen = false"
-                      type="button">
-                {% translate "Edit Item Order" %}
-              </button>
+              <button class="block w-full px-4 py-2 text-left text-sm border-t border-gray-700 text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                      x-cloak
+                      x-show="sort === 'custom' && canEdit"
+                      @click="isOrderEditing = true; sortOpen = false"
+                      type="button">{% translate "Edit Item Order" %}</button>
             </div>
           </div>
 
@@ -690,6 +625,17 @@
                       type="button">
                 {% include "app/icons/table.svg" with classes="w-5 h-5" %}
               </button>
+              <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
+                      hx-target="#items-view"
+                      hx-include="#filter-form"
+                      hx-indicator="#loading-indicator"
+                      class="p-2 cursor-pointer"
+                      :class="layout === 'tiers' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)]'"
+                      title="{% translate "Tier View" %}"
+                      @click="layout = 'tiers'"
+                      type="button">
+                {% include "app/icons/list.svg" with classes="w-5 h-5" %}
+              </button>
             </div>
           </div>
         </div>
@@ -700,15 +646,19 @@
     </div>
 
     <div id="items-view"
-         x-ref="itemsView"
+         class="{% if current_layout|default:'grid' == 'grid' %}media-grid{% endif %}"
          hx-history="false"
-         :class="renderedLayout === 'grid' ? 'media-grid' : ''">
+         :class="{ 'media-grid': renderedLayout === 'grid' }">
       {% if items %}
         {% if current_layout == 'table' %}
           {% include "lists/components/list_table.html" %}
+        {% elif current_layout == 'tiers' %}
+          {% include "lists/components/tier_board.html" %}
         {% else %}
           {% include "lists/components/media_grid.html" %}
         {% endif %}
+      {% elif request.GET.initial|alphabet_initial %}
+        {% alphabet_filter "filter-form" "empty" %}
       {% else %}
       {% if items_count %}
         {% if request.GET.q or has_media_type_filter %}
@@ -787,15 +737,15 @@
         <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
       </div>
     </div>
-    {% if can_edit %}
-      </div>
-    {% endif %}
     </div>
+  {% if can_edit %}</div>{% endif %}
+  </div>
 {% endblock content %}
 {# djlint:on #}
 
 {% block js %}
   {% if form %}{{ form.media.js }}{% endif %}
+  <script src="{% static 'js/listTiers.js' %}{% get_static_file_mtime 'js/listTiers.js' %}"></script>
 
   <script>
     window.addEventListener('pageshow', (event) => {
@@ -842,7 +792,6 @@
 
   {% include "app/components/_release_year_fetch_js.html" %}
 
-  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js"></script>
   <script>
     // var (not let): this script re-executes on boosted navigation
     var _listSortable = null;

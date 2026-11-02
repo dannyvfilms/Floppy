@@ -451,8 +451,18 @@ class TVStatusTests(TestCase):
         )
 
     @patch("app.models.providers.services.get_media_metadata")
-    def test_in_progress_status_activates_next_season(self, _):
-        """Test setting status to IN_PROGRESS activates next available season."""
+    def test_in_progress_status_activates_next_season(self, mock_get_metadata):
+        """Test setting status to IN_PROGRESS activates an aired next season."""
+        mock_get_metadata.return_value = {
+            "related": {
+                "seasons": [
+                    {
+                        "season_number": 2,
+                        "first_air_date": datetime(2020, 1, 1, tzinfo=UTC),
+                    },
+                ],
+            },
+        }
         self.season1.status = Status.COMPLETED.value
         self.season1.save()
 
@@ -463,8 +473,28 @@ class TVStatusTests(TestCase):
         self.assertEqual(season2.status, Status.IN_PROGRESS.value)
 
     @patch("app.models.providers.services.get_media_metadata")
+    def test_in_progress_status_keeps_future_season_planning(self, mock_get_metadata):
+        """Test an unaired next season is not activated."""
+        future_air_date = datetime(2099, 1, 1, tzinfo=UTC)
+        mock_get_metadata.return_value = {
+            "related": {
+                "seasons": [
+                    {"season_number": 2, "first_air_date": future_air_date},
+                ],
+            },
+        }
+        self.season1.status = Status.COMPLETED.value
+        self.season1.save()
+
+        self.tv.status = Status.IN_PROGRESS.value
+        self.tv.save()
+
+        season2 = Season.objects.get(pk=self.season2.pk)
+        self.assertEqual(season2.status, Status.PLANNING.value)
+
+    @patch("app.models.providers.services.get_media_metadata")
     def test_in_progress_status_creates_new_season_if_needed(self, mock_get_metadata):
-        """Test setting status to IN_PROGRESS creates new season if needed."""
+        """Test setting status to IN_PROGRESS creates an aired new season."""
         self.season1.status = Status.COMPLETED.value
         self.season1.save()
         self.season2.status = Status.COMPLETED.value
@@ -475,7 +505,11 @@ class TVStatusTests(TestCase):
                 "seasons": [
                     {"season_number": 1, "image": "img1.jpg"},
                     {"season_number": 2, "image": "img2.jpg"},
-                    {"season_number": 3, "image": "img3.jpg"},
+                    {
+                        "season_number": 3,
+                        "image": "img3.jpg",
+                        "first_air_date": datetime(2020, 1, 1, tzinfo=UTC),
+                    },
                 ],
             },
         }
@@ -486,6 +520,35 @@ class TVStatusTests(TestCase):
 
         season3 = self.tv.seasons.get(item__season_number=3)
         self.assertEqual(season3.status, Status.IN_PROGRESS.value)
+
+    @patch("app.models.providers.services.get_media_metadata")
+    def test_in_progress_status_does_not_create_future_season(self, mock_get_metadata):
+        """Test an unaired season in provider metadata is not created."""
+        self.season1.status = Status.COMPLETED.value
+        self.season1.save()
+        self.season2.status = Status.COMPLETED.value
+        self.season2.save()
+
+        mock_get_metadata.return_value = {
+            "related": {
+                "seasons": [
+                    {"season_number": 1, "image": "img1.jpg"},
+                    {"season_number": 2, "image": "img2.jpg"},
+                    {
+                        "season_number": 3,
+                        "image": "img3.jpg",
+                        "first_air_date": datetime(2099, 1, 1, tzinfo=UTC),
+                    },
+                ],
+            },
+        }
+
+        self.tv.status = Status.IN_PROGRESS.value
+        self.tv.save()
+
+        self.assertFalse(
+            self.tv.seasons.filter(item__season_number=3).exists(),
+        )
 
     def test_in_progress_status_noop_if_already_has_in_progress_season(self):
         """Test IN_PROGRESS status change does nothing if season already in progress."""

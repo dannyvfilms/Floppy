@@ -32,6 +32,93 @@ from app.models import (
     Status,
     Track,
 )
+from app.providers import services
+
+
+class MediaSaveProviderFailure(TestCase):
+    """A provider that cannot supply a title is a failed save, not a 500."""
+
+    def setUp(self):
+        """Create a user and log in."""
+        self.credentials = {"username": "test", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+
+    def _save_with_provider_status(self, status_code):
+        error = Exception("provider said no")
+        error.response = SimpleNamespace(status_code=status_code, headers={})
+        with patch(
+            "app.save_views.ensure_item_metadata",
+            side_effect=services.ProviderAPIError(Sources.POCKETCASTS.value, error),
+        ):
+            return self.client.post(
+                reverse("media_save"),
+                {
+                    "media_id": "gone-show-uuid",
+                    "source": Sources.POCKETCASTS.value,
+                    "media_type": MediaTypes.PODCAST.value,
+                    "status": Status.PLANNING.value,
+                },
+                follow=True,
+            )
+
+    def test_provider_404_shows_a_message_and_saves_nothing(self):
+        response = self._save_with_provider_status(404)
+
+        self.assertEqual(response.status_code, 200)
+        page_messages = [str(m) for m in response.context["messages"]]
+        self.assertTrue(any("no longer has this title" in m for m in page_messages))
+        self.assertFalse(Item.objects.filter(media_id="gone-show-uuid").exists())
+
+    def test_htmx_first_save_gets_a_toast_not_a_redirect(self):
+        error = Exception("provider said no")
+        error.response = SimpleNamespace(status_code=404, headers={})
+        with patch(
+            "app.save_views.ensure_item_metadata",
+            side_effect=services.ProviderAPIError(Sources.POCKETCASTS.value, error),
+        ):
+            response = self.client.post(
+                reverse("media_save"),
+                {
+                    "media_id": "gone-show-uuid",
+                    "source": Sources.POCKETCASTS.value,
+                    "media_type": MediaTypes.PODCAST.value,
+                    "status": Status.PLANNING.value,
+                },
+                HTTP_HX_REQUEST="true",
+            )
+
+        self.assertEqual(response.status_code, 502)
+        toast = json.loads(response["HX-Trigger"])["showToast"]
+        self.assertEqual(toast["type"], "error")
+        self.assertIn("no longer has this title", toast["message"])
+
+    def test_unconfigured_provider_keeps_setup_guidance(self):
+        with patch(
+            "app.save_views.ensure_item_metadata",
+            side_effect=services.ProviderNotConfiguredError(
+                Sources.IGDB.value,
+                "IGDB credentials are not set.",
+            ),
+        ):
+            response = self.client.post(
+                reverse("media_save"),
+                {
+                    "media_id": "1",
+                    "source": Sources.IGDB.value,
+                    "media_type": MediaTypes.GAME.value,
+                    "status": Status.PLANNING.value,
+                },
+            )
+
+        self.assertEqual(response.status_code, 503)
+
+    def test_provider_outage_asks_the_user_to_retry(self):
+        response = self._save_with_provider_status(503)
+
+        self.assertEqual(response.status_code, 200)
+        page_messages = [str(m) for m in response.context["messages"]]
+        self.assertTrue(any("did not respond" in m for m in page_messages))
 
 
 class CreateMedia(TestCase):
@@ -749,7 +836,11 @@ class CreateMedia(TestCase):
             count=2,
             html=False,
         )
-        self.assertContains(response, '-list" hx-swap-oob="true"', html=False)
+        # An additional data attribute now separates the id and OOB marker.
+        self.assertRegex(
+            response.content.decode(),
+            r'id="episode-track-button-\d+-list"[^>]*\bhx-swap-oob="true"',
+        )
         latest_episode = Episode.objects.filter(
             item__media_id="1668",
             related_season__user=self.user,
@@ -763,7 +854,7 @@ class CreateMedia(TestCase):
         )
         self.assertContains(response, 'id="episode-history-', html=False)
         self.assertContains(response, 'hx-swap-oob="true"', html=False)
-        self.assertContains(response, "Watched 2 times")
+        self.assertContains(response, "2\u00d7 watched")
         self.assertContains(response, "season-progress-mobile-", html=False)
         self.assertContains(response, "season-progress-desktop-", html=False)
         trigger = json.loads(response["HX-Trigger"])
@@ -1424,9 +1515,13 @@ class EditMedia(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "data-track-action-root", html=False)
         self.assertContains(response, 'id="track-action-movie-10494"', html=False)
+        # The modal is teleported to <body>, so the pill must replace itself by id.
+        self.assertContains(response, 'hx-swap-oob="outerHTML"', html=False)
         self.assertContains(response, f'id="detail-score-chip-{movie.id}"', html=False)
         self.assertContains(response, "Edit rating")
-        self.assertContains(response, "Completed")
+        # A completed movie offers another entry beside Check-in.
+        self.assertContains(response, "Check-in</span>", html=False)
+        self.assertContains(response, "Add new entry")
         trigger = json.loads(response["HX-Trigger"])
         self.assertEqual(trigger["closeModal"]["formId"], "track-form-test")
         self.assertEqual(trigger["showToast"]["type"], "success")
@@ -1649,19 +1744,62 @@ class EditMedia(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "data-track-action-root", html=False)
-        self.assertContains(response, "trackOpen: true", html=False)
+        self.assertContains(response, "editTrackOpen: true", html=False)
         self.assertContains(response, "track-form-test")
         self.assertContains(response, "data-track-modal-root", html=False)
         self.assertContains(
             response,
-            'hx-target="closest [data-track-action-root]"',
+            'hx-target="this"',
             html=False,
         )
-        self.assertContains(response, 'hx-swap="outerHTML"', html=False)
+        self.assertContains(response, 'hx-swap="none"', html=False)
+        self.assertContains(response, 'hx-swap-oob="outerHTML"', html=False)
         self.assertEqual(
             Movie.objects.get(item__media_id="10494").status,
             initial_status,
         )
+
+    @patch("app.save_views.ensure_item_metadata")
+    def test_add_movie_entry_htmx_validation_error_reopens_create_modal(
+        self, ensure_item_metadata_mock,
+    ):
+        """A failed Add new entry reopens its own modal on the split button."""
+        item = Item.objects.create(
+            media_id="10494",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Perfect Blue",
+            image="http://example.com/image.jpg",
+        )
+        Movie.objects.create(
+            item=item,
+            user=self.user,
+            progress=1,
+            status=Status.COMPLETED.value,
+        )
+        ensure_item_metadata_mock.return_value = SimpleNamespace(item=item)
+
+        response = self.client.post(
+            f"{reverse('media_save')}?next=/details/tmdb/movie/10494/perfect-blue",
+            {
+                "track_form_id": "track-form-test",
+                "media_id": "10494",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.MOVIE.value,
+                "progress": 1,
+                "status": "bogus",
+            },
+            HTTP_HX_REQUEST="true",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Check-in</span>", html=False)
+        self.assertContains(response, "createTrackOpen: true", html=False)
+        self.assertContains(response, "editTrackOpen: false", html=False)
+        self.assertContains(response, "track-form-test")
+        self.assertContains(response, "data-track-modal-root", html=False)
+        self.assertContains(response, 'hx-swap-oob="outerHTML"', html=False)
+        self.assertEqual(Movie.objects.filter(item=item).count(), 1)
 
     def test_edit_movie_image_url(self):
         """Test overriding a movie image URL from the edit form."""

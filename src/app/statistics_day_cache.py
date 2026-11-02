@@ -9,7 +9,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 
-STATISTICS_DAY_CACHE_VERSION = 7
+STATISTICS_DAY_CACHE_VERSION = 9
 STATISTICS_DAY_PREFIX = f"stats:day:v{STATISTICS_DAY_CACHE_VERSION}"
 STATISTICS_HISTORY_VERSION_PREFIX = "stats:history_version"
 STATISTICS_DAY_CACHE_TIMEOUT = getattr(

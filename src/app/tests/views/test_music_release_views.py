@@ -437,3 +437,41 @@ class MusicAlbumSyncViewTests(TestCase):
         self.assertFalse(
             tracks.filter(title="Stale Track From Wrong Release").exists(),
         )
+
+
+class PlayLinkLabelTests(TestCase):
+    """The play-link label comes from the URL host, not from text anywhere in it."""
+
+    def test_real_hosts_are_labelled(self):
+        from app.music_views import _play_link_label
+
+        self.assertEqual(
+            _play_link_label("https://soundcloud.com/a/b"),
+            "SoundCloud",
+        )
+        self.assertEqual(
+            _play_link_label("https://open.spotify.com/track/1"),
+            "Spotify",
+        )
+
+    def test_lookalike_urls_get_no_label(self):
+        from app.music_views import _play_link_label
+
+        self.assertEqual(_play_link_label("https://evil.example/?q=soundcloud.com"), "")
+        self.assertEqual(_play_link_label("https://notspotify.com/track/1"), "")
+
+    def test_same_title_tracks_keep_their_own_play_links(self):
+        from types import SimpleNamespace
+
+        from app.music_views import _external_play_links
+
+        urls = [f"https://soundcloud.com/artist/{n}" for n in ("one", "two", "three")]
+        tracks = [
+            {"track": SimpleNamespace(title="Same Title"), "origin_url": url}
+            for url in urls
+        ]
+        tracks.append(tracks[0])  # the same URL again adds no chip
+
+        links = _external_play_links(tracks)
+
+        self.assertEqual(sorted(links.values()), sorted(urls))

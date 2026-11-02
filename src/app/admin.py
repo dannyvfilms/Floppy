@@ -12,6 +12,7 @@ from app.models import (
     MetadataProviderPreference,
     MoviePlay,
     PlaybackProgress,
+    VideoPlay,
 )
 
 
@@ -45,6 +46,14 @@ class MoviePlayAdmin(admin.ModelAdmin):
     """Custom admin for MoviePlay model with search and filter options."""
 
     search_fields = ["movie__item__title"]
+    list_display = ["__str__", "end_date", "external_id"]
+
+
+@admin.register(VideoPlay)
+class VideoPlayAdmin(admin.ModelAdmin):
+    """Custom admin for a video play."""
+
+    search_fields = ["video__item__title", "external_id"]
     list_display = ["__str__", "end_date", "external_id"]
 
 
@@ -95,6 +104,9 @@ SpecialModels = [
     "Item",
     "Episode",
     "MoviePlay",
+    "VideoPlay",
+    "VideoGameLink",
+    "VideoGameTag",
     "BasicMedia",
     "Artist",
     "Album",
@@ -127,6 +139,7 @@ SpecialModels = [
     "DiscoverTasteProfile",
     "DiscoverRowCache",
     "DeletedMedia",
+    "ConsumptionBatchItem",
     "PlaybackProgress",
     "ApplicationSettings",
     "InstanceProviderCredential",
@@ -137,6 +150,11 @@ SpecialModels = [
     "WatchStateSequence",
     "EpisodeOrder",
     "EpisodeOrderChange",
+    "StatisticsDirtyDay",
+    "StatisticsSnapshot",
+    "StatisticsSyncState",
+    "GameArtwork",
+    "RewatchCancellation",
 ]
 for model in app_models:
     if (
@@ -205,11 +223,12 @@ class MetadataBackfillStateAdmin(admin.ModelAdmin):
         "field",
         "fail_count",
         "give_up",
+        "terminal",
         "next_retry_at",
         "last_attempt_at",
         "last_success_at",
     ]
-    list_filter = ["field", "give_up"]
+    list_filter = ["field", "give_up", "terminal"]
     search_fields = ["item__title", "item__media_id", "last_error"]
     raw_id_fields = ["item"]
 
@@ -463,7 +482,23 @@ admin.site.register(InstanceProviderCredential, ProviderCredentialAdmin)
 admin.site.register(UserProviderCredential, UserProviderCredentialAdmin)
 
 
-class WatchStateAdmin(admin.ModelAdmin):
+class SyncProjectionAdmin(admin.ModelAdmin):
+    """Inspect protocol state without bypassing its transactional writers."""
+
+    def has_add_permission(self, request):
+        """Require the application writer for new protocol records."""
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        """Keep event identities, generations and allocator positions immutable here."""
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        """Use compaction or the explicit reset command instead."""
+        return False
+
+
+class WatchStateAdmin(SyncProjectionAdmin):
     """Admin for canonical watched state."""
 
     list_display = ["user", "item", "watched", "play_count", "revision", "conflicted"]
@@ -472,7 +507,7 @@ class WatchStateAdmin(admin.ModelAdmin):
     raw_id_fields = ["user", "item"]
 
 
-class WatchStateChangeAdmin(admin.ModelAdmin):
+class WatchStateChangeAdmin(SyncProjectionAdmin):
     """Admin for the ordered watched-state change log."""
 
     list_display = ["user", "sequence", "item", "kind", "watched", "origin_kind"]
@@ -481,7 +516,7 @@ class WatchStateChangeAdmin(admin.ModelAdmin):
     raw_id_fields = ["user", "item"]
 
 
-class WatchStateSequenceAdmin(admin.ModelAdmin):
+class WatchStateSequenceAdmin(SyncProjectionAdmin):
     """Admin for the per-user change sequence allocator."""
 
     list_display = ["user", "last_sequence"]

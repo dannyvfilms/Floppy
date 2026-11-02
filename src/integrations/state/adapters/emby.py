@@ -22,6 +22,7 @@ import requests
 
 from app.models import MediaTypes, Sources
 from integrations.models import CAPABILITY_WATCHED_READ
+from integrations.safe_fetch import send_to_self_hosted
 from integrations.state.adapters.base import (
     RemoteState,
     TerminalAdapterError,
@@ -58,7 +59,8 @@ class EmbyStateAdapter:
 
         url = f"{self.account.base_url.rstrip('/')}{path}"
         try:
-            response = requests.get(
+            response = send_to_self_hosted(
+                requests.get,
                 url,
                 headers={"X-Emby-Token": decrypt_or_raise(self.account.api_key)},
                 params=params or {},

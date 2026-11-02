@@ -379,12 +379,22 @@ if [ "$1" = "-c" ]; then
     exec {sys.executable} "$@"
 fi
 {{ printf 'python'; printf ' <%s>' "$@"; printf '\n'; }} >> "$FAKE_LOG"
+if [ "$1" = "manage.py" ] && [ "$2" = "sqlite_startup" ] && [ "$#" = "2" ]; then
+    exit "${{ADMISSION_STATUS:-0}}"
+fi
+if [ "$1" = "config/static_collection.py" ]; then
+    exit "${{STATIC_COLLECTION_STATUS:-0}}"
+fi
+if [ "$2" = "collectstatic" ] && [ "$FAIL_STATIC_COLLECTION" = "1" ]; then
+    exit 1
+fi
 exit 0
 """,
         )
         self.write_command(
             fake_bin / "timeout",
             """#!/bin/sh
+case "$1" in -k) shift 2;; esac
 shift
 exec "$@"
 """,
@@ -444,6 +454,90 @@ fi
         path.write_text(content, encoding="utf-8")
         path.chmod(0o755)
 
+    def test_current_schema_skips_migration_command_and_starts_services(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir).resolve()
+            data = root / "db"
+            data.mkdir()
+            (data / "db.sqlite3").touch()
+            result, commands = self.run_entrypoint(
+                root, FLOPPY_DATA_DIR=str(data), ADMISSION_STATUS="10"
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("SQLite schema is current", result.stderr)
+            self.assertNotIn("<migrate>", commands)
+            self.assertIn("supervisord", commands)
+
+    def test_operator_decision_runs_offline_recovery_before_admission(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir).resolve()
+            data = root / "db"
+            data.mkdir()
+            (data / "db.sqlite3").touch()
+            (data / "db.sqlite3.integrity.decision").write_text(
+                "quarantine:incident-token"
+            )
+            result, commands = self.run_entrypoint(
+                root, FLOPPY_DATA_DIR=str(data), ADMISSION_STATUS="10"
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertLess(
+                commands.index("<sqlite_startup> <--recover>"),
+                commands.index("<sqlite_startup>\n"),
+            )
+            self.assertNotIn("<migrate>", commands)
+
+    def test_verified_image_skips_static_collection_and_default_ownership(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result, commands = self.run_entrypoint(Path(temp_dir), DB_HOST="fixture")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("<collectstatic>", commands)
+        self.assertNotIn("chown <-R> <abc:abc> <--> </floppy/staticfiles>", commands)
+        self.assertIn("chown <-R> <abc:abc> <--> </var/log/nginx>", commands)
+        self.assertIn("supervisord <-c> </etc/supervisord.conf>", commands)
+
+    def test_custom_ids_keep_recursive_static_ownership_repair(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result, commands = self.run_entrypoint(
+                Path(temp_dir),
+                DB_HOST="fixture",
+                PUID="2001",
+                PGID="2002",
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("<collectstatic>", commands)
+        self.assertIn("chown <-R> <abc:abc> <--> </floppy/staticfiles>", commands)
+
+    def test_cache_failure_uses_normal_collection_and_ownership(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result, commands = self.run_entrypoint(
+                Path(temp_dir),
+                DB_HOST="fixture",
+                STATIC_COLLECTION_STATUS="1",
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("<collectstatic>", commands)
+        self.assertIn("chown <-R> <abc:abc> <--> </floppy/staticfiles>", commands)
+
+    def test_collection_failure_stops_services_and_next_start_can_retry(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            result, commands = self.run_entrypoint(
+                root,
+                DB_HOST="fixture",
+                STATIC_COLLECTION_STATUS="1",
+                FAIL_STATIC_COLLECTION="1",
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn("supervisord", commands)
+            result, commands = self.run_entrypoint(
+                root,
+                DB_HOST="fixture",
+                STATIC_COLLECTION_STATUS="1",
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("supervisord", commands)
+
     def test_paths_with_spaces_and_leading_dash_remain_single_arguments(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             # entrypoint.sh resolves every path it logs/chowns via Python's
@@ -478,7 +572,7 @@ fi
 
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn(
-                f"Checking SQLite storage and relationships for {database_path}",
+                f"Checking SQLite startup admission for {database_path}",
                 result.stderr,
             )
             self.assertIn(f"chown <abc:abc> <--> <{data_dir}>", commands)
@@ -615,4 +709,3 @@ fi
                 f"supervisord <-c> </etc/supervisord.conf> [SECRET_FILE={custom_secret}]",
                 commands,
             )
-

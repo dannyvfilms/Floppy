@@ -8,9 +8,12 @@ Stremio exposes a small JSON-RPC-style API at ``https://api.strem.io/api``:
   -> every library item with its watch state.
 
 Library items are keyed by IMDB id (``tt…``). Watched episodes of a series
-are stored as a bitfield serialized as ``{anchorVideoId}:{length}:{base64
-(zlib-deflated bytes)}`` where bit *i* (LSB-first per byte) corresponds to
-index *i* of the show's ordered video list from Cinemeta.
+are stored as a bitfield serialized as ``{anchorVideoId}:{anchorLength}:{base64
+(zlib-deflated bytes)}``. Per stremio-core's ``WatchedField``, the anchor is the
+**last watched** video and ``anchorLength`` is that video's index plus one, so
+bit ``anchorLength - 1`` belongs to the anchor. Bit *i* (LSB-first per byte)
+indexes the show's ordered video list from Cinemeta as it stood when the
+bitfield was written; locating the anchor in the current list realigns it.
 """
 
 import base64
@@ -27,17 +30,27 @@ from simple_history.utils import bulk_update_with_history
 import app
 import app.providers.mal
 import app.providers.trakt
+from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources, Status
+from app.models.tv import PRODUCTION_STATUS_ENDED, classify_production_status
 from app.providers import services
 from app.services import grouped_anime
-from integrations import anime_mapping, import_progress
+from integrations import (
+    anime_mapping,
+    connection_health,
+    episode_remap,
+    import_progress,
+    stremio_events,
+)
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 from integrations.models import StremioAccount
+from integrations.webhooks import anime_mappings
 
 logger = logging.getLogger(__name__)
 
 STREMIO_API_BASE_URL = "https://api.strem.io/api"
+STREMIO_INVALID_SESSION_CODE = 1
 CINEMETA_VIDEO_IDS_URL = (
     "https://v3-cinemeta.strem.io/catalog/series/video-ids/imdbIds={ids}"
 )
@@ -64,6 +77,10 @@ def classify_stremio_id(entry_id):
         return (namespace, raw)
     return None
 
+
+# History label for status changes this sync makes (#1133).
+STREMIO_IMPORT_REASON = "Stremio import"
+
 # Forward-only status ranking used to decide whether the recurring sync may
 # advance an already-tracked Movie/TV/Season's status (see #580: the sync
 # must pick up completion the webhook deferred to it, but must never
@@ -74,6 +91,15 @@ _STATUS_RANK = {
     Status.COMPLETED.value: 2,
 }
 
+
+
+def _is_invalid_session(error):
+    """Return whether a Stremio API error means the auth key is no longer valid."""
+    if isinstance(error, dict):
+        if error.get("code") == STREMIO_INVALID_SESSION_CODE:
+            return True
+        error = error.get("message", "")
+    return "session does not exist" in str(error).lower()
 
 def _api_call(method, auth_key=None, **params):
     """Call a Stremio API method and unwrap the result envelope."""
@@ -95,6 +121,11 @@ def _api_call(method, auth_key=None, **params):
         else:
             message = str(error)
         msg = f"Stremio API error: {message}"
+        # Stremio answers an expired or revoked auth key with code 1,
+        # "Session does not exist". Any other envelope error is not about
+        # the credentials.
+        if _is_invalid_session(error):
+            raise helpers.ConnectionAuthError(msg)
         raise MediaImportError(msg)
 
     result = response.get("result")
@@ -120,8 +151,16 @@ def get_user(auth_key):
     return _api_call("getUser", auth_key=auth_key)
 
 
-def get_library_items(auth_key):
-    """Return every library item with watch state."""
+def get_library_items(auth_key, ids=None):
+    """Return library items with watch state: only `ids` when given, else all."""
+    if ids is not None:
+        return _api_call(
+            "datastoreGet",
+            auth_key=auth_key,
+            collection="libraryItem",
+            ids=list(ids),
+            all=False,
+        )
     return _api_call(
         "datastoreGet",
         auth_key=auth_key,
@@ -133,12 +172,34 @@ def get_library_items(auth_key):
 def decode_watched_bitfield(watched_str, video_ids):
     """Decode a serialized watched bitfield into a set of watched video ids.
 
-    The serialized form is ``{anchorVideoId}:{length}:{base64(zlib bytes)}``;
-    the anchor video id may itself contain ``:`` so the last two components
-    are popped from the right. Returns (watched_ids, anchor_ok) where
-    anchor_ok is False when the anchor video isn't at the expected index,
-    meaning Cinemeta's ordering may have shifted since the bitfield was
-    written and per-bit positions can't be trusted.
+    The serialized form is ``{anchorVideoId}:{anchorLength}:{base64(zlib
+    bytes)}``; the anchor video id may itself contain ``:`` so the last two
+    components are popped from the right.
+
+    Per stremio-core's ``WatchedField``, the anchor is the **last watched**
+    video (``bitfield.last_index_of(true)``) and ``anchorLength`` is that
+    video's index plus one — so bit ``anchorLength - 1`` belongs to the anchor,
+    not the end of the list. Locating the anchor in the current list therefore
+    fixes the whole index mapping: bit *i* is video *i + offset*, where
+    ``offset = video_ids.index(anchor) - (anchorLength - 1)``. This is the same
+    shift ``WatchedBitField::construct_with_videos`` applies, so a decode here
+    agrees with what the Stremio client itself would show.
+
+    Reading bit *i* as video *i* is only correct while the list is unchanged.
+    Cinemeta does re-order and extend it — a new special, a re-ordered season —
+    and then every index after the change is shifted. That is not rare: of the
+    135 series with a bitfield in the live library, 29 have the anchor at a
+    different index than recorded (a recoverable offset) and 1 no longer lists
+    it at all. Reading them unaligned files watched state against the wrong
+    episodes — 129 of the 162 mismatched ids were season 0, landing on specials
+    the user never watched.
+
+    Returns ``(watched_ids, anchored)``. ``anchored`` is False only when the
+    anchor is absent from the list. stremio-core blanks the whole bitfield in
+    that case; this returns the unshifted bits with ``anchored=False`` so the
+    caller can fall back to the last-watched video rather than discarding the
+    user's history. Bits whose aligned position falls outside the list are
+    dropped.
     """
     components = watched_str.split(":")
     if len(components) < BITFIELD_MIN_COMPONENTS:
@@ -150,31 +211,31 @@ def decode_watched_bitfield(watched_str, video_ids):
     anchor_video_id = ":".join(components)
 
     buf = zlib.decompress(base64.b64decode(serialized))
-    watched = {
-        video_id
-        for index, video_id in enumerate(video_ids)
-        if index < anchor_length
-        and index < len(buf) * 8
-        and buf[index >> 3] & (1 << (index & 7))
-    }
 
-    anchor_ok = (
-        anchor_video_id in video_ids
-        and video_ids.index(anchor_video_id) == anchor_length - 1
-    )
-    return watched, anchor_ok
+    if anchor_video_id in video_ids:
+        offset = video_ids.index(anchor_video_id) - (anchor_length - 1)
+        anchored = True
+    else:
+        offset = 0
+        anchored = False
+
+    watched = set()
+    for bit in range(min(anchor_length, len(buf) * 8)):
+        if not buf[bit >> 3] & (1 << (bit & 7)):
+            continue
+        index = bit + offset
+        if 0 <= index < len(video_ids):
+            watched.add(video_ids[index])
+
+    return watched, anchored
 
 
 def parse_video_id(video_id):
     """Parse ``tt123:season:episode`` into (season, episode) or None."""
-    parts = video_id.split(":")
-    expected_parts = 3
-    if len(parts) != expected_parts:
+    parsed = stremio_events.parse_episode_id(video_id)
+    if parsed is None:
         return None
-    try:
-        return int(parts[1]), int(parts[2])
-    except ValueError:
-        return None
+    return parsed[1], parsed[2]
 
 
 def importer(identifier, user, mode):
@@ -204,17 +265,18 @@ class StremioImporter:
         try:
             self.auth_key = helpers.decrypt_or_raise(self.account.auth_key)
         except MediaImportError as decrypt_error:
-            self.account.connection_broken = True
-            self.account.last_error_message = str(decrypt_error)
-            self.account.save(
-                update_fields=["connection_broken", "last_error_message", "updated_at"],
-            )
+            connection_health.record_failure(self.account, decrypt_error, auth=True)
             raise
 
         self.existing_media = helpers.get_existing_media(user)
+        # Shows/movies the user deleted stay deleted, even though Stremio's
+        # library (often fed by Trakt) still lists them (#1133).
+        self.deleted_media = helpers.get_deleted_media(user)
         self.to_delete = defaultdict(lambda: defaultdict(set))
         self.bulk_media = defaultdict(list)
         self.bulk_season_by_item_id = {}
+        self._anibridge_mapping_data = None
+        self._anibridge_mapping_loaded = False
 
         logger.info(
             "Initialized Stremio importer for user %s with mode %s",
@@ -227,7 +289,11 @@ class StremioImporter:
         try:
             items = get_library_items(self.auth_key)
         except MediaImportError as error:
-            self._mark_broken(str(error))
+            connection_health.record_failure(
+                self.account,
+                error,
+                auth=isinstance(error, helpers.ConnectionAuthError),
+            )
             raise
 
         movies, series, anime = self._partition_items(items)
@@ -308,16 +374,7 @@ class StremioImporter:
         helpers.bulk_create_media(self.bulk_media, self.user)
 
         self.account.last_sync_at = timezone.now()
-        self.account.connection_broken = False
-        self.account.last_error_message = ""
-        self.account.save(
-            update_fields=[
-                "last_sync_at",
-                "connection_broken",
-                "last_error_message",
-                "updated_at",
-            ],
-        )
+        connection_health.record_success(self.account, extra_fields=["last_sync_at"])
 
         imported_counts = {
             media_type: len(media_list)
@@ -325,16 +382,6 @@ class StremioImporter:
         }
         return imported_counts, "\n".join(dict.fromkeys(self.warnings))
 
-    def _mark_broken(self, message):
-        self.account.connection_broken = True
-        self.account.last_error_message = message
-        self.account.save(
-            update_fields=[
-                "connection_broken",
-                "last_error_message",
-                "updated_at",
-            ],
-        )
 
     def _partition_items(self, items):
         """Split library items into importable movies, series, and anime."""
@@ -453,6 +500,22 @@ class StremioImporter:
             status = Status.PLANNING.value
         return status, watched
 
+    @staticmethod
+    def _show_has_definitely_ended(tv_instance):
+        """Return whether the provider positively reports the show as finished.
+
+        False when the provider is unreachable, carries no status, or reports
+        one we don't recognize, so a recurring sync never finalizes a show on
+        missing or unfamiliar information.
+        """
+        production_status = tv_instance.resolve_production_status()
+        if production_status is None:
+            return False
+        return (
+            classify_production_status(production_status)
+            == PRODUCTION_STATUS_ENDED
+        )
+
     def _advance_status_in_place(self, instance, new_status, **field_updates):
         """Advance an already-tracked instance's status forward-only.
 
@@ -467,9 +530,25 @@ class StremioImporter:
         if old_rank is None or new_rank is None or new_rank <= old_rank:
             return False
 
+        if (
+            isinstance(instance, app.models.TV)
+            and new_status == Status.COMPLETED.value
+            and not self._show_has_definitely_ended(instance)
+        ):
+            # A background sync only ever sees the episodes Cinemeta happens to
+            # list, so "everything watched" is not evidence a show is over.
+            # Completing it here overwrites a status the user set (#375), so
+            # require positive evidence from the provider instead - and require
+            # it whether the row is Planning or In progress, so the two can't
+            # disagree. Watching still moves a Planning show to In progress.
+            new_status = Status.IN_PROGRESS.value
+            if _STATUS_RANK[new_status] <= old_rank:
+                return False
+
         instance.status = new_status
         for field, value in field_updates.items():
             setattr(instance, field, value)
+        instance._change_reason = STREMIO_IMPORT_REASON
         instance.save()
         return True
 
@@ -512,6 +591,7 @@ class StremioImporter:
             Sources.TMDB.value,
             media_id,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 
@@ -525,7 +605,8 @@ class StremioImporter:
                 return
             raise
 
-        movie_item, _ = app.models.Item.objects.get_or_create(
+        movie_item, _ = helpers.get_or_create_item_across_buckets(
+            user=self.user,
             media_id=tmdb_id,
             source=Sources.TMDB.value,
             media_type=MediaTypes.MOVIE.value,
@@ -601,6 +682,7 @@ class StremioImporter:
             Sources.TMDB.value,
             media_id,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 
@@ -608,12 +690,15 @@ class StremioImporter:
         try:
             metadata = app.providers.tmdb.tv_with_seasons(tmdb_id, season_numbers)
         except services.ProviderAPIError as error:
-            if error.status_code == requests.codes.not_found:
-                self.warnings.append(
-                    f"{name}: not found in {Sources.TMDB.label} with ID {tmdb_id}.",
-                )
-                return
-            raise
+            if error.status_code != requests.codes.not_found:
+                raise
+            # A missing season is omitted from the payload rather than
+            # returned as a 404, so a 404 here means the show itself is
+            # missing and a second lookup of the same show cannot help.
+            self.warnings.append(
+                f"{name}: not found in {Sources.TMDB.label} with ID {tmdb_id}.",
+            )
+            return
 
         library_media_type = ""
         grouped_anime_match = None
@@ -637,7 +722,7 @@ class StremioImporter:
                 if (
                     tv_instance is not None
                     and grouped_anime_match is not None
-                    and not grouped_anime.promote_grouped_anime(
+                    and not self._promote_grouped(
                         tv_instance.item,
                         grouped_anime_match,
                     )
@@ -674,10 +759,7 @@ class StremioImporter:
             if (
                 library_media_type == MediaTypes.ANIME.value
                 and grouped_anime_match is not None
-                and not grouped_anime.promote_grouped_anime(
-                    tv_item,
-                    grouped_anime_match,
-                )
+                and not self._promote_grouped(tv_item, grouped_anime_match)
             ):
                 self.warnings.append(
                     f"{name}: exact anime match had a target-bucket collision; "
@@ -691,7 +773,24 @@ class StremioImporter:
                 status=tv_status,
             )
             tv_instance._history_date = self._get_history_date(entry)
+            # A show imported as Completed fans out episodes through
+            # `TV._completed`, which reads `_pending_end_date` off the TV. Without
+            # it those episodes take the user's preference (default "now"), so
+            # history imported from years back reads as watched today.
+            tv_instance._pending_end_date = tv_instance._history_date
             self.bulk_media[MediaTypes.TV.value].append(tv_instance)
+
+        if (
+            watched_episodes
+            and library_media_type == MediaTypes.ANIME.value
+            and grouped_anime_match is not None
+            and grouped_anime_match.is_grouped_anime
+        ):
+            watched_episodes, metadata = self._canonicalize_anime_episodes(
+                tmdb_id,
+                metadata,
+                watched_episodes,
+            )
 
         if watched_episodes:
             self._process_seasons_and_episodes(
@@ -703,6 +802,99 @@ class StremioImporter:
                 name,
             )
 
+    def _get_anibridge_mapping_data(self):
+        """Load the AniBridge episode graph once, on first need, failing open."""
+        if self._anibridge_mapping_loaded:
+            return self._anibridge_mapping_data
+
+        self._anibridge_mapping_loaded = True
+        if not getattr(self.user, "anime_enabled", False):
+            return None
+
+        try:
+            self._anibridge_mapping_data = anime_mappings.fetch_mapping_data()
+        except Exception as error:  # pragma: no cover - defensive network guard
+            logger.warning(
+                "stremio_anibridge_mapping_unavailable user_id=%s error=%s",
+                self.user.id,
+                exception_summary(error),
+            )
+        return self._anibridge_mapping_data
+
+    def _canonicalize_anime_episodes(
+        self,
+        tmdb_id,
+        metadata,
+        watched_episodes,
+    ):
+        """Map grouped-anime episodes to the canonical TMDB season identity."""
+        mapping_data = self._get_anibridge_mapping_data()
+        if not mapping_data:
+            return watched_episodes, metadata
+
+        metadata_ids = metadata.get("provider_external_ids") or {}
+        tvdb_id = metadata.get("tvdb_id") or metadata_ids.get("tvdb_id")
+
+        mapped_pairs = []
+        for season_number, episode_number in watched_episodes:
+            mapped = anime_mappings.get_tmdb_episode_mapping(
+                mapping_data,
+                tmdb_id,
+                season_number,
+                episode_number,
+                tvdb_id=tvdb_id,
+            )
+            mapped_pairs.append(((season_number, episode_number), mapped))
+
+        if all(mapped in (None, original) for original, mapped in mapped_pairs):
+            return watched_episodes, metadata
+
+        # Load the mapped seasons plus the source seasons, so a mapping TMDB
+        # does not confirm can fall back to the episode as Stremio reported it.
+        target_seasons = sorted(
+            {
+                season_number
+                for original, mapped in mapped_pairs
+                for season_number, _ in (original, mapped or original)
+            },
+        )
+        try:
+            canonical_metadata = app.providers.tmdb.tv_with_seasons(
+                tmdb_id,
+                target_seasons,
+            )
+        except services.ProviderAPIError as error:
+            logger.warning(
+                "Canonical TMDB season lookup failed for Stremio anime %s: %s",
+                tmdb_id,
+                exception_summary(error),
+            )
+            return watched_episodes, metadata
+
+        canonical_episodes = []
+        for original, mapped in mapped_pairs:
+            season_metadata = (
+                canonical_metadata.get(f"season/{mapped[0]}") if mapped else None
+            )
+            if mapped and season_metadata and episode_remap.episode_in_season(
+                mapped[1],
+                season_metadata,
+            ):
+                canonical_episodes.append(mapped)
+            else:
+                canonical_episodes.append(original)
+
+        canonical_episodes = sorted(set(canonical_episodes))
+        if canonical_episodes == watched_episodes:
+            return watched_episodes, metadata
+
+        logger.info(
+            "Mapped Stremio anime episodes for TMDB %s from source numbering "
+            "onto canonical seasons",
+            tmdb_id,
+        )
+        return canonical_episodes, canonical_metadata
+
     def _watched_videos(self, entry, video_ids, name):
         """Return the set of watched video ids for a series entry."""
         state = entry.get("state") or {}
@@ -711,7 +903,7 @@ class StremioImporter:
 
         if watched_str and video_ids:
             try:
-                watched, anchor_ok = decode_watched_bitfield(watched_str, video_ids)
+                watched, anchored = decode_watched_bitfield(watched_str, video_ids)
             except (ValueError, zlib.error) as error:
                 logger.warning(
                     "Could not decode watched bitfield for %s: %s",
@@ -719,13 +911,20 @@ class StremioImporter:
                     error,
                 )
             else:
-                if anchor_ok:
+                # An aligned decode is only useful when it carries bits. An
+                # empty bitfield asserts nothing — Stremio writes one for a
+                # series whose state has a `video_id`/`timesWatched` but no
+                # per-episode bits — so returning it would drop the
+                # last-watched episode the fallback below recovers. Two live
+                # series (Dexter, Naked Attraction) have exactly that shape.
+                if anchored and watched:
                     return watched
-                logger.warning(
-                    "Watched bitfield anchor mismatch for %s; using last "
-                    "watched video only",
-                    entry.get("_id"),
-                )
+                if not anchored:
+                    logger.warning(
+                        "Watched bitfield anchor absent from the video list for "
+                        "%s; using last watched video only",
+                        entry.get("_id"),
+                    )
 
         # Fallback: mark only the last played video as watched.
         if watched_str or state.get("flaggedWatched") or state.get("timesWatched"):
@@ -799,6 +998,7 @@ class StremioImporter:
                 )
 
             max_progress = int(season_metadata.get("max_progress") or 0)
+            season_episode_numbers = helpers.season_episode_numbers(season_metadata)
             watched_episode_numbers = {
                 int(number)
                 for number in episode_numbers
@@ -806,7 +1006,7 @@ class StremioImporter:
             }
             season_complete = (
                 max_progress > 0
-                and set(range(1, max_progress + 1)).issubset(
+                and season_episode_numbers.issubset(
                     watched_episode_numbers,
                 )
             )
@@ -839,7 +1039,9 @@ class StremioImporter:
                         [existing_season],
                         app.models.Season,
                         ["status"],
+                        default_change_reason=STREMIO_IMPORT_REASON,
                     )
+                    helpers.note_bulk_rows([existing_season])
                 season_instance = existing_season
             elif season_item.id in self.bulk_season_by_item_id:
                 # Grouped-anime promotion can unify two Stremio entries onto
@@ -861,9 +1063,20 @@ class StremioImporter:
                     item=season_item,
                     user=self.user,
                     related_tv=tv_instance,
-                    status=season_status,
+                    # A dropped/paused show keeps new seasons off the In
+                    # progress shelf; the plays are still recorded.
+                    status=(
+                        tv_instance.status
+                        if tv_instance.status in app.models.USER_HELD_STATUSES
+                        else season_status
+                    ),
                 )
                 season_instance._history_date = history_date
+                # A season imported as Completed may still fan out episodes
+                # the bitfield did not credit. They belong to this entry's
+                # viewing, so they must carry its date rather than the import
+                # time (`_backfill_completed_season_episodes` reads this).
+                season_instance._pending_end_date = history_date
                 self.bulk_media[MediaTypes.SEASON.value].append(season_instance)
                 self.bulk_season_by_item_id[season_item.id] = season_instance
 
@@ -971,7 +1184,12 @@ class StremioImporter:
                 trakt_id,
                 media_type=media_type,
             )
-        except services.ProviderAPIError as error:
+        except (services.ProviderAPIError, requests.exceptions.RequestException) as error:
+            # `services.api_request` re-raises a non-retryable HTTP status (403,
+            # 404) as a raw `requests.HTTPError`, not a `ProviderAPIError`, so
+            # catching only the latter let one unresolvable id abort the whole
+            # import. Trakt answers 403 on its paid tier, and two library
+            # entries are `trakt:`-namespaced.
             logger.warning("Error looking up Trakt ID %s: %s", trakt_id, error)
             return None
         if not result:
@@ -1087,6 +1305,7 @@ class StremioImporter:
             Sources.MAL.value,
             media_id,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 
@@ -1098,7 +1317,8 @@ class StremioImporter:
             )
             return
 
-        anime_item, _ = app.models.Item.objects.get_or_create(
+        anime_item, _ = helpers.get_or_create_item_across_buckets(
+            user=self.user,
             media_id=mal_id,
             source=Sources.MAL.value,
             media_type=MediaTypes.ANIME.value,
@@ -1124,6 +1344,14 @@ class StremioImporter:
         if date_str:
             return parse_datetime(date_str)
         return None
+
+    def _promote_grouped(self, tv_item, match):
+        """Promote a show to the anime bucket, noting a move no day list covers."""
+        already_grouped = tv_item.library_media_type == grouped_anime.GROUPED_BUCKET
+        promoted = grouped_anime.promote_grouped_anime(tv_item, match)
+        if promoted and not already_grouped:
+            helpers.note_full_refresh()
+        return promoted
 
     def _get_history_date(self, entry):
         """Get the history date for an entry."""

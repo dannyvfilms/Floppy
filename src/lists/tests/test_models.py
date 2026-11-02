@@ -154,17 +154,14 @@ class CustomListModelTest(TestCase):
         """
         first_item, _second_item = self._add_two_items()
 
-        prefetched_list = (
-            CustomList.objects.prefetch_related(
-                Prefetch(
-                    "customlistitem_set",
-                    queryset=CustomListItem.objects.select_related(
-                        "item",
-                    ).order_by("date_added"),
-                ),
-            )
-            .get(id=self.custom_list.id)
-        )
+        prefetched_list = CustomList.objects.prefetch_related(
+            Prefetch(
+                "customlistitem_set",
+                queryset=CustomListItem.objects.select_related(
+                    "item",
+                ).order_by("date_added"),
+            ),
+        ).get(id=self.custom_list.id)
 
         self.assertEqual(prefetched_list.image, first_item.image)
 
@@ -222,7 +219,7 @@ class CustomListManagerTest(TestCase):
         self.assertTrue(smart_list.items.filter(id=item.id).exists())
 
     def test_collect_matching_item_ids_fast_paths_simple_status_rules(self):
-        """Status-only smart rules should not build extra collection/rating scans."""
+        """Status-only smart rules are answered in SQL, without scanning items."""
         completed_item = Item.objects.create(
             title="Completed Movie",
             media_id="4567",
@@ -256,19 +253,9 @@ class CustomListManagerTest(TestCase):
             self.user,
         )
 
-        with (
-            patch(
-                "lists.smart_rules._collection_filter_context",
-                side_effect=AssertionError("collection context should not be built"),
-            ),
-            patch(
-                "lists.smart_rules._filter_item_ids_by_rating",
-                side_effect=AssertionError("rating filter scan should not run"),
-            ),
-            patch(
-                "lists.smart_rules._matches_item_filters",
-                side_effect=AssertionError("simple status rules should not scan items"),
-            ),
+        with patch(
+            "app.library_query.executor.LibraryQueryExecutor._scan",
+            side_effect=AssertionError("simple status rules should not scan items"),
         ):
             matched_ids = smart_rules.collect_matching_item_ids(
                 self.user, normalized_rules
@@ -1431,6 +1418,43 @@ class TmdbBackdropTest(TestCase):
         super().tearDown()
 
     @patch("app.providers.services.api_request")
+    def test_cached_backdrop_and_cached_absence_skip_provider(self, mock_request):
+        for cached in (
+            "https://image.tmdb.org/t/p/w1280/cached.jpg",
+            settings.IMG_NONE,
+        ):
+            with self.subTest(cached=cached):
+                cache.set("tmdb_backdrop_movie_603", cached, 60)
+                self.assertEqual(
+                    CustomList()._get_tmdb_backdrop(MediaTypes.MOVIE.value, "603"),
+                    cached,
+                )
+        mock_request.assert_not_called()
+
+    @patch("app.providers.services.api_request")
+    def test_tv_backdrop_is_cached_for_seven_days(self, mock_request):
+        mock_request.return_value = {"backdrop_path": "/tv.jpg"}
+        with patch("app.backdrops.cache.set", wraps=cache.set) as mock_cache_set:
+            backdrop = CustomList()._get_tmdb_backdrop(MediaTypes.TV.value, "1396")
+
+        self.assertTrue(mock_request.call_args.args[2].endswith("/tv/1396"))
+        mock_cache_set.assert_any_call(
+            "tmdb_backdrop_tv_1396", backdrop, 60 * 60 * 24 * 7
+        )
+        self.assertEqual(cache.get("tmdb_backdrop_tv_1396"), backdrop)
+
+    @patch("app.providers.services.api_request", side_effect=RuntimeError("offline"))
+    def test_provider_error_caches_absence_for_one_day(self, mock_request):
+        with patch("app.backdrops.cache.set", wraps=cache.set) as mock_cache_set:
+            backdrop = CustomList()._get_tmdb_backdrop(MediaTypes.MOVIE.value, "603")
+
+        self.assertEqual(backdrop, settings.IMG_NONE)
+        mock_cache_set.assert_any_call(
+            "tmdb_backdrop_movie_603", settings.IMG_NONE, 60 * 60 * 24
+        )
+        self.assertEqual(cache.get("tmdb_backdrop_movie_603"), settings.IMG_NONE)
+
+    @patch("app.providers.services.api_request")
     def test_backdrop_url_is_built_from_the_response(self, mock_request):
         """A successful lookup returns the full image URL."""
         mock_request.return_value = {"backdrop_path": "/abc.jpg"}
@@ -1556,7 +1580,7 @@ class SmartRuleGranularMediaTypesTest(TestCase):
 
 
 class SmartRuleRelativeDateWindowTest(TestCase):
-    """"In the last N units" stays relative and resolves at evaluation time."""
+    """ "In the last N units" stays relative and resolves at evaluation time."""
 
     def setUp(self):
         """Create a user with movies completed at known dates."""

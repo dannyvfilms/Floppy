@@ -76,7 +76,12 @@ def send_releases():
         )
         logger.info("Marked %s events as notified", len(result["event_ids"]))
 
-    return f"{result['event_count']} recent releases processed"
+    failed_deliveries = result.get("failed_deliveries", {})
+    record_failed_alerts(failed_deliveries)
+
+    return f"{result['event_count']} recent releases processed" + describe_failures(
+        failed_deliveries,
+    )
 
 
 def send_daily_digest():
@@ -127,9 +132,32 @@ def send_daily_digest():
         events=events,
         users=users,
         title=title,
+        skip_alerted_for_instant_users=True,
     )
 
-    return f"Daily digest sent for {result['event_count']} releases"
+    return f"Daily digest sent for {result['event_count']} releases" + (
+        describe_failures(result.get("failed_deliveries", {}))
+    )
+
+
+def describe_failures(failed_deliveries):
+    """Return a task-result suffix naming how many users could not be reached."""
+    if not failed_deliveries:
+        return ""
+    return f" (delivery failed for {len(failed_deliveries)} user(s))"
+
+
+def record_failed_alerts(failed_deliveries):
+    """Remember which users a real-time alert did not reach, per event."""
+    through = Event.alert_failed_users.through
+    through.objects.bulk_create(
+        [
+            through(event_id=event_id, user_id=user_id)
+            for user_id, event_ids in failed_deliveries.items()
+            for event_id in event_ids
+        ],
+        ignore_conflicts=True,
+    )
 
 
 def send_premiere_digest():
@@ -182,7 +210,13 @@ def send_premiere_digest():
     return f"Premiere digest sent for {result['event_count']} premieres"
 
 
-def send_notifications(events, users, title, formatter=None):
+def send_notifications(
+    events,
+    users,
+    title,
+    formatter=None,
+    skip_alerted_for_instant_users=False,
+):
     """Process events and send notifications to appropriate users.
 
     Args:
@@ -191,9 +225,12 @@ def send_notifications(events, users, title, formatter=None):
         title: Notification title
         formatter: Callable(releases) -> HTML body. Defaults to
             format_notification_html.
+        skip_alerted_for_instant_users: Leave out events already announced by
+            send_releases() for users who have release notifications on.
 
     Returns:
-        Dictionary with results information
+        Dictionary with results information. failed_deliveries maps each user
+        id whose notification could not be sent to that user's event ids.
     """
     event_count = events.count()
     logger.info(
@@ -216,18 +253,41 @@ def send_notifications(events, users, title, formatter=None):
     user_releases = get_user_releases(
         users=users,
         target_events=events_by_item_and_content,
+        skip_alerted_for_instant_users=skip_alerted_for_instant_users,
     )
 
-    deliver_notifications(user_releases, users, title, formatter=formatter)
+    failed_user_ids = deliver_notifications(
+        user_releases,
+        users,
+        title,
+        formatter=formatter,
+    )
 
     return {
         "event_count": event_count,
         "event_ids": event_ids,
+        "failed_deliveries": {
+            user_id: [event.id for event in user_releases[user_id]]
+            for user_id in failed_user_ids
+        },
     }
 
 
-def get_user_releases(users, target_events):
-    """Get user releases with optimized queries that avoid N+1 problems."""
+def get_user_releases(users, target_events, skip_alerted_for_instant_users=False):
+    """Get user releases with optimized queries that avoid N+1 problems.
+
+    notification_sent is global, so it only counts as "already alerted" for
+    users who receive release notifications, and only when their alert did not
+    fail; everyone else still sees the event.
+    """
+    failed_alerts = set()
+    if skip_alerted_for_instant_users:
+        failed_alerts = set(
+            Event.alert_failed_users.through.objects.filter(
+                event_id__in=[event.id for event in target_events.values()],
+            ).values_list("user_id", "event_id"),
+        )
+
     user_exclusions = {}
     for user in users:
         user_exclusions[user.id] = set(
@@ -236,7 +296,15 @@ def get_user_releases(users, target_events):
 
     user_enabled_types = {}
     for user in users:
-        user_enabled_types[user.id] = user.get_active_media_types()
+        enabled_types = user.get_active_media_types()
+        # Episode events use the season media type, but TV Seasons is only a
+        # display setting: enabling TV Series is enough (same rule as the calendar).
+        if (
+            MediaTypes.TV.value in enabled_types
+            and MediaTypes.SEASON.value not in enabled_types
+        ):
+            enabled_types = [*enabled_types, MediaTypes.SEASON.value]
+        user_enabled_types[user.id] = enabled_types
 
     user_tracking_data = get_all_user_tracking_data(
         users,
@@ -253,7 +321,22 @@ def get_user_releases(users, target_events):
             enabled_types,
         )
 
+        skip_alerted = (
+            skip_alerted_for_instant_users and user.release_notifications_enabled
+        )
+
         for event in target_events.values():
+            if (
+                skip_alerted
+                and event.notification_sent
+                and (user.id, event.id) not in failed_alerts
+            ):
+                continue
+
+            # Digital and physical dates only apply to the user's own region
+            if event.release_type and event.region != user.watch_provider_region:
+                continue
+
             # Check if a preferred cross-provider/cross-bucket duplicate exists
             if event.item.id in hidden_item_ids:
                 continue
@@ -495,6 +578,9 @@ def deliver_notifications(user_releases, users, title, formatter=None):
         title: Notification title
         formatter: Callable(releases) -> HTML body. Defaults to
             format_notification_html.
+
+    Returns:
+        List of user ids whose notification could not be sent.
     """
     # Imported here, not at module scope: apprise loads its whole notification
     # plugin registry on import, and that cost lands in every long-lived
@@ -503,6 +589,8 @@ def deliver_notifications(user_releases, users, title, formatter=None):
 
     if formatter is None:
         formatter = format_notification_html
+
+    failed_user_ids = []
 
     # Create user lookup
     users_by_id = {user.id: user for user in users}
@@ -527,13 +615,17 @@ def deliver_notifications(user_releases, users, title, formatter=None):
         notification_body = formatter(releases=releases)
 
         # Send notification
-        send_user_notification(
+        sent = send_user_notification(
             user,
             urls,
             title,
             notification_body,
             body_format=apprise.NotifyFormat.HTML,
         )
+        if not sent:
+            failed_user_ids.append(user_id)
+
+    return failed_user_ids
 
 
 def group_releases_by_type(releases):
@@ -725,6 +817,9 @@ def send_user_notification(
         title: Notification title
         body: Notification body
         body_format: Apprise body format. Defaults to plain text.
+
+    Returns:
+        True if Apprise reported the notification as sent, False otherwise.
     """
     # Imported here, not at module scope: apprise loads its whole notification
     # plugin registry on import, and that cost lands in every long-lived
@@ -750,10 +845,12 @@ def send_user_notification(
                 "Notification sent to %s",
                 user.username,
             )
-        else:
-            logger.error(
-                "Failed to send notification to %s",
-                user.username,
-            )
+            return True
+        logger.error(
+            "Failed to send notification to %s",
+            user.username,
+        )
     except Exception:
         logger.exception("Error sending notification to %s", user.username)
+
+    return False

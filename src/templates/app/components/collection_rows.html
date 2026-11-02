@@ -1,0 +1,9 @@
+{% comment %}
+  Collection grouped by media type: one Home-style scrolling row per type.
+  Context: collection_rows
+{% endcomment %}
+<div class="space-y-6 min-w-0" style="grid-column: 1 / -1;">
+  {% for row in collection_rows %}
+    {% include "app/components/_scrollable_row.html" with row=row hx_url=row.load_more_url grid_template="app/components/collection_row_grid.html" %}
+  {% endfor %}
+</div>

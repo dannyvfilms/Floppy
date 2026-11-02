@@ -33,6 +33,7 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods
 
+from app.game_artwork import screenscraper
 from app.models import MediaTypes
 from app.providers import credentials
 from integrations.models import ImportRun
@@ -41,6 +42,7 @@ from users.views import SIDEBAR_MEDIA_TYPES, apply_media_type_preferences
 
 STEP_URL_NAMES = {
     "media_types": "onboarding_media_types",
+    "metadata": "onboarding_metadata",
     "services": "onboarding_services",
     "services_summary": "onboarding_services_summary",
     "service_setup": "onboarding_service_setup",
@@ -57,6 +59,7 @@ ONBOARDING_MEDIA_TYPES = [
 
 STEP_LABELS = [
     ("media_types", "Media Types"),
+    ("metadata", "Metadata"),
     ("services", "Services"),
     ("services_summary", "Summary"),
     ("service_setup", "Connect"),
@@ -136,7 +139,7 @@ def onboarding_media_types(request):
             request.POST.get("sidebar_media_type_order", "").split(","),
             media_types=ONBOARDING_MEDIA_TYPES,
         )
-        return _advance(request.user, request, "services", fields)
+        return _advance(request.user, request, "metadata", fields)
 
     preferred_order = request.user.sidebar_media_type_order or []
     media_types = [mt for mt in preferred_order if mt in ONBOARDING_MEDIA_TYPES]
@@ -145,6 +148,130 @@ def onboarding_media_types(request):
         request,
         "users/onboarding/media_types.html",
         {"media_types": media_types, **_wizard_progress("media_types")},
+    )
+
+
+# Providers worth offering during setup, with an example of what each adds. Only
+# ones a member's enabled media types can use are shown, and never one they (or
+# the environment) already set. Keys are saved as personal keys, the same as
+# Settings > Metadata does.
+METADATA_SUGGESTIONS = (
+    {
+        "slug": "steamgriddb",
+        "media_types": (MediaTypes.GAME.value,),
+        "badge": "Recommended",
+        "why": (
+            "Adds logos and widescreen backdrops to game pages, so Hollow Knight "
+            "gets its logo over a proper hero image instead of a plain screenshot."
+        ),
+    },
+    {
+        "slug": "thegamesdb",
+        "media_types": (MediaTypes.GAME.value,),
+        "badge": "Extra coverage",
+        "why": "Fills in logos and backdrops for older and obscure games other sources miss.",
+    },
+    {
+        "slug": "screenscraper",
+        "media_types": (MediaTypes.GAME.value,),
+        "badge": "Retro",
+        "why": (
+            "Matches classic console games by system and name. An account is optional "
+            "and raises your limits."
+        ),
+        "available": lambda: screenscraper.developer_credentials() is not None,
+    },
+    {
+        "slug": "tmdb",
+        "media_types": (MediaTypes.MOVIE.value, MediaTypes.TV.value),
+        "badge": "Your own key",
+        "why": (
+            "The built-in key is shared by every Floppy install and can hit its limit "
+            "during big imports. A free key of your own avoids that."
+        ),
+    },
+)
+
+
+def _already_set(spec, user):
+    """Return whether the member, the environment or the instance supplies the key."""
+    return any(
+        credentials.source_of(spec.slug, field.name, user)
+        in {credentials.SOURCE_USER, credentials.SOURCE_ENV, credentials.SOURCE_DB}
+        for field in spec.fields
+    )
+
+
+def _metadata_suggestions(user):
+    """Return the providers to offer this member, with their form fields."""
+    enabled = set(user.get_enabled_media_types())
+    suggestions = []
+    for entry in METADATA_SUGGESTIONS:
+        spec = credentials.get_spec(entry["slug"])
+        if (
+            spec is None
+            or not enabled.intersection(entry["media_types"])
+            or not entry.get("available", lambda: True)()
+            or _already_set(spec, user)
+        ):
+            continue
+        suggestions.append({**entry, "spec": spec, "fields": spec.personal_fields()})
+    return suggestions
+
+
+@require_http_methods(["GET", "POST"])
+def onboarding_metadata(request):
+    """Step 2: optionally add provider keys that improve artwork and limits.
+
+    Skipped without a page when nothing here applies to the member's media
+    types, so the wizard never shows an empty step.
+    """
+    blocked = _blocked_for_demo(request)
+    if blocked:
+        return blocked
+
+    suggestions = _metadata_suggestions(request.user)
+    if not suggestions:
+        return _advance(request.user, request, "services")
+
+    if request.method == "POST":
+        if request.POST.get("action") == "skip":
+            return _advance(request.user, request, "services")
+
+        failed = False
+        for suggestion in suggestions:
+            spec = suggestion["spec"]
+            values = {
+                field.name: request.POST.get(f"{spec.slug}-{field.name}", "").strip()
+                for field in suggestion["fields"]
+            }
+            if not any(values.values()):
+                continue
+            # A partly filled login (one field of a pair) is as unusable as a bad key.
+            required_missing = any(
+                field.required and not values[field.name] for field in suggestion["fields"]
+            )
+            error = (
+                "fill in every field"
+                if required_missing
+                else spec.validator(values)
+                if spec.validator is not None
+                else None
+            )
+            if error:
+                failed = True
+                messages.error(request, f"{spec.label}: {error}")
+                continue
+            credentials.set_user(spec.slug, request.user, values)
+            messages.success(request, f"Your {spec.label} key was saved.")
+        if failed:
+            return redirect("onboarding_metadata")
+        return _advance(request.user, request, "services")
+
+    return render(
+        request,
+        "users/onboarding/metadata.html",
+        {"suggestions": suggestions, **_wizard_progress("metadata")},
     )
 
 
@@ -266,10 +393,7 @@ def onboarding_service_setup(request):
         {
             "current_source": current,
             "remaining_count": len(remaining),
-            "trakt_configured": bool(
-                credentials.get("trakt", "client_id")
-                and credentials.get("trakt", "client_secret"),
-            ),
+            "trakt_configured": bool(credentials.get("trakt", "client_id")),
             **_wizard_progress("service_setup"),
         },
     )

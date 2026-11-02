@@ -2,14 +2,17 @@
 {% load i18n %}
 
 {% load static %}
-{% load app_tags %}
+{% load app_tags alphabet_tags %}
 
 {% block title %}
   {{ custom_list }} - Floppy
 {% endblock title %}
 
 {# djlint:off #}
+{% block alphabet_filter %}{% alphabet_filter "smart-filter-form" %}{% endblock alphabet_filter %}
+
 {% block content %}
+  <div class="alphabet-surface">
   {# Form CSS lives in the content block so boosted navigation keeps it #}
   {% if form %}{{ form.media.css }}{% endif %}
 
@@ -21,7 +24,20 @@
     {{ bulk_action_data|json_script:"smart-list-bulk-action-data" }}
   {% endif %}
 
-  {% translate "All" as media_i18n_2 %}{% translate "Rated" as media_i18n_3 %}{% translate "Not Rated" as media_i18n_4 %}{% translate "Collected" as media_i18n_5 %}{% translate "Not Collected" as media_i18n_6 %}{% translate "Any" as media_i18n_7 %}{% translate "Released" as media_i18n_10 %}{% translate "Not Released" as media_i18n_11 %}{% translate "All Types" as media_i18n_16 %}{% translate "No Types" as media_i18n_80 %}{% translate "1 Type" as media_i18n_81 %}{% translate "Implied: " as media_i18n_82 %}{% translate "Unknown Year" as media_i18n_83 %}{% translate "Release" as media_i18n_84 %}{% translate "Added" as media_i18n_85 %}<div x-data="{
+  {% translate "All" as media_i18n_2 %}{% translate "Rated" as media_i18n_3 %}{% translate "Not Rated" as media_i18n_4 %}{% translate "Collected" as media_i18n_5 %}{% translate "Not Collected" as media_i18n_6 %}{% translate "Any" as media_i18n_7 %}{% translate "Released" as media_i18n_10 %}{% translate "Not Released" as media_i18n_11 %}{% translate "All Types" as media_i18n_16 %}{% translate "No Types" as media_i18n_80 %}{% translate "1 Type" as media_i18n_81 %}{% translate "Implied: " as media_i18n_82 %}{% translate "Unknown Year" as media_i18n_83 %}{% translate "Release" as media_i18n_84 %}{% translate "Added" as media_i18n_85 %}{{ active_smart_rules|json_script:"smart-filter-state" }}<div x-data="{
+    ...libraryFilterState(
+      JSON.parse(document.getElementById('smart-filter-state').textContent),
+      JSON.parse(document.getElementById('smart-filter-data')?.textContent || '{}'),
+      {
+        available: [{% for media_type in available_media_types %}{ value: '{{ media_type }}', label: '{{ media_type|media_type_readable|escapejs }}' }{% if not forloop.last %}, {% endif %}{% endfor %}],
+        // Season and episode are offered in the picker but stay out of 'all
+        // types': the server expands an empty media_types rule to the broad
+        // types only (IMPLICIT_ALL_EXCLUDED_MEDIA_TYPES in lists/smart_rules.py),
+        // so a list that did not ask for episodes never materialises the
+        // whole library.
+        granular: ['season', 'episode'],
+      },
+    ),
     showModal: false,
     isOrderEditing: false,
     canEdit: {% if can_edit %}true{% else %}false{% endif %},
@@ -35,83 +51,8 @@
     layout: '{{ current_layout }}',
     renderedLayout: '{{ current_layout }}',
     search: '{{ active_smart_rules.search|default:''|escapejs }}',
-    statuses: [
-      {% for value in active_smart_rules.status %}
-        '{{ value|escapejs }}'{% if not forloop.last %},{% endif %}
-      {% endfor %}
-    ],
-    rating: '{{ active_smart_rules.rating|default:'all'|escapejs }}',
-    rating_min: '{{ active_smart_rules.rating_min|default:''|escapejs }}',
-    rating_max: '{{ active_smart_rules.rating_max|default:''|escapejs }}',
-    collection: '{{ active_smart_rules.collection|default:'all'|escapejs }}',
-    genre: '{{ active_smart_rules.genre|default:''|escapejs }}',
-    implied_genre: '{{ active_smart_rules.implied_genre|default:''|escapejs }}',
-    year: '{{ active_smart_rules.year|default:''|escapejs }}',
-    release: '{{ active_smart_rules.release|default:'all'|escapejs }}',
-    release_date_from: '{{ active_smart_rules.release_date_from|default:''|escapejs }}',
-    release_date_to: '{{ active_smart_rules.release_date_to|default:''|escapejs }}',
-    date_added_from: '{{ active_smart_rules.date_added_from|default:''|escapejs }}',
-    date_added_to: '{{ active_smart_rules.date_added_to|default:''|escapejs }}',
-    completed_date_from: '{{ active_smart_rules.completed_date_from|default:''|escapejs }}',
-    completed_date_to: '{{ active_smart_rules.completed_date_to|default:''|escapejs }}',
-    completed_date_within: '{{ active_smart_rules.completed_date_within|default:''|escapejs }}',
-    completed_date_within_unit: '{{ active_smart_rules.completed_date_within_unit|default:'days'|escapejs }}',
-    release_date_within: '{{ active_smart_rules.release_date_within|default:''|escapejs }}',
-    release_date_within_unit: '{{ active_smart_rules.release_date_within_unit|default:'days'|escapejs }}',
-    date_added_within: '{{ active_smart_rules.date_added_within|default:''|escapejs }}',
-    date_added_within_unit: '{{ active_smart_rules.date_added_within_unit|default:'days'|escapejs }}',
-    author: '{{ active_smart_rules.author|default:''|escapejs }}',
-    source: '{{ active_smart_rules.source|default:''|escapejs }}',
-    language: '{{ active_smart_rules.language|default:''|escapejs }}',
-    country: '{{ active_smart_rules.country|default:''|escapejs }}',
-    platform: '{{ active_smart_rules.platform|default:''|escapejs }}',
-    origin: '{{ active_smart_rules.origin|default:''|escapejs }}',
-    format: '{{ active_smart_rules.format|default:''|escapejs }}',
-    provider: '{{ active_smart_rules.provider|default:''|escapejs }}',
-    selectedTags: [
-      {% for value in active_smart_rules.tag %}
-        '{{ value|escapejs }}'{% if not forloop.last %},{% endif %}
-      {% endfor %}
-    ],
-    tagMode: '{{ active_smart_rules.tag_mode|default:'or'|escapejs }}',
-    selectedLists: [
-      {% for id in active_smart_rules.list %}
-        {{ id }}{% if not forloop.last %},{% endif %}
-      {% endfor %}
-    ],
-    showLanguages: {{ smart_filter_data.show_languages|yesno:'true,false' }},
-    showCountries: {{ smart_filter_data.show_countries|yesno:'true,false' }},
-    showPlatforms: {{ smart_filter_data.show_platforms|yesno:'true,false' }},
-    showOrigins: {{ smart_filter_data.show_origins|yesno:'true,false' }},
-    showFormats: {{ smart_filter_data.show_formats|yesno:'true,false' }},
-    showProviders: {{ smart_filter_data.show_providers|yesno:'true,false' }},
-    availableMediaTypes: [
-      {% for media_type in available_media_types %}
-        { value: '{{ media_type }}', label: '{{ media_type|media_type_readable|escapejs }}' }{% if not forloop.last %},{% endif %}
-      {% endfor %}
-    ],
-    selectedTypes: [
-      {% for media_type in active_smart_rules.media_types %}
-        '{{ media_type }}'{% if not forloop.last %},{% endif %}
-      {% endfor %}
-    ],
     statusLabels: {
       {% for value, label in status_choices %}'{{ value }}': '{% translate label as media_dynamic_label %}{{ media_dynamic_label|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}
-    },
-    ratingLabels: {
-      'all': '{{ media_i18n_2|escapejs }}',
-      'rated': '{{ media_i18n_3|escapejs }}',
-      'not_rated': '{{ media_i18n_4|escapejs }}'
-    },
-    collectionLabels: {
-      'all': '{{ media_i18n_2|escapejs }}',
-      'collected': '{{ media_i18n_5|escapejs }}',
-      'not_collected': '{{ media_i18n_6|escapejs }}'
-    },
-    releaseLabels: {
-      'all': '{{ media_i18n_7|escapejs }}',
-      'released': '{{ media_i18n_10|escapejs }}',
-      'not_released': '{{ media_i18n_11|escapejs }}'
     },
     sortLabels: {
       {% for value, label in sort_choices %}'{{ value }}': '{% translate label as media_dynamic_label %}{{ media_dynamic_label|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}
@@ -134,126 +75,6 @@
       this.isOrderEditing = false;
       if (this.editMode) this.onRuleChange(350);
     },
-    formatRangeLabel(minValue, maxValue) {
-      if (minValue && maxValue) {
-        return `${minValue}-${maxValue}`;
-      }
-      if (minValue) {
-        return `>=${minValue}`;
-      }
-      if (maxValue) {
-        return `<=${maxValue}`;
-      }
-      return '';
-    },
-    formatDateRangeLabel(prefix, fromValue, toValue) {
-      const labelPrefix = prefix ? `${prefix} ` : '';
-      if (!fromValue && !toValue) {
-        return '';
-      }
-      const fromYearMatch = /^(\d{4})-01-01$/.exec(fromValue || '');
-      const toYearMatch = /^(\d{4})-12-31$/.exec(toValue || '');
-      if (fromYearMatch && toYearMatch) {
-        return `${fromYearMatch[1]}-${toYearMatch[1]}`;
-      }
-      if (fromValue && toValue) {
-        return `${labelPrefix}${fromValue}-${toValue}`;
-      }
-      if (fromValue) {
-        return `${labelPrefix}>=${fromValue}`;
-      }
-      return `${labelPrefix}<=${toValue}`;
-    },
-    init() {
-      if (this.selectedTypes.length === 0 && this.availableMediaTypes.length > 0) {
-        this.selectedTypes = this.broadMediaTypes();
-      }
-    },
-    // Season and episode are offered in the picker but stay out of 'all types':
-    // the server expands an empty media_types rule to the broad types only, so a
-    // list that did not ask for episodes never materialises the whole library.
-    broadMediaTypes() {
-      return this.availableMediaTypes
-        .map((type) => type.value)
-        .filter((value) => !GRANULAR_MEDIA_TYPES.includes(value));
-    },
-    hasGranularTypeSelected() {
-      return this.selectedTypes.some((value) => GRANULAR_MEDIA_TYPES.includes(value));
-    },
-    allTypesSelected() {
-      const broad = this.broadMediaTypes();
-      return broad.length > 0 && broad.every((value) => this.selectedTypes.includes(value));
-    },
-    isTypeSelected(mediaType) {
-      return this.selectedTypes.includes(mediaType);
-    },
-    toggleMediaType(mediaType) {
-      if (this.isTypeSelected(mediaType)) {
-        this.selectedTypes = this.selectedTypes.filter((type) => type !== mediaType);
-        return;
-      }
-      this.selectedTypes = [...this.selectedTypes, mediaType];
-    },
-    toggleAllTypes() {
-      const granular = this.selectedTypes.filter((value) => GRANULAR_MEDIA_TYPES.includes(value));
-      if (this.allTypesSelected()) {
-        this.selectedTypes = granular;
-        return;
-      }
-      this.selectedTypes = [...this.broadMediaTypes(), ...granular];
-    },
-    // A completed-date range that exactly spans one calendar year is shown as
-    // that year, matching the library toolbar's Completed Year shortcut.
-    completedYearLabel() {
-      const from = this.completed_date_from;
-      const to = this.completed_date_to;
-      if (!from || !to) {
-        return gettext('Pick a year…');
-      }
-      const year = from.slice(0, 4);
-      if (from === `${year}-01-01` && to === `${year}-12-31`) {
-        return year;
-      }
-      return gettext('Pick a year…');
-    },
-    dropdownLabel() {
-      if (this.allTypesSelected() && !this.hasGranularTypeSelected()) {
-        return '{{ media_i18n_16|escapejs }}';
-      }
-      if (this.selectedTypes.length === 0) {
-        return '{{ media_i18n_80|escapejs }}';
-      }
-      if (this.selectedTypes.length === 1) {
-        const mediaType = this.availableMediaTypes.find((type) => type.value === this.selectedTypes[0]);
-        return mediaType ? mediaType.label : '{{ media_i18n_81|escapejs }}';
-      }
-      {% blocktranslate with count="__COUNT__" asvar media_types_count_label %}{{ count }} Types{% endblocktranslate %}return '{{ media_types_count_label|escapejs }}'.replace('__COUNT__', this.selectedTypes.length);
-    },
-    selectedTypesForSubmit() {
-      if (this.allTypesSelected() && !this.hasGranularTypeSelected()) {
-        return [];
-      }
-      return this.selectedTypes;
-    },
-    isStatusSelected(value) { return this.statuses.includes(value); },
-    toggleStatus(value) {
-      if (this.statuses.includes(value)) {
-        this.statuses = this.statuses.filter((s) => s !== value);
-      } else {
-        this.statuses = [...this.statuses, value];
-      }
-    },
-    isTagSelected(value) { return this.selectedTags.includes(value); },
-    toggleTag(value) {
-      if (this.selectedTags.includes(value)) {
-        this.selectedTags = this.selectedTags.filter((t) => t !== value);
-      } else {
-        this.selectedTags = [...this.selectedTags, value];
-      }
-    },
-    cycleTagMode() {
-      this.tagMode = this.tagMode === 'and' ? 'or' : (this.tagMode === 'or' ? 'not' : 'and');
-    },
     isListSelected(id) { return this.selectedLists.includes(id); },
     toggleList(id) {
       if (this.selectedLists.includes(id)) {
@@ -268,113 +89,12 @@
       const match = (data.lists || []).find((option) => option.id === id);
       {% blocktranslate with id="__ID__" asvar media_list_id_label %}List {{ id }}{% endblocktranslate %}return match ? match.label : '{{ media_list_id_label|escapejs }}'.replace('__ID__', id);
     },
-    filterLabel() {
+    extraFilterLabels() {
       const labels = [];
-      if (!this.allTypesSelected() || this.hasGranularTypeSelected()) {
-        labels.push(this.dropdownLabel());
-      }
-      if (this.rating && this.rating !== 'all') {
-        labels.push(this.ratingLabels[this.rating] || '{{ media_i18n_3|escapejs }}');
-      }
-      const ratingRangeLabel = this.formatRangeLabel(this.rating_min, this.rating_max);
-      if (ratingRangeLabel) {
-        labels.push(ratingRangeLabel);
-      }
-      if (this.collection && this.collection !== 'all') {
-        labels.push(this.collectionLabels[this.collection] || '{{ media_i18n_5|escapejs }}');
-      }
-      if (this.genre) {
-        labels.push(this.genre);
-      }
-      if (this.implied_genre) {
-        labels.push('{{ media_i18n_82|escapejs }}' + this.implied_genre);
-      }
-      if (this.year) {
-        labels.push(this.year === 'unknown' ? '{{ media_i18n_83|escapejs }}' : this.year);
-      }
-      if (this.release && this.release !== 'all') {
-        labels.push(this.releaseLabels[this.release] || '{{ media_i18n_10|escapejs }}');
-      }
-      const releaseDateLabel = relativeWindowLabel(this.release_date_within, this.release_date_within_unit) || this.formatDateRangeLabel('{{ media_i18n_84|escapejs }}', this.release_date_from, this.release_date_to);
-      if (releaseDateLabel) {
-        labels.push(releaseDateLabel);
-      }
-      const dateAddedLabel = relativeWindowLabel(this.date_added_within, this.date_added_within_unit) || this.formatDateRangeLabel('{{ media_i18n_85|escapejs }}', this.date_added_from, this.date_added_to);
-      if (dateAddedLabel) {
-        labels.push(dateAddedLabel);
-      }
-      const completedDateLabel = relativeWindowLabel(this.completed_date_within, this.completed_date_within_unit) || this.formatDateRangeLabel(gettext('Completed'), this.completed_date_from, this.completed_date_to);
-      if (completedDateLabel) {
-        labels.push(completedDateLabel);
-      }
-      if (this.author) {
-        labels.push(this.author);
-      }
-      if (this.source) {
-        labels.push(this.source.toUpperCase());
-      }
-      if (this.showLanguages && this.language) {
-        labels.push(this.language.length <= 3 ? this.language.toUpperCase() : this.language);
-      }
-      if (this.showCountries && this.country) {
-        labels.push(this.country.length <= 3 ? this.country.toUpperCase() : this.country);
-      }
-      if (this.showPlatforms && this.platform) {
-        labels.push(this.platform);
-      }
-      if (this.showOrigins && this.origin) {
-        labels.push(this.origin.length <= 3 ? this.origin.toUpperCase() : this.origin);
-      }
-      if (this.showFormats && this.format) {
-        labels.push(this.format === 'ebook' ? 'eBook' : this.format.charAt(0).toUpperCase() + this.format.slice(1));
-      }
-      if (this.showProviders && this.provider) {
-        labels.push(this.provider);
-      }
-      if (this.selectedTags.length) {
-        const prefix = this.tagMode === 'not' ? '-' : '+';
-        labels.push(prefix + this.selectedTags.join(this.tagMode === 'and' ? ' & ' : ', '));
-      }
       if (this.selectedLists.length) {
         labels.push(this.selectedLists.map((id) => this.listLabelFor(id)).join(', '));
       }
-      if (labels.length === 0) {
-        return '{{ media_i18n_2|escapejs }}';
-      }
-      if (labels.length === 1) {
-        return labels[0];
-      }
-      return `${labels[0]} +${labels.length - 1}`;
-    },
-    clearFilters() {
-      this.rating = 'all';
-      this.rating_min = '';
-      this.rating_max = '';
-      this.collection = 'all';
-      this.genre = '';
-      this.implied_genre = '';
-      this.year = '';
-      this.release = 'all';
-      this.release_date_from = '';
-      this.release_date_to = '';
-      this.date_added_from = '';
-      this.date_added_to = '';
-      this.completed_date_from = '';
-      this.completed_date_to = '';
-      this.completed_date_within = '';
-      this.release_date_within = '';
-      this.date_added_within = '';
-      this.author = '';
-      this.source = '';
-      this.language = '';
-      this.country = '';
-      this.platform = '';
-      this.origin = '';
-      this.format = '';
-      this.provider = '';
-      this.selectedTags = [];
-      this.tagMode = 'or';
-      this.selectedLists = [];
+      return labels;
     },
     itemsCountLabel() {
       {% blocktranslate with count="__COUNT__" asvar media_item_count_one %}{{ count }} item{% endblocktranslate %}{% blocktranslate with count="__COUNT__" asvar media_item_count_many %}{{ count }} items{% endblocktranslate %}return (this.itemsCount === 1 ? '{{ media_item_count_one|escapejs }}' : '{{ media_item_count_many|escapejs }}').replace('__COUNT__', this.itemsCount);
@@ -436,8 +156,7 @@
     }
   }"
   x-init="
-    init();
-    $refs.itemsView.addEventListener('htmx:afterSwap', () => {
+    document.getElementById('items-view').addEventListener('htmx:afterSwap', () => {
       renderedLayout = layout;
       if (isOrderEditing) initListSortable(layout);
     });
@@ -508,6 +227,9 @@
                  x-transition:leave="transition ease-in duration-75"
                  x-transition:leave-start="transform opacity-100 scale-100"
                  x-transition:leave-end="transform opacity-0 scale-95">
+              {% if request.user.is_authenticated %}
+                {% include "lists/components/sidebar_pin_action.html" %}
+              {% endif %}
               {% if custom_list.can_recommend %}
                 {% if recommendation_count > 0 %}
                   <a href="{% url 'list_recommendations' custom_list.id %}"
@@ -574,6 +296,9 @@
                  x-transition:leave="transition ease-in duration-75"
                  x-transition:leave-start="transform opacity-100 scale-100"
                  x-transition:leave-end="transform opacity-0 scale-95">
+              {% if request.user.is_authenticated %}
+                {% include "lists/components/sidebar_pin_action.html" %}
+              {% endif %}
               {% if recommendation_count > 0 %}
                 <a href="{% url 'recommend_item' custom_list.id %}"
                    class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
@@ -643,6 +368,9 @@
                x-transition:leave="transition ease-in duration-75"
                x-transition:leave-start="transform opacity-100 scale-100"
                x-transition:leave-end="transform opacity-0 scale-95">
+              {% if request.user.is_authenticated %}
+                {% include "lists/components/sidebar_pin_action.html" %}
+              {% endif %}
             {% if custom_list.can_recommend %}
               {% if recommendation_count > 0 %}
                 <a href="{% url 'list_recommendations' custom_list.id %}"
@@ -709,6 +437,9 @@
                x-transition:leave="transition ease-in duration-75"
                x-transition:leave-start="transform opacity-100 scale-100"
                x-transition:leave-end="transform opacity-0 scale-95">
+              {% if request.user.is_authenticated %}
+                {% include "lists/components/sidebar_pin_action.html" %}
+              {% endif %}
             {% if recommendation_count > 0 %}
               <a href="{% url 'recommend_item' custom_list.id %}"
                  class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
@@ -779,10 +510,12 @@
     </div>
 
     <div id="items-view"
-         x-ref="itemsView"
+         class="{% if current_layout|default:'grid' == 'grid' %}media-grid{% endif %}"
          hx-history="false"
-         :class="renderedLayout === 'grid' ? 'media-grid' : ''">
-      {% if current_layout == 'table' %}
+         :class="{ 'media-grid': renderedLayout === 'grid' }">
+      {% if not items and request.GET.initial|alphabet_initial %}
+        {% alphabet_filter "smart-filter-form" "empty" %}
+      {% elif current_layout == 'table' %}
         {% include "lists/components/list_table.html" %}
       {% else %}
         {% include "lists/components/media_grid.html" %}
@@ -798,6 +531,7 @@
       </div>
     {% endif %}
   </div>
+  </div>
 {% endblock content %}
 {# djlint:on #}
 
@@ -809,9 +543,6 @@
     // Rule keys whose Alpine state name matches the persisted smart_filters key
     // one-for-one. Keys needing a rename or a shape change (media_types, status,
     // tag, list, search, sort_direction) are set explicitly in saveSmartRules().
-    // Mirrors IMPLICIT_ALL_EXCLUDED_MEDIA_TYPES in lists/smart_rules.py.
-    const GRANULAR_MEDIA_TYPES = ['season', 'episode'];
-
     const SMART_RULE_KEYS = [
       'rating', 'rating_min', 'rating_max', 'collection', 'genre', 'implied_genre',
       'year', 'release', 'release_date_from', 'release_date_to',
@@ -836,7 +567,6 @@
   </script>
   {% include "app/components/table_column_config_scripts.html" %}
 
-  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js"></script>
   <script>
     // var (not let): this script re-executes on boosted navigation
     var _listSortable = null;

@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from app.models import Item, MediaTypes, Sources
+from app.models import Item, MediaTypes, Sources, Tag
 from lists.models import CustomList, CustomListItem, ListActivity, ListActivityType
 
 
@@ -109,3 +109,45 @@ class BulkListAddViewTests(TestCase):
                 item=self.items[1],
             ).exists(),
         )
+
+
+class ListPageBulkActionDataTests(TestCase):
+    """The list pages must hand the bulk-action controller a JSON object.
+
+    A stray trailing comma once turned it into a one-item list, so the Select
+    Items menus came up empty (no statuses, tags or lists, no endpoint URLs).
+    """
+
+    def setUp(self):
+        self.owner = get_user_model().objects.create_user(
+            username="bulk-data-owner",
+            password="test-password",
+        )
+        self.client.force_login(self.owner)
+
+    def _assert_bulk_data(self, custom_list):
+        response = self.client.get(
+            reverse("list_detail", args=[custom_list.public_reference]),
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.context["bulk_action_data"]
+        self.assertIsInstance(data, dict)
+        self.assertEqual(data["statusUrl"], reverse("bulk_status_update"))
+        self.assertEqual(data["listUrl"], reverse("bulk_list_add"))
+        self.assertEqual(data["collectionUrl"], reverse("bulk_collection_quick_add"))
+        self.assertEqual(data["tagUrl"], reverse("tag_bulk_toggle"))
+        self.assertTrue(data["csrfToken"])
+        self.assertTrue(data["statuses"])
+        self.assertEqual([entry["label"] for entry in data["lists"]], ["Target List"])
+        self.assertEqual(data["tags"], ["favorite"])
+
+    def test_manual_and_smart_list_pages_pass_bulk_action_data(self):
+        Tag.objects.create(user=self.owner, name="favorite")
+        target = CustomList.objects.create(name="Target List", owner=self.owner)
+        smart = CustomList.objects.create(
+            name="Smart Page",
+            owner=self.owner,
+            is_smart=True,
+        )
+        self._assert_bulk_data(target)
+        self._assert_bulk_data(smart)

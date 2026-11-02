@@ -28,6 +28,10 @@ from config.sqlite_integrity import (
     _report_corruption,
     _valid_blocked_token,
     _write_incident_report,
+    read_startup_status,
+    recent_verification,
+    record_verified_database,
+    warm_database_cache,
     write_startup_status,
 )
 from config.sqlite_repair import apply_repair_plan, build_repair_plan
@@ -63,6 +67,7 @@ def _status_emitter(db_path: str) -> StatusEmitter:
         *,
         progress_callbacks: int | None = None,
         progress_at: str | None = None,
+        read_bytes: int | None = None,
         error_class: str | None = None,
         error_message: str | None = None,
     ) -> None:
@@ -80,6 +85,7 @@ def _status_emitter(db_path: str) -> StatusEmitter:
             phase=phase,
             started_at=started_at,
             elapsed_seconds=time.monotonic() - started_monotonic,
+            read_bytes=read_bytes,
             progress_callbacks=progress_callbacks,
             phase_started_at=phase_started_at,
             last_progress_at=last_progress_at,
@@ -255,12 +261,14 @@ def _scan_and_publish_block(
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
         emit("running", "quick_check", progress_callbacks=0)
+        phase_started = time.monotonic()
         result, quick_progress, quick_last_progress = _run_with_progress(
             conn,
             lambda: conn.execute("PRAGMA quick_check").fetchone(),
             phase="quick_check",
             emit=emit,
         )
+        _log(f"[integrity] phase=quick_check seconds={time.monotonic() - phase_started:.1f}")
         status = result[0] if result else None
         if status != "ok":
             _log(
@@ -283,11 +291,16 @@ def _scan_and_publish_block(
             "foreign_key_check",
             progress_callbacks=0,
         )
+        phase_started = time.monotonic()
         incident, foreign_key_progress, foreign_key_last_progress = _run_with_progress(
             conn,
             lambda: _inspect_foreign_keys(conn),
             phase="foreign_key_check",
             emit=emit,
+        )
+        _log(
+            "[integrity] phase=foreign_key_check "
+            f"seconds={time.monotonic() - phase_started:.1f}",
         )
         if not incident["total_conflicts"]:
             if prior_report:
@@ -550,8 +563,59 @@ def _log_blocked_recovery_options(report: dict, plan: dict) -> None:
     )
 
 
+def _skip_recently_verified(
+    db_path: str,
+    previous_status: dict | None,
+    emit: StatusEmitter,
+) -> bool:
+    """Skip the full scan when a recent full check still vouches for the file.
+
+    The database is still opened and its schema read, which replays a leftover
+    WAL and fails fast on a file SQLite cannot open. Any error here falls
+    through to the full scan, which owns the reporting for damaged files.
+    """
+    record, reason = recent_verification(db_path, previous_status)
+    if record is None:
+        _log(f"[integrity] Running the full storage check: {reason}")
+        return False
+    emit("running", "open_check")
+    try:
+        conn = sqlite3.connect(db_path, timeout=30.0)
+        try:
+            conn.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()
+        finally:
+            conn.close()
+    except sqlite3.DatabaseError as error:
+        _log(f"[integrity] Running the full storage check: open check failed: {error}")
+        return False
+    _log(f"[integrity] Skipped the full storage check: {reason}")
+    emit("ok", "open_check")
+    return True
+
+
+def _warm_cache(db_path: str, emit: StatusEmitter) -> None:
+    """Read the file sequentially so the scan below runs from the page cache."""
+    emit("running", "warm_cache", read_bytes=0)
+
+    def progress(read_bytes: int) -> None:
+        emit(
+            "running",
+            "warm_cache",
+            read_bytes=read_bytes,
+            progress_at=datetime.now(UTC).isoformat(),
+        )
+
+    read_bytes, seconds = warm_database_cache(db_path, on_progress=progress)
+    rate = read_bytes / 1_048_576 / seconds if seconds > 0 else 0.0
+    _log(
+        f"[integrity] phase=warm_cache read={read_bytes / 1_048_576:.0f}MB "
+        f"seconds={seconds:.1f} rate={rate:.0f}MB/s",
+    )
+
+
 def check_database_for_startup(db_path: str) -> None:
     """Repair safe relationship damage or block before migrations."""
+    previous_status = read_startup_status(db_path)
     emit = _status_emitter(db_path)
     emit("running", "connect")
     reopened = reopen_previous_acceptance(db_path)
@@ -570,8 +634,12 @@ def check_database_for_startup(db_path: str) -> None:
         emit("ok", "repair")
         return
 
+    if _skip_recently_verified(db_path, previous_status, emit):
+        return
+    _warm_cache(db_path, emit)
     report = _scan_and_publish_block(db_path, emit)
     if report is None:
+        record_verified_database(db_path, source="startup")
         return
 
     plan = _annotate_blocked_report(db_path, report)

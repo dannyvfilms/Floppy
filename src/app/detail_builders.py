@@ -5,7 +5,7 @@ from django.templatetags.static import static
 from django.utils.text import slugify
 
 from app import helpers
-from app.models import MediaTypes, Sources
+from app.models import Item, MediaTypes, Sources
 from app.services import game_lengths as game_length_services
 from app.services import trakt_popularity as trakt_popularity_service
 from app.templatetags import app_tags
@@ -689,6 +689,26 @@ def _build_mal_rating_context(detail_item, route_media_type):
     }
 
 
+def _build_opencritic_context(detail_item, route_media_type):
+    """Return template-ready stored OpenCritic scores for a game."""
+    if (
+        not detail_item
+        or route_media_type != MediaTypes.GAME.value
+        or detail_item.opencritic_score is None
+    ):
+        return None
+    return {
+        "score": round(detail_item.opencritic_score),
+        "percent_recommended": (
+            round(detail_item.opencritic_percent_recommended)
+            if detail_item.opencritic_percent_recommended is not None
+            else None
+        ),
+        "tier": detail_item.opencritic_tier,
+        "url": detail_item.opencritic_url,
+    }
+
+
 def _apply_cached_hltb_link(media_metadata, detail_item):
     """Prefer a stored direct HLTB link when one has already been resolved."""
     if not detail_item or not isinstance(media_metadata, dict):
@@ -745,6 +765,13 @@ _DETAIL_LINK_BRANDS = {
         "badge_classes": "border-fuchsia-400/28 bg-fuchsia-500/14",
         "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
         "fallback_text": "MU",
+    },
+    Sources.MANGABAKA.value: {
+        "logo_src": static("img/mangabaka-logo.png"),
+        "chip_classes": "border-violet-400/18 bg-violet-500/[0.07]",
+        "badge_classes": "border-violet-400/28 bg-violet-500/14",
+        "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
+        "fallback_text": "MB",
     },
     Sources.IGDB.value: {
         "logo_src": static("img/igdb-logo.png"),
@@ -857,6 +884,18 @@ _DETAIL_LINK_BRANDS = {
         "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
         "fallback_text": "LFM",
     },
+    "soundcloud": {
+        "chip_classes": "border-orange-400/18 bg-orange-500/[0.07]",
+        "badge_classes": "border-orange-400/28 bg-orange-500/14",
+        "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
+        "fallback_text": "SC",
+    },
+    "spotify": {
+        "chip_classes": "border-green-400/18 bg-green-500/[0.07]",
+        "badge_classes": "border-green-400/28 bg-green-500/14",
+        "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
+        "fallback_text": "SP",
+    },
     "imdb": {
         "logo_src": static("img/imdb-logo.png"),
         "chip_classes": "border-amber-400/18 bg-amber-500/[0.07]",
@@ -884,6 +923,12 @@ _DETAIL_LINK_BRANDS = {
         "badge_classes": "border-emerald-400/28 bg-emerald-500/14",
         "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
         "fallback_text": "LB",
+    },
+    "youtube": {
+        "chip_classes": "border-red-400/18 bg-red-500/[0.07]",
+        "badge_classes": "border-red-400/28 bg-red-500/14",
+        "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
+        "fallback_text": "YT",
     },
     "howlongtobeat": {
         "logo_src": static("img/hltb-logo.png"),
@@ -924,6 +969,7 @@ def _build_detail_link_entry(label, url, brand_key):
     return {
         "label": label,
         "url": url,
+        "brand": _normalize_detail_link_brand_key(brand_key),
         "chip_classes": brand["chip_classes"],
         "badge_classes": brand["badge_classes"],
         "accent_classes": brand["accent_classes"],
@@ -982,6 +1028,17 @@ def _build_detail_link_sections(
                 f"https://letterboxd.com/tmdb/{media_id}",
                 "letterboxd",
             )
+
+    if item is not None and item.source == Sources.YOUTUBE.value:
+        # Built from the id, not from a reported URL, so it is always a
+        # YouTube link. It does not depend on live metadata, so the chip also
+        # shows when the page uses the stored fallback.
+        append_entry(
+            external_entries,
+            "YouTube",
+            f"https://www.youtube.com/watch?v={item.media_id}",
+            "youtube",
+        )
 
     external_links = media_metadata.get("external_links")
     if isinstance(external_links, dict):
@@ -1154,3 +1211,72 @@ def _build_detail_person_rows(media_metadata, item=None):
             card_width_class="w-36",
         ),
     }
+
+
+_BOOK_FORMAT_LABELS = {
+    "audiobook": "Audiobook",
+    "ebook": "eBook",
+    "hardcover": "Hardcover",
+    "paperback": "Paperback",
+}
+
+
+def _book_isbns(item):
+    return {
+        "".join(ch for ch in str(value) if ch.isalnum()).upper()
+        for value in item.isbn or []
+        if value
+    } - {""}
+
+
+def _book_author_keys(item):
+    return {
+        key
+        for key in (Item._title_comparison_key(a) for a in item.authors or [])
+        if key
+    }
+
+
+def build_other_book_formats(user, item):
+    """Return links to the user's other tracked formats of the same book.
+
+    An audiobook and an ebook are separate Items on purpose (their progress
+    units differ), so this only links them. Two Items match when they share an
+    ISBN, or share a title and at least one author. Only the viewer's own
+    tracked books are considered.
+    """
+    if (
+        item is None
+        or item.media_type != MediaTypes.BOOK.value
+        or not getattr(user, "is_authenticated", False)
+    ):
+        return []
+
+    title_key = Item._title_comparison_key(item.title)
+    isbns = _book_isbns(item)
+    authors = _book_author_keys(item)
+    if not title_key and not isbns:
+        return []
+
+    candidates = Item.objects.filter(
+        media_type=MediaTypes.BOOK.value,
+        book__user=user,
+    ).exclude(pk=item.pk)
+    chips = []
+    for other in candidates.distinct():
+        same_isbn = bool(isbns & _book_isbns(other))
+        same_work = (
+            bool(title_key)
+            and title_key == Item._title_comparison_key(other.title)
+            and bool(authors & _book_author_keys(other))
+        )
+        if not (same_isbn or same_work):
+            continue
+        label = _BOOK_FORMAT_LABELS.get((other.format or "").lower(), "Book")
+        chips.append(
+            {
+                "label": label,
+                "href": app_tags.media_url(other),
+            },
+        )
+    return chips

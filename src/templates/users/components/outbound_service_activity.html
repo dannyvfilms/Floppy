@@ -1,0 +1,25 @@
+{% load i18n %}
+{# Delivery counts and the latest results for one service. Needs counts, recent and last_flushed. #}
+<div class="space-y-2">
+  <h4 class="text-sm font-medium">{% translate "Activity" %}</h4>
+  <div class="flex flex-wrap gap-2 text-xs">
+    <span class="px-2 py-1 rounded bg-[var(--color-surface)] text-[var(--color-text-muted)]">{% translate "Waiting" %} {{ counts.pending|default:0 }}</span>
+    <span class="px-2 py-1 rounded bg-[var(--color-surface)] text-[var(--color-text-muted)]">{% translate "Sending" %} {{ counts.in_flight|default:0 }}</span>
+    <span class="px-2 py-1 rounded bg-[var(--color-surface)] text-[var(--color-text-muted)]">{% translate "Sent" %} {{ counts.delivered|default:0 }}</span>
+    <span class="px-2 py-1 rounded bg-[var(--color-surface)] {% if counts.failed %}text-[var(--color-warning-text)]{% else %}text-[var(--color-text-muted)]{% endif %}">{% translate "Failed" %} {{ counts.failed|default:0 }}</span>
+    <span class="px-2 py-1 rounded bg-[var(--color-surface)] text-[var(--color-text-muted)]">{% translate "Skipped" %} {{ counts.skipped|default:0 }}</span>
+  </div>
+  {% if last_flushed %}
+    <p class="text-xs text-[var(--color-text-muted)]">{% translate "Last sent" %}: {{ last_flushed|timesince }} {% translate "ago" %}</p>
+  {% endif %}
+  {% if recent %}
+    <details class="text-xs text-[var(--color-text-muted)]">
+      <summary class="cursor-pointer">{% translate "Recent results" %}</summary>
+      <ul class="mt-2 space-y-1">
+        {% for delivery in recent %}
+          <li>{{ delivery.item }}{% if delivery.get_operation_display %} ({{ delivery.get_operation_display }}){% endif %}: {{ delivery.get_status_display }}{% if delivery.last_error_message %} — {{ delivery.last_error_message }}{% endif %}</li>
+        {% endfor %}
+      </ul>
+    </details>
+  {% endif %}
+</div>

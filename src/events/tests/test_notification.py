@@ -624,6 +624,105 @@ class NotificationTests(TestCase):
         self.assertTrue(season1_event_found)
         self.assertFalse(season2_event_found)
 
+    def _digest_recipients(self, event):
+        """Return which of user1/user2 get `event` in a digest, by user id."""
+        users = get_user_model().objects.filter(id__in=[self.user1.id, self.user2.id])
+        target_events = {(event.item.id, event.content_number): event}
+        return set(
+            get_user_releases(
+                users,
+                target_events,
+                skip_alerted_for_instant_users=True,
+            ),
+        )
+
+    def test_digest_skips_alerted_event_for_instant_users_only(self):
+        """An already-alerted event is dropped only for users with instant alerts."""
+        self.user1.release_notifications_enabled = True
+        self.user1.save()
+        self.user2.release_notifications_enabled = False
+        self.user2.save()
+
+        self.anime_event.notification_sent = True
+        self.anime_event.save()
+
+        # user1 was already alerted in real time; user2 never was
+        self.assertEqual(self._digest_recipients(self.anime_event), {self.user2.id})
+
+    def test_digest_keeps_never_alerted_event_for_instant_users(self):
+        """An event no alert covered (e.g. missed window) still reaches the digest."""
+        self.user1.release_notifications_enabled = True
+        self.user1.save()
+
+        self.anime_event.notification_sent = False
+        self.anime_event.save()
+
+        self.assertIn(self.user1.id, self._digest_recipients(self.anime_event))
+
+    def test_digest_keeps_event_when_users_alert_failed(self):
+        """A user whose real-time alert failed still gets the event in the digest."""
+        self.user1.release_notifications_enabled = True
+        self.user1.save()
+        self.user2.release_notifications_enabled = True
+        self.user2.save()
+
+        self.anime_event.notification_sent = True
+        self.anime_event.save()
+        self.anime_event.alert_failed_users.add(self.user1)
+
+        # user2 was alerted, user1 was not
+        self.assertEqual(self._digest_recipients(self.anime_event), {self.user1.id})
+
+    @patch("apprise.Apprise")
+    def test_failed_alert_is_reported_and_recovered_by_the_digest(self, mock_apprise):
+        """A failed send is recorded, reported in the task result, and re-listed."""
+        mock_apprise.return_value.notify.return_value = False
+        for user in (self.user1, self.user2):
+            user.release_notifications_enabled = True
+            user.save()
+
+        result = send_releases()
+
+        self.assertIn("delivery failed for 2 user(s)", result)
+        self.anime_event.refresh_from_db()
+        self.assertTrue(self.anime_event.notification_sent)
+        self.assertEqual(
+            set(self.anime_event.alert_failed_users.values_list("id", flat=True)),
+            {self.user1.id, self.user2.id},
+        )
+        self.assertEqual(
+            self._digest_recipients(self.anime_event),
+            {self.user1.id, self.user2.id},
+        )
+
+    @patch("apprise.Apprise")
+    def test_successful_alert_records_no_failure(self, mock_apprise):
+        """A successful send leaves no failure record and no failure in the result."""
+        mock_apprise.return_value.notify.return_value = True
+        for user in (self.user1, self.user2):
+            user.release_notifications_enabled = True
+            user.save()
+
+        result = send_releases()
+
+        self.assertNotIn("failed", result)
+        self.anime_event.refresh_from_db()
+        self.assertFalse(self.anime_event.alert_failed_users.exists())
+        self.assertEqual(self._digest_recipients(self.anime_event), set())
+
+    def test_get_user_releases_default_ignores_notification_sent(self):
+        """Other callers (real-time, premiere digest) are unaffected by the flag."""
+        self.anime_event.notification_sent = True
+        self.anime_event.save()
+        users = get_user_model().objects.filter(id=self.user1.id)
+        target_events = {
+            (self.anime_event.item.id, self.anime_event.content_number): (
+                self.anime_event
+            ),
+        }
+
+        self.assertIn(self.user1.id, get_user_releases(users, target_events))
+
     def test_is_user_tracking_item(self):
         """Test the is_user_tracking_item function."""
         # Create tracking data
@@ -1514,3 +1613,61 @@ class CrossBucketAnimeNotificationTests(TestCase):
         self.assertFalse(
             any(event.id == self.anime_event.id for event in user_events),
         )
+
+
+class SeasonsDisabledNotificationTests(TestCase):
+    """Episode release notifications must not depend on the TV Seasons setting (#1438)."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="seasons-off-user",
+            password="12345",
+            notification_urls="https://example.com/notify",
+            tv_enabled=True,
+            season_enabled=False,
+        )
+        tv_item = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Test TV Show",
+            image="http://example.com/tv.jpg",
+        )
+        season_item = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Test TV Show - Season 1",
+            season_number=1,
+            image="http://example.com/tv.jpg",
+        )
+        TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        self.event = Event.objects.create(
+            item=season_item,
+            content_number=1,
+            datetime=timezone.now() - timedelta(minutes=10),
+            notification_sent=False,
+        )
+
+    def test_episode_event_included_when_seasons_disabled(self):
+        target_events = {(self.event.item.id, 1): self.event}
+
+        user_releases = get_user_releases([self.user], target_events)
+
+        self.assertEqual(
+            [event.id for event in user_releases.get(self.user.id, [])],
+            [self.event.id],
+        )
+
+    def test_episode_event_skipped_when_tv_disabled(self):
+        self.user.tv_enabled = False
+        self.user.save(update_fields=["tv_enabled"])
+        target_events = {(self.event.item.id, 1): self.event}
+
+        user_releases = get_user_releases([self.user], target_events)
+
+        self.assertNotIn(self.user.id, user_releases)

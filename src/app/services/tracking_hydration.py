@@ -32,6 +32,7 @@ from app.providers import pocketcasts, services
 from app.services.metadata_resolution import (
     get_library_media_type,
     get_tracking_media_type,
+    metadata_language_default,
     upsert_provider_links,
 )
 from app.tasks_backfill_state import (
@@ -289,6 +290,27 @@ def ensure_item_metadata(
     provider response without making network calls inside their transaction.
     """
     season_numbers = [season_number]
+    existing_item = None
+    if (
+        prefetched_metadata is None
+        and user
+        and getattr(user, "is_authenticated", False)
+    ):
+        existing_item = (
+            Item.objects.filter(
+                media_id=media_id,
+                source=source,
+                media_type=get_tracking_media_type(
+                    media_type,
+                    source=source,
+                    identity_media_type=identity_media_type,
+                ),
+                season_number=season_number,
+                episode_number=episode_number,
+            )
+            .only("id")
+            .first()
+        )
     metadata = (
         services.get_media_metadata(
             media_type,
@@ -297,6 +319,7 @@ def ensure_item_metadata(
             season_numbers,
             episode_number,
             edition_id=edition_id,
+            language=metadata_language_default(user, existing_item),
         )
         if prefetched_metadata is None
         else dict(prefetched_metadata)
@@ -470,7 +493,11 @@ def ensure_item_metadata(
     if not item.format and format_type:
         item.format = format_type
         update_fields.append("format")
-    if not item.status and status:
+    # Production status is the one field here that legitimately changes over an
+    # item's life (a returning series ends), so refresh it instead of keeping
+    # whatever it was first tracked as - a stale "Returning Series" would stop
+    # the show from ever auto-completing.
+    if status and item.status != status:
         item.status = status
         update_fields.append("status")
     if not item.studios and studios:
@@ -497,6 +524,10 @@ def ensure_item_metadata(
     if not item.runtime and runtime:
         item.runtime = runtime
         update_fields.append("runtime")
+    if item.provider_episode_count is None:
+        update_fields.extend(
+            metadata_utils.apply_provider_episode_count(item, metadata),
+        )
     if watch_providers and item.watch_providers != watch_providers:
         item.watch_providers = watch_providers
         update_fields.append("watch_providers")

@@ -41,6 +41,7 @@ import redis
 from django.conf import settings
 
 from app.log_safety import exception_summary
+from app.redis_diagnosis import explain_redis_error, unreachable_detail
 from config.runtime_profile import MIB, PROFILE
 
 logger = logging.getLogger(__name__)
@@ -163,15 +164,21 @@ def tune_redis(*, dry_run: bool = False) -> dict:
         client = redis.Redis.from_url(redis_url)
         current_maxmemory = parse_size(_config_get(client, "maxmemory"))
     except Exception as error:
-        # Redis being unreachable is not this function's problem to solve; the
-        # startup log reports it, and the next restart tries again.
+        # Redis being unreachable is not this function's problem to solve, and
+        # the next restart tries again. It runs early in every boot, though, so
+        # this is where the startup log says why Redis is unreachable (#1263).
         message = _record_error(
             summary,
             "Redis administration maxmemory read",
             error,
             "Check REDIS_ADMIN_URL and server availability.",
         )
-        logger.info("Skipping Redis memory tuning. %s", message)
+        detail = unreachable_detail(error, redis_url)
+        if detail:
+            _cause, fix = explain_redis_error(error, redis_url)
+            logger.warning("%s To fix: %s.", detail, fix)
+        else:
+            logger.info("Skipping Redis memory tuning. %s", message)
         return summary
 
     if current_maxmemory:

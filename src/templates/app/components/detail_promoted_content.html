@@ -1,0 +1,38 @@
+{% load i18n %}
+{% load app_tags %}
+{% load user_tags %}
+{% detail_layout_family media_type as detail_family %}
+{% detail_promoted_facts media_type media.details as detail_promotion %}
+{% if detail_promotion.fields %}
+  <div class="detail-promoted-content">
+    <div {% detail_section_attrs user detail_family "sidebar" "details" visibility_only=True %}
+         class="detail-promoted-facts">
+        {% for fact in detail_promotion.fields %}
+          <div class="detail-promoted-fact">
+            <span class="detail-promoted-fact__label">{% if fact.key == "locale" %}<span class="detail-promoted-fact__full-label">{{ fact.label }}</span><span class="detail-promoted-fact__compact-label hidden">{% translate "Languages" %}</span>{% else %}{{ fact.label }}{% endif %}</span>
+            <span class="detail-promoted-fact__value">
+              {% if fact.key == "air_dates" %}
+                {% if fact.value.0 %}{{ fact.value.0|user_date_format:user }}{% endif %}{% if fact.value.0 and fact.value.1 %} – <br class="detail-promoted-fact__compact-break hidden">{% endif %}{% if fact.value.1 %}{{ fact.value.1|user_date_format:user }}{% endif %}
+              {% elif fact.key == "release_date" %}
+                {{ fact.value|iso_date_format:request.user }}
+              {% elif fact.key == "episodes" %}
+                {% blocktranslate trimmed count count=fact.value %}{{ count }} episode{% plural %}{{ count }} episodes{% endblocktranslate %}
+              {% elif fact.key == "status" or fact.key == "format" %}
+                {% translate fact.value %}
+              {% elif fact.key == "locale" %}
+                {% if fact.value.languages %}{% if fact.value.languages|is_list %}{% for item in fact.value.languages %}{% if not forloop.first %}, {% endif %}{{ item|translate_detail_value }}{% endfor %}{% else %}{{ fact.value.languages|translate_detail_value }}{% endif %}{% endif %}{% if fact.value.languages and fact.value.country %} ({% endif %}{% if fact.value.country %}{% if fact.value.country|is_list %}{% for item in fact.value.country %}{% if not forloop.first %}, {% endif %}{{ item|country_code|translate_detail_value }}{% endfor %}{% else %}{{ fact.value.country|country_code|translate_detail_value }}{% endif %}{% if fact.value.languages %}){% endif %}{% endif %}
+              {% elif fact.key == "country" or fact.key == "languages" %}
+                {% if fact.value|is_list %}{% for item in fact.value %}{% if not forloop.first %}, {% endif %}{{ item|translate_detail_value }}{% endfor %}{% else %}{{ fact.value|translate_detail_value }}{% endif %}
+              {% elif fact.value|is_list %}
+                {% for item in fact.value %}{% if not forloop.first %}, {% endif %}{{ item }}{% endfor %}
+              {% elif fact.key == "total_runtime" and media_type == MediaTypes.TV.value %}
+                {{ fact.value }}{% if media.details.episodes %}<span class="detail-promoted-fact__runtime-separator text-[var(--color-text-muted)] mx-1">·</span><br class="detail-promoted-fact__compact-break hidden">{% blocktranslate trimmed with count=media.details.episodes count count=media.details.episodes|safe_count %}{{ count }} episode{% plural %}{{ count }} episodes{% endblocktranslate %}{% endif %}
+              {% else %}
+                {{ fact.value }}
+              {% endif %}
+            </span>
+          </div>
+        {% endfor %}
+    </div>
+  </div>
+{% endif %}

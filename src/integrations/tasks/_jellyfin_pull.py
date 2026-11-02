@@ -22,11 +22,8 @@ from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 from integrations.imports.jellyfin_playback_reporting import (
     JellyfinPlaybackReportingImporter,
 )
-from integrations.jellyfin_client import (
-    JellyfinAuthError,
-    JellyfinClient,
-    JellyfinClientError,
-)
+from integrations.jellyfin_client import JellyfinClient, JellyfinClientError
+from integrations.tasks import _jellyfin_health
 
 logger = logging.getLogger(__name__)
 
@@ -160,21 +157,29 @@ def _format_pull_message(result: dict) -> str:
     return message
 
 
-@shared_task(name=JELLYFIN_PULL_TASK_NAME)
-def pull_jellyfin_history(user_id):
+@shared_task(bind=True, name=JELLYFIN_PULL_TASK_NAME)
+def pull_jellyfin_history(self, user_id):
     """Pull Jellyfin watch history automatically -- no manual export needed."""
-    from integrations.models import JellyfinAccount
-
     user = get_user_model().objects.get(id=user_id)
     account = getattr(user, "jellyfin_account", None)
-    if not account or not account.is_connected:
+    if not _jellyfin_health.has_credentials(account):
         msg = "Connect Jellyfin before importing history."
         raise MediaImportError(msg)
 
-    api_key = decrypt_or_raise(account.api_key)
-    client = JellyfinClient(account.base_url, api_key, account.jellyfin_user_id or None)
-
     try:
+        api_key = decrypt_or_raise(account.api_key)
+        client = JellyfinClient(
+            account.base_url,
+            api_key,
+            account.jellyfin_user_id or None,
+        )
+        if not _jellyfin_health.reprobe_if_broken(
+            account,
+            error_field="last_pull_error_message",
+            client=client,
+        ):
+            return "Skipped: Jellyfin rejected the API key. Reconnect Jellyfin."
+
         # A large initial backfill can complete thousands of movies/episodes
         # in one run; each one would otherwise trigger its own per-item
         # Item.fetch_releases()/reload_calendar task. Suppress those (same
@@ -184,11 +189,13 @@ def pull_jellyfin_history(user_id):
             if result is None:
                 account.playback_reporting_available = False
                 result = _run_library_backfill(user, account)
-    except (JellyfinAuthError, JellyfinClientError, MediaImportError) as exc:
+    except (JellyfinClientError, MediaImportError) as exc:
         logger.warning("Jellyfin history pull failed for user %s: %s", user_id, exc)
-        JellyfinAccount.objects.filter(user=user).update(
-            connection_broken=True,
-            last_pull_error_message=str(exc)[:500],
+        _jellyfin_health.handle_failure(
+            self,
+            account,
+            exc,
+            error_field="last_pull_error_message",
         )
         raise
 

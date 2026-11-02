@@ -25,6 +25,8 @@ from decouple import (
 from django.core.cache import CacheKeyWarning
 from django.core.exceptions import ImproperlyConfigured
 from django.db.backends.signals import connection_created
+from redis.backoff import NoBackoff
+from redis.retry import Retry
 
 from config.runtime_profile import (
     PROFILE as RESOURCE_PROFILE,
@@ -230,6 +232,14 @@ if BASE_URL:
 
 USE_X_FORWARDED = config("USE_X_FORWARDED", default=False, cast=bool)
 
+# External artwork and links must not receive private page paths or query strings.
+# Keep same-origin referrers for Django's HTTPS CSRF fallback when Origin is absent.
+SECURE_REFERRER_POLICY = "same-origin"
+
+# Opt in for HTTPS deployments; HTTP LAN installations must remain usable.
+SESSION_COOKIE_SECURE = config("SESSION_COOKIE_SECURE", default=False, cast=bool)
+CSRF_COOKIE_SECURE = config("CSRF_COOKIE_SECURE", default=False, cast=bool)
+
 SECURE_PROXY_SSL_HEADER = (
     ("HTTP_X_FORWARDED_PROTO", "https")
     if (config("USE_X_FORWARDED_PROTO", default=USE_X_FORWARDED, cast=bool))
@@ -332,13 +342,35 @@ SPECTACULAR_SETTINGS = {
 if ENABLE_DEBUG_TOOLBAR:
     INSTALLED_APPS.append("debug_toolbar")
 
-# Slow-request instrumentation: log requests exceeding either threshold.
+# Performance instrumentation: thresholded request and task summaries.
 PERF_LOG_ENABLED = config("PERF_LOG_ENABLED", default=True, cast=bool)
 PERF_LOG_SLOW_REQUEST_MS = config("PERF_LOG_SLOW_REQUEST_MS", default=500, cast=int)
+# A request still running after this long is logged once as stalled_request
+# with its stack, before it finishes. 0 disables the watchdog.
+PERF_STALL_WARN_MS = config("PERF_STALL_WARN_MS", default=10000, cast=int)
+PERF_STALL_MAX_REPORTS_PER_MINUTE = config(
+    "PERF_STALL_MAX_REPORTS_PER_MINUTE", default=10, cast=int
+)
+PERF_LOG_SLOW_TASK_MS = config("PERF_LOG_SLOW_TASK_MS", default=5000, cast=int)
+# A transaction open longer than this is logged with its request/task and
+# duration. SQLite has one writer, so a long transaction is the usual reason
+# every other writer waits out busy_timeout (#1609).
+PERF_LOG_SLOW_TRANSACTION_MS = config(
+    "PERF_LOG_SLOW_TRANSACTION_MS",
+    default=1000,
+    cast=int,
+)
 PERF_LOG_QUERY_COUNT_THRESHOLD = config(
     "PERF_LOG_QUERY_COUNT_THRESHOLD",
     default=75,
     cast=int,
+)
+TRAKT_IMPORT_CHUNK_ROWS = config("TRAKT_IMPORT_CHUNK_ROWS", default=100, cast=int)
+TRAKT_IMPORT_CHUNK_TARGET_MS = config(
+    "TRAKT_IMPORT_CHUNK_TARGET_MS", default=100, cast=int
+)
+TRAKT_IMPORT_STAGING_BYTES = config(
+    "TRAKT_IMPORT_STAGING_BYTES", default=512 * 1024 * 1024, cast=int
 )
 
 # High-water memory attribution (app/memory_envelope.py). Separate from the
@@ -413,6 +445,7 @@ MIDDLEWARE = [
     "app.middleware.UserLanguageMiddleware",
     "app.middleware.DiscoverWarmupMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    "app.middleware.DemoAccountGuardMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django.contrib.auth.middleware.LoginRequiredMiddleware",
     # Answer htmx requests with HX-Redirect instead of a followable 302 to the
@@ -529,14 +562,41 @@ else:
     )
     SQLITE_JOURNAL_MODE = config("SQLITE_JOURNAL_MODE", default="WAL")
     SQLITE_SYNCHRONOUS = config("SQLITE_SYNCHRONOUS", default="NORMAL")
+    # Read-side tuning. SQLite's own defaults (a 2 MiB page cache per connection,
+    # no memory map, spill files for sorts) make every big library query re-read
+    # the file from disk; on slow storage that is the cold-load cost. All three
+    # are upper bounds, not allocations: pages are cached only as they are read.
+    SQLITE_CACHE_SIZE_MIB = config(
+        "SQLITE_CACHE_SIZE_MIB",
+        default=by_tier(8, 24, 64),
+        cast=int,
+    )
+    SQLITE_MMAP_SIZE_MIB = config(
+        "SQLITE_MMAP_SIZE_MIB",
+        default=by_tier(0, 256, 1024),
+        cast=int,
+    )
+    SQLITE_TEMP_STORE = config("SQLITE_TEMP_STORE", default="MEMORY")
 
     DATABASES = {
         "default": {
-            "ENGINE": "django.db.backends.sqlite3",
+            "ENGINE": "config.sqlite_backend",
             "NAME": FLOPPY_DB_PATH,
             "OPTIONS": {
                 "timeout": SQLITE_BUSY_TIMEOUT_SECONDS,
+                # Take the write lock when a transaction starts. A plain BEGIN
+                # defers it to the first write, and a transaction that read
+                # first and then writes after another process committed fails
+                # at once with "database is locked", ignoring the timeout
+                # above. IMMEDIATE queues behind the other writer instead.
+                "transaction_mode": "IMMEDIATE",
             },
+            # Reuse a thread's connection across requests instead of opening
+            # one (plus the PRAGMAs below) for every request. Idle autocommit
+            # connections hold no read transaction, so WAL checkpoints are not
+            # held back. Replacing db.sqlite3 already requires stopping Floppy.
+            "CONN_MAX_AGE": 600,
+            "CONN_HEALTH_CHECKS": True,
         },
     }
 
@@ -560,6 +620,10 @@ else:
             cursor.execute(
                 f"PRAGMA busy_timeout={int(SQLITE_BUSY_TIMEOUT_SECONDS * 1000)}",
             )
+            cursor.execute(f"PRAGMA cache_size={-1024 * int(SQLITE_CACHE_SIZE_MIB)}")
+            cursor.execute(f"PRAGMA mmap_size={(1 << 20) * int(SQLITE_MMAP_SIZE_MIB)}")
+            if SQLITE_TEMP_STORE.upper() in {"DEFAULT", "FILE", "MEMORY"}:
+                cursor.execute(f"PRAGMA temp_store={SQLITE_TEMP_STORE.upper()}")
             if actual_journal_mode.lower() != SQLITE_JOURNAL_MODE.lower():
                 # A connection stuck on a different journal mode than its
                 # siblings (e.g. WAL requested but filesystem doesn't support
@@ -613,6 +677,9 @@ CACHES = {
         "KEY_PREFIX": KEY_PREFIX,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "COMPRESSOR": "app.cache_safety.SizedZlibCompressor",
+            "REDIS_CLIENT_CLASS": "app.cache_safety.CacheRedis",
+            "CONNECTION_POOL_CLASS": "app.cache_safety.CacheConnectionPool",
             # A cache is allowed to be unavailable. Without this, a slow or full
             # Redis raised out of every one of ~460 cache.get calls and took
             # page loads, webhooks and background tasks down with it (#521).
@@ -627,7 +694,7 @@ CACHES = {
             # promptly instead of blocking worker threads forever (#341).
             "SOCKET_CONNECT_TIMEOUT": config(
                 "REDIS_SOCKET_CONNECT_TIMEOUT",
-                default=5,
+                default=1,
                 cast=int,
             ),
             # Every thread that touches the cache blocks for this long when Redis
@@ -635,7 +702,7 @@ CACHES = {
             # threads x timeout. Shorter on hosts that can least afford it.
             "SOCKET_TIMEOUT": config(
                 "REDIS_SOCKET_TIMEOUT",
-                default=by_tier(4, 5, 10),
+                default=1,
                 cast=int,
             ),
             "CONNECTION_POOL_KWARGS": {
@@ -647,7 +714,10 @@ CACHES = {
                     default=by_tier(12, 20, 32),
                     cast=int,
                 ),
-                "retry_on_timeout": True,
+                # Optional cache data must not repeat a full socket timeout.
+                # Cached sessions fall back to their database source of truth.
+                "retry_on_timeout": False,
+                "retry": Retry(NoBackoff(), 0),
                 "health_check_interval": 30,
             },
         },
@@ -690,15 +760,29 @@ AUTH_PASSWORD_VALIDATORS = [
 # https://docs.djangoproject.com/en/stable/topics/logging/
 
 # Recent logs are also kept on disk (in addition to stdout) so the app can
-# offer a sanitized log download from Settings > Advanced (#510).
-LOG_DIR = config("LOG_DIR", default=str(BASE_DIR / "logs"))
+# offer a sanitized log download from Settings > Advanced (#510). They default
+# to a folder inside the data directory, which Docker users already mount, so
+# they survive the container being recreated after a crash.
+LOG_DIR = config("LOG_DIR", default=str(FLOPPY_DATA_DIR / "logs"))
 Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
 LOG_FILE = str(Path(LOG_DIR) / "floppy.log")
+
+# With DEBUG off the console hides routine chatter (see ConsoleNoiseFilter). The
+# log file always keeps the full record at INFO (DEBUG when DEBUG is on), so the
+# download in Settings > Advanced is complete without asking anyone to change a
+# setting before reporting a problem (#1831).
 
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "filters": {
+        "cache_cooldown": {"()": "app.cache_safety.CacheCooldownLogFilter"},
+        "console_noise": {"()": "app.log_safety.ConsoleNoiseFilter"},
+    },
     "loggers": {
+        "django_redis.cache": {
+            "filters": ["cache_cooldown"],
+        },
         "requests_ratelimiter.requests_ratelimiter": {
             "level": "DEBUG" if DEBUG else "WARNING",
         },
@@ -722,12 +806,13 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "verbose",
             "level": "DEBUG" if DEBUG else "INFO",
+            "filters": [] if DEBUG else ["console_noise"],
         },
         "file": {
             "class": "logging.handlers.RotatingFileHandler",
             "filename": LOG_FILE,
-            "maxBytes": 5 * 1024 * 1024,
-            "backupCount": 3,
+            "maxBytes": 10 * 1024 * 1024,
+            "backupCount": 5,
             "formatter": "verbose",
             "level": "DEBUG" if DEBUG else "INFO",
         },
@@ -745,6 +830,8 @@ LANGUAGES = [
     ("de", "Deutsch"),
     ("es", "Español"),
     ("fr", "Français"),
+    ("ru", "Русский"),
+    ("it", "Italiano"),
 ]
 
 LOCALE_PATHS = [BASE_DIR / "locale"]
@@ -1091,6 +1178,22 @@ BACKUP_DIR = config("BACKUP_DIR", default=str(BASE_DIR / "backups"))
 # exports above, which cannot replace a physically damaged db.sqlite3. Rides
 # the same BACKUP_DIR volume mount installs already have.
 DB_SNAPSHOT_ENABLED = config("DB_SNAPSHOT_ENABLED", default=True, cast=bool)
+# Daily PRAGMA optimize so SQLite always has planner statistics (SQLite only).
+# analysis_limit bounds each ANALYZE to a row sample, keeping the first run on a
+# multi-GB database short.
+DB_OPTIMIZE_ENABLED = config("DB_OPTIMIZE_ENABLED", default=True, cast=bool)
+# Sequential read of the SQLite file after start so cold page loads hit the OS
+# cache (app/tasks_db_warm.py). Budget is further capped at 25% of free memory.
+DB_WARM_ENABLED = config("DB_WARM_ENABLED", default=True, cast=bool)
+DB_WARM_MAX_MIB = config("DB_WARM_MAX_MIB", default=by_tier(0, 512, 2048), cast=int)
+DB_WARM_PAUSE_MS = config("DB_WARM_PAUSE_MS", default=20, cast=int)
+# Below this sequential read speed the warm logs a "slow_disk" warning.
+DB_SLOW_DISK_MIB_PER_SECOND = config("DB_SLOW_DISK_MIB_PER_SECOND", default=60, cast=int)
+DB_OPTIMIZE_ANALYSIS_LIMIT = config(
+    "DB_OPTIMIZE_ANALYSIS_LIMIT",
+    default=1000,
+    cast=int,
+)
 # How long an idempotency receipt stays replayable. A client that retries after
 # this window gets a fresh operation, not the prior result, so keep it longer
 # than the longest client backoff. Measure real retry intervals before lowering.
@@ -1180,7 +1283,6 @@ SHARED_DEFAULT_CREDENTIALS = {
     "IGDB_ID": "8wqmm7x1n2xxtnz94lb8mthadhtgrt",
     "BGG_API_TOKEN": "92f43ab1-d1d5-4e18-8b82-d1f56dc12927",
     "COMICVINE_API": "cdab0706269e4bca03a096fbc39920dadf7e4992",
-    "SIMKL_ID": "a973e57e85d94068315d5ac29669d85da8abc0fb7aff1d22e00e04bdf1882578",
 }
 
 TMDB_API = config(
@@ -1222,7 +1324,32 @@ MAL_API = config(
 )
 MAL_NSFW = config("MAL_NSFW", default=False, cast=bool)
 
+# Only used to sync watch status back to MyAnimeList. Unlike MAL_API (search),
+# OAuth requires a redirect URI registered to a specific app, so this can't
+# ship a shared default the way IGDB_SECRET does - each user or instance
+# needs their own MyAnimeList API application (see integrations.mal_sync).
+MAL_API_SECRET = config(
+    "MAL_API_SECRET",
+    default=secret(
+        "MAL_API_SECRET_FILE",
+        "",
+    ),
+)
+
+# The application key a WeTrakr account is connected with. WeTrakr issues these
+# on request, so each user or instance brings their own (Settings > Metadata);
+# nothing ships with the image.
+WETRAKR_CLIENT_ID = config(
+    "WETRAKR_CLIENT_ID",
+    default=secret(
+        "WETRAKR_CLIENT_ID_FILE",
+        "",
+    ),
+)
+
 MU_NSFW = config("MU_NSFW", default=False, cast=bool)
+
+MANGABAKA_NSFW = config("MANGABAKA_NSFW", default=False, cast=bool)
 
 IGDB_ID = config(
     "IGDB_ID",
@@ -1272,6 +1399,24 @@ GOOGLE_BOOKS_API_KEY = config(
     default=secret("GOOGLE_BOOKS_API_KEY_FILE", ""),
 )
 
+# RapidAPI key for OpenCritic game scores. No default: the free plan's daily
+# quota belongs to one account, so every install brings its own key.
+OPENCRITIC_API_KEY = config(
+    "OPENCRITIC_API_KEY",
+    default=secret("OPENCRITIC_API_KEY_FILE", ""),
+)
+
+# Podcast Index (podcastindex.org) is free but asks every app for its own key
+# and secret, so there is no shared default.
+PODCASTINDEX_API_KEY = config(
+    "PODCASTINDEX_API_KEY",
+    default=secret("PODCASTINDEX_API_KEY_FILE", ""),
+)
+PODCASTINDEX_API_SECRET = config(
+    "PODCASTINDEX_API_SECRET",
+    default=secret("PODCASTINDEX_API_SECRET_FILE", ""),
+)
+
 COMICVINE_API = config(
     "COMICVINE_API",
     default=secret(
@@ -1279,6 +1424,43 @@ COMICVINE_API = config(
         SHARED_DEFAULT_CREDENTIALS["COMICVINE_API"],
     ),
 )
+
+# Game artwork providers. SteamGridDB and TheGamesDB take a key of the member's
+# own. ScreenScraper identifies Floppy itself with developer credentials that
+# ScreenScraper issues to the project: they are read only from the environment
+# or a Docker secret, are never committed, and leave ScreenScraper inactive
+# until set. SCREENSCRAPER_SSID and SCREENSCRAPER_SSPASSWORD are an optional
+# member login that raises personal limits.
+STEAMGRIDDB_API_KEY = config(
+    "STEAMGRIDDB_API_KEY",
+    default=secret("STEAMGRIDDB_API_KEY_FILE", ""),
+)
+THEGAMESDB_API_KEY = config(
+    "THEGAMESDB_API_KEY",
+    default=secret("THEGAMESDB_API_KEY_FILE", ""),
+)
+SCREENSCRAPER_DEV_ID = config(
+    "SCREENSCRAPER_DEV_ID",
+    default=secret("SCREENSCRAPER_DEV_ID_FILE", ""),
+)
+SCREENSCRAPER_DEV_PASSWORD = config(
+    "SCREENSCRAPER_DEV_PASSWORD",
+    default=secret("SCREENSCRAPER_DEV_PASSWORD_FILE", ""),
+)
+SCREENSCRAPER_SOFTNAME = config("SCREENSCRAPER_SOFTNAME", default="Floppy")
+SCREENSCRAPER_SSID = config(
+    "SCREENSCRAPER_SSID",
+    default=secret("SCREENSCRAPER_SSID_FILE", ""),
+)
+SCREENSCRAPER_SSPASSWORD = config(
+    "SCREENSCRAPER_SSPASSWORD",
+    default=secret("SCREENSCRAPER_SSPASSWORD_FILE", ""),
+)
+
+# Grand Comics Database login. No default: GCD limits anonymous API access to
+# 30 requests an hour, and a login is tied to one person's account.
+GCD_USERNAME = config("GCD_USERNAME", default=secret("GCD_USERNAME_FILE", ""))
+GCD_PASSWORD = config("GCD_PASSWORD", default=secret("GCD_PASSWORD_FILE", ""))
 
 TRAKT_API = config(
     "TRAKT_API",
@@ -1312,11 +1494,14 @@ ANILIST_SECRET = config(
     ),
 )
 
+# No shared SIMKL default: the token exchange needs the app's secret, which
+# cannot ship, and a bundled ID without it only fails after the user approves
+# on SIMKL (#1318). Operators or users supply both.
 SIMKL_ID = config(
     "SIMKL_ID",
     default=secret(
         "SIMKL_ID_FILE",
-        SHARED_DEFAULT_CREDENTIALS["SIMKL_ID"],
+        "",
     ),
 )
 SIMKL_SECRET = config(
@@ -1359,6 +1544,10 @@ AUDIOBOOKSHELF_POLL_INTERVAL_MINUTES = config(
 )
 
 TESTING = False
+
+# Drop-in music listen hooks. Empty means none load. See
+# docs/architecture/music-listen-hooks.md.
+MUSIC_HOOKS_DIR = config("MUSIC_HOOKS_DIR", default="")
 
 HEALTHCHECK_CELERY_PING_TIMEOUT = config(
     "HEALTHCHECK_CELERY_PING_TIMEOUT",
@@ -1460,7 +1649,7 @@ CELERY_BROKER_POOL_LIMIT = config(
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 # Retry forever rather than exit: the container restarts into the same
 # situation, so giving up only turns a slow Redis into a crash loop.
-CELERY_BROKER_CONNECTION_MAX_RETRIES = 0
+CELERY_BROKER_CONNECTION_MAX_RETRIES = None
 
 # ``integrations.tasks`` keeps its historical public re-exports lazy so web
 # workers do not load every importer while resolving URLs. Celery workers still
@@ -1473,16 +1662,20 @@ if os.environ.get("FLOPPY_PROCESS_ROLE") == "interactive":
     )
 else:
     CELERY_IMPORTS = (
+        "app.tasks_game_groups",
         "integrations.tasks._change_log",
         "integrations.tasks._jellyfin_pull",
         "integrations.tasks._koito",
         "integrations.tasks._lastfm",
+        "integrations.tasks._mal_sync",
         "integrations.tasks._media_imports",
         "integrations.tasks._plex_collection",
         "integrations.tasks._plex_sections",
         "integrations.tasks._receipts",
+        "integrations.tasks._ratings",
         "integrations.tasks._state_sync",
         "integrations.tasks._webhook",
+        "integrations.tasks._wetrakr_export",
     )
 CELERY_REDIS_RETRY_ON_TIMEOUT = True
 
@@ -1561,11 +1754,10 @@ if not CELERY_TASK_SOFT_TIME_LIMIT:
 # interactive work strands it behind every background batch.
 CELERY_TASK_PRIORITY_INTERACTIVE = 0
 CELERY_TASK_PRIORITY_FOLLOWUP = 3
-# A Statistics refresh continuation must never outrank a webhook just because
-# its run started first. Publishing it above 0 puts it on "interactive:<n>",
-# which the worker's BRPOP drains only after the bare "interactive" key where
-# scrobbles and playback work land.
-CELERY_TASK_PRIORITY_STATISTICS_CONTINUATION = 3
+# A background Statistics sync yields to webhooks (0) but, on the minimal-tier
+# combined worker, still drains ahead of FOLLOWUP imports and backfills: at 3 a
+# chunk of the old refresh run could wait behind them indefinitely (#1272).
+CELERY_TASK_PRIORITY_STATISTICS_SYNC = 1
 CELERY_TASK_PRIORITY_DEFAULT = 5
 CELERY_TASK_PRIORITY_BACKGROUND = 9
 # Celery copies task_default_priority onto every task before it consults the
@@ -1574,49 +1766,32 @@ CELERY_TASK_PRIORITY_BACKGROUND = 9
 # supplies both the explicit classes and the default fallback instead.
 CELERY_TASK_DEFAULT_PRIORITY = None
 
-# Statistics refresh runs. A run is a bounded sequence of interactive chunk
-# tasks; these are the knobs a Docker session turns to keep the slowest chunk
-# inside the interactive latency budget.
-STATISTICS_REFRESH_CHUNK_DAYS = config(
-    "STATISTICS_REFRESH_CHUNK_DAYS",
-    default=25,
-    cast=int,
+# Statistics sync (docs/architecture/statistics-sync.md). One sync task works
+# for at most this many seconds, then queues its own follow-up, so the
+# single-slot interactive worker is never held for a whole All Time rebuild.
+STATISTICS_SYNC_TASK_BUDGET_SECONDS = config(
+    "STATISTICS_SYNC_TASK_BUDGET_SECONDS", default=10, cast=int
 )
-# Seconds to delay each continuation. Default 0 on purpose: Celery's Redis
-# transport hands an ETA task to the worker immediately and holds it in memory
-# until due, which with prefetch_multiplier=1 occupies the worker's only
-# prefetch slot. Raise it only if a broker needs the breathing room.
-STATISTICS_REFRESH_CHUNK_COUNTDOWN = config(
-    "STATISTICS_REFRESH_CHUNK_COUNTDOWN",
-    default=0,
-    cast=int,
+# Days built per prefetch slice inside a sync.
+STATISTICS_SYNC_SLICE_DAYS = config("STATISTICS_SYNC_SLICE_DAYS", default=25, cast=int)
+# The heavy ranges (Last 90 Days .. All Time) are rebuilt once changes have
+# been quiet this long, and never trail by more than the max delay. Hot ranges
+# (Today .. Last 30 Days) rebuild on every sync.
+STATISTICS_SYNC_HEAVY_SETTLE_SECONDS = config(
+    "STATISTICS_SYNC_HEAVY_SETTLE_SECONDS", default=90, cast=int
 )
-# Lease TTL for a run's control record, heartbeated by every chunk.
-STATISTICS_REFRESH_RUN_LEASE = config(
-    "STATISTICS_REFRESH_RUN_LEASE",
-    default=300,
-    cast=int,
+STATISTICS_SYNC_HEAVY_MAX_DELAY_SECONDS = config(
+    "STATISTICS_SYNC_HEAVY_MAX_DELAY_SECONDS", default=600, cast=int
 )
-# How long to let History settle before restarting a run that aborted because
-# History moved under it.
-#
-# A run that notices the version changed must abort: publishing would
-# overwrite a newer result with numbers built against the old version. It then
-# owes a fresh run. Restarting that run immediately is what produced the
-# observed failure: a credits backfill bumps the history version roughly every
-# ten seconds while it drains, so an All Time refresh did about nine seconds
-# of work, aborted, restarted, and repeated seven times in a minute, burning
-# the interactive worker on results that were known to be stale before they
-# were built.
-#
-# Short on purpose. This is a settling window, not a backoff: each window
-# still ends in exactly one run, planned against the latest version, so a
-# History that never stops changing delays each attempt by this much and no
-# more. Set it to 0 to restore the immediate restart.
-STATISTICS_HISTORY_DEBOUNCE_SECONDS = config(
-    "STATISTICS_HISTORY_DEBOUNCE_SECONDS",
-    default=20,
-    cast=int,
+# A credits backfill finishes a batch roughly every minute, and marking every
+# batch made the Statistics sync run back to back for the whole backfill -
+# competing with the credits writes for SQLite's single writer and the CPU
+# (#1706). Credits changes are coalesced to this interval, with one trailing
+# mark so the last credits written are still published. Kept at the heavy-range
+# max delay: a shorter interval would make every mark settle the heavy ranges
+# sooner and rebuild them more often than today.
+STATISTICS_CREDITS_MARK_SECONDS = config(
+    "STATISTICS_CREDITS_MARK_SECONDS", default=600, cast=int
 )
 
 CELERY_RESULT_EXTENDED = True
@@ -1626,20 +1801,22 @@ CELERY_RESULT_EXPIRES = 60 * 60 * 24 * 7  # 7 days
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-serializer
-CELERY_TASK_SERIALIZER = "pickle"
-# https://docs.celeryq.dev/en/stable/userguide/configuration.html#std-setting-accept_content
-CELERY_ACCEPT_CONTENT = [
-    "application/json",
-    "application/x-python-serialize",
-    "application/x-pickle",
-]
+# Old pickle queues must be drained before upgrading; see docs/security-hardening.md.
+CELERY_TASK_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_RESULT_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_ROUTES = {
     "app.tasks.populate_*": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "app.tasks.reconcile_*": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Cleanup task results": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Repair Celery broker bindings": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Cleanup image cache": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Purge expired Discover caches": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Write database snapshot": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Optimize database planner statistics": {
+        "priority": CELERY_TASK_PRIORITY_BACKGROUND,
+    },
     "Backfill item metadata": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Ensure genre backfill reconcile": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Ensure watch provider backfill reconcile": {
@@ -1651,12 +1828,20 @@ CELERY_TASK_ROUTES = {
     "Ensure podcast website backfill reconcile": {
         "priority": CELERY_TASK_PRIORITY_BACKGROUND,
     },
+    "Ensure watch state repair": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Nightly metadata quality backfill": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Refresh IMDB game credits from datasets": {
         "priority": CELERY_TASK_PRIORITY_BACKGROUND
     },
     "Sync IMDB ratings from datasets": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Sync MAL ratings from API": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    # A user is watching a spinner for this. It makes many provider calls, so
+    # it stays off the single-slot interactive worker, but it must not queue
+    # behind metadata backfills on the background worker.
+    "Preview sync to MyAnimeList": {"priority": CELERY_TASK_PRIORITY_INTERACTIVE},
+    # A per-item push is one quick API call that follows a watch or an edit.
+    # At default priority it starved behind back-to-back statistics syncs.
+    "Sync status to MyAnimeList": {"priority": CELERY_TASK_PRIORITY_INTERACTIVE},
     "Warm Discover API Cache": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm Discover Startup Tabs": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm History Day Cache Coverage": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
@@ -1678,11 +1863,35 @@ CELERY_TASK_ROUTES = {
         "queue": "interactive",
         "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
     },
-    # Each continuation builds one bounded chunk of days and returns, so the
-    # worker is free between chunks. See docs/architecture/statistics-refresh-runs.md.
+    # Retired chunk-run name; drains queued messages into a sync.
     "app.tasks.continue_statistics_refresh_task": {
         "queue": "interactive",
-        "priority": CELERY_TASK_PRIORITY_STATISTICS_CONTINUATION,
+        "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
+    },
+    # Budget-bounded bulk derived work: ordinary syncs stay off the interactive
+    # lane so webhooks and manual refreshes never wait behind a range aggregate.
+    # The task itself overrides the queue to interactive for urgent requests.
+    # See docs/architecture/statistics-sync.md.
+    "app.tasks.statistics_sync_task": {
+        "queue": "celery",
+        "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
+    },
+    # The trailing half of the credits Statistics debounce: one state update
+    # and a sync enqueue, so a delayed mark never waits behind background work.
+    "app.tasks.mark_credits_statistics_refresh": {
+        "queue": "interactive",
+        "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
+    },
+    # Rebuilds a talent section the viewer already sees a stale copy of. It is a
+    # full talent scan, so it belongs with the other bulk derived work.
+    "Refresh statistics talent fragment": {
+        "queue": "celery",
+        "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
+    },
+    # Periodic recovery is not awaited by a page. Keep its sweeps off the
+    # interactive worker; viewer-requested syncs select that lane separately.
+    "Reconcile statistics sync": {
+        "priority": CELERY_TASK_PRIORITY_STATISTICS_SYNC,
     },
     # History cache rebuilds now bound their inline work (see
     # refresh_history_cache in history_cache_reader.py), but they're kept off the
@@ -1703,6 +1912,10 @@ CELERY_TASK_ROUTES = {
         "queue": "interactive",
         "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
     },
+    "Process Stremio tracker event": {
+        "queue": "interactive",
+        "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
+    },
     # Fill-in artwork resolution for the home-page playback card; keeps the
     # HTTP request path free of provider calls.
     "Resolve live playback image": {
@@ -1719,9 +1932,14 @@ CELERY_TASK_ROUTES = {
     # background tasks so a backlog of low-priority work doesn't delay them.
     "Import from Radarr (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
     "Import from Sonarr (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
+    "Import from Mylar3 (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
+    "Import from Kapowarr (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
     "Import from Audiobookshelf (Recurring)": {
         "priority": CELERY_TASK_PRIORITY_FOLLOWUP,
     },
+    "Import from Kavita (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
+    "Import from Komga (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
+    "Import from Hardcover Account": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
     "Import from Pocket Casts (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
     "Import from GPodder (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
     "Migrate TV shows to preferred metadata provider": {
@@ -1803,6 +2021,15 @@ CALENDAR_ITEM_STALE_AFTER_HOURS = config(
     default=12,
     cast=int,
 )
+# How often a show whose episodes have all aired is looked at again for a newly
+# announced season. TMDB's change feed covers a few days and TVDB has none, so
+# without this such a show never gains the new season's calendar events and
+# cannot sort by "Next episode air date". 0 disables it.
+CALENDAR_AIRED_SHOW_RECHECK_DAYS = config(
+    "CALENDAR_AIRED_SHOW_RECHECK_DAYS",
+    default=7,
+    cast=int,
+)
 # Cap on TMDB /changes pagination. total_pages there can run into the hundreds,
 # and the loop had no limit at all.
 TMDB_CHANGES_MAX_PAGES = config(
@@ -1826,6 +2053,25 @@ CELERY_BEAT_SCHEDULE = {
     # A control-command reply (control.revoke, the celery_ping health check)
     # can write a malformed Kombu Redis binding at any point during uptime,
     # not just at startup, so this bounds how long a bad entry survives (#588).
+    # The Statistics sync's safety net: finds users whose ranges trail their
+    # changes (lost/starved sync messages, midnight rollover, first build after
+    # an upgrade or a cache flush) and queues a sync.
+    "reconcile_statistics_sync": {
+        "task": "Reconcile statistics sync",
+        "schedule": 60,
+        # DatabaseScheduler owns this safety-net lifetime: replace any old
+        # absolute expiry with a rolling lifetime. The next fresh tick rechecks
+        # durable state, so stale ticks need not replay database work.
+        "expires": None,
+        "options": {"expire_seconds": 60},
+    },
+    # Outbound deliveries (watched state, ratings) retry through their own
+    # next_attempt_at and recover from a lost broker message only if something
+    # sweeps them. Without this entry a transient failure was never retried.
+    "sweep_watched_state_deliveries": {
+        "task": "Sweep pending watched state deliveries",
+        "schedule": 60,
+    },
     "repair_celery_broker_bindings": {
         "task": "Repair Celery broker bindings",
         "schedule": 60 * 15,
@@ -1844,6 +2090,20 @@ CELERY_BEAT_SCHEDULE = {
     "cleanup_image_cache": {
         "task": "Cleanup image cache",
         "schedule": crontab(hour=4, minute=0),
+    },
+    "purge_expired_discover_caches": {
+        "task": "Purge expired Discover caches",
+        "schedule": crontab(hour=4, minute=15),
+    },
+    # Interval, not crontab: a never-run interval entry is due as soon as beat
+    # starts, so a database with no statistics is fixed on the first boot.
+    "optimize_database_statistics": {
+        "task": "Optimize database planner statistics",
+        "schedule": 60 * 60 * 24,
+    },
+    "warm_database_page_cache": {
+        "task": "Warm database page cache",
+        "schedule": 60 * 60 * 6,
     },
     "write_database_snapshot": {
         "task": "Write database snapshot",
@@ -1926,6 +2186,12 @@ CELERY_BEAT_SCHEDULE = {
         "task": "Ensure podcast website backfill reconcile",
         "schedule": RECONCILE_INTERVAL_SECONDS,
     },
+    # One-shot like the podcast sweep: the startup hook starts it, and this
+    # resumes a library too large to finish in one run (app/tasks_watch_state.py).
+    "ensure_watch_state_repair": {
+        "task": "Ensure watch state repair",
+        "schedule": RECONCILE_INTERVAL_SECONDS,
+    },
     "warm_discover_api_cache": {
         "task": "Warm Discover API Cache",
         "schedule": by_tier(60 * 60 * 6, 60 * 60 * 3, 60 * 60),
@@ -1938,18 +2204,22 @@ CELERY_BEAT_SCHEDULE = {
         "task": "Refresh Discover Profiles",
         "schedule": crontab(hour=4, minute=0),  # every day at 4 AM
     },
-    "migrate_tv_shows_to_preferred_provider": {
-        "task": "Migrate TV shows to preferred metadata provider",
-        "schedule": crontab(hour=3, minute=45),  # every day at 3:45 AM
-        "kwargs": {"batch_size": _scaled(200)},
-    },
     "sync_imdb_ratings": {
         "task": "Sync IMDB ratings from datasets",
         "schedule": crontab(hour=5, minute=0),  # every day at 5 AM
     },
+    "backfill_youtube_game_tags": {
+        "task": "Backfill YouTube game tags",
+        "schedule": 60 * 30,  # 20 videos per run keeps requests to YouTube slow
+    },
     "sync_mal_ratings": {
         "task": "Sync MAL ratings from API",
         "schedule": crontab(hour=5, minute=15),  # every day at 5:15 AM
+    },
+    "backfill_opencritic_scores": {
+        "task": "Backfill OpenCritic scores",
+        # Only spends quota in the hour before the daily reset; other runs no-op.
+        "schedule": crontab(minute="*/20"),
     },
 }
 
@@ -2027,4 +2297,10 @@ if not REGISTRATION:
 
 REDIRECT_LOGIN_TO_SSO = config("REDIRECT_LOGIN_TO_SSO", default=False, cast=bool)
 
-DEMO_ACCOUNT_ENABLED = config("DEMO_ACCOUNT_ENABLED", default=True, cast=bool)
+# Demo provisioning is opt-in. It creates a publicly known login
+# (demo/demodemo) after migrations, which is what a shared demo install
+# wants and what a private install must set DEMO_ACCOUNT_ENABLED=True to
+# get. Existing installs that already provisioned the account keep it:
+# this setting gates provisioning, not the account itself (see
+# floppy_preflight's demo check for how to notice and retire it).
+DEMO_ACCOUNT_ENABLED = config("DEMO_ACCOUNT_ENABLED", default=False, cast=bool)

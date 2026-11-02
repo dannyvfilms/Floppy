@@ -3,7 +3,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from app import config
-from app.models import MediaTypes, Sources
+from app.models import MediaTypes, Movie, Sources
 from app.providers import services
 from events.models import Event
 
@@ -71,6 +71,9 @@ def process_other(item, events_bulk):
             ),
         )
 
+        if item.media_type == MediaTypes.MOVIE.value:
+            events_bulk.extend(movie_release_type_events(item, metadata))
+
     elif (
         item.media_type == MediaTypes.GAME.value
         and selected_date_key in details
@@ -106,3 +109,44 @@ def process_other(item, events_bulk):
         )
 
     return True
+
+
+def movie_release_type_events(item, metadata):
+    """Return digital and physical release events for the users' regions.
+
+    Those dates differ per country, so only the regions of users tracking the
+    movie get events. Users without a region have none.
+    """
+    release_types = metadata.get("release_types") or {}
+    if not release_types:
+        return []
+
+    regions = set(
+        Movie.objects.filter(item=item)
+        .exclude(user__watch_provider_region__in=["", "UNSET"])
+        .values_list("user__watch_provider_region", flat=True),
+    )
+
+    events = []
+    for region in sorted(regions):
+        for release_type, release_date in (release_types.get(region) or {}).items():
+            try:
+                content_datetime = date_parser(release_date)
+            except ValueError:
+                logger.warning(
+                    "Invalid %s release date for %s: %s",
+                    release_type,
+                    item,
+                    release_date,
+                )
+                continue
+            events.append(
+                Event(
+                    item=item,
+                    content_number=None,
+                    datetime=content_datetime,
+                    release_type=release_type,
+                    region=region,
+                ),
+            )
+    return events

@@ -345,6 +345,12 @@ class Music(Media):
         blank=True,
         help_text="Link to Track catalog entry from MusicBrainz",
     )
+    origin_url = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Client origin URL for this play, when the scrobble sent one.",
+    )
 
     @property
     def formatted_progress(self):

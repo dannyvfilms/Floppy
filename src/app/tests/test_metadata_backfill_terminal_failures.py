@@ -13,7 +13,7 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.utils import timezone
 
-from app import tasks
+from app import tasks, tasks_episode
 from app.interactive_requests import INTERACTIVE_REQUEST_CACHE_KEY
 from app.models import (
     Item,
@@ -273,3 +273,99 @@ class UnconfiguredProviderStaysRetryableTests(TestCase):
             next_retry_at=timezone.now() - timezone.timedelta(minutes=1),
         )
         self.assertIn(item, tasks._release_items_queryset())
+
+
+class EpisodeRuntimeTerminalFailureTests(TestCase):
+    """A dead TMDB show id must not be re-fetched by every nightly backfill.
+
+    Production evidence (2026-10-20): one install logged 120 TMDB 404s from
+    the episode-runtime backfill for TV ids that do not exist. The season
+    raised before any per-episode state was written, so the same seasons were
+    selected, and failed, again the next night.
+    """
+
+    def _episode(self, media_id="3925833", number=1):
+        return Item.objects.create(
+            media_id=media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=number,
+            title=f"Episode {number}",
+        )
+
+    def test_404_is_recorded_as_terminal_and_leaves_the_queue(self):
+        episode = self._episode()
+        season_keys = [("3925833", Sources.TMDB.value, 1)]
+
+        with patch(
+            "app.providers.services.get_media_metadata",
+            side_effect=_provider_error(404),
+        ) as fetch:
+            tasks_episode.populate_episode_runtime_data(season_keys)
+            tasks_episode.populate_episode_runtime_data(season_keys)
+
+        self.assertEqual(fetch.call_count, 1)
+        state = MetadataBackfillState.objects.get(
+            item=episode,
+            field=MetadataBackfillField.RUNTIME,
+        )
+        self.assertTrue(state.give_up)
+        self.assertTrue(state.terminal)
+        self.assertNotIn(
+            episode,
+            tasks._episode_runtime_items_queryset(),
+        )
+
+    def test_transient_provider_error_stays_retryable(self):
+        episode = self._episode(media_id="500")
+        with patch(
+            "app.providers.services.get_media_metadata",
+            side_effect=_provider_error(503),
+        ):
+            tasks_episode.populate_episode_runtime_data(
+                [("500", Sources.TMDB.value, 1)],
+            )
+
+        state = MetadataBackfillState.objects.get(
+            item=episode,
+            field=MetadataBackfillField.RUNTIME,
+        )
+        self.assertFalse(state.give_up)
+        self.assertFalse(state.terminal)
+        self.assertIsNotNone(state.next_retry_at)
+
+    def test_stale_reset_does_not_reopen_a_terminal_verdict(self):
+        episode = self._episode()
+        with patch(
+            "app.providers.services.get_media_metadata",
+            side_effect=_provider_error(404),
+        ):
+            tasks_episode.populate_episode_runtime_data(
+                [("3925833", Sources.TMDB.value, 1)],
+            )
+
+        MetadataBackfillState.objects.filter(item=episode).update(
+            last_attempt_at=timezone.now() - timezone.timedelta(days=8),
+        )
+
+        self.assertEqual(tasks._reset_stale_give_up_episode_runtimes(), 0)
+        state = MetadataBackfillState.objects.get(item=episode)
+        self.assertTrue(state.give_up)
+        self.assertTrue(state.terminal)
+
+    def test_identity_change_reopens_a_terminal_verdict(self):
+        episode = self._episode()
+        with patch(
+            "app.providers.services.get_media_metadata",
+            side_effect=_provider_error(404),
+        ):
+            tasks_episode.populate_episode_runtime_data(
+                [("3925833", Sources.TMDB.value, 1)],
+            )
+
+        reset_backfill_state_for_identity_change([episode])
+
+        state = MetadataBackfillState.objects.get(item=episode)
+        self.assertFalse(state.give_up)
+        self.assertFalse(state.terminal)

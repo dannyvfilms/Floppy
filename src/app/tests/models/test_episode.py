@@ -1,7 +1,9 @@
+import importlib
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
+from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
@@ -157,6 +159,7 @@ class EpisodeStatusTests(TestCase):
             "season/1": {
                 "episodes": [{"episode_number": 1}],
             },
+            "details": {"status": "Ended"},
             "related": {
                 "seasons": [{"season_number": 1}],
             },
@@ -224,6 +227,7 @@ class EpisodeStatusTests(TestCase):
             "season/1": {
                 "episodes": [{"episode_number": 1}],
             },
+            "details": {"status": "Ended"},
             "related": {
                 "seasons": [{"season_number": 1}],  # Only one season
             },
@@ -262,7 +266,13 @@ class EpisodeStatusTests(TestCase):
                 "episodes": [{"episode_number": 1}],
             },
             "related": {
-                "seasons": [{"season_number": 1}, {"season_number": 2}],
+                "seasons": [
+                    {"season_number": 1},
+                    {
+                        "season_number": 2,
+                        "first_air_date": datetime(2020, 1, 1, tzinfo=UTC),
+                    },
+                ],
             },
         }
         mock_get_metadata.return_value = mock_metadata
@@ -293,6 +303,7 @@ class EpisodeStatusTests(TestCase):
                     {"episode_number": 3},
                 ],
             },
+            "details": {"status": "Ended"},
             "related": {
                 "seasons": [{"season_number": 1}],
             },
@@ -338,3 +349,78 @@ class EpisodeStatusTests(TestCase):
 
         self.tv.refresh_from_db()
         self.assertEqual(self.tv.status, Status.COMPLETED.value)
+
+
+@patch(
+    "app.models.providers.services.get_media_metadata",
+    return_value={"season/1": {"episodes": [{"episode_number": 1}]}},
+)
+class HistoricalEpisodeStatusBackfillTests(TestCase):
+    """The 0188 backfill recovers the status a history record was saved with."""
+
+    def setUp(self):
+        """Track one finished, one dropped and one open play."""
+        user = get_user_model().objects.create_user(username="test")
+        item_kwargs = {"media_id": "123", "source": Sources.TMDB.value}
+        with patch(
+            "app.models.providers.services.get_media_metadata",
+            return_value={"season/1": {"episodes": [{"episode_number": 1}]}},
+        ):
+            tv = TV.objects.create(
+                item=Item.objects.create(
+                    **item_kwargs,
+                    media_type=MediaTypes.TV.value,
+                    title="Show",
+                ),
+                user=user,
+            )
+            season = Season.objects.create(
+                item=Item.objects.create(
+                    **item_kwargs,
+                    media_type=MediaTypes.SEASON.value,
+                    title="Show",
+                    season_number=1,
+                ),
+                user=user,
+                related_tv=tv,
+            )
+            episode_item = Item.objects.create(
+                **item_kwargs,
+                media_type=MediaTypes.EPISODE.value,
+                title="Show",
+                season_number=1,
+                episode_number=1,
+            )
+            self.finished = Episode.objects.create(
+                item=episode_item,
+                related_season=season,
+                end_date=timezone.now(),
+            )
+            self.dropped = Episode.objects.create(
+                item=episode_item,
+                related_season=season,
+                status=Status.DROPPED.value,
+            )
+            self.open_play = Episode.objects.create(
+                item=episode_item,
+                related_season=season,
+                status=Status.IN_PROGRESS.value,
+                start_date=timezone.now(),
+            )
+        # As the records stood before the column existed.
+        Episode.history.update(status=Status.COMPLETED.value)
+
+    def test_backfill_restores_dropped_and_open_statuses(self, _mock_metadata):
+        """Only records whose status is recoverable change."""
+        migration = importlib.import_module(
+            "app.migrations.0188_historicalepisode_status",
+        )
+
+        migration.backfill_status(apps, None)
+
+        def statuses(episode):
+            return set(episode.history.values_list("status", flat=True))
+
+        self.assertEqual(statuses(self.finished), {Status.COMPLETED.value})
+        self.assertEqual(statuses(self.dropped), {Status.DROPPED.value})
+        self.assertEqual(statuses(self.open_play), {Status.IN_PROGRESS.value})

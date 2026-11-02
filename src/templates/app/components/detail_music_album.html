@@ -41,7 +41,7 @@
 
     {% include "app/components/detail_music_album_activity_subtitle.html" with album=album music_album_activity_subtitle=music_album_activity_subtitle user=user only %}
 
-    {% if album_tracker %}
+    {% if album_tracker and user.ratings_enabled %}
       <div class="mt-4 mb-5 flex flex-wrap gap-2">
         <div x-data="{ showRatingPopup: false, rating: {{ album_tracker.score|score_display:user|default:'null' }}, ratingScaleMax: {{ user|rating_scale_max }}, hoverRating: null, isHovering: false, formatRating(value) { if (value === null || value === undefined || value === '') { return ''; } return this.ratingScaleMax === 5 ? String(value) + '/5' : String(value); } }"
              class="relative">
@@ -68,31 +68,14 @@
                class="absolute left-0 top-full mt-2 w-[250px] rounded-lg border border-gray-700 bg-[var(--color-surface)] p-3 shadow-lg z-10"
                @mouseenter="isHovering = true"
                @mouseleave="isHovering = false; hoverRating = null">
-            <div class="flex justify-between mb-1">
-              {% with rating_range=user|rating_scale_max|get_range %}
-                {% for rating_value in rating_range %}
-                  <button @click="if (rating === {{ rating_value }}) { rating = null; } else { rating = {{ rating_value }}; } showRatingPopup = false; isHovering = false"
-                          @mouseenter="hoverRating = {{ rating_value }}"
-                          hx-post="{% url 'update_album_score' album.id %}"
-                          hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                          hx-vals='{"score": {{ rating_value }} }'
-                          hx-trigger="click"
-                          hx-swap="none"
-                          class="focus:outline-none flex flex-col items-center cursor-pointer">
-                    <div :class="{ 'text-yellow-400': {{ rating_value }} <= (isHovering ? hoverRating : rating), 'text-gray-600': {{ rating_value }} > (isHovering ? hoverRating : rating) }">
-                      {% include "app/icons/star.svg" with classes="w-5 h-5 hover:scale-110 transition-transform" %}
-                    </div>
-                    <span class="text-xs mt-1 text-[var(--color-text-muted)]">{{ rating_value }}</span>
-                  </button>
-                {% endfor %}
-              {% endwith %}
-            </div>
+            {% url 'update_album_score' album.id as rating_post_url %}
+            {% include "app/components/rating_picker.html" with post_url=rating_post_url %}
           </div>
         </div>
       </div>
     {% endif %}
 
-    <div class="{% if not music_album_activity_subtitle and not album_tracker %}mt-5 {% endif %}mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+    <div class="{% if not music_album_activity_subtitle and not album_tracker %}mt-5 {% elif not music_album_activity_subtitle and not user.ratings_enabled %}mt-5 {% endif %}mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
       <div x-data="{ trackOpen: false }" class="sm:shrink-0">
         <button type="button"
                 class="inline-flex w-full items-center justify-center gap-3 rounded-xl px-5 py-3 text-white shadow-sm transition duration-300 cursor-pointer sm:w-auto {% if detail_primary_action.active %}bg-indigo-600 hover:bg-indigo-700{% else %}bg-gray-600 hover:bg-gray-700{% endif %}"
@@ -215,7 +198,7 @@
                x-cloak
                @keydown.escape.window="tagsOpen = false"
                class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div class="w-96 max-h-[90vh] px-4 md:px-0 relative z-60">
+            <div class="w-96 max-h-[90dvh] px-4 md:px-0 relative z-60">
               <div id="{% component_id 'tags' media %}"></div>
             </div>
           </div>
@@ -235,7 +218,7 @@
                x-cloak
                @keydown.escape.window="listsOpen = false"
                class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div class="w-96 max-h-[90vh] px-4 md:px-0 relative z-60">
+            <div class="w-96 max-h-[90dvh] px-4 md:px-0 relative z-60">
               <div id="{% component_id 'lists' media %}"></div>
             </div>
           </div>
@@ -322,6 +305,19 @@
 
      </div>
 
+    {% if album_genres %}
+      <div {% detail_section_attrs user "music_album" "sidebar" "genres" %}>
+      <h2 class="text-xl font-bold mb-4 mt-6">{% translate "Genres" %}</h2>
+      <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
+        <div class="flex flex-wrap gap-2 justify-center md:justify-start">
+          {% for genre in album_genres %}
+            <span class="inline-flex h-6 items-center rounded-full border border-[var(--color-genre-badge-border)] bg-[var(--color-genre-badge-bg)] px-2.5 text-xs font-medium text-[var(--color-genre-badge-text)]">{{ genre }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      </div>
+    {% endif %}
+
      <div {% detail_section_attrs user "music_album" "sidebar" "collection" %}>
     <h2 class="text-xl font-bold mb-4 mt-6">{% translate "Collection" %}</h2>
     <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
@@ -393,7 +389,10 @@
                   <div class="flex-1">
                     <div class="flex justify-between items-start mb-2 space-x-2 px-4">
                       <div class="flex-1 min-w-0">
-                        <h3 class="text-lg font-semibold mb-1 line-clamp-1">{{ track_data.track.title }}</h3>
+                        <h3 class="text-lg font-semibold mb-1 line-clamp-1">
+                          <a href="{{ track_data.track|music_track_url }}"
+                             class="hover:text-indigo-500 transition-colors duration-200">{{ track_data.track.title }}</a>
+                        </h3>
                         <p class="text-sm text-[var(--color-text-muted)]">
                           {% if track_data.track.track_number %}
                             {% blocktranslate trimmed with value_1=track_data.track.track_number %}Track {{ value_1 }}{% endblocktranslate %}
@@ -403,6 +402,12 @@
                             {% if track_data.track.track_number %} • {% endif %}{{ track_data.track.duration_formatted }}
                           {% endif %}
                         </p>
+                        {% if track_data.origin_label %}
+                          <a href="{{ track_data.origin_url }}"
+                             target="_blank"
+                             rel="noreferrer"
+                             class="mt-1 inline-block text-sm text-[var(--color-text-muted)] hover:text-indigo-500">{{ track_data.origin_label }}</a>
+                        {% endif %}
                       </div>
 
                       <div class="flex space-x-2 shrink-0">

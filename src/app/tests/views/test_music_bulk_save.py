@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -71,8 +71,11 @@ class MusicBulkSaveViewTests(TestCase):
         self.assertEqual(response.context["episode_plays_tab_label"], "Track Plays")
         self.assertContains(response, "Track Plays")
         self.assertContains(response, "Release Date")
-        self.assertContains(response, "Start Now", count=4)
-        self.assertContains(response, "Just Finished", count=4)
+        # One "General" start/end picker plus one "Track Plays" bulk-range
+        # start/end picker, each split per #1243 so a field shows only its
+        # own shortcut (start: Start Now + Release Date, end: Just Finished).
+        self.assertContains(response, "Start Now", count=2)
+        self.assertContains(response, "Just Finished", count=2)
 
     def test_album_bulk_save_creates_music_entries_and_trackers(self):
         artist = Artist.objects.create(name="Bulk Artist")
@@ -321,10 +324,18 @@ class MusicBulkSaveViewTests(TestCase):
         )
         # Timestamps are biased toward known release dates: the dated track
         # anchors the start of the range, undated tracks cluster at the end.
-        self.assertEqual(
-            [play.end_date.date().isoformat() for play in plays],
-            ["2024-03-01", "2024-03-03", "2024-03-03"],
-        )
+        # The two undated tracks land within a second of the range's end
+        # rather than exactly on it: they're normalized from the same
+        # `timezone.now()` fallback, so ensure_increasing_datetimes nudges
+        # the second one forward to keep them distinct, and the fitting step
+        # then compacts them back from the boundary by a second to avoid
+        # overshooting `end_date` — see #1232 (fixing that issue made this
+        # path run on real datetimes end-to-end instead of on bare dates,
+        # which had coincidentally hidden this one-second edge case).
+        end_of_range = datetime(2024, 3, 3, 0, 0, tzinfo=UTC)
+        self.assertEqual(plays[0].end_date.date().isoformat(), "2024-03-01")
+        for play in plays[1:]:
+            self.assertLessEqual(end_of_range - play.end_date, timedelta(seconds=1))
 
     @patch("app.services.bulk_music_tracking.flush_media_change_side_effects")
     def test_music_bulk_save_flushes_side_effects_once_for_touched_days(

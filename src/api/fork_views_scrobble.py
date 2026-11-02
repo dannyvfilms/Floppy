@@ -12,6 +12,8 @@ from rest_framework.response import Response
 import app.providers.tmdb
 from app import live_playback
 from app.models import MediaTypes, Sources
+from app.providers import services
+from app.stats_utils import parse_runtime_to_minutes
 from integrations.delivery import get_or_record_receipt
 from integrations.models import IntegrationToken
 from integrations.webhooks.generic_scrobble import GenericScrobbleProcessor, is_played
@@ -71,6 +73,17 @@ def _scrobble_request_error(data):
             status=HTTP.BAD_REQUEST,
         )
 
+    percent = data.get("progress_percent")
+    if percent is not None and (
+        isinstance(percent, bool)
+        or not isinstance(percent, int | float)
+        or not 0 <= percent <= 100  # noqa: PLR2004
+    ):
+        return Response(
+            {"detail": "'progress_percent' must be a number from 0 to 100."},
+            status=HTTP.BAD_REQUEST,
+        )
+
     raw_played_at = data.get("played_at")
     if raw_played_at:
         try:
@@ -80,6 +93,12 @@ def _scrobble_request_error(data):
                 {"detail": "Invalid played_at format."},
                 status=HTTP.BAD_REQUEST,
             )
+
+    if data.get("manual") is not None and not isinstance(data.get("manual"), bool):
+        return Response(
+            {"detail": "'manual' must be a boolean."},
+            status=HTTP.BAD_REQUEST,
+        )
 
     if "score" in data:
         _, score_error = validate_episode_score(data.get("score"))
@@ -119,6 +138,32 @@ def _resolve_live_playback_media_id(media_type, ids):
         return str(episode_results[0]["show_id"])
     tv_results = find_response.get("tv_results") or []
     return str(tv_results[0]["id"]) if tv_results else None
+
+
+def _runtime_seconds(item):
+    """Return the title's length in seconds, asking the provider if need be.
+
+    A title scrobbled for the first time has no stored runtime yet (a
+    background task fills it in later), and a percentage-only client has no
+    other way to say how long it is. Failures give 0, never an error.
+    """
+    seconds = live_playback.runtime_seconds(item)
+    if seconds:
+        return seconds
+    try:
+        metadata = services.get_media_metadata(
+            item.media_type.lower(),
+            item.media_id,
+            item.source,
+        )
+        minutes = parse_runtime_to_minutes(
+            ((metadata or {}).get("details") or {}).get("runtime"),
+        )
+    except Exception:
+        logger.warning("Scrobble runtime lookup failed", exc_info=True)
+        return 0
+    usable = live_playback.usable_runtime_minutes(minutes)
+    return usable * 60 if usable else 0
 
 
 # /api/v1/scrobble/
@@ -194,11 +239,31 @@ class ScrobbleView(drf_views.APIView):
                     },
                     "position_seconds": {"type": "integer", "nullable": True},
                     "duration_seconds": {"type": "integer", "nullable": True},
+                    "progress_percent": {
+                        "type": "number",
+                        "nullable": True,
+                        "minimum": 0,
+                        "maximum": 100,
+                        "description": "For a player that knows how far "
+                        "through a title it is but not in seconds. Floppy "
+                        "turns it into a position with duration_seconds, or "
+                        "else the title's runtime. Ignored when "
+                        "position_seconds is sent.",
+                    },
                     "completed": {
                         "type": "boolean",
                         "nullable": True,
                         "description": "Only used by 'stop'. Overrides the "
                         "position/duration completion heuristic when given.",
+                    },
+                    "manual": {
+                        "type": "boolean",
+                        "nullable": True,
+                        "description": "Only used by 'stop'. True when the "
+                        "user marked the title watched by hand instead of "
+                        "playing it. Something already watched is left as "
+                        "it is rather than recorded again as a rewatch, so "
+                        "the call is safe to repeat.",
                     },
                     "played_at": {
                         "type": "string",
@@ -266,7 +331,9 @@ class ScrobbleView(drf_views.APIView):
                 "episode_number": request.data.get("episode_number"),
                 "position_seconds": request.data.get("position_seconds"),
                 "duration_seconds": request.data.get("duration_seconds"),
+                "progress_percent": request.data.get("progress_percent"),
                 "completed": request.data.get("completed"),
+                "manual": request.data.get("manual"),
                 "played_at": try_parse_datetime_input(raw_played_at)
                 if raw_played_at
                 else None,
@@ -336,7 +403,8 @@ class ScrobbleView(drf_views.APIView):
         lookup. Exposed to clients via /api/v1/playback/progress/.
         """
         position = payload.get("position_seconds")
-        if position is None:
+        percent = payload.get("progress_percent")
+        if position is None and percent is None:
             return
         try:
             item = fork_views_playback.resolve_video_item(
@@ -350,6 +418,12 @@ class ScrobbleView(drf_views.APIView):
             if item is None:
                 return
             duration = payload.get("duration_seconds")
+            if position is None:
+                # Percentage-only client: the length comes from the title.
+                duration = duration or _runtime_seconds(item) or None
+                position = live_playback.position_from_percent(percent, duration)
+                if position is None:
+                    return
             fork_views_playback.upsert_playback_progress(
                 user,
                 item,
@@ -405,6 +479,7 @@ class ScrobbleView(drf_views.APIView):
                 episode_number=episode_number,
                 view_offset_seconds=data.get("position_seconds"),
                 duration_seconds=data.get("duration_seconds"),
+                progress_percent=data.get("progress_percent"),
                 image=image,
             )
         except Exception:

@@ -1,4 +1,11 @@
-"""Celery task migrating TMDB-tracked TV shows to TVDB when preferred (#387)."""
+"""Explicit TV provider moves.
+
+Changing the default provider never moves existing shows. The user asks for a
+move from Settings, or from one show's Match & Ordering tab. The batch task
+below is kept as a manual maintenance entry point and is deliberately not on
+the Celery beat schedule: an automatic nightly move made a preference change
+silently rewrite the library.
+"""
 
 from __future__ import annotations
 
@@ -27,6 +34,7 @@ def _migration_candidates_queryset():
             source=Sources.TMDB.value,
             metadata_migration_pinned_at__isnull=True,
             tv__user__tv_metadata_source_default=Sources.TVDB.value,
+            tv__user__tv_auto_move_to_default_provider=True,
         )
         .exclude(library_media_type=MediaTypes.ANIME.value)
         .distinct()
@@ -116,3 +124,43 @@ def migrate_tv_shows_to_preferred_provider_task(batch_size: int = 200):
         "errored": errored,
         "remaining": _migration_candidates_queryset().count(),
     }
+
+
+@shared_task(name="Move TV library to preferred provider")
+def move_user_tv_library_task(user_id: int):
+    """Move one user's tracked shows to their default TV provider, on request.
+
+    Only runs when the user explicitly asks for it. A show that cannot move
+    safely (no match, or a tracked episode missing on the other provider) is
+    left untouched and named in the result.
+    """
+    from django.contrib.auth import get_user_model
+
+    from app.models import MediaTypes
+    from app.providers.services import ProviderAPIError
+    from app.services import library_migration, metadata_resolution
+    from app.services.library_migration import LibraryMigrationError
+
+    user = get_user_model().objects.filter(pk=user_id).first()
+    if user is None:
+        return {"moved": 0, "skipped": 0, "unresolved": []}
+
+    target_source = metadata_resolution.metadata_default_source(
+        user,
+        MediaTypes.TV.value,
+    )
+    moved = 0
+    unresolved = []
+    for item in list(library_migration.tv_items_to_move(user, target_source)):
+        try:
+            library_migration.switch_tv_provider(user, item)
+        except (LibraryMigrationError, ProviderAPIError) as error:
+            unresolved.append(item.title)
+            logger.warning("Left %r on its current provider: %s", item.title, error)
+        except Exception:
+            unresolved.append(item.title)
+            logger.warning("Provider move crashed for %r", item.title, exc_info=True)
+        else:
+            moved += 1
+
+    return {"moved": moved, "skipped": len(unresolved), "unresolved": unresolved}

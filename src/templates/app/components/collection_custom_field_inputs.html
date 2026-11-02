@@ -1,0 +1,73 @@
+{% load i18n %}
+{% load app_tags %}
+{% for group in custom_field_groups %}
+  <div class="mb-5">
+    <h4 class="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2">
+      {{ group.name }}
+    </h4>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+      {% for field in group.visible_fields %}
+        {% with current_value=entry_custom_field_values|dict_get:field.id %}
+          <div class="mb-5">
+            <label class="block text-sm font-medium mb-1 text-[var(--color-text-secondary)]"
+                   for="custom_field_{{ cf_id_prefix }}{{ field.id }}">{% translate field.label %}</label>
+            <div class="relative">
+              {% if field.field_type == "checkbox" %}
+                <label class="flex items-center gap-2 text-[var(--color-text-secondary)]">
+                  <input type="checkbox"
+                         id="custom_field_{{ cf_id_prefix }}{{ field.id }}"
+                         name="custom_field_{{ field.id }}"
+                         form="{{ cf_form_id|default:'collection-add-form' }}"
+                         {% if current_value %}checked{% endif %}
+                         class="h-4 w-4 rounded border-gray-600 bg-[var(--color-surface-strong)] text-indigo-500 focus:ring-[var(--color-accent)]">
+                  <span>{% translate "Yes" %}</span>
+                </label>
+              {% elif field.field_type == "select" %}
+                <div class="relative overflow-visible"
+                     @click.outside="open = false"
+                     @keydown.escape.window="open = false"
+                     x-data="{ open: false, selectedValue: '{{ current_value|default_if_none:''|escapejs }}' }">
+                  <button type="button"
+                          @click="open = !open"
+                          class="flex items-center justify-between w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
+                    <span x-text="selectedValue || '—'" :class="selectedValue === '' ? 'text-[var(--color-text-muted)]' : ''"></span>
+                    {% include "app/icons/chevron-down.svg" with classes="w-4 h-4 text-[var(--color-text-muted)]" %}
+                  </button>
+                  <div x-show="open"
+                       x-transition:enter="transition ease-out duration-100"
+                       x-transition:enter-start="transform opacity-0 scale-95"
+                       x-transition:enter-end="transform opacity-100 scale-100"
+                       x-transition:leave="transition ease-in duration-75"
+                       x-transition:leave-start="transform opacity-100 scale-100"
+                       x-transition:leave-end="transform opacity-0 scale-95"
+                       class="absolute left-0 right-0 top-full mt-2 py-1 max-h-60 bg-[var(--color-panel)] rounded-md shadow-lg overflow-y-auto z-50 border border-gray-600">
+                    <button type="button"
+                            @click="selectedValue = ''; open = false"
+                            class="block w-full px-3 py-2 text-left text-sm text-[var(--color-text-muted)]">
+                      —
+                    </button>
+                    {% for option in field.options %}
+                      <button type="button"
+                              @click="selectedValue = '{{ option|escapejs }}'; open = false"
+                              class="block w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
+                        {{ option }}
+                      </button>
+                    {% endfor %}
+                  </div>
+                  <input type="hidden" name="custom_field_{{ field.id }}" form="{{ cf_form_id|default:'collection-add-form' }}" x-model="selectedValue">
+                </div>
+              {% else %}
+                <input type="{% if field.field_type == 'number' %}number{% elif field.field_type == 'date' %}date{% else %}text{% endif %}"
+                       id="custom_field_{{ cf_id_prefix }}{{ field.id }}"
+                       name="custom_field_{{ field.id }}"
+                       form="{{ cf_form_id|default:'collection-add-form' }}"
+                       value="{{ current_value|default_if_none:'' }}"
+                       class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]">
+              {% endif %}
+            </div>
+          </div>
+        {% endwith %}
+      {% endfor %}
+    </div>
+  </div>
+{% endfor %}

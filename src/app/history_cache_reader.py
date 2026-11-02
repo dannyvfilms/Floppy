@@ -3,7 +3,7 @@
 import logging
 import time
 from collections.abc import Iterable
-from datetime import date
+from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -14,6 +14,7 @@ from app import helpers
 from app.history_cache_day_builder import (
     _build_and_cache_history_day,
     build_history_day,
+    history_media_types_by_day,
 )
 from app.history_cache_index import (
     _missing_history_day_keys,
@@ -22,9 +23,12 @@ from app.history_cache_index import (
 )
 from app.history_cache_lifecycle import (
     _clean_refresh_lock,
+    classify_missing_history_days,
+    record_history_repair_complete,
     schedule_history_day_cache_coverage,
     schedule_history_refresh,
 )
+from app.history_cache_range_prefetch import HistoryRangePrefetch
 from app.history_cache_serialization import (
     _deserialize_history_day,
     _serialize_history_day,
@@ -39,6 +43,7 @@ from app.history_cache_utils import (
     HISTORY_WARM_DAYS,
     _cache_key,
     _coverage_repair_key,
+    _current_history_era,
     _date_from_day_key,
     _day_cache_key,
     _day_key_from_value,
@@ -48,6 +53,7 @@ from app.history_cache_utils import (
     apply_history_entry_cap,
     expand_history_media_types,
 )
+from app.task_cooperation import CooperativeRun
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +98,8 @@ def get_month_history(
         if built_at:
             cache_age_s = (timezone.now() - built_at).total_seconds()
         if (
-            built_at and timezone.now() - built_at > HISTORY_STALE_AFTER
+            (built_at and timezone.now() - built_at > HISTORY_STALE_AFTER)
+            or cache_entry.get("era") != _current_history_era(user.id, logging_style)
         ) and refresh_lock is None:
             scheduled = schedule_history_refresh(user.id, logging_style, warm_days=0)
             logger.info(
@@ -110,9 +117,17 @@ def get_month_history(
             year,
             month,
         )
+        # Capture the era before reading rows so an invalidation landing
+        # mid-build retires this publish's namespace.
+        era = _current_history_era(user.id, logging_style)
         index_day_keys = build_history_index(user, logging_style)
-        built_at = cache_history_index(user.id, logging_style, index_day_keys)
-        cache_entry = {"days": index_day_keys, "built_at": built_at}
+        built_at = cache_history_index(
+            user.id,
+            logging_style,
+            index_day_keys,
+            era=era,
+        )
+        cache_entry = {"days": index_day_keys, "built_at": built_at, "era": era}
 
     index_days = cache_entry.get("days", [])
     month_prefix = f"{year}{month:02d}"
@@ -175,6 +190,14 @@ def get_month_history(
             len(missing_days),
             refresh_lock is not None,
         )
+        day_media_types = history_media_types_by_day(
+            user,
+            missing_days,
+            logging_style,
+        )
+        prefetch = HistoryRangePrefetch(
+            user, missing_days, logging_style, day_media_types,
+        )
         history_days = []
         for day_key in month_day_keys:
             if day_key in cached_days:
@@ -182,7 +205,13 @@ def get_month_history(
                 continue
             history_days.append(
                 _window_history_day(
-                    _build_and_cache_history_day(user, day_key, logging_style),
+                    _build_and_cache_history_day(
+                        user,
+                        day_key,
+                        logging_style,
+                        media_types=day_media_types.get(day_key),
+                        prefetch=prefetch,
+                    ),
                     max_entries=HISTORY_ENTRIES_PER_DAY_PAGE,
                     entry_filter=entry_filter,
                 )
@@ -252,6 +281,70 @@ def get_cached_history_day(
         max_entries,
         entry_filter=entry_filter,
     )
+
+
+PREFETCH_MIN_DAYS = 2
+PREFETCH_MAX_SPAN_DAYS = 62
+
+
+def _span_prefetch(user, day_keys, logging_style):
+    """One span-wide load for several missing days, unless they are far apart.
+
+    The prefetch reads every row between the first and last day, so days spread
+    over years (an anniversary, a sparse history) cost more together than apart.
+    """
+    dates = sorted(
+        d for d in (_date_from_day_key(key) for key in day_keys) if d
+    )
+    if len(dates) < PREFETCH_MIN_DAYS or (dates[-1] - dates[0]).days > PREFETCH_MAX_SPAN_DAYS:
+        return {}, None
+    day_media_types = history_media_types_by_day(user, day_keys, logging_style)
+    return day_media_types, HistoryRangePrefetch(
+        user, day_keys, logging_style, day_media_types
+    )
+
+
+def get_history_index_day_keys(user, logging_style_override=None):
+    """Return every indexed day key, building and caching the index on a miss."""
+    logging_style = _normalize_logging_style(logging_style_override, user)
+    era = _current_history_era(user.id, logging_style)
+    entry = cache.get(_cache_key(user.id, logging_style))
+    built_at = entry.get("built_at") if entry else None
+    if (
+        entry
+        and entry.get("era") == era
+        and built_at
+        and timezone.now() - built_at <= HISTORY_STALE_AFTER
+    ):
+        index_days = entry.get("days", [])
+    else:
+        index_days = build_history_index(user, logging_style_override=logging_style)
+        cache_history_index(user.id, logging_style, index_days, era=era)
+    return [key for key in (_day_key_from_value(v) for v in index_days) if key]
+
+
+def get_cached_history_days(user, day_keys, logging_style_override=None):
+    """Return full day payloads for ``day_keys`` (in order), repairing misses together."""
+    logging_style = _normalize_logging_style(logging_style_override, user)
+    keys = [key for key in (_day_key_from_value(v) for v in day_keys) if key]
+    payloads = cache.get_many([_day_cache_key(user.id, logging_style, k) for k in keys])
+    days, missing = {}, []
+    for key in keys:
+        payload = payloads.get(_day_cache_key(user.id, logging_style, key))
+        if payload is None:
+            missing.append(key)
+        else:
+            days[key] = _deserialize_history_day(payload, max_entries=None)
+    day_media_types, prefetch = _span_prefetch(user, missing, logging_style)
+    for key in missing:
+        days[key] = _build_and_cache_history_day(
+            user,
+            key,
+            logging_style,
+            media_types=day_media_types.get(key),
+            prefetch=prefetch,
+        )
+    return [days[key] for key in keys if days.get(key)]
 
 
 def get_history_days(
@@ -379,8 +472,12 @@ def get_cached_history_window(
     logging_style_override=None,
     max_entries_per_day=None,
     date_filters=None,
+    allowed_media_types=None,
 ):
-    """Read one API page from indexed/day-cached history payloads.
+    """Read one page of days from indexed/day-cached history payloads.
+
+    `allowed_media_types` narrows the entry types further (the viewer's
+    enabled media types), intersected with any `media_type` filter.
 
     `date_filters` are applied to the day index rather than to the builders.
     start_date/end_date are whole-day bounds, so a date range only ever drops
@@ -403,21 +500,35 @@ def get_cached_history_window(
 
     logging_style = _normalize_logging_style(logging_style_override, user)
     requested_media_types = expand_history_media_types(filters.get("media_type"))
+    if allowed_media_types is not None:
+        requested_media_types = (
+            set(allowed_media_types)
+            if requested_media_types is None
+            else requested_media_types & set(allowed_media_types)
+        )
     cache_entry = cache.get(_cache_key(user.id, logging_style))
     if requested_media_types is not None:
+        era = _current_history_era(user.id, logging_style)
         typed_cache_key = _typed_history_index_key(
             user.id,
             logging_style,
             requested_media_types,
+            era,
         )
         typed_cache_entry = cache.get(typed_cache_key)
         if (
             typed_cache_entry
+            and typed_cache_entry.get("era") == era
             and typed_cache_entry.get("built_at")
             and timezone.now() - typed_cache_entry["built_at"] <= HISTORY_STALE_AFTER
         ):
             index_days = typed_cache_entry.get("days", [])
         else:
+            # Capture the era before reading rows: if invalidation retires
+            # it mid-build, this publish lands in an unreachable namespace
+            # and the next reader rebuilds — a stale index can never become
+            # the authoritative current one.
+            era = _current_history_era(user.id, logging_style)
             index_days = build_history_index(
                 user,
                 logging_style_override=logging_style,
@@ -428,22 +539,23 @@ def get_cached_history_window(
                 logging_style,
                 index_days,
                 media_types=requested_media_types,
+                era=era,
             )
     elif cache_entry:
         index_days = cache_entry.get("days", [])
         built_at = cache_entry.get("built_at")
         if (
-            built_at
-            and timezone.now() - built_at > HISTORY_STALE_AFTER
-            and _clean_refresh_lock(_refresh_lock_key(user.id, logging_style)) is None
-        ):
+            (built_at and timezone.now() - built_at > HISTORY_STALE_AFTER)
+            or cache_entry.get("era") != _current_history_era(user.id, logging_style)
+        ) and _clean_refresh_lock(_refresh_lock_key(user.id, logging_style)) is None:
             schedule_history_refresh(user.id, logging_style, warm_days=0)
     else:
+        era = _current_history_era(user.id, logging_style)
         index_days = build_history_index(
             user,
             logging_style_override=logging_style,
         )
-        cache_history_index(user.id, logging_style, index_days)
+        cache_history_index(user.id, logging_style, index_days, era=era)
 
     normalized_day_keys = [
         day_key
@@ -481,28 +593,45 @@ def get_cached_history_window(
             )
         history_days.append(day_payload)
 
+    # The viewer's enabled types alone only narrow what is shown, so build the
+    # complete day (and cache it for the next request) and window it below.
+    # Only an explicit media_type filter is worth filtering at the query.
+    build_media_types = (
+        requested_media_types if filters.get("media_type") else None
+    )
+    day_media_types, prefetch = {}, None
+    if build_media_types is None:
+        # Same span-wide load the month repair uses: one query per media
+        # family instead of a query bundle per missing day.
+        day_media_types, prefetch = _span_prefetch(
+            user, missing_day_keys, logging_style
+        )
     for day_key in missing_day_keys:
+        # Filter cold builds at the query boundary; only complete days may
+        # populate the shared day cache.
         day_payload = build_history_day(
             user,
             day_key,
+            media_types=day_media_types.get(day_key, build_media_types),
             logging_style_override=logging_style,
-            media_types=requested_media_types,
+            prefetch=prefetch,
         )
         if day_payload is None:
             continue
-        history_days.append(
-            _window_history_day(
-                day_payload,
-                max_entries=entry_cap,
-                media_types=requested_media_types,
-            )
-        )
-        if requested_media_types is None:
+        if build_media_types is None:
             cache.set(
                 _day_cache_key(user.id, logging_style, day_key),
                 _serialize_history_day(day_payload),
                 timeout=HISTORY_DAY_CACHE_TIMEOUT,
             )
+        windowed = _window_history_day(
+            day_payload,
+            max_entries=entry_cap,
+            media_types=requested_media_types,
+        )
+        if requested_media_types is not None and not windowed["entry_count"]:
+            continue
+        history_days.append(windowed)
 
     history_days.sort(key=lambda day: day.get("date") or date.min, reverse=True)
 
@@ -584,7 +713,9 @@ def get_cached_history_page(user, page_number: int = 1, logging_style_override=N
     cache_age_s = None
     if built_at:
         cache_age_s = (timezone.now() - built_at).total_seconds()
-    if built_at and timezone.now() - built_at > HISTORY_STALE_AFTER:
+    if (
+        built_at and timezone.now() - built_at > HISTORY_STALE_AFTER
+    ) or cache_entry.get("era") != _current_history_era(user.id, logging_style):
         refresh_lock = _clean_refresh_lock(lock_key)
         if refresh_lock is None:
             scheduled = schedule_history_refresh(user.id, logging_style, warm_days=0)
@@ -809,8 +940,20 @@ def refresh_history_cache(
             len(requested_day_keys or []),
             "page_days" if use_specific_days else "index",
         )
-        index_day_keys = build_history_index(user, logging_style_override=logging_style)
-        cache_history_index(user_id, logging_style, index_day_keys)
+        # Capture the era before reading rows: if invalidation retires it
+        # mid-build, this publish embeds a retired token and readers treat
+        # the index as stale (serve it, schedule a rebuild) rather than
+        # accepting pre-invalidation rows as fresh.
+        era = _current_history_era(user_id, logging_style)
+        index_day_keys = build_history_index(
+            user,
+            logging_style_override=logging_style,
+            memo_eras=(
+                _current_history_era(user_id, "sessions"),
+                _current_history_era(user_id, "repeats"),
+            ),
+        )
+        cache_history_index(user_id, logging_style, index_day_keys, era=era)
 
         warm_targets = []
         if use_specific_days:
@@ -908,15 +1051,24 @@ def repair_history_day_cache_coverage(
     if cache_entry:
         index_day_keys = cache_entry.get("days", [])
     else:
+        # Capture the era before reading rows: if invalidation retires it
+        # mid-build, this publish embeds a retired token and readers treat
+        # the index as stale (serve it, schedule a rebuild) rather than
+        # accepting pre-invalidation rows as fresh.
+        era = _current_history_era(user_id, logging_style)
         index_day_keys = build_history_index(user, logging_style_override=logging_style)
-        cache_history_index(user_id, logging_style, index_day_keys)
+        cache_history_index(user_id, logging_style, index_day_keys, era=era)
 
     if not index_day_keys:
         return {"rebuilt": 0, "remaining": 0, "days": 0}
 
     missing_day_keys = _missing_history_day_keys(user_id, logging_style, index_day_keys)
     if not missing_day_keys:
+        record_history_repair_complete(user_id, logging_style, len(index_day_keys))
         return {"rebuilt": 0, "remaining": 0, "days": len(index_day_keys)}
+    missing_reason, missing_detail = classify_missing_history_days(
+        user_id, logging_style, timedelta(seconds=HISTORY_DAY_CACHE_TIMEOUT)
+    )
 
     target_day_keys = (
         missing_day_keys[:batch_size]
@@ -925,21 +1077,30 @@ def repair_history_day_cache_coverage(
     )
     rebuilt = 0
     populated = 0
-    for day_key in target_day_keys:
+    # A batch runs for tens of seconds on a large history; stop between days
+    # when someone is browsing so the rebuild does not compete with their
+    # page loads. The unbuilt days stay missing and are picked up next run.
+    run = CooperativeRun("history_day_coverage_repair")
+    for day_key in run.iter(target_day_keys):
         day_payload = _build_and_cache_history_day(user, day_key, logging_style)
         rebuilt += 1
         if day_payload and day_payload.get("entries"):
             populated += 1
 
-    remaining = max(len(missing_day_keys) - len(target_day_keys), 0)
+    remaining = max(len(missing_day_keys) - rebuilt, 0)
+    if not remaining:
+        record_history_repair_complete(user_id, logging_style, len(index_day_keys))
     logger.info(
-        "history_day_coverage_repair user_id=%s logging_style=%s rebuilt=%s populated=%s remaining=%s days=%s",
+        "history_day_coverage_repair user_id=%s logging_style=%s rebuilt=%s populated=%s remaining=%s days=%s missing=%s missing_reason=%s missing_detail=%s",
         user_id,
         logging_style,
         rebuilt,
         populated,
         remaining,
         len(index_day_keys),
+        len(missing_day_keys),
+        missing_reason,
+        missing_detail or "-",
     )
     return {
         "rebuilt": rebuilt,

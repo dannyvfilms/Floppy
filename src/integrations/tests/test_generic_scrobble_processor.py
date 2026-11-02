@@ -2,12 +2,14 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, tag
+from django.utils import timezone
 
 from app.models import (
     TV,
     Anime,
     Episode,
     Item,
+    ItemProviderLink,
     MediaTypes,
     Movie,
     Season,
@@ -151,10 +153,15 @@ class GenericScrobbleHeuristicTests(TestCase):
         )
 
     def test_is_played_uses_buffer_when_duration_known(self):
-        """Position within the scrobble buffer of duration counts as played."""
+        """Position at 90% or more of duration counts as played."""
         self.assertTrue(
             self.processor._is_played(
                 {"position_seconds": 5380, "duration_seconds": 5400},
+            ),
+        )
+        self.assertTrue(
+            self.processor._is_played(
+                {"position_seconds": 1254, "duration_seconds": 1320},
             ),
         )
         self.assertFalse(
@@ -226,6 +233,92 @@ class GenericScrobbleProcessPayloadTests(TestCase):
         movie = Movie.objects.get(item__media_id="603", user=self.user)
         self.assertEqual(movie.status, Status.IN_PROGRESS.value)
         self.assertEqual(movie.progress, 0)
+
+    @patch("app.services.grouped_anime.classify_tv_metadata")
+    @patch("integrations.webhooks.anime_mappings.fetch_mapping_data")
+    @patch("app.providers.mal.anime")
+    @patch("app.providers.tmdb.tv_with_seasons")
+    @patch("app.providers.tmdb.find")
+    def test_provider_switch_keeps_scrobble_on_existing_flat_home(
+        self,
+        mock_find,
+        mock_tv_with_seasons,
+        mock_mal_anime,
+        mock_load_mapping_data,
+        mock_classify,
+    ):
+        """The scrobble API follows the same existing-home-first rule as webhooks."""
+        self.user.anime_enabled = True
+        self.user.anime_metadata_source_default = Sources.TVDB.value
+        self.user.save()
+
+        mock_find.return_value = {
+            "tv_episode_results": [],
+            "tv_results": [{"id": 12345}],
+        }
+        mock_tv_with_seasons.return_value = {
+            "media_id": "12345",
+            "title": "Split Cour Show",
+            "image": "https://example.com/show.jpg",
+            "genres": ["Animation"],
+            "tvdb_id": "402474",
+            "season/2": {"episodes": [{"episode_number": 1}]},
+        }
+        mock_load_mapping_data.return_value = {
+            "tvdb_show:402474:s1": {"mal:46569": {"1-12": "1-12"}},
+            "tvdb_show:402474:s2": {"mal:46569": {"1-12": "13-24"}},
+        }
+        mock_mal_anime.return_value = {
+            "media_id": "46569",
+            "title": "Split Cour Show",
+            "image": "https://example.com/anime.jpg",
+            "max_progress": 24,
+        }
+        mock_classify.return_value = GroupedAnimeMatch(
+            decision="move",
+            reason="exact_external_id_and_animation_genre",
+            tmdb_id="12345",
+            tvdb_id="402474",
+            mal_ids=("46569",),
+        )
+
+        anime_item = Item.objects.create(
+            media_id="46569",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Split Cour Show",
+            image="https://example.com/anime.jpg",
+        )
+        ItemProviderLink.objects.create(
+            item=anime_item,
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value,
+            provider_media_id="12345",
+            season_number=1,
+            episode_offset=0,
+        )
+        anime = Anime.objects.create(
+            item=anime_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=12,
+        )
+
+        self.processor.process_payload(
+            {
+                "media_type": "episode",
+                "ids": {"tmdb": "12345", "tvdb": "402474"},
+                "series_title": "Split Cour Show",
+                "season_number": 2,
+                "episode_number": 1,
+                "completed": True,
+            },
+            self.user,
+        )
+
+        self.assertEqual(TV.objects.filter(user=self.user).count(), 0)
+        anime.refresh_from_db()
+        self.assertEqual(anime.progress, 13)
 
     def test_movie_completion_prefers_pending_activity_row(self):
         """Scrobble completion upgrades Planning before older completed history."""
@@ -612,3 +705,86 @@ class GenericScrobbleProcessPayloadTests(TestCase):
                 media_type=MediaTypes.MOVIE.value,
             ).exists(),
         )
+
+    @patch("app.providers.tmdb.get_tvdb_episode_image_map", return_value={})
+    @patch("app.providers.tmdb.tv_with_seasons")
+    @patch("app.providers.tmdb.find")
+    def test_episode_play_completes_a_check_in_instead_of_adding_a_row(
+        self,
+        mock_find,
+        mock_tv_with_seasons,
+        _mock_images,
+    ):
+        """A real play of the episode a manual check-in left open finishes that row."""
+        mock_find.return_value = {"tv_episode_results": [], "tv_results": []}
+        mock_tv_with_seasons.return_value = {
+            "media_id": "12345",
+            "title": "Check-in Show",
+            "image": "https://example.com/show.jpg",
+            "tvdb_id": "402474",
+            "season/1": {
+                "season_number": 1,
+                "episodes": [{"episode_number": 1}, {"episode_number": 2}],
+            },
+        }
+        tv_item = Item.objects.create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Check-in Show",
+            image="https://example.com/show.jpg",
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Check-in Show",
+            image="",
+            season_number=1,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        episode_item = Item.objects.create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Check-in Show",
+            image="",
+            season_number=1,
+            episode_number=1,
+        )
+        open_play = Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            status=Status.IN_PROGRESS.value,
+            start_date=timezone.now(),
+            entry_source="check-in",
+        )
+
+        with patch("app.services.metadata_resolution.upsert_provider_links"):
+            self.processor.process_payload(
+                {
+                    "media_type": "episode",
+                    "ids": {"tmdb": "12345", "tvdb": "402474"},
+                    "series_title": "Check-in Show",
+                    "season_number": 1,
+                    "episode_number": 1,
+                    "completed": True,
+                },
+                self.user,
+            )
+
+        plays = Episode.objects.filter(item=episode_item, related_season=season)
+        self.assertEqual(plays.count(), 1)
+        open_play.refresh_from_db()
+        self.assertEqual(open_play.status, Status.COMPLETED.value)
+        self.assertIsNotNone(open_play.end_date)

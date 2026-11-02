@@ -134,7 +134,7 @@ MEDIA_TYPE_CONFIG = {
         "date_key": "end_date",
     },
     MediaTypes.MANGA.value: {
-        "sources": [Sources.MAL, Sources.MANGAUPDATES],
+        "sources": [Sources.MAL, Sources.MANGAUPDATES, Sources.MANGABAKA],
         "default_source": Sources.MAL,
         "unicode_icon": "📚",
         "verb": (gettext_noop("read"), gettext_noop("read")),
@@ -185,7 +185,7 @@ MEDIA_TYPE_CONFIG = {
         "unit": ("P", gettext_noop("Page")),
     },
     MediaTypes.COMIC.value: {
-        "sources": [Sources.COMICVINE],
+        "sources": [Sources.COMICVINE, Sources.GCD],
         "default_source": Sources.COMICVINE,
         "unicode_icon": "📕",
         "verb": (gettext_noop("read"), gettext_noop("read")),
@@ -199,7 +199,7 @@ MEDIA_TYPE_CONFIG = {
         "unit": ("#", gettext_noop("Issue")),
     },
     MediaTypes.COMIC_ISSUE.value: {
-        "sources": [Sources.COMICVINE],
+        "sources": [Sources.COMICVINE, Sources.GCD],
         "default_source": Sources.COMICVINE,
         "unicode_icon": "📄",
         "verb": (gettext_noop("read"), gettext_noop("read")),
@@ -244,7 +244,12 @@ MEDIA_TYPE_CONFIG = {
         "date_key": "release_date",
     },
     MediaTypes.PODCAST.value: {
-        "sources": [Sources.POCKETCASTS, Sources.GPODDER, Sources.AUDIOBOOKSHELF],
+        "sources": [
+            Sources.POCKETCASTS,
+            Sources.GPODDER,
+            Sources.PODCASTINDEX,
+            Sources.AUDIOBOOKSHELF,
+        ],
         "default_source": Sources.POCKETCASTS,
         "unicode_icon": "🎙️",
         "verb": (gettext_noop("listen"), gettext_noop("listened")),
@@ -256,6 +261,19 @@ MEDIA_TYPE_CONFIG = {
             <line x1="12" x2="12" y1="19" y2="23"/>
             <line x1="8" x2="16" y1="23" y2="23"/>""",
         "unit": ("m", gettext_noop("Minute")),
+        "date_key": "published",
+    },
+    MediaTypes.VIDEO.value: {
+        "sources": [Sources.YOUTUBE],
+        "default_source": Sources.YOUTUBE,
+        "unicode_icon": "▶️",
+        "verb": (gettext_noop("watch"), gettext_noop("watched")),
+        "text_color": COLORS["red"]["text"],
+        "stats_color": COLORS["red"]["hex"],
+        "svg_icon": """
+            <rect width="20" height="14" x="2" y="5" rx="3"/>
+            <path d="m10 9 5 3-5 3Z"/>""",
+        "unit": ("s", gettext_noop("Second")),
         "date_key": "published",
     },
 }
@@ -279,7 +297,7 @@ COLLECTION_FIELD_CONFIG = {
             "media_type": "Format",
             "is_3d": "3D",
             "purchase_price": "Purchase Price",
-            "purchase_location": "Purchased From",
+            "purchase_location": "Location",
             "collected_at": "Collected At",
         },
         "choices": {
@@ -322,7 +340,7 @@ COLLECTION_FIELD_CONFIG = {
         "labels": {
             "media_type": "Format",
             "purchase_price": "Purchase Price",
-            "purchase_location": "Purchased From",
+            "purchase_location": "Location",
             "collected_at": "Collected At",
         },
         "choices": {
@@ -337,7 +355,7 @@ COLLECTION_FIELD_CONFIG = {
         "labels": {
             "media_type": "Format",
             "purchase_price": "Purchase Price",
-            "purchase_location": "Purchased From",
+            "purchase_location": "Location",
             "collected_at": "Collected At",
         },
         "choices": {
@@ -364,7 +382,7 @@ COLLECTION_FIELD_CONFIG = {
             "resolution": "Platform",
             "hdr": "Edition",
             "purchase_price": "Purchase Price",
-            "purchase_location": "Purchased From",
+            "purchase_location": "Location",
             "collected_at": "Collected At",
         },
         "choices": {
@@ -401,7 +419,7 @@ COLLECTION_FIELD_CONFIG = {
         "labels": {
             "media_type": "Format",
             "purchase_price": "Purchase Price",
-            "purchase_location": "Purchased From",
+            "purchase_location": "Location",
             "collected_at": "Collected At",
         },
         "choices": {

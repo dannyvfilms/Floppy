@@ -2,13 +2,17 @@
 
 import logging
 import sys
+import time
+import uuid
 from datetime import datetime, timedelta
 
 from django.conf import settings
+from django.core.cache import cache
 from django.db import models
 from django.utils import timezone
 
 from app.models import MediaTypes, Music
+from app.stats_utils import _coerce_genre_list
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +23,25 @@ class UnsupportedHistoryMediaTypeError(ValueError):
     def __init__(self, token):
         """Build an error containing the rejected token."""
         super().__init__(f"Unsupported history media type: {token}")
+
+
+def history_entry_sort_key(entry):
+    """Order a history row newest first.
+
+    Callers sort with ``reverse=True``. ``played_at_local`` is the real
+    order. YouTube only has a calendar day, so every play that day shares
+    noon and this key would otherwise tie. ``instance_id`` is the row id.
+    The sync posts a batch oldest-first, so the higher id is the later watch.
+
+    @param entry - History entry dict.
+    @returns Tuple of played-at, season, episode, and row id.
+    """
+    return (
+        entry["played_at_local"],
+        entry.get("season_number") or 0,
+        entry.get("episode_number") or 0,
+        entry.get("instance_id") or 0,
+    )
 
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -35,12 +58,22 @@ def _coerce_timedelta(value, default):
         return default
 
 
-HISTORY_CACHE_VERSION = 21
+HISTORY_CACHE_VERSION = 25
 HISTORY_INDEX_PREFIX = f"history_index_v{HISTORY_CACHE_VERSION}"
 HISTORY_DAY_PREFIX = f"history_day_v{HISTORY_CACHE_VERSION}"
 HISTORY_CACHE_PREFIX = HISTORY_INDEX_PREFIX
 HISTORY_CACHE_TIMEOUT = 60 * 60 * 6  # 6 hours for the history index
-HISTORY_DAY_CACHE_TIMEOUT = getattr(settings, "HISTORY_DAY_CACHE_TIMEOUT", None)
+# Era keys must outlive any index published under them: if the era key
+# expires while its typed indexes are still alive, those indexes are
+# orphaned and readers rebuild — correct, but wasteful. 24h comfortably
+# covers the 6h index TTL even when nothing refreshes it.
+HISTORY_ERA_TIMEOUT = 60 * 60 * 24
+# Finite so day payloads are evictable: Redis runs volatile-lru, which only
+# evicts keys that carry a TTL, so payloads without one crowded out sessions
+# and page caches instead. Expired days are rebuilt by the coverage repair.
+HISTORY_DAY_CACHE_TIMEOUT = getattr(
+    settings, "HISTORY_DAY_CACHE_TIMEOUT", 30 * 24 * 60 * 60
+)
 HISTORY_STALE_AFTER = _coerce_timedelta(
     getattr(settings, "HISTORY_CACHE_STALE_AFTER", None),
     timedelta(hours=1),
@@ -151,6 +184,7 @@ _HISTORY_MEDIA_TYPE_ALIASES = {
     "board_games": MediaTypes.BOARDGAME.value,
     "musics": MediaTypes.MUSIC.value,
     "podcasts": MediaTypes.PODCAST.value,
+    "videos": MediaTypes.VIDEO.value,
 }
 
 
@@ -209,10 +243,74 @@ def _cache_key(user_id: int, logging_style: str) -> str:
     return f"{HISTORY_CACHE_PREFIX}_{user_id}_{logging_style or 'repeats'}"
 
 
-def _typed_history_index_key(user_id: int, logging_style: str, media_types) -> str:
+def _history_era_key(user_id: int, logging_style: str) -> str:
+    """Return the key holding the current index era token for a user/style."""
+    return (
+        f"history_era_v{HISTORY_CACHE_VERSION}_{user_id}_{logging_style or 'repeats'}"
+    )
+
+
+def _new_history_era_token() -> str:
+    """Return a globally unique era token (never reuses a prior identity)."""
+    return f"{time.time_ns() // 1_000_000:013d}{uuid.uuid4().hex[:8]}"
+
+
+def _current_history_era(user_id: int, logging_style: str) -> str:
+    """Return the current era token, creating it if absent.
+
+    The token is only ever compared for equality: readers accept an index
+    published under the token they read, and invalidation replaces the token
+    outright. A missing key (never set, expired, or evicted) is seeded with a
+    fresh unique token — it can never alias an older era, so resurrecting an
+    orphaned typed index is impossible by construction (no ABA).
+    """
+    era_key = _history_era_key(user_id, logging_style)
+    era = cache.get(era_key)
+    if isinstance(era, str) and era:
+        return era
+    era = _new_history_era_token()
+    if cache.add(era_key, era, HISTORY_ERA_TIMEOUT):
+        return era
+    # Lost the create race or the cache dropped the write: adopt the winner
+    # if one exists, otherwise return an unpublished token. Publishing under
+    # an unpublished token is always safe — no reader will ever look there.
+    era = cache.get(era_key)
+    if isinstance(era, str) and era:
+        return era
+    return _new_history_era_token()
+
+
+def _bump_history_era(user_id: int, logging_style: str) -> str:
+    """Retire the current era and return the new one.
+
+    An unconditional write of a fresh unique token: concurrent invalidations
+    simply race to install distinct tokens, and *any* winner retires every
+    older namespace, so there is no lost-update window to exploit. Builders
+    still holding the previous token can only publish into a namespace no
+    reader will select again.
+    """
+    era = _new_history_era_token()
+    cache.set(_history_era_key(user_id, logging_style), era, HISTORY_ERA_TIMEOUT)
+    return era
+
+
+def _touch_history_era(user_id: int, logging_style: str) -> None:
+    """Refresh the era key's TTL so it outlives indexes published under it."""
+    cache.touch(_history_era_key(user_id, logging_style), HISTORY_ERA_TIMEOUT)
+
+
+def _typed_history_index_key(
+    user_id: int,
+    logging_style: str,
+    media_types,
+    era: str | None = None,
+) -> str:
     """Return a cache key for an index narrowed to concrete media types."""
     signature = ",".join(sorted(media_types))
-    return f"{_cache_key(user_id, logging_style)}_types_{signature}"
+    key = f"{_cache_key(user_id, logging_style)}_types_{signature}"
+    if era:
+        key = f"{key}_e{era}"
+    return key
 
 
 def _typed_history_index_registry_key(user_id: int, logging_style: str) -> str:
@@ -332,36 +430,6 @@ def _localize_datetime(value):
 
 
 # ── Genre helpers ─────────────────────────────────────────────────────────────
-
-
-def _coerce_genre_list(value):
-    """Normalize a genre field (string, dict, or list) into a list of strings."""
-
-    def _coerce_one(v):
-        if not v:
-            return None
-        if isinstance(v, str):
-            return v
-        if isinstance(v, dict):
-            return v.get("name") or v.get("tag") or v.get("label")
-        return str(v)
-
-    if not value:
-        return []
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, dict):
-        coerced = _coerce_one(value)
-        return [coerced] if coerced else []
-    if isinstance(value, (list, tuple)):
-        out = []
-        for v in value:
-            coerced = _coerce_one(v)
-            if coerced:
-                out.append(coerced)
-        return out
-    coerced = _coerce_one(value)
-    return [coerced] if coerced else []
 
 
 def _resolve_genres(*items):

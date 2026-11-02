@@ -1,0 +1,17 @@
+# Separate offline benchmark runtime; never used by production publication.
+FROM ghcr.io/astral-sh/uv:0.12.3@sha256:2d890623d310b57771ce840f0da5eed5fc6d657da05ffaa45d82797b53fa3abc AS uv
+FROM python:3.12-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea AS runtime
+COPY --from=uv /uv /usr/local/bin/uv
+RUN apt-get update && apt-get install -y --no-install-recommends redis-server \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /bench
+COPY pyproject.toml uv.lock ./
+COPY mcp_server/ ./mcp_server/
+RUN uv sync --locked --no-editable \
+    && .venv/bin/python -c "import psutil, fakeredis"
+ENV PATH="/bench/.venv/bin:$PATH" PYTHONUNBUFFERED=1 PYTHONHASHSEED=0 TZ=UTC
+FROM runtime AS benchmark
+COPY source-manifest.json ./source-manifest.json
+COPY src/ ./src/
+COPY scripts/ ./scripts/
+ENTRYPOINT ["python", "scripts/benchmark_matrix.py", "--container"]

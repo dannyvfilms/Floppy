@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, NoReturn
 
+import requests
 from django.db import IntegrityError, transaction
 
 from app import history_cache, signals
@@ -18,7 +19,7 @@ from app.models import (
     Season,
     Sources,
 )
-from app.providers import services
+from app.providers import services, tmdb, tvdb
 from app.services import anime_migration, metadata_resolution
 from app.services.tracking_hydration import ensure_item_metadata
 from app.signals import suppress_media_change_side_effects
@@ -600,28 +601,33 @@ def migrate_library_item(
         target_media_id,
     )
 
+    # The flat-anime preflight reads provider metadata. Run it before the
+    # transaction: SQLite has one writer, and a slow provider response must not
+    # hold the write lock for the whole move.
+    flat_preflight = None
+    if plan.source_shape == "flat":
+        try:
+            flat_preflight = anime_migration.preflight_flat_anime_to_grouped(
+                user,
+                source_item,
+                plan.target_source,
+            )
+        except services.ProviderAPIError:
+            _migration_error(
+                "The verified Anime mapping could not be loaded; nothing was changed."
+            )
+        except anime_migration.AnimeMigrationError as error:
+            _migration_error(str(error))
+        if flat_preflight.provider_series_id != plan.target_media_id:
+            _migration_error("The verified Anime mapping changed; retry the move.")
+
     with transaction.atomic(), suppress_media_change_side_effects():
         source_item = Item.objects.select_for_update().get(pk=plan.source_item_id)
         if _owned_source_tracker(user, source_item) is None:
             _migration_error("The source tracking entry changed; retry the move.")
 
         if plan.source_shape == "flat":
-            try:
-                preflight = anime_migration.preflight_flat_anime_to_grouped(
-                    user,
-                    source_item,
-                    plan.target_source,
-                )
-            except services.ProviderAPIError:
-                _migration_error(
-                    "The verified Anime mapping could not be loaded; nothing was changed."
-                )
-            except anime_migration.AnimeMigrationError as error:
-                _migration_error(str(error))
-            if preflight.provider_series_id != plan.target_media_id:
-                _migration_error(
-                    "The verified Anime mapping changed; retry the move."
-                )
+            preflight = flat_preflight
             try:
                 result = anime_migration.persist_flat_anime_migration(preflight)
             except anime_migration.AnimeMigrationError as error:
@@ -648,21 +654,207 @@ def migrate_library_item(
         else:
             target_item = _move_grouped(user, source_item, plan)
 
-        history_days = {
-            day
-            for episode in Episode.objects.filter(
-                related_season__related_tv__user=user,
-                related_season__related_tv__item=target_item,
-            ).only("end_date")
-            if (day := history_cache.history_day_key(episode.end_date))
-        }
-        transaction.on_commit(
-            lambda: _reconcile_caches(user.id, history_days),
-        )
+        _schedule_cache_reconcile(user, target_item)
         return target_item
+
+
+def _schedule_cache_reconcile(user, target_item: Item) -> None:
+    history_days = {
+        day
+        for episode in Episode.objects.filter(
+            related_season__related_tv__user=user,
+            related_season__related_tv__item=target_item,
+        ).only("end_date")
+        if (day := history_cache.history_day_key(episode.end_date))
+    }
+    transaction.on_commit(
+        lambda: _reconcile_caches(user.id, history_days),
+    )
 
 
 def _reconcile_caches(user_id: int, history_days: set[str]) -> None:
     signals._clear_media_runtime_caches(user_id, MediaTypes.EPISODE.value)
     if history_days:
         signals._invalidate_episode_history_changes({user_id: list(history_days)})
+
+
+@dataclass(frozen=True, slots=True)
+class TvProviderSwitch:
+    """What moving one TV show between TMDB and TVDB would do (read-only)."""
+
+    target_source: str
+    target_label: str
+    target_media_id: str
+    target_title: str
+    seasons: int
+    episodes: int
+    missing: list[str]
+    plan: LibraryMigrationPlan | None
+
+
+def tv_provider_switch_target(user, item: Item) -> str | None:
+    """Return the other TV provider when this user can move the show there."""
+    if (
+        item.media_type != MediaTypes.TV.value
+        or item.source not in {Sources.TMDB.value, Sources.TVDB.value}
+        or library_bucket(item) != MediaTypes.TV.value
+        or _owned_source_tracker(user, item) is None
+    ):
+        return None
+    target_source = (
+        Sources.TVDB.value if item.source == Sources.TMDB.value else Sources.TMDB.value
+    )
+    if not metadata_resolution.provider_is_enabled(target_source, user):
+        return None
+    return target_source
+
+
+def _switch_target_media_id(item: Item, target_source: str) -> str | None:
+    """Return the verified id of a show on its other provider, if one is known."""
+    media_id = metadata_resolution.resolve_provider_media_id(
+        item,
+        target_source,
+        route_media_type=MediaTypes.TV.value,
+        persist_links=False,
+    )
+    if media_id:
+        return media_id
+    # Nothing stored yet: ask the providers, the same lookup the nightly
+    # TMDB -> TVDB migration uses.
+    try:
+        if target_source == Sources.TVDB.value:
+            found = tmdb.resolve_tvdb_id_for_tmdb_show(item.media_id)
+        else:
+            found = tvdb.series_tmdb_id(item.media_id)
+    except (services.ProviderAPIError, requests.RequestException):
+        return None
+    return str(found) if found else None
+
+
+def preview_tv_provider_switch(user, item: Item) -> TvProviderSwitch:
+    """Check, without writing, whether a show can move to its other TV provider.
+
+    Every tracked season and episode must exist on the destination; anything
+    that does not is listed in ``missing`` and ``plan`` stays ``None`` so the
+    move cannot be applied.
+    """
+    target_source = tv_provider_switch_target(user, item)
+    if target_source is None:
+        _migration_error("This show cannot be moved to another provider.")
+    target_label = metadata_resolution.metadata_provider_label(target_source)
+
+    target_media_id = _switch_target_media_id(item, target_source)
+    if not target_media_id:
+        _migration_error(f"No matching {target_label} title was found for this show.")
+
+    source_seasons, source_episodes = _source_coordinates(user, item)
+    season_numbers = []
+    for season in source_seasons:
+        if season.item.season_number is None:
+            _migration_error(
+                "A source season has no season coordinate; nothing was changed."
+            )
+        season_numbers.append(int(season.item.season_number))
+    season_numbers = sorted(set(season_numbers))
+
+    try:
+        target_metadata = services.get_media_metadata(
+            MediaTypes.TV.value,
+            target_media_id,
+            target_source,
+            language=metadata_resolution.metadata_language_default(user),
+        )
+        payload = (
+            services.get_media_metadata(
+                "tv_with_seasons",
+                target_media_id,
+                target_source,
+                season_numbers,
+            )
+            if season_numbers
+            else {}
+        ) or {}
+    except services.ProviderAPIError:
+        _migration_error(f"{target_label} could not be reached; nothing was changed.")
+    if not target_metadata:
+        _migration_error(f"The {target_label} title could not be loaded.")
+
+    target_seasons = {
+        number: dict(payload.get(f"season/{number}") or {})
+        for number in season_numbers
+    }
+    missing = [f"Season {number}" for number, meta in target_seasons.items() if not meta]
+    episodes_by_season = {
+        number: _episode_map(meta) for number, meta in target_seasons.items() if meta
+    }
+    for episode in source_episodes:
+        season_number = episode.related_season.item.season_number
+        episode_number = episode.item.episode_number
+        if season_number is None or episode_number is None:
+            _migration_error(
+                "An episode is missing season or episode coordinates; nothing was changed."
+            )
+        known = episodes_by_season.get(int(season_number))
+        if known is not None and int(episode_number) not in known:
+            missing.append(f"{int(season_number)}x{int(episode_number)}")
+
+    plan = None
+    if not missing:
+        plan = LibraryMigrationPlan(
+            source_item_id=item.id,
+            target_media_type=MediaTypes.TV.value,
+            target_source=target_source,
+            target_media_id=target_media_id,
+            target_bucket=MediaTypes.TV.value,
+            target_metadata=dict(target_metadata),
+            target_seasons=target_seasons,
+            source_shape="grouped",
+        )
+    return TvProviderSwitch(
+        target_source=target_source,
+        target_label=target_label,
+        target_media_id=target_media_id,
+        target_title=target_metadata.get("title") or item.title,
+        seasons=len(source_seasons),
+        episodes=len(source_episodes),
+        missing=missing,
+        plan=plan,
+    )
+
+
+def switch_tv_provider(user, source_item: Item) -> Item:
+    """Move one user's tracked show to its other TV provider, all or nothing.
+
+    Only this user's tracking moves; the shared provider rows (and other users'
+    tracking of them) are left alone.
+    """
+    switch = preview_tv_provider_switch(user, source_item)
+    if switch.plan is None:
+        _migration_error(
+            "Some tracked episodes do not exist on "
+            f"{switch.target_label}; nothing was changed."
+        )
+    with transaction.atomic(), suppress_media_change_side_effects():
+        source_item = Item.objects.select_for_update().get(pk=switch.plan.source_item_id)
+        if _owned_source_tracker(user, source_item) is None:
+            _migration_error("The source tracking entry changed; retry the move.")
+        target_item = _move_grouped(user, source_item, switch.plan)
+        _schedule_cache_reconcile(user, target_item)
+        return target_item
+
+
+def tv_items_to_move(user, target_source: str):
+    """Return this user's tracked TV shows that sit on the other TMDB/TVDB provider."""
+    other_source = (
+        Sources.TMDB.value if target_source == Sources.TVDB.value else Sources.TVDB.value
+    )
+    return (
+        Item.objects.filter(
+            media_type=MediaTypes.TV.value,
+            source=other_source,
+            tv__user=user,
+        )
+        .exclude(library_media_type=MediaTypes.ANIME.value)
+        .distinct()
+        .order_by("id")
+    )

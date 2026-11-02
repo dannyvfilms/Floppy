@@ -4,13 +4,12 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from http import HTTPStatus as HTTP  # noqa: N814
 
-from django.db.models import Count, OuterRef, Subquery
+from django.db.models import Count, OuterRef, Subquery, prefetch_related_objects
 from django.utils.dateparse import parse_date
 from django.utils.timezone import localdate
 from rest_framework.response import Response
 
-from app import history_cache
-from app.helpers import parse_completion_datetime
+from app.helpers import parse_completion_datetime, progress_activity
 from app.models import (
     TV,
     Anime,
@@ -31,6 +30,7 @@ from app.services.episode_coordinates import (
     cleanup_episode_history_for_route,
     resolve_episode_coordinate,
 )
+from app.services.episode_scores import rate_episode
 from lists.models import CustomListItem
 from users.models import MediaStatusChoices
 
@@ -72,10 +72,12 @@ def resolve_episode_coordinate_for_request(
     return coordinate, None
 
 MEDIA_MODIFIABLE_FIELDS = {
-    MediaTypes.MOVIE.value: {"score", "status", "start_date", "end_date", "notes"},
-    MediaTypes.TV.value: {"score", "status", "notes"},
-    MediaTypes.SEASON.value: {"score", "status", "notes"},
-    MediaTypes.EPISODE.value: {"end_date"},
+    MediaTypes.MOVIE.value: {
+        "score", "status", "start_date", "end_date", "notes", "entry_source",
+    },
+    MediaTypes.TV.value: {"score", "status", "notes", "entry_source"},
+    MediaTypes.SEASON.value: {"score", "status", "notes", "entry_source"},
+    MediaTypes.EPISODE.value: {"end_date", "entry_source"},
     MediaTypes.ANIME.value: {
         "score",
         "status",
@@ -83,6 +85,7 @@ MEDIA_MODIFIABLE_FIELDS = {
         "start_date",
         "end_date",
         "notes",
+        "entry_source",
     },
     MediaTypes.MANGA.value: {
         "score",
@@ -91,6 +94,7 @@ MEDIA_MODIFIABLE_FIELDS = {
         "start_date",
         "end_date",
         "notes",
+        "entry_source",
     },
     MediaTypes.GAME.value: {
         "score",
@@ -99,6 +103,7 @@ MEDIA_MODIFIABLE_FIELDS = {
         "start_date",
         "end_date",
         "notes",
+        "entry_source",
     },
     MediaTypes.BOOK.value: {
         "score",
@@ -107,6 +112,7 @@ MEDIA_MODIFIABLE_FIELDS = {
         "start_date",
         "end_date",
         "notes",
+        "entry_source",
     },
     MediaTypes.COMIC.value: {
         "score",
@@ -115,6 +121,7 @@ MEDIA_MODIFIABLE_FIELDS = {
         "start_date",
         "end_date",
         "notes",
+        "entry_source",
     },
     MediaTypes.BOARDGAME.value: {
         "score",
@@ -123,6 +130,7 @@ MEDIA_MODIFIABLE_FIELDS = {
         "start_date",
         "end_date",
         "notes",
+        "entry_source",
     },
 }
 
@@ -169,6 +177,7 @@ MEDIA_EXISTING_SORTS = [
     "score",
     "start_date",
     "end_date",
+    "last_watched",
 ] + [f.name for f in Item._meta.fields]
 
 MEDIA_SEASONS_ADDITIONAL_SORTS = [
@@ -198,10 +207,10 @@ VALID_SOURCES = {
     MediaTypes.EPISODE.value: ["tmdb", "manual"],
     MediaTypes.MOVIE.value: ["tmdb", "manual"],
     MediaTypes.ANIME.value: ["mal", "manual"],
-    MediaTypes.MANGA.value: ["mal", "mangaupdates", "manual"],
+    MediaTypes.MANGA.value: ["mal", "mangaupdates", "mangabaka", "manual"],
     MediaTypes.GAME.value: ["igdb", "manual"],
     MediaTypes.BOOK.value: ["openlibrary", "hardcover", "googlebooks", "manual"],
-    MediaTypes.COMIC.value: ["comicvine", "manual"],
+    MediaTypes.COMIC.value: ["comicvine", "gcd", "manual"],
     MediaTypes.BOARDGAME.value: ["bgg", "manual"],
 }
 
@@ -568,13 +577,18 @@ def paginate_list_items(request, user, user_list):
 
     total = None
     if sort is None:
-        total = items.count()
+        # No search/filter narrows ``items`` here, so count memberships without
+        # joining app_item.
+        total = (
+            items.count() if search_query else user_list.customlistitem_set.count()
+        )
         items = items[offset : offset + limit]
 
     media_objects = []
+    prefetch_groups = {}
     for item in items:
         # Shows info about the last consumption of the media if it's tracked
-        media = BasicMedia.objects.filter_media_prefetch(
+        queryset = BasicMedia.objects.filter_media_prefetch(
             user,
             item.media_id,
             item.media_type,
@@ -582,9 +596,23 @@ def paginate_list_items(request, user, user_list):
             season_number=item.season_number,
             episode_number=item.episode_number,
             annotate_progress=False,
-        ).first()
+        )
+        # The prefetches run once per media type below instead of once per
+        # item (four extra queries each): same lookups, one batched query each.
+        lookups = queryset._prefetch_related_lookups
+        media = queryset.prefetch_related(None).first()
+        if media is not None:
+            group = prefetch_groups.setdefault(
+                (type(media), item.media_type),
+                (lookups, []),
+            )
+            group[1].append(media)
 
         media_objects.append(media if media is not None else item)
+
+    for lookups, group_media in prefetch_groups.values():
+        if lookups:
+            prefetch_related_objects(group_media, *lookups)
 
     BasicMedia.objects.annotate_episode_progress(
         [media for media in media_objects if getattr(media, "item", None) is not None],
@@ -924,6 +952,11 @@ def apply_manual_sort_for_type(results, sort):
 _AGGREGATED_SORT_KEYS = {
     "added": lambda media: _sort_nullable(getattr(media, "created_at", None)),
     "ended": lambda media: _sort_nullable(getattr(media, "end_date", None)),
+    "last_watched": lambda media: _sort_nullable(
+        getattr(media, "aggregated_last_watched", None)
+        or getattr(media, "end_date", None)
+        or progress_activity(media),
+    ),
     "id": lambda media: int(media.id),
     "itemid": itemid_key_compare,
     "mediaid": _sort_mediaid,
@@ -1041,31 +1074,9 @@ def validate_episode_score(raw_score):
 
 
 def apply_episode_score(season, episode_number, score):
-    """Set `score` on all plays of a tracked episode within `season`.
+    """Set `score` on a tracked episode within `season`.
 
-    Returns True if the episode was found and updated, False otherwise.
-    Uses queryset.update(), which skips post_save, so the affected
-    history-cache days are invalidated explicitly like the web view does.
+    An episode with no play gets a rating-only row (not a watch). Returns True
+    if a rating was stored or changed, False when there was nothing to clear.
     """
-    episodes = Episode.objects.filter(
-        related_season=season,
-        item__episode_number=int(episode_number),
-    )
-    if not episodes.exists():
-        return False
-
-    episodes.update(score=score)
-
-    day_keys = [
-        history_cache.history_day_key(end_date)
-        for end_date in episodes.values_list("end_date", flat=True)
-    ]
-    day_keys = [day_key for day_key in day_keys if day_key]
-    if day_keys:
-        history_cache.invalidate_history_days(
-            season.user_id,
-            day_keys=day_keys,
-            logging_styles=("sessions", "repeats"),
-            reason="episode_score_change",
-        )
-    return True
+    return rate_episode(season, episode_number, score)

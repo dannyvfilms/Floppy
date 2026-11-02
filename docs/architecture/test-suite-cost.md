@@ -8,6 +8,97 @@ All numbers below are from one cloud container: 4 CPUs, 16 GiB RAM, SQLite,
 `--parallel` (so 4 workers), `--exclude-tag slow --exclude-tag network`.
 6,115 tests across 420 test files.
 
+## October 21 CI investigation
+
+These newer hosted measurements are separate from the older local figures
+below. The referenced run discovered 9,480 offline tests (9,478 executed).
+
+| Successful run | Test step | Test execution | Notes |
+| --- | --- | --- | --- |
+| [39542220106](https://github.com/dannyvfilms/Floppy/actions/runs/39542220106) | 75m40s | 4,144.417s | Release, ctrace coverage with per-test contexts |
+| [39538589973](https://github.com/dannyvfilms/Floppy/actions/runs/39538589973) | about 38m | 2,081.421s | Nearby PR, no coverage |
+| [39692521277](https://github.com/dannyvfilms/Floppy/actions/runs/39692521277) | 47m43s | 2,588.239s | Referenced release; tests ultimately passed |
+
+These runs use different commits, so this is evidence of the cost difference,
+not a controlled coverage benchmark. In the successful release, Docker smoke
+took 5m53s and publication itself took 2m56s. In
+[39692521277](https://github.com/dannyvfilms/Floppy/actions/runs/39692521277),
+tests, smoke and both upgrade replays passed; publication was blocked by
+five virtualenv advisories in lint. Updating only the locked package from 21.7.13 to
+21.14.12 passes the complete Python audit with the existing OAuth exception.
+
+CI now runs two isolated jobs: `app`, and
+`users integrations lists events api config`. Each remains serial with real
+migrations; this does not re-enable the multiprocessing path described below.
+The existing `test (3.12)` check requires both jobs to succeed. MCP/script
+tests and migration graph checks run once. Both shards retain slow/browser
+regressions and exclude network-tagged tests. Coverage files are merged before
+generating Codecov output and the affected-test map, retaining all test contexts.
+
+The expected wall-time cost is the slower shard plus coverage merging, rather
+than the sum of both groups. The tradeoff is one additional migration replay
+and dependency/browser installation, plus another hosted runner. Hosted
+improved timings still need measurement after this workflow runs; the old
+20-minute local figure is not a valid current hosted baseline. `--timing` now
+reports setup, teardown and total time, and `--durations 30` reports individual
+tests plus the twenty most expensive modules. Module totals include method
+setup/teardown but exclude class fixtures and database creation.
+
+Reproduce the two CI shards in separate terminals (Chromium must be installed):
+
+```bash
+SECRET=test-only FLOPPY_TEST_FAST_DB=0 FLOPPY_TEST_PARALLEL=1 scripts/test.sh app --timing --durations 30
+SECRET=test-only FLOPPY_TEST_FAST_DB=0 FLOPPY_TEST_PARALLEL=1 scripts/test.sh users integrations lists events api config --timing --durations 30
+```
+
+Local full offline validation on the Mac, with real migrations and no coverage:
+
+| Shard | Reported tests | Skipped | Database setup | Test execution | Total |
+| --- | --- | --- | --- | --- | --- |
+| app | 4,191 | 5 | 197.515s | 1,331.019s | 1,530.410s |
+| other | 5,295 | 19 | 167.418s | 1,247.553s | 1,416.793s |
+
+Both passed, including benchmarks and browser regressions. The jobs overlapped
+on a machine with other work running; their totals are not a controlled
+before/after comparison with the hosted coverage runs. Concurrent UI work
+added seven browser tests after these runs; fresh discovery verified that the
+two app-label sets still preserve the full multiset without overlap
+(4,200 + 5,295 = 9,495 discovered tests). Those later UI tests are outside this
+validation run. The final guard's socket/SSRF checks passed separately (68
+tests), and two covered regression processes merged all 21 recorded contexts.
+
+The module summaries identified these expensive groups in the full runs:
+preflight (165.450s), statistics views (129.555s), Trakt allocation scaling
+(100.384s), Home card projection (72.657s), API tracking (71.002s), and core
+media API tests (68.373s). First-start preflight includes another real database
+creation; the profiling and allocation regressions remain enabled.
+
+Ordinary test settings now guard CPython socket audit events as well as
+requests. External DNS, TCP and UDP fail before I/O, including aiohttp and
+standard-library HTTP clients. Loopback and Unix sockets remain available.
+Blocked DNS raises `socket.gaierror`, preserving the resolver contract used
+by URL validation before it reaches a mocked HTTP transport.
+IP-literal parsing remains available locally, so metadata-address checks
+still validate the actual address before a mocked transport is reached.
+This matters even when HTTP is mocked: `validate_self_hosted_url()` resolves
+the hostname first. A controlled local Mac check of that function measured:
+
+| Existing fixture URL | System DNS, HTTP-only guard baseline | Socket/DNS guard |
+| --- | --- | --- |
+| `https://abs.example.com` | 0.022505s | 0.000841s |
+| `https://kavita.local:5000` | 5.008777s | 0.000027s |
+
+Both paths report an unresolvable fixture host and perform no HTTP request.
+The baseline deliberately used the real resolver; the guarded path performed
+no DNS I/O. These are single-call local measurements, not projected hosted
+savings: resolver behavior and negative caching vary by environment.
+
+`scripts/test.sh --network` still opts in before settings load. This is a
+Python-process boundary: child executables such as Chromium do not inherit
+Python audit hooks, and intentionally mocked socket functions perform no I/O.
+Keep browser fixtures local and provider calls mocked; the guard does not
+replace those contracts.
+
 ## Headline
 
 | | before | after |
@@ -57,9 +148,9 @@ apps, so the schema is created straight from the models: **141 s → 2.8 s**.
 
 It is **opt-in, not the default**, for two honest reasons:
 
-* it stops the suite exercising the migration graph at all, and
-  `config.tests.test_migration_hygiene` fails under it (correctly — that test
-  reads the migration graph, which is exactly what the flag skips);
+* ordinary database setup no longer exercises the migration graph. The hygiene
+  tests explicitly restore migration modules to inspect the real graph, but
+  passing them does not replay the migrations;
 * it skips `RunPython` data migrations, so anything depending on rows a
   migration creates would silently differ.
 
@@ -261,18 +352,17 @@ so every thread's stack is dumped if a run outlives its budget.
 `FLOPPY_TEST_TIMEOUT`, so a hang now dumps its stacks *before* the timeout
 kills it, with no one needing to remember a flag.
 
-**CI cannot be wired up the same way from a pull request.** The
-`check-workflow-changes` job fails any PR that touches `.github/workflows/**`,
-by design. So arming the watchdog for CI -- which is where the hang is most
-expensive, since the job just burns its 45 minutes and reports a timeout with
-no evidence -- has to be done as a deliberate, separate workflow change by
-someone who can land one. The one-line version is an `env:` entry on the
-"Run Tests" step:
+CI accepts workflow changes through the normal PR checks. Hosted run
+`38993407779` took almost 69 minutes, so the test job now allows 120 minutes,
+with `FLOPPY_TEST_TIMEOUT=6600` and `FLOPPY_TEST_WATCHDOG=6300`. Both PR and
+coverage runs have the same bounded test budget, with time left for setup and
+reporting. The watchdog leaves thread stacks before the runner times out:
 
 ```yaml
       - name: Run Tests
         env:
-          FLOPPY_TEST_WATCHDOG: "2400"
+          FLOPPY_TEST_TIMEOUT: "6600"
+          FLOPPY_TEST_WATCHDOG: "6300"
 ```
 
 ### Fixed: the suite runs serially, and survives parallel if you ask for it
@@ -443,14 +533,68 @@ is the result of fixing it.
 
 ```bash
 # Iterating on non-migration code — the fast path.
-FLOPPY_TEST_FAST_DB=1 SECRET=test-only scripts/test.sh app.tests.test_statistics_refresh_run
+FLOPPY_TEST_FAST_DB=1 SECRET=test-only scripts/test.sh app.tests.test_statistics_sync
 
 # The real gate: real migrations, real graph.
-SECRET=test-only scripts/test.sh app.tests.test_statistics_refresh_run
+SECRET=test-only scripts/test.sh app.tests.test_statistics_sync
 
 # Whole fast suite.
 SECRET=test-only scripts/test.sh
+
+# Tests the current diff can reach. Still pays the migration floor
+# unless FLOPPY_TEST_FAST_DB=1 is set. Uses the coverage map when present.
+SECRET=test-only scripts/test.sh --affected
+
+# Record the map. Same suite CI runs on latest: slow included, network
+# excluded. Do not set FLOPPY_TEST_FAST_DB. Line numbers have to match the
+# tree the map was recorded on, which is origin/latest for a branch diff.
+SECRET=test-only scripts/test.sh --affected-record
 ```
+
+## Tests for the diff in front of you
+
+`scripts/test.sh --affected` is the local iteration path when you do not
+want to type a label. The change set is every commit since the merge-base
+with `origin/latest`, plus staged, unstaged, and untracked files.
+
+When `.floppy/affected.coverage` is present (or `FLOPPY_AFFECTED_MAP`
+points at one), selection is the test modules whose coverage context
+executed the old side of the diff. The map is built with
+`dynamic_context = test_function` and `core = ctrace`. The ctrace core is
+required: on Python 3.12 the sysmon core records only the first test to
+hit a line. A changed test module always runs. A pure insertion selects
+tests that executed the anchor line. A new file, or a file coverage does
+not measure (`migrations`, `__init__.py`, `admin.py`), falls through to
+the import walk below. Changed lines without a recorded test also fall back;
+an untested branch must not turn a code change into a no-test success.
+
+`scripts/test.sh --affected-record` runs the CI suite (slow included,
+network excluded) and writes that file for local iteration. Application PRs
+run the full offline app list rather than relying on historical line selection.
+Publication calls the same reusable suite and uploads a fresh map.
+
+Without a map, a changed test module runs. A changed source module runs
+the test modules that import it, including a name re-exported from a
+package `__init__.py`. The walk is not transitive: `from app.models import
+Movie` selects tests when `media.py` changes, and does not select them
+when some other model file changes. If nothing imports the file and it
+sits under one app, that app runs. Modules loaded by string from
+`AppConfig.ready()` (`app.signals`, `app.signals_watch_state`,
+`app.signals_music`, `integrations.signals_state`, `users.signals`) run
+the app when the map has no line for them, because a static importer list
+is the wrong set. Music hook files under `MUSIC_HOOKS_DIR` run `app`.
+
+`src/templates/`, `src/static/`, `uv.lock`, `pyproject.toml`, settings, and
+the runner (`scripts/test.sh`, `src/config/test_runner.py`,
+`src/config/affected_tests.py`, and the other paths in
+`ESCAPE_HATCH`) run the fast suite. Coverage never sees a template.
+Docs and other non-code run nothing. `mcp_server/` and `scripts/tests/`
+are named and do not escalate: the Django suite does not collect them.
+
+A selected label excludes `@tag("network")` and does not exclude
+`@tag("slow")`, so a slow test you changed still runs. The fast-suite
+fallback excludes both, unless the caller passes `--include-slow`.
+`scripts/test.sh` with no arguments is still the fast suite.
 
 Running apps one at a time (`app`, then `users`, …) both avoids the
 lost-result hang seen so far and gives usable per-app timings:

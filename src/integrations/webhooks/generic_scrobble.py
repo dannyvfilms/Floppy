@@ -10,8 +10,8 @@ import logging
 
 import app.providers.mal
 from app.live_playback import (
-    PLAYBACK_SCROBBLE_BUFFER_SECONDS,
     PLAYBACK_SCROBBLE_FALLBACK_SECONDS,
+    PLAYBACK_SCROBBLE_MIN_PROGRESS_RATIO,
 )
 from app.models import MediaTypes, Sources
 
@@ -41,29 +41,84 @@ def is_played(payload):
 
     position = payload.get("position_seconds")
     if position is None:
-        return False
+        # A player that only knows a percentage: the same 90% the live card
+        # treats as a finished title.
+        percent = payload.get("progress_percent")
+        return (
+            percent is not None
+            and percent >= PLAYBACK_SCROBBLE_MIN_PROGRESS_RATIO * 100
+        )
 
     duration = payload.get("duration_seconds")
     if duration:
-        return position >= duration - PLAYBACK_SCROBBLE_BUFFER_SECONDS
+        return position >= duration * PLAYBACK_SCROBBLE_MIN_PROGRESS_RATIO
     return position >= PLAYBACK_SCROBBLE_FALLBACK_SECONDS
 
 
 class GenericScrobbleProcessor(BaseWebhookProcessor):
     """Processor for normalized scrobble-stop events from the API."""
 
+    SOURCE_LABEL = "scrobble"
+
     def process_payload(self, payload, user):
-        """Resolve and persist a stop/completion event from the API."""
+        """Preserve normalized episode identity under the shared write policy."""
         ids = self._extract_external_ids(payload)
         if not any(ids.values()):
-            return
-        self._process_media(payload, user, ids)
+            return None
+
+        if not self._should_record(
+            "media.scrobble",
+            played=self._is_played(payload),
+            position_seconds=None,
+        ):
+            return None
+
+        if self._get_media_type(payload) == MediaTypes.TV.value:
+            return self._process_tv(
+                payload,
+                user,
+                ids,
+                season_number=payload.get("season_number"),
+                episode_number=payload.get("episode_number"),
+            )
+
+        return self._process_media(payload, user, ids)
+
+    def _find_tv_media_id(
+        self,
+        ids,
+        series_title=None,
+        allow_title_fallback=False,
+        year=None,
+        season_number=None,
+        episode_ids=False,
+        user=None,
+        raise_transient=False,
+    ):
+        """Prefer an explicitly normalized TMDB show ID over external mappings."""
+        tmdb_id = ids.get("tmdb_id")
+        if tmdb_id:
+            return str(tmdb_id), None, None
+
+        return super()._find_tv_media_id(
+            ids,
+            series_title=series_title,
+            allow_title_fallback=allow_title_fallback,
+            year=year,
+            season_number=season_number,
+            episode_ids=episode_ids,
+            user=user,
+            raise_transient=raise_transient,
+        )
 
     def _is_supported_event(self, event_type):
         return True
 
     def _is_played(self, payload):
         return is_played(payload)
+
+    def _is_manual_mark(self, payload):
+        return payload.get("manual") is True
 
     def _get_media_type(self, payload):
         return _MEDIA_TYPE_MAPPING.get(payload.get("media_type"))
@@ -135,7 +190,9 @@ class GenericScrobbleProcessor(BaseWebhookProcessor):
             entry = next(
                 (
                     e
-                    for e in anime_mappings.find_entries_for_mal_id(mapping_data, mal_id)
+                    for e in anime_mappings.find_entries_for_mal_id(
+                        mapping_data, mal_id
+                    )
                     if e.get("tvdb_id") or e.get("tmdb_id")
                 ),
                 None,

@@ -49,7 +49,7 @@ This document explains how media types are defined and wired through the app so 
 - Notifications (`src/events/notifications.py`): filters by user-enabled media types and exclusions; formats bodies with unicode icons; Season header labeled “TV Shows,” others uppercase media type.
 
 ## Providers, search, sync
-- Routing in `src/app/providers/services.py`: tmdb(tv/movie/season/episode), mal/mangaupdates(anime/manga), igdb(game), hardcover/openlibrary/googlebooks(book), comicvine(comic), musicbrainz(music), manual fallback. Each returns a dict with `media_id/source/media_type/title/max_progress/image/synopsis/score/score_count/details/related` (+ runtime/episodes).
+- Routing in `src/app/providers/services.py`: tmdb(tv/movie/season/episode), mal/mangaupdates/mangabaka(anime/manga), igdb(game), hardcover/openlibrary/googlebooks(book), comicvine/gcd(comic; GCD needs a login, see `app.providers.gcd`), musicbrainz(music), manual fallback. Each returns a dict with `media_id/source/media_type/title/max_progress/image/synopsis/score/score_count/details/related` (+ runtime/episodes).
 - Search routing matches each media type to its provider service and configured sources.
 - Music search uses `search_combined()` which returns artists, albums, and tracks from MusicBrainz. Cover art is skipped during search (`skip_cover_art=True`) for performance; art loads when viewing artist/album pages.
 - `sync_metadata` view: clears cache key, refetches metadata, updates Item title/image (season also bulk-updates episode posters), and triggers `item.fetch_releases`; blocks manual sources.

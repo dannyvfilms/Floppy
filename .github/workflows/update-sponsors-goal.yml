@@ -1,0 +1,48 @@
+name: Update Sponsors goal card
+
+on:
+  schedule:
+    - cron: "17 8 * * *"
+  workflow_dispatch:
+
+# SPONSORS_GOAL_TOKEN (or SPONSORS_TOKEN) is a personal access token from dannyvfilms. The built-in
+# workflow token cannot read Sponsors data ("Resource not accessible by
+# integration"), and PRs it opens do not start CI, so the token does both jobs.
+permissions:
+  contents: read
+
+jobs:
+  update-card:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: latest
+          token: ${{ secrets.SPONSORS_GOAL_TOKEN || secrets.SPONSORS_TOKEN }}
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Fetch GitHub Sponsors goal and render card
+        env:
+          GITHUB_TOKEN: ${{ secrets.SPONSORS_GOAL_TOKEN || secrets.SPONSORS_TOKEN }}
+        run: python scripts/update_sponsors_goal.py
+      - name: Open a PR with the updated card
+        env:
+          GH_TOKEN: ${{ secrets.SPONSORS_GOAL_TOKEN || secrets.SPONSORS_TOKEN }}
+        run: |
+          if git diff --quiet -- docs/brand/sponsors-goal.svg; then
+            echo "Sponsors goal card is already current"
+            exit 0
+          fi
+          branch=automation/sponsors-goal-card
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git checkout -B "$branch"
+          git add docs/brand/sponsors-goal.svg
+          git commit -m "Update GitHub Sponsors goal card"
+          git push --force origin "$branch"
+          if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
+            gh pr create --base latest --head "$branch" \
+              --title "Update GitHub Sponsors goal card" \
+              --body "Daily refresh of the README Sponsors goal card."
+          fi

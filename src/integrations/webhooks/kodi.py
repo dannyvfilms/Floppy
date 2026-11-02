@@ -19,8 +19,17 @@ class KodiEvent(StrEnum):
     PLAYBACK_END = "end"
 
 
+KODI_EVENT_MAP = {
+    KodiEvent.PLAYBACK_START: "media.play",
+    KodiEvent.PLAYBACK_STOP: "media.stop",
+    KodiEvent.PLAYBACK_END: "media.scrobble",
+}
+
+
 class KodiWebhookProcessor(BaseWebhookProcessor):
     """Processor for Kodi webhook events via the HTTP Scrobbler add-on."""
+
+    SOURCE_LABEL = "kodi"
 
     def process_payload(self, payload, user):
         """Return the process payload."""
@@ -36,12 +45,28 @@ class KodiWebhookProcessor(BaseWebhookProcessor):
             logger.warning("Ignoring Kodi webhook: no external ID found in payload.")
             return
 
+        progress = payload.get("progress") or {}
+        position_seconds = progress.get("time")
+        duration_seconds = payload.get("duration")
+        if not self._should_record(
+            KODI_EVENT_MAP[event_type],
+            played=self._is_played(payload),
+            position_seconds=(
+                position_seconds if isinstance(position_seconds, int | float) else None
+            ),
+            duration_seconds=(
+                duration_seconds
+                if isinstance(duration_seconds, int | float)
+                else None
+            ),
+        ):
+            return
+
         if (
             event_type == KodiEvent.PLAYBACK_STOP
             and payload.get("mediaType", "").lower() == "episode"
             and not self._is_played(payload)
         ):
-            progress = payload.get("progress", {}) or {}
             logger.info(
                 "Kodi stop event below watched threshold for episode: "
                 "percent=%s time=%s",

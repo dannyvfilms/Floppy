@@ -1,0 +1,19 @@
+{% load i18n %}
+{% if stremio_catalog_readiness %}
+  <div class="mt-4">
+    <h4 class="text-sm font-medium mb-2">{% translate "Catalog Status" %}</h4>
+    <ul class="space-y-1 text-sm text-[var(--color-text-muted)]">
+      {% for catalog in stremio_catalog_readiness %}
+        <li>
+          {% if catalog.unresolved %}
+            <strong class="text-[var(--color-text-secondary)]">{% blocktranslate with value1=catalog.publishable value2=catalog.total %}{{ value1 }} of {{ value2 }}{% endblocktranslate %}</strong>
+            {% blocktranslate with value1=catalog.noun %}{{ value1 }} in{% endblocktranslate %} <strong class="text-[var(--color-text-secondary)]">{{ catalog.list_name }}</strong> {% blocktranslate count count=catalog.unresolved %}can be published. Stremio identifies titles by IMDb ID, and the other {{ count }} has none yet. Floppy resolves these in the background, but a title with no IMDb ID at its provider stays unpublishable.{% plural %}can be published. Stremio identifies titles by IMDb ID, and the other {{ count }} have none yet. Floppy resolves these in the background, but a title with no IMDb ID at its provider stays unpublishable.{% endblocktranslate %}
+          {% else %}
+            {% translate "All" %} <strong class="text-[var(--color-text-secondary)]">{{ catalog.total }}</strong>
+            {% blocktranslate with value1=catalog.noun %}{{ value1 }} in{% endblocktranslate %} <strong class="text-[var(--color-text-secondary)]">{{ catalog.list_name }}</strong> {% translate "can be published." %}
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}

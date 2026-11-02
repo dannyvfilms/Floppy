@@ -8,12 +8,15 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import EmptyPage, Paginator
-from django.db.models import Q
+from django.db import connection
+from django.db.models import Count, Exists, JSONField, OuterRef, Q
+from django.db.models.expressions import RawSQL
 from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
-from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme, urlencode
 from django.utils.translation import gettext
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
@@ -27,19 +30,20 @@ from app.collection_fields import (
 )
 from app.forms import CollectionEntryForm
 from app.log_safety import exception_summary
+from app.media_list_filters import media_list_entries_for_items
 from app.models import (
     CollectionEntry,
     CollectionField,
     CollectionFieldGroup,
     CollectionFieldType,
-    Game,
     Item,
     MediaTypes,
-    Status,
 )
 from app.providers import services
 from app.services import metadata_resolution
+from app.templatetags import app_tags
 from integrations.models import CollectionSourceState
+from users.home_screen import get_home_configurable_media_types
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +57,17 @@ COLLECTION_SORT_FIELDS = {
     "title": "item__title",
     "release_date": "item__release_datetime",
 }
+COLLECTION_ROW_BATCH = 20
+# Query keys that describe one row's slice, not the filters the row inherits.
+_ROW_ONLY_PARAMS = (
+    "group",
+    "type",
+    "page",
+    "offset",
+    "seed",
+    "row_type",
+    "org.htmx.cache-buster",
+)
 COLLECTION_RATING_CHOICES = {"all", "rated", "not_rated"}
 COLLECTION_COMPLETENESS_CHOICES = {"all", "partial", "full"}
 _TV_FAMILY_MEDIA_TYPES = {
@@ -63,10 +78,111 @@ _TV_FAMILY_MEDIA_TYPES = {
 }
 
 
-def _scored_item_ids(user, item_ids_by_media_type):
-    """Return the ids of items (grouped by media_type) that have a user score."""
-    scored_ids = set()
-    for item_media_type, item_ids in item_ids_by_media_type.items():
+def _custom_fields_for_list(user, media_type):
+    """Return the user's custom fields that apply to *media_type* (all when blank)."""
+    fields = CollectionField.objects.filter(group__user=user).order_by(
+        "group__position",
+        "group_id",
+        "position",
+        "id",
+    )
+    return [
+        field for field in fields if not media_type or media_type in field.media_types
+    ]
+
+
+def _custom_field_filters(fields):
+    """Return the filter menu entries: dropdown and checkbox fields only.
+
+    Text, number and date fields have no short list of values to pick from, so
+    they are reached through search and sort instead.
+    """
+    filters = []
+    for field in fields:
+        if field.field_type == CollectionFieldType.SELECT and field.options:
+            choices = [(option, option) for option in field.options]
+        elif field.field_type == CollectionFieldType.CHECKBOX:
+            choices = [("true", gettext("Yes")), ("false", gettext("No"))]
+        else:
+            continue
+        filters.append({"id": field.id, "label": field.label, "choices": choices})
+    return filters
+
+
+# Values are read in Python rather than with a JSON key lookup: keys are
+# str(field.id), and Django compiles a numeric key as an array index
+# ($[2]) on SQLite, so a database lookup silently matches nothing.
+def _custom_value_entry_ids(collection, query):
+    """Return ids of entries with a custom field value containing *query*."""
+    needle = query.casefold()
+    return [
+        entry_id
+        for entry_id, values in collection.values_list("id", "custom_field_values")
+        if any(
+            not isinstance(value, bool) and needle in str(value).casefold()
+            for value in (values or {}).values()
+        )
+    ]
+
+
+def _custom_field_values(collection, field_id):
+    """Return (entry id, stored value) for one custom field, in id order.
+
+    The database extracts the single value, so the rest of each entry's JSON
+    never leaves it. The key is quoted into the path for the reason above.
+    """
+    column = f'"{collection.model._meta.db_table}"."custom_field_values"'
+    if connection.vendor == "sqlite":
+        path = '$."' + str(field_id) + '"'
+        rows = collection.order_by("id").values_list(
+            "id",
+            RawSQL(f"json_extract({column}, %s)", [path]),  # noqa: S611 - column is model metadata, key is bound
+            RawSQL(f"json_type({column}, %s)", [path]),  # noqa: S611 - column is model metadata, key is bound
+        )
+        return [
+            (pk, {"true": True, "false": False}.get(kind, value))
+            for pk, value, kind in rows
+        ]
+    rows = collection.order_by("id").values_list(
+        "id",
+        RawSQL(f"{column} -> %s::text", [str(field_id)], output_field=JSONField()),  # noqa: S611 - column is model metadata, key is bound
+    )
+    return [(pk, value) for pk, value in rows]
+
+
+def _custom_value_matches(raw, wanted):
+    """Return whether a stored value equals the wanted filter value."""
+    return raw not in (None, "") and str(raw).casefold() == wanted.casefold()
+
+
+def _custom_sort_key(raw):
+    """Order numbers numerically, checkboxes next, then text alphabetically."""
+    if isinstance(raw, bool):
+        return (1, int(raw), "")
+    if isinstance(raw, int | float):
+        return (0, raw, "")
+    return (2, 0, str(raw).casefold())
+
+
+def _ids_ordered_by_custom_field(collection, field, direction):
+    """Return entry ids sorted by a custom field, entries with no value last.
+
+    Ties keep newest first, like the other sorts.
+    """
+    present, blank = [], []
+    for entry_id, raw in reversed(_custom_field_values(collection, field.id)):
+        if raw in (None, ""):
+            blank.append(entry_id)
+        else:
+            present.append((entry_id, _custom_sort_key(raw)))
+    present.sort(key=lambda row: row[1], reverse=direction == "desc")
+    return [entry_id for entry_id, _ in present] + blank
+
+
+def _scored_item_query(user, item_media_types):
+    """Return a ``Q`` on ``item_id`` matching items that have a user score."""
+    scored = Q(pk__in=[])
+    for item_media_type in item_media_types:
         try:
             model = apps.get_model("app", item_media_type)
         except LookupError:
@@ -75,14 +191,13 @@ def _scored_item_ids(user, item_ids_by_media_type):
             filter_kwargs = {"related_season__user": user}
         else:
             filter_kwargs = {"user": user}
-        scored_ids.update(
-            model.objects.filter(
-                item_id__in=item_ids,
+        scored |= Q(
+            item_id__in=model.objects.filter(
                 score__isnull=False,
                 **filter_kwargs,
-            ).values_list("item_id", flat=True),
+            ).values("item_id"),
         )
-    return scored_ids
+    return scored
 
 
 def _shows_for_keys(show_keys):
@@ -102,6 +217,231 @@ def _shows_for_keys(show_keys):
     ]
 
 
+def _completeness_matching_keys(user, show_keys, completeness_filter):
+    """Return the show keys whose collection is ``partial`` or ``full``.
+
+    Same rules as ``helpers.get_collection_completeness_map`` (a granular
+    season/episode collection wins over a show-level entry), but reads one row
+    per season instead of one Item per episode.
+    """
+    if not show_keys:
+        return set()
+    media_ids = {media_id for media_id, _source in show_keys}
+    sources = {source for _media_id, source in show_keys}
+    owned = CollectionEntry.objects.filter(user=user, item_id=OuterRef("pk"))
+
+    episodes = defaultdict(list)  # key -> [(season_number, total, collected)]
+    for media_id, source, season_number, total, collected in (
+        Item.objects.filter(
+            media_id__in=media_ids,
+            source__in=sources,
+            media_type=MediaTypes.EPISODE.value,
+        )
+        .exclude(season_number=0)
+        .order_by()
+        .values("media_id", "source", "season_number")
+        .annotate(total=Count("pk"), collected=Count("pk", filter=Exists(owned)))
+        .values_list("media_id", "source", "season_number", "total", "collected")
+    ):
+        if (media_id, source) in show_keys:
+            episodes[(media_id, source)].append((season_number, total, collected))
+
+    collected_seasons = defaultdict(set)
+    for media_id, source, season_number in (
+        Item.objects.filter(
+            media_id__in=media_ids,
+            source__in=sources,
+            media_type=MediaTypes.SEASON.value,
+        )
+        .exclude(season_number=0)
+        .filter(Exists(owned))
+        .values_list("media_id", "source", "season_number")
+    ):
+        if (media_id, source) in show_keys:
+            collected_seasons[(media_id, source)].add(season_number)
+
+    shows = (
+        Item.objects.filter(
+            media_type__in=[MediaTypes.TV.value, MediaTypes.ANIME.value],
+            media_id__in=media_ids,
+            source__in=sources,
+        )
+        .annotate(is_owned=Exists(owned))
+        .values_list("media_id", "source", "is_owned")
+    )
+
+    matching = set()
+    for media_id, source, show_owned in shows:
+        key = (media_id, source)
+        if key not in show_keys:
+            continue
+        groups = episodes.get(key, [])
+        total = sum(group_total for _n, group_total, _c in groups)
+        seasons = collected_seasons.get(key, set())
+        granular = bool(seasons) or any(group[2] for group in groups)
+        if not granular:
+            collected = total if show_owned else 0
+        else:
+            collected = sum(
+                group_total
+                if season_number in seasons and season_number is not None
+                else group_collected
+                for season_number, group_total, group_collected in groups
+            )
+        if not total:
+            continue
+        if (completeness_filter == "partial" and 0 < collected < total) or (
+            completeness_filter == "full" and collected == total
+        ):
+            matching.add(key)
+    return matching
+
+
+# Custom fields that number a copy within its item. A manga series is one item
+# whose copies are told apart only by volume, so a card needs to say which.
+_COPY_NUMBER_LABELS = {"volume": "Vol. %s", "issue": "#%s", "issue nr": "#%s"}
+
+
+def _copy_labels(user, entries):
+    """Return ``{entry id: "Vol. 3"}`` for entries whose copy carries a number."""
+    numbering = {
+        str(field.id): _COPY_NUMBER_LABELS[field.label.strip().casefold()]
+        for field in CollectionField.objects.filter(group__user=user)
+        if field.label.strip().casefold() in _COPY_NUMBER_LABELS
+    }
+    labels = {}
+    for entry in entries:
+        for field_id, pattern in numbering.items():
+            value = (entry.custom_field_values or {}).get(field_id)
+            if value in (None, ""):
+                continue
+            number = f"{value:g}" if isinstance(value, float) else str(value)
+            labels[entry.id] = pattern % number
+            break
+    return labels
+
+
+def _decorate_collection_entries(user, entries):
+    """Attach the user's media (rating, status) and TV completeness to entries."""
+    media_by_item_id = {
+        library_entry.item.pk: library_entry.media
+        for library_entry in media_list_entries_for_items(
+            user,
+            list({entry.item_id: entry.item for entry in entries}.values()),
+        )
+    }
+    from app.media_list_filters import attach_card_collection_platforms
+
+    attach_card_collection_platforms(user, [entry.item for entry in entries])
+    copy_labels = _copy_labels(user, entries)
+    for entry in entries:
+        entry.media = media_by_item_id.get(entry.item_id)
+        entry.copy_label = copy_labels.get(entry.id, "")
+    badge_entries = [
+        entry
+        for entry in entries
+        if entry.item.media_type in _SEASON_OR_SHOW_MEDIA_TYPES
+    ]
+    if badge_entries:
+        badge_show_keys = {
+            (entry.item.media_id, entry.item.source) for entry in badge_entries
+        }
+        badge_completeness_map = helpers.get_collection_completeness_map(
+            user,
+            _shows_for_keys(badge_show_keys),
+        )
+        for entry in badge_entries:
+            entry.completeness = badge_completeness_map.get(entry.item_id)
+
+
+def _ordered_collection_slice(collection, sort_by, direction, custom_field, offset):
+    """Return one batch of entries in the selected sort order."""
+    end = offset + COLLECTION_ROW_BATCH
+    if custom_field:
+        ids = _ids_ordered_by_custom_field(collection, custom_field, direction)
+        ids = ids[offset:end]
+        entries_by_id = collection.in_bulk(ids)
+        return [entries_by_id[pk] for pk in ids]
+    order_field = COLLECTION_SORT_FIELDS[sort_by]
+    if direction == "desc":
+        order_field = f"-{order_field}"
+    return list(collection.order_by(order_field, "-id")[offset:end])
+
+
+def _collection_media_type_rows(
+    request,
+    collection,
+    sort_by,
+    direction,
+    custom_field,
+):
+    """Build one scrollable row per media type, in the user's Home order."""
+    totals = dict(
+        collection.order_by()
+        .values_list("item__media_type")
+        .annotate(total=Count("id")),
+    )
+    # Collection lists every owned type, disabled ones included, so keep the
+    # user's saved order for those as well as the enabled ones.
+    saved_order = list(request.user.home_screen_media_type_order or [])
+    home_order = saved_order + [
+        t
+        for t in get_home_configurable_media_types(request.user)
+        if t not in saved_order
+    ]
+    ordered_types = [t for t in home_order if t in totals] + [
+        t for t in MediaTypes.values if t in totals and t not in home_order
+    ]
+    inherited = [
+        (key, value)
+        for key, values in request.GET.lists()
+        if key not in _ROW_ONLY_PARAMS
+        for value in values
+    ]
+    entries_by_type = {
+        row_type: _ordered_collection_slice(
+            collection.filter(item__media_type=row_type),
+            sort_by,
+            direction,
+            custom_field,
+            0,
+        )
+        for row_type in ordered_types
+    }
+    # Decorate every row in one pass: copy labels and TV completeness are
+    # per-user, not per-type, so a pass per row repeats the same queries.
+    _decorate_collection_entries(
+        request.user,
+        [entry for entries in entries_by_type.values() for entry in entries],
+    )
+    rows = []
+    for row_type, entries in entries_by_type.items():
+        load_more_query = urlencode(
+            [*inherited, ("group", "type"), ("row_type", row_type)],
+        )
+        rows.append(
+            {
+                "row_id": f"collection-{row_type}",
+                "title_main": app_tags.media_type_readable_plural(row_type),
+                "icon_svg": str(
+                    app_tags.icon(row_type, False, "w-5 h-5"),
+                ),
+                "summary": gettext("%(count)s collected") % {"count": totals[row_type]},
+                "view_all_text": gettext("View all"),
+                "view_all_url": reverse("collection_list_filtered", args=[row_type])
+                + (f"?{urlencode(inherited)}" if inherited else ""),
+                "view_all_internal": True,
+                "load_more_url": f"{reverse('collection_list')}?{load_more_query}",
+                "items": entries,
+                "total": totals[row_type],
+                "loaded_count": len(entries),
+                "card_width_class": "w-44",
+                "grid_class": "",
+            },
+        )
+    return rows
+
+
 @require_GET
 def collection_list(request, media_type=None):
     """Display user's collection, filterable by type, format, and rating."""
@@ -110,8 +450,13 @@ def collection_list(request, media_type=None):
         effective_media_type = ""
 
     search_query = request.GET.get("q", "").strip()
+    custom_fields = _custom_fields_for_list(request.user, effective_media_type)
+    custom_fields_by_id = {str(field.id): field for field in custom_fields}
     sort_by = request.GET.get("sort", "collected_at")
-    if sort_by not in COLLECTION_SORT_FIELDS:
+    custom_sort_field = None
+    if sort_by.startswith("field_") and sort_by[6:] in custom_fields_by_id:
+        custom_sort_field = custom_fields_by_id[sort_by[6:]]
+    elif sort_by not in COLLECTION_SORT_FIELDS:
         sort_by = "collected_at"
     direction = request.GET.get("direction") or (
         "desc" if sort_by == "collected_at" else "asc"
@@ -130,35 +475,54 @@ def collection_list(request, media_type=None):
     hdr_filter = request.GET.get("hdr", "")
     if hdr_filter == "all":
         hdr_filter = ""
+    # Free text, so no value ("all" included) can double as "any location".
+    location_filter = request.GET.get("location", "")
     rating_filter = request.GET.get("rating", "all")
     if rating_filter not in COLLECTION_RATING_CHOICES:
         rating_filter = "all"
     completeness_filter = request.GET.get("completeness", "all")
     if completeness_filter not in COLLECTION_COMPLETENESS_CHOICES:
         completeness_filter = "all"
+    custom_filter_field = request.GET.get("field", "")
+    custom_filter_value = request.GET.get("field_value", "")
+    if custom_filter_field not in custom_fields_by_id or not custom_filter_value:
+        custom_filter_field = custom_filter_value = ""
 
     collection = helpers.get_user_collection(request.user, effective_media_type)
     if search_query:
-        collection = collection.filter(item__title__icontains=search_query)
+        collection = collection.filter(
+            Q(item__title__icontains=search_query)
+            | Q(id__in=_custom_value_entry_ids(collection, search_query)),
+        )
+    if custom_filter_field:
+        collection = collection.filter(
+            id__in=[
+                entry_id
+                for entry_id, raw in _custom_field_values(
+                    collection,
+                    custom_filter_field,
+                )
+                if _custom_value_matches(raw, custom_filter_value)
+            ],
+        )
     if format_filter:
         collection = collection.filter(media_type=format_filter)
     if resolution_filter:
         collection = collection.filter(resolution=resolution_filter)
     if hdr_filter:
         collection = collection.filter(hdr=hdr_filter)
+    if location_filter:
+        collection = collection.filter(purchase_location=location_filter)
 
     if rating_filter != "all":
-        item_ids_by_media_type = defaultdict(list)
-        for item_id, item_media_type in collection.values_list(
-            "item_id",
-            "item__media_type",
-        ).distinct():
-            item_ids_by_media_type[item_media_type].append(item_id)
-        scored_ids = _scored_item_ids(request.user, item_ids_by_media_type)
+        scored = _scored_item_query(
+            request.user,
+            collection.order_by().values_list("item__media_type", flat=True).distinct(),
+        )
         if rating_filter == "rated":
-            collection = collection.filter(item_id__in=scored_ids)
+            collection = collection.filter(scored)
         else:
-            collection = collection.exclude(item_id__in=scored_ids)
+            collection = collection.exclude(scored)
 
     if completeness_filter != "all":
         show_keys = set(
@@ -166,21 +530,11 @@ def collection_list(request, media_type=None):
             .values_list("item__media_id", "item__source")
             .distinct(),
         )
-        show_items = _shows_for_keys(show_keys)
-        completeness_map = helpers.get_collection_completeness_map(
+        matching_keys = _completeness_matching_keys(
             request.user,
-            show_items,
+            show_keys,
+            completeness_filter,
         )
-        matching_keys = set()
-        for item in show_items:
-            stats = completeness_map.get(item.id)
-            if not stats or not stats["total"]:
-                continue
-            is_match = (completeness_filter == "partial" and stats["is_partial"]) or (
-                completeness_filter == "full" and stats["collected"] == stats["total"]
-            )
-            if is_match:
-                matching_keys.add((item.media_id, item.source))
 
         if matching_keys:
             key_query = Q()
@@ -195,35 +549,65 @@ def collection_list(request, media_type=None):
         else:
             collection = collection.none()
 
-    order_field = COLLECTION_SORT_FIELDS[sort_by]
-    if direction == "desc":
-        order_field = f"-{order_field}"
-    collection = collection.order_by(order_field, "-id")
-
-    paginator = Paginator(collection, 20)
-    page_number = int(request.GET.get("page", 1))
-
-    try:
-        page_obj = paginator.page(page_number)
-    except EmptyPage:
-        page_obj = paginator.page(paginator.num_pages)
-
-    page_entries = list(page_obj.object_list)
-    badge_entries = [
-        entry
-        for entry in page_entries
-        if entry.item.media_type in _SEASON_OR_SHOW_MEDIA_TYPES
-    ]
-    if badge_entries:
-        badge_show_keys = {
-            (entry.item.media_id, entry.item.source) for entry in badge_entries
-        }
-        badge_completeness_map = helpers.get_collection_completeness_map(
-            request.user,
-            _shows_for_keys(badge_show_keys),
+    # Rows are a grid-only layout and only make sense across several types.
+    group_by_type = (
+        request.GET.get("group") == "type"
+        and not effective_media_type
+        and layout == "grid"
+    )
+    row_type = request.GET.get("row_type", "")
+    if group_by_type and row_type in MediaTypes.values:
+        try:
+            offset = max(0, int(request.GET.get("offset", 0)))
+        except ValueError:
+            offset = 0
+        entries = _ordered_collection_slice(
+            collection.filter(item__media_type=row_type),
+            sort_by,
+            direction,
+            custom_sort_field,
+            offset,
         )
-        for entry in badge_entries:
-            entry.completeness = badge_completeness_map.get(entry.item_id)
+        _decorate_collection_entries(request.user, entries)
+        return render(
+            request,
+            "app/components/collection_row_grid.html",
+            {"media_list": {"items": entries}},
+        )
+
+    page_number = helpers.get_page_number(request)
+    collection_rows = []
+    page_obj = []
+    if group_by_type:
+        collection_rows = _collection_media_type_rows(
+            request,
+            collection,
+            sort_by,
+            direction,
+            custom_sort_field,
+        )
+    else:
+        if custom_sort_field:
+            paginator = Paginator(
+                _ids_ordered_by_custom_field(collection, custom_sort_field, direction),
+                20,
+            )
+        else:
+            order_field = COLLECTION_SORT_FIELDS[sort_by]
+            if direction == "desc":
+                order_field = f"-{order_field}"
+            paginator = Paginator(collection.order_by(order_field, "-id"), 20)
+        try:
+            page_obj = paginator.page(page_number)
+        except EmptyPage:
+            page_obj = paginator.page(paginator.num_pages)
+        if custom_sort_field:
+            # The page holds ids; load only those entries, in the sorted order.
+            entries_by_id = collection.in_bulk(page_obj.object_list)
+            page_obj.object_list = [entries_by_id[pk] for pk in page_obj.object_list]
+
+        # The card shows the user's rating and status the same way the library does.
+        _decorate_collection_entries(request.user, list(page_obj.object_list))
 
     base_collection = CollectionEntry.objects.filter(user=request.user)
     available_media_types = set(
@@ -258,22 +642,40 @@ def collection_list(request, media_type=None):
         .distinct()
         if value
     )
+    available_locations = sorted(
+        value
+        for value in base_collection.exclude(purchase_location="")
+        .order_by()
+        .values_list("purchase_location", flat=True)
+        .distinct()
+        if value
+    )
 
     is_fragment = helpers.is_htmx_fragment(request)
     context = {
         "collection_entries": page_obj,
+        "collection_rows": collection_rows,
+        "group_by_type": group_by_type,
         "media_type": effective_media_type,
         "media_types": media_types,
         "available_formats": available_formats,
         "available_resolutions": available_resolutions,
         "available_hdr": available_hdr,
-        "sort_choices": COLLECTION_SORT_CHOICES,
+        "available_locations": available_locations,
+        "sort_choices": [
+            *COLLECTION_SORT_CHOICES,
+            *((f"field_{field.id}", field.label) for field in custom_fields),
+        ],
+        "custom_field_filters": _custom_field_filters(custom_fields),
+        "custom_filter_field": custom_filter_field,
+        "custom_filter_value": custom_filter_value,
         "sort_by": sort_by,
         "direction": direction,
         "layout": layout,
         "format_filter": format_filter,
         "resolution_filter": resolution_filter,
         "hdr_filter": hdr_filter,
+        "location_filter": location_filter,
         "rating_filter": rating_filter,
         "completeness_filter": completeness_filter,
         "has_tv_family_collection": bool(
@@ -469,16 +871,6 @@ def collection_add(request):
         entry.item = item
         entry.save()
 
-        if item.media_type == MediaTypes.GAME.value:
-            game_exists = Game.objects.filter(user=request.user, item=item).exists()
-            if not game_exists:
-                Game.objects.create(
-                    user=request.user,
-                    item=item,
-                    status=Status.PLANNING.value,
-                    progress=0,
-                )
-
         collected_at = form.cleaned_data.get("collected_at")
         if collected_at:
             CollectionEntry.objects.filter(id=entry.id).update(
@@ -665,6 +1057,63 @@ def collection_remove_season(request, season_item_id):
                 "message": message,
             },
             status=200 if deleted_count else 404,
+        )
+    return _collection_redirect(request)
+
+
+@require_POST
+def collection_update_season(request, season_item_id):
+    """Apply edited format details to every collected episode of a season."""
+    season_item = get_object_or_404(
+        Item,
+        id=season_item_id,
+        media_type=MediaTypes.SEASON.value,
+    )
+    season_title = (
+        "Specials"
+        if season_item.season_number == 0
+        else f"Season {season_item.season_number}"
+    )
+    post_data = request.POST.copy()
+    post_data["item"] = season_item.id
+    form = CollectionEntryForm(
+        post_data,
+        user=request.user,
+        collection_media_type=season_item.media_type,
+    )
+    if not form.is_valid():
+        helpers.form_error_messages(form, request)
+        if request.headers.get("HX-Request"):
+            return JsonResponse({"success": False, "errors": form.errors}, status=400)
+        return _collection_redirect(request)
+
+    copy_fields = {
+        field: form.cleaned_data[field]
+        for field in _COLLECTION_ENTRY_COPY_FIELDS
+        if field in form.cleaned_data
+    }
+    updated_count = CollectionEntry.objects.filter(
+        user=request.user,
+        item__media_id=season_item.media_id,
+        item__source=season_item.source,
+        item__media_type=MediaTypes.EPISODE.value,
+        item__season_number=season_item.season_number,
+    ).update(**copy_fields, updated_at=timezone.now())
+
+    if updated_count:
+        message = gettext("Updated %(value_1)s in collection") % {
+            "value_1": season_title
+        }
+        messages.success(request, message)
+    else:
+        message = gettext("No collected episodes found for %(value_1)s") % {
+            "value_1": season_title
+        }
+        messages.error(request, message)
+    if request.headers.get("HX-Request"):
+        return JsonResponse(
+            {"success": bool(updated_count), "message": message},
+            status=200 if updated_count else 404,
         )
     return _collection_redirect(request)
 
@@ -1148,6 +1597,62 @@ def _apply_custom_field_values(entry, user, post_data, *, scope_media_type=None)
     entry.save(update_fields=["custom_field_values"])
 
 
+def _edit_form_for(
+    user, media_type, *, form_key, instance=None, initial=None, choices_override=None
+):
+    """Return an inline edit form whose widget ids cannot clash with the add form."""
+    return CollectionEntryForm(
+        instance=instance,
+        initial=initial,
+        user=user,
+        collection_media_type=media_type,
+        collection_choices_override={"resolution": choices_override}
+        if choices_override
+        else None,
+        auto_id=f"id_edit_{form_key}_%s",
+    )
+
+
+def _attach_entry_edit_forms(user, entries, platform_choices=None):
+    """Give each real CollectionEntry what its inline edit form needs."""
+    for entry in entries:
+        entry.edit_form = _edit_form_for(
+            user,
+            entry.item.media_type,
+            form_key=entry.id,
+            instance=entry,
+            choices_override=platform_choices,
+        )
+        entry.edit_form_id = f"collection-edit-form-{entry.id}"
+        entry.edit_id_prefix = f"edit_{entry.id}_"
+        entry.edit_update_url = reverse("collection_update", args=[entry.id])
+
+
+def _attach_season_edit_forms(user, season_audit_entries):
+    """Give each season summary row a form that edits all its episode entries."""
+    for row in season_audit_entries:
+        form = _edit_form_for(
+            user,
+            MediaTypes.SEASON.value,
+            form_key=f"season_{row['season_item_id']}",
+            initial={
+                field: row["collection_entry"].get(field)
+                for field in _COLLECTION_ENTRY_COPY_FIELDS
+            },
+        )
+        row["edit_form"] = form
+        row["edit_title"] = gettext("Edit all episodes in this season")
+        row["edit_collection_fields"] = [
+            field
+            for field in form.collection_fields
+            if field in _COLLECTION_ENTRY_COPY_FIELDS
+        ]
+        row["edit_form_id"] = f"collection-edit-form-season-{row['season_item_id']}"
+        row["edit_update_url"] = reverse(
+            "collection_update_season", args=[row["season_item_id"]]
+        )
+
+
 def build_collection_modal_context(
     request,
     source,
@@ -1179,6 +1684,11 @@ def build_collection_modal_context(
     season_audit_entries = _build_collection_season_audit_entries(request.user, item)
     episode_audit_entries = _build_collection_episode_audit_entries(request.user, item)
     visible_existing_entries = list(existing_entries)
+    _attach_entry_edit_forms(request.user, visible_existing_entries, platform_choices)
+    _attach_entry_edit_forms(
+        request.user, [row["entry"] for row in episode_audit_entries]
+    )
+    _attach_season_edit_forms(request.user, season_audit_entries)
     if season_audit_entries:
         # At show level an entry on the show Item cannot say which season it
         # covers, so the per-season audit rows replace it. A season-level entry

@@ -16,6 +16,7 @@ from collections import defaultdict
 from decimal import Decimal
 
 import requests
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from simple_history.utils import bulk_update_with_history
 
@@ -24,7 +25,7 @@ from app.models import MediaTypes, Sources, Status
 from app.providers import services, tmdb
 from integrations import import_progress
 from integrations.imports import helpers
-from integrations.imports.helpers import MediaImportError
+from integrations.imports.helpers import ConnectionAuthError, MediaImportError
 from integrations.imports.trakt import TraktMetadataResolverMixin
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,7 @@ def request(api_key, path, params=None):
         status_code = getattr(error.response, "status_code", None)
         if status_code in (401, 403):
             msg = "MDBList API key is invalid or revoked."
-            raise MediaImportError(msg) from error
+            raise ConnectionAuthError(msg) from error
         raise
 
 
@@ -182,6 +183,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
 
         # Track existing media to handle "new" mode correctly
         self.existing_media = helpers.get_existing_media(user)
+        self.deleted_media = helpers.get_deleted_media(user)
 
         # Track existing plays for exact dedupe and distinct-episode roll-up.
         (
@@ -257,12 +259,14 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 app.models.Season,
                 fields=["status"],
             )
+            helpers.note_bulk_rows(self.completed_seasons)
         if self.dropped_tvs:
             bulk_update_with_history(
                 self.dropped_tvs,
                 app.models.TV,
                 fields=["status"],
             )
+            helpers.note_bulk_rows(self.dropped_tvs)
 
         imported_counts = {
             media_type: len(media_list)
@@ -466,6 +470,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
             Sources.TMDB.value,
             tmdb_id,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 
@@ -507,6 +512,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
             Sources.TMDB.value,
             tmdb_id,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 
@@ -571,6 +577,9 @@ class MDBListImporter(TraktMetadataResolverMixin):
 
         tmdb_id = self._resolve_entry_tmdb_id(show_data, MediaTypes.TV.value)
         if not tmdb_id:
+            return
+
+        if tmdb_id in self.deleted_media[MediaTypes.TV.value][Sources.TMDB.value]:
             return
 
         episode_watch_key = (tmdb_id, season_number, episode_number, watched_at_dt)
@@ -802,6 +811,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
             Sources.TMDB.value,
             tmdb_id,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 
@@ -901,6 +911,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
             Sources.TMDB.value,
             tmdb_id,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 
@@ -982,7 +993,12 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 item__episode_number=episode_number,
             )
             if episodes.exists():
-                episodes.update(score=scaled_score)
+                # A queryset update sends no save signal; publish these days.
+                changed = list(episodes.exclude(score=scaled_score))
+                app.models.Episode.objects.filter(
+                    pk__in=[episode.pk for episode in changed],
+                ).update(score=scaled_score, scored_at=timezone.now())
+                helpers.note_bulk_rows(changed)
                 return
 
         ep_key = f"{tmdb_id}:{season_number}:{episode_number}"
@@ -1014,6 +1030,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
             Sources.TMDB.value,
             tmdb_id,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 

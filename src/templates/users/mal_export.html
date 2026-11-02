@@ -1,0 +1,13 @@
+{% extends "users/base.html" %}
+{% load i18n %}
+
+{% load user_tags %}
+{% load app_tags %}
+
+{% block title %}
+  {% translate "Sync to Trackers - Floppy" %}
+{% endblock title %}
+
+{% block settings_content %}
+  {% include "users/providers/mal_sync.html" %}
+{% endblock settings_content %}

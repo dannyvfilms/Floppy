@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 import requests
 from django.contrib.auth import get_user_model
+from django.db import OperationalError
 from django.test import TestCase
 from django.utils import timezone
 
@@ -220,7 +221,31 @@ class CreditsBackfillTaskTests(TestCase):
         self.assertFalse(state.give_up)
         self.assertIsNotNone(state.last_success_at)
 
-    @patch("app.tasks_credits._clear_item_metadata_cache")
+    @patch("app.db_retry.time.sleep")
+    @patch("app.tasks.enqueue_credits_backfill_items")
+    @patch("app.credits.sync_item_credits_from_metadata")
+    @patch("app.providers.services.get_media_metadata")
+    def test_populate_credits_retries_a_sqlite_lock_before_recording_failure(
+        self, mock_get_metadata, mock_sync, _mock_enqueue, _mock_sleep
+    ):
+        item = Item.objects.create(
+            media_id="2002",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Locked Movie",
+            runtime_minutes=100,
+            genres=["Action"],
+        )
+        mock_get_metadata.return_value = {"cast": [], "crew": [], "studios_full": []}
+        mock_sync.side_effect = [OperationalError("database is locked"), None]
+
+        result = tasks.populate_credits_data_for_items([item.id])
+
+        self.assertEqual(result["updated"], 1)
+        self.assertEqual(result["errors"], 0)
+        self.assertEqual(mock_sync.call_count, 2)
+
+    @patch("app.tasks_credits._clear_items_metadata_cache")
     @patch("app.providers.services.get_media_metadata")
     def test_credits_404_is_terminal_and_clears_stale_metadata_cache(
         self,
@@ -252,7 +277,7 @@ class CreditsBackfillTaskTests(TestCase):
 
         self.assertEqual(result["updated"], 0)
         self.assertEqual(result["errors"], 1)
-        mock_clear_cache.assert_called_once_with(item)
+        mock_clear_cache.assert_called_once_with([item])
         state = MetadataBackfillState.objects.get(
             item=item,
             field=MetadataBackfillField.CREDITS,
@@ -669,14 +694,15 @@ class CreditsBackfillSignalTests(TestCase):
         )
         mock_enqueue.reset_mock()
 
-        Movie.objects.create(
-            item=item,
-            user=user,
-            status=Status.COMPLETED.value,
-            progress=1,
-            start_date=timezone.now(),
-            end_date=timezone.now(),
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            Movie.objects.create(
+                item=item,
+                user=user,
+                status=Status.COMPLETED.value,
+                progress=1,
+                start_date=timezone.now(),
+                end_date=timezone.now(),
+            )
 
         mock_enqueue.assert_called_once_with([item.id], countdown=3)
 
@@ -735,11 +761,12 @@ class CreditsBackfillSignalTests(TestCase):
         }
         mock_enqueue.reset_mock()
 
-        Episode.objects.create(
-            item=episode_item,
-            related_season=season,
-            end_date=timezone.now(),
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            Episode.objects.create(
+                item=episode_item,
+                related_season=season,
+                end_date=timezone.now(),
+            )
 
         self.assertEqual(mock_enqueue.call_count, 3)
         mock_enqueue.assert_any_call([episode_item.id], countdown=3)

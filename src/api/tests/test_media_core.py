@@ -1,11 +1,12 @@
 import datetime
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from urllib.parse import urlencode
 from uuid import UUID
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.utils import OperationalError
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from app.models import (
     Episode,
@@ -95,6 +96,7 @@ class MediaCoreTests(FloppyApiTestCase):
                     "tracked",
                     "created_at",
                     "score",
+                    "scored_at",
                     "status",
                     "progress",
                     "episodes_left",
@@ -105,11 +107,27 @@ class MediaCoreTests(FloppyApiTestCase):
                     "start_date",
                     "end_date",
                     "notes",
+                    "source",
                     "lists",
                     "next_episode",
                     "show",
                 },
             )
+
+    def test_media_list_accepts_last_watched_sort(self):
+        """The opt-in activity sort is a valid media-list sort."""
+        response = self.call_api(
+            "get",
+            "api_media_list",
+            params={
+                "media_type": MediaTypes.MOVIE.value,
+                "sort": "last_watched",
+            },
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("results", response.json())
 
     def test_tv_media_list_reports_released_and_total_remaining_episodes(self):
         """TV list responses expose released and provider-total remaining counts."""
@@ -425,6 +443,41 @@ class MediaCoreTests(FloppyApiTestCase):
         self.assertEqual(str(UUID(manual_media_id)), manual_media_id)
         self.assertEqual(payload["item"]["source"], "manual")
         self.assertEqual(payload["item"]["media_type"], MediaTypes.MOVIE.value)
+
+    @patch("api.views.services.get_media_metadata")
+    def test_media_type_list_post_lock_returns_machine_readable_503(
+        self,
+        mock_metadata,
+    ):
+        """A writer starvation must not look like an invalid game payload."""
+        mock_metadata.return_value = {
+            "media_id": "9992186",
+            "source": Sources.IGDB.value,
+            "media_type": MediaTypes.GAME.value,
+            "title": "Contended Game",
+            "image": "",
+        }
+        error = OperationalError("database is locked")
+        error.sqlite_errorcode = 5
+
+        with patch.object(Item.objects, "create", side_effect=error):
+            response = self.call_api(
+                "post",
+                "api_media_type_list",
+                args=(MediaTypes.GAME.value,),
+                payload={
+                    "source": Sources.IGDB.value,
+                    "media_id": "9992186",
+                    "status": 3,
+                },
+                headers=self.auth_headers,
+            )
+
+        self.assertEqual(response.status_code, 503)
+        payload = response.json()
+        self.assertEqual(payload["code"], "DATABASE_BUSY")
+        self.assertFalse(payload["retryable"])
+        self.assertIn("detail", payload)
 
     def test_media_type_list_post_accepts_multipart(self):
         """Multipart create should validate exactly like the JSON path (#1043)."""
@@ -1239,7 +1292,69 @@ class MediaCoreTests(FloppyApiTestCase):
         )
 
         self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.json(), {"detail": "Media not found."})
+        self.assertEqual(
+            response.json(),
+            {"detail": "Media not found.", "code": "MEDIA_NOT_FOUND"},
+        )
+
+    @patch("api.views.services.get_media_metadata")
+    def test_media_detail_get_book_publishers_shapes(self, mock_metadata):
+        """Providers return publishers as a list, a joined string, or nothing."""
+        cases = (
+            # Open Library edition records return a list
+            (["Smithsonian Institution Press", "Other"], ["Smithsonian Institution Press", "Other"]),
+            # BoardGameGeek joins names into one string
+            ("Smithsonian Institution Press, Other", ["Smithsonian Institution Press", "Other"]),
+            # an edition with no publisher
+            (None, []),
+            ("", []),
+        )
+        for provider_value, expected in cases:
+            with self.subTest(publishers=provider_value):
+                mock_metadata.return_value = {
+                    "media_id": "OL1418181M",
+                    "source": Sources.OPENLIBRARY.value,
+                    "media_type": MediaTypes.BOOK.value,
+                    "title": "The Lawn",
+                    "details": {"publishers": provider_value},
+                }
+
+                response = self.call_api(
+                    "get",
+                    "api_media_detail",
+                    args=(
+                        MediaTypes.BOOK.value,
+                        Sources.OPENLIBRARY.value,
+                        "OL1418181M",
+                    ),
+                    headers=self.auth_headers,
+                )
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()["details"]["publishers"], expected)
+
+    @patch("api.views.services.get_media_metadata")
+    def test_media_detail_get_board_game_designers_shapes(self, mock_metadata):
+        """Designers and publishers are lists in the response whatever the provider sent."""
+        mock_metadata.return_value = {
+            "media_id": "1",
+            "source": Sources.BGG.value,
+            "media_type": MediaTypes.BOARDGAME.value,
+            "title": "Game",
+            "details": {"designers": None, "publishers": ["A", "B"]},
+        }
+
+        response = self.call_api(
+            "get",
+            "api_media_detail",
+            args=(MediaTypes.BOARDGAME.value, Sources.BGG.value, "1"),
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        details = response.json()["details"]
+        self.assertEqual(details["designers"], [])
+        self.assertEqual(details["publishers"], ["A", "B"])
 
     @patch("api.views.services.get_media_metadata")
     def test_media_detail_get_invalid_music_id_returns_not_found(self, mock_metadata):
@@ -1254,7 +1369,10 @@ class MediaCoreTests(FloppyApiTestCase):
         )
 
         self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.json(), {"detail": "Media not found."})
+        self.assertEqual(
+            response.json(),
+            {"detail": "Media not found.", "code": "MEDIA_NOT_FOUND"},
+        )
 
     @patch("api.views.services.get_media_metadata")
     def test_media_detail_get_music_preserves_identity_metadata(self, mock_metadata):
@@ -2150,12 +2268,14 @@ class MediaCoreTests(FloppyApiTestCase):
                 "consumption_id",
                 "created",
                 "score",
+                "scored_at",
                 "progress",
                 "progressed_at",
                 "status",
                 "start_date",
                 "end_date",
                 "notes",
+                "source",
             },
         )
 
@@ -2305,6 +2425,32 @@ class MediaCoreTests(FloppyApiTestCase):
         payload = response.json()
         check_consumption_structure(self, payload)
         self.assertIsNone(payload["score"])
+
+    def test_media_consumption_entry_detail_patch_score_reports_scored_at(self):
+        """A score PATCH returns when the rating was set, for sync clients (#1280)."""
+        movie = self.movie_medias[0]
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+
+        response = self.call_api(
+            "patch",
+            "api_media_consumption_entry_detail",
+            args=(
+                MediaTypes.MOVIE.value,
+                movie_item.source,
+                movie_item.media_id,
+                movie.id,
+            ),
+            payload={"score": 8.4},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        movie.refresh_from_db()
+        self.assertIsNotNone(movie.scored_at)
+        self.assertEqual(
+            parse_datetime(response.json()["scored_at"]),
+            movie.scored_at,
+        )
 
     def test_media_consumption_entry_detail_patch_invalid_score_returns_bad_request(
         self,
@@ -2521,8 +2667,16 @@ class MediaCoreTests(FloppyApiTestCase):
             check_minimized_lists_structure(self, item)
             self.assertEqual(item["list_id"], list_id)
 
-    def test_media_list_detail_put_invalid_media_id_returns_not_found(self):
-        """Media list detail PUT should reject unknown media ids."""
+    @patch("api.fork_helpers.services.get_media_metadata")
+    def test_media_list_detail_put_invalid_media_id_returns_not_found(
+        self,
+        mock_metadata,
+    ):
+        """Media list detail PUT should reject ids the provider does not know."""
+        mock_metadata.side_effect = provider_services.ProviderAPIError(
+            "tmdb",
+            Mock(response=Mock(status_code=404, headers={})),
+        )
         list_id = self.lists_by_name["favorites"].id
         response = self.call_api(
             "put",
@@ -2533,6 +2687,34 @@ class MediaCoreTests(FloppyApiTestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+        self.assertFalse(Item.objects.filter(media_id="999999").exists())
+
+    @patch("api.fork_helpers.services.get_media_metadata")
+    def test_media_list_detail_put_creates_unknown_item(self, mock_metadata):
+        """Media list detail PUT should create an item Floppy has not seen."""
+        mock_metadata.return_value = {
+            "media_id": "999999",
+            "source": "tmdb",
+            "media_type": MediaTypes.MOVIE.value,
+            "title": "Fresh Movie",
+            "image": "https://example.com/fresh.jpg",
+        }
+        list_id = self.lists_by_name["favorites"].id
+
+        response = self.call_api(
+            "put",
+            "api_media_list_detail",
+            args=(MediaTypes.MOVIE.value, "tmdb", 999999, list_id),
+            payload={},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        item = Item.objects.get(media_id="999999", source="tmdb")
+        self.assertEqual(item.title, "Fresh Movie")
+        self.assertTrue(
+            self.lists_by_name["favorites"].items.filter(id=item.id).exists(),
+        )
 
     @patch("api.views.run_retryable_db_operation")
     def test_media_list_detail_put_returns_503_on_persistent_lock(self, mock_retry):
@@ -2555,7 +2737,10 @@ class MediaCoreTests(FloppyApiTestCase):
         )
 
         self.assertEqual(response.status_code, 503)
-        self.assertIn("detail", response.json())
+        payload = response.json()
+        self.assertEqual(payload["code"], "DATABASE_BUSY")
+        self.assertFalse(payload["retryable"])
+        self.assertIn("detail", payload)
 
     def test_media_list_detail_put_invalid_list_id_returns_not_found(self):
         """Media list detail PUT should reject unknown list ids."""

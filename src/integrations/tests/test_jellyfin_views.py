@@ -328,6 +328,21 @@ class JellyfinViewTests(TestCase):
         self.assertEqual(response.status_code, 302)
         mock_delay.assert_called_once_with(user_id=self.user.id)
 
+    @patch("integrations.views.tasks.pull_jellyfin_history.delay")
+    def test_pull_now_queues_for_broken_account(self, mock_delay):
+        """A broken account can still pull; the task re-probes the key."""
+        JellyfinAccount.objects.create(
+            user=self.user,
+            base_url="https://jellyfin.local:8096",
+            api_key="encrypted",
+            jellyfin_user_id="jf-1",
+            connection_broken=True,
+        )
+
+        self.client.post(reverse("jellyfin_pull_now"))
+
+        mock_delay.assert_called_once_with(user_id=self.user.id)
+
     @patch("integrations.views.tasks.push_jellyfin_watched.delay")
     def test_push_now_requires_connected_account(self, mock_delay):
         """push_now should refuse to queue without a connected account."""
@@ -379,3 +394,27 @@ class JellyfinViewTests(TestCase):
         self.addCleanup(discard_staged_upload, queued)
         self.assertEqual(Path(queued).read_bytes(), payload)
         self.assertEqual(mock_delay.call_args.args[1:], (self.user.id, "new"))
+
+    def test_integrations_page_explains_rejected_key(self):
+        """Only a rejected key shows the reconnect hint; a transient error does not."""
+        account = JellyfinAccount.objects.create(
+            user=self.user,
+            base_url="https://jellyfin.local:8096",
+            api_key="encrypted",
+            jellyfin_user_id="jf-1",
+            last_error_message="Could not reach Jellyfin: Read timed out.",
+        )
+        hint = "Jellyfin rejected the API key"
+
+        response = self.client.get(
+            reverse("provider_detail", args=["jellyfin"]) + "?tab=connection"
+        )
+        self.assertNotContains(response, hint)
+        self.assertContains(response, "Read timed out")
+
+        account.connection_broken = True
+        account.save(update_fields=["connection_broken"])
+        response = self.client.get(
+            reverse("provider_detail", args=["jellyfin"]) + "?tab=connection"
+        )
+        self.assertContains(response, hint)

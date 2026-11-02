@@ -11,6 +11,10 @@
 
 {% block content %}
   <style>
+    .hm { aspect-ratio: 1; width: 100%; border-radius: 0.125rem; transition: background-color 0.2s; }
+    :where(.hm) { background: var(--color-surface-muted); }
+    .hm:not(.hm-f):hover { box-shadow: 0 0 0 2px #fff; }
+    .hm-f { cursor: default; }
     /* Custom scrollbar styling for statistics cards */
     .statistics-card-scroll::-webkit-scrollbar {
       width: 6px;
@@ -32,6 +36,55 @@
       scrollbar-color: var(--color-text-muted) var(--color-surface);
     }
 
+    .statistics-page { container: statistics / inline-size; }
+    #featured-repeat-player { container: featured-player / inline-size; }
+    .stats-average-rating { container: stats-rating / inline-size; }
+    @container stats-rating (max-width: 280px) {
+      .stats-average-rating-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 2.5rem;
+        gap: 0.375rem;
+      }
+      .stats-average-rating-row > div:first-child {
+        grid-column: 1 / -1;
+      }
+    }
+    @container featured-player (min-width: 451px) {
+      .featured-player-layout {
+        grid-template-columns: 8rem minmax(0, 1fr) 8rem;
+        align-items: center;
+      }
+    }
+    @container featured-player (max-width: 450px) {
+      .featured-player-layout {
+        grid-template-columns: 6rem minmax(0, 1fr) 6rem;
+        align-items: center;
+      }
+      .featured-player-layout > div:first-child > img,
+      .featured-player-layout > div:first-child > div,
+      .featured-player-layout > div:last-child > .relative {
+        width: 6rem !important;
+        height: 6rem !important;
+        max-width: none;
+      }
+      .featured-player-layout > div:nth-child(2) {
+        height: auto;
+        gap: 0.75rem;
+        text-align: left;
+      }
+      .featured-player-layout h3 {
+        white-space: normal;
+      }
+    }
+    @container featured-player (max-width: 360px) {
+      .featured-player-layout {
+        grid-template-columns: 6rem minmax(0, 1fr);
+      }
+      .featured-player-layout > div:last-child {
+        grid-column: 1 / -1;
+        justify-content: center;
+      }
+    }
     .stats-hero-title { font-size: 1.875rem; }
     @media (min-width: 1024px) {
       .stats-hero-row     { grid-template-columns: repeat(5, 1fr); }
@@ -44,6 +97,34 @@
         line-height: 1.1;
         white-space: nowrap;
         overflow: hidden;
+      }
+    }
+
+    /* The summary cards sit next to the sidebar and shrink to ~130-180px between
+       1024px and 1535px, and to ~150px on small phones. Let their text shrink and
+       wrap instead of spilling out, and compact them where space is tightest. */
+    .stats-summary-row > div > div:last-child {
+      min-width: 0;
+      overflow-wrap: break-word;
+    }
+    @media (max-width: 399px), (min-width: 1024px) and (max-width: 1535px) {
+      .stats-summary-row > div {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+        padding: 0.75rem;
+      }
+      .stats-summary-row > div > div:first-child {
+        margin-right: 0;
+      }
+      .stats-summary-row > div > div:last-child {
+        width: 100%;
+      }
+    }
+    @media (min-width: 1024px) and (max-width: 1535px) {
+      .stats-summary-row > div p.font-bold,
+      .stats-summary-row > div div.font-bold {
+        font-size: 1rem;
       }
     }
 
@@ -121,7 +202,10 @@
       border: 1px solid var(--color-border);
       border-radius: 0.5rem;
       box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
-      overflow: hidden;
+      overflow-x: hidden;
+      overflow-y: auto;
+      /* Fallback only: date-range.js caps each open menu to the room left below it. */
+      max-height: calc(100dvh - 12rem);
     }
     .stats-range-panel {
       width: min(90vw, 420px);
@@ -509,155 +593,245 @@
         flex: 0 0 2.75rem;
       }
     }
+    /* Duo displays have room for compact desktop rows at the same width in
+       either orientation; a shorter viewport should not enlarge the cards. */
+    @media (min-width: 600px) and (max-width: 1023.98px) {
+      .stats-range-row > div {
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1.4fr) 2.75rem;
+        width: 100%;
+        align-items: stretch;
+      }
+      .stats-range-button,
+      .stats-mediatype-button,
+      .stats-compare-button {
+        width: 100%;
+        height: 2.75rem;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+      }
+      .stats-range-panel {
+        width: min(420px, calc(100vw - 4rem));
+      }
+      .stats-compare-panel {
+        width: min(360px, calc(100vw - 4rem));
+      }
+      .stats-dropdown-panel {
+        max-height: calc(100dvh - 11rem - var(--header-safe-top) - var(--safe-bottom));
+        overflow-y: auto;
+      }
+      .stats-refresh-button {
+        grid-column: -2 / -1;
+      }
+      .stats-highlight-track {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        overflow: visible;
+        scroll-snap-type: none;
+      }
+      .stats-highlight-card {
+        min-width: 0;
+      }
+      .stats-highlight-dots {
+        display: none;
+      }
+      .stats-hero-cards {
+        margin-bottom: 1rem;
+      }
+      .stats-summary-row {
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+      }
+      .stats-summary-row > div {
+        grid-column: span 2;
+      }
+      .stats-summary-row > div:nth-last-child(-n+2) {
+        grid-column: span 3;
+      }
+      .consumption-row {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .stats-summary-row > div,
+      .consumption-row > div {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+        padding: 0.75rem;
+      }
+      .stats-summary-row > div > div:first-child,
+      .consumption-row > div > div:first-child {
+        padding: 0.375rem;
+        margin-right: 0;
+      }
+      .stats-summary-row > div > div:first-child svg,
+      .consumption-row > div > div:first-child svg {
+        width: 1.25rem;
+        height: 1.25rem;
+      }
+    }
+    @media (min-width: 900px) and (max-width: 1023.98px) {
+      .stats-summary-row {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+      }
+      .stats-summary-row > div,
+      .stats-summary-row > div:nth-last-child(-n+2) {
+        grid-column: auto;
+      }
+      .stats-chart-pair,
+      .stats-hour-charts {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .stats-hour-charts > div:last-child {
+        grid-column: 1 / -1;
+      }
+      #timeWorldsContainer,
+      #statusCompositionContainer {
+        flex-direction: column;
+        height: auto !important;
+      }
+      #timeWorldsContainer > .relative,
+      #statusCompositionContainer > .relative {
+        align-self: center;
+      }
+      #statusCompositionLegend {
+        width: 100%;
+        flex: auto;
+      }
+      #timeWorldsLegend {
+        width: 100%;
+        flex: auto;
+        height: 9.375rem;
+      }
+    }
+    @media (min-width: 1024px) {
+      @container statistics (max-width: 1250px) {
+        .stats-summary-row > div,
+        .consumption-row > div {
+          padding: 0.75rem;
+        }
+        .stats-summary-row > div > div:first-child,
+        .consumption-row > div > div:first-child {
+          padding: 0.25rem;
+          margin-right: 0.5rem;
+        }
+        .stats-summary-row > div > div:first-child svg,
+        .consumption-row > div > div:first-child svg {
+          width: 1.25rem;
+          height: 1.25rem;
+        }
+        .stats-summary-row > div > div:last-child,
+        .consumption-row > div > div:last-child {
+          min-width: 0;
+        }
+        .stats-summary-row p,
+        .consumption-row p {
+          white-space: nowrap;
+        }
+      }
+      @container statistics (max-width: 1099px) {
+        .stats-summary-row {
+          grid-template-columns: repeat(6, minmax(0, 1fr));
+        }
+        .stats-summary-row > div {
+          grid-column: span 2;
+        }
+        .stats-summary-row > div:nth-last-child(-n+2) {
+          grid-column: span 3;
+        }
+        .consumption-row {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        #timeWorldsContainer,
+        #statusCompositionContainer {
+          flex-direction: column;
+          height: auto !important;
+        }
+        #timeWorldsContainer > .relative,
+        #statusCompositionContainer > .relative {
+          align-self: center;
+        }
+        #timeWorldsLegend,
+        #statusCompositionLegend {
+          width: 100%;
+          flex: auto;
+        }
+      }
+    }
   </style>
   
-  <div x-data="{
+  {# Statistics are kept warm in the background, so the page never polls on its #}
+  {# own. It waits only after a manual Refresh, or the one time a range has #}
+  {# never been built (see docs/architecture/statistics-sync.md). #}
+  <div class="statistics-page" x-data="{
     cacheRefreshing: false,
-    metadataRefreshing: false,
+    buildingFirstTime: {{ statistics_building|yesno:"true,false" }},
     cacheUpdater: null,
     rebuildListener: null,
-    selectedRangeName: '{{ selected_range_name|default:"" }}',
+    selectedRangeName: '{{ selected_range_name|default:""|escapejs }}',
     init() {
-      // Initialize cache updater immediately if we have a range name
       if (this.selectedRangeName && window.CacheUpdater) {
         this.cacheUpdater = CacheUpdater.init('statistics', {
           rangeName: this.selectedRangeName,
-          onRefreshComplete: (success, reason) => {
-            console.log('Statistics page: Refresh complete callback', success, reason);
+          onRefreshComplete: () => {
             this.cacheRefreshing = false;
-            this.metadataRefreshing = false;
           },
           onUpdate: () => {
-            console.log('Statistics page: Update callback called, reloading page');
-            // Reload the page to show fresh data
             setTimeout(() => {
               window.location.reload();
             }, 300);
           }
         });
       }
-      
-      // When the refresh button triggers a rebuild, hand reload control to
-      // CacheUpdater (which guards on data.exists before reloading).
+
       this.rebuildListener = () => {
-        console.log('Statistics page: rebuild started event received, starting CacheUpdater');
         this.cacheRefreshing = true;
-        if (this.cacheUpdater && !this.cacheUpdater.isPolling) {
-          this.cacheUpdater.wasRefreshing = true;
-          this.cacheUpdater.lastBuiltAt = null;
-          this.cacheUpdater.start();
-        }
+        this.startWaiting();
       };
       window.addEventListener('stats-cache-rebuild-started', this.rebuildListener);
 
-      // Check initial cache status after a short delay to ensure Alpine.js is ready
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          this.checkCacheStatus();
-        }, 200);
-      });
+      if (this.buildingFirstTime) {
+        this.startWaiting();
+      }
+    },
+    startWaiting() {
+      if (this.cacheUpdater && !this.cacheUpdater.isPolling) {
+        this.cacheUpdater.wasRefreshing = true;
+        this.cacheUpdater.lastBuiltAt = null;
+        this.cacheUpdater.start();
+      }
     },
     destroy() {
-      // Stop polling and drop listeners when the page is swapped away
       if (this.cacheUpdater) {
         this.cacheUpdater.stop();
       }
       if (this.rebuildListener) {
         window.removeEventListener('stats-cache-rebuild-started', this.rebuildListener);
       }
-    },
-    async checkCacheStatus() {
-      if (!this.selectedRangeName) {
-        console.log('Statistics page: No range name, skipping cache status check');
-        return;
-      }
-      try {
-        const params = new URLSearchParams({
-          cache_type: 'statistics',
-          range_name: this.selectedRangeName
-        });
-        const response = await fetch(`/api/cache-status/?${params.toString()}`);
-        if (response.ok) {
-          const data = await response.json();
-          console.log('Statistics page: Initial cache status', data);
-          // Show notification and start polling only when a refresh is actually running
-          // (or when this specific range is missing/stale while a broader refresh wave is active),
-          // to avoid polling/reload loops from unrelated range rebuilds.
-          this.metadataRefreshing = data.metadata_refreshing || false;
-          const currentRangeNeedsRefresh =
-            data.is_refreshing ||
-            data.refresh_scheduled ||
-            this.metadataRefreshing ||
-            !data.exists ||
-            data.is_stale;
-          const waitingOnCurrentRange =
-            data.is_refreshing ||
-            data.refresh_scheduled ||
-            this.metadataRefreshing ||
-            ((!data.exists || data.is_stale) && data.any_range_refreshing);
-          if (waitingOnCurrentRange) {
-            console.log('Statistics page: Showing notification and starting polling', {
-              is_stale: data.is_stale,
-              is_refreshing: data.is_refreshing,
-              exists: data.exists,
-              any_range_refreshing: data.any_range_refreshing,
-              recently_built: data.recently_built,
-              refresh_scheduled: data.refresh_scheduled,
-              metadata_refreshing: data.metadata_refreshing
-            });
-            this.cacheRefreshing = true;
-            if (this.cacheUpdater) {
-              // Mark that we were refreshing so we can detect completion
-              // Set this BEFORE calling start() so it's preserved
-              this.cacheUpdater.wasRefreshing = currentRangeNeedsRefresh;
-              this.cacheUpdater.lastBuiltAt = data.built_at || null;
-              this.cacheUpdater.start();
-            }
-          } else {
-            this.metadataRefreshing = false;
-            console.log('Statistics page: Cache is fresh, no notification needed', {
-              is_stale: data.is_stale,
-              is_refreshing: data.is_refreshing,
-              recently_built: data.recently_built
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Error checking cache status:', error);
-      }
     }
   }">
-  
-  {# Cache refresh notification banner #}
+
+  {# Manual refresh / first-build notice #}
   <div class="fixed top-24 right-0 left-0 {% block messages_sidebar_offset %}lg:left-64{% endblock messages_sidebar_offset %} z-50 flex justify-center pointer-events-none mb-4">
     <div class="w-full max-w-xl px-4 pointer-events-auto">
-      <div x-show="cacheRefreshing && !metadataRefreshing"
+      <div x-show="cacheRefreshing || buildingFirstTime"
            x-cloak
            x-transition
            class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg toast-info opacity-0"
            x-init="setTimeout(() => $el.classList.add('opacity-100', 'transform-none'), 10); $el.classList.add('transition-all', 'duration-300', 'ease-out', 'transform', 'translate-y-[-1rem]')">
         {% include "app/icons/info.svg" with classes="w-4 h-4 text-indigo-300 shrink-0 animate-pulse" %}
-        <p class="text-sm font-medium flex-1">{% translate "Refreshing statistics in background..." %}</p>
+        {% translate "Building your statistics for the first time..." as building_label %}
+        {% translate "Refreshing statistics in background..." as refreshing_label %}
+        <p class="text-sm font-medium flex-1"
+           x-text="buildingFirstTime ? '{{ building_label|escapejs }}' : '{{ refreshing_label|escapejs }}'">
+          {% if statistics_building %}{{ building_label }}{% else %}{{ refreshing_label }}{% endif %}
+        </p>
         <button class="text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
-                @click="cacheRefreshing = false; cacheUpdater?.stop();">
-          {% include "app/icons/x.svg" with classes="w-4 h-4" %}
-        </button>
-      </div>
-      <div x-show="metadataRefreshing"
-           x-cloak
-           x-transition
-           class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg toast-info opacity-0"
-           x-init="setTimeout(() => $el.classList.add('opacity-100', 'transform-none'), 10); $el.classList.add('transition-all', 'duration-300', 'ease-out', 'transform', 'translate-y-[-1rem]')">
-        {% include "app/icons/info.svg" with classes="w-4 h-4 text-indigo-300 shrink-0 animate-pulse" %}
-        <p class="text-sm font-medium flex-1">{% translate "Updating metadata in background..." %}</p>
-        <button class="text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
-                @click="metadataRefreshing = false; cacheUpdater?.stop();">
+                @click="cacheRefreshing = false; buildingFirstTime = false; cacheUpdater?.stop();">
           {% include "app/icons/x.svg" with classes="w-4 h-4" %}
         </button>
       </div>
     </div>
   </div>
-  
+
   {% translate "Anime" as media_i18n_22 %}{% translate "Manga" as media_i18n_26 %}{% translate "Music" as media_i18n_24 %}<div x-data="dateRangePicker({
     initialRangeName: '{{ selected_range_name|default:""|escapejs }}',
     initialStartDate: '{{ start_date_str|default:""|escapejs }}',
@@ -677,10 +851,21 @@
       {% if user.boardgame_enabled %}{value: 'boardgame', label: 'Board Games'},{% endif %}
       {% if user.music_enabled %}{value: 'music', label: '{{ media_i18n_24|escapejs }}'},{% endif %}
       {% if user.podcast_enabled %}{value: 'podcast', label: 'Podcasts'},{% endif %}
+      {% if user.video_enabled %}{value: 'video', label: 'Videos'},{% endif %}
       {% if user.book_enabled %}{value: 'book', label: 'Books'},{% endif %}
       {% if user.comic_enabled %}{value: 'comic', label: 'Comics'},{% endif %}
     ]
-  })" x-init="init()">
+  })"
+       data-date-format="{{ user_django_date_format }}"
+       x-init="init()">
+    {% if statistics_built_at %}
+      <div class="flex justify-end mb-1">
+        <span class="hidden sm:inline text-xs text-[var(--color-text-muted)] whitespace-nowrap"
+              title="{{ statistics_built_at|date:"DATETIME_FORMAT" }}">
+          {% blocktranslate with ago=statistics_built_at|timesince %}Updated {{ ago }} ago{% endblocktranslate %}
+        </span>
+      </div>
+    {% endif %}
     <div class="stats-range-row flex flex-wrap items-center justify-end gap-2 mb-4 sm:mb-6">
       <div class="flex flex-wrap items-center gap-2">
       <div class="stats-range-wrapper relative min-w-0">
@@ -852,9 +1037,9 @@
             <template x-for="opt in mediaTypeOptions" :key="opt.value">
               <button @click="selectMediaType(opt.value)"
                       class="stats-option-row"
-                      :class="{'is-selected': selectedMediaType === opt.value}">
+                      :class="{'is-selected': isMediaTypeSelected(opt.value)}">
                 <span class="stats-option-title" x-text="opt.label"></span>
-                <svg x-show="selectedMediaType === opt.value"
+                <svg x-show="isMediaTypeSelected(opt.value)"
                      xmlns="http://www.w3.org/2000/svg"
                      width="24"
                      height="24"
@@ -978,13 +1163,13 @@
           </div>
         </div>
         <div class="min-w-0 stats-hero-cards">
-          <div x-show="selectedMediaType === 'all'" x-cloak>
+          <div x-show="isHighlightSetVisible('all')" x-cloak>
             {% with highlights=history_highlights %}
               {% include "app/components/statistics/highlight_set.html" %}
             {% endwith %}
           </div>
           {% for mt, type_highlights in history_highlights_by_type.items %}
-          <div x-show="selectedMediaType === '{{ mt }}'" x-cloak>
+          <div x-show="isHighlightSetVisible('{{ mt }}')" x-cloak>
             {% with highlights=type_highlights %}
               {% include "app/components/statistics/highlight_set.html" %}
             {% endwith %}
@@ -1066,8 +1251,8 @@
           </div>
           <div>
             <h3 class="text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">{% translate "Most Active Day" %}</h3>
-            <p x-show="currentTypeSummary.most_active_day" class="text-xl sm:text-2xl font-bold" x-text="currentTypeSummary.most_active_day" style="display:none"></p>
-            <p x-show="currentTypeSummary.most_active_day" class="text-xs sm:text-sm text-[var(--color-text-muted)]" x-text="currentTypeSummary.most_active_day_percentage + '% of activity'" style="display:none"></p>
+            <p x-show="currentTypeSummary.most_active_day" class="text-xl sm:text-2xl font-bold" x-text="currentTypeSummary.most_active_day_label" style="display:none"></p>
+            <p x-show="currentTypeSummary.most_active_day" class="text-xs sm:text-sm text-[var(--color-text-muted)]" x-text="interpolate(gettext('%(percent)s of activity'), {percent: currentTypeSummary.most_active_day_percentage + '%'}, true)" style="display:none"></p>
             <p x-show="!currentTypeSummary.most_active_day" class="text-xl sm:text-2xl font-bold text-[var(--color-text-muted)]" style="display:none">--</p>
           </div>
         </div>
@@ -1128,11 +1313,11 @@
           <div class="min-w-0">
             <h3 class="text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">{% translate "Activity" %}</h3>
             <p class="text-xl sm:text-2xl font-bold {% if total_activity_comparison.badge_state == 'up' %}text-green-400{% elif total_activity_comparison.badge_state == 'down' %}text-red-400{% else %}text-[var(--color-text-muted)]{% endif %}">
-              {% if total_activity_comparison.badge %}{{ total_activity_comparison.badge }}{% else %}--{% endif %}
+              {% if total_activity_comparison.badge %}{{ total_activity_comparison.badge|translate_activity_text }}{% else %}--{% endif %}
             </p>
             {% if total_activity_comparison.badge %}
               <div class="flex items-center gap-1 text-xs sm:text-sm text-[var(--color-text-muted)]">
-                <span>{% blocktranslate trimmed with value_1=activity_comparison_period_label %}vs {{ value_1 }}{% endblocktranslate %}</span>
+                <span>{% blocktranslate trimmed with value_1=activity_comparison_period_label|translate_detail_value %}vs {{ value_1 }}{% endblocktranslate %}</span>
                 {% if total_activity_comparison.tooltip %}
                   <div class="relative" x-data="{ tooltipOpen: false }">
                     <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center" type="button" aria-label="{% translate "Show comparison totals" %}" style="transform: translateY(1px);">
@@ -1167,7 +1352,7 @@
         </div>
       </div>
       <!-- Activity Rhythm + Time Across Your Worlds -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+      <div class="stats-chart-pair grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
     <!-- Activity Rhythm -->
     <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6">
       <div class="flex items-center justify-between mb-3">
@@ -1215,7 +1400,11 @@
 
   <!-- Activity History Section -->
   {% if user.activity_history_view != 'stacked' %}
-  <div id="activityHistory" class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 w-full overflow-hidden mb-4">
+  {# Translated tooltip templates for the media-type filter; the script swaps in the date and count. #}
+  <div id="activityHistory" class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 w-full overflow-hidden mb-4"
+       data-title-0="{% blocktranslate with date='__DATE__' count count=0 %}{{ date }}: {{ count }} activity{% plural %}{{ date }}: {{ count }} activities{% endblocktranslate %}"
+       data-title-1="{% blocktranslate with date='__DATE__' count count=1 %}{{ date }}: {{ count }} activity{% plural %}{{ date }}: {{ count }} activities{% endblocktranslate %}"
+       data-title-2="{% blocktranslate with date='__DATE__' count count=2 %}{{ date }}: {{ count }} activity{% plural %}{{ date }}: {{ count }} activities{% endblocktranslate %}">
         <div class="flex items-center justify-between mb-3">
           <div>
             <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5">{% translate "Activity History" %}</h2>
@@ -1234,11 +1423,12 @@
         <div class="w-full overflow-x-auto overflow-y-hidden scrollbar-hidden">
 
           <div class="w-full" x-ref="graphContainer">
-            <!-- Months row: proportional flex to track responsive column widths -->
-            <div class="flex mb-2 pl-[37px] gap-1">
+            <!-- Months row: same grid tracks as the weeks grid below, so each label sits on its first week column -->
+            <div class="grid gap-1 mb-2 pl-[37px]"
+                 style="grid-template-columns: repeat({{ activity_data.calendar_weeks|length }}, minmax(1rem, 20px))">
               {% for month, week_count in activity_data.months %}
-                <div class="text-xs text-[var(--color-text-muted)] min-w-0 overflow-hidden"
-                     style="flex: {{ week_count }} {{ week_count }} 0; min-width: calc({{ week_count }} * 1rem)">{{ month }}</div>
+                <div class="text-xs text-[var(--color-text-muted)] min-w-0 whitespace-nowrap {% if not forloop.first %}border-l{% endif %}"
+                     style="grid-column: span {{ week_count }}{% if not forloop.first %}; border-color: var(--color-border); padding-left: 0.25rem{% endif %}">{{ month|month_abbreviation }}</div>
               {% endfor %}
             </div>
 
@@ -1255,16 +1445,11 @@
                 {% endfor %}
               </div>
 
-              <!-- Weeks grid: flex-1 columns grow to fill width, capped at 20px -->
-              <div class="flex gap-1 flex-1 min-w-0">
-                {% for week in activity_data.calendar_weeks %}
-                  <div class="flex flex-col gap-1 flex-1 min-w-4" style="max-width:20px">
-                    {% for day in week %}
-                      <div class="aspect-square w-full rounded-sm transition-colors duration-200 {% if day.future %}bg-[var(--color-surface-muted)] cursor-default{% else %}hover:ring-2 hover:ring-white {% if day.level == 0 %}bg-[var(--color-surface-muted)]{% elif day.level == 1 %}bg-indigo-700{% elif day.level == 2 %}bg-indigo-600{% elif day.level == 3 %}bg-indigo-500{% elif day.level == 4 %}bg-indigo-400{% endif %}{% endif %}"
-                           title="{% if day.future %}{{ day.date }}{% else %}{% blocktranslate with date=day.date count count=day.count %}{{ date }}: {{ count }} activity{% plural %}{{ date }}: {{ count }} activities{% endblocktranslate %}{% endif %}"></div>
-                    {% endfor %}
-                  </div>
-                {% endfor %}
+              <!-- Weeks grid: columns grow to fill width, capped at 20px -->
+              <div class="grid gap-1 flex-1 min-w-0" data-heatmap-grid data-heatmap-start="{{ activity_data.calendar_weeks.0.0.date }}"
+                   style="grid-template-columns: repeat({{ activity_data.calendar_weeks|length }}, minmax(1rem, 20px))">
+                {% comment %}Compact on purpose: all-time history can be thousands of weeks. Dates and titles are derived from the cell's position on hover (statistics-charts.js).{% endcomment %}
+                {% for week in activity_data.calendar_weeks %}<div class="flex flex-col gap-1 min-w-4">{% for day in week %}<div class="hm{% if day.future %} hm-f{% elif day.level == 1 %} bg-indigo-700{% elif day.level == 2 %} bg-indigo-600{% elif day.level == 3 %} bg-indigo-500{% elif day.level == 4 %} bg-indigo-400{% endif %}"{% if not day.future and day.by_type %} data-heatmap-counts="{% for media_type, n in day.by_type.items %}{{ media_type }}:{{ n }}{% if not forloop.last %},{% endif %}{% endfor %}"{% endif %}></div>{% endfor %}</div>{% endfor %}
               </div>
             </div>
           </div>
@@ -1274,7 +1459,7 @@
   {% endif %}
 
   <!-- Combined Hours charts -->
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4" style="margin-bottom:1rem">
+  <div class="stats-hour-charts grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4" style="margin-bottom:1rem">
     <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6">
       <h2 class="text-base font-semibold text-[var(--color-text)] mb-3">{% translate "Hours by Month" %}</h2>
       <div id="combinedPlaysByMonthContainer" class="h-64">
@@ -1315,7 +1500,7 @@
   </div>
 
   <!-- Status Composition + Rating Distribution -->
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4" style="margin-bottom:1rem">
+  <div class="stats-chart-pair grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4" style="margin-bottom:1rem">
     <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 flex flex-col h-full">
       <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5" id="statusCompositionTitle">{% translate "Status Composition" %}</h2>
       <p class="text-xs text-[var(--color-text-muted)] mb-3" id="statusCompositionSubtitle">{% translate "What portion of your library is in each state." %}</p>
@@ -1342,13 +1527,13 @@
       <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5" id="statusBreakdownTitle">{% translate "Status Breakdown" %}</h2>
       <div id="statusBreakdownContainer"></div>
     </div>
-    <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 lg:col-span-1">
+    <div class="stats-average-rating bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 lg:col-span-1">
       <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5">{% translate "Average Rating" %}</h2>
       <p class="text-xs text-[var(--color-text-muted)] pb-2 mb-1 border-b border-gray-700">{% translate "Your average score by type." %}</p>
       <div>
         <template x-for="row in averageRatingRows()" :key="row.value">
-          <div class="flex items-center gap-3 py-2 border-b border-gray-700/50 last:border-0">
-            <div class="flex items-center gap-2 flex-1 min-w-0" style="min-width:110px">
+          <div class="stats-average-rating-row flex flex-wrap items-center gap-x-3 gap-y-1 py-2 border-b border-gray-700/50 last:border-0">
+            <div class="flex items-center gap-2 flex-1 min-w-0">
               <svg xmlns="http://www.w3.org/2000/svg"
                    width="24" height="24" viewBox="0 0 24 24"
                    fill="none" stroke="currentColor" stroke-width="2"
@@ -1427,7 +1612,7 @@
            hx-swap="outerHTML"
            class="mb-4 sm:mb-8 space-y-4 sm:space-y-4"
            style="margin-top: 1rem;"
-           x-show="['all','tv','movie','anime','game'].includes(selectedMediaType)">
+           x-show="isTalentVisible()">
         <div class="grid grid-cols-1 lg:grid-cols-5 gap-3 sm:gap-4 items-start">
           <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 lg:col-span-2 overflow-hidden animate-pulse">
             <div class="h-6 w-48 bg-gray-700 rounded mb-4"></div>
@@ -1488,6 +1673,11 @@
         </div>
       {% endif %}
 
+      {% if user.video_enabled and video_consumption.has_data %}
+        <div x-show="isMediaTypeVisible('video')">
+          {% include "app/components/statistics/video_activity_overview.html" %}
+        </div>
+      {% endif %}
       {% if user.podcast_enabled and podcast_consumption.has_data %}
         <div x-show="isMediaTypeVisible('podcast')">
           {% include "app/components/statistics/podcast_activity_overview.html" %}
@@ -1519,9 +1709,8 @@
               <div class="{% if secondary_color %}bg-[var(--color-surface-strong)]{% else %}bg-[var(--color-surface)]{% endif %} rounded-lg overflow-hidden shadow-lg relative">
                 <div class="relative">
                   <img alt="{{ item.media.item }}"
-                       class="lazyload w-full aspect-[2/3] bg-[var(--color-surface-alt)] {% if item.media.item.image != IMG_NONE %}object-cover{% endif %}"
-                       data-src="{{ item.media.item.image|image_url }}"
-                       src="{{ IMG_NONE }}">
+                       class="w-full aspect-[2/3] bg-[var(--color-surface-alt)] {% if item.media.item.image != IMG_NONE %}object-cover{% endif %}"
+                       src="{{ item.media.item.image|image_url }}">
                   
                   {% if item.media.status %}
                     <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md"
@@ -1609,9 +1798,8 @@
               <div class="{% if secondary_color %}bg-[var(--color-surface-strong)]{% else %}bg-[var(--color-surface)]{% endif %} rounded-lg overflow-hidden shadow-lg relative">
                 <div class="relative">
                   <img alt="{{ item.media.item }}"
-                       class="lazyload w-full aspect-[2/3] bg-[var(--color-surface-alt)] {% if item.media.item.image != IMG_NONE %}object-cover{% endif %}"
-                       data-src="{{ item.media.item.image|image_url }}"
-                       src="{{ IMG_NONE }}">
+                       class="w-full aspect-[2/3] bg-[var(--color-surface-alt)] {% if item.media.item.image != IMG_NONE %}object-cover{% endif %}"
+                       src="{{ item.media.item.image|image_url }}">
                   
                   {% if item.media.status %}
                     <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md"
@@ -1692,9 +1880,8 @@
               <div class="{% if secondary_color %}bg-[var(--color-surface-strong)]{% else %}bg-[var(--color-surface)]{% endif %} rounded-lg overflow-hidden shadow-lg relative">
                 <div class="relative">
                   <img alt="{{ item.media.item }}"
-                       class="lazyload w-full aspect-[2/3] bg-[var(--color-surface-alt)] {% if item.media.item.image != IMG_NONE %}object-cover{% endif %}"
-                       data-src="{{ item.media.item.image|image_url }}"
-                       src="{{ IMG_NONE }}">
+                       class="w-full aspect-[2/3] bg-[var(--color-surface-alt)] {% if item.media.item.image != IMG_NONE %}object-cover{% endif %}"
+                       src="{{ item.media.item.image|image_url }}">
                   
                   {% if item.media.status %}
                     <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center shadow-md"
@@ -1779,49 +1966,6 @@
         </div>
       {% endif %}
 
-      <!-- Top Rated Media Section -->
-      {% comment %}
-      COMMENTED OUT: Old "ALL MEDIA - Top Rated Media" section
-      REPLACED BY: New 3-card rows in Movies and TV Shows Activity Overview sections (Top Rated cards)
-      Location: After "Movie Plays by Time of Day" chart (Movies) and "Episode Plays by Time of Day" chart (TV Shows)
-      To restore: Uncomment this entire section
-      <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 mobile-tight-section stat-scroll-safe mb-4 sm:mb-6">
-        <div class="flex flex-col space-y-1 mb-3 sm:mb-4">
-          <span class="text-sm uppercase tracking-widest text-[var(--color-text-muted)]">{% translate "All Media" %}</span>
-          <h2 class="text-2xl font-semibold text-[var(--color-text)]">Top Rated Media</h2>
-        </div>
-
-        {% if top_rated %}
-          <div class="media-grid">
-            {% for media in top_rated %}
-              {% include "app/components/media_card.html" with media=media item=media.item title=media.item from_grid=True secondary_color=True user=user current_sort='progress' %}
-            {% endfor %}
-          </div>
-        {% else %}
-          <div class="flex flex-col items-center justify-center py-16">
-            <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-              <svg xmlns="http://www.w3.org/2000/svg"
-                   width="24"
-                   height="24"
-                   viewBox="0 0 24 24"
-                   fill="none"
-                   stroke="currentColor"
-                   stroke-width="2"
-                   stroke-linecap="round"
-                   stroke-linejoin="round"
-                   class="w-8 h-8 text-[var(--color-text-muted)]">
-                <path d="m15.477 12.89 1.515 8.526a.5.5 0 0 1-.81.47l-3.58-2.687a1 1 0 0 0-1.197 0l-3.586 2.686a.5.5 0 0 1-.81-.469l1.514-8.526">
-                </path>
-                <circle cx="12" cy="8" r="6"></circle>
-              </svg>
-            </div>
-            <h3 class="text-lg font-medium mb-2">No ratings yet</h3>
-            <p class="text-[var(--color-text-muted)] text-center max-w-md">Rate your media items to see score distribution statistics.</p>
-          </div>
-        {% endif %}
-      </div>
-      {% endcomment %}
-
     </div>
   </div>
 
@@ -1851,7 +1995,7 @@
       return this.weekStartDay === 'monday' ? 'Monday' : 'Sunday';
     },
     ratingScaleLabel() {
-      return this.ratingScale === '5' ? '1-5 stars' : '1-10 stars';
+      return { '5': '1-5 stars', '0': 'Disabled' }[this.ratingScale] || '1-10 stars';
     },
     {% if not user.anime_enabled and tvdb_enabled %}
     statsAnimeGenreLabel() {
@@ -1878,7 +2022,7 @@
   }">
     {# FAB button #}
     <button @click="open = true"
-            class="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg flex items-center justify-center cursor-pointer transition-colors"
+            class="fixed bottom-6 right-[max(1.5rem,var(--safe-right))] z-40 w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg flex items-center justify-center cursor-pointer transition-colors"
             title="{% translate "Statistics preferences" %}"
             aria-label="{% translate "Statistics preferences" %}">
       {% include "app/icons/vertical-sliders.svg" with classes="w-5 h-5" %}
@@ -2034,6 +2178,12 @@
                           class="block w-full px-3 py-2 text-left text-sm transition-colors">
                     {% translate "1-5 stars" %}
                   </button>
+                  <button type="button"
+                          @click="ratingScale = '0'; ratingScaleOpen = false"
+                          :class="ratingScale === '0' ? 'text-[var(--color-text)] bg-[var(--color-surface-strong)]' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]'"
+                          class="block w-full px-3 py-2 text-left text-sm transition-colors">
+                    {% translate "Disabled" %}
+                  </button>
                 </div>
               </div>
             </div>
@@ -2094,12 +2244,10 @@
       </div>
     </div>
   </div>
+  </div>
 {% endblock content %}
 
 {% block js %}
-  <script src="{% static 'js/date-range.js' %}{% get_static_file_mtime 'js/date-range.js' %}"
-          data-date-format="{{ user_django_date_format }}"></script>
-
   <script>
     function highlightCarousel() {
       return {
@@ -2271,6 +2419,11 @@
   {% if user.podcast_enabled and podcast_consumption.has_data %}
     {% if show_year_charts %}
       {{ podcast_consumption.charts.by_year|json_script:"podcast_plays_by_year" }}
+    {% endif %}
+  {% endif %}
+  {% if user.video_enabled and video_consumption.has_data %}
+    {% if show_year_charts %}
+      {{ video_consumption.charts.by_year|json_script:"video_plays_by_year" }}
     {% endif %}
   {% endif %}
 

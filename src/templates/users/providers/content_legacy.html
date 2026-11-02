@@ -1,0 +1,25 @@
+{% load i18n user_tags %}
+    {% if provider_tab == 'overview' %}
+      {% include "users/providers/overview_fallback.html" %}
+    {% elif provider_tab == 'connection' %}
+      {% include "users/components/provider_connection.html" %}
+      {% if provider.integration %}{% include "users/providers/integration_content.html" %}{% endif %}
+      {% if account_connection %}{% include "users/components/account_connection.html" %}{% if provider_slug == 'koreader' %}{% include "users/components/settings_form_island.html" with form_model=provider_forms.koreader form_props_id="form-koreader" %}{% endif %}{% elif provider_slug == 'mdblist' and file_import %}{% include "users/components/file_import_island.html" %}{% elif import_slug %}{% include "users/components/provider_import.html" %}{% endif %}
+      {% if provider_slug == 'tmdb' or provider_slug == 'wetrakr' %}{% include "users/providers/outbound_sync.html" %}{% endif %}
+    {% elif provider_tab == 'metadata' %}
+      {% include "users/components/provider_metadata.html" %}
+    {% elif provider_tab == 'import' %}
+      {% if import_slug %}{% include "users/components/provider_import.html" %}{% endif %}
+      {% if provider.integration %}{% include "users/providers/integration_content.html" %}{% endif %}
+    {% elif provider_tab == 'tracking' %}
+      {% include "users/providers/integration_content.html" %}
+      {% if provider_slug == 'plex' or provider_slug == 'jellyfin' or provider_slug == 'emby' or provider_slug == 'kodi' or provider_slug == 'stremio' %}{% include "users/components/media_server_scrobbles.html" %}{% endif %}
+    {% elif provider_tab == 'sync' %}
+      {% if provider_slug == 'mal' %}{% include "users/providers/mal_sync.html" %}{% elif provider_slug == 'jellyfin' or provider_slug == 'emby' or provider_slug == 'kodi' %}{% include "users/providers/integration_content.html" %}{% else %}{% include "users/providers/outbound_sync.html" %}{% endif %}
+    {% elif provider_tab == 'activity' %}
+      {% if provider_slug == 'plex' %}{% include "users/providers/integration_content.html" %}{% endif %}
+      {% include "users/providers/integration_activity.html" %}
+      {% if provider.import %}{% include "users/components/import_activity_loader.html" %}{% endif %}
+      {% if provider_slug == 'mal' %}{% include "users/providers/mal_sync.html" %}{% endif %}
+      {% if provider_slug == 'tmdb' or provider_slug == 'wetrakr' %}{% include "users/providers/outbound_sync.html" %}{% endif %}
+    {% endif %}

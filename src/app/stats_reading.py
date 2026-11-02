@@ -4,7 +4,7 @@ from collections import Counter, defaultdict
 
 from django.apps import apps
 from django.core.cache import cache
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 
 from app import config
 from app.models import CreditRoleType, ItemPersonCredit, MediaTypes, Status
@@ -36,6 +36,36 @@ def _reading_entry_in_range(entry, start_date, end_date):
         return False
     activity_date = _localize_datetime(activity_datetime).date()
     return filter_start <= activity_date <= filter_end
+
+
+def _reading_entry_range_filter(start_date, end_date):
+    """Narrow a reading queryset to rows ``_reading_entry_in_range`` may keep.
+
+    The predicate compares stored calendar dates while these boundaries are
+    instants, so one day of slack is added: the SQL filter must only remove
+    rows the predicate would certainly reject, never one it would keep.
+    Returns None for an unbounded range, which the predicate treats as all.
+    """
+    if not (start_date and end_date):
+        return None
+    start = start_date - datetime.timedelta(days=1)
+    end = end_date + datetime.timedelta(days=1)
+    return (
+        Q(
+            start_date__isnull=False,
+            end_date__isnull=False,
+            start_date__lte=end,
+            end_date__gte=start,
+        )
+        | Q(start_date__isnull=True, end_date__gte=start, end_date__lte=end)
+        | Q(end_date__isnull=True, start_date__gte=start, start_date__lte=end)
+        | Q(
+            start_date__isnull=True,
+            end_date__isnull=True,
+            created_at__gte=start,
+            created_at__lte=end,
+        )
+    )
 
 
 def _format_reading_unit(value, unit_name):
@@ -317,6 +347,9 @@ def get_reading_consumption_stats(user_media, start_date, end_date, media_type):
     if queryset is None:
         queryset = []
     elif hasattr(queryset, "select_related"):
+        range_filter = _reading_entry_range_filter(start_date, end_date)
+        if range_filter is not None:
+            queryset = queryset.filter(range_filter)
         queryset = queryset.select_related("item")
 
     unit_name = config.get_unit(media_type, short=False) or "Unit"

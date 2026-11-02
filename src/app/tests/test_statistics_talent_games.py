@@ -292,6 +292,39 @@ class GamesInTopTalentAggregationTests(TestCase):
         self.assertEqual(totals["unique_games"], 1)
         self.assertEqual(totals["unique_movies"], 0)
 
+    # Several media types can be selected at once (issue #1317).
+
+    def _names(self, media_type):
+        result = _aggregate_top_talent(
+            self.user,
+            start_date=None,
+            end_date=None,
+            schedule_missing_backfill=False,
+            media_type=media_type,
+        )
+        return {
+            row["name"] for row in result["top_actors"] + result["top_actresses"]
+        }
+
+    def test_movie_and_game_together_include_both_casts(self):
+        for selection in ("movie,game", ["game", "movie"]):
+            self.assertEqual(
+                self._names(selection),
+                {"Alice Actor", "Bob Movie Star"},
+            )
+
+    def test_types_without_credits_are_ignored_next_to_a_real_one(self):
+        self.assertEqual(self._names("music,movie"), {"Bob Movie Star"})
+
+    def test_only_types_without_credits_yield_no_talent(self):
+        self.assertEqual(self._names("music,book"), set())
+
+    def test_all_and_empty_mean_no_filter(self):
+        everyone = {"Alice Actor", "Bob Movie Star"}
+        self.assertEqual(self._names("all"), everyone)
+        self.assertEqual(self._names(""), everyone)
+        self.assertEqual(self._names(None), everyone)
+
 
 class NoDateEntriesInAllTimeTopTalentTests(TestCase):
     """Regression tests for #1098: entries with no start/end date should still

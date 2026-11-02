@@ -19,18 +19,16 @@ Shared by Settings > Sidebar and the setup wizard's media-types step.
       Sortable.create(list, {
         animation: 150,
         handle: '.sidebar-drag-handle',
+        draggable: '[data-sidebar-media-type]',
         onEnd: updateOrder
       });
     };
 
-    if (typeof Sortable !== 'undefined') {
-      initialize();
+    if (typeof Sortable === 'undefined') {
+      console.warn('Sidebar drag-and-drop is unavailable because SortableJS could not be loaded.');
       return;
     }
 
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js';
-    script.addEventListener('load', initialize, { once: true });
-    document.head.appendChild(script);
+    initialize();
   })();
 </script>

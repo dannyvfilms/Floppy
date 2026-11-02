@@ -1,3 +1,4 @@
+from decimal import Decimal
 from uuid import UUID
 
 from django.conf import settings
@@ -6,13 +7,28 @@ from django.test import TestCase
 
 from app.forms import (
     AnimeForm,
+    BookForm,
+    ComicForm,
     EpisodeForm,
     GameForm,
+    MangaForm,
     ManualItemForm,
     SeasonForm,
     TvForm,
 )
-from app.models import TV, Episode, Item, MediaTypes, Season, Sources, Status
+from app.models import (
+    TV,
+    Anime,
+    Book,
+    Comic,
+    Episode,
+    Item,
+    Manga,
+    MediaTypes,
+    Season,
+    Sources,
+    Status,
+)
 
 
 class BasicMediaForm(TestCase):
@@ -96,6 +112,33 @@ class BasicMediaForm(TestCase):
         form = EpisodeForm(data=form_data)
         self.assertTrue(form.is_valid())
 
+    def test_media_form_saves_entry_source(self):
+        """entry_source (how the entry was created) round-trips through the form."""
+        form_data = {
+            "media_id": "1",
+            "source": Sources.MAL.value,
+            "media_type": MediaTypes.ANIME.value,
+            "user": self.user.id,
+            "status": Status.PAUSED.value,
+            "progress": 0,
+            "entry_source": "Theatre",
+        }
+        form = AnimeForm(data=form_data, user=self.user)
+        self.assertTrue(form.is_valid(), form.errors)
+        media = form.save(commit=False)
+        self.assertEqual(media.entry_source, "Theatre")
+
+    def test_episode_form_saves_entry_source(self):
+        """Episode's own edit form also accepts entry_source."""
+        form_data = {
+            "end_date": "2023-06-01",
+            "entry_source": "jellyfin",
+        }
+        form = EpisodeForm(data=form_data)
+        self.assertTrue(form.is_valid(), form.errors)
+        episode = form.save(commit=False)
+        self.assertEqual(episode.entry_source, "jellyfin")
+
     def test_valid_episode_datetime_form(self):
         """Test the episode form with valid data."""
         form_data = {
@@ -142,6 +185,59 @@ class BasicMediaForm(TestCase):
         self.assertFalse(form.is_valid())
         self.assertEqual(form.errors.as_data()["watch_operation_id"][0].code, "invalid")
         self.assertNotIn(malformed, form.errors.as_text())
+
+
+class RatingsDisabledFormTest(TestCase):
+    """With ratings disabled the track form has no score field and keeps the score."""
+
+    def setUp(self):
+        """Create a user who turned ratings off and an anime they rated 7.5."""
+        self.user = get_user_model().objects.create_user(
+            username="no-ratings",
+            password="12345",
+            rating_scale="0",
+        )
+        item = Item.objects.create(
+            media_id="1",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Test Anime",
+            image="http://example.com/image.jpg",
+        )
+        self.anime = Anime.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.PAUSED.value,
+            progress=3,
+            score=7.5,
+        )
+
+    def test_score_field_is_removed_only_when_disabled(self):
+        """The score input exists on the 10-point scale and is gone when disabled."""
+        self.assertNotIn("score", AnimeForm(user=self.user, instance=self.anime).fields)
+        self.user.rating_scale = "10"
+        self.assertIn("score", AnimeForm(user=self.user, instance=self.anime).fields)
+
+    def test_saving_does_not_touch_stored_score(self):
+        """A submitted score is ignored and the stored one survives the save."""
+        form = AnimeForm(
+            data={
+                "media_id": "1",
+                "source": Sources.MAL.value,
+                "media_type": MediaTypes.ANIME.value,
+                "user": self.user.id,
+                "score": 2,
+                "progress": 5,
+                "status": Status.COMPLETED.value,
+            },
+            instance=self.anime,
+            user=self.user,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        form.save()
+        self.anime.refresh_from_db()
+        self.assertEqual(self.anime.progress, 5)
+        self.assertEqual(self.anime.score, Decimal("7.5"))
 
 
 class BasicGameForm(TestCase):
@@ -544,3 +640,107 @@ class ManualItemFormTest(TestCase):
         self.assertNotEqual(item1.media_id, item2.media_id)
         self.assertTrue(item1.media_id)
         self.assertTrue(item2.media_id)
+
+
+class ReadingTimeFormTest(TestCase):
+    """Books, comics and manga take a reading time; audiobooks do not."""
+
+    def setUp(self):
+        """Create a user and one item per reading type."""
+        self.user = get_user_model().objects.create_user(
+            username="reader",
+            password="12345",
+        )
+        self.items = {
+            MediaTypes.BOOK.value: Item.objects.create(
+                media_id="1",
+                source=Sources.OPENLIBRARY.value,
+                media_type=MediaTypes.BOOK.value,
+                title="Dune",
+            ),
+            MediaTypes.COMIC.value: Item.objects.create(
+                media_id="2",
+                source=Sources.COMICVINE.value,
+                media_type=MediaTypes.COMIC.value,
+                title="Saga",
+            ),
+            MediaTypes.MANGA.value: Item.objects.create(
+                media_id="3",
+                source=Sources.MAL.value,
+                media_type=MediaTypes.MANGA.value,
+                title="Berserk",
+            ),
+        }
+
+    def data(self, media_type, **extra):
+        item = self.items[media_type]
+        return {
+            "media_id": item.media_id,
+            "source": item.source,
+            "media_type": media_type,
+            "status": Status.COMPLETED.value,
+            "progress": 10,
+            **extra,
+        }
+
+    def test_each_reading_type_parses_the_time(self):
+        for media_type, form_class, model in (
+            (MediaTypes.BOOK.value, BookForm, Book),
+            (MediaTypes.COMIC.value, ComicForm, Comic),
+            (MediaTypes.MANGA.value, MangaForm, Manga),
+        ):
+            with self.subTest(media_type):
+                instance = model(item=self.items[media_type], user=self.user)
+                form = form_class(
+                    self.data(media_type, reading_time="1h 30min"),
+                    instance=instance,
+                )
+                self.assertTrue(form.is_valid(), form.errors)
+                self.assertEqual(form.save().reading_time, 90)
+
+    def test_blank_time_is_zero(self):
+        instance = Book(item=self.items[MediaTypes.BOOK.value], user=self.user)
+        form = BookForm(self.data(MediaTypes.BOOK.value), instance=instance)
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.save().reading_time, 0)
+
+    def test_bad_time_is_rejected(self):
+        instance = Book(item=self.items[MediaTypes.BOOK.value], user=self.user)
+        form = BookForm(
+            self.data(MediaTypes.BOOK.value, reading_time="soon"),
+            instance=instance,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("reading_time", form.errors)
+
+    def test_saved_time_is_shown_as_hours_and_minutes_not_raw_minutes(self):
+        book = Book.objects.create(
+            item=self.items[MediaTypes.BOOK.value],
+            user=self.user,
+            reading_time=125,
+        )
+
+        form = BookForm(instance=book)
+
+        self.assertEqual(form.initial["reading_time"], "2h 05min")
+        # Saving the untouched form must not turn 125 minutes into 125 hours.
+        resubmit = BookForm(
+            self.data(
+                MediaTypes.BOOK.value,
+                reading_time=form.initial["reading_time"],
+            ),
+            instance=book,
+        )
+        self.assertTrue(resubmit.is_valid(), resubmit.errors)
+        self.assertEqual(resubmit.save().reading_time, 125)
+
+    def test_an_audiobook_has_no_reading_time_field(self):
+        item = self.items[MediaTypes.BOOK.value]
+        item.format = "audiobook"
+        item.save()
+
+        form = BookForm(instance=Book(item=item, user=self.user))
+
+        self.assertNotIn("reading_time", form.fields)

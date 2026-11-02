@@ -1,4 +1,5 @@
 import logging
+import time
 
 import requests
 from django.conf import settings
@@ -14,6 +15,10 @@ BOOK_CATEGORY_BUNDLE = 8  # Hardcover book_category_id for bundle editions
 
 base_url = "https://api.hardcover.app/v1/graphql"
 MAX_SEARCH_QUERY_LENGTH = 50
+USER_BOOKS_PAGE_SIZE = 100
+USER_BOOKS_MAX_PAGES = 200
+# Hardcover allows a short burst of back-to-back requests, then 60 a minute.
+USER_BOOKS_PAGE_DELAY_SECONDS = 1.2
 
 
 def cap_search_query(query):
@@ -66,6 +71,92 @@ def _authorization_header(user=None):
     if api_token.lower().startswith("bearer "):
         return api_token
     return f"Bearer {api_token}"
+
+
+USER_BOOKS_QUERY = """
+query UserBooks($limit: Int!, $offset: Int!) {
+  me {
+    user_books(limit: $limit, offset: $offset, order_by: {id: asc}) {
+      id
+      book_id
+      status_id
+      rating
+      review_raw
+      private_notes
+      date_added
+      first_started_reading_date
+      last_read_date
+      updated_at
+      book {
+        pages
+      }
+      user_book_reads(order_by: {id: asc}) {
+        started_at
+        finished_at
+        progress_pages
+      }
+    }
+  }
+}
+"""
+
+
+def fetch_user_books(user):
+    """Return every entry of the user's own Hardcover library.
+
+    Uses the user's personal token and Hardcover's documented ``me`` query, one
+    page at a time, paced to stay inside the published rate limits. The query
+    stays at depth 3 (me > user_books > book/user_book_reads) because Hardcover
+    plans to cap query depth there. An instance-wide token must never be used
+    here: it would copy one person's library into another member's tracker.
+    """
+    if not credentials.has_user_value("hardcover", user):
+        raise services.ProviderAPIError(
+            Sources.HARDCOVER.value,
+            requests.exceptions.RequestException("no personal Hardcover token"),
+            "save your own Hardcover API key first",
+        )
+    entries = []
+    for page in range(USER_BOOKS_MAX_PAGES):
+        if page:
+            time.sleep(USER_BOOKS_PAGE_DELAY_SECONDS)
+        try:
+            response = services.api_request(
+                Sources.HARDCOVER.value,
+                "POST",
+                base_url,
+                params={
+                    "query": USER_BOOKS_QUERY,
+                    "variables": {
+                        "limit": USER_BOOKS_PAGE_SIZE,
+                        "offset": page * USER_BOOKS_PAGE_SIZE,
+                    },
+                },
+                headers={"Authorization": _authorization_header(user)},
+            )
+        except requests.exceptions.HTTPError as error:
+            handle_error(error)
+
+        if response.get("errors") or "data" not in response:
+            messages = [
+                err.get("message", "Unknown error")
+                for err in response.get("errors") or []
+            ]
+            logger.error("Hardcover library query failed: %s", messages)
+            raise services.ProviderAPIError(
+                Sources.HARDCOVER.value,
+                requests.exceptions.RequestException("GraphQL error"),
+                "; ".join(messages) or "unexpected response",
+            )
+
+        me = response["data"].get("me")
+        if isinstance(me, list):
+            me = me[0] if me else None
+        batch = (me or {}).get("user_books") or []
+        entries.extend(batch)
+        if len(batch) < USER_BOOKS_PAGE_SIZE:
+            break
+    return entries
 
 
 def handle_error(error):

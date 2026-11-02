@@ -11,11 +11,13 @@ import os
 import sys
 import time
 from pathlib import Path
-from unittest import skipUnless
+from unittest import TestResult, skipUnless
 from unittest.mock import patch
 
 from django.conf import settings
 from django.test import SimpleTestCase
+
+import config
 
 sys.path.insert(0, str(Path(settings.BASE_DIR)))
 
@@ -26,6 +28,19 @@ sys.path.insert(0, str(Path(settings.BASE_DIR)))
 # at import, and leaving a tier-patched copy in sys.modules makes whichever
 # test runs next read this file's environment instead of its own.
 RELOADED_MODULES = ("config.runtime_profile", "config.gunicorn")
+
+
+class ModuleIsolationTests(SimpleTestCase):
+    def test_tier_tests_restore_package_attributes_too(self):
+        before = dict(vars(config))
+        result = TestResult()
+        WorkerMemoryCeilingTests("test_every_tier_bounds_worker_memory").run(result)
+        self.assertTrue(result.wasSuccessful(), result.errors + result.failures)
+        for name in ("runtime_profile", "gunicorn"):
+            if name in before:
+                self.assertIs(getattr(config, name), before[name])
+            else:
+                self.assertFalse(hasattr(config, name))
 
 
 def load_config(tier="standard", **environment):
@@ -52,8 +67,11 @@ class WorkerMemoryCeilingTests(SimpleTestCase):
 
     def setUp(self):
         """Remember the real modules so they can be put back exactly."""
-        self.saved_modules = {
-            name: sys.modules.get(name) for name in RELOADED_MODULES
+        self.saved_modules = {name: sys.modules.get(name) for name in RELOADED_MODULES}
+        self.saved_package_attributes = {
+            name: vars(config)[name]
+            for name in ("runtime_profile", "gunicorn")
+            if name in vars(config)
         }
 
     def tearDown(self):
@@ -68,6 +86,13 @@ class WorkerMemoryCeilingTests(SimpleTestCase):
                 sys.modules.pop(name, None)
             else:
                 sys.modules[name] = module
+        # Parent-package imports and direct module imports must resolve to
+        # the same objects after these tests finish.
+        for name in ("runtime_profile", "gunicorn"):
+            if name in self.saved_package_attributes:
+                setattr(config, name, self.saved_package_attributes[name])
+            else:
+                vars(config).pop(name, None)
 
     def test_every_tier_bounds_worker_memory(self):
         """No tier may leave a web worker free to grow without limit."""

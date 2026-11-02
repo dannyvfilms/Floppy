@@ -1,10 +1,12 @@
 """Tests for the Storyteller importer."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
+import requests
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 
 from app.models import Book, Item, MediaTypes, Sources, Status
 from app.providers import services
@@ -60,6 +62,7 @@ class StorytellerImporterTests(TestCase):
         self.assertEqual(media.status, Status.IN_PROGRESS.value)
         self.assertEqual(media.progress, 50)
         self.assertIsNone(media.end_date)
+        self.assertEqual(media.entry_source, "storyteller")
         self.assertEqual(media.item.source, Sources.STORYTELLER.value)
         self.assertEqual(media.item.media_type, MediaTypes.BOOK.value)
         self.assertEqual(media.item.title, "The Hobbit")
@@ -414,6 +417,30 @@ class StorytellerImporterTests(TestCase):
         self.assertEqual(media.start_date, first_start)
         self.assertEqual(media.progress, 60)
 
+    @patch("integrations.imports.storyteller.StorytellerClient.get_position")
+    @patch("integrations.imports.storyteller.StorytellerClient.get_books")
+    def test_sync_keeps_a_status_the_user_set(self, mock_books, mock_position):
+        """Reading from before a pause does not undo it; reading after does (#1316)."""
+        mock_books.return_value = [{"uuid": "abc", "title": "The Hobbit"}]
+        mock_position.return_value = _position(0.3)
+        StorytellerImporter(self.user).import_data()
+        book = Book.objects.get(user=self.user)
+        book.status = Status.PAUSED.value
+        book.save()
+
+        earlier = int((timezone.now() - timedelta(minutes=5)).timestamp() * 1000)
+        mock_position.return_value = _position(0.6, timestamp=earlier)
+        StorytellerImporter(self.user).import_data()
+        book.refresh_from_db()
+        self.assertEqual(book.status, Status.PAUSED.value)
+        self.assertEqual(book.progress, 60)
+
+        later = int((timezone.now() + timedelta(minutes=5)).timestamp() * 1000)
+        mock_position.return_value = _position(0.7, timestamp=later)
+        StorytellerImporter(self.user).import_data()
+        book.refresh_from_db()
+        self.assertEqual(book.status, Status.IN_PROGRESS.value)
+
     def test_storyteller_source_book_resolves_from_local_item(self):
         """get_media_metadata for a storyteller item reads local data, no network."""
         Item.objects.create(
@@ -453,3 +480,18 @@ class StorytellerImporterTests(TestCase):
             "invalid or expired",
             self.user.storyteller_account.last_error_message,
         )
+
+    @patch("integrations.imports.storyteller.requests.get")
+    def test_server_error_and_timeout_do_not_mark_broken(self, mock_get):
+        """A 5xx or a timeout is recorded but says nothing about the token."""
+        mock_get.return_value.status_code = 503
+        for failure in (None, requests.ReadTimeout("Read timed out")):
+            mock_get.side_effect = failure
+
+            with self.assertRaises(MediaImportError):
+                StorytellerImporter(self.user).import_data()
+
+            account = self.user.storyteller_account
+            account.refresh_from_db()
+            self.assertFalse(account.connection_broken)
+            self.assertTrue(account.last_error_message)

@@ -4,11 +4,16 @@ import time
 
 from celery import current_task, shared_task
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db.models import F
 from django.utils import timezone
 
+from app import cache_safety
 from app.log_safety import exception_summary
+from app.providers import credentials
+from app.services.watch_state import importing_watch_state
+from integrations import connection_health
 
 logger = logging.getLogger(__name__)
 
@@ -253,7 +258,8 @@ def poll_lastfm_for_user(user_id):
         )
         return {"processed": 0, "errors": 0, "message": "No connected Last.fm account."}
 
-    result = _run_incremental_lastfm_sync(account)
+    with credentials.current_user_scope(account.user):
+        result = _run_incremental_lastfm_sync(account)
     return {
         "processed": 1 if result["status"] in {"success", "partial"} else 0,
         "errors": 1 if result["status"] in {"partial", "error"} else 0,
@@ -264,6 +270,13 @@ def poll_lastfm_for_user(user_id):
 @shared_task(name="Import from Last.fm History")
 def import_lastfm_history(user_id, reset=False, import_run_id=None):
     """Import a user's historical Last.fm scrobbles in bounded chunks."""
+    user = get_user_model().objects.filter(id=user_id).first()
+    with credentials.current_user_scope(user):
+        return _import_lastfm_history_chunk(user_id, reset, import_run_id)
+
+
+def _import_lastfm_history_chunk(user_id, reset, import_run_id):
+    """Run one chunk of the Last.fm history import."""
     from integrations import import_progress, lastfm_api, lastfm_sync
     from integrations.models import ImportRun, LastFMAccount, LastFMHistoryImportStatus
 
@@ -361,7 +374,7 @@ def import_lastfm_history(user_id, reset=False, import_run_id=None):
         )
 
         try:
-            with import_progress.tracking(task_id, import_run.id):
+            with import_progress.tracking(task_id, import_run.id), importing_watch_state():
                 sync_result = lastfm_sync.sync_lastfm_account(
                     account,
                     to_timestamp_uts=account.history_import_cutoff_uts,
@@ -504,52 +517,77 @@ def import_lastfm_history(user_id, reset=False, import_run_id=None):
         cache.delete(lock_key)
 
 
-@shared_task(name="Poll Last.fm for all users")
-def poll_all_lastfm_scrobbles():
-    """Global task to poll Last.fm for all connected users."""
+# Longer than the fan-out's jitter spread, shorter than the 15 minute cadence:
+# a repeat of the global poll (broker redelivery, beat catching up) skips
+# accounts whose poll is already queued instead of stacking a second copy.
+LASTFM_POLL_QUEUED_TTL_SECONDS = 10 * 60
+LASTFM_POLL_MAX_JITTER_SECONDS = 300
+LASTFM_ACCOUNT_POLL_SOFT_TIME_LIMIT = 300
+
+
+@shared_task(
+    name="Poll Last.fm account",
+    soft_time_limit=LASTFM_ACCOUNT_POLL_SOFT_TIME_LIMIT,
+)
+def poll_lastfm_account(account_id):
+    """Poll one Last.fm account queued by the global poll.
+
+    Unlike ``poll_lastfm_for_user`` this does not require ``is_connected``: a
+    broken account is probed here once it is due, so it can heal on its own.
+    """
     from integrations.models import LastFMAccount
 
-    accounts = LastFMAccount.objects.filter(connection_broken=False).select_related(
-        "user"
-    )
-    if not accounts.exists():
+    account = LastFMAccount.objects.filter(pk=account_id).select_related("user").first()
+    if account is None or not connection_health.due_for_probe(account):
+        return {"status": "skipped", "message": "Account not due."}
+
+    with credentials.current_user_scope(account.user):
+        return _run_incremental_lastfm_sync(account)
+
+
+@shared_task(name="Poll Last.fm for all users")
+def poll_all_lastfm_scrobbles():
+    """Global task: queue one poll per connected Last.fm account.
+
+    Accounts used to be polled one after another in this task, so one slow
+    provider call delayed every account behind it and the task held a worker
+    for N x latency. Each account is now its own task, spread over a short
+    jitter window; a failure or time-out in one cannot block the others.
+    """
+    from integrations.models import LastFMAccount
+
+    # Broken accounts are included once they are due for a re-probe: a
+    # successful sync clears the flag, a rejected one re-records it.
+    accounts = [
+        account
+        for account in LastFMAccount.objects.only("id")
+        if connection_health.due_for_probe(account)
+    ]
+    if not accounts:
         logger.debug("No Last.fm accounts to poll")
         return {"processed": 0, "errors": 0, "message": "No accounts to poll"}
 
-    logger.info("Polling Last.fm for %d users", accounts.count())
+    logger.info("Queueing Last.fm polls for %d users", len(accounts))
 
-    batch_size = 10
+    spread = min(LASTFM_POLL_MAX_JITTER_SECONDS, len(accounts))
+    queued = 0
+    for account in accounts:
+        if not cache_safety.acquire_lock(
+            f"lastfm_poll_queued_{account.pk}",
+            timeout=LASTFM_POLL_QUEUED_TTL_SECONDS,
+            on_error=cache_safety.ON_ERROR_SKIP,
+            value="1",
+        ):
+            continue
+        poll_lastfm_account.apply_async(
+            args=[account.pk],
+            countdown=random.uniform(0, spread),  # noqa: S311  # jitter only
+            expires=LASTFM_POLL_QUEUED_TTL_SECONDS,
+        )
+        queued += 1
 
-    processed_count = 0
-    error_count = 0
-    partial_count = 0
-
-    accounts_list = list(accounts)
-    random.shuffle(accounts_list)
-
-    for index, account in enumerate(accounts_list):
-        if index > 0 and index % batch_size == 0:
-            time.sleep(random.uniform(0.5, 2.0))  # noqa: S311  # sampling/jitter only, not cryptographic
-
-        result = _run_incremental_lastfm_sync(account)
-        if result["status"] == "success":
-            processed_count += 1
-        elif result["status"] == "partial":
-            processed_count += 1
-            partial_count += 1
-            error_count += 1
-        elif result["status"] == "error":
-            error_count += 1
-
-    logger.info(
-        "Last.fm polling completed: %d users processed, %d partial, %d errors",
-        processed_count,
-        partial_count,
-        error_count,
-    )
     return {
-        "processed": processed_count,
-        "errors": error_count,
-        "total_accounts": accounts.count(),
-        "message": f"Processed {processed_count} Last.fm account(s).",
+        "queued": queued,
+        "total_accounts": len(accounts),
+        "message": f"Queued {queued} Last.fm poll(s).",
     }

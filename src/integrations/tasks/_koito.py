@@ -13,6 +13,8 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from app.log_safety import exception_summary
+from app.services.watch_state import importing_watch_state
+from integrations import connection_health
 from integrations.imports.helpers import retry_on_lock
 
 logger = logging.getLogger(__name__)
@@ -290,14 +292,18 @@ def poll_all_koito_accounts():
     """Global task to poll Koito for all connected users."""
     from integrations.models import KoitoAccount
 
-    accounts = KoitoAccount.objects.filter(
-        connection_broken=False,
-    ).select_related("user")
-    if not accounts.exists():
+    # Broken accounts are included once they are due for a re-probe: a
+    # successful sync clears the flag, a rejected one re-records it.
+    accounts = [
+        account
+        for account in KoitoAccount.objects.select_related("user")
+        if connection_health.due_for_probe(account)
+    ]
+    if not accounts:
         logger.debug("No Koito accounts to poll")
         return {"processed": 0, "errors": 0, "message": "No accounts to poll"}
 
-    logger.info("Polling Koito for %d users", accounts.count())
+    logger.info("Polling Koito for %d users", len(accounts))
 
     batch_size = 10
     processed_count = 0
@@ -330,7 +336,7 @@ def poll_all_koito_accounts():
     return {
         "processed": processed_count,
         "errors": error_count,
-        "total_accounts": accounts.count(),
+        "total_accounts": len(accounts),
         "message": f"Processed {processed_count} Koito account(s).",
     }
 
@@ -399,7 +405,7 @@ def import_koito_history(user_id, reset=False):
             listens.sort(key=lambda listen: koito_api.listen_timestamp_uts(listen) or 0)
 
             processor = KoitoScrobbleProcessor(base_url, api_key, account_id=account.id)
-            with import_progress.tracking(task_id, import_run.id):
+            with import_progress.tracking(task_id, import_run.id), importing_watch_state():
                 stats = processor.process_listens(listens, account.user)
         except Exception as exc:
             account.refresh_from_db()

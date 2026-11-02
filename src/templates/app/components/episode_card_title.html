@@ -1,0 +1,11 @@
+{% load i18n app_tags user_tags %}
+<div class="flex min-w-0 items-center gap-2">
+  <h2 class="min-w-0 truncate text-xl font-semibold" title="{{ episode.title }}">
+    {% if ep_detail_url %}<a href="{{ ep_detail_url }}" class="hover:opacity-80 transition-opacity">{% endif %}{{ episode.title }}{% if ep_detail_url %}</a>{% endif %}
+  </h2>
+  {% include "app/components/episode_card_rating.html" %}
+</div>
+<p class="mt-1 text-sm {% if over_artwork %}text-white/80{% else %}text-[var(--color-text-muted)]{% endif %}">
+  {% if episode.display_episode_number|default:episode.episode_number %}{% blocktranslate trimmed with value_1=episode.display_episode_number|default:episode.episode_number %}Episode {{ value_1 }} •{% endblocktranslate %} {% endif %}{{ episode.air_date|user_date_format:user|default_if_none:_("Unknown date") }}{% if episode.runtime %} • {{ episode.runtime }}{% endif %}
+</p>
+{% card_lines 'episode' episode episode %}

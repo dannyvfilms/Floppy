@@ -1,0 +1,27 @@
+{% load i18n %}
+
+      <!-- Video Consumption Section -->
+      {% if user.video_enabled and video_consumption.has_data %}
+      <section class="bg-[var(--color-surface)] rounded-lg p-6 mobile-tight-section stat-scroll-safe mb-4 sm:mb-8 space-y-4 sm:space-y-6">
+        <div class="flex flex-col space-y-1">
+          <span class="text-sm uppercase tracking-widest text-[var(--color-text-muted)]">{% translate "Video" %}</span>
+          <h2 class="text-2xl font-semibold text-[var(--color-text)]">{% translate "Activity Overview" %}</h2>
+          <span class="text-sm text-[var(--color-text-muted)]" x-text="selectedRange"></span>
+        </div>
+
+        {% if show_year_charts %}
+        <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
+          <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% translate "Video Plays by Year" %}</h3>
+          {% if video_consumption.charts.by_year.labels %}
+            <div class="h-64">
+              <canvas id="videoPlaysByYearChart"></canvas>
+            </div>
+          {% else %}
+            <div class="flex flex-col items-center justify-center py-12 text-[var(--color-text-muted)]">
+              <p class="text-sm">{% translate "No video plays available for this range." %}</p>
+            </div>
+          {% endif %}
+        </div>
+        {% endif %}
+      </section>
+      {% endif %}

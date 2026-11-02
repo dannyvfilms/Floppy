@@ -5,49 +5,97 @@
 
 <div id="detail-score-chip-{{ current_instance.id }}"
      {% if score_chip_oob %}hx-swap-oob="outerHTML"{% endif %}
-     x-data="{ showRatingPopup: false, rating: {% localize off %}{{ current_instance.score|score_display:user|default:'null' }}{% endlocalize %}, ratingScaleMax: {{ user|rating_scale_max }}, hoverRating: null, isHovering: false, formatRating(value) { if (value === null || value === undefined || value === '') { return ''; } return this.ratingScaleMax === 5 ? String(value) + '/5' : String(value); } }"
-     class="relative min-w-0 sm:w-auto">
+     x-data="{ showRatingPopup: false, rating: {% localize off %}{{ current_instance.score|score_display:user|default:'null' }}{% endlocalize %}, ratingScaleMax: {{ user|rating_scale_max }}, hoverRating: null, isHovering: false, showCoverage: false, formatRating(value) { if (value === null || value === undefined || value === '') { return ''; } return this.ratingScaleMax === 5 ? String(value) + '/5' : String(value); }, popupStyle() { const trigger = this.$refs.desktopRatingTrigger?.getClientRects().length ? this.$refs.desktopRatingTrigger : this.$refs.ratingTrigger; if (!trigger) return {}; const rect = trigger.getBoundingClientRect(); return { left: Math.max(8, Math.min(rect.left, window.innerWidth - 258)) + 'px', top: (rect.bottom + 92 > window.innerHeight ? rect.top - 88 : rect.bottom + 8) + 'px' }; } }"
+     @detail-score-row-scroll.window="showRatingPopup = false"
+     @resize.window="showRatingPopup = false"
+     class="detail-personal-score-slot relative min-w-0 sm:w-auto">
   <button type="button"
+          x-ref="ratingTrigger"
           @click="showRatingPopup = !showRatingPopup"
+          {% if derived_tv_score.score is not None %}data-derived-tv-detail-rating="{{ derived_tv_score.label }}" title="{{ derived_tv_score.title }}" @mouseenter="showCoverage = true" @mouseleave="showCoverage = false" @focus="showCoverage = true" @blur="showCoverage = false"{% endif %}
           class="inline-flex h-[1.875rem] min-w-0 items-center gap-0.5 overflow-hidden rounded-full border border-amber-400/18 bg-amber-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm transition-colors duration-200 hover:border-amber-300/28 hover:bg-amber-500/[0.11] sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm">
-    <span class="sr-only">{% translate "Your score" %}</span>
+    {% if derived_tv_score.score is None %}<span class="sr-only">{% translate "Your score" %}</span>{% endif %}
     <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-amber-400/28 bg-amber-500/14 sm:h-8 sm:w-8">
       {% include "app/icons/star.svg" with classes="h-3.5 w-3.5 text-yellow-400 fill-yellow-400 sm:h-4 sm:w-4" %}
     </span>
-    <span class="inline-flex items-center gap-1 whitespace-nowrap sm:gap-2">
-      <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm {% if current_instance.score is None %}hidden{% endif %}"
-            :class="rating ? '' : 'hidden'"
-            x-text="formatRating(rating)">{% if current_instance.score is not None %}{% if user|rating_scale_max == 5 %}{{ current_instance.score|score_display:user }}/5{% else %}{{ current_instance.score|score_display:user }}{% endif %}{% endif %}</span>
-      <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm {% if current_instance.score is None %}hidden{% endif %}"
-            :class="rating ? '' : 'hidden'">|</span>
-      {% translate "Edit rating" as media_i18n_34 %}{% translate "Add rating" as media_i18n_35 %}<span class="text-[12px] font-medium text-[var(--color-text-secondary)] sm:text-sm"
-            x-text="rating ? '{{ media_i18n_34|escapejs }}' : '{{ media_i18n_35|escapejs }}'">{% if current_instance.score is not None %}{% translate "Edit rating" %}{% else %}{% translate "Add rating" %}{% endif %}</span>
-    </span>
+    {% if derived_tv_score.score is not None %}
+      {# Episode-derived score exists: show it beside the manual score, or on its own. #}
+      <span class="inline-flex items-center gap-1 whitespace-nowrap sm:gap-2">
+        {% if current_instance.score is not None %}
+          <span class="sr-only">{% translate "Your score" %}</span>
+          <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{% if user|rating_scale_max == 5 %}{{ current_instance.score|score_display:user }}/5{% else %}{{ current_instance.score|score_display:user|floatformat:1 }}{% endif %}</span>
+          <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
+          <span class="sr-only">{% translate "Derived rating" %}</span>
+          <span class="inline-flex items-center text-[12px] font-medium text-[var(--color-text-secondary)] sm:text-sm">{{ derived_tv_score.score|floatformat:"-1" }}<span data-derived-coverage
+                  class="inline-block overflow-hidden whitespace-nowrap"
+                  style="max-width: 0; opacity: 0; transition: max-width 320ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms ease-out"
+                  :style="showCoverage ? { maxWidth: '12rem', opacity: 1 } : { maxWidth: '0', opacity: 0 }">&nbsp;· {% include "app/components/derived_tv_rating_coverage.html" with derived_tv_score=derived_tv_score only %}</span></span>
+        {% else %}
+          <span class="sr-only">{% translate "Derived rating" %}</span>
+          <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{{ derived_tv_score.score|floatformat:"-1" }}</span>
+          <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
+          <span class="text-[12px] font-medium text-[var(--color-text-secondary)] sm:text-sm">{% include "app/components/derived_tv_rating_coverage.html" with derived_tv_score=derived_tv_score only %}</span>
+        {% endif %}
+      </span>
+    {% else %}
+      <span class="inline-flex items-center gap-1 whitespace-nowrap sm:gap-2">
+        <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm {% if current_instance.score is None %}hidden{% endif %}"
+              :class="rating ? '' : 'hidden'"
+              x-text="formatRating(rating)">{% if current_instance.score is not None %}{% if user|rating_scale_max == 5 %}{{ current_instance.score|score_display:user }}/5{% else %}{{ current_instance.score|score_display:user }}{% endif %}{% endif %}</span>
+        <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm {% if current_instance.score is None %}hidden{% endif %}"
+              :class="rating ? '' : 'hidden'">|</span>
+        {% translate "Edit rating" as media_i18n_34 %}{% translate "Add rating" as media_i18n_35 %}<span class="text-[12px] font-medium text-[var(--color-text-secondary)] sm:text-sm"
+              x-text="rating ? '{{ media_i18n_34|escapejs }}' : '{{ media_i18n_35|escapejs }}'">{% if current_instance.score is not None %}{% translate "Edit rating" %}{% else %}{% translate "Add rating" %}{% endif %}</span>
+      </span>
+    {% endif %}
   </button>
 
+  <div class="detail-personal-score-card {% if current_instance.score is None %}detail-personal-score-card--wide{% endif %}">
+    {% if current_instance.score is None %}
+      <span class="detail-personal-score-card__prompt">{% if derived_tv_score.score is not None %}{% translate "Derived" %} {{ derived_tv_score.score|floatformat:"-1" }} · {% include "app/components/derived_tv_rating_coverage.html" with derived_tv_score=derived_tv_score only %}{% else %}{% translate "Rate this" %} {% if media_type == "tv" or media_type == "season" %}{% translate "show" %}{% elif media_type == "movie" %}{% translate "movie" %}{% else %}{% translate "item" %}{% endif %}{% endif %}</span>
+      <span class="detail-personal-score-card__stars">
+        {% url 'update_media_score' media_type current_instance.id as direct_rating_url %}
+        {% with rating_range=user|rating_scale_max|get_range %}
+          {% for rating_value in rating_range %}
+            <button type="button"
+                    title="{% translate 'Rate' %} {{ rating_value }}/{{ user|rating_scale_max }}"
+                    aria-label="{% translate 'Rate' %} {{ rating_value }}/{{ user|rating_scale_max }}"
+                    @mouseenter="hoverRating = {{ rating_value }}"
+                    @mouseleave="hoverRating = null"
+                    hx-post="{{ direct_rating_url }}"
+                    hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                    hx-vals='{"score": {{ rating_value }}, "toggle": true}'
+                    hx-swap="none"
+                    class="detail-personal-score-card__star"
+                    :class="hoverRating !== null && {{ rating_value }} <= hoverRating ? 'detail-personal-score-card__star--hover' : ''">
+              {% include "app/icons/star.svg" with classes="w-4 h-4" %}
+            </button>
+          {% endfor %}
+        {% endwith %}
+      </span>
+    {% else %}
+      <button type="button"
+              class="detail-personal-score-card__rated"
+              x-ref="desktopRatingTrigger"
+              @click="showRatingPopup = !showRatingPopup">
+        <span class="detail-personal-score-card__icon">{% include "app/icons/star.svg" with classes="w-5 h-5 text-yellow-400 fill-yellow-400" %}</span>
+        <span class="detail-personal-score-card__value">{% if user|rating_scale_max == 5 %}{{ current_instance.score|score_display:user }}/5{% else %}{{ current_instance.score|score_display:user|floatformat:1 }}{% endif %}</span>
+        <span class="detail-personal-score-card__meta">
+          {% if derived_tv_score.score is not None %}{% translate "Derived" %} {{ derived_tv_score.score|floatformat:"-1" }} · {% include "app/components/derived_tv_rating_coverage.html" with derived_tv_score=derived_tv_score only %}{% else %}{% translate "Your rating" %}{% endif %}
+        </span>
+      </button>
+    {% endif %}
+  </div>
+
+  <template x-teleport="body">
   <div x-show="showRatingPopup"
        @click.outside="showRatingPopup = false; isHovering = false"
-       class="absolute left-0 top-full mt-2 w-[250px] rounded-lg border border-gray-700 bg-[var(--color-surface)] p-3 shadow-lg z-10"
+       :style="popupStyle()"
+       class="fixed z-[70] w-[250px] rounded-lg border border-gray-700 bg-[var(--color-surface)] p-3 shadow-lg"
        @mouseenter="isHovering = true"
        @mouseleave="isHovering = false; hoverRating = null">
-    <div class="flex justify-between mb-1">
-      {% with rating_range=user|rating_scale_max|get_range %}
-        {% for rating_value in rating_range %}
-          <button @click="if (rating === {{ rating_value }}) { rating = null; } else { rating = {{ rating_value }}; } showRatingPopup = false; isHovering = false"
-                  @mouseenter="hoverRating = {{ rating_value }}"
-                  hx-post="{% url 'update_media_score' media_type current_instance.id %}"
-                  hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                  hx-vals='{"score": {{ rating_value }}, "toggle": true }'
-                  hx-trigger="click"
-                  hx-swap="none"
-                  class="focus:outline-none flex flex-col items-center cursor-pointer">
-            <div :class="{ 'text-yellow-400': {{ rating_value }} <= (isHovering ? hoverRating : rating), 'text-gray-600': {{ rating_value }} > (isHovering ? hoverRating : rating) }">
-              {% include "app/icons/star.svg" with classes="w-5 h-5 hover:scale-110 transition-transform" %}
-            </div>
-            <span class="text-xs mt-1 text-[var(--color-text-muted)]">{{ rating_value }}</span>
-          </button>
-        {% endfor %}
-      {% endwith %}
-    </div>
+    {% url 'update_media_score' media_type current_instance.id as rating_post_url %}
+    {% include "app/components/rating_picker.html" with post_url=rating_post_url %}
   </div>
+  </template>
 </div>

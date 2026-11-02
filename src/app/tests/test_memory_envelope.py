@@ -9,11 +9,12 @@ layer that raised on any of them would take a production request down with it.
 
 from unittest.mock import patch
 
+from django.db import connection
 from django.http import HttpResponse
-from django.test import SimpleTestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import ResolverMatch
 
-from app import memory_envelope
+from app import memory_envelope, request_timing
 
 _STATM = "1000 2048 300 40 0 500 0\n"
 _STATUS = "Name:\tpython\nVmPeak:\t  900000 kB\nVmHWM:\t   16384 kB\nVmRSS:\t    8192 kB\n"
@@ -482,3 +483,109 @@ class TaskBoundaryTests(SimpleTestCase):
             len(memory_envelope._task_samples),
             memory_envelope._MAX_TRACKED_TASKS,
         )
+
+
+@override_settings(PERF_LOG_ENABLED=True, PERF_LOG_SLOW_TASK_MS=0)
+class TaskPerformanceTests(TestCase):
+    """Task diagnostics share request spans without leaking nested contexts."""
+
+    def tearDown(self):
+        for sample in reversed(memory_envelope._task_timings.get()):
+            memory_envelope.task_timing_finished(sample.task_id, "cleanup")
+
+    def test_task_reports_db_cache_provider_and_failure_state(self):
+        memory_envelope.task_timing_started("timed-task")
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        with request_timing.boundary("cache"):
+            pass
+
+        @request_timing.timed_provider_call
+        def provider():
+            return None
+
+        provider()
+        with self.assertLogs("app.memory_envelope", level="INFO") as captured:
+            memory_envelope.task_timing_finished("timed-task", "Import Trakt", "FAILURE")
+        line = captured.output[0]
+        for field in (
+            "slow_task", "state=FAILURE", "task_id=timed-task", "queries=1",
+            "cache_calls=1", "provider_calls=1", "db_ms=", "cpu_ms=",
+            "unclassified_ms=", "rss_delta_bytes=", "process_hwm_bytes=",
+        ):
+            self.assertIn(field, line)
+        self.assertEqual(memory_envelope._task_timings.get(), ())
+        self.assertIsNone(request_timing._tally.get())
+
+    def test_nested_eager_tasks_restore_outer_tally(self):
+        outer, token = request_timing.begin()
+        try:
+            memory_envelope.task_timing_started("outer")
+            outer_task = request_timing._tally.get()
+            with request_timing.boundary("cache"):
+                pass
+            memory_envelope.task_timing_started("inner")
+            inner_task = request_timing._tally.get()
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+            memory_envelope.task_timing_finished("inner", "inner")
+            self.assertIs(request_timing._tally.get(), outer_task)
+            self.assertEqual(inner_task["boundary_calls"]["db"], 1)
+            self.assertNotIn("db", outer_task["boundary_calls"])
+            memory_envelope.task_timing_finished("outer", "outer")
+            self.assertIs(request_timing._tally.get(), outer)
+        finally:
+            request_timing.end(token)
+
+    @override_settings(PERF_LOG_SLOW_TASK_MS=1000)
+    def test_fast_task_is_silent(self):
+        with patch.object(memory_envelope.logger, "info") as log:
+            memory_envelope.task_timing_started("fast")
+            memory_envelope.task_timing_finished("fast", "fast")
+        log.assert_not_called()
+
+    def test_cache_wait_is_exclusive_and_cpu_is_not_subtracted(self):
+        with (
+            patch.object(memory_envelope.time, "perf_counter", side_effect=[0, 0.01, 0.04, 0.2]),
+            patch.object(memory_envelope.time, "thread_time", side_effect=[0, 0.001]),
+        ):
+            memory_envelope.task_timing_started("cache-wait")
+            with request_timing.boundary("cache"):
+                pass
+            with self.assertLogs("app.memory_envelope", level="INFO") as captured:
+                memory_envelope.task_timing_finished("cache-wait", "import")
+        self.assertIn("cache_ms=30.0", captured.output[0])
+        self.assertIn("unclassified_ms=170.0", captured.output[0])
+        self.assertIn("cpu_ms=1.0", captured.output[0])
+
+    @override_settings(PERF_LOG_ENABLED=False)
+    def test_disabled_task_timing_leaves_no_context(self):
+        memory_envelope.task_timing_started("disabled")
+        self.assertEqual(memory_envelope._task_timings.get(), ())
+
+    def test_reporting_failure_still_resets_context_and_wrappers(self):
+        original_wrappers = len(connection.execute_wrappers)
+        memory_envelope.task_timing_started("fail-report")
+        with patch.object(memory_envelope.logger, "info", side_effect=RuntimeError), self.assertRaises(RuntimeError):
+            memory_envelope.task_timing_finished("fail-report", "task")
+        self.assertEqual(len(connection.execute_wrappers), original_wrappers)
+        self.assertIsNone(request_timing._tally.get())
+        self.assertEqual(memory_envelope._task_timings.get(), ())
+
+    def test_task_signal_runs_when_memory_instrumentation_is_disabled(self):
+        from config.celery import app
+
+        @app.task(name="performance-diagnostic-test")
+        def failing_task():
+            with request_timing.boundary("cache"):
+                pass
+            raise ValueError("intentional test failure")
+
+        with override_settings(MEMORY_HIGH_WATER_ENABLED=False):
+            memory_envelope.connect_celery_signals()
+            with self.assertLogs("app.memory_envelope", level="INFO") as captured:
+                with self.assertRaises(ValueError):
+                    failing_task.apply(throw=False).get()
+        self.assertTrue(any("slow_task" in line and "state=FAILURE" in line for line in captured.output))
+        self.assertEqual(memory_envelope._task_timings.get(), ())
+        self.assertIsNone(request_timing._tally.get())

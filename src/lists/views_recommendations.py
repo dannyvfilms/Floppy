@@ -20,8 +20,10 @@ from django.views.decorators.http import require_GET, require_POST
 
 from app import helpers
 from app.discover import tab_cache as discover_tab_cache
+from app.media_list_filters import media_list_entries_for_items
 from app.models import Item, MediaTypes
 from app.providers import services
+from integrations.imports.helpers import find_item_across_buckets
 from lists.models import (
     CustomList,
     CustomListItem,
@@ -33,6 +35,8 @@ from lists.views_helpers import (
     _extract_list_search_results,
     _list_item_title_fields_from_metadata,
     _maybe_backfill_episode_title,
+    list_has_item_identity,
+    list_metadata_language,
 )
 
 logger = logging.getLogger(__name__)
@@ -106,7 +110,12 @@ def recommend_search(request, list_id):
         episode_number = request.GET.get("episode_number")
 
         try:
-            media_metadata = services.get_media_metadata(media_type, media_id, source)
+            media_metadata = services.get_media_metadata(
+                media_type,
+                media_id,
+                source,
+                language=list_metadata_language(request.user, custom_list.owner),
+            )
         except Exception as exc:
             logger.exception(
                 "Recommendation preview failed: list_id=%s media_type=%s media_id=%s",
@@ -190,7 +199,14 @@ def recommend_search(request, list_id):
     source = config.get_default_source_name(media_type).value
 
     try:
-        data = services.search(media_type, query, page, source)
+        data = services.search(
+            media_type,
+            query,
+            page,
+            source,
+            user=request.user if request.user.is_authenticated else None,
+            language=list_metadata_language(request.user, custom_list.owner),
+        )
     except Exception as exc:
         logger.exception(
             "Recommendation search failed: list_id=%s media_type=%s query=%s",
@@ -255,24 +271,28 @@ def get_or_create_recommendation_item(
     source,
     season_number=None,
     episode_number=None,
+    user=None,
+    language=None,
 ):
     """Return the Item for a recommendation, creating it from metadata if new."""
-    try:
-        item = Item.objects.get(
-            media_id=media_id,
-            source=source,
-            media_type=media_type,
-            season_number=season_number,
-            episode_number=episode_number,
-        )
-        _maybe_backfill_episode_title(item, force=True)
-    except Item.DoesNotExist:
+    item = find_item_across_buckets(
+        user=user,
+        media_id=media_id,
+        source=source,
+        media_type=media_type,
+        season_number=season_number,
+        episode_number=episode_number,
+    )
+    if item is not None:
+        _maybe_backfill_episode_title(item, force=True, language=language)
+    else:
         metadata = services.get_media_metadata(
             media_type,
             media_id,
             source,
             [season_number] if season_number else None,
             episode_number,
+            language=language,
         )
         release_datetime = helpers.extract_release_datetime(metadata)
         item = Item.objects.create(
@@ -325,6 +345,8 @@ def submit_recommendation(request, list_id):
         source,
         season_number,
         episode_number,
+        user=request.user if request.user.is_authenticated else None,
+        language=list_metadata_language(request.user, custom_list.owner),
     )
 
     discover_tab_cache.mark_active_from_request(
@@ -333,7 +355,7 @@ def submit_recommendation(request, list_id):
     )
 
     # Check if item is already in the list
-    if custom_list.items.filter(id=item.id).exists():
+    if list_has_item_identity(custom_list, item):
         messages.info(
             request,
             gettext('"%(value_1)s" is already in this list.') % {"value_1": item.title},
@@ -387,10 +409,22 @@ def list_recommendations(request, list_id):
         msg = "You do not have permission to view recommendations for this list"
         raise Http404(msg)
 
-    recommendations = custom_list.recommendations.select_related(
-        "item",
-        "recommended_by",
-    ).order_by("-date_recommended")
+    recommendations = list(
+        custom_list.recommendations.select_related(
+            "item",
+            "recommended_by",
+        ).order_by("-date_recommended"),
+    )
+    # Show the viewer's own rating and status on items they already track.
+    media_by_item_id = {
+        entry.item.pk: entry.media
+        for entry in media_list_entries_for_items(
+            request.user,
+            list({rec.item_id: rec.item for rec in recommendations}.values()),
+        )
+    }
+    for rec in recommendations:
+        rec.media = media_by_item_id.get(rec.item_id)
 
     context = {
         "custom_list": custom_list,

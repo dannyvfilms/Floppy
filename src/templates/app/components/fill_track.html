@@ -2,6 +2,7 @@
 {% load i18n %}
 {% load widget_tweaks %}
 {% load user_tags %}
+{% load app_tags %}
 
 <div class="bg-[var(--color-surface-dim)] rounded-xl shadow-2xl overflow-hidden"
      data-track-modal-root
@@ -30,6 +31,15 @@
           {% include "app/icons/edit.svg" with classes="w-4 h-4 sm:w-5 sm:h-5 shrink-0" %}
           <span class="font-medium text-xs sm:text-sm">{% translate "General" %}</span>
         </button>
+        {% if tags_tab_available %}
+          <button type="button"
+                  @click="activeTab = 'tags'"
+                  class="flex flex-1 sm:flex-none items-center justify-center sm:justify-start gap-2 sm:gap-3 px-3 py-2 sm:px-4 sm:py-3 w-full rounded-lg text-left transition-colors cursor-pointer"
+                  :class="activeTab === 'tags' ? 'text-[var(--color-text)] bg-[var(--color-border)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]'">
+            {% include "app/icons/tag.svg" with classes="w-4 h-4 sm:w-5 sm:h-5 shrink-0" %}
+            <span class="font-medium text-xs sm:text-sm">{% translate "Tags" %}</span>
+          </button>
+        {% endif %}
         {% if metadata_tab_available %}
           <button type="button"
                   @click="activeTab = 'metadata'"
@@ -57,6 +67,15 @@
             <span class="font-medium text-xs sm:text-sm">{% translate episode_plays_tab_label|default:_("Episode Plays") %}</span>
           </button>
         {% endif %}
+        {% if status_history_tab_available %}
+          <button type="button"
+                  @click="activeTab = 'status-history'"
+                  class="flex flex-1 sm:flex-none items-center justify-center sm:justify-start gap-2 sm:gap-3 px-3 py-2 sm:px-4 sm:py-3 w-full rounded-lg text-left transition-colors cursor-pointer"
+                  :class="activeTab === 'status-history' ? 'text-[var(--color-text)] bg-[var(--color-border)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]'">
+            {% include "app/icons/clock-reversing.svg" with classes="w-4 h-4 sm:w-5 sm:h-5 shrink-0" %}
+            <span class="font-medium text-xs sm:text-sm">{% translate "Status history" %}</span>
+          </button>
+        {% endif %}
         {% if discover_tab_available %}
           <button type="button"
                   @click="activeTab = 'discover'"
@@ -75,12 +94,15 @@
                   method="post"
                   action="{{ general_submit_formaction }}"
                   hx-post="{{ general_submit_formaction }}"
-                  hx-target="{% if track_action_update %}closest [data-track-action-root]{% else %}closest [data-track-modal-root]{% endif %}"
-                  hx-swap="{% if track_action_update %}outerHTML{% else %}none{% endif %}"
+                  hx-target="{% if track_action_update %}this{% else %}closest [data-track-modal-root]{% endif %}"
+                  hx-swap="none"
                   x-data="mediaForm"
                   x-init="init"
+                  {% if general_existing_instance %}data-existing-instance{% endif %}
                   @submit="closeTrackModal($el)">
           {% csrf_token %}
+          {# Enter submits via the first submit button; keep it Update/Add, not Delete. #}
+          <button type="submit" class="sr-only" tabindex="-1" aria-hidden="true"></button>
           <input type="hidden" name="track_form_id" value="{{ track_form_id }}">
           {% if can_manage_hardcover_edition and hardcover_edition_id_hint %}
             <input type="hidden" name="edition_id" value="{{ hardcover_edition_id_hint }}">
@@ -92,7 +114,7 @@
           {% if general_fields|length > 1 %}<div class="grid grid-cols-2 gap-x-4">{% endif %}
             {% for field in general_fields %}
               {% translate field.label as translated_field_label %}
-              <div class="mb-4 sm:mb-5 {% if field.name == 'progress' or field.name == 'start_date' or field.name == 'end_date' %}col-span-2 sm:col-span-1{% endif %}">
+              <div class="mb-4 sm:mb-5 {% if field.name == 'progress' or field.name == 'reading_time' or field.name == 'start_date' or field.name == 'end_date' or field.name == 'entry_source' %}col-span-2 sm:col-span-1{% endif %}">
                 {% if field.name == "start_date" %}
                   <label class="block text-xs font-medium mb-1 text-[var(--color-text-secondary)] sm:hidden">{% translate "Dates" %}</label>
                   <label class="hidden sm:block text-sm font-medium mb-1 text-[var(--color-text-secondary)]"
@@ -106,12 +128,12 @@
                 {% endif %}
                 <div class="relative flex items-stretch">
                   {% if field.name == "status" %}
-                    {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none" }}
+                    {{ field|add_class:"w-full min-h-[46px] p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none" }}
                     <div class="absolute inset-y-0 right-2 flex items-center pointer-events-none">
                       {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
                     </div>
                   {% elif field.field.widget.input_type == 'number' %}
-                    {{ field|add_class:"w-full p-2 pr-12 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" }}
+                    {{ field|add_class:"w-full min-h-[46px] p-2 pr-12 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" }}
                     <div class="absolute inset-y-0 right-0 flex flex-col border-l border-gray-600">
                       <button type="button"
                               class="flex-1 px-2 text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors rounded-tr-md border-t border-r border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
@@ -131,11 +153,31 @@
                       </button>
                     </div>
                   {% elif field.name == "start_date" %}
-                    {% include "app/components/date_time_picker.html" with field_name=field.name field_value=field.value|default_if_none:"" field_id=field.id_for_label field_label=field.label mobile_label=_("Start:") track_time=TRACK_TIME suggestion_label=date_suggestion.label suggestion_date=date_suggestion.date suggestion_runtime_minutes=date_suggestion.runtime_minutes runtime_minutes=date_suggestion.runtime_minutes week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format copy_from=form.fields.end_date|yesno:"end_date," copy_from_label=_("End") only %}
+                    {% include "app/components/date_time_picker.html" with field_name=field.name field_value=field.value|default_if_none:"" field_id=field.id_for_label field_label=field.label mobile_label=_("Start:") track_time=TRACK_TIME suggestion_label=date_suggestion.label suggestion_date=date_suggestion.date suggestion_runtime_minutes=date_suggestion.runtime_minutes suggestion_extras=date_suggestion.extras runtime_minutes=date_suggestion.runtime_minutes week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format copy_from=form.fields.end_date|yesno:"end_date," copy_from_label=_("End") quick_action_mode="start" only %}
                   {% elif field.name == "end_date" %}
-                    {% include "app/components/date_time_picker.html" with field_name=field.name field_value=field.value|default_if_none:"" field_id=field.id_for_label field_label=field.label mobile_label=_("End:") track_time=TRACK_TIME suggestion_label=date_suggestion.label suggestion_date=date_suggestion.date suggestion_runtime_minutes=date_suggestion.runtime_minutes runtime_minutes=date_suggestion.runtime_minutes week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format copy_from=form.fields.start_date|yesno:"start_date," copy_from_label=_("Start") only %}
+                    {% include "app/components/date_time_picker.html" with field_name=field.name field_value=field.value|default_if_none:"" field_id=field.id_for_label field_label=field.label mobile_label=_("End:") track_time=TRACK_TIME suggestion_label=date_suggestion.label suggestion_date=date_suggestion.date suggestion_runtime_minutes=date_suggestion.runtime_minutes suggestion_extras=date_suggestion.extras runtime_minutes=date_suggestion.runtime_minutes week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format copy_from=form.fields.start_date|yesno:"start_date," copy_from_label=_("Start") quick_action_mode="end" only %}
+                  {% elif field.name == "entry_source" %}
+                    {% entry_source_suggestions user as source_suggestions %}
+                    {{ source_suggestions|json_script:"entry-source-suggestions" }}
+                    <div class="relative w-full"
+                         x-data="{ open: false, query: '', options: JSON.parse(document.getElementById('entry-source-suggestions').textContent), get shown() { const q = this.query.trim().toLowerCase(); return this.options.filter((name) => name.toLowerCase() !== q && name.toLowerCase().includes(q)); } }"
+                         x-init="query = $refs.source.value"
+                         @click.outside="open = false"
+                         @keydown.escape="open = false">
+                      {{ field|add_class:"w-full min-h-[46px] p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"|attr:"x-ref:source"|attr:"autocomplete:off"|attr:"@focus:open = true"|attr:"@input:query = $el.value; open = true" }}
+                      <div class="absolute left-0 right-0 top-full z-40 mt-1 max-h-48 overflow-y-auto bg-[var(--color-surface-strong)] rounded-md shadow-lg border border-gray-700"
+                           x-show="open && shown.length"
+                           x-cloak>
+                        <template x-for="name in shown" :key="name">
+                          <button type="button"
+                                  class="block w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                                  x-text="name"
+                                  @click="$refs.source.value = name; query = name; open = false"></button>
+                        </template>
+                      </div>
+                    </div>
                   {% else %}
-                    {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" }}
+                    {{ field|add_class:"w-full min-h-[46px] p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" }}
                   {% endif %}
                 </div>
               </div>
@@ -163,7 +205,9 @@
           {% endif %}
 
           {% if form.notes %}
-            <div class="mb-4 sm:mb-5" x-data="{ notesOpen: false }">
+            <div class="mb-4 sm:mb-5"
+                 x-data="{ notesOpen: {% if notes_focus %}true{% else %}false{% endif %} }"
+                 {% if notes_focus %}x-init="$nextTick(() => $el.querySelector('textarea[name=notes]')?.focus())"{% endif %}>
               <label class="sm:hidden block text-xs font-medium mb-1 text-[var(--color-text-secondary)]">{% translate "Notes" %}</label>
               <button type="button"
                       @click="notesOpen = !notesOpen"
@@ -236,7 +280,8 @@
                         name="save_as_new_entry"
                         value="1"
                         class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 cursor-pointer">
-                  {% translate "Save as new entry" %}
+                  <span class="sm:hidden">{% translate "New entry" %}</span>
+                  <span class="hidden sm:inline">{% translate "Save as new entry" %}</span>
                 </button>
               {% endif %}
               <button type="submit"
@@ -252,6 +297,12 @@
         </form>
       </section>
 
+      {% if tags_tab_available %}
+        <section x-show="activeTab === 'tags'" x-cloak>
+          {% include "app/components/fill_tags.html" with item=tags_item user_tags=user_tags preview_genres_json=preview_genres_json preview_implied_genres_json=preview_implied_genres_json tag_surface=tag_surface %}
+        </section>
+      {% endif %}
+
       {% if metadata_tab_available %}
         <section x-show="activeTab === 'metadata'" x-cloak>
           {% include "app/components/media_metadata_panel.html" %}
@@ -260,6 +311,13 @@
 
       {% if collection_tab_available %}
         <section x-show="activeTab === 'collection'" x-cloak>
+          {% if library_panel_url %}
+            {# Radarr/Sonarr/Seerr details are fetched once, the first time this tab is shown. #}
+            <div class="library-panel"
+                 hx-get="{{ library_panel_url }}"
+                 hx-trigger="intersect once"
+                 hx-swap="outerHTML"></div>
+          {% endif %}
           {% include "app/components/collection_modal.html" with item=collection_context.item entry=collection_context.entry existing_entries=collection_context.existing_entries visible_existing_entries=collection_context.visible_existing_entries season_audit_entries=collection_context.season_audit_entries episode_audit_entries=collection_context.episode_audit_entries form=collection_context.form return_url=collection_context.return_url collection_fields=collection_context.collection_fields custom_field_groups=collection_context.custom_field_groups entry_custom_field_values=collection_context.entry_custom_field_values manage_fields_open=collection_context.manage_fields_open custom_field_schema_json=collection_context.custom_field_schema_json field_type_choices_json=collection_context.field_type_choices_json media_type_choices_json=collection_context.media_type_choices_json collection_fields_save_url=collection_context.collection_fields_save_url collection_tab=True request=request csrf_token=csrf_token only %}
         </section>
       {% endif %}
@@ -267,6 +325,35 @@
       {% if episode_plays_tab_available %}
         <section x-show="activeTab === 'episode-plays'" x-cloak>
           {% include "app/components/fill_track_episode_bulk.html" %}
+        </section>
+      {% endif %}
+      {% if status_history_tab_available %}
+        <section x-show="activeTab === 'status-history'" x-cloak data-status-changes>
+          <h3 class="text-sm font-medium text-[var(--color-text-secondary)] mb-1">{% translate "Status history" %}</h3>
+          <p class="text-xs text-[var(--color-text-muted)] mb-4">{% translate "Every status change, newest first, with what made it." %}</p>
+          {% if status_changes %}
+            <ul class="space-y-2">
+              {% for change in status_changes %}
+                <li class="bg-[var(--color-surface-strong)] rounded-lg px-4 py-3">
+                  <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <span class="text-sm text-[var(--color-text)]">
+                      {% if change.old %}{% translate change.old %} → {% endif %}{% if change.new %}{% translate change.new %}{% else %}{% translate "No Status" %}{% endif %}
+                    </span>
+                    <span class="text-xs text-[var(--color-text-muted)]">{{ change.date|user_datetime_format:user }}</span>
+                  </div>
+                  <p class="text-xs text-[var(--color-text-secondary)] mt-1">
+                    {% if change.reason %}
+                      {% blocktranslate trimmed with reason=change.reason %}by {{ reason }}{% endblocktranslate %}
+                    {% else %}
+                      {% translate "source not recorded" %}
+                    {% endif %}
+                  </p>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="text-sm text-[var(--color-text-muted)]">{% translate "No status changes recorded yet." %}</p>
+          {% endif %}
         </section>
       {% endif %}
       {% if discover_tab_available %}

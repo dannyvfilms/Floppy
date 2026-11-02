@@ -138,6 +138,20 @@ def enrich_detail_seasons(
     return details, seasons
 
 
+def drop_recommendations_if_hidden(request, metadata):
+    """Remove the recommendations section when the viewer turned it off.
+
+    Runs before enrichment so the per-card tracking lookups are skipped too.
+    """
+    if getattr(request.user, "show_recommendations", True):
+        return
+    related = metadata.get("related")
+    if related and "recommendations" in related:
+        metadata["related"] = {
+            name: items for name, items in related.items() if name != "recommendations"
+        }
+
+
 def enrich_detail_related_cards(request, media_metadata, *, media_type, tracking_user):
     """Attach tracking and season labels using the owner selected by the view."""
     for section_name, related_items in media_metadata["related"].items():

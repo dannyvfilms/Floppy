@@ -1,0 +1,40 @@
+{% load i18n %}
+{% load app_tags %}
+{% load user_tags %}
+
+<div class="media-grid">
+  {% for group in media_groups %}
+    {% if not group.ungrouped %}
+      <div>
+        {% media_card "group" item=group.display_item media=group.display_media card_media_type=media_type image_override=group.image current_sort=current_sort %}
+        {% if current_sort == "progress" and group.playtime_minutes %}
+          <p class="mt-2 text-sm font-semibold text-[var(--color-text)]">{{ group.playtime_minutes|minutes_hhmm }}</p>
+        {% elif current_sort == "end_date" %}
+          {% with group_end=group.last_ended|default:group.last_played %}
+            {% if group_end %}
+              <p class="mt-2 text-sm font-semibold text-[var(--color-text)]">{{ group_end|user_date_format:user }}</p>
+            {% endif %}
+          {% endwith %}
+        {% elif current_sort == "start_date" %}
+          {% if group.first_started %}
+            <p class="mt-2 text-sm font-semibold text-[var(--color-text)]">{{ group.first_started|user_date_format:user }}</p>
+          {% endif %}
+        {% elif current_sort == "date_added" %}
+          {% if group.first_added %}
+            <p class="mt-2 text-sm font-semibold text-[var(--color-text)]">{{ group.first_added|user_date_format:user }}</p>
+          {% endif %}
+        {% elif current_sort == "release_date" %}
+          {% if group.release_range %}
+            <p class="mt-2 text-sm font-semibold text-[var(--color-text)]">{{ group.release_range }}</p>
+          {% endif %}
+        {% elif current_sort == "critic_rating" %}
+          {% if group.average_score %}
+            <p class="mt-2 text-sm font-semibold text-[var(--color-text)]">{{ group.average_score|floatformat:1 }}/10</p>
+          {% endif %}
+        {% endif %}
+      </div>
+    {% endif %}
+  {% endfor %}
+
+  {% include "app/components/game_grouped_ungrouped.html" %}
+</div>

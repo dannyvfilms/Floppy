@@ -1,0 +1,55 @@
+{% load i18n app_tags %}
+{% comment %}
+  Media type filter chips shared by Import Data, Integrations and Metadata.
+  The page's Alpine scope needs `activeMediaTag` set to 'all'.
+  Context: tags (from media_tag_choices), all_label, prompt, summary (optional,
+  shows a "Showing ..." line).
+{% endcomment %}
+{% if calendar_mode %}
+<div class="flex gap-2 overflow-x-auto scrollbar-hidden pb-1 mt-3" aria-label="{% translate 'Filter calendar by media type' %}">
+  <button type="button" @click="selectCalendarType('all')" :aria-pressed="isCalendarTypeSelected('all')"
+          class="shrink-0 flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
+          :class="isCalendarTypeSelected('all') ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
+    {% include "app/icons/four-square.svg" with classes="w-4 h-4" %}
+    <span>{% translate "All" %}</span><span class="rounded bg-black/20 px-1.5 py-0.5" x-text="calendarTypeCounts.all || 0"></span>
+  </button>
+  {% for tag in tags %}
+    {% if tag != 'season' %}
+      <button type="button" x-cloak x-show="(calendarTypeCounts['{{ tag }}'] || 0) > 0" @click="selectCalendarType('{{ tag }}')" :aria-pressed="isCalendarTypeSelected('{{ tag }}')"
+              :style="'order: ' + Math.max(1, 1000000 - (calendarTypeCounts['{{ tag }}'] || 0))"
+              class="shrink-0 flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
+              :class="isCalendarTypeSelected('{{ tag }}') ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
+        {% icon tag is_active=False %}
+        <span>{{ tag|media_type_readable }}</span><span class="rounded bg-black/20 px-1.5 py-0.5" x-text="calendarTypeCounts['{{ tag }}'] || 0"></span>
+      </button>
+    {% endif %}
+  {% endfor %}
+</div>
+{% else %}
+<div class="bg-[var(--color-surface-strong)] rounded-lg p-4 mb-5" data-testid="media-tag-filter">
+  <p class="text-sm text-[var(--color-text-secondary)] mb-3">{{ prompt|default:_("Browse by media type:") }}</p>
+  <div class="flex flex-wrap gap-2">
+    <button type="button"
+            @click="activeMediaTag = 'all'"
+            :aria-pressed="activeMediaTag === 'all'"
+            class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
+            :class="activeMediaTag === 'all' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
+      {{ all_label|default:_("All") }}
+    </button>
+    {% for tag in tags %}
+      <button type="button"
+              @click="activeMediaTag = '{{ tag.key }}'"
+              :aria-pressed="activeMediaTag === '{{ tag.key }}'"
+              class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
+              :class="activeMediaTag === '{{ tag.key }}' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
+        {{ tag.label }}
+      </button>
+    {% endfor %}
+  </div>
+  {% if summary %}
+    <p class="text-xs text-[var(--color-text-muted)] mt-3"
+       x-text="gettext('Showing ') + ({ all: '{{ all_label|default:_("All")|escapejs }}'{% for tag in tags %}, {{ tag.key }}: '{{ tag.label|escapejs }}'{% endfor %} })[activeMediaTag] + '.'">
+    </p>
+  {% endif %}
+</div>
+{% endif %}

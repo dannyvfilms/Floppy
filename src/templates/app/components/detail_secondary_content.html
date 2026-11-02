@@ -5,12 +5,14 @@
 {% load humanize %}
 {% load static %}
 {% detail_layout_family media_type as detail_family %}
+{% detail_promoted_facts media_type media.details as detail_promotion %}
 
-  <div id="detail-secondary-content" class="flex flex-col-reverse md:flex-row gap-0 md:gap-10">
+  <div id="detail-secondary-content" class="detail-secondary-content">
+    {% include "app/components/detail_promoted_content.html" %}
+    <div class="detail-secondary-layout flex flex-col md:flex-row gap-6 md:gap-10">
     {# Details Column #}
 
-    <div class="w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0"
-         style="display: flex; flex-direction: column;">
+    <div class="detail-secondary-sidebar w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0 flex flex-col">
       {# Your History #}
       <div {% detail_section_attrs user detail_family "sidebar" "history" %}>
       {% if not public_view|default:False and current_instance and user_medias %}
@@ -86,6 +88,10 @@
                       </div>
                     {% endif %}
 
+                    {% if user_media.reading_time %}
+                      <div class="text-xs text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=user_media.reading_time|minutes_hhmm %}Reading time: {{ value_1 }}{% endblocktranslate %}</div>
+                    {% endif %}
+
                     {% if user_media.start_date %}
                       <div class="text-xs text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=user_media.start_date|datetime_format:user %}Started: {{ value_1 }}{% endblocktranslate %}</div>
                     {% endif %}
@@ -138,19 +144,20 @@
       {% endif %}
 
       {# Media Details #}
-      <div {% detail_section_attrs user detail_family "sidebar" "details" %}>
-      <h2 class="text-xl font-bold mb-4">{% translate "Details" %}</h2>
+      <div {% detail_section_attrs user detail_family "sidebar" "details" %}
+           class="detail-sidebar-details">
+      <h2 class="detail-sidebar-details-heading text-xl font-bold mb-4">{% translate "Details" %}</h2>
       <div class="hidden md:block">
         {% include "app/components/detail_watch_providers.html" with placement="desktop" %}
       </div>
 
-      <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
+      <div class="detail-sidebar-details-card bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
         {% if media.details.items %}
           {% for key, value in media.details.items %}
             {% if not authors_linked or key not in author_detail_keys %}
               {% if not studios_linked or key not in studio_detail_keys %}
                 {% if key != "themes" and key != "last_air_date" and key != "episodes" and key != "runtime" and key != "seasons" %}
-                <div class="mb-4">
+                <div class="detail-sidebar-fact mb-4 {% if key in detail_promotion.suppressed_keys %}detail-sidebar-fact--promoted{% endif %}">
                   {% if key == "first_air_date" %}
                     <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">{% translate "AIR DATES" %}</h3>
                     <p class="text-sm text-[var(--color-text-secondary)]">
@@ -169,13 +176,19 @@
                       {% if key == "languages" or key == "country" or key == "countries" or key == "production_countries" or key == "origin_country" %}
                         {% for item in value %}<p class="text-sm text-[var(--color-text-secondary)]">{% if item %}{% translate item %}{% else %}{% translate "Unknown" %}{% endif %}</p>{% endfor %}
                       {% else %}
-                        {% for item in value %}<p class="text-sm text-[var(--color-text-secondary)]">{{ item|iso_date_format:request.user }}</p>{% endfor %}
+                        {% for item in value %}<p class="text-sm text-[var(--color-text-secondary)]">{{ item }}</p>{% endfor %}
                       {% endif %}
                     {% else %}
                       {% if key == 'format' and media_type == MediaTypes.ANIME.value %}
                         <p class="text-sm text-[var(--color-text-secondary)]">{% translate "Anime" %}</p>
-                      {% elif key == 'status' or key == 'country' or key == 'countries' or key == 'production_countries' or key == 'origin_country' %}
+                      {% elif key == 'format' or key == 'status' or key == 'country' or key == 'countries' or key == 'production_countries' or key == 'origin_country' %}
                         <p class="text-sm text-[var(--color-text-secondary)]">{% if value %}{% translate value %}{% else %}{% translate "Unknown" %}{% endif %}</p>
+                      {% elif key == 'season' or key == 'broadcast' or key == 'source' or key == 'players' %}
+                        <p class="text-sm text-[var(--color-text-secondary)]">{{ value|translate_detail_value }}</p>
+                      {% elif key == 'language' %}
+                        <p class="text-sm text-[var(--color-text-secondary)]">{{ value|translate_language_code }}</p>
+                      {% elif key == 'start_date' or key == 'end_date' or key == 'publish_date' or key == 'release_date' or key == 'last_updated' %}
+                        <p class="text-sm text-[var(--color-text-secondary)]">{{ value|iso_date_format:request.user|default_if_none:_("Unknown") }}</p>
                       {% else %}
                         <p class="text-sm text-[var(--color-text-secondary)]">{{ value|default_if_none:_("Unknown") }}</p>
                       {% endif %}
@@ -183,7 +196,7 @@
                   {% endif %}
                 </div>
                 {% elif key == "runtime" and not media.details.total_runtime %}
-                <div class="mb-4">
+                <div class="detail-sidebar-fact mb-4 {% if key in detail_promotion.suppressed_keys %}detail-sidebar-fact--promoted{% endif %}">
                   <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">{% translate "RUNTIME" %}</h3>
                   <p class="text-sm text-[var(--color-text-secondary)]">
                     {{ value|default_if_none:_("Unknown") }}{% if media.details.episodes %}<span class="text-[var(--color-text-muted)] mx-1">·</span>{% blocktranslate trimmed with value_1=media.details.episodes count count=media.details.episodes|safe_count %}{{ value_1 }} episode{% plural %}{{ value_1 }} episodes{% endblocktranslate %}{% endif %}
@@ -193,8 +206,18 @@
               {% endif %}
             {% endif %}
           {% endfor %}
+          {% if other_book_formats %}
+            <div class="detail-sidebar-fact mb-4">
+              <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">{% translate "Other Formats" %}</h3>
+              <div class="flex flex-col gap-1">
+                {% for other in other_book_formats %}
+                  <a href="{{ other.href }}" class="text-sm text-[var(--color-text-secondary)] hover:text-indigo-500 transition-colors duration-200">{{ other.label }}</a>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
           {% if authors_linked %}
-            <div class="mb-4">
+            <div class="detail-sidebar-fact mb-4">
               <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% blocktranslate trimmed count count=authors_linked|length %}AUTHOR{% plural %}AUTHORs{% endblocktranslate %}</h3>
               <div class="flex flex-col gap-1">
                 {% for author in authors_linked %}
@@ -211,14 +234,15 @@
       </div>
 
       {% if media.genres %}
-        <div {% detail_section_attrs user detail_family "sidebar" "genres" %}>
+        <div {% detail_section_attrs user detail_family "sidebar" "genres" %}
+             class="detail-sidebar-genres{% if not public_view|default:False %} detail-sidebar-genres--in-tooltip{% endif %}">
         {% url 'medialist' media_type=parent_media_type|default:media_type as genre_list_url %}
         <h2 class="text-xl font-bold mb-4 mt-6">{% translate "Genres" %}</h2>
         <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
           <div class="flex flex-wrap gap-2 justify-center md:justify-start">
             {% for genre in media.genres %}
               <a href="{{ genre_list_url }}?genre={{ genre|urlencode }}"
-                 class="inline-flex h-6 items-center rounded-full border border-[var(--color-genre-badge-border)] bg-[var(--color-genre-badge-bg)] px-2.5 text-xs font-medium text-[var(--color-genre-badge-text)] hover:bg-[var(--color-genre-badge-hover-bg)] transition-colors duration-200">{{ genre }}</a>
+                 class="inline-flex h-6 items-center rounded-full border border-[var(--color-genre-badge-border)] bg-[var(--color-genre-badge-bg)] px-2.5 text-xs font-medium text-[var(--color-genre-badge-text)] hover:bg-[var(--color-genre-badge-hover-bg)] transition-colors duration-200">{% translate genre %}</a>
             {% endfor %}
           </div>
         </div>
@@ -226,8 +250,9 @@
       {% endif %}
 
       {% if studios_linked %}
-        <div {% detail_section_attrs user detail_family "sidebar" "studios" %}>
-        <h2 class="text-xl font-bold mb-4 mt-6">{% translate "Studios" %}</h2>
+        <div {% detail_section_attrs user detail_family "sidebar" "studios" %}
+             class="detail-sidebar-studios">
+        <h2 class="detail-sidebar-studios-heading text-xl font-bold mb-4 mt-6">{% translate "Studios" %}</h2>
         <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
           <div class="flex flex-col gap-1">
             {% for studio in studios_linked|slice:":12" %}
@@ -354,13 +379,13 @@
                        x-data="{ detailGridExpanded: false, detailGridVisibleCount: 0, syncDetailGrid() { this.$nextTick(() => { const grid = this.$refs.detailGrid; if (!grid) return; const templateColumns = window.getComputedStyle(grid).gridTemplateColumns || ''; const columnCount = templateColumns.split(' ').filter(Boolean).length || 1; this.detailGridVisibleCount = Math.max(columnCount, 1) * 2; }); }, shouldShowDetailCard(index) { return this.detailGridExpanded || index < this.detailGridVisibleCount; }, canToggleDetailGrid(total) { return this.detailGridVisibleCount > 0 && total > this.detailGridVisibleCount; } }"
                        x-init="syncDetailGrid()"
                        @resize.window.debounce.100ms="syncDetailGrid()">
-                {% with related_label=name|no_underscore|title %}
+                {% with related_label=name|related_section_label %}
                   <h2 class="text-xl font-bold mb-4">{% translate related_label %}</h2>
                 {% endwith %}
                 <div x-ref="detailGrid" class="detail-media-grid">
                   {% for result in related_items %}
                     <div x-show="shouldShowDetailCard({{ forloop.counter0 }})">
-                      {% include "app/components/media_card.html" with item=result.item media=result.media title=result.item.season_header_title|default:result.item.title user=user active=media.media_id|str_equals:result.item.media_id show_release_year_placeholder=True from_grid=True show_progress_chip=False show_status_chip=True %}
+                      {% media_card "related" item=result.item media=result.media title=result.item.season_header_title|default:result.item.title active=media.media_id|str_equals:result.item.media_id %}
                     </div>
                   {% endfor %}
                 </div>
@@ -372,6 +397,22 @@
               </section>
             {% endif %}
           {% endfor %}
+          {% if media.steam_dlcs %}
+            <section class="mb-8">
+              <h2 class="text-xl font-bold mb-4">{% translate "DLCs" %}</h2>
+              <div class="detail-media-grid">
+                {% for dlc in media.steam_dlcs %}
+                  <a href="{{ dlc.url }}"
+                     target="_blank"
+                     rel="noopener noreferrer"
+                     class="block">
+                    {% if dlc.image %}<img src="{{ dlc.image }}" alt="" loading="lazy" class="w-full rounded-lg aspect-[460/215] object-cover">{% endif %}
+                    <p class="mt-2 text-sm font-medium">{{ dlc.title }}</p>
+                  </a>
+                {% endfor %}
+              </div>
+            </section>
+          {% endif %}
           </div>
         {% endif %}
 
@@ -526,6 +567,9 @@
         {% endif %}
 
         {% if media_type == MediaTypes.GAME.value %}
+          {% if youtube_watch %}
+            {% include "app/components/youtube_watch_section.html" %}
+          {% endif %}
           <div {% detail_section_attrs user detail_family "content" "game_lengths" %}>
             {% include "app/components/game_lengths_section.html" %}
           </div>
@@ -569,15 +613,16 @@
     {% endif %}
 
     {% if media_type == MediaTypes.PODCAST.value and show_notes|default:False and notes_entry %}
-      <div class="w-full" {% detail_section_attrs user detail_family "content" "notes" %}>
+      <div class="w-full -order-1 md:order-none" {% detail_section_attrs user detail_family "content" "notes" %}>
         {% include "app/components/detail_notes_section.html" %}
       </div>
     {% endif %}
 
-    <div class="md:hidden">
+    <div class="md:hidden -order-2">
       {% include "app/components/detail_watch_providers.html" with placement="mobile" %}
     </div>
 
+    </div>
   </div>
 {% if media.episodes or episodes %}
   {% include "app/components/_episode_scroll_restore.html" %}

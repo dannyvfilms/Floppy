@@ -3,13 +3,14 @@ import logging
 from datetime import timedelta
 from types import SimpleNamespace
 
+import redis
 import requests
 from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 from django.utils.html import strip_tags
 
-from app import helpers
+from app import backdrops, helpers
 from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources
 from app.providers import credentials, services
@@ -32,6 +33,8 @@ SEARCH_CACHE_TIMEOUT = 60 * 60
 # Season blobs are the largest single thing Floppy caches (full episode lists),
 # so they expire sooner than the show payload they hang off.
 SEASON_CACHE_TIMEOUT = 60 * 60 * 12
+ABSENT_SEASON_CACHE_TIMEOUT = 60 * 5
+_ABSENT_SEASON = {"_tmdb_absent_season": True}
 # build_filter_data_from_items() requests this catalog on every media-list
 # render. A cold cache during a TMDB outage must not repeat both provider
 # requests (each carrying the full request timeout) on every single render,
@@ -46,9 +49,10 @@ TV_DETAIL_SEASON_APPEND_RESPONSES = (
     "season/{season}/credits",
     "season/{season}/watch/providers",
 )
-TMDB_SEASON_CACHE_VERSION = 4
-# Bumped when the movie payload gained provider_external_ids (issue #1066).
-TMDB_MOVIE_CACHE_VERSION = 2
+# v5 can hold confirmed-absence markers; older workers must not read that shape.
+TMDB_SEASON_CACHE_VERSION = 5
+# Bumped for provider_external_ids and regional digital/physical release dates.
+TMDB_MOVIE_CACHE_VERSION = 3
 # Media-details carousel (trailer + photos): fetched lazily, its own cache
 # entry, independent of the movie/tv/season append_to_response payloads above.
 CAROUSEL_CACHE_TTL_SUCCESS = 60 * 60 * 24 * 7
@@ -110,7 +114,9 @@ def _episode_cache_key(media_id, season_number, episode_number, language=None):
     )
 
 
-def metadata_cache_keys(media_id, media_type, season_number=None, episode_number=None):
+def metadata_cache_keys(
+    media_id, media_type, season_number=None, episode_number=None, language=None
+):
     """Return the versioned TMDB cache keys for an item.
 
     The movie and season keys carry a strategy version, so callers that clear
@@ -119,17 +125,17 @@ def metadata_cache_keys(media_id, media_type, season_number=None, episode_number
     """
     keys = []
     if media_type == MediaTypes.MOVIE.value:
-        keys.append(_movie_cache_key(media_id))
+        keys.append(_movie_cache_key(media_id, language))
     elif media_type == MediaTypes.TV.value:
-        keys.append(_tv_cache_key(media_id))
+        keys.append(_tv_cache_key(media_id, language))
     elif media_type == MediaTypes.SEASON.value and season_number is not None:
-        keys.append(_season_cache_key(media_id, season_number))
+        keys.append(_season_cache_key(media_id, season_number, language))
     elif (
         media_type == MediaTypes.EPISODE.value
         and season_number is not None
         and episode_number is not None
     ):
-        keys.append(_episode_cache_key(media_id, season_number, episode_number))
+        keys.append(_episode_cache_key(media_id, season_number, episode_number, language))
     return keys
 
 
@@ -188,8 +194,13 @@ def get_external_links(external_ids, tmdb_id=None):
 
 
 def _tvdb_override_cache_key(media_id):
-    """Return cache key for a preferred TVDB override on a TMDB show."""
-    return f"{Sources.TMDB.value}_tvdb_override_{media_id}"
+    """Return cache key for a preferred TVDB override on a TMDB show.
+
+    The version drops overrides that saved an episode TVDB id as if it were
+    the show's: ``v2`` those from Jellyfin/Emby (#1312), ``v3`` those from
+    modern-agent Plex episodes.
+    """
+    return f"{Sources.TMDB.value}_tvdb_override_v3_{media_id}"
 
 
 def get_tvdb_id_override(media_id):
@@ -538,6 +549,10 @@ def movie(media_id, language=None):
         except requests.exceptions.HTTPError as error:
             handle_error(error)
 
+        backdrops.remember_tmdb_backdrop(
+            MediaTypes.MOVIE.value, media_id, response.get("backdrop_path")
+        )
+
         # Filter out collection items from recommendations, to avoid duplicates
         collection_items = get_collection(collection_response)
         collection_ids = [item["media_id"] for item in collection_items]
@@ -604,6 +619,7 @@ def movie(media_id, language=None):
             "provider_external_ids": external_ids,
             "external_links": get_external_links(external_ids, media_id),
             "providers": response.get("watch/providers", {}).get("results", {}),
+            "release_types": get_movie_release_types(response.get("release_dates", {})),
         }
 
         cache.set(cache_key, data)
@@ -611,7 +627,7 @@ def movie(media_id, language=None):
     return data
 
 
-def get_cached_seasons(media_id, season_numbers, language=None):
+def get_cached_seasons(media_id, season_numbers, language=None, *, missing_seasons=None):
     """Check cache for seasons and return cached data and list of uncached seasons.
 
     One get_many rather than a get per season: a 40-season show meant 40 round
@@ -629,7 +645,10 @@ def get_cached_seasons(media_id, season_numbers, language=None):
     uncached_seasons = []
     for key, season_number in keys.items():
         season_data = found.get(key)
-        if season_data:
+        if season_data == _ABSENT_SEASON:
+            if missing_seasons is not None:
+                missing_seasons.add(season_number)
+        elif season_data:
             cached_data[f"season/{season_number}"] = season_data
         else:
             uncached_seasons.append(season_number)
@@ -729,7 +748,7 @@ def cache_fallback_season_metadata(media_id, season_number, tv_data, season_data
         if episode.get("episode_number") is not None
     ]
     max_progress = season_data.get("max_progress") or (
-        max(episode_numbers) if episode_numbers else None
+        len(set(episode_numbers)) if episode_numbers else None
     )
 
     runtimes = [
@@ -946,7 +965,7 @@ def get_tvdb_episode_image_map(tvdb_id, season_number, *, tmdb_media_id=None):
     return episode_images
 
 
-def fetch_and_cache_seasons(media_id, season_numbers, tv_data, language=None):
+def fetch_and_cache_seasons(media_id, season_numbers, tv_data, language=None, *, missing_seasons=None):
     """Fetch uncached seasons from API and cache them."""
     url = f"{base_url}/tv/{media_id}"
     max_seasons_per_request = _tv_detail_max_seasons_per_request()
@@ -990,6 +1009,11 @@ def fetch_and_cache_seasons(media_id, season_numbers, tv_data, language=None):
             handle_error(error)
 
         if is_first_batch:
+            # tv() records the backdrop it already fetched; do the same here so
+            # a season/episode page doesn't pay a second /tv request for it.
+            backdrops.remember_tmdb_backdrop(
+                MediaTypes.TV.value, media_id, response.get("backdrop_path")
+            )
             # Always refresh the root TV payload from the same TMDB response
             # so season fetches can pick up updated external_ids (including
             # tvdb_id) even when the show cache already existed before this
@@ -1014,6 +1038,40 @@ def fetch_and_cache_seasons(media_id, season_numbers, tv_data, language=None):
         for season_number in season_subset:
             season_key = f"season/{season_number}"
             if season_key not in response:
+                # Missing append data alone is not proof of absence. Require a
+                # complete, valid root catalogue excluding this coordinate.
+                # Specials retain their existing independent TVDB fallback.
+                catalogue = response.get("seasons")
+                count = response.get("number_of_seasons")
+                if (
+                    type(season_number) is int
+                    and season_number > 0
+                    and isinstance(catalogue, list)
+                    and type(count) is int
+                    and count >= 0
+                    and all(
+                        isinstance(entry, dict)
+                        and type(entry.get("season_number")) is int
+                        and entry["season_number"] >= 0
+                        for entry in catalogue
+                    )
+                ):
+                    listed = {entry["season_number"] for entry in catalogue}
+                    if (
+                        len(listed) == len(catalogue)
+                        and len({number for number in listed if number > 0}) == count
+                        and season_number not in listed
+                    ):
+                        if missing_seasons is not None:
+                            missing_seasons.add(season_number)
+                        # The import-local memo still needs confirmed absence
+                        # when Redis is unavailable. This write is best effort.
+                        with contextlib.suppress(redis.RedisError):
+                            cache.set(
+                                _season_cache_key(media_id, season_number, language),
+                                _ABSENT_SEASON,
+                                ABSENT_SEASON_CACHE_TIMEOUT,
+                            )
                 logger.warning(
                     "Season %s not found in %s response; skipping cache update",
                     season_number,
@@ -1061,7 +1119,7 @@ def fetch_and_cache_seasons(media_id, season_numbers, tv_data, language=None):
     return result_data, fetched_tv_data
 
 
-def tv_with_seasons(media_id, season_numbers, language=None):
+def tv_with_seasons(media_id, season_numbers, language=None, *, missing_seasons=None):
     """Return the metadata for the tv show with seasons appended to the response."""
     if not season_numbers:
         return tv(media_id, language)
@@ -1078,6 +1136,7 @@ def tv_with_seasons(media_id, season_numbers, language=None):
         media_id,
         season_numbers,
         language,
+        missing_seasons=missing_seasons,
     )
 
     if tv_data is None and not uncached_seasons:
@@ -1089,6 +1148,7 @@ def tv_with_seasons(media_id, season_numbers, language=None):
             uncached_seasons,
             tv_data,
             language,
+            missing_seasons=missing_seasons,
         )
 
         if fetched_tv_data is not None:
@@ -1131,6 +1191,9 @@ def tv(media_id, language=None):
         except requests.exceptions.HTTPError as error:
             handle_error(error)
 
+        backdrops.remember_tmdb_backdrop(
+            MediaTypes.TV.value, media_id, response.get("backdrop_path")
+        )
         data = process_tv(response, media_id=media_id)
         cache.set(cache_key, data)
     else:
@@ -1143,7 +1206,7 @@ def tv(media_id, language=None):
 
 def _carousel_cache_key(media_type, media_id, season_number=None):
     """Return the cache key for a media-details carousel payload."""
-    key = f"tmdb_carousel_{media_type}_{media_id}"
+    key = f"tmdb_carousel_v2_{media_type}_{media_id}"
     if season_number is not None:
         key += f"_s{season_number}"
     return key
@@ -1178,6 +1241,14 @@ def _parse_carousel_photos(response):
     ]
 
 
+def _parse_carousel_logos(response):
+    """Return usable TMDB logo paths, preferring English and language-neutral assets."""
+    logos = response.get("images", {}).get("logos", []) or []
+    usable = [logo for logo in logos if logo.get("file_path")]
+    usable.sort(key=lambda logo: {"en": 0, None: 1}.get(logo.get("iso_639_1"), 2))
+    return [logo["file_path"] for logo in usable]
+
+
 def peek_carousel_media(media_type, media_id, season_number=None):
     """Return the cached carousel payload, or None if nothing is cached yet.
 
@@ -1190,7 +1261,7 @@ def peek_carousel_media(media_type, media_id, season_number=None):
 
 
 def carousel_media(media_type, media_id, season_number=None, language=None):
-    """Return {"video": {...}|None, "photos": [...]} for the details carousel.
+    """Return media, logo, and backdrop data for the details carousel.
 
     Fetched lazily via its own request/cache entry, never folded into the
     movie/tv/season append_to_response calls (those are already close to
@@ -1238,13 +1309,15 @@ def carousel_media(media_type, media_id, season_number=None, language=None):
                     "season_number": season_number,
                 },
             )
-            data = {"video": None, "photos": []}
+            data = {"video": None, "photos": [], "logos": [], "backdrop_path": None}
             cache.set(cache_key, data, CAROUSEL_CACHE_TTL_ABSENT)
             return data
 
     data = {
         "video": _parse_carousel_video(response),
         "photos": _parse_carousel_photos(response),
+        "logos": _parse_carousel_logos(response),
+        "backdrop_path": response.get("backdrop_path"),
     }
     ttl = (
         CAROUSEL_CACHE_TTL_SUCCESS
@@ -1366,7 +1439,10 @@ def process_season(response, providers_response, credits_response=None):
         "source": Sources.TMDB.value,
         "media_type": MediaTypes.SEASON.value,
         "season_title": response["name"],
-        "max_progress": episodes[-1]["episode_number"] if episodes else 0,
+        # Count, not the last number: anime seasons continue the numbering
+        # (51-100), so the last number is not how many episodes the season has.
+        "max_progress": len(episodes),
+        "last_episode_number": episodes[-1]["episode_number"] if episodes else 0,
         "image": get_image_url(response["poster_path"]),
         "season_number": response["season_number"],
         "synopsis": get_synopsis(response["overview"]),
@@ -1722,6 +1798,42 @@ def get_movie_certification(release_dates_payload):
     return fallback
 
 
+# TMDB release types worth a calendar entry of their own. The main release_date
+# (theatrical) is already covered, so premieres and TV airings are left out.
+MOVIE_RELEASE_TYPES = {4: "digital", 5: "physical"}
+
+
+def get_movie_release_types(release_dates_payload):
+    """Return the earliest digital and physical dates per region.
+
+    Shape: {"US": {"digital": "2027-01-20", "physical": "2027-02-14"}}. Regions
+    with neither type are left out.
+    """
+    results = []
+    if isinstance(release_dates_payload, dict):
+        results = release_dates_payload.get("results") or []
+
+    dates_by_region = {}
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        region = str(result.get("iso_3166_1") or "").upper()
+        if not region:
+            continue
+        for release in result.get("release_dates") or []:
+            if not isinstance(release, dict):
+                continue
+            release_type = MOVIE_RELEASE_TYPES.get(release.get("type"))
+            release_date = str(release.get("release_date") or "")[:10]
+            if not release_type or not release_date:
+                continue
+            region_dates = dates_by_region.setdefault(region, {})
+            if release_type not in region_dates or release_date < region_dates[release_type]:
+                region_dates[release_type] = release_date
+
+    return dates_by_region
+
+
 def get_profile_image_url(path, size="w185"):
     """Return a profile image URL for cast/crew members."""
     if path:
@@ -1760,8 +1872,12 @@ def get_cast_credits(credits_data, is_aggregate=False):
     """Return normalized cast entries."""
     cast_entries = []
     cast_list = credits_data.get("cast", []) if isinstance(credits_data, dict) else []
+    if not isinstance(cast_list, list):
+        cast_list = []
 
     for cast in cast_list:
+        if not isinstance(cast, dict):
+            continue
         role_value = cast.get("character", "")
         episode_count = None
         if is_aggregate:
@@ -1771,31 +1887,59 @@ def get_cast_credits(credits_data, is_aggregate=False):
             # unwraps exactly one level: a role element that is itself a list
             # is iterated, anything else is treated as a single role. Deeper
             # nesting is not a real TMDB shape and is dropped by the dict
-            # filter below.
+            # filter below. A bare dict (rather than a list) is accepted too.
+            raw_roles = cast.get("roles") or []
+            if isinstance(raw_roles, dict):
+                raw_roles = [raw_roles]
             roles = [
                 role
-                for inner in (cast.get("roles") or [])
+                for inner in raw_roles
                 for role in (inner if isinstance(inner, list) else [inner])
                 if isinstance(role, dict)
             ]
             if roles:
-                top_role = max(roles, key=lambda role: role.get("episode_count") or 0)
-                role_value = top_role.get("character") or role_value
+                # episode_count is not always numeric; comparing a string
+                # against an int in max() raises, so rank on the numeric ones
+                # and only fall back to the raw list if none qualify.
+                valid_roles = [
+                    role
+                    for role in roles
+                    if isinstance(role.get("episode_count"), (int, float))
+                ]
+                top_role = max(
+                    valid_roles or roles,
+                    key=lambda role: (
+                        role.get("episode_count")
+                        if isinstance(role.get("episode_count"), (int, float))
+                        else 0
+                    ),
+                )
+                role_char = top_role.get("character")
+                # Only a non-empty role replaces the outer `character`: a blank
+                # or zero aggregate role must not erase the fallback.
+                if role_char and not isinstance(role_char, (dict, list)):
+                    role_value = (
+                        role_char if isinstance(role_char, str) else str(role_char)
+                    )
             # episode_count is the person's total appearances across all their
             # roles in this show, not episodes as the selected top_role only.
-            total_eps = sum(r.get("episode_count") or 0 for r in roles)
+            total_eps = sum(
+                role.get("episode_count") or 0
+                for role in roles
+                if isinstance(role.get("episode_count"), (int, float))
+            )
             episode_count = total_eps if total_eps > 0 else None
 
         cast_entries.append(
             {
                 "person_id": str(cast.get("id")),
-                "name": cast.get("name", ""),
+                "name": cast.get("name", "") if isinstance(cast.get("name"), str) else str(cast.get("name") or ""),
                 "image": get_profile_image_url(cast.get("profile_path")),
-                "known_for_department": cast.get("known_for_department", ""),
+                "known_for_department": cast.get("known_for_department", "") if isinstance(cast.get("known_for_department"), str) else "",
                 "gender": get_gender(cast.get("gender")),
-                "department": cast.get("known_for_department", "Acting"),
-                "role": role_value or "",
-                "order": cast.get("order"),
+                "department": cast.get("known_for_department", "Acting") if isinstance(cast.get("known_for_department"), str) else "Acting",
+                "role": str(role_value or ""),
+                "order": cast.get("order") if isinstance(cast.get("order"), (int, float)) else None,
                 "episode_count": episode_count,
             },
         )
@@ -1813,43 +1957,57 @@ def get_crew_credits(credits_data, is_aggregate=False):
     """Return normalized crew entries."""
     crew_entries = []
     crew_list = credits_data.get("crew", []) if isinstance(credits_data, dict) else []
+    if not isinstance(crew_list, list):
+        crew_list = []
 
     for crew in crew_list:
-        department = crew.get("department", "")
+        if not isinstance(crew, dict):
+            continue
+        department = crew.get("department", "") if isinstance(crew.get("department"), str) else ""
 
         if is_aggregate:
-            jobs = crew.get("jobs", []) or []
+            raw_jobs = crew.get("jobs", [])
+            if isinstance(raw_jobs, list):
+                jobs = [job for job in raw_jobs if isinstance(job, dict)]
+            elif isinstance(raw_jobs, dict):
+                jobs = [raw_jobs]
+            else:
+                jobs = []
+
             if not jobs:
                 crew_entries.append(
                     {
                         "person_id": str(crew.get("id")),
-                        "name": crew.get("name", ""),
+                        "name": crew.get("name", "") if isinstance(crew.get("name"), str) else str(crew.get("name") or ""),
                         "image": get_profile_image_url(crew.get("profile_path")),
-                        "known_for_department": crew.get("known_for_department", ""),
+                        "known_for_department": crew.get("known_for_department", "") if isinstance(crew.get("known_for_department"), str) else "",
                         "gender": get_gender(crew.get("gender")),
                         "department": department,
                         "role": "",
-                        "order": crew.get("order"),
+                        "order": crew.get("order") if isinstance(crew.get("order"), (int, float)) else None,
                     },
                 )
                 continue
 
             seen_jobs = set()
             for job_data in jobs:
-                job_name = (job_data.get("job") or "").strip()
+                if not isinstance(job_data, dict):
+                    continue
+                job_name = (str(job_data.get("job") or "")).strip()
                 if not job_name or job_name.lower() in seen_jobs:
                     continue
                 seen_jobs.add(job_name.lower())
+                job_dept = job_data.get("department", "") if isinstance(job_data.get("department"), str) else ""
                 crew_entries.append(
                     {
                         "person_id": str(crew.get("id")),
-                        "name": crew.get("name", ""),
+                        "name": crew.get("name", "") if isinstance(crew.get("name"), str) else str(crew.get("name") or ""),
                         "image": get_profile_image_url(crew.get("profile_path")),
-                        "known_for_department": crew.get("known_for_department", ""),
+                        "known_for_department": crew.get("known_for_department", "") if isinstance(crew.get("known_for_department"), str) else "",
                         "gender": get_gender(crew.get("gender")),
-                        "department": department or job_data.get("department", ""),
+                        "department": department or job_dept,
                         "role": job_name,
-                        "order": crew.get("order"),
+                        "order": crew.get("order") if isinstance(crew.get("order"), (int, float)) else None,
                     },
                 )
             continue
@@ -1857,13 +2015,13 @@ def get_crew_credits(credits_data, is_aggregate=False):
         crew_entries.append(
             {
                 "person_id": str(crew.get("id")),
-                "name": crew.get("name", ""),
+                "name": crew.get("name", "") if isinstance(crew.get("name"), str) else str(crew.get("name") or ""),
                 "image": get_profile_image_url(crew.get("profile_path")),
-                "known_for_department": crew.get("known_for_department", ""),
+                "known_for_department": crew.get("known_for_department", "") if isinstance(crew.get("known_for_department"), str) else "",
                 "gender": get_gender(crew.get("gender")),
                 "department": department,
-                "role": crew.get("job", "") or "",
-                "order": crew.get("order"),
+                "role": crew.get("job", "") if isinstance(crew.get("job"), str) else str(crew.get("job") or ""),
+                "order": crew.get("order") if isinstance(crew.get("order"), (int, float)) else None,
             },
         )
 
@@ -2449,6 +2607,7 @@ def episode(media_id, season_number, episode_number, language=None):
             "season_title": season_metadata.get("season_title")
             or f"Season {season_number}",
             "episode_title": response.get("name") or f"Episode {episode_number}",
+            "synopsis": get_synopsis(response.get("overview")),
             "score": round(vote_average, 1) if vote_average else None,
             "score_count": vote_count or None,
             "cast": get_cast_credits({"cast": cast_rows}),

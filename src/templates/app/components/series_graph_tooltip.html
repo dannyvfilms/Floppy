@@ -1,25 +1,33 @@
 
 {% load i18n %}
 {% load humanize %}
+{% load static %}
+{% load app_tags %}
 {% comment %}
-Series graph tooltip — color-coded episode/season rating grid.
+Series graph modal — color-coded episode/season rating grid.
 
 Variables:
   graph_data  — dict with: seasons, episode_rows, row_label
-  provider_label — kept for include compat, unused here
+  provider_label — provider label used by the source link
+  source_url — provider media page URL
 {% endcomment %}
-<div x-show="graphOpen"
-     x-cloak
-     x-transition:enter="transition ease-out duration-150"
-     x-transition:enter-start="opacity-0 -translate-y-1"
-     x-transition:enter-end="opacity-100 translate-y-0"
-     x-transition:leave="transition ease-in duration-100"
-     x-transition:leave-start="opacity-100 translate-y-0"
-     x-transition:leave-end="opacity-0 -translate-y-1"
-     class="absolute left-0 top-full z-20 mt-2 rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm"
-     style="min-width: max-content;">
-
-  <div class="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">{% translate "Series Graph" %}</div>
+<template x-teleport="body">
+<div x-show="graphOpen" x-cloak @click.self="graphOpen = false" x-transition.opacity
+     class="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4">
+  <div role="dialog" aria-modal="true" aria-labelledby="series-graph-title-{{ provider_label|slugify }}"
+       class="max-h-[90dvh] w-full max-w-4xl overflow-auto rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)] p-4 shadow-2xl sm:p-6">
+    <div class="mb-4 flex items-center justify-between gap-3">
+      <h2 id="series-graph-title-{{ provider_label|slugify }}" class="text-lg font-semibold text-[var(--color-text)]">{% translate "Series Graph" %}</h2>
+      <div class="flex items-center gap-2">
+        {% if source_url %}
+          <a href="{{ source_url }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2 text-sm font-medium text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]">
+            {% if provider_label == "IMDb" %}<img src="{% static 'img/imdb-logo.png' %}" alt="" aria-hidden="true" class="h-4 w-4 object-contain">{% elif provider_label == "trakt" or provider_label == "Trakt" %}<img src="{% static 'img/trakt-logo.svg' %}" alt="" aria-hidden="true" class="h-4 w-4 object-contain">{% elif provider_label == "tmdb" or provider_label == "TMDB" %}<img src="{% static 'img/tmdb-logo.png' %}" alt="" aria-hidden="true" class="h-4 w-4 object-contain">{% endif %}
+            {{ provider_label|source_readable }}
+          </a>
+        {% endif %}
+        <button type="button" @click="graphOpen = false" aria-label="{% translate 'Close Series Graph' %}" class="rounded-lg p-2 text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]">{% include "app/icons/x.svg" with classes="h-5 w-5" %}</button>
+      </div>
+    </div>
 
   <div class="overflow-x-auto">
     {# CSS grid — column template built from season count so every row aligns perfectly #}
@@ -53,4 +61,6 @@ Variables:
 
     </div>
   </div>
+  </div>
 </div>
+</template>

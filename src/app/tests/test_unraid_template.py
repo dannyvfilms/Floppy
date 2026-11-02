@@ -1,7 +1,7 @@
 """Guard the Unraid template's sizing variables.
 
-Floppy sizes gunicorn from the host (``config.runtime_profile``), and README
-tells operators to remove fixed overrides. The template used to ship
+Floppy sizes gunicorn from the host (``config.runtime_profile``), and the deployment
+guide tells operators to remove fixed overrides. The template used to ship
 ``WEB_CONCURRENCY=2`` anyway, so every Unraid install was started with an
 explicit override that cost a second resident copy of the application.
 """

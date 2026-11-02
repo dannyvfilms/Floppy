@@ -7,6 +7,7 @@ import logging
 import re
 from datetime import UTC, datetime
 from difflib import SequenceMatcher
+from functools import partial
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
@@ -21,11 +22,19 @@ from app import helpers as app_helpers
 from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
-from integrations import import_progress
-from integrations.imports.helpers import MediaImportError, decrypt_or_raise
+from app.services.synced_status import keep_held_status
+from integrations import connection_health, import_progress
+from integrations.imports.helpers import (
+    MediaImportError,
+    decrypt_or_raise,
+    stamp_entry_source,
+)
 from integrations.models import KoreaderAccount, KoreaderDocumentLink
+from integrations.safe_fetch import send_to_self_hosted
 
 logger = logging.getLogger(__name__)
+
+ENTRY_SOURCE = "koreader"
 
 HTTP_BAD_REQUEST = 400
 HTTP_NOT_FOUND = 404
@@ -88,8 +97,8 @@ class KoreaderClient:
         return f"{self.server_url}/{path.lstrip('/')}"
 
     def _request(self, method: str, path: str, **kwargs):
-        response = requests.request(
-            method,
+        response = send_to_self_hosted(
+            partial(requests.request, method),
             self._url(path),
             headers=self._headers(),
             timeout=kwargs.pop("timeout", API_TIMEOUT),
@@ -318,15 +327,7 @@ class KoreaderImporter:
         return dict(imported_counts), "\n".join(dict.fromkeys(self.warnings))
 
     def _mark_broken(self, message: str):
-        self.account.connection_broken = True
-        self.account.last_error_message = message
-        self.account.save(
-            update_fields=[
-                "connection_broken",
-                "last_error_message",
-                "updated_at",
-            ],
-        )
+        connection_health.record_failure(self.account, message, auth=True)
 
     def _should_skip_finished_link(self, link: KoreaderDocumentLink) -> bool:
         if not self.account.skip_finished_books:
@@ -438,6 +439,20 @@ class KoreaderImporter:
             status = Status.IN_PROGRESS.value
             end_date = None
 
+        defaults = keep_held_status(
+            existing,
+            {
+                "progress": progress_value,
+                "status": status,
+                "start_date": start_date,
+                "end_date": end_date,
+            },
+            progress_time,
+        )
+        progress_value = defaults["progress"]
+        status = defaults["status"]
+        end_date = defaults["end_date"]
+
         if existing and self._book_progress_unchanged(
             existing,
             progress_value,
@@ -452,13 +467,9 @@ class KoreaderImporter:
         media, _created = app.models.Book.objects.update_or_create(
             user=self.user,
             item=item,
-            defaults={
-                "progress": progress_value,
-                "status": status,
-                "start_date": start_date,
-                "end_date": end_date,
-            },
+            defaults=defaults,
         )
+        stamp_entry_source(media, ENTRY_SOURCE)
         return media, existing is None
 
     def _resolve_number_of_pages(self, item):

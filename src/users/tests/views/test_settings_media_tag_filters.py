@@ -1,0 +1,73 @@
+"""Media type filters and the settings navigation."""
+
+from django.contrib.auth import get_user_model
+from django.test import SimpleTestCase, TestCase
+from django.urls import reverse
+
+from app.providers import credentials
+from users.media_tags import MEDIA_TAG_KEYS, MEDIA_TYPE_TAGS
+from users.templatetags.user_tags import media_tag_choices, media_tag_list
+
+
+class MediaTagHelperTests(SimpleTestCase):
+    def test_every_provider_has_valid_media_tags(self):
+        for spec in credentials.REGISTRY.values():
+            with self.subTest(provider=spec.slug):
+                self.assertTrue(spec.media_tags)
+                self.assertLessEqual(set(spec.media_tags), MEDIA_TAG_KEYS)
+
+    def test_every_media_type_maps_to_a_known_tag(self):
+        self.assertLessEqual(set(MEDIA_TYPE_TAGS.values()), MEDIA_TAG_KEYS)
+
+    def test_choices_keep_canonical_order_and_respect_the_limit(self):
+        keys = [choice["key"] for choice in media_tag_choices("music screen")]
+        self.assertEqual(keys, ["screen", "music"])
+        self.assertEqual(len(media_tag_choices()), len(MEDIA_TAG_KEYS))
+
+    def test_tag_list_drops_unknown_keys(self):
+        self.assertEqual(
+            str(media_tag_list(["games", "x'];alert(1)//"])),
+            "['games']",
+        )
+        self.assertEqual(str(media_tag_list(None)), "[]")
+
+
+class SettingsPageTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="member",
+            password="12345",
+        )
+        self.client.force_login(self.user)
+
+    def test_access_and_tokens_is_a_top_level_nav_item(self):
+        response = self.client.get(reverse("appearance"))
+        html = response.content.decode()
+        link = html[html.index(reverse("access_tokens")) :]
+        link = link[: link.index("</a>")]
+        self.assertIn("px-2 py-2", link)
+        self.assertNotIn("pl-10", link)
+
+    def test_provider_directory_combines_capability_and_media_filters(self):
+        response = self.client.get(reverse("providers"), {"capability": "metadata", "media": "game"})
+        self.assertContains(response, 'name="capability"')
+        self.assertContains(response, 'name="media"')
+        self.assertContains(response, "SteamGridDB")
+        self.assertNotContains(response, "Goodreads")
+
+    def test_provider_directory_offers_import_sources(self):
+        response = self.client.get(reverse("providers"), {"capability": "import"})
+        self.assertContains(response, "Playnite")
+        self.assertContains(response, "Pocket Casts")
+        self.assertNotContains(response, "SteamGridDB")
+
+    def test_navigation_uses_consolidated_destinations(self):
+        response = self.client.get(reverse("appearance"))
+        for route in ("providers", "provider_activity", "data_management", "access_tokens"):
+            self.assertContains(response, reverse(route))
+        self.assertNotContains(response, ">Connected Applications</span>")
+
+
+class ProviderTagCoverageTests(SimpleTestCase):
+    def test_tmdb_is_listed_under_anime_because_anime_can_use_it(self):
+        self.assertIn("anime_manga", credentials.REGISTRY["tmdb"].media_tags)

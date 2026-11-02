@@ -1065,3 +1065,62 @@ class DiscoverProfileTests(TestCase):
         animation_rank = top_genres.index("animation")
         if comedy_rank is not None:
             self.assertLess(animation_rank, comedy_rank)
+
+
+class CreditFeatureMapTests(TestCase):
+    """Credit maps keep their shape while reading rows as a stream."""
+
+    def setUp(self):
+        for target in (
+            "app.signals._handle_media_cache_change",
+            "app.signals._sync_owner_smart_lists_for_items",
+            "app.signals._schedule_credits_backfill_if_needed",
+            "app.models.Item.fetch_releases",
+        ):
+            patcher = patch(target)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_maps_dedupe_people_cap_lead_cast_and_share_name_strings(self):
+        from app.discover import profile, service_helpers
+
+        people = [
+            Person.objects.create(source_person_id=str(i), name=f"Person {i}")
+            for i in range(5)
+        ]
+        items = [
+            Item.objects.create(
+                media_id=str(i),
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title=f"Movie {i}",
+            )
+            for i in range(2)
+        ]
+        for item in items:
+            for order, person in enumerate(people):
+                ItemPersonCredit.objects.create(
+                    item=item,
+                    person=person,
+                    role_type=CreditRoleType.CAST.value,
+                    sort_order=order,
+                )
+            ItemPersonCredit.objects.create(
+                item=item,
+                person=people[4],
+                role_type=CreditRoleType.CREW.value,
+                role="Director",
+                department="Directing",
+                sort_order=0,
+            )
+        item_ids = [item.id for item in items]
+
+        for module in (profile, service_helpers):
+            people_map, directors_map, lead_cast_map = module._item_credit_feature_maps(
+                item_ids
+            )
+            first, second = item_ids
+            self.assertEqual(len(people_map[first]), 5)
+            self.assertEqual(directors_map[first], ["person 4"])
+            self.assertEqual(len(lead_cast_map[first]), 3)
+            self.assertIs(lead_cast_map[first][0], lead_cast_map[second][0])

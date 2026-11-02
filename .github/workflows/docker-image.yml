@@ -17,6 +17,7 @@ on:
   pull_request:
     branches:
       - "latest"
+      - "release"
 
 # A push to latest must not be overtaken by an older build that started later
 # because runners were queued. Keep one publish per ref in flight and let the
@@ -26,12 +27,24 @@ concurrency:
   group: docker-image-${{ github.ref }}
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: dannyvfilms/floppy
   LEGACY_IMAGE_NAME: dannyvfilms/yamtrack
 
 jobs:
+  quality:
+    name: Release quality gates
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/app-tests.yml
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+
   test:
     name: Smoke built image
     runs-on: ubuntu-latest
@@ -48,13 +61,15 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Setup Docker buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Build test image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           load: true
@@ -197,18 +212,23 @@ jobs:
           docker volume rm "$SMOKE_VOLUME" 2>/dev/null || true
 
   build:
-    needs: test
+    needs: [test, quality]
     runs-on: ubuntu-latest
-    if: github.actor != 'dependabot[bot]'
+    if: >-
+      ${{ !cancelled() &&
+      (github.event_name == 'pull_request' || github.actor != 'dependabot[bot]') &&
+      needs.test.result == 'success' &&
+      (needs.quality.result == 'success' ||
+       (github.event_name == 'pull_request' && needs.quality.result == 'skipped')) }}
     permissions:
       contents: read
       packages: write
-      id-token: write
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          persist-credentials: false
           fetch-depth: 0 # This ensures all tags are fetched for git describe
 
       - name: Get version from git
@@ -219,14 +239,14 @@ jobs:
           echo "Using version: $VERSION"
 
       - name: Setup Docker buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
 
       - name: Extract Docker metadata tags
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           # Dual-publish during the rename grace period: the legacy path keeps
           # receiving identical tags so pre-rename deployments still get
@@ -249,7 +269,7 @@ jobs:
       # push to latest/release and on v* tags only.
       - name: Log into registry ${{ env.REGISTRY }}
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ${{ env.REGISTRY }}
           # The one-time bootstrap is needed because floppy was created by a
@@ -260,7 +280,7 @@ jobs:
 
       - name: Build and push Docker image
         id: build-and-push
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
@@ -268,8 +288,125 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: false
+          provenance: ${{ github.event_name != 'pull_request' && 'mode=max' || 'false' }}
+          sbom: ${{ github.event_name != 'pull_request' }}
           platforms: linux/amd64,linux/arm64
           build-args: |
             VERSION=${{ steps.get-version.outputs.VERSION }}
             COMMIT_SHA=${{ github.sha }}
+
+    outputs:
+      digest: ${{ steps.build-and-push.outputs.digest }}
+      tags: ${{ steps.meta.outputs.tags }}
+
+  # Verifies what was actually distributed, by immutable digest, in both package
+  # namespaces. Read-only registry access; any scanner, registry or attestation
+  # failure fails the job, so an outage can never look like a clean scan.
+  verify-image:
+    name: Verify distributed image
+    needs: [build]
+    if: ${{ github.event_name != 'pull_request' && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    env:
+      DIGEST: ${{ needs.build.outputs.digest }}
+      TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db
+      TRIVY_MAX_DB_AGE_HOURS: "48"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Docker buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Log into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify attestation subjects match platform digests
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$DIGEST"
+          for image in "$REGISTRY/$IMAGE_NAME" "$REGISTRY/$LEGACY_IMAGE_NAME"; do
+            python3 scripts/verify_image_attestations.py "$image" "$DIGEST"
+          done
+
+      - name: Scan distributed images
+        run: |
+          set -euo pipefail
+          # Policy lives in .trivyignore.yaml (reviewed exceptions only).
+          # --exit-code 1 fails on HIGH/CRITICAL with an available fix; scanner
+          # or DB errors also exit nonzero.
+          for image in "$REGISTRY/$IMAGE_NAME" "$REGISTRY/$LEGACY_IMAGE_NAME"; do
+            for platform in linux/amd64 linux/arm64; do
+              echo "::group::$image $platform"
+              docker run --rm \
+                -v "$HOME/.docker/config.json:/root/.docker/config.json:ro" \
+                -v trivy-cache:/root/.cache \
+                -v "$GITHUB_WORKSPACE/.trivyignore.yaml:/.trivyignore.yaml:ro" \
+                -e TRIVY_DB_REPOSITORY \
+                ghcr.io/aquasecurity/trivy:0.76.1 image \
+                  --platform "$platform" \
+                  --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+                  --ignorefile /.trivyignore.yaml \
+                  "$image@$DIGEST"
+              echo "::endgroup::"
+            done
+          done
+
+      - name: Check scanner database freshness
+        run: |
+          set -euo pipefail
+          meta=$(docker run --rm -v trivy-cache:/root/.cache ghcr.io/aquasecurity/trivy:0.76.1 \
+            version --format json)
+          python3 - "$meta" "$TRIVY_MAX_DB_AGE_HOURS" <<'PY'
+          import datetime, json, sys
+          db = json.loads(sys.argv[1])["VulnerabilityDB"]
+          age = datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.fromisoformat(
+              db["UpdatedAt"].replace("Z", "+00:00"))
+          assert age.total_seconds() < int(sys.argv[2]) * 3600, f"scanner DB stale: {age}"
+          print("scanner DB age:", age)
+          PY
+
+  # A failed tag build publishes nothing, and the failure sits unseen in the
+  # Actions tab until a user notices the missing image (#1227, #1445). Open an
+  # issue so it is tracked and visible.
+  report-release-failure:
+    name: Report failed release build
+    needs: [test, quality, build]
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && (needs.test.result == 'failure' || needs.quality.result == 'failure' || needs.build.result == 'failure') }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open an issue for the failed tag build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # A rerun of the same failed tag must not file a second issue.
+          title="[BUG] No container image was published for release $TAG"
+          existing=$(gh issue list --state open --search "\"$title\" in:title" --json number,title --jq "map(select(.title == \"$title\")) | .[0].number // empty")
+          if [ -n "$existing" ]; then
+            echo "Issue #$existing already reports this tag"
+            exit 0
+          fi
+          gh issue create \
+            --label bug \
+            --title "$title" \
+            --body "The Docker Image workflow failed for tag \`$TAG\`, so no image was published for it: $RUN_URL
+
+          Open the failed job for the cause. A tag cannot be rebuilt once fixed, so publish a new release tag from a green \`latest\`."

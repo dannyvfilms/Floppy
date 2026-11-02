@@ -133,7 +133,7 @@
     {% if credited_titles %}
       <div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
         {% for entry in credited_titles %}
-          {% include "app/components/person_filmography_card.html" with entry=entry source=source user=user IMG_NONE=IMG_NONE show_watched_runtime_chip=False only %}
+          {% media_card "credit" item=entry.card_item media=entry.media title=entry.title card_media_type=entry.media_type credit=entry %}
         {% endfor %}
       </div>
     {% else %}

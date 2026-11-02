@@ -38,6 +38,7 @@ def record_song_play(user, album, track=None, recording_id=None, end_date=None):
 
     if existing_music:
         existing_music.end_date = completed_at
+        existing_music.status = Status.COMPLETED.value
         existing_music.save()
 
         if (

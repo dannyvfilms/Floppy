@@ -5,6 +5,7 @@ from django.utils import timezone
 
 from app import providers
 from app.models import TV, Item, MediaTypes, Movie, Sources, Status
+from integrations.imports import helpers as import_helpers
 
 logger = logging.getLogger(__name__)
 
@@ -148,29 +149,39 @@ class SeerrWebhookProcessor:
         title = metadata.get("title") or f"TMDB {tmdb_id}"
         image = metadata.get("image") or "https://example.com/placeholder.jpg"
 
-        try:
-            item, created = Item.objects.get_or_create(
-                media_id=str(tmdb_id),
-                source=Sources.TMDB.value,
-                media_type=media_type,
-                defaults={"title": title, "image": image},
-            )
-        except IntegrityError as exc:
-            logger.warning(
-                "Seerr: Item create race for %s/%s: %s",
-                media_type,
-                tmdb_id,
-                exc,
-            )
+        # Item uniqueness includes `library_media_type`, so a plain
+        # get_or_create on (media_id, source, media_type) raises
+        # MultipleObjectsReturned as soon as this show exists in two buckets
+        # (e.g. tv + season). Reuse any existing row across buckets first.
+        item = import_helpers.find_item_across_buckets(
+            media_id=str(tmdb_id),
+            source=Sources.TMDB.value,
+            media_type=media_type,
+        )
+        created = False
+        if item is None:
             try:
-                item = Item.objects.get(
+                item, created = Item.objects.get_or_create(
+                    media_id=str(tmdb_id),
+                    source=Sources.TMDB.value,
+                    media_type=media_type,
+                    defaults={"title": title, "image": image},
+                )
+            except IntegrityError as exc:
+                logger.warning(
+                    "Seerr: Item create race for %s/%s: %s",
+                    media_type,
+                    tmdb_id,
+                    exc,
+                )
+                item = import_helpers.find_item_across_buckets(
                     media_id=str(tmdb_id),
                     source=Sources.TMDB.value,
                     media_type=media_type,
                 )
-            except Item.DoesNotExist:
-                return None
-            created = False
+                if item is None:
+                    return None
+                created = False
 
         updates = []
         if not item.title and title:
@@ -191,7 +202,7 @@ class SeerrWebhookProcessor:
         return item
 
     def _get_or_create_user_media(self, user, item, media_type, desired_status):
-        defaults = {"status": desired_status}
+        defaults = {"status": desired_status, "entry_source": "jellyseerr"}
 
         model = Movie if media_type == MediaTypes.MOVIE.value else TV
         model_fields = {field.name for field in model._meta.fields}

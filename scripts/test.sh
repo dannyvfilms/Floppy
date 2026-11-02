@@ -5,12 +5,27 @@
 # Usage:
 #   scripts/test.sh                       Fast suite (default; use this)
 #   scripts/test.sh <label> [...]         Targeted run, e.g. app.tests.test_query_counts
+#                                         (skips @tag("network"); run those with
+#                                         --network <label>)
 #   scripts/test.sh --full                Full suite incl. slow tests (20+ min,
 #                                         needs `playwright install`)
 #   scripts/test.sh --slow                Only @tag("slow") tests
 #   scripts/test.sh --network             Only @tag("network") tests (needs API
 #                                         keys and internet; excluded by default
 #                                         because they are slow and flaky)
+#   scripts/test.sh --affected            Tests that executed the changed lines,
+#                                         from .floppy/affected.coverage when
+#                                         that map exists. Otherwise the import
+#                                         walk. The fast suite for templates,
+#                                         static, the lockfile, settings, and
+#                                         the runner.
+#   scripts/test.sh --affected --include-slow
+#                                         Same selection. A full fallback keeps
+#                                         @tag("slow"), matching CI.
+#   scripts/test.sh --affected-record     Record the map: the CI suite (slow
+#                                         included, network excluded) under
+#                                         coverage, written to
+#                                         .floppy/affected.coverage.
 #
 # Extra manage.py test flags (e.g. -v 2, --failfast) pass through after the mode.
 set -euo pipefail
@@ -60,11 +75,79 @@ case "${1:-}" in
     exec env FLOPPY_TEST_ALLOW_NETWORK=1 \
       "${RUNNER[@]}" src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@" --tag network
     ;;
+  --affected-record)
+    shift
+    mkdir -p .floppy
+    rm -f .coverage .coverage.* .floppy/affected.coverage
+    # A failing test still executed lines. Keep the map, then propagate the
+    # suite's exit status.
+    set +e
+    env COVERAGE_CORE=ctrace "${RUNNER[@]}" -m coverage run \
+      src/manage.py test "${APPS[@]}" --parallel "$@" --exclude-tag network
+    status=$?
+    set -e
+    uv run --no-sync coverage combine
+    cp .coverage .floppy/affected.coverage
+    echo "[test.sh] wrote .floppy/affected.coverage" >&2
+    exit "$status"
+    ;;
+  --affected)
+    shift
+    include_slow=0
+    if [ "${1:-}" = "--include-slow" ]; then
+      include_slow=1
+      shift
+    fi
+    # Run the file, not `python -m config.affected_tests`. Importing the
+    # config package executes config/__init__.py, which boots Celery.
+    selection="$(PYTHONPATH=src "${RUNNER[@]}" src/config/affected_tests.py)"
+    mode="${selection%%$'\n'*}"
+    case "$mode" in
+      none)
+        exit 0
+        ;;
+      full)
+        if [ "$include_slow" -eq 1 ]; then
+          exec "${RUNNER[@]}" src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@" \
+            --exclude-tag network
+        fi
+        exec "${RUNNER[@]}" src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@" \
+          --exclude-tag slow --exclude-tag network
+        ;;
+      labels)
+        labels=()
+        rest="${selection#*$'\n'}"
+        if [ "$rest" = "$selection" ]; then
+          rest=""
+        fi
+        while IFS= read -r line; do
+          if [ -n "$line" ]; then
+            labels+=("$line")
+          fi
+        done <<EOF
+$rest
+EOF
+        if [ "${#labels[@]}" -eq 0 ]; then
+          echo "[test.sh] --affected produced no labels" >&2
+          exit 0
+        fi
+        exec "${RUNNER[@]}" src/manage.py test "${COMMON[@]}" "${labels[@]}" "$@" \
+          --exclude-tag network
+        ;;
+      *)
+        echo "[test.sh] --affected: unexpected selector output" >&2
+        exit 1
+        ;;
+    esac
+    ;;
   "")
     exec "${RUNNER[@]}" src/manage.py test "${APPS[@]}" "${COMMON[@]}" \
       --exclude-tag slow --exclude-tag network
     ;;
   *)
-    exec "${RUNNER[@]}" src/manage.py test "${COMMON[@]}" "$@"
+    # Network tests cannot pass here: the offline guard is installed unless
+    # FLOPPY_TEST_ALLOW_NETWORK is set, so a targeted run of a module holding
+    # them failed for reasons unrelated to the change. Use --network <label>.
+    exec "${RUNNER[@]}" src/manage.py test "${COMMON[@]}" "$@" --exclude-tag network
     ;;
 esac

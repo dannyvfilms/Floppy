@@ -3,19 +3,30 @@
 {% load app_tags user_tags widget_tweaks %}
 
 <div class="space-y-6">
-  {% if match_item and media_type == MediaTypes.MOVIE.value or match_item and media_type == MediaTypes.TV.value or media_type == MediaTypes.TV.value and current_instance %}
+  {% if match_item and media_type == MediaTypes.MOVIE.value or match_item and media_type == MediaTypes.TV.value or media_type == MediaTypes.TV.value and current_instance or tv_provider_switch_target %}
     <section class="space-y-3">
       <div>
         <h3 class="text-xl font-semibold text-[var(--color-text)]">{% translate "Match & Ordering" %}</h3>
         <p class="text-sm text-[var(--color-text-muted)] mt-1">
           {% translate "Correct which title this entry is matched to, or change how its episodes are ordered." %}
         </p>
+        {% if media_type == MediaTypes.TV.value and current_instance and current_instance.active_episode_order %}
+          <p class="text-sm text-[var(--color-text-secondary)] mt-1">
+            {% translate "Episode order:" %} <span class="font-semibold">{{ current_instance.active_episode_order.label }}</span>
+          </p>
+        {% endif %}
       </div>
       <div class="flex flex-wrap gap-2">
         {% if match_item and media_type == MediaTypes.MOVIE.value or match_item and media_type == MediaTypes.TV.value %}
           <a href="{% url 'match_fix' match_item.id %}"
              class="inline-flex items-center rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-4 py-2 text-sm text-[var(--color-text)] shadow-sm transition-colors hover:bg-[var(--color-surface-muted)]">
             {% translate "Fix match" %}
+          </a>
+        {% endif %}
+        {% if tv_provider_switch_target %}
+          <a href="{% url 'switch_tv_provider' match_item.id %}"
+             class="inline-flex items-center rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-4 py-2 text-sm text-[var(--color-text)] shadow-sm transition-colors hover:bg-[var(--color-surface-muted)]">
+            {% if tv_provider_switch_target == "tvdb" %}{% translate "Move tracking to TVDB" %}{% else %}{% translate "Move tracking to TMDB" %}{% endif %}
           </a>
         {% endif %}
         {% if media_type == MediaTypes.TV.value and current_instance %}
@@ -236,7 +247,7 @@
           <p class="text-xs font-medium text-[var(--color-text-muted)] mb-1">{% translate "Selected edition" %}</p>
           <div class="flex items-center gap-3 px-3 py-2 text-sm bg-[var(--color-surface)] rounded-md border border-gray-600">
             {% if hardcover_selected_edition.image %}
-              <img src="{{ hardcover_selected_edition.image|image_url }}" alt="" loading="lazy" class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
+              <img data-media-artwork decoding="sync" src="{{ hardcover_selected_edition.image|image_url }}" alt="" loading="lazy" class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
             {% else %}
               <span class="flex items-center justify-center w-8 h-10 text-gray-600 rounded bg-[var(--color-surface-alt)] shrink-0">
                 {% include "app/icons/magnifying-glass.svg" with classes="w-4 h-4" %}
@@ -287,7 +298,7 @@
           <p class="text-xs font-medium text-[var(--color-text-muted)] mb-1">{% translate "Selected release" %}</p>
           <div class="flex items-start gap-3 px-3 py-2 text-sm bg-[var(--color-surface)] rounded-md border border-gray-600">
             {% if selected_music_release.image %}
-              <img src="{{ selected_music_release.image|image_url }}" alt="" loading="lazy" class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
+              <img data-media-artwork decoding="sync" src="{{ selected_music_release.image|image_url }}" alt="" loading="lazy" class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
             {% else %}
               <span class="flex items-center justify-center w-8 h-10 text-gray-600 rounded bg-[var(--color-surface-alt)] shrink-0">
                 {% include "app/icons/magnifying-glass.svg" with classes="w-4 h-4" %}
@@ -330,6 +341,10 @@
         <div id="music-release-results" x-show="releaseOpen" x-cloak></div>
       </div>
     </section>
+  {% endif %}
+
+  {% if can_change_cover %}
+    {% include "app/components/cover_change_section.html" %}
   {% endif %}
 
   {% if manual_metadata_form %}
@@ -396,7 +411,7 @@
     </section>
   {% endif %}
 
-  {% if image_field and not manual_metadata_form %}
+  {% if image_field and not manual_metadata_form and not can_change_cover %}
     <section class="space-y-3"
              x-data="{ imageUrl: '{{ image_field.value|default_if_none:''|escapejs }}' }">
       <label class="block text-sm font-medium text-[var(--color-text-secondary)]"

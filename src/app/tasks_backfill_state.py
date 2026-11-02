@@ -7,6 +7,7 @@ import logging
 from collections import defaultdict
 from datetime import timedelta
 
+import requests
 from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
@@ -27,6 +28,14 @@ BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 
 METADATA_BACKFILL_BASE_DELAY_SECONDS = 60 * 60  # 1 hour
 METADATA_BACKFILL_MAX_DELAY_SECONDS = 60 * 60 * 24  # 1 day
 METADATA_BACKFILL_MAX_ATTEMPTS = 6
+# "The provider answered and has nothing" (no runtime, no release date) does not
+# change within hours, so retrying it on the first rungs of the ladder (1 h, 2 h,
+# 4 h ...) only repeats the same empty answer.
+METADATA_BACKFILL_EMPTY_ANSWER_DELAY_SECONDS = 60 * 60 * 24  # 1 day
+# A pending item never gives up (its data may appear months later), so its
+# backoff keeps growing past the failure ladder's one-day cap. Without this, a
+# season TMDB has no air date for was fetched again every day, indefinitely.
+METADATA_BACKFILL_PENDING_MAX_DELAY_SECONDS = 60 * 60 * 24 * 14  # 2 weeks
 GENRE_BACKFILL_VERSION = 4
 # Bumped when MAL anime became eligible for TMDB watch-provider enrichment.
 WATCH_PROVIDERS_BACKFILL_VERSION = 3
@@ -67,6 +76,15 @@ def is_terminal_backfill_error(exc: BaseException) -> bool:
     including an unconfigured provider, and any exception this code did not
     anticipate - stays retryable, because the cost of wrongly retrying is one
     request and the cost of wrongly retiring is silent permanent data loss.
+
+    Production evidence (2026-09-20): passes were still reporting 149 failures
+    out of 150 every fifteen minutes. ``services.api_request`` deliberately
+    re-raises a bare ``requests.exceptions.HTTPError`` for any 4xx it does not
+    retry, leaving each provider to wrap it in ``handle_error``; musicbrainz,
+    trakt and tvmaze never did. So a MusicBrainz 404 arrived here as a raw
+    ``HTTPError``, matched neither branch, and was retried forever. The status
+    set is the same either way - this makes the unwrapped path behave like the
+    wrapped one rather than making anything newly terminal.
     """
     from app.providers.services import ProviderAPIError
 
@@ -76,6 +94,13 @@ def is_terminal_backfill_error(exc: BaseException) -> bool:
         # ProviderNotConfiguredError carries no response, so status_code is
         # None and it correctly lands here as transient.
         return exc.status_code in TERMINAL_PROVIDER_STATUS_CODES
+    if isinstance(exc, requests.exceptions.HTTPError):
+        # Matched on the concrete type, not on "has a .response": any
+        # exception can carry that attribute, and retiring an item on a
+        # duck-typed match is the silent data loss this function exists to
+        # avoid. A response-less HTTPError has no status and stays retryable.
+        status_code = getattr(exc.response, "status_code", None)
+        return status_code in TERMINAL_PROVIDER_STATUS_CODES
     return False
 
 
@@ -111,11 +136,16 @@ def _apply_backfill_state_filters(
     return queryset.exclude(id__in=blocked)
 
 
-def _backfill_delay_seconds(fail_count: int) -> int:
+def _backfill_delay_seconds(
+    fail_count: int,
+    max_delay_seconds: int = METADATA_BACKFILL_MAX_DELAY_SECONDS,
+) -> int:
     if fail_count <= 0:
         return METADATA_BACKFILL_BASE_DELAY_SECONDS
-    delay = METADATA_BACKFILL_BASE_DELAY_SECONDS * (2 ** (fail_count - 1))
-    return min(delay, METADATA_BACKFILL_MAX_DELAY_SECONDS)
+    # Clamp the exponent first: fail_count runs to 9999 for a pending item, and
+    # 2 ** 9998 is a very large integer to build only to throw away.
+    delay = METADATA_BACKFILL_BASE_DELAY_SECONDS * (2 ** min(fail_count - 1, 30))
+    return min(delay, max_delay_seconds)
 
 
 def _record_backfill_failure(
@@ -125,11 +155,18 @@ def _record_backfill_failure(
     *,
     terminal: bool = False,
     strategy_version: int | None = None,
+    min_delay_seconds: int | None = None,
 ) -> bool:
+    """Record a failed attempt; return True when the item is now given up on.
+
+    ``min_delay_seconds`` is a floor under the backoff, for a caller whose
+    "failure" is a provider answering with nothing rather than an error.
+    """
     now = timezone.now()
     state, _ = MetadataBackfillState.objects.get_or_create(item=item, field=field)
     state.fail_count = min(state.fail_count + 1, 9999)
     state.last_attempt_at = now
+    state.terminal = terminal
     if error_message:
         state.last_error = str(error_message)[:500]
     if terminal:
@@ -141,15 +178,17 @@ def _record_backfill_failure(
         state.next_retry_at = None
     else:
         state.give_up = False
-        state.next_retry_at = now + timedelta(
-            seconds=_backfill_delay_seconds(state.fail_count)
-        )
+        delay_seconds = _backfill_delay_seconds(state.fail_count)
+        if min_delay_seconds is not None:
+            delay_seconds = max(delay_seconds, int(min_delay_seconds))
+        state.next_retry_at = now + timedelta(seconds=delay_seconds)
     update_fields = [
         "fail_count",
         "last_attempt_at",
         "next_retry_at",
         "last_error",
         "give_up",
+        "terminal",
     ]
     if strategy_version is not None:
         state.strategy_version = int(strategy_version)
@@ -165,7 +204,10 @@ def _record_backfill_failure(
             bool(error_message or state.last_error),
         )
     else:
-        logger.info(
+        # DEBUG: one line per item per rung of the ladder was ~4,000 lines in two
+        # days on one install. Giving up (above) stays a warning, and each task
+        # logs how many items failed in its own summary line.
+        logger.debug(
             "metadata_backfill_retry_later item_id=%s media_type=%s field=%s fail_count=%s next_retry_at=%s has_reason=%s",
             item.id,
             item.media_type,
@@ -205,7 +247,10 @@ def _record_backfill_pending(
     state.last_attempt_at = now
     state.last_success_at = None
     state.give_up = False
-    delay_seconds = _backfill_delay_seconds(state.fail_count)
+    state.terminal = False
+    delay_seconds = _backfill_delay_seconds(
+        state.fail_count, METADATA_BACKFILL_PENDING_MAX_DELAY_SECONDS
+    )
     if min_delay_seconds is not None:
         delay_seconds = max(delay_seconds, int(min_delay_seconds))
     state.next_retry_at = now + timedelta(seconds=delay_seconds)
@@ -218,12 +263,13 @@ def _record_backfill_pending(
         "last_success_at",
         "last_error",
         "give_up",
+        "terminal",
     ]
     if strategy_version is not None:
         state.strategy_version = int(strategy_version)
         update_fields.append("strategy_version")
     state.save(update_fields=update_fields)
-    logger.info(
+    logger.debug(
         "metadata_backfill_pending item_id=%s media_type=%s field=%s fail_count=%s next_retry_at=%s has_reason=%s",
         item.id,
         item.media_type,
@@ -247,6 +293,7 @@ def _record_backfill_success(
     state.last_success_at = now
     state.last_error = ""
     state.give_up = False
+    state.terminal = False
     update_fields = [
         "fail_count",
         "last_attempt_at",
@@ -254,6 +301,7 @@ def _record_backfill_success(
         "last_success_at",
         "last_error",
         "give_up",
+        "terminal",
     ]
     if strategy_version is not None:
         state.strategy_version = int(strategy_version)
@@ -272,6 +320,7 @@ def _reset_genre_backfill_state(item: Item) -> None:
         next_retry_at=None,
         last_success_at=None,
         last_error="",
+        terminal=False,
     )
 
 
@@ -291,6 +340,7 @@ def reset_backfill_state_for_identity_change(items) -> None:
         next_retry_at=None,
         last_success_at=None,
         last_error="",
+        terminal=False,
     )
 
 
@@ -334,7 +384,21 @@ def _add_user_day_key(user_day_keys, user_id, day_key):
     user_day_keys[user_id].add(day_key)
 
 
+_DAY_KEY_QUERY_CHUNK = 500
+
+
+def _chunked_ids(ids):
+    ids = list(ids)
+    for start in range(0, len(ids), _DAY_KEY_QUERY_CHUNK):
+        yield ids[start : start + _DAY_KEY_QUERY_CHUNK]
+
+
 def _collect_backfill_day_keys(items, field: str):
+    """Return ``{user_id: {day_key}}`` for the days a batch of items touches.
+
+    One query per model for the whole batch, not one per item: the keys are
+    unioned per user, so which item a row came from does not matter.
+    """
     from app.models import (
         Anime,
         Book,
@@ -349,31 +413,13 @@ def _collect_backfill_day_keys(items, field: str):
     if not items:
         return user_day_keys
 
+    item_ids_by_type = defaultdict(list)
     for item in items:
-        if item.media_type == MediaTypes.MOVIE.value:
-            rows = Movie.objects.filter(item_id=item.id).values(
-                "user_id",
-                "start_date",
-                "end_date",
-                "created_at",
-            )
-            for row in rows:
-                activity_dt = (
-                    row.get("end_date")
-                    or row.get("start_date")
-                    or row.get("created_at")
-                )
-                _add_user_day_key(
-                    user_day_keys,
-                    row.get("user_id"),
-                    history_cache.history_day_key(activity_dt),
-                )
-            continue
+        item_ids_by_type[item.media_type].append(item.id)
 
-        if item.media_type == MediaTypes.ANIME.value:
-            if field == MetadataBackfillField.GENRES:
-                continue
-            rows = Anime.objects.filter(item_id=item.id).values(
+    def add_activity_rows(model, item_ids, *, expand_runtime_range=False):
+        for chunk in _chunked_ids(item_ids):
+            rows = model.objects.filter(item_id__in=chunk).values(
                 "user_id",
                 "start_date",
                 "end_date",
@@ -381,7 +427,7 @@ def _collect_backfill_day_keys(items, field: str):
             )
             for row in rows:
                 if (
-                    field == MetadataBackfillField.RUNTIME
+                    expand_runtime_range
                     and row.get("start_date")
                     and row.get("end_date")
                 ):
@@ -402,95 +448,11 @@ def _collect_backfill_day_keys(items, field: str):
                     row.get("user_id"),
                     history_cache.history_day_key(activity_dt),
                 )
-            continue
 
-        if item.media_type == MediaTypes.GAME.value:
-            rows = Game.objects.filter(item_id=item.id).values(
-                "user_id",
-                "start_date",
-                "end_date",
-                "created_at",
-            )
-            for row in rows:
-                activity_dt = (
-                    row.get("end_date")
-                    or row.get("start_date")
-                    or row.get("created_at")
-                )
-                _add_user_day_key(
-                    user_day_keys,
-                    row.get("user_id"),
-                    history_cache.history_day_key(activity_dt),
-                )
-            continue
-
-        if item.media_type in (
-            MediaTypes.BOOK.value,
-            MediaTypes.COMIC.value,
-            MediaTypes.MANGA.value,
-        ):
-            reading_models = {
-                MediaTypes.BOOK.value: Book,
-                MediaTypes.COMIC.value: Comic,
-                MediaTypes.MANGA.value: Manga,
-            }
-            model = reading_models[item.media_type]
-            rows = model.objects.filter(item_id=item.id).values(
-                "user_id",
-                "start_date",
-                "end_date",
-                "created_at",
-            )
-            for row in rows:
-                activity_dt = (
-                    row.get("end_date")
-                    or row.get("start_date")
-                    or row.get("created_at")
-                )
-                _add_user_day_key(
-                    user_day_keys,
-                    row.get("user_id"),
-                    history_cache.history_day_key(activity_dt),
-                )
-            continue
-
-        if item.media_type == MediaTypes.TV.value and field in (
-            MetadataBackfillField.GENRES,
-            MetadataBackfillField.CREDITS,
-        ):
-            rows = Episode.objects.filter(
-                related_season__related_tv__item_id=item.id,
-            ).values("related_season__user_id", "end_date")
-            for row in rows:
-                _add_user_day_key(
-                    user_day_keys,
-                    row.get("related_season__user_id"),
-                    history_cache.history_day_key(row.get("end_date")),
-                )
-            continue
-
-        if (
-            item.media_type == MediaTypes.SEASON.value
-            and field == MetadataBackfillField.CREDITS
-        ):
-            rows = Episode.objects.filter(
-                related_season__item_id=item.id,
-            ).values("related_season__user_id", "end_date")
-            for row in rows:
-                _add_user_day_key(
-                    user_day_keys,
-                    row.get("related_season__user_id"),
-                    history_cache.history_day_key(row.get("end_date")),
-                )
-            continue
-
-        if (
-            item.media_type == MediaTypes.EPISODE.value
-            and field == MetadataBackfillField.RUNTIME
-        ):
-            rows = Episode.objects.filter(item_id=item.id).values(
-                "related_season__user_id",
-                "end_date",
+    def add_episode_rows(lookup, item_ids):
+        for chunk in _chunked_ids(item_ids):
+            rows = Episode.objects.filter(**{f"{lookup}__in": chunk}).values(
+                "related_season__user_id", "end_date"
             )
             for row in rows:
                 _add_user_day_key(
@@ -498,6 +460,48 @@ def _collect_backfill_day_keys(items, field: str):
                     row.get("related_season__user_id"),
                     history_cache.history_day_key(row.get("end_date")),
                 )
+
+    for media_type, model in (
+        (MediaTypes.MOVIE.value, Movie),
+        (MediaTypes.GAME.value, Game),
+        (MediaTypes.BOOK.value, Book),
+        (MediaTypes.COMIC.value, Comic),
+        (MediaTypes.MANGA.value, Manga),
+    ):
+        if item_ids_by_type.get(media_type):
+            add_activity_rows(model, item_ids_by_type[media_type])
+
+    if item_ids_by_type.get(MediaTypes.ANIME.value) and (
+        field != MetadataBackfillField.GENRES
+    ):
+        add_activity_rows(
+            Anime,
+            item_ids_by_type[MediaTypes.ANIME.value],
+            expand_runtime_range=field == MetadataBackfillField.RUNTIME,
+        )
+
+    if item_ids_by_type.get(MediaTypes.TV.value) and field in (
+        MetadataBackfillField.GENRES,
+        MetadataBackfillField.CREDITS,
+    ):
+        add_episode_rows(
+            "related_season__related_tv__item_id",
+            item_ids_by_type[MediaTypes.TV.value],
+        )
+
+    if (
+        item_ids_by_type.get(MediaTypes.SEASON.value)
+        and field == MetadataBackfillField.CREDITS
+    ):
+        add_episode_rows(
+            "related_season__item_id", item_ids_by_type[MediaTypes.SEASON.value]
+        )
+
+    if (
+        item_ids_by_type.get(MediaTypes.EPISODE.value)
+        and field == MetadataBackfillField.RUNTIME
+    ):
+        add_episode_rows("item_id", item_ids_by_type[MediaTypes.EPISODE.value])
 
     return user_day_keys
 
@@ -511,15 +515,27 @@ def _schedule_metadata_statistics_refresh(items, field: str, reason: str):
     for user_id, day_keys in user_day_keys.items():
         if not day_keys:
             continue
-        statistics_cache.mark_metadata_refreshing(user_id, reason=reason)
-        statistics_cache.invalidate_statistics_days(user_id, day_keys, reason=reason)
-        statistics_cache.schedule_all_ranges_refresh(
-            user_id,
-            debounce_seconds=10,
-            countdown=3,
-            preferred_priority=BACKGROUND_TASK_PRIORITY,
-            all_time_priority=BACKGROUND_TASK_PRIORITY,
-        )
+        if field == MetadataBackfillField.CREDITS:
+            # Day payloads carry no credits (talent is aggregated per range
+            # from the database), so re-aggregating is enough. Rebuilding the
+            # days turned every backfill batch into hundreds of day builds.
+            # Coalesced: a backfill batch lands about every minute, and
+            # marking each one kept the Statistics sync running back to back
+            # against the same SQLite writer (#1706).
+            from app import statistics_sync
+
+            if not statistics_sync.request_credits_statistics_refresh(user_id):
+                logger.debug(
+                    "metadata_refresh_coalesced user_id=%s field=%s reason=%s",
+                    user_id,
+                    field,
+                    reason,
+                )
+                continue
+        else:
+            statistics_cache.invalidate_statistics_days(
+                user_id, day_keys, reason=reason
+            )
         logger.info(
             "metadata_refresh_scheduled user_id=%s field=%s days=%s reason=%s",
             user_id,

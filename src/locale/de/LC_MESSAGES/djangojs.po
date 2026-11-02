@@ -344,7 +344,7 @@ msgstr[1] "%s Schlagwörter"
 #: inline_translation_extraction/templates/users/integrations.html.js:11
 #: static/js/statistics-charts.js:30
 msgid "In progress"
-msgstr "In Bearbeitung"
+msgstr "Laufend"
 
 #: inline_translation_extraction/templates/users/import_data.html.js:2
 msgid "All Sources"
@@ -1431,3 +1431,89 @@ msgstr "Gesamt"
 #: static/js/statistics-charts.js:1888
 msgid "of titles"
 msgstr "der Titel"
+
+#: static/js/libraryFilterState.js
+#, python-format
+msgid "%(count)s Types"
+msgstr "%(count)s Typen"
+
+#: static/js/libraryFilterState.js
+msgid "1 Type"
+msgstr "1 Typ"
+
+#: static/js/libraryFilterState.js
+msgid "Added"
+msgstr "Hinzugefügt"
+
+#: static/js/libraryFilterState.js
+msgid "All Types"
+msgstr "Alle Typen"
+
+#: static/js/libraryFilterState.js
+msgid "Collected"
+msgstr "Gesammelt"
+
+#: static/js/libraryFilterState.js
+msgid "Collection/Series"
+msgstr "Sammlung/Serie"
+
+#: static/js/libraryFilterState.js
+msgid "Franchise"
+msgstr "Franchise"
+
+#: static/js/libraryFilterState.js
+msgid "Implied: "
+msgstr "Abgeleitet: "
+
+#: static/js/libraryFilterState.js
+msgid "Item"
+msgstr "Eintrag"
+
+#: static/js/libraryFilterState.js
+msgid "No Types"
+msgstr "Keine Typen"
+
+#: static/js/libraryFilterState.js
+msgid "Not Collected"
+msgstr "Nicht gesammelt"
+
+#: static/js/libraryFilterState.js
+msgid "Not Rated"
+msgstr "Nicht bewertet"
+
+#: static/js/libraryFilterState.js
+msgid "Not Released"
+msgstr "Nicht veröffentlicht"
+
+#: static/js/libraryFilterState.js
+msgid "Rated"
+msgstr "Bewertet"
+
+#: static/js/libraryFilterState.js
+msgid "Release"
+msgstr "Veröffentlichung"
+
+#: static/js/libraryFilterState.js
+msgid "Released"
+msgstr "Veröffentlicht"
+
+#: static/js/libraryFilterState.js
+msgid "Unknown Year"
+msgstr "Jahr unbekannt"
+
+#: static/js/libraryFilterState.js
+msgid "Caught Up"
+msgstr "Auf dem neuesten Stand"
+
+#: static/js/libraryFilterState.js
+msgid "Not Caught Up"
+msgstr "Nicht auf dem neuesten Stand"
+
+#: templates/base.html
+msgid "Search your whole library..."
+msgstr "Gesamte Bibliothek durchsuchen …"
+
+
+#: templates/users/home_screen.html
+msgid "Up Next"
+msgstr "Als Nächstes"

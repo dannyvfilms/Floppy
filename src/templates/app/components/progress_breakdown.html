@@ -1,0 +1,163 @@
+{% load i18n l10n %}
+{% comment %}
+  Season-by-season, episode-by-episode watched breakdown for one show.
+  Context: breakdown (app.services.progress_breakdown.ProgressBreakdown).
+  Self-contained so a library progress page can include it once per show.
+{% endcomment %}
+<div x-data="{ open: {{ breakdown.open_state_json }}, setAll(value) { for (const key in this.open) this.open[key] = value } }"
+     class="space-y-3">
+  {% if breakdown.catalogue_unavailable %}
+    <p class="rounded-lg border border-dashed border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text-muted)]">
+      {% translate "The episode list could not be loaded, so only the episodes you have watched are shown." %}
+    </p>
+  {% endif %}
+
+  {% if breakdown.total %}
+    <div>
+      <div class="flex items-baseline justify-between gap-3">
+        <p class="text-sm text-[var(--color-text-secondary)]">
+          {% blocktranslate trimmed with watched=breakdown.watched total=breakdown.total %}
+            Watched <strong class="text-[var(--color-text)]">{{ watched }}</strong> of <strong class="text-[var(--color-text)]">{{ total }}</strong> episodes
+          {% endblocktranslate %}
+          {% if breakdown.left %}
+            ·
+            <span class="whitespace-nowrap">
+              {% blocktranslate trimmed with left=breakdown.left %}
+                {{ left }} left
+              {% endblocktranslate %}
+              {% if breakdown.minutes_left_label %}({{ breakdown.minutes_left_label }}){% endif %}
+            </span>
+          {% endif %}
+        </p>
+        <span class="text-lg font-semibold text-[var(--color-text)]">{{ breakdown.percent }}%</span>
+      </div>
+      <div class="relative mt-1 h-2 rounded-full bg-[var(--color-surface-muted)]"
+           role="progressbar"
+           aria-label="{% translate 'Your progress' %}"
+           aria-valuemin="0"
+           aria-valuemax="100"
+           aria-valuenow="{{ breakdown.percent }}">
+        <span class="block h-full rounded-full bg-emerald-500"
+              style="width: {{ breakdown.percent }}%"></span>
+        {% if breakdown.rewatch_width %}
+          <span class="progress-glow" aria-hidden="true"
+                style="left: {{ breakdown.rewatch_offset|unlocalize }}%; width: {{ breakdown.rewatch_width|unlocalize }}%"></span>
+        {% endif %}
+      </div>
+      {% if breakdown.rewatch_percent is not None %}
+        <span class="sr-only" role="progressbar"
+              aria-label="{{ breakdown.rewatch_label }}"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="{{ breakdown.rewatch_percent }}"></span>
+        <p class="mt-1 text-xs text-[var(--color-text-secondary)]">
+          {% if breakdown.rewatch_season is not None %}
+            {{ breakdown.rewatch_label }}
+          {% else %}
+            {% blocktranslate trimmed with watched=breakdown.rewatch_watched total=breakdown.rewatch_total percent=breakdown.rewatch_percent %}
+              Rewatching · {{ watched }} of {{ total }} episodes · {{ percent }}%
+            {% endblocktranslate %}
+          {% endif %}
+        </p>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  {% if breakdown.seasons|length > 1 %}
+    <div class="flex justify-end gap-3 text-xs text-[var(--color-text-muted)]">
+      <button type="button"
+              class="hover:text-[var(--color-text)] hover:underline"
+              @click="setAll(true)">{% translate "Expand all" %}</button>
+      <button type="button"
+              class="hover:text-[var(--color-text)] hover:underline"
+              @click="setAll(false)">{% translate "Collapse all" %}</button>
+    </div>
+  {% endif %}
+
+  <div class="space-y-2">
+    {% for season in breakdown.seasons %}
+      <section class="rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2">
+        <div class="flex items-center gap-2">
+          <button type="button"
+                  class="shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                  :aria-expanded="open.s{{ season.number }}"
+                  aria-label="{% blocktranslate trimmed with title=season.title %}Toggle {{ title }}{% endblocktranslate %}"
+                  @click="open.s{{ season.number }} = !open.s{{ season.number }}">
+            <span x-show="!open.s{{ season.number }}">{% include "app/icons/chevron-right.svg" with classes="h-4 w-4" %}</span>
+            <span x-show="open.s{{ season.number }}" x-cloak>
+              {% include "app/icons/chevron-down.svg" with classes="h-4 w-4" %}
+            </span>
+          </button>
+          <a href="{{ season.url }}"
+             class="min-w-0 truncate text-sm font-medium text-[var(--color-text)] hover:underline">{{ season.title }}</a>
+          {% if season.dropped %}
+            <span class="rounded-full bg-[var(--color-surface-muted)] px-2 py-0.5 text-[0.65rem] uppercase text-[var(--color-text-muted)]">{% translate "Dropped" %}</span>
+          {% endif %}
+          <span class="ml-auto shrink-0 text-xs text-[var(--color-text-muted)]">
+            {% if season.catalogue_missing %}
+              {% blocktranslate trimmed count counter=season.watched %}
+                {{ counter }} episode watched
+              {% plural %}
+                {{ counter }} episodes watched
+              {% endblocktranslate %}
+            {% elif season.total %}
+              {{ season.watched }}/{{ season.total }}
+            {% else %}
+              {% translate "Not aired yet" %}
+            {% endif %}
+          </span>
+          {% if season.percent is not None %}
+            <span class="w-10 shrink-0 text-right text-sm font-semibold text-[var(--color-text)]">{{ season.percent }}%</span>
+          {% endif %}
+        </div>
+        {% if season.percent is not None %}
+          <div class="relative mt-1 h-1.5 rounded-full bg-[var(--color-surface-muted)]">
+            <span class="block h-full rounded-full bg-emerald-500"
+                  style="width: {{ season.percent }}%"></span>
+            {% if season.rewatch_percent %}
+              <span class="progress-glow" style="width: {{ season.rewatch_percent }}%"></span>
+            {% endif %}
+          </div>
+          {% if season.rewatch_percent %}
+            <p class="mt-1 text-xs text-[var(--color-text-secondary)]">
+              {% if season.rewatch_percent == 100 %}{% translate "Rewatched" %}{% else %}{% translate "Rewatching" %}{% endif %}
+              · {{ season.rewatch_watched }}/{{ season.total }} · {{ season.rewatch_percent }}%
+            </p>
+          {% endif %}
+        {% endif %}
+        <ul x-show="open.s{{ season.number }}"
+            x-cloak
+            class="mt-2 flex flex-wrap gap-1">
+          {% for episode in season.episodes %}
+            <li>
+              <a href="{{ episode.url }}"
+                 title="{{ episode.title }}{% if episode.air_date %} · {{ episode.air_date|date:'N j, Y' }}{% endif %}"
+                 class="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs hover:bg-[var(--color-surface-hover)] {% if episode.state == 'watched' %}border-emerald-500/40 bg-emerald-500/10 text-emerald-500 {% if season.rewatching and episode.rewatched %}progress-glow-chip{% endif %}{% elif episode.state == 'unwatched' %}border-[var(--color-surface-border)] text-[var(--color-text-secondary)] {% else %}border-dashed border-[var(--color-surface-border)] text-[var(--color-text-muted)] opacity-70{% endif %}">
+                {% if episode.state == 'watched' %}
+                  {% include "app/icons/checkmark.svg" with classes="h-3 w-3" %}
+                  <span class="sr-only">
+                    {% if season.rewatching and episode.rewatched %}
+                      {% translate "Watched again" %}
+                    {% else %}
+                      {% translate "Watched" %}
+                    {% endif %}
+                  </span>
+                {% elif episode.state == 'unwatched' %}
+                  {% include "app/icons/x.svg" with classes="h-3 w-3" %}
+                  <span class="sr-only">{% translate "Not watched" %}</span>
+                {% else %}
+                  <span class="sr-only">{% translate "Not aired yet" %}</span>
+                {% endif %}
+                {{ season.number }}x{{ episode.number|stringformat:"02d" }}
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% empty %}
+      <p class="rounded-lg border border-dashed border-[var(--color-border)] px-4 py-8 text-center text-sm text-[var(--color-text-muted)]">
+        {% translate "No episodes to show yet." %}
+      </p>
+    {% endfor %}
+  </div>
+</div>

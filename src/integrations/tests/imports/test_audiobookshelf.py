@@ -7,6 +7,7 @@ import requests
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from app.models import (
@@ -147,6 +148,7 @@ class AudiobookshelfImporterTests(TestCase):
         media = Book.objects.get(user=self.user)
         self.assertEqual(media.status, Status.IN_PROGRESS.value)
         self.assertEqual(media.progress, 60)
+        self.assertEqual(media.entry_source, "audiobookshelf")
         self.assertEqual(media.item.source, Sources.AUDIOBOOKSHELF.value)
         self.assertEqual(media.item.media_type, MediaTypes.BOOK.value)
         self.assertEqual(media.item.runtime_minutes, 120)
@@ -179,6 +181,7 @@ class AudiobookshelfImporterTests(TestCase):
         media = Podcast.objects.get(user=self.user)
         self.assertEqual(media.status, Status.IN_PROGRESS.value)
         self.assertEqual(media.played_up_to_seconds, 1200)
+        self.assertEqual(media.entry_source, "audiobookshelf")
         self.assertEqual(media.progress, 20)
         self.assertEqual(media.last_seen_status, 2)
         self.assertIsNone(media.end_date)
@@ -1578,6 +1581,23 @@ class AudiobookshelfImporterTests(TestCase):
             self.user.audiobookshelf_account.last_error_message,
         )
 
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_unresponsive_server_is_a_clear_error_not_a_broken_account(
+        self,
+        mock_me,
+    ):
+        """A timeout reports a readable error without marking the account broken."""
+        mock_me.side_effect = requests.exceptions.ReadTimeout("Read timed out.")
+
+        with self.assertRaises(MediaImportError) as raised:
+            AudiobookshelfImporter(self.user).import_data()
+
+        self.assertIn("did not respond", str(raised.exception))
+        account = self.user.audiobookshelf_account
+        account.refresh_from_db()
+        self.assertFalse(account.connection_broken)
+        self.assertIn("did not respond", account.last_error_message)
+
     @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
     @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
     def test_does_not_refetch_unchanged_books_that_are_already_hydrated(
@@ -1872,3 +1892,147 @@ class AudiobookshelfClientRetryTests(TestCase):
             self.client._request("/api/me")
 
         self.assertEqual(mock_get.call_count, 3)
+
+
+def _ms(moment):
+    """Return an aware datetime as ABS epoch milliseconds."""
+    return int(moment.timestamp() * 1000)
+
+
+@patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+@patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+class AudiobookshelfHeldStatusTests(TestCase):
+    """A status the user sets survives the next sync (#1316)."""
+
+    def setUp(self):
+        """Create a logged-in user with an ABS account."""
+        self.credentials = {"username": "abs-held", "password": "pass"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+        AudiobookshelfAccount.objects.create(
+            user=self.user,
+            base_url="https://abs.example.com",
+            api_token=helpers.encrypt("token"),
+        )
+
+    def _sync(self, mock_me, mock_item, **entry):
+        mock_me.return_value = {
+            "mediaProgress": [
+                {
+                    "libraryItemId": "item-1",
+                    "currentTime": 3600,
+                    "duration": 7200,
+                    "progress": 0.5,
+                    "isFinished": False,
+                    "lastUpdate": 1000,
+                    **entry,
+                },
+            ],
+        }
+        mock_item.return_value = {
+            "media": {"duration": 7200, "metadata": {"title": "The Hobbit"}},
+        }
+        AudiobookshelfImporter(self.user).import_data()
+        return Book.objects.get(user=self.user)
+
+    def _set_status_in_floppy(self, book, status):
+        """Change the status through the track form, as the user does."""
+        self.client.post(
+            reverse("media_save"),
+            {
+                "media_id": book.item.media_id,
+                "source": Sources.AUDIOBOOKSHELF.value,
+                "media_type": MediaTypes.BOOK.value,
+                "instance_id": book.id,
+                "status": status,
+                "progress": book.progress,
+            },
+        )
+        book.refresh_from_db()
+        self.assertEqual(book.status, status)
+
+    def test_paused_survives_sync_of_earlier_listening(self, mock_me, mock_item):
+        """Listening from before the pause does not undo it."""
+        book = self._sync(mock_me, mock_item)
+        self._set_status_in_floppy(book, Status.PAUSED.value)
+
+        before_pause = timezone.now() - timedelta(minutes=5)
+        book = self._sync(
+            mock_me,
+            mock_item,
+            currentTime=4200,
+            lastUpdate=_ms(before_pause),
+        )
+
+        self.assertEqual(book.status, Status.PAUSED.value)
+        self.assertEqual(book.progress, 70)
+
+    def test_dropped_survives_sync_of_earlier_listening(self, mock_me, mock_item):
+        """Dropped is held the same way as Paused."""
+        book = self._sync(mock_me, mock_item)
+        self._set_status_in_floppy(book, Status.DROPPED.value)
+
+        book = self._sync(
+            mock_me,
+            mock_item,
+            lastUpdate=_ms(timezone.now() - timedelta(minutes=5)),
+        )
+
+        self.assertEqual(book.status, Status.DROPPED.value)
+
+    def test_listening_after_pause_resumes(self, mock_me, mock_item):
+        """Listening again after pausing puts the book back in progress."""
+        book = self._sync(mock_me, mock_item)
+        self._set_status_in_floppy(book, Status.PAUSED.value)
+
+        book = self._sync(
+            mock_me,
+            mock_item,
+            currentTime=4200,
+            lastUpdate=_ms(timezone.now() + timedelta(minutes=5)),
+        )
+
+        self.assertEqual(book.status, Status.IN_PROGRESS.value)
+
+    def test_completed_in_floppy_is_not_unfinished_by_sync(self, mock_me, mock_item):
+        """Marking a book finished in Floppy holds while ABS shows it unfinished."""
+        book = self._sync(mock_me, mock_item)
+        self._set_status_in_floppy(book, Status.COMPLETED.value)
+        completed = Book.objects.get(pk=book.pk)
+
+        book = self._sync(
+            mock_me,
+            mock_item,
+            lastUpdate=_ms(timezone.now() - timedelta(minutes=5)),
+        )
+
+        self.assertEqual(book.status, Status.COMPLETED.value)
+        self.assertEqual(book.progress, completed.progress)
+        self.assertEqual(book.end_date, completed.end_date)
+
+    def test_finishing_in_abs_completes_a_paused_book(self, mock_me, mock_item):
+        """A real finish always wins over a held status."""
+        book = self._sync(mock_me, mock_item)
+        self._set_status_in_floppy(book, Status.PAUSED.value)
+
+        book = self._sync(
+            mock_me,
+            mock_item,
+            currentTime=7200,
+            isFinished=True,
+            lastUpdate=_ms(timezone.now() - timedelta(minutes=5)),
+        )
+
+        self.assertEqual(book.status, Status.COMPLETED.value)
+
+    def test_repair_pass_keeps_held_status(self, mock_me, mock_item):
+        """Re-repairing an unchanged book does not reset the user's status."""
+        book = self._sync(mock_me, mock_item)
+        self._set_status_in_floppy(book, Status.PAUSED.value)
+        Item.objects.filter(pk=book.item_id).update(metadata_fetched_at=None)
+        mock_item.reset_mock()
+
+        book = self._sync(mock_me, mock_item)
+
+        mock_item.assert_called_once()
+        self.assertEqual(book.status, Status.PAUSED.value)

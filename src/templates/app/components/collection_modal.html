@@ -19,10 +19,10 @@
     {% if season_audit_entries %}
       <div>
         <h3 class="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-3">{% translate "Collected Seasons" %}</h3>
-        <div class="space-y-3 max-h-64 overflow-y-auto pr-1">
+        <div class="space-y-3 pr-1" x-data="{ editCount: 0 }" @collection-edit="editCount += $event.detail" :class="editCount ? '' : 'max-h-64 overflow-y-auto'">
           {% for season_audit_entry in season_audit_entries %}
             {% url 'collection_remove_season' season_audit_entry.season_item_id as remove_url %}
-            {% include "app/components/collection_entry_summary.html" with collection_entry=season_audit_entry.collection_entry media_type=item.media_type user=request.user show_delete=True delete_url=remove_url return_url=return_url show_date=False format_with_subtitle=True show_format_header=False entry_title=season_audit_entry.display_title entry_source_labels=season_audit_entry.source_labels entry_quality_label=season_audit_entry.quality_label show_inline_quality=True show_entry_details=False %}
+            {% include "app/components/collection_entry_summary.html" with collection_entry=season_audit_entry.collection_entry media_type=item.media_type user=request.user show_delete=True delete_url=remove_url return_url=return_url show_date=False format_with_subtitle=True show_format_header=False entry_title=season_audit_entry.display_title entry_source_labels=season_audit_entry.source_labels entry_quality_label=season_audit_entry.quality_label show_inline_quality=True show_entry_details=False edit_form=season_audit_entry.edit_form edit_title=season_audit_entry.edit_title edit_form_id=season_audit_entry.edit_form_id edit_collection_fields=season_audit_entry.edit_collection_fields update_url=season_audit_entry.edit_update_url edit_without_custom_fields=True %}
           {% endfor %}
         </div>
       </div>
@@ -31,10 +31,10 @@
     {% if episode_audit_entries %}
       <div>
         <h3 class="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-3">{% translate "Collected Episodes" %}</h3>
-        <div class="space-y-3 max-h-64 overflow-y-auto pr-1">
+        <div class="space-y-3 pr-1" x-data="{ editCount: 0 }" @collection-edit="editCount += $event.detail" :class="editCount ? '' : 'max-h-64 overflow-y-auto'">
           {% for episode_audit_entry in episode_audit_entries %}
             {% url 'collection_remove' episode_audit_entry.entry.id as remove_url %}
-            {% include "app/components/collection_entry_summary.html" with collection_entry=episode_audit_entry.entry media_type=episode_audit_entry.entry.item.media_type user=request.user show_delete=True delete_url=remove_url return_url=return_url show_date=False format_with_subtitle=True show_format_header=False entry_title=episode_audit_entry.title entry_source_labels=episode_audit_entry.source_labels entry_quality_label=episode_audit_entry.quality_label show_inline_quality=True show_entry_details=False %}
+            {% include "app/components/collection_entry_summary.html" with collection_entry=episode_audit_entry.entry media_type=episode_audit_entry.entry.item.media_type user=request.user show_delete=True delete_url=remove_url return_url=return_url show_date=False format_with_subtitle=True show_format_header=False entry_title=episode_audit_entry.title entry_source_labels=episode_audit_entry.source_labels entry_quality_label=episode_audit_entry.quality_label show_inline_quality=True show_entry_details=False edit_form=episode_audit_entry.entry.edit_form edit_form_id=episode_audit_entry.entry.edit_form_id update_url=episode_audit_entry.entry.edit_update_url edit_without_custom_fields=True %}
           {% endfor %}
         </div>
       </div>
@@ -43,10 +43,10 @@
     {% if visible_existing_entries %}
       <div>
         <h3 class="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-3">{% translate "Existing Entries" %}</h3>
-        <div class="space-y-3 max-h-52 overflow-y-auto pr-1">
+        <div class="space-y-3 pr-1" x-data="{ editCount: 0 }" @collection-edit="editCount += $event.detail" :class="editCount ? '' : 'max-h-52 overflow-y-auto'">
           {% for existing_entry in visible_existing_entries %}
             {% url 'collection_remove' existing_entry.id as remove_url %}
-            {% include "app/components/collection_entry_summary.html" with collection_entry=existing_entry media_type=item.media_type user=request.user show_delete=True delete_url=remove_url return_url=return_url show_date=False format_with_subtitle=True entry_quality_label="" %}
+            {% include "app/components/collection_entry_summary.html" with collection_entry=existing_entry media_type=item.media_type user=request.user show_delete=True delete_url=remove_url return_url=return_url show_date=False format_with_subtitle=True entry_quality_label="" edit_form=existing_entry.edit_form edit_form_id=existing_entry.edit_form_id edit_id_prefix=existing_entry.edit_id_prefix update_url=existing_entry.edit_update_url edit_custom_field_values=existing_entry.custom_field_values %}
           {% endfor %}
         </div>
       </div>
@@ -61,146 +61,7 @@
         {% if visible_existing_entries or season_audit_entries or episode_audit_entries %}{% translate "Add Another Copy" %}{% else %}{% translate "Add Copy" %}{% endif %}
       </h3>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
-        {% for field in form %}
-          {% if field.name != 'item' %}
-            {% if not collection_fields or field.name in collection_fields %}
-              <div class="mb-5 {% if collection_fields and field.name == collection_fields.0 %}sm:col-span-2{% endif %}">
-                <label class="block text-sm font-medium mb-1 text-[var(--color-text-secondary)]"
-                       for="{{ field.id_for_label }}">{% translate field.label %}</label>
-                <div class="relative">
-                  {% if field.field.widget.input_type == 'checkbox' %}
-                    <label class="flex items-center gap-2 text-[var(--color-text-secondary)]">
-                      {{ field|add_class:"h-4 w-4 rounded border-gray-600 bg-[var(--color-surface-strong)] text-indigo-500 focus:ring-[var(--color-accent)]" }}
-                      <span>{% translate "Yes" %}</span>
-                    </label>
-                  {% elif field.field.widget.input_type == 'number' %}
-                    {{ field|add_class:"w-full p-2 pr-12 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" }}
-                    <div class="absolute inset-y-0 right-0 flex flex-col border-l border-gray-600">
-                      <button type="button"
-                              class="flex-1 px-2 hover:bg-gray-700 transition-colors rounded-tr-md border-t border-r border-gray-600"
-                              onclick="this.parentElement.previousElementSibling.stepUp()">
-                        {% include "app/icons/chevron-up.svg" with classes="w-3.5 h-3.5" %}
-                      </button>
-                      <button type="button"
-                              class="flex-1 px-2 hover:bg-gray-700 transition-colors rounded-br-md border-b border-r border-gray-600"
-                              onclick="this.parentElement.previousElementSibling.stepDown()">
-                        {% include "app/icons/chevron-down.svg" with classes="w-3.5 h-3.5" %}
-                      </button>
-                    </div>
-                    {% elif field.field.widget.input_type == 'select' %}
-                      <div class="relative overflow-visible"
-                           @click.outside="open = false"
-                           @keydown.escape.window="open = false"
-                           x-bind:style="{ zIndex: open ? 80 : 30 }"
-                           x-data="{
-                            open: false,
-                            openUp: false,
-                            selectedValue: '{{ field.value|default_if_none:''|escapejs }}',
-                            selectedLabel: '',
-                            dropdownMaxHeight: 240,
-                            options: [],
-                            init() {
-                              this.options = Array.from(this.$el.querySelectorAll('[data-choice]')).map((optionEl) => ({
-                                value: optionEl.dataset.choiceValue ?? '',
-                                label: optionEl.dataset.choiceLabel ?? optionEl.textContent.trim(),
-                              }));
-                              const current = String(this.selectedValue ?? '');
-                              const match = this.options.find(option => String(option.value) === current);
-                              this.selectedLabel = match ? match.label : (this.options[0]?.label ?? '');
-                            },
-                            toggle() {
-                              this.open = !this.open;
-                              if (this.open) {
-                                this.$nextTick(() => this.positionDropdown());
-                              }
-                            },
-                            getBoundsRect() {
-                              let node = this.$el.parentElement;
-
-                              while (node) {
-                                const style = window.getComputedStyle(node);
-                                const overflowY = style.overflowY;
-                                const overflow = style.overflow;
-                                const clipsChildren = ['auto', 'scroll', 'hidden', 'clip'].includes(overflowY)
-                                  || ['auto', 'scroll', 'hidden', 'clip'].includes(overflow);
-
-                                if (clipsChildren) {
-                                  return node.getBoundingClientRect();
-                                }
-
-                                node = node.parentElement;
-                              }
-
-                              const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-                              return { top: 0, bottom: viewportHeight };
-                            },
-                            positionDropdown() {
-                              const trigger = this.$refs.trigger;
-                              if (!trigger) {
-                                return;
-                              }
-
-                              const rect = trigger.getBoundingClientRect();
-                              const viewportPadding = 16;
-                              const preferredHeight = 240;
-                              const boundsRect = this.getBoundsRect();
-                              const spaceBelow = Math.max(0, boundsRect.bottom - rect.bottom - viewportPadding);
-                              const spaceAbove = Math.max(0, rect.top - boundsRect.top - viewportPadding);
-                              const shouldOpenUp = spaceAbove > spaceBelow;
-
-                              this.openUp = shouldOpenUp;
-                              const availableSpace = shouldOpenUp ? spaceAbove : spaceBelow;
-                              this.dropdownMaxHeight = Math.min(preferredHeight, availableSpace);
-                            },
-                            choose(value, label) {
-                              this.selectedValue = String(value ?? '');
-                              this.selectedLabel = label;
-                              this.open = false;
-                            }
-                           }"
-                           @resize.window="open && positionDropdown()">
-                      <button type="button"
-                              @click="toggle()"
-                              x-ref="trigger"
-                              id="{{ field.id_for_label }}"
-                              :aria-expanded="open"
-                              class="flex items-center justify-between w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
-                        <span x-text="selectedLabel" :class="selectedValue === '' ? 'text-[var(--color-text-muted)]' : ''"></span>
-                        {% include "app/icons/chevron-down.svg" with classes="w-4 h-4 text-[var(--color-text-muted)]" %}
-                      </button>
-                      <div x-show="open"
-                           x-transition:enter="transition ease-out duration-100"
-                           x-transition:enter-start="transform opacity-0 scale-95"
-                           x-transition:enter-end="transform opacity-100 scale-100"
-                           x-transition:leave="transition ease-in duration-75"
-                           x-transition:leave-start="transform opacity-100 scale-100"
-                           x-transition:leave-end="transform opacity-0 scale-95"
-                           :class="openUp ? 'bottom-full mb-2' : 'top-full mt-2'"
-                           :style="{ maxHeight: `${dropdownMaxHeight}px` }"
-                           class="absolute left-0 right-0 py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-y-auto z-50 border border-gray-600">
-                        {% for value, label in field.field.widget.choices %}
-                          <button type="button"
-                                  data-choice
-                                  data-choice-value="{{ value|default_if_none:'' }}"
-                                  data-choice-label="{% translate label %}"
-                                  @click="choose('{{ value|default_if_none:''|escapejs }}', '{% translate label as media_dynamic_label %}{{ media_dynamic_label|escapejs }}')"
-                                  class="block w-full px-3 py-2 text-left text-sm transition-colors {% if value == '' %}text-[var(--color-text-muted)]{% else %}text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]{% endif %}">
-                            {% translate label %}
-                          </button>
-                        {% endfor %}
-                      </div>
-                      <input type="hidden" name="{{ field.name }}" x-model="selectedValue">
-                    </div>
-                  {% else %}
-                    {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" }}
-                  {% endif %}
-                </div>
-              </div>
-            {% endif %}
-          {% endif %}
-        {% endfor %}
-      </div>
+      {% include "app/components/collection_form_fields.html" with form=form collection_fields=collection_fields %}
 
       <div class="flex justify-end mt-6">
         <button type="submit"

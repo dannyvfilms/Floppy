@@ -24,6 +24,21 @@ logger = logging.getLogger(__name__)
 # queries this module replaces.
 EXCLUDED_RUNTIME_SENTINELS = (999998, 999999)
 
+
+def usable_runtime_minutes(runtime_minutes):
+    """Return the runtime in minutes, or None when it is empty or a sentinel.
+
+    Anything that turns a stored runtime into a duration must go through this:
+    999998 minutes is "aired but unknown", not 16,666 hours of video.
+    """
+    try:
+        minutes = int(runtime_minutes)
+    except (TypeError, ValueError):
+        return None
+    if minutes <= 0 or minutes in EXCLUDED_RUNTIME_SENTINELS:
+        return None
+    return minutes
+
 # Season numbers that carry usable metadata often enough to be worth reading.
 # Season 1 is tried first, then these, and the first hit wins.
 SEASON_RUNTIME_FALLBACK_NUMBERS = (1, 2, 3, 4, 5)

@@ -2,8 +2,55 @@
 
 The history routes are the largest request-level memory consumers Floppy has
 had in production. This records what the cost actually was, what removed it,
-and which history paths are still proportional to the history rather than to
-the response.
+which history paths are still proportional to the history rather than to the
+response, and how index invalidation stays correct under concurrency.
+
+## Index invalidation and the era token
+
+Typed indexes (history narrowed to media types) used to be tracked in a
+registry maintained by read/append/write. Two builders could lose each
+other's registrations, and a builder could re-create a registry that an
+invalidation had just deleted, leaving a pre-invalidation typed index
+reachable as the "current" one. Readers then accepted it as fresh for up to
+`HISTORY_STALE_AFTER`.
+
+Invalidation no longer tries to delete racing publishes. Each
+(user, logging style) has an **era token** in cache
+(`history_cache_utils._current_history_era` / `_bump_history_era`):
+
+- Tokens are globally unique (`_new_history_era_token`) and only ever
+  compared for equality. Invalidation writes a fresh token unconditionally;
+  concurrent invalidations race to install distinct tokens and *any* winner
+  retires every older namespace. There is no read-modify-write, so no bump
+  can be lost and no `incr`/Lua atomicity is required.
+- A typed index key embeds the era (`_typed_history_index_key`), and the
+  index payload embeds it too. A reader accepts a typed index only when both
+  the namespace and the payload token equal the era it read.
+- Publishers capture the era **before** reading the rows that feed the
+  index (`cache_history_index(..., era=...)`). If invalidation lands
+  mid-build, the publish lands in a retired namespace — unreachable, and
+  reclaimed by TTL or the next registry cleanup. Nothing is check-then-set.
+- The main (untyped) index embeds the token in its payload; readers treat a
+  token mismatch like staleness — serve the payload, schedule a refresh —
+  which preserves the intentional stale-while-refresh behaviour while making
+  a late stale write converge in seconds instead of sitting "fresh" for an
+  hour.
+- A missing/expired/evicted era key is reseeded with a *new unique* token,
+  so an orphaned typed index can never be adopted again (no ABA). The era
+  key's TTL (24h) exceeds the index TTL (6h) and is refreshed on publish.
+
+Residual, pre-existing window: invalidation fires from signals inside the
+writing transaction, so a reader that rebuilds between the era bump and the
+row commit reads pre-write rows and republishes them under the new era. The
+next invalidation (any save) or staleness timer repairs it; this window
+existed before the era protocol and is unchanged by it.
+
+Regression: `app.tests.test_history_index_race_safety` drives the original
+interleavings deterministically (patched cache/build calls, never sleeps):
+lost-registry registrations, invalidation between row read and publish,
+publication with a retired token, era-key eviction, registry loss, full and
+day invalidation, style/user isolation, empty indexes, and a bounded
+repeated schedule.
 
 ## What production showed
 
@@ -157,6 +204,15 @@ dictionaries rather than O(response).
 
 ## Measuring it
 
+Metadata language repair retains History caches when provider responses leave
+`title`, `original_title`, and `localized_title` unchanged. Synopsis is not stored
+in History cards. A changed title invalidates both History styles for every
+tracking owner of the repaired item, once per batch, and requests the existing
+default-style refresh. Earlier title writes are flushed even when a later fetch
+fails or a preference reset ends the batch. Language agreement, the second
+post-fetch preference check, cursor/backoff, and bulk continuation routing remain
+unchanged. Regressions live in `app.tests.test_metadata_language_repair`.
+
 `scripts/history_request_memory.py` runs inside the disposable benchmark
 container and reports the serving worker's RSS/PSS/private/anonymous around a
 request, with the response hash beside it so a candidate can be compared on
@@ -166,3 +222,16 @@ It deliberately does not warm up the scenario it measures. glibc keeps a grown
 arena, so a warm-up request moves the whole cost into an unmeasured call and
 leaves every later delta reading ~0 -- which is exactly how this cost stayed
 invisible in earlier aging runs.
+
+## The same columns in the import preload
+
+Every importer starts by loading the user's whole library through
+`get_existing_media` and `get_existing_children`
+(`integrations/imports/helpers.py`). Those loaded full items too, so a large
+library ran a Trakt export import out of memory before it wrote a row (#1252).
+They now defer the same columns. With 600 rows carrying a 32 KiB payload the
+preload's peak Python allocation went from ~51 MiB to ~2.5 MiB.
+
+Regressions: `integrations.tests.imports.test_import_preload_memory` (the
+preloaded items defer the heavy columns; its `slow` benchmark compares the
+preload against full hydration).

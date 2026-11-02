@@ -215,3 +215,32 @@ class ProviderMetadataCacheKeyHelperTests(TestCase):
         )
 
         self.assertEqual(keys, [f"{Sources.MAL.value}_{MediaTypes.ANIME.value}_52991"])
+
+
+class TMDBMovieBackdropSeedTests(TestCase):
+    """A movie detail fetch records the backdrop TMDB already returned (#1249)."""
+
+    def setUp(self):
+        cache.clear()
+
+    @patch("app.providers.tmdb.services.api_request")
+    def test_movie_fetch_caches_its_backdrop(self, mock_api_request):
+        from app import backdrops
+
+        mock_api_request.return_value = MOVIE_RESPONSE | {
+            "backdrop_path": "/fight-club.jpg",
+        }
+
+        tmdb.movie("550")
+
+        item = {
+            "source": Sources.TMDB.value,
+            "media_type": MediaTypes.MOVIE.value,
+            "media_id": "550",
+        }
+        self.assertEqual(
+            backdrops.cached_backdrop(item),
+            "https://image.tmdb.org/t/p/w1280/fight-club.jpg",
+        )
+        # One request: the backdrop rode along with the detail response.
+        mock_api_request.assert_called_once()

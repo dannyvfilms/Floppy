@@ -9,7 +9,9 @@ from django.utils import timezone
 
 from app.history_cache_utils import (
     HISTORY_COVERAGE_REPAIR_LOCK_TTL,
+    HISTORY_COVERAGE_REPAIR_PREFIX,
     HISTORY_REFRESH_LOCK_MAX_AGE,
+    _bump_history_era,
     _cache_key,
     _coverage_repair_key,
     _day_cache_key,
@@ -36,7 +38,66 @@ def _clean_refresh_lock(lock_key: str):
     return refresh_lock
 
 
-def _delete_history_cache_entries(user_id: int, logging_style: str, day_keys=None):
+def _clear_marker_key(user_id: int, logging_style: str) -> str:
+    return f"{HISTORY_COVERAGE_REPAIR_PREFIX}_cleared_{user_id}_{logging_style}"
+
+
+def _repair_done_key(user_id: int, logging_style: str) -> str:
+    return f"{HISTORY_COVERAGE_REPAIR_PREFIX}_done_{user_id}_{logging_style}"
+
+
+def record_history_days_cleared(
+    user_id: int, logging_style: str, reason: str | None
+) -> None:
+    """Remember when and why day payloads were deleted on purpose.
+
+    Written without a TTL so ``volatile-lru`` never evicts it: the repair task
+    reads it to tell a deliberate clear from a payload Redis dropped.
+    """
+    cache.set(
+        _clear_marker_key(user_id, logging_style),
+        {"at": timezone.now(), "reason": reason or "unspecified"},
+        timeout=None,
+    )
+
+
+def record_history_repair_complete(
+    user_id: int, logging_style: str, days: int
+) -> None:
+    """Remember when a repair last found every indexed day cached."""
+    cache.set(
+        _repair_done_key(user_id, logging_style),
+        {"at": timezone.now(), "days": days},
+        timeout=None,
+    )
+
+
+def classify_missing_history_days(user_id: int, logging_style: str, day_ttl):
+    """Say why day payloads are missing: ``(reason, detail)``.
+
+    ``invalidated``: deleted on purpose after the last complete repair;
+    ``evicted``: gone before their TTL with no delete recorded (Redis memory
+    pressure or a flush); ``expired``: the last complete repair is older than
+    the TTL; ``absent``: never built, or nothing recorded.
+    """
+    cleared = cache.get(_clear_marker_key(user_id, logging_style))
+    done = cache.get(_repair_done_key(user_id, logging_style))
+    if cleared and (not done or cleared["at"] >= done["at"]):
+        return "invalidated", cleared.get("reason", "unspecified")
+    if done:
+        age = timezone.now() - done["at"]
+        return ("expired" if age >= day_ttl else "evicted"), None
+    return "absent", None
+
+
+def _delete_history_cache_entries(
+    user_id: int, logging_style: str, day_keys=None, reason: str | None = None
+):
+    # Retire the era BEFORE deleting anything: a builder that captured the
+    # previous token can still write its (possibly stale) index afterwards,
+    # but only into a namespace no reader will select again. The deletes
+    # below are hygiene on top of that guarantee, not the guarantee itself.
+    _bump_history_era(user_id, logging_style)
     if day_keys is None:
         index_entry = cache.get(_cache_key(user_id, logging_style))
         day_keys = index_entry.get("days", []) if index_entry else []
@@ -54,6 +115,7 @@ def _delete_history_cache_entries(user_id: int, logging_style: str, day_keys=Non
                 for day_key in normalized_keys
             ],
         )
+        record_history_days_cleared(user_id, logging_style, reason)
     cache.delete(_cache_key(user_id, logging_style))
     registry_key = _typed_history_index_registry_key(user_id, logging_style)
     typed_index_keys = cache.get(registry_key) or []
@@ -85,6 +147,11 @@ def invalidate_history_days(
 
     for style in logging_styles:
         logging_style = _normalize_logging_style(style)
+        # Retire the typed-index era first (see _delete_history_cache_entries):
+        # afterwards, stale typed publishes can only land in unreachable
+        # namespaces. Registry deletion below then reclaims them eagerly;
+        # TTL is the backstop for any racer that re-appends after this point.
+        _bump_history_era(user_id, logging_style)
         registry_key = _typed_history_index_registry_key(user_id, logging_style)
         typed_index_keys = cache.get(registry_key) or []
         if typed_index_keys:
@@ -97,6 +164,7 @@ def invalidate_history_days(
                     for day_key in normalized_keys
                 ],
             )
+            record_history_days_cleared(user_id, logging_style, reason)
         logger.info(
             "history_day_invalidate user_id=%s logging_style=%s dates=%s reason=%s deleted=%s",
             user_id,
@@ -130,6 +198,7 @@ def invalidate_history_cache(
     force: bool = False,
     day_keys: Iterable | None = None,
     logging_styles: Iterable | None = None,
+    reason: str | None = None,
 ):
     """Remove cached history for a user, optionally scoped to specific days.
 
@@ -143,6 +212,7 @@ def invalidate_history_cache(
             logging_styles=logging_styles,
             force=force,
             refresh_index=True,
+            reason=reason,
         )
         return
 
@@ -151,12 +221,12 @@ def invalidate_history_cache(
         logging_style = _normalize_logging_style(style)
         refresh_lock = _clean_refresh_lock(_refresh_lock_key(user_id, logging_style))
         if refresh_lock is None or force:
-            _delete_history_cache_entries(user_id, logging_style, None)
+            _delete_history_cache_entries(user_id, logging_style, None, reason)
             logger.info(
                 "history_cache_invalidate_all user_id=%s logging_style=%s reason=%s",
                 user_id,
                 logging_style,
-                "full_clear",
+                reason or "full_clear",
             )
 
     # Schedule refresh after invalidating all cache
@@ -174,7 +244,7 @@ def invalidate_history_cache(
                 user_id,
                 logging_style,
                 scheduled,
-                "album_score_change",
+                "full_invalidate",
             )
 
 

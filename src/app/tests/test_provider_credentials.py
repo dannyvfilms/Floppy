@@ -82,6 +82,8 @@ class ProviderCredentialPrecedenceTests(TestCase):
 
         self.assertNotIn("IGDB_SECRET", settings.SHARED_DEFAULT_CREDENTIALS)
         self.assertNotIn("SIMKL_SECRET", settings.SHARED_DEFAULT_CREDENTIALS)
+        # An ID without its secret only fails after approving on SIMKL (#1318).
+        self.assertNotIn("SIMKL_ID", settings.SHARED_DEFAULT_CREDENTIALS)
 
     @override_settings(HARDCOVER_API="")
     def test_instance_and_personal_values_are_encrypted_at_rest(self):

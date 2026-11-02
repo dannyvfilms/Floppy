@@ -1,0 +1,6 @@
+{% load app_tags %}
+{% if media.entry_source and not public_view and not is_public_view %}
+  <div class="text-[var(--color-text-secondary)]">{{ media.entry_source|entry_source_label }}</div>
+{% else %}
+  <div class="text-[var(--color-text-muted)]">--</div>
+{% endif %}

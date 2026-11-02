@@ -185,8 +185,15 @@ def _user_ids_for_items(items: list[Item]) -> set[int]:
 
 def _invalidate_history_for_users(user_ids: tuple[int, ...]) -> None:
     """Clear and rebuild history caches after provider identity changes."""
+    from app import statistics_cache
+
     for user_id in user_ids:
         history_cache.invalidate_history_cache(user_id, force=True)
+        # Titles and runtimes in every day payload may have changed with the
+        # provider identity.
+        statistics_cache.invalidate_all_statistics_days(
+            user_id, reason="tv_provider_migration"
+        )
 
 
 def _schedule_history_invalidation(user_ids: set[int]) -> None:

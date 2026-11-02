@@ -1,5 +1,7 @@
 """Helpers for normalizing planned activity when an item is completed."""
 
+from collections import defaultdict
+
 from django.apps import apps
 from django.db.models import Case, IntegerField, Value, When
 
@@ -13,6 +15,7 @@ _PENDING_STATUSES = (
     Status.PLANNING.value,
     Status.IN_PROGRESS.value,
 )
+PLANNING_PREFETCH_BATCH_SIZE = 500
 
 
 def _is_normalizable(instance):
@@ -62,7 +65,7 @@ def _planning_entries(instance):
     return list(queryset.order_by("-created_at", "-pk"))
 
 
-def prepare_completed_entry(instance):
+def prepare_completed_entry(instance, *, planning_entries=None):
     """Merge missing metadata and return planning rows to remove after save."""
     if (
         getattr(instance, "status", None) != Status.COMPLETED.value
@@ -70,7 +73,8 @@ def prepare_completed_entry(instance):
     ):
         return [], set()
 
-    planning_entries = _planning_entries(instance)
+    if planning_entries is None:
+        planning_entries = _planning_entries(instance)
     if not planning_entries:
         return [], set()
 
@@ -110,12 +114,14 @@ def finalize_completed_entry(planning_entries):
         planning_entry.delete()
 
 
-def normalize_completed_entry(instance):
+def normalize_completed_entry(instance, *, planning_entries=None):
     """Normalize a completed row persisted by a bulk operation."""
     if getattr(instance, "pk", None) is None:
         return
 
-    planning_entries, merged_fields = prepare_completed_entry(instance)
+    planning_entries, merged_fields = prepare_completed_entry(
+        instance, planning_entries=planning_entries,
+    )
     if not planning_entries:
         return
 
@@ -124,6 +130,54 @@ def normalize_completed_entry(instance):
             **{field: getattr(instance, field) for field in merged_fields},
         )
     finalize_completed_entry(planning_entries)
+
+
+def normalize_completed_entries(instances):
+    """Preload planning state once for one persisted media-type batch.
+
+    Keep persistence order: the first completed watch receives planning metadata
+    and deletes those plans through the same model hooks as individual saves.
+    Later watches must not inherit metadata from already removed plans.
+    """
+    completed = [
+        row for row in instances
+        if row.pk is not None and row.status == Status.COMPLETED.value
+        and _is_normalizable(row) and row.item_id is not None
+    ]
+    if not completed:
+        return
+    model = completed[0].__class__
+    episode = model._meta.model_name == MediaTypes.EPISODE.value
+    if episode:
+        season_model = apps.get_model("app", "Season")
+        season_ids = list({row.related_season_id for row in completed})
+        owners = {}
+        for start in range(0, len(season_ids), PLANNING_PREFETCH_BATCH_SIZE):
+            owners.update(season_model.objects.filter(
+                pk__in=season_ids[start : start + PLANNING_PREFETCH_BATCH_SIZE],
+            ).values_list("pk", "related_tv__user_id"))
+    items_by_owner = defaultdict(set)
+    for row in completed:
+        owner_id = owners.get(row.related_season_id) if episode else row.user_id
+        if owner_id is not None:
+            items_by_owner[owner_id].add(row.item_id)
+    by_identity = defaultdict(list)
+    owner_lookup = "related_season__related_tv__user_id" if episode else "user_id"
+    for owner_id, ids in items_by_owner.items():
+        item_ids = list(ids)
+        for start in range(0, len(item_ids), PLANNING_PREFETCH_BATCH_SIZE):
+            plans = model._default_manager.filter(
+                **{owner_lookup: owner_id},
+                item_id__in=item_ids[start : start + PLANNING_PREFETCH_BATCH_SIZE],
+                status=Status.PLANNING.value,
+            ).order_by("-created_at", "-pk")
+            for plan in plans:
+                by_identity[owner_id, plan.item_id].append(plan)
+    for row in completed:
+        owner_id = owners.get(row.related_season_id) if episode else row.user_id
+        normalize_completed_entry(
+            row, planning_entries=by_identity.pop((owner_id, row.item_id), []),
+        )
 
 
 def select_preferred_activity_entry(queryset):

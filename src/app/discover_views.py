@@ -1,11 +1,13 @@
 import json
 import logging
 import time
+from functools import wraps
+from http import HTTPStatus
 from uuid import uuid4
 
 from django.apps import apps
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponseBadRequest, JsonResponse
+from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET, require_POST
 
@@ -22,6 +24,7 @@ from app.models import (
     Season,
     Status,
 )
+from app.providers import services
 from app.services import metadata_resolution
 from app.signals import suppress_media_cache_change_signals
 from app.templatetags import app_tags
@@ -45,6 +48,18 @@ DISCOVER_FAST_LOCAL_PLANNING_MEDIA_TYPES = {
     MediaTypes.TV.value,
     MediaTypes.ANIME.value,
 }
+
+
+def discover_enabled_required(view):
+    """404 a Discover view for users who turned Discover off in Sidebar settings."""
+
+    @wraps(view)
+    def wrapper(request, *args, **kwargs):
+        if not request.user.show_discover:
+            raise Http404
+        return view(request, *args, **kwargs)
+
+    return wrapper
 
 
 def _coerce_discover_media_type(raw_media_type: str | None) -> str:
@@ -330,7 +345,9 @@ def _discover_planning_instance(
     if model is AlbumTracker:
         if album is None:
             return None
-        return model.objects.filter(user=user, album=album).select_related("album").first()
+        return (
+            model.objects.filter(user=user, album=album).select_related("album").first()
+        )
     if model is PodcastShowTracker:
         if show is None:
             return None
@@ -367,6 +384,7 @@ def _invalidate_discover_after_action(
 
 @login_required
 @require_GET
+@discover_enabled_required
 def discover_page(request):
     """Render Discover page with selected media rows."""
     raw_param = request.GET.get("media_type")
@@ -408,6 +426,7 @@ def discover_page(request):
 
 @login_required
 @require_GET
+@discover_enabled_required
 def discover_rows(request):
     """Render Discover rows partial for HTMX row switching."""
     selected_media_type = _resolve_discover_media_type_for_user(
@@ -434,6 +453,7 @@ def discover_rows(request):
 
 @login_required
 @require_POST
+@discover_enabled_required
 def refresh_discover(request):
     """Invalidate the active Discover tab cache and queue a background refresh."""
     media_type = _resolve_discover_media_type_for_user(
@@ -469,8 +489,38 @@ def refresh_discover(request):
     )
 
 
+def _discover_provider_error_response(error, title, active_media_type):
+    """Report a provider failure as a toast, leaving the rows as they are.
+
+    htmx does not swap 4xx/5xx bodies, so the card stays put while HX-Trigger
+    still fires the page's existing toast.
+    """
+    label = title or "this title"
+    if error.status_code == HTTPStatus.NOT_FOUND:
+        message = f'Couldn\'t add "{label}": {error.provider_label} no longer has it.'
+        status = HTTPStatus.NOT_FOUND
+    else:
+        message = (
+            f'Couldn\'t add "{label}": {error.provider_label} did not respond. '
+            "Please try again."
+        )
+        status = HTTPStatus.BAD_GATEWAY
+    response = HttpResponse(status=status)
+    response["HX-Trigger"] = json.dumps(
+        {
+            "discoverActionComplete": {
+                "action": "planning",
+                "message": message,
+                "active_media_type": active_media_type,
+            },
+        },
+    )
+    return response
+
+
 @login_required
 @require_POST
+@discover_enabled_required
 def discover_action(request):
     """Handle Discover quick actions and return the updated rows fragment."""
     from app import views as view_barrel
@@ -647,16 +697,36 @@ def discover_action(request):
             )
             metadata_strategy = "local_seed"
         else:
-            hydrated = view_barrel.ensure_item_metadata(
-                request.user,
-                candidate_media_type,
-                media_id,
-                source,
-                season_number,
-                identity_media_type=identity_media_type,
-                library_media_type=library_media_type,
-                **candidate_seed,
-            )
+            try:
+                hydrated = view_barrel.ensure_item_metadata(
+                    request.user,
+                    candidate_media_type,
+                    media_id,
+                    source,
+                    season_number,
+                    identity_media_type=identity_media_type,
+                    library_media_type=library_media_type,
+                    **candidate_seed,
+                )
+            except services.ProviderNotConfiguredError:
+                # Setup guidance is rendered by the provider-error middleware.
+                raise
+            except services.ProviderAPIError as error:
+                logger.warning(
+                    "discover_action_provider_error request_id=%s user_id=%s "
+                    "candidate_media_type=%s source=%s media_id=%s status=%s",
+                    request_id,
+                    request.user.id,
+                    candidate_media_type,
+                    source,
+                    media_id,
+                    error.status_code,
+                )
+                return _discover_provider_error_response(
+                    error,
+                    candidate_seed.get("fallback_title"),
+                    active_media_type,
+                )
             metadata_strategy = "provider_fetch"
         existing_instance = _discover_planning_instance(
             request.user,
@@ -922,6 +992,7 @@ def _build_track_modal_discover_tab_context(user, metadata_item):
 
 @login_required
 @require_POST
+@discover_enabled_required
 def discover_toggle_hidden(request):
     """Toggle the hidden status of an item from Discover."""
     from app import views as view_barrel

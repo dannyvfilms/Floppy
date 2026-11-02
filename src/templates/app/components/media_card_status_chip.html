@@ -4,13 +4,15 @@
 {% load user_tags %}
 
 {# Wrapper always renders (even when nothing inside does) so media_save's OOB #}
-{# response can replace it outright — e.g. a season whose status chip was #}
-{# empty before a save but should show one now, or vice versa. #}
-<div id="media-status-chip-{{ media.id }}"
+{# response can replace it outright, e.g. a season whose status chip was #}
+{# empty before a save but should show one now, or vice versa. Its id comes #}
+{# from the item, not the tracked row, so a card for something not tracked #}
+{# yet has the same id the save response targets. #}
+<div id="{% item_slot_id 'media-status-chip' item %}"
      {% if status_chip_oob %}hx-swap-oob="outerHTML"{% endif %}>
   {% if media|safe_attr:"is_statusless" %}
     <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md max-w-[calc(100%-1rem)] overflow-hidden"
-         data-mobile-hide-on-mobile="{% if current_sort_value == 'score' or current_sort_value == 'time_left' or current_sort_value == 'progress' %}true{% else %}false{% endif %}"
+         data-mobile-hide-on-mobile="{% if current_sort_value == 'score' or current_sort_value == 'time_left' or current_sort_value == 'progress' or show_episode_queue %}true{% else %}false{% endif %}"
          data-status-label="no-status">
       <span class="text-xs font-medium text-white drop-shadow-sm truncate min-w-0">{% translate "No Status" %}</span>
     </div>
@@ -19,7 +21,7 @@
       {% if media.status %}
         {% if not recommend_mode or has_watched %}
           <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md max-w-[calc(100%-1rem)] overflow-hidden"
-               data-mobile-hide-on-mobile="{% if current_sort_value == 'score' or current_sort_value == 'time_left' or current_sort_value == 'progress' %}true{% else %}false{% endif %}">
+               data-mobile-hide-on-mobile="{% if current_sort_value == 'score' or current_sort_value == 'time_left' or current_sort_value == 'progress' or show_episode_queue %}true{% else %}false{% endif %}">
             {% if show_next_event_chip|default:False and media.next_event and not media.next_event.is_max_datetime %}
               {% include "app/icons/clock.svg" with classes="w-3.5 h-3.5 text-indigo-300" %}
               <span class="text-xs font-medium text-white drop-shadow-sm truncate min-w-0">
@@ -65,7 +67,7 @@
           </div>
         {% elif show_next_event_chip|default:False and media.next_event and not media.next_event.is_max_datetime %}
           <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md max-w-[calc(100%-1rem)] overflow-hidden"
-               data-mobile-hide-on-mobile="{% if current_sort_value == 'score' or current_sort_value == 'time_left' or current_sort_value == 'progress' %}true{% else %}false{% endif %}">
+               data-mobile-hide-on-mobile="{% if current_sort_value == 'score' or current_sort_value == 'time_left' or current_sort_value == 'progress' or show_episode_queue %}true{% else %}false{% endif %}">
             {% include "app/icons/clock.svg" with classes="w-3.5 h-3.5 text-indigo-300" %}
             <span class="text-xs font-medium text-white drop-shadow-sm truncate min-w-0">
               {% if media.next_event.content_number %}
@@ -78,7 +80,7 @@
         {% endif %}
       {% elif show_next_event_chip|default:False and media.next_event and not media.next_event.is_max_datetime %}
         <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md max-w-[calc(100%-1rem)] overflow-hidden"
-             data-mobile-hide-on-mobile="{% if current_sort_value == 'score' or current_sort_value == 'time_left' or current_sort_value == 'progress' %}true{% else %}false{% endif %}">
+             data-mobile-hide-on-mobile="{% if current_sort_value == 'score' or current_sort_value == 'time_left' or current_sort_value == 'progress' or show_episode_queue %}true{% else %}false{% endif %}">
           {% include "app/icons/clock.svg" with classes="w-3.5 h-3.5 text-indigo-300" %}
           <span class="text-xs font-medium text-white drop-shadow-sm truncate min-w-0">
             {% if media.next_event.content_number %}

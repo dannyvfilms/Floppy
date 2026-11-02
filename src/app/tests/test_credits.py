@@ -1,4 +1,9 @@
+from unittest.mock import patch
+
+from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 
 from app import credits
 from app.models import (
@@ -7,6 +12,7 @@ from app.models import (
     ItemPersonCredit,
     ItemStudioCredit,
     MediaTypes,
+    Movie,
     Person,
     Sources,
     Studio,
@@ -203,3 +209,156 @@ class CreditSyncSourceTests(TestCase):
         self.assertEqual(person.source_person_id, "OL11A")
         self.assertEqual(person.name, "Open Author")
         self.assertEqual(person.biography, "Author bio")
+
+
+class CreditSyncQueryBudgetTests(TestCase):
+    """A credits sync costs a fixed handful of queries however long the cast is.
+
+    A film with a thousand credits used to issue about 6,000 queries on its
+    first sync and 3,000 on every resync (production log, 9,902 in one
+    request): an ``update_or_create`` per person, plus two reads per deleted
+    credit from its Discover signal.
+    """
+
+    PEOPLE = 300
+    # Independent of PEOPLE: the read of existing people/studios, the writes
+    # (chunked), the credit delete and re-create. Well under one per person.
+    MAX_QUERIES = 40
+
+    def setUp(self):
+        self.item = Item.objects.create(
+            media_id="movie-big",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Big Cast",
+            image="http://example.com/big.jpg",
+        )
+        self.metadata = {
+            "cast": [
+                {"person_id": i, "name": f"Actor {i}", "role": "Role", "order": i}
+                for i in range(1, self.PEOPLE + 1)
+            ],
+            "crew": [
+                {
+                    "person_id": 10_000 + i,
+                    "name": f"Crew {i}",
+                    "job": "Editor",
+                    "department": "Editing",
+                }
+                for i in range(self.PEOPLE)
+            ],
+            "studios_full": [
+                {"studio_id": i, "name": f"Studio {i}"} for i in range(1, 51)
+            ],
+        }
+
+    def _sync_queries(self):
+        with CaptureQueriesContext(connection) as context:
+            credits.sync_item_credits_from_metadata(self.item, self.metadata)
+        return len(context.captured_queries)
+
+    def test_first_sync_query_count_does_not_grow_with_cast(self):
+        self.assertLessEqual(self._sync_queries(), self.MAX_QUERIES)
+        self.assertEqual(
+            ItemPersonCredit.objects.filter(item=self.item).count(),
+            self.PEOPLE * 2,
+        )
+        self.assertEqual(ItemStudioCredit.objects.filter(item=self.item).count(), 50)
+
+    def test_resync_query_count_does_not_grow_with_cast(self):
+        credits.sync_item_credits_from_metadata(self.item, self.metadata)
+        self.assertLessEqual(self._sync_queries(), self.MAX_QUERIES)
+        self.assertEqual(
+            ItemPersonCredit.objects.filter(item=self.item).count(),
+            self.PEOPLE * 2,
+        )
+
+    def test_resync_updates_changed_people_and_keeps_profile_fields(self):
+        credits.sync_item_credits_from_metadata(self.item, self.metadata)
+        Person.objects.filter(source_person_id="4").update(biography="Kept bio")
+        self.metadata["cast"][3]["name"] = "Renamed Actor"
+
+        credits.sync_item_credits_from_metadata(self.item, self.metadata)
+
+        person = Person.objects.get(source=Sources.TMDB.value, source_person_id="4")
+        self.assertEqual(person.name, "Renamed Actor")
+        self.assertEqual(person.biography, "Kept bio")
+        self.assertEqual(
+            Person.objects.filter(source=Sources.TMDB.value).count(),
+            self.PEOPLE * 2,
+        )
+
+    def test_person_credited_as_cast_and_crew_is_one_row_with_both_credits(self):
+        self.metadata = {
+            "cast": [{"person_id": 7, "name": "Multi", "role": "Lead"}],
+            "crew": [
+                {"person_id": 7, "name": "Multi", "job": "Director", "department": "Directing"},
+            ],
+        }
+
+        credits.sync_item_credits_from_metadata(self.item, self.metadata)
+
+        self.assertEqual(Person.objects.filter(source_person_id="7").count(), 1)
+        self.assertEqual(
+            sorted(
+                ItemPersonCredit.objects.filter(item=self.item).values_list(
+                    "role_type",
+                    flat=True,
+                ),
+            ),
+            [CreditRoleType.CAST.value, CreditRoleType.CREW.value],
+        )
+
+    @patch("app.signals.discover_tab_cache.invalidate_for_media_change")
+    def test_replacing_credits_invalidates_discover_once_per_tracking_user(
+        self,
+        mock_invalidate,
+    ):
+        user = get_user_model().objects.create_user(username="watcher", password="x")
+        Movie.objects.create(user=user, item=self.item)
+        credits.sync_item_credits_from_metadata(self.item, self.metadata)
+        mock_invalidate.reset_mock()
+
+        credits.sync_item_credits_from_metadata(self.item, self.metadata)
+
+        mock_invalidate.assert_called_once_with(user.id, MediaTypes.MOVIE.value)
+
+
+class MissingCreditsBackfillQueryTests(TestCase):
+    """The backfill reads only item ids, so it must not sort or join people (#1791).
+
+    ``ItemPersonCredit`` orders by ``sort_order, person__name`` by default; on a
+    library with hundreds of thousands of credits that made person pages time out.
+    """
+
+    def test_id_reads_are_unordered_and_skip_the_person_join(self):
+        item = Item.objects.create(
+            media_id="movie-1791",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Backfill",
+            image="http://example.com/b.jpg",
+        )
+        person = Person.objects.create(
+            source=Sources.TMDB.value, source_person_id="1", name="Actor"
+        )
+        ItemPersonCredit.objects.create(
+            item=item,
+            person=person,
+            role_type=CreditRoleType.CAST.value,
+            sort_order=0,
+        )
+
+        with CaptureQueriesContext(connection) as queries:
+            credits.missing_credits_backfill_item_ids([item.id])
+
+        credit_sql = [
+            q["sql"].upper()
+            for q in queries
+            if "APP_ITEMPERSONCREDIT" in q["sql"].upper()
+            or "APP_ITEMSTUDIOCREDIT" in q["sql"].upper()
+        ]
+        self.assertTrue(credit_sql)
+        for sql in credit_sql:
+            self.assertNotIn("ORDER BY", sql)
+            self.assertNotIn("APP_PERSON", sql)

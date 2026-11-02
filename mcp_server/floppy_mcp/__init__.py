@@ -8,6 +8,6 @@ from mcp.server.fastmcp.server import Settings as _FastMCPSettings
 
 _FastMCPSettings.model_rebuild()
 
-from .server import mcp
+from .server import mcp  # noqa: E402 -- construct only after rebuilding Settings
 
 __all__ = ["mcp"]

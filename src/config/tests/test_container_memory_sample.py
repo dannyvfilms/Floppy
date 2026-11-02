@@ -28,8 +28,10 @@ _ON_LINUX = skipUnless(sys.platform == "linux", "needs a real /proc and cgroup")
 # CI. The sampler now reports absent accounting as unknown instead of raising;
 # these tests assert on a real measured sample, so they need a host that
 # actually accounts memory.
-_HAS_CGROUP_MEMORY = (Path("/sys/fs/cgroup/memory.current").exists()
-                      or Path("/sys/fs/cgroup/memory/memory.usage_in_bytes").exists())
+_HAS_CGROUP_MEMORY = (
+    Path("/sys/fs/cgroup/memory.current").exists()
+    or Path("/sys/fs/cgroup/memory/memory.usage_in_bytes").exists()
+)
 _WITH_CGROUP_MEMORY = skipUnless(
     _HAS_CGROUP_MEMORY,
     "needs a host cgroup that accounts memory",
@@ -272,8 +274,13 @@ class RollUpTests(SimpleTestCase):
         roles = sampler._roll_up(
             [
                 process(1, "gunicorn", "gunicorn", role="gunicorn-worker"),
-                process(2, "gunicorn", "gunicorn", role="gunicorn-worker",
-                        uptime_seconds=99.0),
+                process(
+                    2,
+                    "gunicorn",
+                    "gunicorn",
+                    role="gunicorn-worker",
+                    uptime_seconds=99.0,
+                ),
             ],
         )
         worker = roles["gunicorn-worker"]
@@ -388,6 +395,8 @@ class PrivacyInvariantTests(SimpleTestCase):
         "measurement",
         "fd_count",
         "uptime_seconds",
+        "start_ticks",
+        "cpu_seconds",
         "pss_kib",
         "rss_kib",
         "private_kib",
@@ -400,7 +409,9 @@ class PrivacyInvariantTests(SimpleTestCase):
 
     def test_no_command_arguments_reach_the_sample(self):
         """Every emitted process carries argv0 only, and no derived flags."""
-        sampled = sampler.sample()
+        # Include this process as an application even when it is alone as PID 1.
+        with patch.object(sampler.os, "getpid", return_value=-1):
+            sampled = sampler.sample()
 
         self.assertTrue(sampled["processes"], "expected at least one process")
         for item in sampled["processes"]:
@@ -428,7 +439,8 @@ class ReconciliationTests(SimpleTestCase):
 
     def test_complete_sample_reports_totals_as_reconciled(self):
         """With every process measured, the PSS total is a real total."""
-        sampled = sampler.sample()
+        with patch.object(sampler.os, "getpid", return_value=-1):
+            sampled = sampler.sample()
         reconciliation = sampled["reconciliation"]
 
         # In a Floppy container every process in the cgroup is one Floppy
@@ -439,9 +451,7 @@ class ReconciliationTests(SimpleTestCase):
         # on that, but only for a process the sampler could not classify:
         # an unreadable gunicorn or celery process is still a real failure,
         # which is the regression this test exists to catch.
-        unmeasured = [
-            item for item in sampled["processes"] if item["pss_kib"] is None
-        ]
+        unmeasured = [item for item in sampled["processes"] if item["pss_kib"] is None]
         if unmeasured and all(item["role"] == "other" for item in unmeasured):
             names = ", ".join(sorted({item["name"] for item in unmeasured}))
             self.skipTest(f"host has unreadable foreign processes: {names}")
@@ -458,7 +468,10 @@ class ReconciliationTests(SimpleTestCase):
         def deny_rollup(path):
             return None if path.name == "smaps_rollup" else real_read_text(path)
 
-        with patch.object(sampler, "_read_text", side_effect=deny_rollup):
+        with (
+            patch.object(sampler, "_read_text", side_effect=deny_rollup),
+            patch.object(sampler.os, "getpid", return_value=-1),
+        ):
             sampled = sampler.sample()
 
         self.assertEqual(sampled["measured_processes"], 0)

@@ -40,8 +40,16 @@ def _build_detail_activity_subtitle(
         if value in (None, ""):
             return None
         progress_text = f"Progress: {value}"
-        if include_max and max_progress:
-            progress_text += f"/{max_progress}"
+        # The total has to be in the same unit as the value: listening time
+        # for an audiobook, and none at all next to a percentage.
+        unit = getattr(current_instance, "progress_unit", None)
+        if include_max and max_progress and unit != "percentage":
+            total = (
+                helpers.minutes_to_hhmm(max_progress)
+                if unit == "minutes"
+                else max_progress
+            )
+            progress_text += f"/{total}"
         return progress_text
 
     date_start = (
@@ -87,6 +95,10 @@ def _build_detail_activity_subtitle(
         primary_text = build_progress_text(
             getattr(current_instance, "formatted_progress", None),
             include_max=True,
+        )
+        duration_text = _format_detail_activity_duration(
+            play_stats.get("total_minutes"),
+            "read",
         )
     elif media_type == MediaTypes.GAME.value:
         progress_value = (
@@ -175,9 +187,10 @@ def _build_detail_activity_state(
             last_played = None
 
             # Iterate through all seasons and episodes
-            seasons = current_instance.seasons.all().select_related("item")
+            # Chaining select_related would bypass the prefetch cache (1 query per season).
+            seasons = current_instance.seasons.all()
             for season in seasons:
-                episodes = season.episodes.all().select_related("item")
+                episodes = season.episodes.all()
                 for episode in episodes:
                     # Only count episodes that have been watched (have end_date)
                     if not episode.end_date:
@@ -345,6 +358,15 @@ def _build_detail_activity_state(
                 )
             else:
                 play_stats["total_plays"] = int(aggregated_progress or 0)
+                if media_type in (
+                    MediaTypes.BOOK.value,
+                    MediaTypes.COMIC.value,
+                    MediaTypes.MANGA.value,
+                ):
+                    # Time spent reading, over every read of this title.
+                    play_stats["total_minutes"] = sum(
+                        getattr(entry, "reading_time", 0) or 0 for entry in user_medias
+                    )
 
         activity_subtitle = _build_detail_activity_subtitle(
             media_type,
@@ -441,6 +463,39 @@ def _normalize_detail_episode_actions(episodes):
             continue
         normalized_episodes.append(episode)
     return normalized_episodes
+
+
+def attach_unwatched_ratings(episodes, user, media_metadata):
+    """Let an unwatched episode of a tracked season be rated from its row.
+
+    Adds ``rating_season_id`` (the season the rating belongs to) and
+    ``unwatched_score`` (a rating-only row's score, if any) to each episode
+    dict that has no play. Does nothing when the season is not tracked.
+    """
+    from app.models import Episode, Season
+
+    if not getattr(user, "is_authenticated", False):
+        return episodes
+    season = Season.objects.filter(
+        user=user,
+        item__media_id=str(media_metadata.get("media_id")),
+        item__source=media_metadata.get("source"),
+        item__season_number=media_metadata.get("season_number"),
+    ).first()
+    if season is None:
+        return episodes
+    scores = dict(
+        Episode.ratings.filter(related_season=season, rating_only=True).values_list(
+            "item__episode_number",
+            "score",
+        ),
+    )
+    for episode in episodes:
+        if not isinstance(episode, dict) or episode.get("all_history"):
+            continue
+        episode["rating_season_id"] = season.id
+        episode["unwatched_score"] = scores.get(episode.get("episode_number"))
+    return episodes
 
 
 def _should_queue_game_lengths_refresh(detail_item):

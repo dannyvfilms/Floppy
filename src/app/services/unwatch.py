@@ -15,6 +15,7 @@ be someone's genuine history than the one the provider means.
 import logging
 
 from django.db import transaction
+from django.db.models import F
 
 from app.models import MediaTypes, Status
 
@@ -114,7 +115,12 @@ def retract_episode_watch(
         target = rows.filter(external_id=external_id).first()
         attributable = target is not None
     else:
-        target = rows.order_by("-end_date", "-id").first()
+        # The latest finished play, never an open one ahead of it: databases
+        # disagree on where a NULL end date sorts.
+        target = rows.order_by(
+            F("end_date").desc(nulls_last=True),
+            "-id",
+        ).first()
         attributable = False
 
     deleted = 0

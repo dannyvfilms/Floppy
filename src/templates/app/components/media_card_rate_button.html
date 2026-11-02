@@ -1,0 +1,71 @@
+{% load i18n %}
+{% load l10n %}
+{% load app_tags %}
+{% comment %}
+  Card rating as a button: the filled star and score, or, when unrated, an empty star
+  that only shows on card hover (.media-card-rate-empty). It opens the shared rating
+  picker in a popup teleported to <body>, because the card clips its overflow, so htmx
+  is told about the popup once (htmx.process on first open). The star row stays in the
+  DOM while closed: htmx must still find the button when the click closes the popup.
+{% endcomment %}
+<span x-data="{
+        showRatingPopup: false,
+        rating: {% localize off %}{% if rating_shown is None %}null{% else %}{{ rating_shown }}{% endif %}{% endlocalize %},
+        initialRating: {% localize off %}{% if rating_shown is None %}null{% else %}{{ rating_shown }}{% endif %}{% endlocalize %},
+        initialLabel: '{% if rating_shown is not None %}{% filter escapejs %}{{ rating_shown }}{% endfilter %}{% endif %}',
+        ratingScaleMax: {{ user|rating_scale_max }},
+        hoverRating: null,
+        isHovering: false,
+        popupPos: {},
+        popupProcessed: false,
+        togglePopup() {
+          this.showRatingPopup = !this.showRatingPopup;
+          if (this.showRatingPopup) { this.placePopup(); }
+        },
+        placePopup() {
+          this.$nextTick(() => {
+            const trigger = this.$refs.trigger;
+            const popup = this.$refs.popup;
+            if (!trigger || !popup) { return; }
+            if (!this.popupProcessed && window.htmx) { window.htmx.process(popup); this.popupProcessed = true; }
+            const rect = trigger.getBoundingClientRect();
+            const width = Math.min(250, window.innerWidth - 32);
+            const height = popup.offsetHeight || 90;
+            const left = Math.min(Math.max(16, rect.right - width), window.innerWidth - width - 16);
+            const fitsBelow = rect.bottom + 8 + height <= window.innerHeight;
+            const top = fitsBelow ? rect.bottom + 8 : Math.max(8, rect.top - height - 8);
+            this.popupPos = { left: `${left}px`, top: `${top}px`, width: `${width}px` };
+          });
+        }
+      }"
+      @keydown.escape.window="showRatingPopup = false"
+      @resize.window="if (showRatingPopup) { placePopup(); }"
+      @scroll.window.capture.passive="if (showRatingPopup) { placePopup(); }"
+      class="flex shrink-0">
+  <button type="button"
+          x-ref="trigger"
+          @click="togglePopup()"
+          title="{% translate "Rate" %}"
+          aria-label="{% translate "Rate" %}"
+          aria-haspopup="true"
+          class="media-card-rate-button -mx-1 flex h-5 items-center gap-1 px-1 text-xs text-yellow-300 cursor-pointer"
+          :class="rating === null ? 'media-card-rate-empty' : ''">
+    <span class="media-card-rate-star">{% include "app/icons/star.svg" with classes="w-3 h-3 text-yellow-400" %}</span>
+    <span class="font-medium"
+          x-show="rating !== null"
+          x-text="rating === initialRating ? initialLabel : rating">{{ rating_shown|default_if_none:"" }}</span>
+  </button>
+  <template x-teleport="body">
+    <div x-cloak
+         x-ref="popup"
+         x-show="showRatingPopup"
+         style="display: none"
+         :style="popupPos"
+         @click.outside="showRatingPopup = false; isHovering = false"
+         @mouseenter="isHovering = true"
+         @mouseleave="isHovering = false; hoverRating = null"
+         class="fixed z-50 rounded-lg border border-gray-700 bg-[var(--color-surface)] p-3 shadow-lg">
+      {% include "app/components/rating_picker.html" with post_url=rate_url %}
+    </div>
+  </template>
+</span>

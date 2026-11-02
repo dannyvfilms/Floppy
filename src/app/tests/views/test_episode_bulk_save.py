@@ -4,6 +4,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from app.models import (
     TV,
@@ -18,7 +19,10 @@ from app.models import (
     Sources,
     Status,
 )
-from app.services.bulk_episode_tracking import apply_bulk_episode_plays
+from app.services.bulk_episode_tracking import (
+    apply_bulk_episode_plays,
+    distribute_target_timestamps,
+)
 from app.services.episode_coordinates import InvalidEpisodeCoordinateError
 from app.services.metadata_resolution import MetadataResolutionResult
 
@@ -284,6 +288,147 @@ class EpisodeBulkSaveViewTests(TestCase):
 
     @patch("app.views.metadata_resolution.resolve_detail_metadata")
     @patch("app.providers.services.get_media_metadata")
+    def test_bulk_air_date_single_episode_with_range_is_not_midnight(
+        self,
+        mock_get_metadata,
+        mock_resolve_detail_metadata,
+    ):
+        """A single-episode air-date bulk save keeps the picker's time.
+
+        Regression test for #1232: selecting one episode skipped the
+        interpolation math and clamped the raw midnight air date straight
+        into storage, ignoring the start/end time the user picked.
+        """
+        seasons = [
+            {
+                "season_number": 1,
+                "season_title": "Season 1",
+                "episodes": [
+                    _season_episode(1, air_date="2024-01-01"),
+                ],
+            },
+        ]
+        base_payload = _tv_base_payload(
+            "1396",
+            Sources.TMDB.value,
+            title="Breaking Bad",
+            seasons=seasons,
+        )
+        tv_with_seasons = _tv_with_seasons_payload(
+            "1396",
+            Sources.TMDB.value,
+            title="Breaking Bad",
+            seasons=seasons,
+        )
+        mock_get_metadata.side_effect = lambda media_type, *_args, **_kwargs: (
+            tv_with_seasons if media_type == "tv_with_seasons" else base_payload
+        )
+        mock_resolve_detail_metadata.return_value = self.default_resolution
+
+        response = self._post_bulk(
+            {
+                "media_id": "1396",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.TV.value,
+                "library_media_type": MediaTypes.TV.value,
+                "identity_media_type": "",
+                "instance_id": "",
+                "return_url": self.return_url,
+                "first_season_number": 1,
+                "first_episode_number": 1,
+                "last_season_number": 1,
+                "last_episode_number": 1,
+                "write_mode": "add",
+                "distribution_mode": "air_date",
+                "start_date": "2024-02-01T20:15",
+                "end_date": "2024-02-01T20:15",
+            },
+        )
+
+        self.assertEqual(response.status_code, 204)
+        episode = Episode.objects.get(
+            related_season__user=self.user,
+            item__media_id="1396",
+        )
+        local_end = timezone.localtime(episode.end_date)
+        self.assertEqual((local_end.hour, local_end.minute), (20, 15))
+
+    @patch("app.views.metadata_resolution.resolve_detail_metadata")
+    @patch("app.providers.services.get_media_metadata")
+    def test_bulk_even_distribution_keeps_picked_time_of_day(
+        self,
+        mock_get_metadata,
+        mock_resolve_detail_metadata,
+    ):
+        """A bulk-logged range keeps the picker's time, not just its date.
+
+        Regression test for #1232: the background task truncated
+        start_date/end_date to bare dates (`date.fromisoformat(...)`)
+        before handing them to the distribution logic, so every bulk play
+        landed at midnight regardless of the time the user picked in the
+        TRACK_TIME-enabled date/time picker.
+        """
+        seasons = [
+            {
+                "season_number": 1,
+                "season_title": "Season 1",
+                "episodes": [
+                    _season_episode(1, air_date="2024-01-01"),
+                    _season_episode(2, air_date="2024-01-02"),
+                ],
+            },
+        ]
+        base_payload = _tv_base_payload(
+            "1396",
+            Sources.TMDB.value,
+            title="Breaking Bad",
+            seasons=seasons,
+        )
+        tv_with_seasons = _tv_with_seasons_payload(
+            "1396",
+            Sources.TMDB.value,
+            title="Breaking Bad",
+            seasons=seasons,
+        )
+        mock_get_metadata.side_effect = lambda media_type, *_args, **_kwargs: (
+            tv_with_seasons if media_type == "tv_with_seasons" else base_payload
+        )
+        mock_resolve_detail_metadata.return_value = self.default_resolution
+
+        response = self._post_bulk(
+            {
+                "media_id": "1396",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.TV.value,
+                "library_media_type": MediaTypes.TV.value,
+                "identity_media_type": "",
+                "instance_id": "",
+                "return_url": self.return_url,
+                "first_season_number": 1,
+                "first_episode_number": 1,
+                "last_season_number": 1,
+                "last_episode_number": 2,
+                "write_mode": "add",
+                "distribution_mode": "even",
+                "start_date": "2024-02-01T09:30",
+                "end_date": "2024-02-01T09:30",
+            },
+        )
+
+        self.assertEqual(response.status_code, 204)
+        episodes = list(
+            Episode.objects.filter(
+                related_season__user=self.user,
+                item__media_id="1396",
+            ).order_by("item__episode_number"),
+        )
+        self.assertEqual(len(episodes), 2)
+        for episode in episodes:
+            local_end = timezone.localtime(episode.end_date)
+            self.assertEqual((local_end.hour, local_end.minute), (9, 30))
+
+    @patch("app.views.metadata_resolution.resolve_detail_metadata")
+    @patch("app.providers.services.get_media_metadata")
     def test_bulk_add_appends_existing_episode_plays(
         self,
         mock_get_metadata,
@@ -393,6 +538,146 @@ class EpisodeBulkSaveViewTests(TestCase):
             1,
         )
 
+    def _bulk_watch_whole_show(
+        self,
+        mock_get_metadata,
+        mock_resolve_detail_metadata,
+        *,
+        production_status,
+    ):
+        """Bulk-log every episode of a two-season show, one season part-watched.
+
+        No release events exist (the calendar reloads after the save), so the
+        season totals can only come from the provider payload.
+        """
+        seasons = [
+            {
+                "season_number": number,
+                "season_title": f"Season {number}",
+                "episodes": [
+                    _season_episode(1, air_date="2024-01-01"),
+                    _season_episode(2, air_date="2024-01-02"),
+                ],
+            }
+            for number in (1, 2)
+        ]
+        base_payload = _tv_base_payload(
+            "1396",
+            Sources.TMDB.value,
+            title="Breaking Bad",
+            seasons=seasons,
+        )
+        base_payload["details"]["status"] = production_status
+        tv_with_seasons = _tv_with_seasons_payload(
+            "1396",
+            Sources.TMDB.value,
+            title="Breaking Bad",
+            seasons=seasons,
+        )
+        mock_get_metadata.side_effect = lambda media_type, *_args, **_kwargs: (
+            tv_with_seasons if media_type == "tv_with_seasons" else base_payload
+        )
+        mock_resolve_detail_metadata.return_value = self.default_resolution
+
+        tv = TV.objects.create(
+            item=Item.objects.create(
+                media_id="1396",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+                title="Breaking Bad",
+            ),
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_one = Season.objects.create(
+            item=Item.objects.create(
+                media_id="1396",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value,
+                season_number=1,
+                title="Breaking Bad",
+            ),
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        Episode.objects.create(
+            item=Item.objects.create(
+                media_id="1396",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=1,
+                episode_number=1,
+                title="Episode 1",
+            ),
+            related_season=season_one,
+            end_date=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
+        )
+
+        response = self._post_bulk(
+            {
+                "media_id": "1396",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.TV.value,
+                "library_media_type": MediaTypes.TV.value,
+                "identity_media_type": "",
+                "instance_id": str(tv.id),
+                "return_url": self.return_url,
+                "first_season_number": 1,
+                "first_episode_number": 1,
+                "last_season_number": 2,
+                "last_episode_number": 2,
+                "write_mode": "add",
+                "distribution_mode": "even",
+                "start_date": "2024-02-01T00:00",
+                "end_date": "2024-02-02T00:00",
+            },
+        )
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(
+            list(
+                Season.objects.filter(user=self.user, item__media_id="1396")
+                .order_by("item__season_number")
+                .values_list("status", flat=True),
+            ),
+            [Status.COMPLETED.value, Status.COMPLETED.value],
+        )
+        tv.refresh_from_db()
+        return tv
+
+    @patch("app.views.metadata_resolution.resolve_detail_metadata")
+    @patch("app.providers.services.get_media_metadata")
+    def test_bulk_watching_every_episode_completes_seasons_and_ended_show(
+        self,
+        mock_get_metadata,
+        mock_resolve_detail_metadata,
+    ):
+        """Bulk plays complete fully watched seasons, even in-progress ones (#1265)."""
+        tv = self._bulk_watch_whole_show(
+            mock_get_metadata,
+            mock_resolve_detail_metadata,
+            production_status="Ended",
+        )
+
+        self.assertEqual(tv.status, Status.COMPLETED.value)
+
+    @patch("app.views.metadata_resolution.resolve_detail_metadata")
+    @patch("app.providers.services.get_media_metadata")
+    def test_bulk_watching_every_episode_keeps_returning_series_in_progress(
+        self,
+        mock_get_metadata,
+        mock_resolve_detail_metadata,
+    ):
+        """Every aired season complete does not finish a show still airing (#1265)."""
+        tv = self._bulk_watch_whole_show(
+            mock_get_metadata,
+            mock_resolve_detail_metadata,
+            production_status="Returning Series",
+        )
+
+        self.assertEqual(tv.status, Status.IN_PROGRESS.value)
+
     @patch("app.views.metadata_resolution.resolve_detail_metadata")
     @patch("app.providers.services.get_media_metadata")
     def test_bulk_rewatch_inherits_prior_rating(
@@ -488,6 +773,7 @@ class EpisodeBulkSaveViewTests(TestCase):
             related_season=season,
             end_date=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
             score=8.5,
+            scored_at=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
         )
 
         response = self._post_bulk(
@@ -517,6 +803,8 @@ class EpisodeBulkSaveViewTests(TestCase):
             end_date__gt=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
         )
         self.assertEqual(rewatch.score, 8.5)
+        # The rating keeps its original time, not the replay's (#1280).
+        self.assertEqual(rewatch.scored_at, datetime(2024, 1, 1, 0, 0, tzinfo=UTC))
         new_unrated_play = Episode.objects.get(
             related_season=season,
             item=unrated_episode_item,
@@ -1025,7 +1313,7 @@ class EpisodeBulkSaveViewTests(TestCase):
 
     @patch("app.views.metadata_resolution.resolve_detail_metadata")
     @patch("app.providers.services.get_media_metadata")
-    def test_air_date_mode_scales_air_dates_into_selected_range(
+    def test_air_date_mode_uses_each_episodes_own_air_date(
         self,
         mock_get_metadata,
         mock_resolve_detail_metadata,
@@ -1037,7 +1325,7 @@ class EpisodeBulkSaveViewTests(TestCase):
                 "episodes": [
                     _season_episode(1, air_date="2024-01-01"),
                     _season_episode(2, air_date="2024-01-06"),
-                    _season_episode(3, air_date="2024-01-11"),
+                    _season_episode(3, air_date="2024-03-20"),
                 ],
             },
         ]
@@ -1058,6 +1346,8 @@ class EpisodeBulkSaveViewTests(TestCase):
         )
         mock_resolve_detail_metadata.return_value = self.default_resolution
 
+        # Wide range (first premiere through a later "today"): the range must
+        # not stretch or space the dates; episode 3 stays on its own date.
         response = self._post_bulk(
             {
                 "media_id": "1396",
@@ -1073,8 +1363,8 @@ class EpisodeBulkSaveViewTests(TestCase):
                 "last_episode_number": 3,
                 "write_mode": "add",
                 "distribution_mode": "air_date",
-                "start_date": "2024-02-01T00:00",
-                "end_date": "2024-02-11T00:00",
+                "start_date": "2024-01-01T00:00",
+                "end_date": "2024-12-31T00:00",
             },
         )
 
@@ -1088,9 +1378,9 @@ class EpisodeBulkSaveViewTests(TestCase):
         self.assertEqual(
             [episode.end_date.date().isoformat() for episode in episodes],
             [
-                "2024-02-01",
-                "2024-02-06",
-                "2024-02-11",
+                "2024-01-01",
+                "2024-01-06",
+                "2024-03-20",
             ],
         )
 
@@ -1150,11 +1440,20 @@ class EpisodeBulkSaveViewTests(TestCase):
 
         self.assertEqual(response.status_code, 204)
         self.assertIn("closeModal", response["HX-Trigger"])
-        # Missing air dates now fall back to distributing the plays across
-        # the selected date range instead of rejecting the request.
+        # A missing air date uses the fallback (now), clamped to the range
+        # end, instead of rejecting the request.
         self.assertEqual(
             Episode.objects.filter(related_season__user=self.user).count(),
             2,
+        )
+        self.assertEqual(
+            {
+                episode.end_date.date().isoformat()
+                for episode in Episode.objects.filter(
+                    related_season__user=self.user,
+                )
+            },
+            {"2024-02-01", "2024-02-02"},
         )
 
     @patch("app.views.metadata_resolution.resolve_detail_metadata")
@@ -1266,3 +1565,24 @@ class EpisodeBulkSaveViewTests(TestCase):
             ).count(),
             2,
         )
+
+
+class DistributeTargetTimestampsTests(TestCase):
+    def test_each_target_keeps_own_date_and_clamps_and_fills_missing(self):
+        start = datetime(2024, 1, 1, tzinfo=UTC)
+        end = datetime(2024, 12, 31, tzinfo=UTC)
+        result = distribute_target_timestamps(
+            [
+                datetime(2023, 6, 1, tzinfo=UTC),  # before range -> start
+                None,  # missing -> fallback, clamped
+                datetime(2024, 1, 9, tzinfo=UTC),
+                datetime(2025, 1, 1, tzinfo=UTC),  # after range -> end
+            ],
+            start,
+            end,
+            fallback_dt=datetime(2024, 6, 1, tzinfo=UTC),
+        )
+        self.assertEqual(result[0], start)
+        self.assertEqual(result[1], datetime(2024, 6, 1, tzinfo=UTC))
+        self.assertEqual(result[2], datetime(2024, 1, 9, tzinfo=UTC))
+        self.assertEqual(result[3], end)

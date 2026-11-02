@@ -27,9 +27,33 @@ from app.services import trakt_popularity as trakt_popularity_service
 logger = logging.getLogger(__name__)
 
 
+@shared_task(name="Settle check-in", ignore_result=True)
+def settle_checkin(user_id):
+    """Complete a manual check-in once its assumed end has passed."""
+    from app import checkin
+
+    checkin.settle(user_id)
+
+
+@shared_task(name="Settle check-in session", ignore_result=True)
+def settle_checkin_session(user_id):
+    """Drop a game or board game session left running past its time limit."""
+    from app import checkin_session
+
+    checkin_session.settle(user_id)
+
+
 @shared_task(name="Cleanup task results", ignore_result=True)
 def cleanup_task_results(batch_size=5000):
-    """Remove expired and abandoned durable task-status rows in small batches."""
+    """Remove expired and abandoned durable task-status rows in small batches.
+
+    Also closes import runs whose task was killed before it could say so.
+    """
+    from integrations.tasks._import_helpers import close_abandoned_import_runs
+
+    # Same housekeeping cadence: a killed import leaves no other record.
+    close_abandoned_import_runs()
+
     batch_size = max(int(batch_size), 0)
     if not batch_size:
         return 0
@@ -112,6 +136,7 @@ from app.tasks_anime_library_repair import (  # noqa: E402
     convert_anime_library_shape_task,
     repair_duplicated_anime_libraries_task,
 )
+from app.tasks_backdrops import warm_backdrops_task  # noqa: E402, F401
 from app.tasks_backfill_state import (  # noqa: E402
     EXTERNAL_IDS_BACKFILL_VERSION,
     GENRE_BACKFILL_VERSION,
@@ -134,6 +159,7 @@ from app.tasks_backfill_state import (  # noqa: E402
     is_terminal_backfill_error,
 )
 from app.tasks_bulk_plays import (  # noqa: E402
+    bulk_consumption_batch_task,
     bulk_episode_plays_task,
     bulk_music_plays_task,
 )
@@ -150,7 +176,10 @@ from app.tasks_credits import (  # noqa: E402
     populate_credits_data_for_items,
 )
 from app.tasks_db_backup import write_database_snapshot  # noqa: E402
+from app.tasks_db_optimize import optimize_database_statistics  # noqa: E402
+from app.tasks_db_warm import warm_database_page_cache  # noqa: E402
 from app.tasks_discover import (  # noqa: E402
+    purge_expired_discover_caches,
     refresh_discover_profiles,
     refresh_discover_rows,
     refresh_discover_tab_cache,
@@ -170,6 +199,11 @@ from app.tasks_external_ids import (  # noqa: E402
     populate_external_ids_backfill_queue,
     populate_external_ids_for_items,
     reconcile_external_ids_backfill,
+)
+from app.tasks_game_groups import (  # noqa: E402
+    populate_game_group_backfill_queue,
+    populate_game_group_data_for_items,
+    reconcile_game_groups_backfill,
 )
 from app.tasks_genre import (  # noqa: E402
     GENRE_BACKFILL_ITEMS_QUEUE_KEY,
@@ -201,8 +235,10 @@ from app.tasks_igdb_ratings import (  # noqa: E402
 from app.tasks_imdb import refresh_imdb_game_credits_from_datasets  # noqa: E402
 from app.tasks_interactive import (  # noqa: E402
     continue_statistics_refresh_task,  # noqa: F401
+    reconcile_statistics_sync_task,  # noqa: F401
     refresh_statistics_cache_task,  # noqa: F401
     resolve_playback_image,  # noqa: F401
+    statistics_sync_task,  # noqa: F401
 )
 from app.tasks_mal import sync_mal_ratings_from_api  # noqa: E402
 from app.tasks_metadata_cache import (  # noqa: E402
@@ -219,11 +255,16 @@ from app.tasks_music import (  # noqa: E402
     prefetch_album_covers_batch,
     prefetch_artist_images_batch,
 )
+from app.tasks_opencritic import (  # noqa: E402
+    backfill_opencritic_scores,  # noqa: F401
+    refresh_item_opencritic_score,  # noqa: F401
+)
 from app.tasks_podcast import (  # noqa: E402
     PODCAST_WEBSITE_BACKFILL_VERSION,
     backfill_podcast_show_websites,
     ensure_podcast_website_backfill_reconcile,
     reconcile_podcast_website_backfill,
+    refresh_podcast_show_from_rss_task,  # noqa: F401
 )
 from app.tasks_providers import (  # noqa: E402
     WATCH_PROVIDERS_BACKFILL_ITEMS_QUEUE_KEY,
@@ -273,10 +314,16 @@ from app.tasks_trakt import (  # noqa: E402
 )
 from app.tasks_tv_provider_migration import (  # noqa: E402
     migrate_tv_shows_to_preferred_provider_task,
+    move_user_tv_library_task,
 )
 from app.tasks_watch_state import (  # noqa: E402
     backfill_user_watch_state,
     backfill_watch_state,
+    ensure_watch_state_repair,
+)
+from app.tasks_youtube_game import (  # noqa: E402,F401
+    backfill_youtube_game_tags,
+    lookup_youtube_game_tag,
 )
 
 RELEASE_BACKFILL_SOURCES = (
@@ -284,10 +331,12 @@ RELEASE_BACKFILL_SOURCES = (
     Sources.TVDB.value,
     Sources.MAL.value,
     Sources.MANGAUPDATES.value,
+    Sources.MANGABAKA.value,
     Sources.IGDB.value,
     Sources.OPENLIBRARY.value,
     Sources.HARDCOVER.value,
     Sources.COMICVINE.value,
+    Sources.GCD.value,
     Sources.BGG.value,
     Sources.MUSICBRAINZ.value,
 )
@@ -327,6 +376,9 @@ DISCOVER_METADATA_REFRESH_DEBOUNCE_SECONDS = 60 * 10
 DISCOVER_METADATA_REFRESH_COUNTDOWN_SECONDS = 60
 BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9)
 HISTORY_COVERAGE_REPAIR_REQUEUE_SECONDS = 15
+# A batch that built nothing yielded to an interactive user; retrying in 15 s
+# only repeats the missing-day scan, so wait for them to go idle.
+HISTORY_COVERAGE_REPAIR_STALLED_REQUEUE_SECONDS = 120
 
 
 def _release_items_queryset():
@@ -473,9 +525,10 @@ def _schedule_discover_refresh_for_movie_items(items: list[Item]) -> None:
 
     user_ids = sorted(
         set(
-            Movie.objects.filter(item_id__in=movie_item_ids).values_list(
-                "user_id", flat=True
-            ),
+            Movie.objects.filter(
+                item_id__in=movie_item_ids,
+                user__show_discover=True,
+            ).values_list("user_id", flat=True),
         ),
     )
     if not user_ids:
@@ -905,7 +958,11 @@ def repair_history_day_cache_coverage_task(
                 "logging_style": logging_style,
                 "batch_size": batch_size,
             },
-            countdown=HISTORY_COVERAGE_REPAIR_REQUEUE_SECONDS,
+            countdown=(
+                HISTORY_COVERAGE_REPAIR_STALLED_REQUEUE_SECONDS
+                if result.get("rebuilt", 1) == 0
+                else HISTORY_COVERAGE_REPAIR_REQUEUE_SECONDS
+            ),
             priority=BACKGROUND_TASK_PRIORITY,
         )
     else:
@@ -931,6 +988,9 @@ def backfill_item_metadata_task(
     else:
         game_length_batch_size = max(int(game_length_batch_size), 0)
 
+    from app.tasks_metadata_language import repair_metadata_language_batch
+
+    language_repair = repair_metadata_language_batch(batch_size=min(batch_size, 25))
     if interactive_request_active():
         logger.info("metadata_backfill_skipped reason=interactive_request_active")
         return {
@@ -946,6 +1006,7 @@ def backfill_item_metadata_task(
             "message": "Skipped metadata backfill while an interactive request was active",
         }
 
+    batch_size = max(batch_size - language_repair["attempted"], 0)
     initial_items = list(_initial_metadata_items_queryset().order_by("id")[:batch_size])
     initial_item_ids = [item.id for item in initial_items]
     remaining_slots = max(batch_size - len(initial_items), 0)
@@ -1014,21 +1075,24 @@ def backfill_item_metadata_task(
     )
     if not items:
         return {
-            "success_count": 0,
-            "error_count": 0,
+            "success_count": language_repair["success"],
+            "error_count": language_repair["errors"],
+            "metadata_language_repair": language_repair,
             "remaining_metadata": 0,
             "remaining_release": 0,
             "remaining_discover_movie_metadata": 0,
             "remaining_game_lengths": 0,
             "remaining_status": 0,
             "message": (
-                "No items need metadata, release-date, Discover metadata, "
+                f"Attempted {language_repair['attempted']} metadata language repairs"
+                if language_repair["attempted"]
+                else "No items need metadata, release-date, Discover metadata, "
                 "game-length, or status backfill"
             ),
         }
 
-    success_count = 0
-    error_count = 0
+    success_count = language_repair["success"]
+    error_count = language_repair["errors"]
     release_updated_count = 0
     processed_movie_discover_items: list[Item] = []
     discover_item_ids = {item.id for item in discover_backfill_items}
@@ -1061,6 +1125,11 @@ def backfill_item_metadata_task(
                 _clear_item_metadata_cache(item)
 
             metadata = _fetch_item_metadata(item)
+            # Shared background fetches use the instance language, not the
+            # language chosen by the user who last synced this item (#1579).
+            # Fill missing synopses without replacing an existing translation.
+            if item.synopsis:
+                metadata = {**metadata, "synopsis": item.synopsis}
 
             update_fields = []
 
@@ -1214,6 +1283,7 @@ def backfill_item_metadata_task(
                     item,
                     MetadataBackfillField.DISCOVER,
                     f"exception: {exception_summary(e)}",
+                    terminal=terminal,
                 )
             # A provider id that does not resolve - a MusicBrainz recording id
             # returning 400/404, a season row with no season number - is not a
@@ -1258,6 +1328,7 @@ def backfill_item_metadata_task(
 
     result = {
         "success_count": success_count,
+        "metadata_language_repair": language_repair,
         "release_updated_count": release_updated_count,
         "error_count": error_count,
         "remaining_metadata": remaining_metadata,
@@ -1279,6 +1350,21 @@ def backfill_item_metadata_task(
         result["deferred"] = True
         result["reason"] = "interactive_request_active"
     return result
+
+
+@shared_task(name="Enqueue item backfills", ignore_result=True)
+def enqueue_item_backfills(item_id: int, kinds: list[str]):
+    """Queue per-item backfills a save would otherwise run inside its request."""
+    if "runtime" in kinds:
+        enqueue_runtime_backfill_items([item_id])
+    if "genres" in kinds:
+        enqueue_genre_backfill_items([item_id])
+    if "credits" in kinds:
+        enqueue_credits_backfill_items([item_id])
+    if "credits_if_needed" in kinds:
+        from app.signals import _schedule_credits_backfill_if_needed
+
+        _schedule_credits_backfill_if_needed(item_id)
 
 
 __all__ = [
@@ -1335,6 +1421,7 @@ __all__ = [
     "backfill_podcast_show_websites",
     "backfill_user_watch_state",
     "backfill_watch_state",
+    "bulk_consumption_batch_task",
     "bulk_episode_plays_task",
     "bulk_music_plays_task",
     "convert_anime_library_shape_task",
@@ -1343,6 +1430,7 @@ __all__ = [
     "enqueue_due_provider_backfill_retries",
     "enqueue_external_ids_backfill_items",
     "enqueue_igdb_rating_backfill_items",
+    "enqueue_item_backfills",
     "enqueue_provider_backfill_items",
     "enrich_albums_task",
     "enrich_music_library_task",
@@ -1350,11 +1438,14 @@ __all__ = [
     "ensure_genre_backfill_reconcile",
     "ensure_podcast_website_backfill_reconcile",
     "ensure_provider_backfill_reconcile",
+    "ensure_watch_state_repair",
     "fast_runtime_backfill_task",
     "is_external_ids_backfill_reconcile_complete",
     "is_genre_backfill_reconcile_complete",
     "is_provider_backfill_reconcile_complete",
     "migrate_tv_shows_to_preferred_provider_task",
+    "move_user_tv_library_task",
+    "optimize_database_statistics",
     "populate_album_tracks_batch",
     "populate_credits_backfill_queue",
     "populate_credits_data_for_items",
@@ -1362,6 +1453,8 @@ __all__ = [
     "populate_episode_runtime_queue",
     "populate_external_ids_backfill_queue",
     "populate_external_ids_for_items",
+    "populate_game_group_backfill_queue",
+    "populate_game_group_data_for_items",
     "populate_genre_backfill_queue",
     "populate_genre_data_for_items",
     "populate_igdb_rating_backfill_queue",
@@ -1377,7 +1470,9 @@ __all__ = [
     "populate_trakt_popularity_data_for_items",
     "prefetch_album_covers_batch",
     "prefetch_artist_images_batch",
+    "purge_expired_discover_caches",
     "reconcile_external_ids_backfill",
+    "reconcile_game_groups_backfill",
     "reconcile_genre_backfill",
     "reconcile_igdb_rating_backfill",
     "reconcile_podcast_website_backfill",
@@ -1386,6 +1481,7 @@ __all__ = [
     "refresh_discover_rows",
     "repair_duplicated_anime_libraries_task",
     "sync_mal_ratings_from_api",
+    "warm_database_page_cache",
     "warm_discover_api_cache",
     "warm_discover_startup_tabs",
     "warm_history_day_cache_coverage",

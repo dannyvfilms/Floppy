@@ -11,10 +11,14 @@ META = {"max_progress": 13, "episodes": []}
 
 
 class AnimeCompletionAutoMigrateTests(TestCase):
-    """Completing a flat MAL anime should migrate it to episode tracking."""
+    """Completing a flat MAL anime migrates it when conversion is enabled."""
 
     def setUp(self):
-        self.user = get_user_model().objects.create_user(username="a", password="x")
+        self.user = get_user_model().objects.create_user(
+            username="a",
+            password="x",
+            group_scrobbled_anime=True,
+        )
         self.item = Item.objects.create(
             media_id="10087",
             source=Sources.MAL.value,
@@ -67,6 +71,20 @@ class AnimeCompletionAutoMigrateTests(TestCase):
         self.assertEqual(args[0], self.user)
         self.assertEqual(args[1], self.item)
         self.assertEqual(args[2], Sources.TVDB.value)
+
+    def test_no_migration_without_conversion_opt_in(self):
+        """Completing a MAL entry must not silently switch its provider."""
+        self.user.group_scrobbled_anime = False
+        self.user.save(update_fields=["group_scrobbled_anime"])
+        anime = self._make()
+        with ExitStack() as stack:
+            migrate = self._env(stack)
+            anime.status = Status.COMPLETED.value
+            anime.save()
+        migrate.assert_not_called()
+        anime.refresh_from_db()
+        self.assertEqual(anime.status, Status.COMPLETED.value)
+        self.assertIsNone(anime.migrated_to_item_id)
 
     def test_no_migration_without_provider_mapping(self):
         anime = self._make()

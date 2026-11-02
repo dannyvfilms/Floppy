@@ -243,10 +243,7 @@ def album_save(request):
             % {"value_1": album.title, "value_2": form.errors},
         )
 
-    next_url = request.GET.get("next", "")
-    if next_url:
-        return redirect(next_url)
-    return redirect(_music_album_detail_url(album))
+    return _music_release_redirect(request, album, request.GET.get("next", ""))
 
 
 @require_POST
@@ -267,10 +264,7 @@ def album_delete(request):
             gettext("Removed %(value_1)s from your library") % {"value_1": album.title},
         )
 
-    next_url = request.GET.get("next", "")
-    if next_url:
-        return redirect(next_url)
-    return redirect(_music_album_detail_url(album))
+    return _music_release_redirect(request, album, request.GET.get("next", ""))
 
 
 @require_POST
@@ -309,9 +303,7 @@ def song_save(request):
                 )
                 return response
             messages.error(request, message)
-            # Return to the album rather than following ?next=. The value is
-            # unvalidated where the success path uses it, and an error page is
-            # not the place to widen that.
+            # Return to the album so the invalid listen can be entered again.
             return redirect(_music_album_detail_url(album))
 
     existed_before = Music.objects.filter(
@@ -449,10 +441,7 @@ def song_save(request):
         response["Expires"] = "0"
         return response
 
-    next_url = request.GET.get("next", "")
-    if next_url:
-        return redirect(next_url)
-    return redirect(_music_album_detail_url(album))
+    return _music_release_redirect(request, album, request.GET.get("next", ""))
 
 
 @require_POST

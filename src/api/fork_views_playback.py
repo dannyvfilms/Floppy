@@ -26,10 +26,9 @@ from app.models import (
     Sources,
     Status,
 )
-from app.services.progress_changes import (
-    record_progress_change,
-    record_progress_deletion,
-)
+from app.models.episode_runtimes import usable_runtime_minutes
+from app.services.progress_changes import record_progress_change
+from app.services.sync_lock import state_transaction
 from app.services.tracking_hydration import ensure_item_metadata
 from app.templatetags.app_tags import media_url
 from integrations.delivery import get_or_record_receipt
@@ -168,6 +167,26 @@ def _resolve_podcast(user, ids):
     )
 
 
+def complete_playback_progress(user_id, item_id):
+    """Close the resume point of an item that has just become watched."""
+    open_rows = PlaybackProgress.objects.filter(
+        user_id=user_id,
+        item_id=item_id,
+        completed=False,
+    ).select_related("user", "item")
+    for progress in open_rows:
+        with transaction.atomic():
+            progress.completed = True
+            progress.save(update_fields=["completed", "updated_at"])
+            record_progress_change(
+                progress.user,
+                progress.item,
+                position_seconds=progress.position_seconds,
+                duration_seconds=progress.duration_seconds,
+                completed=True,
+            )
+
+
 def upsert_playback_progress(
     user,
     item,
@@ -179,15 +198,20 @@ def upsert_playback_progress(
     preserve_duration=False,
     fill_missing_duration=False,
     preserve_completed=False,
+    event_at=None,
 ):
     """Store playback progress while serializing updates for one item.
 
     The optional preservation flags are used by webhook events whose payload
     intentionally omits one field.  The row lock keeps those field-specific
     updates from becoming a stale read-modify-write race.
+
+    ``event_at`` is when the source event happened. An older event processed
+    after a newer one (a queued play overtaking a scrobble) must not overwrite
+    the newer row, so the stale write is dropped.
     """
     position = 0 if position_seconds is None else position_seconds
-    with transaction.atomic():
+    with state_transaction(user.pk):
         progress, created = PlaybackProgress.objects.select_for_update().get_or_create(
             user=user,
             item=item,
@@ -198,12 +222,16 @@ def upsert_playback_progress(
             },
         )
         if created:
-            record_progress_change(
-                user,
-                item,
-                position_seconds=progress.position_seconds,
-                duration_seconds=progress.duration_seconds,
-                completed=progress.completed,
+            return progress
+
+        if event_at is not None and progress.updated_at > datetime.fromtimestamp(
+            event_at,
+            tz=UTC,
+        ):
+            logger.info(
+                "Dropping out-of-order playback progress: event_at=%s row_updated_at=%s",
+                event_at,
+                progress.updated_at,
             )
             return progress
 
@@ -226,17 +254,10 @@ def upsert_playback_progress(
 
         if update_fields:
             progress.save(update_fields=[*update_fields, "updated_at"])
-            record_progress_change(
-                user,
-                item,
-                position_seconds=progress.position_seconds,
-                duration_seconds=progress.duration_seconds,
-                completed=progress.completed,
-            )
     return progress
 
 
-def _show_item_map(items):
+def show_item_map(items, *, minimal=False):
     """Return {(source, media_id): Item} of the shows backing episode items."""
     episode_media_ids = {
         (item.source, item.media_id)
@@ -250,20 +271,39 @@ def _show_item_map(items):
         media_type__in=(MediaTypes.TV.value, MediaTypes.ANIME.value),
         media_id__in=[media_id for _, media_id in episode_media_ids],
     ).order_by("id")
+    if minimal:
+        shows = shows.only("source", "media_id", "provider_external_ids")
     return {(show.source, show.media_id): show for show in shows}
+
+
+def _backing_show(item, show_map):
+    """Return the show row behind an episode item, or None for anything else."""
+    if item.media_type != MediaTypes.EPISODE.value:
+        return None
+    return show_map.get((item.source, item.media_id))
+
+
+def item_reference(item, show_map):
+    """Return what a client needs to tell one item from another.
+
+    An episode shares its show's media_id, so without the season and episode
+    numbers a change to one episode cannot be told from a change to any other.
+    Episode Items are created without provider links, so their show-level ids
+    (which is what clients match on) come from the show row.
+    """
+    show = _backing_show(item, show_map)
+    return {
+        "season_number": item.season_number,
+        "episode_number": item.episode_number,
+        "ids": build_provider_ids(item) or (build_provider_ids(show) if show else {}),
+    }
 
 
 def _serialize_progress(progress, show_map):
     """Serialize a PlaybackProgress row into the API entry shape."""
     item = progress.item
-    show = (
-        show_map.get((item.source, item.media_id))
-        if item.media_type == MediaTypes.EPISODE.value
-        else None
-    )
-    # Episode Items are created without provider links, so their show-level
-    # ids/image/url (which is what clients match on) come from the show row.
-    ids = build_provider_ids(item) or (build_provider_ids(show) if show else {})
+    show = _backing_show(item, show_map)
+    reference = item_reference(item, show_map)
     image = item.image or (show.image if show else None)
     url = _detail_url(item) or (_detail_url(show) if show else None)
 
@@ -271,9 +311,7 @@ def _serialize_progress(progress, show_map):
         "media_type": item.media_type,
         "source": item.source,
         "media_id": item.media_id,
-        "season_number": item.season_number,
-        "episode_number": item.episode_number,
-        "ids": ids,
+        **reference,
         "title": item.title,
         "series_title": show.title if show else None,
         "image": image,
@@ -302,8 +340,8 @@ def _serialize_podcast(podcast):
     duration_seconds = None
     if episode and episode.duration:
         duration_seconds = episode.duration
-    elif item and item.runtime_minutes:
-        duration_seconds = item.runtime_minutes * 60
+    elif item and (minutes := usable_runtime_minutes(item.runtime_minutes)):
+        duration_seconds = minutes * 60
 
     return {
         "media_type": MediaTypes.PODCAST.value,
@@ -569,7 +607,7 @@ class PlaybackProgressView(drf_views.APIView):
             queryset = queryset.filter(completed=filters["completed"])
 
         rows = list(queryset)
-        show_map = _show_item_map([row.item for row in rows])
+        show_map = show_item_map([row.item for row in rows])
         return [_serialize_progress(row, show_map) for row in rows]
 
     def _podcast_entries(self, user, filters):
@@ -669,7 +707,7 @@ class PlaybackProgressView(drf_views.APIView):
             completed=bool(data.get("completed")),
         )
         progress.item = item
-        show_map = _show_item_map([item])
+        show_map = show_item_map([item])
         return Response(_serialize_progress(progress, show_map), status=HTTP.OK)
 
     def _put_podcast(self, request):
@@ -765,15 +803,11 @@ class PlaybackProgressView(drf_views.APIView):
                 status=HTTP.NOT_FOUND,
             )
 
-        with transaction.atomic():
-            removed, _detail = PlaybackProgress.objects.filter(
+        with state_transaction(request.user.pk):
+            PlaybackProgress.objects.filter(
                 user=request.user,
                 item=item,
             ).delete()
-            if removed:
-                # Explicit tombstone: a cleared row is simply absent from a
-                # timestamp query, and absence is never a delete.
-                record_progress_deletion(request.user, item)
         return Response(status=HTTP.NO_CONTENT)
 
 
@@ -814,11 +848,17 @@ def build_now_playing_payload(user):
     Shared by the read route and the outgoing playback webhook so both speak
     exactly one shape; a client that parses one parses the other.
     """
-    state = live_playback.get_user_playback_state(user.id)
+    # The read route and webhook speak of one session: real playback first,
+    # else the check-in that started first.
+    slots = live_playback.active_slots(user.id)
+    if not slots:
+        return None
+    slot = slots[0]
+    state = live_playback.get_user_playback_state(user.id, slot=slot)
     if not state:
         return None
 
-    card = live_playback.build_home_playback_card(user)
+    card = live_playback.build_home_playback_card(user, slot=slot)
     if not card:
         # `build_home_playback_card` re-reads the cache and can find it gone —
         # the state expires lazily, on read. Treat a vanished session as

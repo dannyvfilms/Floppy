@@ -1,13 +1,16 @@
-from datetime import UTC
+from contextlib import suppress
+from datetime import UTC, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 from django_celery_beat.models import IntervalSchedule, PeriodicTask
 
 from app.models import Music
+from app.services.watch_state import is_importing_watch_state
 from integrations import lastfm_sync, tasks
 from integrations.lastfm_api import LastFMRecentTracksResult
 from integrations.models import ImportRun, LastFMAccount, LastFMHistoryImportStatus
@@ -212,6 +215,39 @@ class LastFMTaskTests(TestCase):
         self.assertEqual(self.account.last_fetch_timestamp_uts, 1700000000)
         self.assertEqual(self.account.last_error_code, "partial")
         self.assertEqual(result["errors"], 1)
+
+    @patch("integrations.tasks.import_lastfm_history.delay")
+    @patch("integrations.lastfm_sync.sync_lastfm_account")
+    def test_import_lastfm_history_marks_its_listens_as_imported(
+        self,
+        mock_sync,
+        mock_delay,
+    ):
+        """A history backfill is history, not something just listened to."""
+        seen = []
+
+        def spy(*args, **kwargs):
+            seen.append(is_importing_watch_state())
+            return {
+                "tracks": [],
+                "pages_fetched": 1,
+                "total_pages": 1,
+                "complete": True,
+                "interrupted": False,
+                "max_seen_uts": 1699999999,
+                "processed": 0,
+                "skipped": 0,
+                "errors": 0,
+                "affected_day_keys": set(),
+            }
+
+        mock_sync.side_effect = spy
+        self.account.reset_history_import(1699999999)
+        self.account.save()
+
+        tasks.import_lastfm_history(self.user.id)
+
+        self.assertEqual(seen, [True])
 
     @patch("integrations.tasks.import_lastfm_history.delay")
     @patch("integrations.lastfm_sync.sync_lastfm_account")
@@ -476,3 +512,98 @@ class LastFMSyncHelperTests(TestCase):
             int(music.end_date.astimezone(UTC).timestamp()),
             newer_uts,
         )
+
+
+class LastFMFanOutTests(TestCase):
+    """The global poll queues one task per account instead of looping."""
+
+    def setUp(self):
+        cache.clear()
+        self.accounts = []
+        for index in range(3):
+            user = get_user_model().objects.create_user(username=f"fan{index}")
+            self.accounts.append(
+                LastFMAccount.objects.create(user=user, lastfm_username=f"fan{index}")
+            )
+
+    @patch("integrations.tasks._lastfm.poll_lastfm_account.apply_async")
+    def test_queues_one_task_per_account_with_jitter(self, mock_apply):
+        result = tasks.poll_all_lastfm_scrobbles()
+
+        self.assertEqual(result["queued"], 3)
+        queued_ids = {call.kwargs["args"][0] for call in mock_apply.call_args_list}
+        self.assertEqual(queued_ids, {a.pk for a in self.accounts})
+        for call in mock_apply.call_args_list:
+            self.assertTrue(0 <= call.kwargs["countdown"] <= 3)
+
+    @patch("integrations.tasks._lastfm.poll_lastfm_account.apply_async")
+    def test_repeat_run_skips_accounts_already_queued(self, mock_apply):
+        tasks.poll_all_lastfm_scrobbles()
+        result = tasks.poll_all_lastfm_scrobbles()
+
+        self.assertEqual(result["queued"], 0)
+        self.assertEqual(mock_apply.call_count, 3)
+
+    @patch("integrations.tasks._lastfm._run_incremental_lastfm_sync")
+    def test_one_failing_account_does_not_block_the_others(self, mock_run):
+        def run(account):
+            if account.pk == self.accounts[0].pk:
+                raise RuntimeError("provider down")
+            return {"status": "success"}
+
+        mock_run.side_effect = run
+
+        # Eager mode surfaces the first account's failure when it runs inline.
+        with patch("integrations.tasks._lastfm.poll_lastfm_account.apply_async") as mock_apply:
+            tasks.poll_all_lastfm_scrobbles()
+        for call in mock_apply.call_args_list:
+            with suppress(RuntimeError):
+                tasks.poll_lastfm_account(*call.kwargs["args"])
+
+        self.assertEqual(mock_run.call_count, 3)
+
+    @patch("integrations.tasks._lastfm._run_incremental_lastfm_sync")
+    def test_account_task_skips_broken_account_not_yet_due(self, mock_run):
+        account = self.accounts[0]
+        account.connection_broken = True
+        account.last_failed_at = timezone.now()
+        account.save(update_fields=["connection_broken", "last_failed_at"])
+
+        result = tasks.poll_lastfm_account(account.pk)
+
+        self.assertEqual(result["status"], "skipped")
+        mock_run.assert_not_called()
+
+
+class LastFMFanOutProbeTests(TestCase):
+    """The scheduled poll re-probes a broken account instead of skipping it forever."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(username="lastfm-probe")
+        self.account = LastFMAccount.objects.create(
+            user=self.user,
+            lastfm_username="listener",
+            connection_broken=True,
+        )
+
+    def _failed_ago(self, delta):
+        self.account.last_failed_at = timezone.now() - delta
+        self.account.save(update_fields=["last_failed_at"])
+
+    @patch("integrations.tasks._lastfm._run_incremental_lastfm_sync")
+    def test_broken_account_is_reprobed_once_due(self, mock_run):
+        mock_run.return_value = {"status": "success"}
+        self._failed_ago(timedelta(hours=2))
+
+        tasks.poll_all_lastfm_scrobbles()
+
+        mock_run.assert_called_once()
+
+    @patch("integrations.tasks._lastfm._run_incremental_lastfm_sync")
+    def test_recently_rejected_account_waits_for_next_probe(self, mock_run):
+        self._failed_ago(timedelta(minutes=5))
+
+        tasks.poll_all_lastfm_scrobbles()
+
+        mock_run.assert_not_called()

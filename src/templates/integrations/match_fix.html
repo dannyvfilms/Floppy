@@ -1,96 +1,241 @@
-{% extends "users/base.html" %}
+{% extends "base.html" %}
 {% load i18n %}
+{% load app_tags user_tags %}
 
 {% block title %}
-  {% translate "Fix match - Floppy" %}
+  {% translate "Fix match" %} - {{ source_item.title }}
 {% endblock title %}
 
-{% block settings_content %}
-  <div class="space-y-6">
-    <div>
-      <h2 class="text-2xl font-semibold">{% translate "Fix match" %}</h2>
-      <p class="mt-2 text-sm text-[var(--color-text-muted)]">
-        {% blocktranslate with title=source_item.title %}Choose the correct TMDB {{ source_item.media_type }} for “{{ title }}”. Your tracking data stays private to your account.{% endblocktranslate %}
+{% block content %}
+  {% translate "Matched" as label_matched %}
+  {% translate "Suggested" as label_suggested %}
+  {% translate "Needs choice" as label_needs %}
+  {% translate "Chosen" as label_chosen %}
+  <div class="mx-auto max-w-5xl space-y-6">
+    <header>
+      <a href="{{ source_item|media_url }}"
+         class="inline-flex items-center gap-1 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors mb-3">
+        {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
+        {{ source_item.title }}
+      </a>
+      <h1 class="text-3xl font-bold mb-2">{% translate "Fix match" %}</h1>
+      <p class="text-[var(--color-text-muted)]">
+        {% blocktranslate trimmed with title=source_item.title %}
+          Choose the correct title for “{{ title }}”. Your tracking data stays private to your account.
+        {% endblocktranslate %}
       </p>
-    </div>
+    </header>
 
-    <form method="get" class="flex gap-2">
-      <input name="q"
-             value="{{ request.GET.q|default:'' }}"
-             placeholder="{% translate 'Search titles' %}"
-             class="min-w-0 flex-1 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2 text-sm">
-      <button class="rounded-md bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700"
-              type="submit">{% translate "Search" %}</button>
-    </form>
-
-    {% if candidates %}
-      <div class="space-y-2">
-        {% for candidate in candidates %}
-          {% if candidate.media_id %}
-            <form method="post"
-                  class="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] p-3">
-              {% csrf_token %}
-              <input type="hidden" name="action" value="preview">
-              <input type="hidden"
-                     name="destination_media_id"
-                     value="{{ candidate.media_id }}">
-              <span class="text-sm text-[var(--color-text)]">{{ candidate.title }}
-                {% if candidate.result.year %}({{ candidate.result.year }}){% endif %}
-              </span>
-              <button class="shrink-0 rounded-md border border-indigo-500 px-3 py-1.5 text-sm text-indigo-300 hover:bg-indigo-500/10"
-                      type="submit">{% translate "Preview" %}</button>
-            </form>
+    {% if not preview %}
+      <section class="space-y-4">
+        <form method="get" class="flex flex-wrap gap-2">
+          {% if providers|length > 1 %}
+            <select name="provider"
+                    aria-label="{% translate "Provider" %}"
+                    class="h-10 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-text)]">
+              {% for key, label in providers %}
+                <option value="{{ key }}" {% if key == provider %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
           {% endif %}
-        {% empty %}
-          <p class="text-sm text-[var(--color-text-muted)]">{% translate "No supported TMDB results found." %}</p>
-        {% endfor %}
-      </div>
-    {% endif %}
-
-    {% if preview %}
-      <section class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-5">
-        <h3 class="font-semibold">{% translate "Review changes" %}</h3>
-        <p class="mt-2 text-sm text-[var(--color-text-secondary)]">
-          {% blocktranslate with title=preview.destination.title %}This will move the selected user-owned tracking data to {{ title }}. Provider identities and other users are not changed.{% endblocktranslate %}
-        </p>
-        <ul class="mt-3 list-disc space-y-1 pl-5 text-sm text-[var(--color-text-secondary)]">
-          <li>{% translate "Movie plays / episode watches:" %} {{ preview.counts.movie_plays|add:preview.counts.episodes }}</li>
-          <li>{% translate "Collection entries:" %} {{ preview.counts.collections }}</li>
-          <li>{% translate "List entries:" %} {{ preview.counts.lists }}</li>
-          <li>{% translate "Saved source references:" %} {{ reference_count }}</li>
-        </ul>
-
-        <form method="post" class="mt-5 space-y-4">
-          {% csrf_token %}
-          <input type="hidden" name="action" value="apply">
-          <label class="block text-sm text-[var(--color-text-secondary)]">
-            {% translate "Episode mapping (JSON; every listed source episode must remain mapped):" %}
-            <textarea name="mapping_json"
-                      rows="6"
-                      class="mt-1 w-full rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] p-2 font-mono text-xs">{{ preview_mapping_json }}</textarea>
-          </label>
-          {% for field, values in preview.scalar_conflicts.items %}
-            <label class="block text-sm text-[var(--color-text-secondary)]">
-              {{ field }}: {{ values.source }} / {{ values.destination }}
-              <select name="decision_{{ field }}"
-                      required
-                      class="ml-2 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-2 py-1">
-                <option value="">{% translate "Choose" %}</option>
-                <option value="source">{% translate "Use source" %}</option>
-                <option value="destination">{% translate "Use destination" %}</option>
-              </select>
-            </label>
-          {% endfor %}
-          <label class="block text-sm text-[var(--color-text-secondary)]">
-            {% translate "Audit note (optional):" %}
-            <input name="note"
-                   maxlength="500"
-                   class="mt-1 w-full rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2">
-          </label>
-          <button class="rounded-md bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700"
-                  type="submit">{% translate "Apply correction" %}</button>
+          <input name="q"
+                 value="{{ request.GET.q|default:'' }}"
+                 placeholder="{% translate "Search titles" %}"
+                 class="h-10 min-w-0 flex-1 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-text)]">
+          <button class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 cursor-pointer"
+                  type="submit">{% translate "Search" %}</button>
         </form>
+
+        {% if request.GET.q %}
+          <div class="space-y-2">
+            {% for candidate in candidates %}
+              <form method="post"
+                    class="flex items-center justify-between gap-4 rounded-lg bg-[var(--color-surface-strong)] px-4 py-3">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="preview">
+                <input type="hidden" name="provider" value="{{ provider }}">
+                <input type="hidden"
+                       name="destination_media_id"
+                       value="{{ candidate.media_id }}">
+                <span class="min-w-0 truncate">{{ candidate.title }}
+                  {% if candidate.result.year %}
+                    <span class="text-[var(--color-text-muted)]">({{ candidate.result.year }})</span>
+                  {% endif %}
+                </span>
+                <button type="submit"
+                        class="shrink-0 inline-flex items-center rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-4 py-2 text-sm text-[var(--color-text)] shadow-sm transition-colors hover:bg-[var(--color-surface-muted)] cursor-pointer">
+                  {% translate "Review changes" %}
+                </button>
+              </form>
+            {% empty %}
+              <p class="text-sm text-[var(--color-text-muted)]">
+                {% blocktranslate with provider=provider_label %}No {{ provider }} results found.{% endblocktranslate %}
+              </p>
+            {% endfor %}
+          </div>
+        {% endif %}
       </section>
+    {% else %}
+      {% if review %}{{ review|json_script:"match-fix-review-data" }}{% endif %}
+      <form method="post"
+            class="space-y-6"
+            {% if review %}x-data="matchFixReview('match-fix-review-data', {matched: '{{ label_matched|escapejs }}', suggested: '{{ label_suggested|escapejs }}', needs: '{{ label_needs|escapejs }}', chosen: '{{ label_chosen|escapejs }}'})"{% endif %}>
+        {% csrf_token %}
+        <input type="hidden" name="action" value="apply">
+        <input type="hidden" name="provider" value="{{ provider }}">
+
+        <div class="rounded-lg bg-[var(--color-surface-strong)] p-4 space-y-3">
+          <div>
+            <h2 class="text-xl font-semibold">{% blocktranslate trimmed with title=preview.destination.title %}Moving to {{ title }}{% endblocktranslate %}</h2>
+            <p class="text-sm text-[var(--color-text-muted)] mt-1">
+              {% translate "Your tracking data for this title moves to the selected one. Provider identities and other users are not changed." %}
+            </p>
+          </div>
+          <dl class="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            <div>
+              <dt class="text-[var(--color-text-muted)]">{% translate "Plays and watches" %}</dt>
+              <dd class="font-semibold">{{ preview.counts.movie_plays|add:preview.counts.episodes }}</dd>
+            </div>
+            <div>
+              <dt class="text-[var(--color-text-muted)]">{% translate "Collection entries" %}</dt>
+              <dd class="font-semibold">{{ preview.counts.collections }}</dd>
+            </div>
+            <div>
+              <dt class="text-[var(--color-text-muted)]">{% translate "List entries" %}</dt>
+              <dd class="font-semibold">{{ preview.counts.lists }}</dd>
+            </div>
+            <div>
+              <dt class="text-[var(--color-text-muted)]">{% translate "Saved source references" %}</dt>
+              <dd class="font-semibold">{{ reference_count }}</dd>
+            </div>
+          </dl>
+        </div>
+
+        {% if review %}
+          <div class="rounded-lg bg-[var(--color-surface-strong)] p-4 space-y-3">
+            <div>
+              <h2 class="text-xl font-semibold">{% translate "Episode numbering" %}</h2>
+              <p class="text-sm text-[var(--color-text-muted)] mt-1">
+                {% translate "Pick the episode each of your watched episodes belongs to on the new title. Matches by number and title are filled in for you; check anything marked Suggested or Needs choice." %}
+              </p>
+            </div>
+            <div class="inline-flex rounded-md border border-[var(--color-surface-border)] overflow-hidden text-sm">
+              <button type="button"
+                      @click="filter = 'all'"
+                      :class="filter === 'all' ? 'bg-[var(--color-border)] text-[var(--color-text)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'"
+                      class="px-3 py-1.5 cursor-pointer">{% translate "All episodes" %}</button>
+              <button type="button"
+                      @click="filter = 'needs'"
+                      :class="filter === 'needs' ? 'bg-[var(--color-border)] text-[var(--color-text)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'"
+                      class="px-3 py-1.5 cursor-pointer">{% translate "Needs choice" %} (<span x-text="needsCount"></span>)</button>
+            </div>
+          </div>
+
+          {% regroup review_rows by season as seasons %}
+          {% for season in seasons %}
+            <div class="space-y-2">
+              <h3 class="text-lg font-semibold">{% blocktranslate trimmed with number=season.grouper %}Season {{ number }}{% endblocktranslate %}</h3>
+              {% for r in season.list %}
+                <div x-show="visible('{{ r.id }}')"
+                     class="rounded-lg bg-[var(--color-surface-strong)] p-3">
+                  <div class="flex flex-col gap-3 md:flex-row md:items-start">
+                    <div class="min-w-0 md:w-5/12">
+                      <p class="text-sm font-medium">{{ r.code }} · {{ r.title }}</p>
+                    </div>
+                    <div class="relative min-w-0 flex-1"
+                         @click.outside="openPicker === '{{ r.id }}' && (openPicker = null)">
+                      <button type="button"
+                              @click="togglePicker('{{ r.id }}')"
+                              class="inline-flex max-w-full items-center rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-1 text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] cursor-pointer">
+                        <span class="truncate"
+                              x-text="row('{{ r.id }}').selected ? episodeLabel(row('{{ r.id }}').selected) : '{% translate "Choose episode" %}'"></span>
+                      </button>
+                      <template x-if="openPicker === '{{ r.id }}'">
+                        <div class="absolute left-0 right-0 z-20 mt-1 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-panel)] shadow-lg">
+                          <input type="text"
+                                 x-model="query"
+                                 x-init="$nextTick(() => $el.focus())"
+                                 @keydown.escape="openPicker = null"
+                                 placeholder="{% translate "Search by number, title or air date" %}"
+                                 class="w-full h-10 px-3 bg-[var(--color-surface-strong)] rounded-t-md text-[var(--color-text)] text-sm border-b border-[var(--color-surface-border)] focus:outline-none">
+                          <div class="max-h-64 overflow-y-auto py-1">
+                            <template x-for="item in pickerResults()" :key="item.id">
+                              <button type="button"
+                                      @click="choose('{{ r.id }}', item.id)"
+                                      :class="row('{{ r.id }}').selected === item.id ? 'bg-[var(--color-surface-strong)] text-[var(--color-text)]' : 'text-[var(--color-text-secondary)]'"
+                                      class="flex w-full items-baseline gap-2 px-3 py-2 text-left text-sm hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)] cursor-pointer">
+                                <span class="shrink-0 font-medium" x-text="item.code"></span>
+                                <span class="min-w-0 flex-1 truncate" x-text="item.title"></span>
+                                <span class="shrink-0 text-xs text-[var(--color-text-muted)]" x-text="item.air_date"></span>
+                                <span x-show="row('{{ r.id }}').selected === item.id" class="shrink-0 text-[var(--color-accent)]">✓</span>
+                              </button>
+                            </template>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                    <div class="flex items-center gap-2 md:justify-end">
+                      <span class="shrink-0 rounded-full border px-2 py-1 text-[11px]"
+                            :class="statusChip('{{ r.id }}').classes"
+                            x-text="statusChip('{{ r.id }}').label"></span>
+                    </div>
+                  </div>
+                  <input type="hidden"
+                         name="map_{{ r.id }}"
+                         :value="row('{{ r.id }}').selected">
+                </div>
+              {% endfor %}
+            </div>
+          {% endfor %}
+        {% endif %}
+
+        {% if preview.scalar_conflicts %}
+          <div class="rounded-lg bg-[var(--color-surface-strong)] p-4 space-y-3">
+            <div>
+              <h2 class="text-xl font-semibold">{% translate "Details that differ" %}</h2>
+              <p class="text-sm text-[var(--color-text-muted)] mt-1">
+                {% translate "You already track the destination. Choose which value to keep." %}
+              </p>
+            </div>
+            {% for field, values in preview.scalar_conflicts.items %}
+              <label class="block text-sm text-[var(--color-text-secondary)]">
+                {{ field|capfirst }}
+                <select name="decision_{{ field }}"
+                        required
+                        class="mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[var(--color-text)] text-sm">
+                  <option value="">{% translate "Choose" %}</option>
+                  <option value="source">{% translate "Keep" %} {{ values.source }} ({% translate "current title" %})</option>
+                  <option value="destination">{% translate "Keep" %} {{ values.destination }} ({% translate "new title" %})</option>
+                </select>
+              </label>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        <label class="block text-sm text-[var(--color-text-secondary)]">
+          {% translate "Note (optional)" %}
+          <input name="note"
+                 maxlength="500"
+                 class="mt-1 w-full h-10 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 text-[var(--color-text)]">
+        </label>
+
+        <div class="flex flex-wrap items-center gap-3">
+          <button type="submit"
+                  {% if review %}:disabled="needsCount > 0"{% endif %}
+                  class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+            {% translate "Apply correction" %}
+          </button>
+          <a href="{% url 'match_fix' source_item.pk %}"
+             class="inline-flex items-center rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-4 py-2 text-sm text-[var(--color-text)] shadow-sm transition-colors hover:bg-[var(--color-surface-muted)]">
+            {% translate "Cancel" %}
+          </a>
+          {% if review %}
+            <p x-show="needsCount > 0" x-cloak class="text-sm text-[var(--color-text-secondary)]">
+              {% translate "Still needs a choice:" %} <span x-text="needsCount"></span>
+            </p>
+          {% endif %}
+        </div>
+      </form>
     {% endif %}
   </div>
-{% endblock settings_content %}
+{% endblock content %}

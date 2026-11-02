@@ -1,4 +1,5 @@
-from unittest.mock import patch
+import time
+from unittest.mock import MagicMock, patch
 
 from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
@@ -6,17 +7,81 @@ from django.contrib.auth.middleware import AuthenticationMiddleware
 from django.contrib.sessions.backends.cached_db import SessionStore
 from django.contrib.sessions.exceptions import SessionInterrupted
 from django.contrib.sessions.middleware import SessionMiddleware
+from django.db import OperationalError
 from django.http import HttpResponse
 from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
+from app.db_retry import is_contention_error
 from app.middleware import (
     AutoLoginMiddleware,
+    DatabaseRetryMiddleware,
     NoStoreHtmlMiddleware,
     SessionInterruptedMiddleware,
 )
 
 UserModel = get_user_model()
+
+
+class DatabaseContentionMiddlewareTest(TestCase):
+    def setUp(self):
+        self.middleware = DatabaseRetryMiddleware(lambda _request: HttpResponse("ok"))
+        self.factory = RequestFactory()
+
+    def test_htmx_get_receives_retry_signal_without_error_page(self):
+        request = self.factory.get(
+            "/track_modal/tmdb/tv/1396?instance_id=7", HTTP_HX_REQUEST="true"
+        )
+        response = self.middleware.process_exception(
+            request, OperationalError("database is locked")
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response["X-Floppy-Transient-DB"], "contention")
+        self.assertEqual(response.content, b"")
+
+    def test_page_get_retries_automatically(self):
+        request = self.factory.get("/medialist/tv?page=2")
+        response = self.middleware.process_exception(
+            request, OperationalError("database is locked")
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response["X-Floppy-Transient-DB"], "contention")
+        self.assertIn(b"location.replace(location.href)", response.content)
+        self.assertNotIn(b"Service Unavailable", response.content)
+
+    def test_middleware_lock_retries_end_in_automatic_page_reload(self):
+        # Patch the module's own `time` name so other threads' sleeps are not counted.
+        fake_time = MagicMock(wraps=time)
+        _sleep = fake_time.sleep
+        patcher = patch("app.middleware.time", fake_time)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        def locked(_request):
+            raise OperationalError("database is locked")
+
+        response = DatabaseRetryMiddleware(locked)(self.factory.get("/medialist/tv"))
+        self.assertEqual(response["X-Floppy-Transient-DB"], "contention")
+        # Each SQLite lock error already waited out busy_timeout, so the
+        # server retries once and then hands over to the page's own reload.
+        self.assertEqual(_sleep.call_count, 1)
+
+    def test_post_does_not_receive_automatic_retry(self):
+        request = self.factory.post("/media_save")
+        response = self.middleware.process_exception(
+            request, OperationalError("database is locked")
+        )
+        self.assertNotIn("X-Floppy-Transient-DB", response)
+
+    def test_postgres_transaction_conflicts_are_transient(self):
+        for state in ("40P01", "40001", "55P03"):
+            with self.subTest(state=state):
+                error = OperationalError("transaction conflict")
+                cause = Exception("postgres conflict")
+                cause.sqlstate = state
+                error.__cause__ = cause
+                self.assertTrue(is_contention_error(error))
+        self.assertFalse(is_contention_error(OperationalError("disk I/O error")))
 
 
 class AutoLoginMiddlewareTest(TestCase):

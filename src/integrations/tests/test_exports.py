@@ -1,13 +1,17 @@
 import csv
 from datetime import UTC, datetime
 from io import StringIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.db.models import Q
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
+from app.forms import BookForm
 from app.mixins import disable_fetch_releases
 from app.models import (
     TV,
@@ -31,13 +35,42 @@ from app.models import (
     Status,
     Tag,
 )
+from integrations import exports
 from lists.models import CustomList, CustomListItem
+
+
+class BackupDirectoryTests(SimpleTestCase):
+    """Backup filenames must not turn a username into a filesystem path."""
+
+    def test_username_cannot_escape_backup_directory(self):
+        with TemporaryDirectory() as temporary, override_settings(BACKUP_DIR=temporary):
+            root = Path(temporary)
+            for username in (".", "..", "../outside", "/outside"):
+                with self.subTest(username=username):
+                    user = SimpleNamespace(username=username, pk=42)
+                    with patch(
+                        "integrations.exports.generate_rows",
+                        return_value=iter(["data\n"]),
+                    ):
+                        path = Path(exports.write_backup(user))
+                    self.assertEqual(path.parent, root / "user:42")
+                    self.assertEqual(path.read_text(), "data\n")
+
+    def test_normal_username_keeps_existing_backup_location(self):
+        with TemporaryDirectory() as temporary, override_settings(BACKUP_DIR=temporary):
+            user = SimpleNamespace(username="alice.example", pk=42)
+            self.assertEqual(
+                exports.backup_directory(user),
+                Path(temporary) / "alice.example",
+            )
 
 
 class ExportCSVTest(TestCase):
     """Test exporting media to CSV."""
 
-    @patch("app.providers.services.get_media_metadata", return_value={"max_progress": None})
+    @patch(
+        "app.providers.services.get_media_metadata", return_value={"max_progress": None}
+    )
     def setUp(self, _mock_get_media_metadata):
         """Create necessary data for the tests."""
         self.credentials = {"username": "test", "password": "12345"}
@@ -224,6 +257,28 @@ class ExportCSVTest(TestCase):
         exported_media_types = {r["media_type"] for r in list_item_rows}
         self.assertIn("movie", exported_media_types)
         self.assertIn("episode", exported_media_types)
+
+    def test_export_csv_writes_reading_time_as_hours_and_minutes(self):
+        """The importer reads a bare number as hours, so minutes must not be written raw."""
+        Book.objects.update(reading_time=125)
+
+        response = self.client.get(reverse("export_csv"))
+        content = b"".join(response.streaming_content).decode("utf-8")
+        rows = {
+            row["media_type"]: row
+            for row in csv.DictReader(StringIO(content))
+            if row["row_type"] == "media"
+        }
+
+        self.assertEqual(rows["book"]["reading_time"], "2h 05min")
+        self.assertEqual(rows["manga"]["reading_time"], "")
+        self.assertEqual(rows["game"]["reading_time"], "")
+        book_form = BookForm(
+            {**rows["book"], "media_id": rows["book"]["media_id"]},
+            instance=Book(item=Item.objects.get(media_type="book"), user=self.user),
+        )
+        self.assertTrue(book_form.is_valid(), book_form.errors)
+        self.assertEqual(book_form.cleaned_data["reading_time"], 125)
 
     def test_export_csv_lists_only_when_no_media_types_selected(self):
         """Deselecting all media types but keeping lists on exports only list rows."""
@@ -622,7 +677,9 @@ class ExportCSVTest(TestCase):
 class LetterboxdExportCSVTest(TestCase):
     """Test exporting watched movies to a Letterboxd-import-ready CSV."""
 
-    @patch("app.providers.services.get_media_metadata", return_value={"max_progress": None})
+    @patch(
+        "app.providers.services.get_media_metadata", return_value={"max_progress": None}
+    )
     def setUp(self, _mock_get_media_metadata):
         """Create a superuser and log in."""
         self.credentials = {"username": "test", "password": "12345"}
@@ -701,7 +758,8 @@ class LetterboxdExportCSVTest(TestCase):
                 end_date=datetime(2023, 1, 1, 0, 0, tzinfo=UTC),
             )
             MoviePlay.objects.create(
-                movie=movie_unrated, end_date=movie_unrated.end_date,
+                movie=movie_unrated,
+                end_date=movie_unrated.end_date,
             )
 
             item_zero = Item.objects.create(
@@ -768,13 +826,16 @@ class LetterboxdExportCSVTest(TestCase):
                 end_date=datetime(2023, 6, 3, 0, 0, tzinfo=UTC),
             )
             MoviePlay.objects.create(
-                movie=movie, end_date=datetime(2023, 6, 1, 0, 0, tzinfo=UTC),
+                movie=movie,
+                end_date=datetime(2023, 6, 1, 0, 0, tzinfo=UTC),
             )
             MoviePlay.objects.create(
-                movie=movie, end_date=datetime(2023, 6, 2, 0, 0, tzinfo=UTC),
+                movie=movie,
+                end_date=datetime(2023, 6, 2, 0, 0, tzinfo=UTC),
             )
             MoviePlay.objects.create(
-                movie=movie, end_date=datetime(2023, 6, 3, 0, 0, tzinfo=UTC),
+                movie=movie,
+                end_date=datetime(2023, 6, 3, 0, 0, tzinfo=UTC),
             )
 
         rows = sorted(self._get_rows(), key=lambda r: r["WatchedDate"])
@@ -987,7 +1048,8 @@ class LetterboxdExportCSVTest(TestCase):
                 end_date=datetime(2023, 6, 1, 0, 0, tzinfo=UTC),
             )
             MoviePlay.objects.create(
-                movie=movie_with_imdb, end_date=movie_with_imdb.end_date,
+                movie=movie_with_imdb,
+                end_date=movie_with_imdb.end_date,
             )
 
             item_without_imdb = Item.objects.create(
@@ -1004,7 +1066,8 @@ class LetterboxdExportCSVTest(TestCase):
                 end_date=datetime(2023, 6, 1, 0, 0, tzinfo=UTC),
             )
             MoviePlay.objects.create(
-                movie=movie_without_imdb, end_date=movie_without_imdb.end_date,
+                movie=movie_without_imdb,
+                end_date=movie_without_imdb.end_date,
             )
 
         rows = {row["Title"]: row for row in self._get_rows()}
@@ -1013,7 +1076,9 @@ class LetterboxdExportCSVTest(TestCase):
         self.assertEqual(rows["Without IMDb"]["tmdbID"], "10495")
         self.assertEqual(rows["Without IMDb"]["imdbID"], "")
 
-    @patch("app.providers.services.get_media_metadata", return_value={"max_progress": None})
+    @patch(
+        "app.providers.services.get_media_metadata", return_value={"max_progress": None}
+    )
     def test_non_movie_media_types_excluded(self, _mock_get_media_metadata):
         """Only movies are exported; other media types are excluded."""
         with disable_fetch_releases():
@@ -1049,3 +1114,82 @@ class LetterboxdExportCSVTest(TestCase):
         rows = self._get_rows()
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["Title"], "Perfect Blue")
+
+
+class AtomicBackupPublicationTests(SimpleTestCase):
+    """An interrupted export must never leave a partial final CSV (#1627)."""
+
+    def setUp(self):
+        self.user = SimpleNamespace(username="alice", pk=1)
+
+    def _rows(self, fail_after=None):
+        yield "a\n"
+        if fail_after:
+            raise OSError("disk full")
+        yield "b\n"
+
+    def test_interrupted_export_leaves_no_file(self):
+        with TemporaryDirectory() as temporary, override_settings(BACKUP_DIR=temporary):
+            with (
+                patch("integrations.exports.generate_rows", return_value=self._rows(1)),
+                self.assertRaises(OSError),
+            ):
+                exports.write_backup(self.user)
+            self.assertEqual(list((Path(temporary) / "alice").iterdir()), [])
+
+    def test_same_second_exports_do_not_collide(self):
+        with TemporaryDirectory() as temporary, override_settings(BACKUP_DIR=temporary):
+            with (
+                patch(
+                    "integrations.exports.generate_rows",
+                    side_effect=lambda *a, **k: iter(["x\n"]),
+                ),
+                patch("integrations.exports.timezone.localtime") as now,
+            ):
+                now.return_value = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
+                first = Path(exports.write_backup(self.user))
+                second = Path(exports.write_backup(self.user))
+            self.assertNotEqual(first, second)
+            self.assertEqual(first.read_text(), "x\n")
+            self.assertEqual(second.read_text(), "x\n")
+            self.assertEqual(first.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(len(list(first.parent.iterdir())), 2)
+
+    def test_stale_staging_file_is_removed_fresh_one_kept(self):
+        import os
+
+        with TemporaryDirectory() as temporary, override_settings(BACKUP_DIR=temporary):
+            directory = Path(temporary) / "alice"
+            directory.mkdir()
+            stale = directory / ".staging-old"
+            fresh = directory / ".staging-new"
+            stale.write_text("p")
+            fresh.write_text("p")
+            os.utime(stale, (1, 1))
+            with patch(
+                "integrations.exports.generate_rows", return_value=iter(["x\n"])
+            ):
+                exports.write_backup(self.user)
+            self.assertFalse(stale.exists())
+            self.assertTrue(fresh.exists())
+
+
+class BackupStatusTests(SimpleTestCase):
+    def test_success_and_failure_are_tracked_separately(self):
+        from app import backup_status
+
+        with TemporaryDirectory() as temporary, override_settings(BACKUP_DIR=temporary):
+            self.assertIsNone(
+                backup_status.freshness("snapshot")["last_success_at"],
+            )
+            backup_status.record_success("snapshot", "a.sqlite3")
+            backup_status.record_failure("snapshot", "boom")
+            state = backup_status.freshness("snapshot")
+            self.assertEqual(state["last_success_name"], "a.sqlite3")
+            self.assertEqual(state["last_failure"], "boom")
+            self.assertTrue(state["failing"])
+            backup_status.record_success("snapshot", "b.sqlite3")
+            self.assertFalse(backup_status.freshness("snapshot")["failing"])
+            self.assertTrue(
+                backup_status.destination_check(Path(temporary))["writable"]
+            )

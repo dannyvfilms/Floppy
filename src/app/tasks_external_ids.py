@@ -192,21 +192,16 @@ def populate_external_ids_for_items(item_ids: list[int]):
 @shared_task(name="app.tasks.populate_external_ids_backfill_queue")
 def populate_external_ids_backfill_queue(batch_size: int = 50):
     """Drain the external-ID backfill queue and process items in small batches."""
-    batch, more_remaining = backfill_queue.take(
+    with backfill_queue.drain(
         EXTERNAL_IDS_BACKFILL_ITEMS_QUEUE_KEY,
         EXTERNAL_IDS_BACKFILL_ITEMS_SCHEDULED_KEY,
         batch_size,
-    )
-    if not batch:
-        return {"processed": 0, "message": "No queued external-ID items"}
+        drain_task=populate_external_ids_backfill_queue,
+    ) as batch:
+        if not batch:
+            return {"processed": 0, "message": "No queued external-ID items"}
 
-    if more_remaining:
-        backfill_queue.reschedule(
-            EXTERNAL_IDS_BACKFILL_ITEMS_SCHEDULED_KEY,
-            populate_external_ids_backfill_queue,
-        )
-
-    return populate_external_ids_for_items(batch)
+        return populate_external_ids_for_items(batch)
 
 
 def enqueue_due_external_ids_backfill_retries(

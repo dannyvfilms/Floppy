@@ -1,13 +1,14 @@
 import re
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import call, patch
 
 from dateutil.relativedelta import relativedelta
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import connection
 from django.db.utils import OperationalError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
@@ -42,6 +43,7 @@ from app.models import (
     Status,
     Studio,
 )
+from app.templatetags.app_tags import media_url
 from users.templatetags.user_tags import user_date_format
 
 
@@ -241,6 +243,23 @@ class StatisticsViewTests(TestCase):
         self.assertIn("status_distribution", response.context)
         self.assertIn("status_pie_chart_data", response.context)
         self.assertIn("daily_hours_by_media_type", response.context)
+
+    def test_activity_heatmap_month_labels_share_the_week_grid(self):
+        """Month labels must sit on the same grid tracks as the week columns."""
+        response = self.client.get(
+            reverse("statistics") + "?start-date=2026-07-01&end-date=2026-10-01",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        weeks = len(response.context["activity_data"]["calendar_weeks"])
+        self.assertGreater(weeks, 0)
+        html = response.content.decode()
+        tracks = f"grid-template-columns: repeat({weeks}, minmax(1rem, 20px))"
+        self.assertEqual(html.count(tracks), 2)  # months row + weeks grid
+        months_row = html.split(tracks)[1]
+        spans = [int(n) for n in re.findall(r"grid-column: span (\d+)", months_row)]
+        self.assertTrue(spans)
+        self.assertLessEqual(sum(spans), weeks)
 
     @patch("app.statistics_views.tvdb.enabled", return_value=True)
     def test_statistics_view_shows_anime_genre_preference_when_supported(
@@ -554,11 +573,21 @@ class StatisticsViewTests(TestCase):
         self.assertEqual(response.context["selected_range_name"], "This Year")
         self.assertEqual(response.context["selected_range_dates_label"], "This Year")
 
+    # Pinned mid-month: on the 1st, month-to-date is a single day and is labelled "Today".
+    @patch(
+        "django.utils.timezone.now",
+        new=lambda: datetime(2026, 3, 15, 12, 0, tzinfo=UTC),
+    )
     def test_statistics_view_uses_month_labels_for_mtd_last_year_comparison(self):
         """Month-to-date cards should prefer semantic month labels over raw date spans."""
         cache.clear()
         self.client.login(**self.credentials)
-        today = timezone.localdate()
+        # On the 1st the month-to-date range is one day and is correctly
+        # labelled "Today", so pin "today" to the 15th of last month.
+        real_localdate = timezone.localdate
+        today = (timezone.localdate().replace(day=1) - timedelta(days=1)).replace(
+            day=15
+        )
         month_start = today.replace(day=1)
         last_year_today = today - relativedelta(years=1)
 
@@ -567,14 +596,18 @@ class StatisticsViewTests(TestCase):
             "movie-last-year-mtd", "Last Year Movie", last_year_today, 60
         )
 
-        response = self.client.get(
-            reverse("statistics")
-            + (
-                f"?start-date={month_start.isoformat()}"
-                f"&end-date={today.isoformat()}"
-                "&compare=last_year"
-            ),
-        )
+        def pinned_localdate(value=None, timezone=None):
+            return today if value is None else real_localdate(value, timezone)
+
+        with patch("django.utils.timezone.localdate", side_effect=pinned_localdate):
+            response = self.client.get(
+                reverse("statistics")
+                + (
+                    f"?start-date={month_start.isoformat()}"
+                    f"&end-date={today.isoformat()}"
+                    "&compare=last_year"
+                ),
+            )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["selected_range_name"], "This Month")
@@ -676,10 +709,8 @@ class StatisticsViewTests(TestCase):
         self.assertEqual(mock_get_statistics_data.call_count, 1)
         mock_get_statistics_minutes_by_type.assert_called_once()
 
-    def test_statistics_view_predefined_range_cache_miss_reuses_covering_range_day_caches(
-        self,
-    ):
-        """A missing predefined range cache should derive from current covering day caches."""
+    def test_statistics_view_serves_a_published_range_after_a_cache_flush(self):
+        """The published range lives in the database too, so a flush never blanks it."""
         cache.clear()
         self.client.login(**self.credentials)
         today = timezone.localdate()
@@ -690,17 +721,8 @@ class StatisticsViewTests(TestCase):
             "movie-recent-range-cache", "Recent Movie", recent_date, 120
         )
         self._create_movie_play("movie-old-range-cache", "Old Movie", old_date, 90)
-
-        statistics_cache.invalidate_statistics_cache(self.user.id)
-        statistics_cache.refresh_statistics_cache(self.user.id, "All Time")
-
-        last_year_key = statistics_cache._cache_key(self.user.id, "Last 12 Months")
-        last_year_lock_key = statistics_cache._refresh_lock_key(
-            self.user.id, "Last 12 Months"
-        )
-        cache.delete(last_year_key)
-        cache.delete(last_year_lock_key)
-        self.assertIsNone(cache.get(last_year_key))
+        statistics_cache.refresh_statistics_cache(self.user.id, "Last 12 Months")
+        cache.clear()
 
         range_start, range_end = statistics_cache._get_predefined_range_dates(
             "Last 12 Months"
@@ -708,16 +730,10 @@ class StatisticsViewTests(TestCase):
         start_param = range_start.date().isoformat()
         end_param = range_end.date().isoformat()
 
-        with (
-            patch(
-                "app.statistics_cache.refresh_statistics_cache",
-                wraps=statistics_cache.refresh_statistics_cache,
-            ) as mock_refresh_statistics_cache,
-            patch(
-                "app.statistics_cache.schedule_statistics_refresh",
-                wraps=statistics_cache.schedule_statistics_refresh,
-            ) as mock_schedule_statistics_refresh,
-        ):
+        with patch(
+            "app.statistics_cache.refresh_statistics_cache",
+            wraps=statistics_cache.refresh_statistics_cache,
+        ) as mock_refresh_statistics_cache:
             response = self.client.get(
                 reverse("statistics")
                 + (f"?start-date={start_param}&end-date={end_param}&compare=none"),
@@ -726,9 +742,9 @@ class StatisticsViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["selected_range_name"], "Last 12 Months")
         self.assertEqual(response.context["hours_per_media_type"]["movie"], "2h 0min")
-        self.assertIsNotNone(cache.get(last_year_key))
+        self.assertFalse(response.context["statistics_building"])
+        self.assertIsNotNone(response.context["statistics_built_at"])
         mock_refresh_statistics_cache.assert_not_called()
-        mock_schedule_statistics_refresh.assert_not_called()
 
         status_response = self.client.get(
             reverse("cache_status")
@@ -738,69 +754,54 @@ class StatisticsViewTests(TestCase):
         status_payload = status_response.json()
         self.assertTrue(status_payload["exists"])
         self.assertFalse(status_payload["is_refreshing"])
-        self.assertFalse(status_payload["refresh_scheduled"])
 
-    def test_cache_status_cold_miss_self_heals_by_scheduling_refresh(self):
-        """A statistics range with no cache entry and no active lock should be re-scheduled.
-
-        This is the state right after a large bulk import (e.g. a Yamtrack import) before
-        Statistics has ever been viewed, and also what a lost/dropped refresh looks like
-        (worker restart, missing interactive-queue consumer). Without self-healing here the
-        page's "Refreshing statistics in background..." banner never clears.
-        """
+    @override_settings(CELERY_TASK_ALWAYS_EAGER=False, TESTING=False)
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
+    def test_cache_status_cold_miss_queues_an_urgent_sync(self, enqueue):
+        """A never-built range (fresh install, first visit) is the one wait shown."""
         cache.clear()
         self.client.login(**self.credentials)
 
-        with patch(
-            "app.views.statistics_cache.schedule_statistics_refresh",
-            wraps=statistics_cache.schedule_statistics_refresh,
-        ) as mock_schedule_statistics_refresh:
-            status_response = self.client.get(
-                reverse("cache_status")
-                + "?cache_type=statistics&range_name=Last+12+Months",
-            )
+        status_response = self.client.get(
+            reverse("cache_status")
+            + "?cache_type=statistics&range_name=Last+12+Months",
+        )
 
         self.assertEqual(status_response.status_code, 200)
         status_payload = status_response.json()
         self.assertFalse(status_payload["exists"])
-        self.assertTrue(status_payload["refresh_scheduled"])
-        mock_schedule_statistics_refresh.assert_called_once_with(
-            self.user.id,
-            "Last 12 Months",
-            allow_inline=False,
-        )
-
-        # Test settings run Celery eagerly, so the scheduled task has already run
-        # synchronously by the time schedule_statistics_refresh() returns, populating
-        # the cache and clearing its own lock in the same call.
-        cache_key = statistics_cache._cache_key(self.user.id, "Last 12 Months")
-        self.assertIsNotNone(cache.get(cache_key))
-
-    def test_cache_status_cold_miss_does_not_double_schedule_while_lock_active(self):
-        """A cold miss with an existing active lock should not trigger another schedule call."""
-        cache.clear()
-        self.client.login(**self.credentials)
-
-        refresh_lock_key = statistics_cache._refresh_lock_key(
-            self.user.id, "Last 12 Months"
-        )
-        cache.set(refresh_lock_key, {"started_at": timezone.now().isoformat()}, 300)
-
-        with patch(
-            "app.views.statistics_cache.schedule_statistics_refresh",
-            wraps=statistics_cache.schedule_statistics_refresh,
-        ) as mock_schedule_statistics_refresh:
-            status_response = self.client.get(
-                reverse("cache_status")
-                + "?cache_type=statistics&range_name=Last+12+Months",
-            )
-
-        self.assertEqual(status_response.status_code, 200)
-        status_payload = status_response.json()
-        self.assertFalse(status_payload["exists"])
-        self.assertFalse(status_payload["refresh_scheduled"])
         self.assertTrue(status_payload["is_refreshing"])
-        mock_schedule_statistics_refresh.assert_not_called()
+        enqueue.assert_called_once()
+        self.assertEqual(
+            enqueue.call_args.kwargs["priority"],
+            settings.CELERY_TASK_PRIORITY_INTERACTIVE,
+        )
+
+    @override_settings(CELERY_TASK_ALWAYS_EAGER=False, TESTING=False)
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
+    def test_cache_status_never_disturbs_a_running_sync(self, enqueue):
+        """Polling reports a running sync and leaves its lease alone (#1272)."""
+        from app.models import StatisticsSyncState
+
+        cache.clear()
+        self.client.login(**self.credentials)
+        lease = timezone.now() + timedelta(minutes=5)
+        StatisticsSyncState.objects.update_or_create(
+            user_id=self.user.id, defaults={"lease_expires_at": lease}
+        )
+
+        status_response = self.client.get(
+            reverse("cache_status")
+            + "?cache_type=statistics&range_name=Last+12+Months",
+        )
+
+        status_payload = status_response.json()
+        self.assertTrue(status_payload["is_refreshing"])
+        self.assertTrue(status_payload["any_range_refreshing"])
+        self.assertEqual(
+            StatisticsSyncState.objects.get(user_id=self.user.id).lease_expires_at,
+            lease,
+        )
 
     def test_statistics_view_history_highlights_use_active_boundary_days_and_deserialized_dates(
         self,
@@ -1756,6 +1757,61 @@ class StatisticsViewTests(TestCase):
         self.assertTrue(timezone.is_aware(start_date))
         self.assertTrue(timezone.is_aware(end_date))
 
+    def test_activity_heatmap_counts_are_split_by_media_type(self):
+        """Each heatmap day carries per-media-type counts for the type filter."""
+        now = timezone.now()
+        movie_item = Item.objects.create(
+            media_id="heat-movie",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Heatmap Movie",
+            image="http://example.com/heat-movie.jpg",
+            runtime_minutes=100,
+        )
+        Movie.objects.create(
+            item=movie_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=1,
+            start_date=now,
+            end_date=now,
+        )
+        book_item = Item.objects.create(
+            media_id="heat-book",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.BOOK.value,
+            title="Heatmap Book",
+            image="http://example.com/heat-book.jpg",
+            number_of_pages=200,
+        )
+        Book.objects.create(
+            item=book_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=200,
+            start_date=now,
+            end_date=now,
+        )
+
+        today = timezone.localdate()
+        data = statistics_cache._aggregate_statistics_from_days(
+            self.user,
+            [today],
+            start_date=None,
+            end_date=None,
+            build_missing=True,
+        )
+
+        days = [
+            day
+            for week in data["activity_data"]["calendar_weeks"]
+            for day in week
+            if day["date"] == today.isoformat()
+        ]
+        self.assertEqual(len(days), 1)
+        self.assertEqual(days[0]["by_type"], {"movie": 1, "book": 1})
+        self.assertEqual(days[0]["count"], 2)
+
     def test_statistics_view_includes_top_talent_sections(self):
         """Top cast/crew and studio sections should be present in context."""
         watched_at = timezone.now()
@@ -2212,7 +2268,7 @@ class StatisticsViewTests(TestCase):
         self.assertEqual(item_relation_queries, [])
 
     def test_statistics_view_lazyloads_media_list_images(self):
-        """Statistics list cards should lazyload their thumbnails instead of eager-loading them."""
+        """Statistics thumbnails expose their URL while staying natively lazy."""
         cache.clear()
         self.client.login(**self.credentials)
         played_at = timezone.make_aware(
@@ -2287,30 +2343,16 @@ class StatisticsViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         response_body = response.content.decode()
-        self.assertRegex(
-            response_body, r'<img[^>]+data-src="http://example\.com/lazy-movie\.jpg"'
-        )
-        self.assertRegex(
-            response_body, r'<img[^>]+data-src="http://example\.com/lazy-game\.jpg"'
-        )
-        self.assertRegex(
-            response_body, r'<img[^>]+data-src="http://example\.com/lazy-artist\.jpg"'
-        )
-        self.assertRegex(
-            response_body, r'<img[^>]+data-src="http://example\.com/lazy-album\.jpg"'
-        )
-        self.assertNotRegex(
-            response_body, r'<img[^>]+\ssrc="http://example\.com/lazy-movie\.jpg"'
-        )
-        self.assertNotRegex(
-            response_body, r'<img[^>]+\ssrc="http://example\.com/lazy-game\.jpg"'
-        )
-        self.assertNotRegex(
-            response_body, r'<img[^>]+\ssrc="http://example\.com/lazy-artist\.jpg"'
-        )
-        self.assertNotRegex(
-            response_body, r'<img[^>]+\ssrc="http://example\.com/lazy-album\.jpg"'
-        )
+        for media_kind in ("movie", "game", "artist", "album"):
+            with self.subTest(media_kind=media_kind):
+                self.assertRegex(
+                    response_body,
+                    rf'<img[^>]+loading="lazy"[^>]+src="http://example\.com/lazy-{media_kind}\.jpg"',
+                )
+                self.assertNotIn(
+                    f'data-src="http://example.com/lazy-{media_kind}.jpg"',
+                    response_body,
+                )
 
     @patch("app.tasks.enqueue_credits_backfill_items")
     def test_statistics_top_talent_uses_episode_credits_with_show_fallback(
@@ -3036,14 +3078,44 @@ class StatisticsViewTests(TestCase):
         self.assertEqual(day_stats["backfill"]["missing_credits"], 1)
         self.assertEqual(day_stats["backfill"]["scheduled_credits"], 0)
 
-    @patch("app.statistics_cache.schedule_all_ranges_refresh")
-    @patch("app.statistics_cache.invalidate_statistics_cache")
+    def test_day_summary_is_info_for_one_day_but_debug_during_a_sweep(self):
+        watched_at = timezone.now()
+        item = Item.objects.create(
+            media_id="9044",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Day Summary Movie",
+            image="http://example.com/summary.jpg",
+            runtime_minutes=100,
+            genres=["Drama"],
+        )
+        Movie.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=1,
+            start_date=watched_at,
+            end_date=watched_at,
+        )
+
+        with self.assertLogs("app.statistics_day_builder", level="INFO") as single:
+            statistics_cache.build_stats_for_day(self.user.id, watched_at.date())
+        self.assertTrue(any("stats_day_summary" in line for line in single.output))
+
+        with self.assertLogs("app.statistics_day_builder", level="DEBUG") as sweep:
+            statistics_cache.build_stats_for_day(
+                self.user.id,
+                watched_at.date(),
+                defer_cache_write=True,
+            )
+        summaries = [line for line in sweep.output if "stats_day_summary" in line]
+        self.assertTrue(summaries)
+        self.assertTrue(all(line.startswith("DEBUG:") for line in summaries))
+
     @patch("app.statistics_cache.invalidate_all_statistics_days")
     def test_update_statistics_preferences_saves_tv_anime_split_and_invalidates_cache(
         self,
         mock_invalidate_all_days,
-        mock_invalidate_cache,
-        mock_schedule_refresh,
     ):
         """Changing the TV/anime split preference should persist and invalidate statistics cache."""
         self.assertFalse(self.user.stats_split_tv_anime)
@@ -3056,26 +3128,17 @@ class StatisticsViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.user.refresh_from_db()
         self.assertTrue(self.user.stats_split_tv_anime)
+        # One call drops every day payload and queues the full rebuild.
         mock_invalidate_all_days.assert_called_once_with(
             self.user.id,
             reason="statistics_preferences_changed",
         )
-        mock_invalidate_cache.assert_called_once_with(self.user.id)
-        mock_schedule_refresh.assert_called_once_with(
-            self.user.id,
-            debounce_seconds=0,
-        )
 
-    @patch("app.views.statistics_cache.schedule_statistics_refresh")
-    @patch("app.views.statistics_cache.invalidate_statistics_cache")
-    @patch("app.views.statistics_cache.invalidate_all_statistics_days")
-    def test_refresh_statistics_clears_day_caches_before_scheduling_range_refresh(
-        self,
-        mock_invalidate_all_days,
-        mock_invalidate_cache,
-        mock_schedule_refresh,
+    @patch("app.statistics_sync.request_manual_refresh")
+    def test_refresh_statistics_rebuilds_the_range_through_the_sync(
+        self, mock_manual_refresh
     ):
-        """Manual statistics refresh should force a full day-cache reset for the range."""
+        """Manual refresh rebuilds the range's days, not every day the user has."""
         response = self.client.post(
             reverse("refresh_statistics"),
             {"range_name": "This Year"},
@@ -3084,18 +3147,9 @@ class StatisticsViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertTrue(payload["success"])
-        mock_invalidate_all_days.assert_called_once_with(
-            self.user.id,
-            reason="manual_statistics_refresh:This Year",
-        )
-        mock_invalidate_cache.assert_called_once_with(self.user.id, "This Year")
-        mock_schedule_refresh.assert_called_once_with(
-            self.user.id,
-            "This Year",
-            debounce_seconds=0,
-            countdown=0,
-            allow_inline=True,
-        )
+        mock_manual_refresh.assert_called_once()
+        user, range_name = mock_manual_refresh.call_args.args
+        self.assertEqual((user.id, range_name), (self.user.id, "This Year"))
 
     def test_get_user_media_splits_tvdb_tagged_tv_into_anime_bucket(self):
         """TV items tagged as Anime via TVDB should move from TV stats into Anime when enabled."""
@@ -3218,6 +3272,94 @@ class StatisticsViewTests(TestCase):
             stats_data["top_played"]["anime"][0]["media"].item.title,
             "Cached Genre Anime Show",
         )
+
+    def test_grouped_anime_season_stays_out_of_tv_top_rated(self):
+        """A grouped anime season must not roll into the TV activity card."""
+        cache.clear()
+        watched_at = timezone.now()
+        show_item = Item.objects.create(
+            media_id="grouped-top-rated-show",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Grouped Top Rated Show",
+            image="http://example.com/grouped-top-rated.jpg",
+        )
+        tv = TV.objects.create(
+            item=show_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            score=8,
+        )
+        season_item = Item.objects.create(
+            media_id="grouped-top-rated-show",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Grouped Top Rated Show Season 1",
+            image="http://example.com/grouped-top-rated-s1.jpg",
+            season_number=1,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.COMPLETED.value,
+            score=8,
+        )
+        episode_item = Item.objects.create(
+            media_id="grouped-top-rated-show",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Grouped Top Rated Show Episode 1",
+            image="http://example.com/grouped-top-rated-s1e1.jpg",
+            season_number=1,
+            episode_number=1,
+            runtime_minutes=24,
+        )
+        Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            end_date=watched_at,
+        )
+
+        statistics_cache.invalidate_statistics_cache(self.user.id)
+        stats_data = statistics_cache.refresh_statistics_cache(
+            self.user.id, "This Year"
+        )
+
+        self.assertNotIn("season", stats_data["media_count"])
+        self.assertEqual(stats_data["media_count"]["anime"], 1)
+
+        tv_titles = [
+            media.item.title for media in stats_data["top_rated_by_type"].get("tv", [])
+        ]
+        self.assertNotIn("Grouped Top Rated Show", tv_titles)
+        self.assertNotIn("Grouped Top Rated Show Season 1", tv_titles)
+
+        anime_titles = [
+            media.item.title
+            for media in stats_data["top_rated_by_type"].get("anime", [])
+        ]
+        self.assertIn("Grouped Top Rated Show", anime_titles)
+        grouped_media = next(
+            media
+            for media in stats_data["top_rated_by_type"]["anime"]
+            if media.item.title == "Grouped Top Rated Show"
+        )
+        expected_url = reverse(
+            "media_details",
+            kwargs={
+                "source": Sources.TVDB.value,
+                "media_type": MediaTypes.ANIME.value,
+                "media_id": "grouped-top-rated-show",
+                "title": "grouped-top-rated-show",
+            },
+        )
+        self.assertEqual(media_url(grouped_media.item), expected_url)
+        top_played = stats_data["top_played"]["anime"][0]["media"]
+        self.assertEqual(media_url(top_played.item), expected_url)
 
 
 class StatisticsTalentFragmentTests(TestCase):

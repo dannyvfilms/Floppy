@@ -8,7 +8,7 @@ from django.db import IntegrityError
 from django.utils import timezone
 
 from app.mixins import disable_fetch_releases
-from app.models import TV, Item, MediaTypes, Movie, Sources, Status
+from app.models import TV, Item, ItemTag, MediaTypes, Movie, Sources, Status
 from app.providers import services, tmdb
 from integrations import external_references
 from integrations import plex as plex_api
@@ -34,6 +34,7 @@ class PlexWatchlistSyncService:
         self.source_username = ""
         self.source_account_id = ""
         self.source_server_id = ""
+        self.watchlist_tag = user.tags.filter(pk=user.watchlist_import_tag_id).first() if user.watchlist_import_tag_id else None
 
     def sync(self) -> tuple[dict[str, int], str]:
         """Run the watchlist sync and return counts plus warning text."""
@@ -173,6 +174,8 @@ class PlexWatchlistSyncService:
             return item.id
 
         _media_obj, created_media = self._get_or_create_user_media(model_class, item)
+        if self.watchlist_tag:
+            ItemTag.objects.get_or_create(tag=self.watchlist_tag, item=item)
         if created_media:
             self.counts["created"] += 1
             self.counts[media_type] += 1
@@ -375,7 +378,7 @@ class PlexWatchlistSyncService:
             media_obj = model_class.objects.create(
                 user=self.user,
                 item=item,
-                status=Status.PLANNING.value,
+                status=self.user.watchlist_import_status if self.user.watchlist_import_status in Status.values else Status.PLANNING.value,
                 score=None,
                 notes="",
             )

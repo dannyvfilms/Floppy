@@ -60,6 +60,29 @@ print(json.dumps({
 
         self.assertEqual(set(values.values()), {"redis://compatibility:6379/0"})
 
+    def test_optional_cache_uses_short_timeouts_without_retrying(self):
+        """Keep one stalled command from repeating a full web-thread wait."""
+        script = """
+import json
+from config import settings
+options = settings.CACHES['default']['OPTIONS']
+print(json.dumps({
+    'connect': options['SOCKET_CONNECT_TIMEOUT'],
+    'read': options['SOCKET_TIMEOUT'],
+    'retries': options['CONNECTION_POOL_KWARGS']['retry'].get_retries(),
+    'retry_on_timeout': options['CONNECTION_POOL_KWARGS']['retry_on_timeout'],
+    'pool': options['CONNECTION_POOL_CLASS'],
+    'session_engine': settings.SESSION_ENGINE,
+}))
+"""
+        with patch.object(self, "settings_script", script):
+            values = self._read_settings(REDIS_SOCKET_TIMEOUT="1", REDIS_SOCKET_CONNECT_TIMEOUT="1")
+        self.assertEqual(values, {
+            "connect": 1, "read": 1, "retries": 0, "retry_on_timeout": False,
+            "pool": "app.cache_safety.CacheConnectionPool",
+            "session_engine": "django.contrib.sessions.backends.cached_db",
+        })
+
     def test_each_redis_role_accepts_a_separate_url(self):
         """Each consumer must use its selected Redis service."""
         values = self._read_settings(

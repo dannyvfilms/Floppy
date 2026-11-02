@@ -1,5 +1,11 @@
 import contextlib
+import logging
+from datetime import timedelta
 from io import BytesIO
+
+from django.conf import settings
+from django.db.models import Q
+from django.utils import timezone
 
 from app.log_safety import exception_summary
 from app.models import MediaTypes
@@ -7,6 +13,8 @@ from app.templatetags import app_tags
 from integrations import plex as plex_api
 from integrations.imports import helpers
 from integrations.upload_staging import open_import_file
+
+logger = logging.getLogger(__name__)
 
 ERROR_TITLE = "\n\n\n Couldn't import the following media: \n\n"
 IMPORT_COUNT_METRIC_KEYS = frozenset(
@@ -16,6 +24,7 @@ IMPORT_COUNT_METRIC_KEYS = frozenset(
         "rejected",
         "updated",
         "skipped",
+        "baseline",
         "skipped_ignored",
         "skipped_missing_ids",
         "skipped_numbering_mismatch",
@@ -57,6 +66,49 @@ def _coerce_uploaded_file(file):
         return BytesIO(file)
     msg = f"Unsupported uploaded file payload type: {type(file)!r}"
     raise TypeError(msg)
+
+
+# Last.fm and Koito backfills reschedule themselves across many task
+# invocations, so one run legitimately outlives any single task's time limit.
+SELF_RESCHEDULING_IMPORT_SOURCES = ("lastfm", "koito")
+
+# Stremio imports set their own limits, which can exceed a lowered global one.
+STREMIO_IMPORT_SOFT_TIME_LIMIT = 20 * 60
+STREMIO_IMPORT_TIME_LIMIT = 30 * 60
+
+
+def close_abandoned_import_runs():
+    """Mark import runs FAILED once their task can no longer be running.
+
+    A hard time limit or a container restart kills the task without running
+    any of its code, so its ImportRun would read "running" for ever. A run
+    older than the task time limit plus a margin cannot still be alive.
+    """
+    from integrations.imports.durable import recover_outboxes
+    from integrations.models import ImportRun
+
+    recover_outboxes()
+
+    time_limit = settings.CELERY_TASK_TIME_LIMIT
+    if not time_limit:
+        return 0
+    time_limit = max(time_limit, STREMIO_IMPORT_TIME_LIMIT)
+    now = timezone.now()
+    closed = (
+        ImportRun.objects.filter(
+            status=ImportRun.Status.RUNNING,
+            started_at__lt=now - timedelta(seconds=time_limit + 300),
+        ).filter(Q(lease_expires_at__isnull=True) | Q(lease_expires_at__lte=now))
+        .exclude(source__in=SELF_RESCHEDULING_IMPORT_SOURCES)
+        .update(status=ImportRun.Status.FAILED, finished_at=now)
+    )
+    if closed:
+        logger.warning(
+            "Marked %s import run(s) failed: still running past the task time "
+            "limit, so the worker was killed or restarted mid-import",
+            closed,
+        )
+    return closed
 
 
 def _run_file_import(importer_func, file, user_id, mode, **extra_kwargs):
@@ -158,6 +210,7 @@ def format_import_message(imported_counts, warning_messages=None):
         ("created", "created"),
         ("updated", "updated"),
         ("skipped", "skipped (unchanged)"),
+        ("baseline", "starting playtimes remembered"),
         ("skipped_missing_ids", "skipped (missing IDs)"),
         ("skipped_existing", "skipped (existing)"),
         ("skipped_unknown_type", "skipped (unknown type)"),

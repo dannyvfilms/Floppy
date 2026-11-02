@@ -1,6 +1,9 @@
-from django.test import TestCase
+import datetime
+
+from django.test import SimpleTestCase, TestCase
 
 from app import config
+from app.history_cache_utils import history_entry_sort_key
 from app.history_processor import format_description
 from app.models import MediaTypes, Status
 
@@ -198,3 +201,33 @@ class HistoryProcessorTests(TestCase):
             format_description("custom_field", "old", "new"),
             "Updated custom field from old to new",
         )
+
+
+class HistoryEntrySortKeyTests(SimpleTestCase):
+    """Plays that share a timestamp still have a stable newest-first order."""
+
+    def _entry(self, instance_id, season=None, episode=None):
+        return {
+            "played_at_local": datetime.datetime(2026, 10, 2, 12, 0),
+            "season_number": season,
+            "episode_number": episode,
+            "instance_id": instance_id,
+        }
+
+    def test_a_tied_timestamp_puts_the_higher_row_id_first(self):
+        """The later insert is the later watch."""
+        entries = [self._entry(1), self._entry(3), self._entry(2)]
+        entries.sort(key=history_entry_sort_key, reverse=True)
+        self.assertEqual([e["instance_id"] for e in entries], [3, 2, 1])
+
+    def test_season_and_episode_still_come_before_the_row_id(self):
+        """A real episode order must not be overridden by insertion order."""
+        entries = [self._entry(9, 1, 1), self._entry(2, 1, 2)]
+        entries.sort(key=history_entry_sort_key, reverse=True)
+        self.assertEqual([e["episode_number"] for e in entries], [2, 1])
+
+    def test_a_missing_row_id_does_not_break_the_sort(self):
+        """Some entries have no row id; they sort last on a tie."""
+        entries = [self._entry(None), self._entry(4)]
+        entries.sort(key=history_entry_sort_key, reverse=True)
+        self.assertEqual([e["instance_id"] for e in entries], [4, None])

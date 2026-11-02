@@ -1,4 +1,6 @@
 {% load app_tags %}
+{% comment %}Kometa's parser only recognizes TVDB-shaped episode anchors.{% endcomment %}
+{% if media.item.kometa_episode_url %}<a href="{{ media.item.kometa_episode_url }}" class="hidden" aria-hidden="true" tabindex="-1"></a>{% endif %}
 <div class="flex justify-between items-center">
   <a href="{% if public_list_reference %}{{ media.item|media_url }}?public_view=1&amp;public_list={{ public_list_reference|urlencode }}{% else %}{{ media.item|media_url }}{% endif %}"
      hx-boost="true"

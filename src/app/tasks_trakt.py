@@ -25,6 +25,13 @@ TRAKT_POPULARITY_BACKFILL_ITEMS_SCHEDULED_KEY = (
     "trakt_popularity_backfill_items_scheduled"
 )
 
+# Reconcile works in bounded chunks so its resident cost is a function of the
+# chunk, not of library size. Kept under 999: that is
+# SQLITE_MAX_VARIABLE_NUMBER before SQLite 3.32, and an `id__in` of one
+# parameter per id is not batched by Django the way bulk_update is.
+RECONCILE_CHUNK_SIZE = 900
+RECONCILE_UPDATE_BATCH_SIZE = 500
+
 
 def enqueue_trakt_popularity_backfill_items(item_ids, countdown=10, *, force=False):
     """Queue item IDs for Trakt popularity backfill via the cache-based queue."""
@@ -134,7 +141,9 @@ def populate_trakt_popularity_data_for_items(
             )
 
     run.reenqueue_if_deferred(
-        lambda ids: enqueue_trakt_popularity_backfill_items(ids, force=force),
+        lambda ids, countdown: enqueue_trakt_popularity_backfill_items(
+            ids, countdown=countdown, force=force
+        ),
     )
 
     return {
@@ -151,28 +160,25 @@ def populate_trakt_popularity_backfill_queue(
     force: bool = False,
 ):
     """Drain the Trakt popularity queue and process items in small batches."""
-    batch, more_remaining = backfill_queue.take(
+    with backfill_queue.drain(
         TRAKT_POPULARITY_BACKFILL_ITEMS_QUEUE_KEY,
         TRAKT_POPULARITY_BACKFILL_ITEMS_SCHEDULED_KEY,
         batch_size,
-    )
-    if not batch:
-        return {"processed": 0, "message": "No queued Trakt popularity items"}
+        drain_task=populate_trakt_popularity_backfill_queue,
+        drain_kwargs={"force": force},
+    ) as batch:
+        if not batch:
+            return {"processed": 0, "message": "No queued Trakt popularity items"}
 
-    if more_remaining:
-        backfill_queue.reschedule(
-            TRAKT_POPULARITY_BACKFILL_ITEMS_SCHEDULED_KEY,
-            populate_trakt_popularity_backfill_queue,
-            drain_kwargs={"force": force},
+        result = populate_trakt_popularity_data_for_items(
+            batch,
+            delay_seconds=delay_seconds,
+            force=force,
         )
-    else:
-        logger.info("trakt_popularity_backfill_complete: queue fully drained")
 
-    return populate_trakt_popularity_data_for_items(
-        batch,
-        delay_seconds=delay_seconds,
-        force=force,
-    )
+    if not backfill_queue.depth(TRAKT_POPULARITY_BACKFILL_ITEMS_QUEUE_KEY):
+        logger.info("trakt_popularity_backfill_complete: queue fully drained")
+    return result
 
 
 @shared_task(name="app.tasks.populate_trakt_episode_ratings_for_season")
@@ -296,28 +302,60 @@ def reconcile_trakt_popularity(score_version: int | None = None):
     """
     from app.models import Item
 
-    all_items = list(
-        trakt_popularity_service.tracked_items_queryset().iterator(chunk_size=500)
+    # Ids first, and only ids. `tracked_items_queryset()` is a bare
+    # `Item.objects.filter(...)`, so hydrating it loads all ~60 columns -
+    # including `synopsis` and the `watch_providers` blob, ~146 KiB a title -
+    # to read four scalars. Holding the whole library that way took one
+    # production run's VmHWM from 198 MiB to 799 MiB for 2972 rows.
+    # `.order_by("id")` also displaces `Item.Meta.ordering = ["media_id"]`, so
+    # the DISTINCT dedupes on an integer key instead of sorting a 500-char
+    # column across full rows.
+    all_ids = list(
+        trakt_popularity_service.tracked_items_queryset()
+        .order_by("id")
+        .values_list("id", flat=True)
     )
 
     recomputed = 0
     never_fetched_ids = []
 
-    for item in all_items:
-        if item.trakt_popularity_fetched_at is not None:
+    # Two passes rather than one streamed cursor: no read cursor stays open
+    # across the writes, which is the guarantee the original `list()` bought
+    # by paying for the whole library.
+    for offset in range(0, len(all_ids), RECONCILE_CHUNK_SIZE):
+        chunk = all_ids[offset : offset + RECONCILE_CHUNK_SIZE]
+        updates = []
+        rows = Item.objects.filter(id__in=chunk).values_list(
+            "id",
+            "trakt_popularity_fetched_at",
+            "trakt_rating",
+            "trakt_rating_count",
+        )
+        for item_id, fetched_at, rating, rating_count in rows:
+            if fetched_at is None:
+                never_fetched_ids.append(item_id)
+                continue
             # Already have Trakt data — recompute derived fields locally.
             new_score = trakt_popularity_service.compute_popularity_score(
-                item.trakt_rating,
-                item.trakt_rating_count,
+                rating,
+                rating_count,
             )
-            new_rank = trakt_popularity_service.estimate_rank_from_score(new_score)
-            Item.objects.filter(pk=item.pk).update(
-                trakt_popularity_score=new_score,
-                trakt_popularity_rank=new_rank,
+            updates.append(
+                Item(
+                    pk=item_id,
+                    trakt_popularity_score=new_score,
+                    trakt_popularity_rank=(
+                        trakt_popularity_service.estimate_rank_from_score(new_score)
+                    ),
+                ),
             )
-            recomputed += 1
-        else:
-            never_fetched_ids.append(item.id)
+        if updates:
+            Item.objects.bulk_update(
+                updates,
+                ["trakt_popularity_score", "trakt_popularity_rank"],
+                batch_size=RECONCILE_UPDATE_BATCH_SIZE,
+            )
+            recomputed += len(updates)
 
     enqueued = 0
     if never_fetched_ids and trakt_popularity_service.trakt_provider.is_configured():
@@ -333,10 +371,18 @@ def reconcile_trakt_popularity(score_version: int | None = None):
             timeout=None,
         )
 
+    # `total` is logged because `recomputed` alone cannot say how large the
+    # working set was - the number a memory regression here would show up in.
     logger.info(
-        "reconcile_trakt_popularity recomputed=%d enqueued_for_fetch=%d version=%s",
+        "reconcile_trakt_popularity total=%d recomputed=%d enqueued_for_fetch=%d "
+        "version=%s",
+        len(all_ids),
         recomputed,
         enqueued,
         score_version,
     )
-    return {"recomputed": recomputed, "enqueued_for_fetch": enqueued}
+    return {
+        "total": len(all_ids),
+        "recomputed": recomputed,
+        "enqueued_for_fetch": enqueued,
+    }

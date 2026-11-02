@@ -1422,3 +1422,89 @@ msgstr "Total"
 #: static/js/statistics-charts.js:1888
 msgid "of titles"
 msgstr "des titres"
+
+#: static/js/libraryFilterState.js
+#, python-format
+msgid "%(count)s Types"
+msgstr "%(count)s types"
+
+#: static/js/libraryFilterState.js
+msgid "1 Type"
+msgstr "1 type"
+
+#: static/js/libraryFilterState.js
+msgid "Added"
+msgstr "Ajouté"
+
+#: static/js/libraryFilterState.js
+msgid "All Types"
+msgstr "Tous les types"
+
+#: static/js/libraryFilterState.js
+msgid "Collected"
+msgstr "Possédé"
+
+#: static/js/libraryFilterState.js
+msgid "Collection/Series"
+msgstr "Collection/Série"
+
+#: static/js/libraryFilterState.js
+msgid "Franchise"
+msgstr "Franchise"
+
+#: static/js/libraryFilterState.js
+msgid "Implied: "
+msgstr "Implicite : "
+
+#: static/js/libraryFilterState.js
+msgid "Item"
+msgstr "Élément"
+
+#: static/js/libraryFilterState.js
+msgid "No Types"
+msgstr "Aucun type"
+
+#: static/js/libraryFilterState.js
+msgid "Not Collected"
+msgstr "Non possédé"
+
+#: static/js/libraryFilterState.js
+msgid "Not Rated"
+msgstr "Non noté"
+
+#: static/js/libraryFilterState.js
+msgid "Not Released"
+msgstr "Non sorti"
+
+#: static/js/libraryFilterState.js
+msgid "Rated"
+msgstr "Noté"
+
+#: static/js/libraryFilterState.js
+msgid "Release"
+msgstr "Sortie"
+
+#: static/js/libraryFilterState.js
+msgid "Released"
+msgstr "Sorti"
+
+#: static/js/libraryFilterState.js
+msgid "Unknown Year"
+msgstr "Année inconnue"
+
+#: static/js/libraryFilterState.js
+msgid "Caught Up"
+msgstr "À jour"
+
+#: static/js/libraryFilterState.js
+msgid "Not Caught Up"
+msgstr "Pas à jour"
+
+#: templates/base.html
+msgid "Search your whole library..."
+msgstr "Rechercher dans toute la bibliothèque..."
+
+
+#: templates/users/home_screen.html
+msgid "Up Next"
+msgstr "À suivre"

@@ -57,7 +57,7 @@
                 title="{% translate "Drag to reorder" %}">
           {% include "app/icons/hamburger.svg" with classes="w-4 h-4" %}
         </button>
-        <span class="flex-1 truncate" x-text="column.label"></span>
+        <span class="flex-1 truncate" x-text="gettext(column.label)"></span>
         {% translate "Hide column" as media_i18n_66 %}{% translate "Show column" as media_i18n_67 %}<button class="text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
                 type="button"
                 :title="column.visible ? '{{ media_i18n_66|escapejs }}' : '{{ media_i18n_67|escapejs }}'"

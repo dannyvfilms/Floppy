@@ -1,3 +1,6 @@
+import base64
+import hashlib
+import json
 from datetime import timedelta
 from unittest.mock import patch
 from urllib.parse import parse_qs, unquote, urlencode, urlparse
@@ -8,12 +11,16 @@ from django.contrib.sessions.backends.cached_db import SessionStore
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from django_celery_beat.models import PeriodicTask
+from requests import Response
 
+from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError
 from integrations.models import PlexAccount
 from integrations.views import TRAKT_DEVICE_SESSION_KEY
 
 
+@override_settings(SIMKL_ID="test-simkl-id", SIMKL_SECRET="test-simkl-secret")
 class OAuthStateViewTests(TestCase):
     """Exercise provider OAuth state storage, consumption, and replay guards."""
 
@@ -47,13 +54,14 @@ class OAuthStateViewTests(TestCase):
         return state_token
 
     def _callback_url(self, view_name, state_token):
-        return f"{reverse(view_name)}?{urlencode({'state': state_token, 'code': 'oauth-code'})}"
+        return f"{reverse(view_name)}?{urlencode({'state': state_token, 'code': 'oauth-code', 'iss': 'https://simkl.com'})}"
 
     def _assert_invalid_state(self, view_name, message, callback_path):
         response = self.client.get(reverse(view_name), follow=True)
 
         self.assertContains(response, message)
-        self.assertEqual(response.redirect_chain[-1][0], callback_path)
+        expected = reverse("providers") + "?capability=import" if callback_path == reverse("import_data") else callback_path
+        self.assertEqual(response.redirect_chain[-1][0], expected)
         self.assertEqual(
             self.client.session.get("_auth_user_id"),
             str(self.user.pk),
@@ -85,6 +93,149 @@ class OAuthStateViewTests(TestCase):
         self.assertContains(replay, "Invalid or expired SIMKL authorization request.")
         self.assertNotIn(state_token, "\n".join(logs.output))
 
+    @override_settings(SIMKL_ID="", SIMKL_SECRET="")
+    def test_simkl_without_credentials_never_leaves_floppy(self):
+        # Floppy used to ship a SIMKL client ID with no secret, so users
+        # approved on SIMKL and only then hit a 403 at token exchange (#1318).
+        response = self.client.post(
+            reverse("simkl_oauth"),
+            data={"mode": "new", "frequency": "once", "time": "00:00", "next": reverse("provider_detail", args=["simkl"]) + "?tab=import"},
+            follow=True,
+        )
+
+        self.assertEqual(response.redirect_chain, [(reverse("provider_detail", args=["simkl"]) + "?tab=import", 302)])
+        self.assertContains(response, "SIMKL needs your own Client ID and Client secret.")
+        self.assertContains(response, "SIMKL needs your own API app")
+
+    def test_simkl_rejected_token_exchange_shows_message_not_500(self):
+        state_token = self._start_oauth("simkl_oauth")
+        callback_url = self._callback_url("import_simkl_private", state_token)
+        code_verifier = self.client.session[state_token]["code_verifier"]
+        rejected = Response()
+        rejected.status_code = 403
+        rejected.url = "https://api.simkl.com/oauth2/token"
+
+        with patch(
+            "app.providers.services.resilient_request",
+            return_value=rejected,
+        ) as provider_request:
+            response = self.client.get(callback_url, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "SIMKL rejected the Client ID and Client secret.")
+        request_kwargs = provider_request.call_args.kwargs
+        self.assertEqual(request_kwargs["url"], "https://api.simkl.com/oauth2/token")
+        self.assertEqual(request_kwargs["headers"]["simkl-api-key"], "test-simkl-id")
+        self.assertTrue(request_kwargs["headers"]["User-Agent"].startswith("Floppy/"))
+        self.assertEqual(request_kwargs["data"]["client_secret"], "test-simkl-secret")
+        self.assertEqual(request_kwargs["data"]["code_verifier"], code_verifier)
+
+    def test_simkl_declined_consent_shows_message_not_500(self):
+        state_token = self._start_oauth("simkl_oauth")
+        callback_url = f"{reverse('import_simkl_private')}?{urlencode({'error': 'access_denied', 'state': state_token, 'iss': 'https://simkl.com'})}"
+
+        with patch("integrations.views.simkl.get_token") as get_token:
+            response = self.client.get(callback_url, follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "SIMKL authorization was cancelled or denied.")
+        get_token.assert_not_called()
+
+    def test_simkl_rejects_callback_from_another_issuer(self):
+        state_token = self._start_oauth("simkl_oauth")
+        callback_url = f"{reverse('import_simkl_private')}?{urlencode({'code': 'oauth-code', 'state': state_token, 'iss': 'https://not-simkl.example.com'})}"
+
+        with patch("integrations.views.simkl.get_token") as get_token:
+            response = self.client.get(callback_url, follow=True)
+
+        self.assertContains(response, "Invalid or expired SIMKL authorization request.")
+        get_token.assert_not_called()
+
+    def test_simkl_authorize_uses_auth_v2_with_pkce(self):
+        response = self.client.post(
+            reverse("simkl_oauth"),
+            data={"mode": "new", "frequency": "once", "time": "00:00"},
+        )
+        parsed = urlparse(response["Location"])
+        query = parse_qs(parsed.query)
+        code_verifier = self.client.session[query["state"][0]]["code_verifier"]
+        expected_challenge = (
+            base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest())
+            .decode()
+            .rstrip("=")
+        )
+
+        self.assertEqual(f"{parsed.netloc}{parsed.path}", "simkl.com/oauth2/authorize")
+        self.assertEqual(query["code_challenge_method"], ["S256"])
+        self.assertEqual(query["code_challenge"], [expected_challenge])
+
+    def test_simkl_v1_option_keeps_the_original_flow(self):
+        # SIMKL apps made before AUTH V2 keep working until V1 retires
+        response = self.client.post(
+            reverse("simkl_oauth"),
+            data={
+                "mode": "new",
+                "frequency": "daily",
+                "time": "03:00",
+                "auth_version": "v1",
+            },
+        )
+        parsed = urlparse(response["Location"])
+        query = parse_qs(parsed.query)
+        state_token = query["state"][0]
+
+        self.assertEqual(f"{parsed.netloc}{parsed.path}", "simkl.com/oauth/authorize")
+        self.assertNotIn("code_challenge", query)
+        self.assertNotIn("code_verifier", self.client.session[state_token])
+
+        with patch(
+            "app.providers.services.api_request",
+            side_effect=[
+                {"access_token": "v1-access"},
+                {"user": {"name": "simkl-user"}},
+            ],
+        ) as api_request:
+            self.client.get(self._callback_url("import_simkl_private", state_token))
+
+        token_call = api_request.call_args_list[0]
+        self.assertEqual(token_call.args[2], "https://api.simkl.com/oauth/token")
+        self.assertEqual(
+            token_call.kwargs["params"]["client_secret"], "test-simkl-secret"
+        )
+        self.assertNotIn("code_verifier", token_call.kwargs["params"])
+        task_kwargs = json.loads(
+            PeriodicTask.objects.get(task="Import from SIMKL").kwargs,
+        )
+        self.assertEqual(helpers.decrypt(task_kwargs["token"]), "v1-access")
+        self.assertNotIn("refresh_token", task_kwargs)
+
+    def test_simkl_schedule_keeps_the_refresh_token(self):
+        response = self.client.post(
+            reverse("simkl_oauth"),
+            data={"mode": "new", "frequency": "daily", "time": "03:00"},
+        )
+        state_token = parse_qs(urlparse(response["Location"]).query)["state"][0]
+        callback_url = self._callback_url("import_simkl_private", state_token)
+
+        with patch(
+            "integrations.views.simkl.get_token",
+            return_value={
+                "access_token": "simkl-access",
+                "refresh_token": "simkl-refresh",
+                "username": "simkl-user",
+            },
+        ):
+            self.client.get(callback_url)
+
+        task_kwargs = json.loads(
+            PeriodicTask.objects.get(task="Import from SIMKL").kwargs,
+        )
+        self.assertEqual(
+            helpers.decrypt(task_kwargs["refresh_token"]),
+            "simkl-refresh",
+        )
+        self.assertEqual(helpers.decrypt(task_kwargs["token"]), "simkl-access")
+
     @override_settings(URLS=["https://floppy.example.com"])
     def test_trakt_state_is_consumed_and_replay_is_rejected(self):
         state_token = self._start_oauth("trakt_oauth")
@@ -93,7 +244,11 @@ class OAuthStateViewTests(TestCase):
         with (
             patch(
                 "integrations.views.trakt.handle_oauth_callback",
-                return_value={"refresh_token": "trakt-refresh", "username": "trakt-user"},
+                return_value={
+                    "refresh_token": "trakt-refresh",
+                    "redirect_uri": "https://floppy.example.com/import/trakt/private",
+                    "username": "trakt-user",
+                },
             ) as handle_callback,
             patch("integrations.views.helpers.encrypt", return_value="encrypted-token"),
             patch("integrations.views.tasks.import_trakt.delay") as import_task,
@@ -108,9 +263,103 @@ class OAuthStateViewTests(TestCase):
 
             handle_callback.assert_called_once()
             import_task.assert_called_once()
+            self.assertEqual(
+                import_task.call_args.kwargs["redirect_uri"],
+                "https://floppy.example.com/import/trakt/private",
+            )
 
         self.assertContains(replay, "Invalid or expired Trakt authorization request.")
         self.assertNotIn(state_token, "\n".join(logs.output))
+
+    @override_settings(URLS=["https://floppy.example.com"])
+    def test_trakt_without_a_secret_authorizes_with_pkce(self):
+        """An app with no client secret logs in with a PKCE challenge (#1523)."""
+        with (
+            patch(
+                "integrations.views.credentials.get",
+                side_effect=lambda _slug, field: {"client_id": "client"}.get(field, ""),
+            ),
+            patch("integrations.views.trakt.default_client_secret", return_value=""),
+        ):
+            response = self.client.post(
+                reverse("trakt_oauth"),
+                data={"mode": "new", "frequency": "once", "time": "00:00"},
+            )
+
+        query = parse_qs(urlparse(response["Location"]).query)
+        state_token = query["state"][0]
+        verifier = self.client.session[state_token]["code_verifier"]
+        digest = hashlib.sha256(verifier.encode()).digest()
+        self.assertEqual(query["code_challenge_method"], ["S256"])
+        self.assertEqual(
+            query["code_challenge"],
+            [base64.urlsafe_b64encode(digest).decode().rstrip("=")],
+        )
+
+        callback_url = self._callback_url("import_trakt_private", state_token)
+        with (
+            patch(
+                "integrations.views.trakt.handle_oauth_callback",
+                return_value={
+                    "refresh_token": "trakt-refresh",
+                    "redirect_uri": "https://floppy.example.com/import/trakt/private",
+                    "username": "trakt-user",
+                },
+            ) as handle_callback,
+            patch("integrations.views.tasks.import_trakt.delay"),
+        ):
+            self.client.get(callback_url)
+
+        self.assertEqual(handle_callback.call_args.kwargs["code_verifier"], verifier)
+
+    @override_settings(URLS=["https://floppy.example.com"])
+    def test_trakt_with_a_secret_does_not_use_pkce(self):
+        with (
+            patch(
+                "integrations.views.credentials.get",
+                side_effect=lambda _slug, field: {"client_id": "client"}.get(field, ""),
+            ),
+            patch(
+                "integrations.views.trakt.default_client_secret",
+                return_value="secret",
+            ),
+        ):
+            response = self.client.post(
+                reverse("trakt_oauth"),
+                data={"mode": "new", "frequency": "once", "time": "00:00"},
+            )
+
+        query = parse_qs(urlparse(response["Location"]).query)
+        self.assertNotIn("code_challenge", query)
+        self.assertNotIn("code_verifier", self.client.session[query["state"][0]])
+
+    @override_settings(URLS=["https://floppy.example.com"])
+    def test_trakt_reconnect_refreshes_the_existing_schedule(self):
+        """A reconnect with the same settings must replace the schedule's dead token (#1404)."""
+        callback_uri = "https://floppy.example.com/import/trakt/private"
+        for token in ("first-token", "second-token"):
+            response = self.client.post(
+                reverse("trakt_oauth"),
+                data={"mode": "new", "frequency": "daily", "time": "04:00"},
+            )
+            state_token = parse_qs(urlparse(response["Location"]).query)["state"][0]
+            with (
+                patch(
+                    "integrations.views.trakt.handle_oauth_callback",
+                    return_value={
+                        "refresh_token": token,
+                        "redirect_uri": callback_uri,
+                        "username": "trakt-user",
+                    },
+                ),
+                patch("integrations.views.helpers.encrypt", side_effect=lambda t: f"enc-{t}"),
+            ):
+                self.client.get(self._callback_url("import_trakt_private", state_token))
+
+        task = PeriodicTask.objects.get(task="Import from Trakt")
+        task_kwargs = json.loads(task.kwargs)
+        self.assertEqual(task_kwargs["token"], "enc-second-token")
+        self.assertEqual(task_kwargs["redirect_uri"], callback_uri)
 
     def test_anilist_state_is_consumed_and_replay_is_rejected(self):
         state_token = self._start_oauth("import_anilist_oauth")
@@ -305,6 +554,7 @@ class TraktDeviceFlowViewTests(TestCase):
                 return_value={
                     "access_token": "access",
                     "refresh_token": "refresh",
+                    "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
                     "username": "trakt-user",
                 },
             ),
@@ -314,6 +564,10 @@ class TraktDeviceFlowViewTests(TestCase):
             response = self.client.get(reverse("trakt_device_poll"))
 
         import_task.assert_called_once()
+        self.assertEqual(
+            import_task.call_args.kwargs["redirect_uri"],
+            "urn:ietf:wg:oauth:2.0:oob",
+        )
         self.assertEqual(response.status_code, 204)
         self.assertEqual(response["HX-Redirect"], reverse("import_data"))
         self.assertNotIn(TRAKT_DEVICE_SESSION_KEY, self.client.session)

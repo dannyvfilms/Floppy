@@ -182,16 +182,7 @@ class StatisticsRefreshView(drf_views.APIView):
                 },
                 status=HTTP.BAD_REQUEST,
             )
-        statistics_cache.invalidate_all_statistics_days(
-            request.user.id,
-            reason=f"manual_statistics_refresh:{range_name}",
-        )
-        statistics_cache.invalidate_statistics_cache(request.user.id, range_name)
-        statistics_cache.schedule_statistics_refresh(
-            request.user.id,
-            range_name,
-            debounce_seconds=0,
-            countdown=0,
-            allow_inline=True,
-        )
+        from app import statistics_sync
+
+        statistics_sync.request_manual_refresh(request.user, range_name)
         return Response({"scheduled": True}, status=HTTP.ACCEPTED)

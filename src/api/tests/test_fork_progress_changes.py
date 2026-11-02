@@ -165,3 +165,72 @@ class ProgressChangeFeedTests(FloppyApiTestCase):
         response = self.client.get(FEED, **self.auth_headers2)
 
         self.assertEqual(response.data["results"], [])
+
+
+class ProgressChangeEpisodeIdentityTests(FloppyApiTestCase):
+    """An episode change must say which episode, or a client cannot apply it."""
+
+    def setUp(self):
+        """Record changes for two episodes of one show."""
+        super().setUp()
+        WatchStateSequence.objects.update_or_create(
+            user=self.user1,
+            defaults={"emit_changes": True},
+        )
+        Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+            provider_external_ids={"tmdb_id": 1396, "imdb_id": "tt0903747"},
+        )
+        self.episodes = [
+            Item.objects.create(
+                media_id="1396",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                title=f"Episode {number}",
+                season_number=2,
+                episode_number=number,
+            )
+            for number in (3, 4)
+        ]
+        self.movie = Item.objects.create(
+            media_id="603",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Matrix",
+            provider_external_ids={"imdb_id": "tt0133093"},
+        )
+        for item in (*self.episodes, self.movie):
+            record_progress_change(self.user1, item, position_seconds=60)
+
+    def test_episode_changes_carry_their_coordinates_and_show_ids(self):
+        """Two episodes share a media_id, so the feed names season and episode."""
+        rows = self.client.get(FEED, **self.auth_headers).data["results"]
+
+        self.assertEqual(
+            [(row["season_number"], row["episode_number"]) for row in rows[:2]],
+            [(2, 3), (2, 4)],
+        )
+        self.assertEqual(
+            rows[0]["ids"],
+            {"tmdb": "1396", "imdb": "tt0903747"},
+        )
+
+    def test_movie_changes_carry_ids_and_no_coordinates(self):
+        """A movie has no season or episode, and says so explicitly."""
+        movie_row = self.client.get(FEED, **self.auth_headers).data["results"][2]
+
+        self.assertIsNone(movie_row["season_number"])
+        self.assertIsNone(movie_row["episode_number"])
+        self.assertEqual(movie_row["ids"], {"imdb": "tt0133093"})
+
+    def test_a_tombstone_still_names_the_episode_it_clears(self):
+        """A delete is only actionable if the client knows which one."""
+        record_progress_deletion(self.user1, self.episodes[1])
+
+        row = self.client.get(FEED, **self.auth_headers).data["results"][-1]
+
+        self.assertEqual(row["kind"], "delete")
+        self.assertEqual((row["season_number"], row["episode_number"]), (2, 4))

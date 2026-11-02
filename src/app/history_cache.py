@@ -62,36 +62,46 @@ from app.history_cache_utils import (  # noqa: F401
     HISTORY_DAY_PREFIX,
     HISTORY_DAYS_PER_PAGE,
     HISTORY_ENTRIES_PER_DAY_PAGE,
+    HISTORY_ERA_TIMEOUT,
     HISTORY_INDEX_PREFIX,
     HISTORY_REFRESH_LOCK_MAX_AGE,
     HISTORY_REFRESH_LOCK_PREFIX,
     HISTORY_STALE_AFTER,
     HISTORY_WARM_DAYS,
+    _bump_history_era,
     _cache_key,
     _coerce_genre_list,
     _coerce_timedelta,
     _coverage_repair_key,
+    _current_history_era,
     _date_from_day_key,
     _day_cache_key,
     _day_key_for_date,
     _day_key_from_value,
     _get_rss_kb,
+    _history_era_key,
     _localize_datetime,
     _music_history_user_q,
     _normalize_logging_style,
     _refresh_lock_key,
     _resolve_genres,
     _resolve_music_genres,
+    _touch_history_era,
+    _typed_history_index_key,
+    _typed_history_index_registry_key,
     expand_history_media_types,
     history_day_key,
     history_day_keys_for_range,
     history_deferred_item_fields,
+    history_entry_sort_key,
 )
 from app.history_entry_builders import (  # noqa: F401
     _attach_entry_score,
     _build_episode_entry,
     _build_movie_entry,
     _build_music_album_entries,
+    _build_video_play_entry,
+    _entry_dates,
     _format_boardgame_plays,
     _format_game_hours,
     _get_episode_display_title,
@@ -101,6 +111,8 @@ from app.history_entry_builders import (  # noqa: F401
     _serialize_album,
     _serialize_item,
     _serialize_show,
+    flat_anime_episode_entries,
+    flat_anime_episode_watches,
 )
 from app.models import (
     CREDITS_BACKFILL_VERSION,
@@ -154,7 +166,11 @@ def _fetch_episode_data(
 
     episodes = Episode.all_objects.filter(related_season__user=user)
     if not include_undated:
-        episodes = episodes.filter(end_date__isnull=False)
+        # An open play has no end date yet; like a movie, it is listed on the
+        # day it started (issue #1278).
+        episodes = episodes.filter(
+            models.Q(end_date__isnull=False) | models.Q(start_date__isnull=False),
+        )
     episodes = (
         episodes.select_related(
             "item",
@@ -168,13 +184,19 @@ def _fetch_episode_data(
                 "related_season__related_tv__item",
             ),
         )
-        .order_by("-end_date")
+        .order_by("-end_date", "-start_date")
     )
 
     if start_date:
-        episodes = episodes.filter(end_date__gte=start_date)
+        episodes = episodes.filter(
+            models.Q(end_date__gte=start_date)
+            | (models.Q(end_date__isnull=True) & models.Q(start_date__gte=start_date))
+        )
     if end_date:
-        episodes = episodes.filter(end_date__lte=end_date)
+        episodes = episodes.filter(
+            models.Q(end_date__lte=end_date)
+            | (models.Q(end_date__isnull=True) & models.Q(start_date__lte=end_date))
+        )
     if filters.get("tv"):
         episodes = episodes.filter(related_season__related_tv_id=filters["tv"])
     if filters.get("season"):
@@ -300,6 +322,9 @@ def _fetch_episode_data(
             episodes = episodes.filter(
                 related_season__item__season_number=season_number_filter,
             )
+
+    if filters.get("episode_number") is not None:
+        episodes = episodes.filter(item__episode_number=filters["episode_number"])
 
     return list(episodes)
 
@@ -443,7 +468,10 @@ def _build_reading_entries(
                 item__media_id=target_media_id,
                 item__source=target_source,
             )
-        if start_date:
+        is_anime = reading_media_type == MediaTypes.ANIME.value
+        # A flat anime's episodes are dated by its change log rather than its
+        # own dates, so its range is applied to each episode below instead.
+        if start_date and not is_anime:
             queryset = queryset.filter(
                 models.Q(end_date__gte=start_date)
                 | (
@@ -451,7 +479,7 @@ def _build_reading_entries(
                     & models.Q(start_date__gte=start_date)
                 ),
             )
-        if end_date:
+        if end_date and not is_anime:
             queryset = queryset.filter(
                 models.Q(end_date__lte=end_date)
                 | (
@@ -459,11 +487,14 @@ def _build_reading_entries(
                 ),
             )
         entry_is_undated = include_undated and targets_this_media
-        if not entry_is_undated:
+        if not entry_is_undated and not is_anime:
             queryset = queryset.filter(
                 models.Q(start_date__isnull=False) | models.Q(end_date__isnull=False),
             )
-        queryset = queryset.order_by("-end_date", "-start_date", "-created_at")
+        queryset = list(
+            queryset.order_by("-end_date", "-start_date", "-created_at"),
+        )
+        episode_watches = flat_anime_episode_watches(queryset) if is_anime else {}
 
         for reading_entry in queryset:
             item = getattr(reading_entry, "item", None)
@@ -473,14 +504,28 @@ def _build_reading_entries(
                 item_genres = {str(g).lower() for g in _resolve_genres(item)}
                 if not item_genres & set(genre_filters):
                     continue
-            if not reading_entry.end_date and not reading_entry.start_date:
+            watches = [
+                (number, watched_at)
+                for number, watched_at in episode_watches.get(reading_entry.id, [])
+                if (not start_date or watched_at >= start_date)
+                and (not end_date or watched_at <= end_date)
+            ]
+            record_date = reading_entry.end_date or reading_entry.start_date
+            if reading_entry.id in episode_watches:
+                if not watches:
+                    continue
+                played_at_local = None
+            elif not record_date:
                 if not entry_is_undated:
                     continue
                 played_at_local = None
             else:
-                played_at_local = _localize_datetime(
-                    reading_entry.end_date or reading_entry.start_date,
-                )
+                if is_anime and (
+                    (start_date and record_date < start_date)
+                    or (end_date and record_date > end_date)
+                ):
+                    continue
+                played_at_local = _localize_datetime(record_date)
                 if not played_at_local:
                     continue
             entry = {
@@ -492,6 +537,7 @@ def _build_reading_entries(
                 "episode_label": None,
                 "episode_code": None,
                 "played_at_local": played_at_local,
+                **_entry_dates(reading_entry),
                 "runtime_minutes": 0,
                 "runtime_display": None,
                 "instance_id": reading_entry.id,
@@ -501,7 +547,16 @@ def _build_reading_entries(
             genres = _resolve_genres(item)
             if genres:
                 entry["genres"] = genres
-            entries.append(entry)
+            if watches:
+                entries.extend(
+                    flat_anime_episode_entries(
+                        entry,
+                        watches,
+                        episode_watches[reading_entry.id][-1][0],
+                    ),
+                )
+            else:
+                entries.append(entry)
 
     return entries
 
@@ -655,6 +710,7 @@ def _build_podcast_entries(user, podcast_history_records, podcasts_lookup):
                 "episode_label": None,
                 "episode_code": None,
                 "played_at_local": played_at_local,
+                **_entry_dates(history_record, added_from=podcast),
                 "runtime_minutes": runtime_minutes,
                 "runtime_display": helpers.minutes_to_hhmm(runtime_minutes)
                 if runtime_minutes
@@ -725,6 +781,7 @@ def _build_game_entries(
                     "episode_label": None,
                     "episode_code": None,
                     "played_at_local": played_at_local,
+                    **_entry_dates(game),
                     "runtime_minutes": runtime_minutes,
                     "runtime_display": helpers.minutes_to_hhmm(runtime_minutes)
                     if runtime_minutes
@@ -781,6 +838,7 @@ def _build_game_entries(
                     "episode_label": None,
                     "episode_code": None,
                     "played_at_local": played_at_local,
+                    **_entry_dates(boardgame),
                     "runtime_minutes": 0,
                     "runtime_display": progress_display,
                     "instance_id": boardgame.id,
@@ -839,6 +897,7 @@ def _build_game_entries(
                         "episode_label": None,
                         "episode_code": None,
                         "played_at_local": day_dt,
+                        **_entry_dates(game),
                         "runtime_minutes": minutes_for_day,
                         "runtime_display": helpers.minutes_to_hhmm(minutes_for_day)
                         if minutes_for_day
@@ -901,6 +960,7 @@ def _build_game_entries(
                         "episode_label": None,
                         "episode_code": None,
                         "played_at_local": day_dt,
+                        **_entry_dates(boardgame),
                         "runtime_minutes": 0,
                         "runtime_display": _format_boardgame_plays(plays_for_day)
                         if plays_for_day
@@ -954,6 +1014,7 @@ def build_history_days(
         "comics": 0,
         "manga": 0,
         "anime": 0,
+        "videos": 0,
     }
 
     # Parse date filters
@@ -1112,14 +1173,9 @@ def build_history_days(
         if process_movies
         else (Movie.objects.none(), {})
     )
-    try:
-        movies_count = movies.count()
-    except Exception:
-        movies_count = None
     logger.info(
-        "history_build_movies user_id=%s qs_count=%s play_map=%s elapsed_ms=%.2f",
+        "history_build_movies user_id=%s play_map=%s elapsed_ms=%.2f",
         user.id,
-        movies_count,
         len(movie_play_map),
         (time.perf_counter() - movies_start) * 1000,
     )
@@ -1168,14 +1224,6 @@ def build_history_days(
             models.Q(end_date__lte=end_date)
             | (models.Q(end_date__isnull=True) & models.Q(start_date__lte=end_date))
         )
-    try:
-        games_count = games.count()
-    except Exception:
-        games_count = None
-    try:
-        boardgames_count = boardgames.count()
-    except Exception:
-        boardgames_count = None
 
     music_start = time.perf_counter()
     music_entries = Music.objects.none()
@@ -1199,10 +1247,6 @@ def build_history_days(
             item__media_id=target_media_id,
             item__source=target_source,
         )
-    try:
-        music_entries_count = music_entries.count()
-    except Exception:
-        music_entries_count = None
 
     podcast_start = time.perf_counter()
     podcast_history_records = []
@@ -1225,13 +1269,6 @@ def build_history_days(
         podcast_history_records = podcast_history_records.filter(
             show_id=podcast_show_filter
         )
-    if process_podcasts:
-        try:
-            podcast_history_count = podcast_history_records.count()
-        except Exception:
-            podcast_history_count = None
-    else:
-        podcast_history_count = 0
     podcast_ids = (
         list(set(podcast_history_records.values_list("id", flat=True)))
         if process_podcasts
@@ -1426,7 +1463,7 @@ def build_history_days(
                 continue
             entry = _build_episode_entry(episode, episode_title_map)
             if entry:
-                if include_undated and not episode.end_date:
+                if include_undated and not episode.end_date and not episode.start_date:
                     entry["played_at_local"] = None
                 entries.append(entry)
                 entry_counts["episodes"] += 1
@@ -1445,6 +1482,26 @@ def build_history_days(
             entry["play_count"] = play_count
             entries.append(entry)
             entry_counts["movies"] += 1
+
+    if process_all or MediaTypes.VIDEO.value in media_type_filter:
+        from app.models import VideoPlay
+
+        plays = (
+            VideoPlay.objects.filter(video__user=user)
+            .select_related("video__item")
+            .defer(*history_deferred_item_fields("video__item"))
+        )
+        if start_date:
+            plays = plays.filter(end_date__gte=start_date)
+        if end_date:
+            plays = plays.filter(end_date__lte=end_date)
+        if target_media_id:
+            plays = plays.filter(video__item__media_id=target_media_id)
+        for play in plays:
+            entry = _build_video_play_entry(play)
+            if entry:
+                entries.append(entry)
+                entry_counts["videos"] += 1
 
     reading_entries = (
         _build_reading_entries(
@@ -1486,10 +1543,9 @@ def build_history_days(
         entries.extend(music_entry_list)
         entry_counts["music"] = len(music_entry_list)
         logger.info(
-            "history_build_music user_id=%s music_entries=%s history_records_scanned=%s "
+            "history_build_music user_id=%s history_records_scanned=%s "
             "album_day_groups=%s entries=%s elapsed_ms=%.2f",
             user.id,
-            music_entries_count,
             music_history_records_scanned,
             music_album_day_groups,
             entry_counts["music"],
@@ -1507,9 +1563,8 @@ def build_history_days(
         entries.extend(podcast_entry_list)
         entry_counts["podcasts"] = len(podcast_entry_list)
         logger.info(
-            "history_build_podcasts user_id=%s history_records=%s podcast_ids=%s entries=%s elapsed_ms=%.2f",
+            "history_build_podcasts user_id=%s podcast_ids=%s entries=%s elapsed_ms=%.2f",
             user.id,
-            podcast_history_count,
             len(podcast_ids),
             entry_counts["podcasts"],
             (time.perf_counter() - podcast_start) * 1000,
@@ -1532,11 +1587,9 @@ def build_history_days(
             else:
                 entry_counts["boardgames"] += 1
         logger.info(
-            "history_build_games user_id=%s games=%s boardgames=%s entries_games=%s "
+            "history_build_games user_id=%s entries_games=%s "
             "entries_boardgames=%s logging_style=%s elapsed_ms=%.2f",
             user.id,
-            games_count,
-            boardgames_count,
             entry_counts["games"],
             entry_counts["boardgames"],
             game_logging_style,
@@ -1550,14 +1603,7 @@ def build_history_days(
     undated_entries = [e for e in entries if e["played_at_local"] is None]
     entries = [e for e in entries if e["played_at_local"] is not None]
 
-    entries.sort(
-        key=lambda e: (
-            e["played_at_local"],
-            e.get("season_number") or 0,
-            e.get("episode_number") or 0,
-        ),
-        reverse=True,
-    )
+    entries.sort(key=history_entry_sort_key, reverse=True)
 
     grouped_entries = defaultdict(list)
     for entry in entries:
@@ -1567,14 +1613,7 @@ def build_history_days(
     for _, day_entries in sorted(
         grouped_entries.items(), key=lambda x: x[0], reverse=True
     ):
-        day_entries.sort(
-            key=lambda e: (
-                e["played_at_local"],
-                e.get("season_number") or 0,
-                e.get("episode_number") or 0,
-            ),
-            reverse=True,
-        )
+        day_entries.sort(key=history_entry_sort_key, reverse=True)
         first_entry_time = day_entries[0]["played_at_local"]
         total_minutes = sum(e["runtime_minutes"] or 0 for e in day_entries)
         history_days.append(

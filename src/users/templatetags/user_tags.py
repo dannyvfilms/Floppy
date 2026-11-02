@@ -1,19 +1,107 @@
+import re
 from datetime import datetime
 
 from django import template
 from django.templatetags.static import static
 from django.utils import formats, timezone
 from django.utils.html import format_html
+from django.utils.safestring import mark_safe
+from django.utils.translation import gettext, gettext_noop, ngettext
 
+from users import currency
 from users.appearance import (
     BASIC_THEME_KEYS,
     THEME_PRESETS,
     custom_theme_css,
     resolved_detail_layouts,
 )
+from users.media_tags import MEDIA_TAG_KEYS, MEDIA_TAGS
 from users.models import DateFormatChoices, TimeFormatChoices
 
 register = template.Library()
+
+
+_IMPORT_MEDIA_LABELS = {
+    "TV Show": (gettext_noop("TV Show"), gettext_noop("TV Shows")),
+    "TV Season": (gettext_noop("TV Season"), gettext_noop("TV Seasons")),
+    "Episode": (gettext_noop("Episode"), gettext_noop("Episodes")),
+    "Movie": (gettext_noop("Movie"), gettext_noop("Movies")),
+    "Book": (gettext_noop("Book"), gettext_noop("Books")),
+    "Anime": (gettext_noop("Anime title"), gettext_noop("Anime titles")),
+    "Manga": (gettext_noop("Manga title"), gettext_noop("Manga titles")),
+    "Game": (gettext_noop("Game"), gettext_noop("Games")),
+    "Comic": (gettext_noop("Comic"), gettext_noop("Comics")),
+    "Comic Issue": (gettext_noop("Comic Issue"), gettext_noop("Comic Issues")),
+    "Board Game": (gettext_noop("Board Game"), gettext_noop("Board Games")),
+    "Music": (gettext_noop("Music item"), gettext_noop("Music items")),
+    "Podcast": (gettext_noop("Podcast"), gettext_noop("Podcasts")),
+    "list": (gettext_noop("list"), gettext_noop("lists")),
+    "collection entry": (
+        gettext_noop("collection entry"),
+        gettext_noop("collection entries"),
+    ),
+    "collection entries": (
+        gettext_noop("collection entry"),
+        gettext_noop("collection entries"),
+    ),
+}
+
+
+@register.filter
+def translate_import_summary(value):
+    """Localize legacy English import summaries stored by background tasks."""
+    if not value:
+        return value
+
+    exact = {
+        "No media was imported.": gettext("No media was imported."),
+        "This task was cancelled before it finished.": gettext(
+            "This task was cancelled before it finished."
+        ),
+        "Unexpected error occurred while processing the task.": gettext(
+            "Unexpected error occurred while processing the task."
+        ),
+    }
+    if value in exact:
+        return exact[value]
+
+    match = re.fullmatch(r"Imported (.+)\.", str(value))
+    if not match:
+        return gettext(value)
+
+    raw_parts = re.split(r",\s*|\s+and\s+", match.group(1))
+    translated = []
+    total = 0
+    for part in raw_parts:
+        item = re.fullmatch(r"(\d+)\s+(.+)", part)
+        if not item:
+            translated.append(part)
+            continue
+        count = int(item.group(1))
+        total += count
+        english_label = item.group(2)
+        labels = _IMPORT_MEDIA_LABELS.get(english_label)
+        if labels is None:
+            labels = _IMPORT_MEDIA_LABELS.get(english_label.removesuffix("s"))
+        label = (
+            gettext(labels[0 if count == 1 else 1])
+            if labels
+            else gettext(english_label)
+        )
+        translated.append(f"{count} {label}")
+
+    if len(translated) > 1:
+        joined = gettext("%(head)s and %(tail)s") % {
+            "head": ", ".join(translated[:-1]),
+            "tail": translated[-1],
+        }
+    else:
+        joined = translated[0]
+    return ngettext(
+        "Imported %(items)s.",
+        "Imported %(items)s.",
+        total,
+    ) % {"items": joined}
 
 
 @register.simple_tag
@@ -51,6 +139,10 @@ SOURCES_CONFIG = {
         "name": "AniList",
         "logo": static("img/anilist-logo.svg"),
     },
+    "mangabaka": {
+        "name": "MangaBaka",
+        "logo": static("img/mangabaka-logo.png"),
+    },
     "simkl": {
         "name": "SIMKL",
         "logo": static("img/simkl-logo.png"),
@@ -70,6 +162,10 @@ SOURCES_CONFIG = {
     "hltb": {
         "name": "HowLongToBeat",
         "logo": static("img/hltb-logo.png"),
+    },
+    "playnite": {
+        "name": "Playnite",
+        "logo": static("img/playnite-logo.svg"),
     },
     "grouvee": {
         "name": "Grouvee",
@@ -111,6 +207,14 @@ SOURCES_CONFIG = {
         "name": "Storyteller",
         "logo": static("img/storyteller-logo.svg"),
     },
+    "kavita": {
+        "name": "Kavita",
+        "logo": static("img/kavita-logo.svg"),
+    },
+    "komga": {
+        "name": "Komga",
+        "logo": static("img/komga-logo.svg"),
+    },
     "koreader": {
         "name": "KOReader",
         "logo": static("img/koreader-logo.svg"),
@@ -125,7 +229,7 @@ SOURCES_CONFIG = {
     },
     "gpodder": {
         "name": "GPodder",
-        "logo": static("favicon/apple-touch-icon.png"),
+        "logo": static("img/gpodder-logo.svg"),
     },
     "lastfm": {
         "name": "Last.fm",
@@ -147,6 +251,10 @@ SOURCES_CONFIG = {
         "name": "IGDB",
         "logo": static("img/igdb-logo.png"),
     },
+    "opencritic": {
+        "name": "OpenCritic",
+        "logo": static("img/opencritic-logo.svg"),
+    },
     "hardcover": {
         "name": "Hardcover",
         "logo": static("img/hardcover-logo.png"),
@@ -159,9 +267,17 @@ SOURCES_CONFIG = {
         "name": "StoryGraph",
         "logo": static("img/storygraph-logo.svg"),
     },
+    "youtube": {
+        "name": "YouTube",
+        "logo": static("img/youtube-logo.svg"),
+    },
     "tvtime": {
         "name": "TV Time",
         "logo": static("img/tvtime-logo.png"),
+    },
+    "wetrakr": {
+        "name": "WeTrakr",
+        "logo": static("img/wetrakr-logo.svg"),
     },
     "radarr": {
         "name": "Radarr",
@@ -170,6 +286,18 @@ SOURCES_CONFIG = {
     "sonarr": {
         "name": "Sonarr",
         "logo": static("img/plex-logo.svg"),
+    },
+    "mylar": {
+        "name": "Mylar3",
+        "logo": static("img/mylar-logo.png"),
+    },
+    "kapowarr": {
+        "name": "Kapowarr",
+        "logo": static("img/kapowarr-logo.png"),
+    },
+    "gcd": {
+        "name": "Grand Comics Database",
+        "logo": static("img/gcd-logo.png"),
     },
 }
 
@@ -182,20 +310,19 @@ def source_name(slug):
 
 
 @register.simple_tag
-def source_display(source_name):
-    """Generate HTML display for a media source with logo and name."""
+def source_display(source_name, label=None, heading_level=4):
+    """Render the shared source identity, with a label fallback for catalog entries."""
     info = SOURCES_CONFIG.get(source_name)
+    name = label or (info["name"] if info else source_name)
+    heading = f"h{heading_level}" if heading_level in {2, 3, 4} else "span"
     if not info:
-        return ""
-
-    html = f"""
-        <div class="flex items-center">
-            <img alt="{info["name"]}" class="w-6 h-6 mr-2" src="{info["logo"]}">
-            <h4 class="font-medium">{info["name"]}</h4>
-        </div>
-    """
-
-    return format_html(html)
+        return format_html('<{} class="font-medium min-w-0 break-words">{}</{}>', heading, name, heading)
+    return format_html(
+        '<div class="flex items-center min-w-0">'
+        '<img alt="{}" class="w-6 h-6 mr-2 shrink-0" src="{}">'
+        '<{} class="font-medium min-w-0 break-words">{}</{}></div>',
+        name, info["logo"], heading, name, heading,
+    )
 
 
 @register.filter
@@ -230,7 +357,7 @@ def custom_theme_style(user):
 
 
 @register.simple_tag
-def detail_section_attrs(user, family, zone, section):
+def detail_section_attrs(user, family, zone, section, visibility_only=False):
     """Return safe server-rendered visibility and order attributes."""
     layouts = resolved_detail_layouts(
         getattr(user, "detail_page_layouts", {}) if user.is_authenticated else {}
@@ -238,6 +365,8 @@ def detail_section_attrs(user, family, zone, section):
     section_order = layouts.get(family, {}).get(zone, [])
     if section not in section_order:
         return format_html('data-detail-section="{}" hidden', section)
+    if visibility_only:
+        return format_html('data-detail-section="{}"', section)
     return format_html(
         'data-detail-section="{}" style="order: {}"',
         section,
@@ -283,7 +412,7 @@ def user_uses_12_hour_format(user):
 
 @register.filter
 def user_date_format(date, user):
-    """Format a date according to user's date format preference."""
+    """Use the preferred date layout with month names in the active UI language."""
     if not date or not user:
         return ""
 
@@ -308,9 +437,9 @@ def user_date_format(date, user):
         if user.date_format == DateFormatChoices.ISO_8601:
             return local_dt.strftime("%Y-%m-%d")
         if user.date_format == DateFormatChoices.MONTH_D_YYYY:
-            return local_dt.strftime("%b %d, %Y")
+            return formats.date_format(local_dt, "M d, Y")
         if user.date_format == DateFormatChoices.D_MON_YYYY:
-            return local_dt.strftime("%d %b %Y")
+            return formats.date_format(local_dt, "d M Y")
         if user.date_format == DateFormatChoices.M_D_YYYY:
             return f"{local_dt.month}/{local_dt.day}/{local_dt.year}"
         if user.date_format == DateFormatChoices.D_M_YYYY:
@@ -320,7 +449,7 @@ def user_date_format(date, user):
         if user.date_format == DateFormatChoices.YYYY_MM_DD:
             return f"{local_dt.year}/{local_dt.month:02d}/{local_dt.day:02d}"
         if user.date_format == DateFormatChoices.LONG_EU:
-            return f"{local_dt.day} {local_dt.strftime('%b')}, {local_dt.year}"
+            return formats.date_format(local_dt, "j M, Y")
         # Default to system format
         return formats.date_format(local_dt, "DATE_FORMAT")
 
@@ -426,3 +555,36 @@ def user_datetime_format(datetime_obj, user):
             return str(datetime_obj)
     else:
         return f"{date_part} {time_part}"
+
+
+@register.simple_tag(takes_context=True)
+def user_price(context, amount):
+    """Format a collection price in the user's currency (#1100)."""
+    code = currency.resolve_currency(context.get("user"), context.get("request"))
+    return currency.format_price(amount, code)
+
+
+@register.simple_tag
+def media_tag_choices(keys=""):
+    """Return the media type filter options, limited to ``keys`` when given.
+
+    ``keys`` is a space-separated list so a page can offer only the groups it
+    has cards for. The options keep the canonical order from MEDIA_TAGS.
+    """
+    wanted = set(keys.split()) if keys else None
+    return [
+        {"key": key, "label": gettext(label)}
+        for key, label in MEDIA_TAGS
+        if wanted is None or key in wanted
+    ]
+
+
+@register.filter
+def media_tag_list(tags):
+    """Render media tag keys as a JS array literal that is safe in an attribute.
+
+    Single quotes keep it valid inside a double-quoted Alpine expression, and
+    unknown keys are dropped so nothing user-controlled can reach the page.
+    """
+    keys = [tag for tag in tags or [] if tag in MEDIA_TAG_KEYS]
+    return mark_safe("[" + ", ".join(f"'{key}'" for key in keys) + "]")  # noqa: S308

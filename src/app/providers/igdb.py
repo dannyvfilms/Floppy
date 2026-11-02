@@ -17,6 +17,9 @@ from app.providers import credentials, services
 logger = logging.getLogger(__name__)
 base_url = "https://api.igdb.com/v4"
 IGDB_SEARCH_CACHE_VERSION = "v5"
+STEAM_APPDETAILS_URL = "https://store.steampowered.com/api/appdetails"
+STEAM_DLC_LIMIT = 24
+STEAM_DLC_CACHE_SECONDS = 7 * 24 * 60 * 60
 TOKENIZED_SEARCH_MIN_TERMS = 2
 
 
@@ -88,14 +91,55 @@ def handle_error(error, user=None):
     raise services.ProviderAPIError(Sources.IGDB.value, error)
 
 
+def _retry_after_token_refresh(url, data, headers):
+    """Repeat a request once after a 401 refreshed the token.
+
+    A second failure must surface as a ProviderAPIError like any other IGDB
+    failure; a raw HTTPError escaped to the view as a 500.
+    """
+    try:
+        return services.api_request(
+            Sources.IGDB.value,
+            "POST",
+            url,
+            data=data,
+            headers=headers,
+        )
+    except requests.exceptions.HTTPError as error:
+        if error.response.status_code == requests.codes.unauthorized:
+            raise services.ProviderAPIError(
+                Sources.IGDB.value,
+                error,
+                "IGDB rejected the access token after a refresh; check the "
+                "Twitch client ID and secret.",
+            ) from None
+        handle_error(error)
+        raise
+
+
 def enabled(user=None):
     """Return whether IGDB is configured."""
     return credentials.is_configured("igdb", user)
 
 
+def describe_credentials(user=None):
+    """Return where the Twitch ID and secret come from, never their values."""
+    scoped = user or credentials.active_user()
+    return (
+        f"user={getattr(scoped, 'pk', None)} "
+        f"id_from={credentials.source_of('igdb', 'client_id', user)} "
+        f"secret_from={credentials.source_of('igdb', 'client_secret', user)}"
+    )
+
+
 def get_access_token(user=None):
     """Return the access token for the IGDB API."""
     if not enabled(user):
+        logger.warning(
+            "%s is not configured for this request (%s)",
+            Sources.IGDB.label,
+            describe_credentials(user),
+        )
         raise services.ProviderNotConfiguredError(
             Sources.IGDB.value,
             "IGDB is not configured. Add your Twitch application's client "
@@ -121,6 +165,12 @@ def get_access_token(user=None):
                 params=json,
             )
         except requests.exceptions.HTTPError as error:
+            logger.warning(
+                "%s token request rejected (HTTP %s) using %s",
+                Sources.IGDB.label,
+                error.response.status_code,
+                describe_credentials(user),
+            )
             handle_error(error)
 
         access_token = response["access_token"]
@@ -170,13 +220,7 @@ def external_game(external_id, source=ExternalGameSource.STEAM):
             if error_resp and error_resp.get("retry"):
                 # Retry the request with the new access token
                 headers["Authorization"] = f"Bearer {get_access_token()}"
-                response = services.api_request(
-                    Sources.IGDB.value,
-                    "POST",
-                    url,
-                    data=query,
-                    headers=headers,
-                )
+                response = _retry_after_token_refresh(url, query, headers)
 
         # Return the IGDB game ID if found, None otherwise
         if response and len(response) > 0:
@@ -200,7 +244,7 @@ def external_game(external_id, source=ExternalGameSource.STEAM):
     return data
 
 
-def search(query, page):
+def search(query, page, user=None):
     """Search for games on IGDB using MultiQuery."""
     normalized_query = _normalize_search_query(query)
     if not normalized_query:
@@ -213,10 +257,10 @@ def search(query, page):
     data = cache.get(cache_key)
 
     if data is None:
-        access_token = get_access_token()
+        access_token = get_access_token(user=user)
         url = f"{base_url}/multiquery"
         headers = {
-            "Client-ID": credentials.get("igdb", "client_id"),
+            "Client-ID": credentials.get("igdb", "client_id", user=user),
             "Authorization": f"Bearer {access_token}",
         }
 
@@ -346,13 +390,7 @@ def _perform_search_request(url, headers, multiquery):
         error_resp = handle_error(error)
         if error_resp and error_resp.get("retry"):
             headers["Authorization"] = f"Bearer {get_access_token()}"
-            return services.api_request(
-                Sources.IGDB.value,
-                "POST",
-                url,
-                data=multiquery,
-                headers=headers,
-            )
+            return _retry_after_token_refresh(url, multiquery, headers)
 
 
 def _extract_igdb_error_details(error_json):
@@ -394,7 +432,7 @@ def game(media_id):
             "Non-numeric IDs cannot be looked up directly on IGDB."
         )
         raise ValueError(message)
-    cache_key = f"{Sources.IGDB.value}_{MediaTypes.GAME.value}_v2_{media_id}"
+    cache_key = f"{Sources.IGDB.value}_{MediaTypes.GAME.value}_v4_{media_id}"
     data = cache.get(cache_key)
     if data is None:
         access_token = get_access_token()
@@ -404,6 +442,8 @@ def game(media_id):
             "url,summary,game_type,first_release_date,"
             "rating,rating_count,aggregated_rating,aggregated_rating_count,"
             "genres.name,themes.name,platforms.name,"
+            "franchise.id,franchise.name,franchises.id,franchises.name,"
+            "collections.id,collections.name,"
             "involved_companies.company.id,involved_companies.company.name,"
             "involved_companies.company.logo.image_id,"
             "parent_game.name,parent_game.cover.image_id,"
@@ -436,13 +476,7 @@ def game(media_id):
             if error_resp and error_resp.get("retry"):
                 # Retry the request with the new access token
                 headers["Authorization"] = f"Bearer {get_access_token()}"
-                response = services.api_request(
-                    Sources.IGDB.value,
-                    "POST",
-                    url,
-                    data=data,
-                    headers=headers,
-                )
+                response = _retry_after_token_refresh(url, data, headers)
 
         # Check if response is empty (no results found)
         if not response:
@@ -467,6 +501,18 @@ def game(media_id):
             "score_count": response.get("aggregated_rating_count"),
             "igdb_user_rating": get_user_rating(response),
             "igdb_user_rating_count": response.get("rating_count"),
+            "provider_franchise_id": get_group_field(
+                response, "franchise", "franchises"
+            )[0],
+            "provider_franchise_name": get_group_field(
+                response, "franchise", "franchises"
+            )[1],
+            "provider_collection_id": get_group_field(
+                response, "collections"
+            )[0],
+            "provider_collection_name": get_group_field(
+                response, "collections"
+            )[1],
             "details": {
                 "format": get_game_type(response["game_type"]),
                 "release_date": get_start_date(response),
@@ -503,8 +549,54 @@ def game(media_id):
         external_ids = get_external_ids(response, hltb_url)
         if external_ids:
             data["external_ids"] = external_ids
+        steam_app_id = external_ids.get("steam_app_id")
+        if steam_app_id and not data["related"]["dlcs"]:
+            steam_dlcs = get_steam_dlcs(steam_app_id)
+            if steam_dlcs:
+                data["steam_dlcs"] = steam_dlcs
         cache.set(cache_key, data)
     return data
+
+
+def get_steam_dlcs(steam_app_id):
+    """Return display-only DLC entries from Steam when IGDB lists none.
+
+    Steam DLCs have no IGDB id, so they cannot be tracked. Failures return an
+    empty list so the game page still renders.
+    """
+    cache_key = f"steam_dlcs_v1_{steam_app_id}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    def app_details(app_id):
+        response = requests.get(
+            STEAM_APPDETAILS_URL,
+            params={"appids": app_id, "filters": "basic", "l": "english"},
+            timeout=5,
+        )
+        response.raise_for_status()
+        entry = response.json().get(str(app_id)) or {}
+        return entry.get("data") if entry.get("success") else None
+
+    dlcs = []
+    try:
+        base = app_details(steam_app_id) or {}
+        for dlc_id in (base.get("dlc") or [])[:STEAM_DLC_LIMIT]:
+            details = app_details(dlc_id)
+            if details and details.get("name"):
+                dlcs.append(
+                    {
+                        "title": details["name"],
+                        "image": details.get("header_image") or "",
+                        "url": f"https://store.steampowered.com/app/{dlc_id}/",
+                    },
+                )
+    except (requests.exceptions.RequestException, ValueError):
+        logger.warning("Steam DLC lookup failed for app %s", steam_app_id)
+        return dlcs
+    cache.set(cache_key, dlcs, STEAM_DLC_CACHE_SECONDS)
+    return dlcs
 
 
 def company_profile(company_id):
@@ -539,13 +631,7 @@ def company_profile(company_id):
             error_resp = handle_error(error)
             if error_resp and error_resp.get("retry"):
                 headers["Authorization"] = f"Bearer {get_access_token()}"
-                response = services.api_request(
-                    Sources.IGDB.value,
-                    "POST",
-                    url,
-                    data=query,
-                    headers=headers,
-                )
+                response = _retry_after_token_refresh(url, query, headers)
 
         if not response:
             return None
@@ -675,13 +761,7 @@ def _fetch_games_by_ids(game_ids, *, access_token=None):
             error_resp = handle_error(error)
             if error_resp and error_resp.get("retry"):
                 headers["Authorization"] = f"Bearer {get_access_token()}"
-                response = services.api_request(
-                    Sources.IGDB.value,
-                    "POST",
-                    url,
-                    data=query,
-                    headers=headers,
-                )
+                response = _retry_after_token_refresh(url, query, headers)
         if response:
             game_rows.extend(response)
 
@@ -760,6 +840,28 @@ def get_start_date(response):
         ).strftime("%Y-%m-%d")
     except KeyError:
         return None
+
+
+def get_group_field(response, *fields):
+    """Return the first group reference as ``(id, name)``.
+
+    IGDB returns an expanded relation as a dict, but some responses only carry
+    the numeric id. Empty pairs keep the Item columns stable when IGDB has no
+    grouping data.
+    """
+    fallback_id = ""
+    for field in fields:
+        value = response.get(field)
+        if isinstance(value, list):
+            value = value[0] if value else None
+        if isinstance(value, dict):
+            name = str(value.get("name") or "").strip()
+            group_id = str(value.get("id") or "").strip()
+            if name or group_id:
+                return group_id, name
+        elif value not in (None, "") and not fallback_id:
+            fallback_id = str(value).strip()
+    return fallback_id, ""
 
 
 def get_list(response, field):

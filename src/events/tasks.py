@@ -86,11 +86,11 @@ def reload_calendar(user_id=None, item_ids=None, user=None, items_to_process=Non
             )
 
     is_global_refresh = resolved_user is None and normalized_item_ids is None
-    if is_global_refresh:
+    if normalized_item_ids is None:
         # Resolve the work list here rather than inside fetch_releases so the
         # selection -- which queries TMDB's change feed -- runs once per reload
         # instead of once per chunk.
-        resolved_items = list(get_items_to_process(None))
+        resolved_items = list(get_items_to_process(resolved_user))
 
     # Process a bounded slice now and re-queue the rest as its own task, so the
     # worker is released between chunks instead of being held for the length of
@@ -111,7 +111,13 @@ def reload_calendar(user_id=None, item_ids=None, user=None, items_to_process=Non
     )
 
     if deferred_item_ids:
-        reload_calendar.delay(item_ids=deferred_item_ids)
+        if resolved_user is None:
+            reload_calendar.delay(item_ids=deferred_item_ids)
+        else:
+            reload_calendar.delay(
+                user_id=resolved_user.pk,
+                item_ids=deferred_item_ids,
+            )
         logger.info(
             "calendar_reload_chunked processed=%s deferred=%s",
             len(resolved_items),

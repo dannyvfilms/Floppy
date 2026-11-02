@@ -10,6 +10,9 @@ from app.models import (
     Item,
     MediaTypes,
     Movie,
+    Podcast,
+    PodcastShow,
+    PodcastShowTracker,
     Season,
     Sources,
     Status,
@@ -184,6 +187,30 @@ class CreateEntryViewTests(TestCase):
         self.assertEqual(episode.related_season, parent_season)
         end_date_local = timezone.localtime(episode.end_date)
         self.assertEqual(end_date_local.strftime("%Y-%m-%d %H:%M"), "2023-01-02 00:00")
+
+    def test_create_entry_post_podcast_creates_show_and_tracker(self):
+        """A custom podcast must become a show, not a legacy per-episode Item."""
+        form_data = {
+            "title": "Test Podcast",
+            "media_type": MediaTypes.PODCAST.value,
+            "status": Status.IN_PROGRESS.value,
+            "score": 7,
+            "synopsis": "A podcast description",
+            "start_date": "2023-01-01T00:00",
+        }
+
+        response = self.client.post(reverse("create_entry"), form_data, follow=True)
+
+        self.assertRedirects(response, reverse("create_entry"))
+
+        show = PodcastShow.objects.get(title="Test Podcast")
+        self.assertEqual(show.source, Sources.MANUAL.value)
+        self.assertEqual(show.description, "A podcast description")
+
+        tracker = PodcastShowTracker.objects.get(show=show, user=self.user)
+        self.assertEqual(tracker.status, Status.IN_PROGRESS.value)
+        self.assertEqual(tracker.score, 7)
+        self.assertFalse(Podcast.objects.filter(user=self.user).exists())
 
     def test_create_entry_post_duplicate_item(self):
         """Test creating a duplicate item."""

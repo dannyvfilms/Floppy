@@ -1,24 +1,27 @@
 import copy
 import os
+import re
 from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 from django.contrib.auth import get_user_model
-from django.contrib.staticfiles.testing import StaticLiveServerTestCase
-from django.test import tag
+from django.db import OperationalError
+from django.test import RequestFactory, tag
 from django.urls import reverse
 from django.utils import timezone
 from playwright.sync_api import expect, sync_playwright
 
 from app.discover.schemas import RowResult
+from app.middleware import DatabaseRetryMiddleware
 from app.models import Game, Item, MediaTypes, Movie, Sources, Status
+from app.tests.live_server import SerialStaticLiveServerTestCase
 from app.tests.views.test_track_modal import _tv_with_seasons_payload
-from users.models import DateFormatChoices
+from users.models import DateFormatChoices, HomeScreenRow, HomeScreenRowTypeChoices
 
 
 @tag("slow", "playwright")
-class IntegrationTest(StaticLiveServerTestCase):
+class IntegrationTest(SerialStaticLiveServerTestCase):
     """Integration tests for the application."""
 
     @classmethod
@@ -110,6 +113,10 @@ class IntegrationTest(StaticLiveServerTestCase):
         )
         self.page.get_by_role("button", name="Sign in").click()
         expect(self.page.locator("#global-search")).to_be_visible()
+        # htmx is a deferred script, so the page can be visible before it runs.
+        self.page.wait_for_function("() => window.htmx")
+        # Home loads rows after login. Finish those reads before tests write fixtures.
+        self.page.wait_for_load_state("networkidle")
 
     def search_and_submit(self, query):
         """Run a global search via the submit button.
@@ -122,6 +129,73 @@ class IntegrationTest(StaticLiveServerTestCase):
         """
         self.page.locator("#global-search").fill(query)
         self.page.locator('form:has(#global-search) button[type="submit"]').click()
+
+    def test_htmx_database_contention_retries_original_get(self):
+        """A failed fragment retries its full URL without another user click."""
+        requests = []
+
+        def respond(route):
+            requests.append(route.request.url)
+            if len(requests) <= 2:
+                route.fulfill(
+                    status=503,
+                    headers={"X-Floppy-Transient-DB": "contention"},
+                    body="",
+                )
+            else:
+                route.fulfill(status=200, body='<p id="contention-loaded">Loaded</p>')
+
+        self.page.route("**/track_modal/tmdb/tv/1396?*", respond)
+        self.page.evaluate(
+            """() => {
+                const target = document.createElement('div');
+                target.id = 'contention-test-target';
+                document.body.append(target);
+                const button = document.createElement('button');
+                button.id = 'contention-test-button';
+                button.textContent = 'Open';
+                button.setAttribute('hx-get', '/track_modal/tmdb/tv/1396?instance_id=7&home_row_id=recent');
+                button.setAttribute('hx-target', '#contention-test-target');
+                button.setAttribute('hx-trigger', 'click once');
+                document.body.append(button);
+                htmx.process(button);
+            }"""
+        )
+        self.page.locator("#contention-test-button").click()
+        expect(
+            self.page.locator("#contention-test-target #contention-loaded")
+        ).to_be_visible()
+        self.assertEqual(len(requests), 3)
+        for request_url in requests:
+            query = parse_qs(urlparse(request_url).query)
+            self.assertEqual(query["instance_id"], ["7"])
+            self.assertEqual(query["home_row_id"], ["recent"])
+            self.assertEqual(len(query.get("org.htmx.cache-buster", [])), 1)
+            self.assertEqual(len(query.get("cache_bust", [])), 1)
+
+    def test_full_page_database_contention_reloads_until_success(self):
+        response = DatabaseRetryMiddleware(lambda _request: None).process_exception(
+            RequestFactory().get("/medialist/tv?page=2"),
+            OperationalError("database is locked"),
+        )
+        failures = 0
+
+        def fail_twice(route):
+            nonlocal failures
+            failures += 1
+            if failures <= 2:
+                route.fulfill(
+                    status=503,
+                    headers={"Content-Type": "text/html"},
+                    body=response.content,
+                )
+            else:
+                route.continue_()
+
+        self.page.route("**/medialist/tv?page=2", fail_twice)
+        self.page.goto(f"{self.live_server_url}/medialist/tv?page=2")
+        expect(self.page.locator("#global-search")).to_be_visible()
+        self.assertEqual(failures, 3)
 
     def test_touch_media_card_reveals_and_executes_wrapped_actions(self):
         """A coarse-pointer card reveals, dismisses, and accepts an action tap."""
@@ -181,8 +255,156 @@ class IntegrationTest(StaticLiveServerTestCase):
                 lambda request: "lists_modal" in request.url,
             ):
                 card.get_by_title("Add to custom lists").click()
+            lists_modal = card.locator("[x-show='listsOpen']")
+            expect(lists_modal).to_be_visible()
+            expect(lists_modal.locator(".list-modal-root")).to_be_visible()
         finally:
             touch_context.close()
+
+    def test_home_poster_action_modal_is_visible_on_touch(self):
+        item = Item.objects.create(
+            media_id="poster-action-test",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Poster Action Test",
+            image="https://example.com/poster.jpg",
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.IN_PROGRESS.value)
+        HomeScreenRow.objects.create(
+            user=self.user,
+            media_type=MediaTypes.MOVIE.value,
+            position=10,
+            row_type=HomeScreenRowTypeChoices.LIBRARY_QUERY,
+            sort_by="recent",
+            direction="desc",
+            filters={"status": [Status.IN_PROGRESS.value]},
+        )
+        touch_context = self.browser.new_context(
+            storage_state=self.context.storage_state(),
+            has_touch=True,
+            is_mobile=True,
+            viewport={"width": 390, "height": 844},
+        )
+        try:
+            page = touch_context.new_page()
+            page.goto(self.live_server_url + "/")
+            cards = page.locator(
+                '.home-row-card .media-card:has(a.media-card-title[title="Poster Action Test"])'
+            )
+            expect(cards).to_have_count(2)
+            for title in ("Add to tracker", "Add to custom lists"):
+                first_target = (
+                    cards.nth(0).get_by_title(title).get_attribute("hx-target")
+                )
+                second_target = (
+                    cards.nth(1).get_by_title(title).get_attribute("hx-target")
+                )
+                self.assertNotEqual(first_target, second_target)
+                self.assertEqual(page.locator(second_target).count(), 1)
+            card = cards.nth(1)
+            expect(card).to_be_visible()
+            card.locator(".media-card-poster").click()
+            card.get_by_title("Add to custom lists").click()
+            modal = card.locator("[x-show='listsOpen']")
+            expect(modal.locator(".list-modal-root")).to_be_visible()
+            box = modal.bounding_box()
+            self.assertIsNotNone(box)
+            self.assertLess(abs(box["x"]), 2)
+            self.assertLess(abs(box["y"]), 2)
+            self.assertLess(abs(box["width"] - 390), 2)
+            self.assertLess(abs(box["height"] - 844), 2)
+            self.assertTrue(
+                modal.evaluate(
+                    "element => element.contains(document.elementFromPoint(innerWidth / 2, innerHeight / 2))"
+                )
+            )
+            modal.locator(".list-modal-root button").first.click()
+            expect(modal).not_to_be_visible()
+            card.get_by_title("Add to tracker").click()
+            track_modal = card.locator("[x-show='trackOpen']")
+            expect(track_modal.locator("[data-track-modal-root]")).to_be_visible()
+            page.keyboard.press("Escape")
+            expect(track_modal).not_to_be_visible()
+            card.get_by_title("View your activity history").click()
+            page.wait_for_url("**/history?*")
+        finally:
+            touch_context.close()
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_glass_and_custom_grid_modals_fill_viewport(self, mock_get_metadata):
+        """Translucent cards must not capture their fixed modal overlays (#1579)."""
+        mock_get_metadata.return_value = {
+            "media_id": "1579",
+            "title": "Modal Test",
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "image": "http://example.com/image.jpg",
+            "max_progress": 1,
+            "details": {"release_date": "2007-01-01"},
+            "related": {},
+        }
+        item = Item.objects.create(
+            media_id="1579",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Modal Test",
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.COMPLETED.value)
+
+        for theme in ("glass", "custom"):
+            with self.subTest(theme=theme):
+                # Finish browser reads before writing to the shared SQLite database.
+                self.page.wait_for_load_state("networkidle")
+                self.user.theme = theme
+                self.user.save(update_fields=["theme"])
+                self.page.goto(f"{self.live_server_url}/medialist/movie?layout=grid")
+                card = self.page.locator(".media-card").first
+                expect(card).to_be_visible()
+                for action in ("Add to tracker", "Add to custom lists"):
+                    card.hover()
+                    card.get_by_title(action, exact=True).click()
+                    self._assert_visible_overlay_fills_viewport()
+                    self.page.keyboard.press("Escape")
+                    expect(
+                        self.page.locator("div.fixed.inset-0:visible")
+                    ).to_have_count(0)
+
+    def test_episode_track_modal_fills_viewport_in_card_and_list_layouts(self):
+        """Episode surface blur must not confine the tracker to its row."""
+        self.page.set_viewport_size({"width": 1600, "height": 1000})
+        for theme in ("glass", "custom"):
+            with self.subTest(theme=theme):
+                self.user.theme = theme
+                self.user.save(update_fields=["theme"])
+                self.page.goto(
+                    self.live_server_url
+                    + reverse(
+                        "season_details",
+                        kwargs={
+                            "source": Sources.TMDB.value,
+                            "media_id": "1396",
+                            "title": "breaking-bad",
+                            "season_number": 1,
+                        },
+                    ),
+                )
+                for layout in ("Card view", "List view"):
+                    self.page.get_by_role("button", name=layout, exact=True).click()
+                    suffix = "-list" if layout == "List view" else ""
+                    track_button = self.page.locator(
+                        f'button[hx-target="#track-episode-1396-1-1{suffix}"]',
+                    )
+                    expect(track_button).to_be_visible()
+                    track_button.click()
+                    modal = self.page.locator("[data-track-modal-root]:visible")
+                    expect(modal).to_be_visible()
+                    self._assert_visible_overlay_fills_viewport()
+                    modal.get_by_role("button", name="Close", exact=True).click()
+                    expect(modal).to_have_count(0)
+                    track_button.click()
+                    expect(modal).to_be_visible()
+                    self.page.keyboard.press("Escape")
+                    expect(modal).to_have_count(0)
 
     def set_date_input(self, locator, value):
         """Set a hidden date-picker input and dispatch its change events."""
@@ -433,7 +655,8 @@ class IntegrationTest(StaticLiveServerTestCase):
 
     def test_tv_manual(self):
         """Test the manual creation of a TV show."""
-        # Create TV show
+        # Custom now lives under the collapsible Explore section.
+        self.page.get_by_role("button", name="Explore").click()
         self.page.get_by_role("link", name="Custom", exact=True).click()
         self.page.get_by_placeholder("Enter title").click()
         self.page.get_by_placeholder("Enter title").fill("Friends")
@@ -560,6 +783,7 @@ class IntegrationTest(StaticLiveServerTestCase):
 
         expect(self.page.get_by_role("main")).to_contain_text("Test Movie")
 
+        # A completed movie leads with Check-in; Add new entry is in the menu.
         self.page.get_by_role("button", name="More tracking actions").click()
         expect(self.page.get_by_role("button", name="Add new entry")).to_be_visible()
         self.page.get_by_role("button", name="Add new entry").click()
@@ -586,11 +810,9 @@ class IntegrationTest(StaticLiveServerTestCase):
             .nth(1)
             .get_by_role("button", name="Clear date")
         )
-        start_clear = (
-            create_modal.locator(".date-picker-closed-field")
-            .first
-            .get_by_role("button", name="Clear date")
-        )
+        start_clear = create_modal.locator(
+            ".date-picker-closed-field"
+        ).first.get_by_role("button", name="Clear date")
         # mediaForm may auto-fill end_date after the create modal opens.
         expect(end_clear.or_(end_quick_actions)).to_be_visible()
         if end_clear.is_visible():
@@ -600,24 +822,28 @@ class IntegrationTest(StaticLiveServerTestCase):
         expect(end_quick_actions).to_be_visible()
         expect(start_quick_actions).to_be_visible()
         expect(create_modal.get_by_text("Select date", exact=True)).to_have_count(0)
+        # Split per #1243: the start picker offers Start Now and Release Date,
+        # the end picker only Just Finished.
         expect(
-            end_quick_actions.get_by_role("button", name="Start Now", exact=True)
+            start_quick_actions.get_by_role("button", name="Start Now", exact=True)
+        ).to_be_visible()
+        expect(
+            start_quick_actions.get_by_role("button", name="Release Date", exact=True)
         ).to_be_visible()
         expect(
             end_quick_actions.get_by_role("button", name="Just Finished", exact=True)
         ).to_be_visible()
         expect(
+            end_quick_actions.get_by_role("button", name="Start Now", exact=True)
+        ).to_have_count(0)
+        expect(
             end_quick_actions.get_by_role("button", name="Release Date", exact=True)
-        ).to_be_visible()
-        end_picker_dialog = create_modal.get_by_role(
-            "dialog", name="End date picker"
-        )
+        ).to_have_count(0)
+        end_picker_dialog = create_modal.get_by_role("dialog", name="End date picker")
         expect(end_picker_dialog).not_to_be_visible()
 
         before_start_action = self.page.evaluate("Date.now()")
-        start_quick_actions.get_by_role(
-            "button", name="Start Now", exact=True
-        ).click()
+        start_quick_actions.get_by_role("button", name="Start Now", exact=True).click()
         after_start_action = self.page.evaluate("Date.now()")
         start_value_ms = self.page.evaluate(
             "value => new Date(value).getTime()",
@@ -653,26 +879,19 @@ class IntegrationTest(StaticLiveServerTestCase):
         expect(start_quick_actions).to_be_visible()
         expect(end_quick_actions).to_be_visible()
 
-        before_start_now = self.page.evaluate("Date.now()")
-        end_quick_actions.get_by_role("button", name="Start Now", exact=True).click()
-        after_start_now = self.page.evaluate("Date.now()")
+        before_end_finished = self.page.evaluate("Date.now()")
+        end_quick_actions.get_by_role(
+            "button", name="Just Finished", exact=True
+        ).click()
+        after_end_finished = self.page.evaluate("Date.now()")
         expect(end_picker_dialog).not_to_be_visible()
         expect(end_quick_actions).not_to_be_visible()
         end_value_ms = self.page.evaluate(
             "value => new Date(value).getTime()",
             end_date_input.input_value(),
         )
-        self.assertGreaterEqual(
-            end_value_ms,
-            before_start_now + 95 * 60 * 1000 - 1000,
-        )
-        self.assertLessEqual(
-            end_value_ms,
-            after_start_now + 95 * 60 * 1000 + 1000,
-        )
-        expect(create_modal.locator('select[name="status"]')).to_have_value(
-            Status.IN_PROGRESS.value
-        )
+        self.assertGreaterEqual(end_value_ms, before_end_finished - 1000)
+        self.assertLessEqual(end_value_ms, after_end_finished + 1000)
 
         create_modal.locator(".date-picker-closed-field").first.get_by_role(
             "button", name="Clear date"
@@ -695,7 +914,9 @@ class IntegrationTest(StaticLiveServerTestCase):
         create_modal.locator(".date-picker-closed-field").first.get_by_role(
             "button", name="Clear date"
         ).click()
-        expect(start_quick_actions).to_be_visible()
+        if end_clear.is_visible():
+            end_clear.click()
+        expect(end_quick_actions).to_be_visible()
         # Bracket the click, the way the two assertions above already do. Taking
         # a single timestamp after the click and using it for the lower bound
         # charges every millisecond of click handling, re-render and round-trip
@@ -703,10 +924,10 @@ class IntegrationTest(StaticLiveServerTestCase):
         # input loses by truncating to whole seconds. That left about a
         # millisecond of real headroom, and CI duly missed it by 49ms.
         before_just_finished = self.page.evaluate("Date.now()")
-        start_quick_actions.get_by_role(
+        end_quick_actions.get_by_role(
             "button", name="Just Finished", exact=True
         ).click()
-        expect(start_quick_actions).not_to_be_visible()
+        expect(end_quick_actions).not_to_be_visible()
         after_just_finished = self.page.evaluate("Date.now()")
         just_finished_start_ms = self.page.evaluate(
             "value => new Date(value).getTime()",
@@ -734,9 +955,10 @@ class IntegrationTest(StaticLiveServerTestCase):
         ).click()
 
         self.page.set_viewport_size({"width": 375, "height": 812})
-        expect(end_quick_actions).to_be_visible()
+        expect(start_quick_actions).to_be_visible()
+        # At phone width the shortcut shows its short label.
         expect(
-            end_quick_actions.get_by_role("button", name="Release Date", exact=True)
+            start_quick_actions.get_by_role("button", name="Release", exact=True)
         ).to_be_visible()
 
         end_time_segment = "14:25"
@@ -774,12 +996,15 @@ class IntegrationTest(StaticLiveServerTestCase):
         save_request.value.response()
         expect(self.page.locator("[data-track-modal-root]:visible")).to_have_count(0)
 
-        new_movie = Movie.objects.filter(item=item, user=self.user).order_by("-id").first()
+        new_movie = (
+            Movie.objects.filter(item=item, user=self.user).order_by("-id").first()
+        )
         self.assertIsNotNone(new_movie)
         self.assertIsNone(new_movie.start_date)
         self.assertIsNone(new_movie.end_date)
 
-        self.page.get_by_role("button", name="Completed", exact=True).click()
+        self.page.get_by_role("button", name="More tracking actions").click()
+        self.page.get_by_role("button", name="Edit", exact=True).click()
         edit_modal = self.page.locator("[data-track-modal-root]:visible").first
         expect(edit_modal).to_be_visible()
         edit_modal.locator("button[type='button']").first.click()
@@ -806,6 +1031,17 @@ class IntegrationTest(StaticLiveServerTestCase):
         """
         overlay = self.page.locator("div.fixed.inset-0:visible").first
         expect(overlay).to_be_visible()
+        # The page entrance animation temporarily makes its container a fixed
+        # containing block. Visibility alone can sample its final moving frame.
+        self.page.wait_for_function(
+            """overlay => {
+                const box = overlay.getBoundingClientRect();
+                return overlay.isConnected && Math.abs(box.x) < 2 && Math.abs(box.y) < 2
+                    && Math.abs(box.width - window.innerWidth) < 2
+                    && Math.abs(box.height - window.innerHeight) < 2;
+            }""",
+            arg=overlay.element_handle(),
+        )
         box = overlay.bounding_box()
         viewport = self.page.viewport_size
         self.assertIsNotNone(box)
@@ -982,7 +1218,7 @@ class IntegrationTest(StaticLiveServerTestCase):
             )
         expect(self.page.get_by_role("main")).to_contain_text("Test Movie")
 
-        self.page.get_by_role("button", name="View session history").first.click()
+        self.page.get_by_role("button", name="View play history").first.click()
         session_modal = self.page.locator(
             '[role="dialog"][aria-label="Activity history"]:visible',
         )
@@ -993,7 +1229,9 @@ class IntegrationTest(StaticLiveServerTestCase):
         expect(calendar.locator("[data-calendar-cell]")).to_have_count(42)
         expect(calendar.locator('[data-calendar-cell="2026-03-01"]')).to_have_count(1)
         expect(calendar.locator('[data-calendar-cell="2026-03-05"]')).to_have_count(1)
-        expect(calendar.locator('[data-calendar-cell="2026-03-01"]')).not_to_be_disabled()
+        expect(
+            calendar.locator('[data-calendar-cell="2026-03-01"]')
+        ).not_to_be_disabled()
         expect(calendar.locator('[data-calendar-cell="2026-03-05"]')).to_be_disabled()
         expect(calendar.locator("span.absolute.bottom-1")).to_have_count(3)
 
@@ -1021,7 +1259,8 @@ class IntegrationTest(StaticLiveServerTestCase):
             "March 2024",
         )
         session_modal.get_by_role(
-            "button", name="Close activity history",
+            "button",
+            name="Close activity history",
         ).click()
 
         self.page.get_by_role("button", name="More tracking actions").click()
@@ -1039,7 +1278,9 @@ class IntegrationTest(StaticLiveServerTestCase):
         ).to_contain_text("March 2024")
         date_picker.locator('[data-calendar-cell="2024-02-29"]').click()
         self.assertTrue(
-            track_modal.locator('input[name="end_date"]').input_value().startswith(
+            track_modal.locator('input[name="end_date"]')
+            .input_value()
+            .startswith(
                 "2024-02-29T",
             ),
         )
@@ -1097,7 +1338,9 @@ class IntegrationTest(StaticLiveServerTestCase):
         )
 
         expect(self.page.get_by_role("main")).to_contain_text("Wordle")
-        self.page.get_by_role("button", name="Planning", exact=True).click()
+        # A game offers Check-in, Add new entry and Edit, so Edit is in the menu.
+        self.page.get_by_role("button", name="More tracking actions").click()
+        self.page.get_by_role("button", name="Edit", exact=True).click()
 
         modal = self.page.locator("[data-track-modal-root]:visible").first
         expect(modal).to_be_visible()
@@ -1115,6 +1358,243 @@ class IntegrationTest(StaticLiveServerTestCase):
         expect(start_date_input).to_have_value(
             (end_dt - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M"),
         )
+
+    def _open_new_movie_tracker(self, status=None):
+        """Open the Add to tracker modal on the movie page, optionally pick a status."""
+        self.page.goto(
+            self.live_server_url
+            + reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "238",
+                    "title": "test-movie",
+                },
+            ),
+        )
+        expect(self.page.get_by_role("main")).to_contain_text("Test Movie")
+        self.page.get_by_role("button", name="Add to tracker").click()
+        modal = self.page.locator("[data-track-modal-root]:visible").first
+        expect(modal).to_be_visible()
+        if status:
+            modal.locator('select[name="status"]').select_option(status)
+        return modal
+
+    def _create_test_movie_item(self, mock_get_metadata):
+        mock_get_metadata.return_value = {
+            "media_id": "238",
+            "title": "Test Movie",
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "image": "http://example.com/image.jpg",
+            "max_progress": 1,
+            "score": 7.6,
+            "score_count": 42000,
+            "details": {"release_date": "2019-11-08"},
+            "related": {},
+        }
+        return Item.objects.create(
+            media_id="238",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Test Movie",
+            image="http://example.com/image.jpg",
+            runtime_minutes=95,
+        )
+
+    def _save_movie(self, modal, item):
+        """Click Add and return the saved Movie once the server has answered.
+
+        The test must not read app_movie while the save request is still
+        running: the live server and the test share one SQLite database, and
+        an overlapping read makes the request fail with "table is locked".
+        """
+        with self.page.expect_response(
+            lambda response: (
+                response.request.method == "POST" and "/media_save" in response.url
+            ),
+        ) as save_response:
+            modal.get_by_role("button", name="Add", exact=True).click()
+        self.assertEqual(save_response.value.status, 200)
+        expect(self.page.locator("[data-track-modal-root]:visible")).to_have_count(0)
+        return Movie.objects.filter(item=item, user=self.user).first()
+
+    def _ms(self, value):
+        """Milliseconds since epoch for a datetime-local input value."""
+        return self.page.evaluate("value => new Date(value).getTime()", value)
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_track_modal_end_date_stays_empty_so_shortcuts_apply(
+        self,
+        mock_get_metadata,
+    ):
+        """The modal doesn't pre-fill the End date, so both shortcuts keep working.
+
+        A date the user picked is still left alone.
+        """
+        self._create_test_movie_item(mock_get_metadata)
+        runtime_ms = 95 * 60 * 1000
+
+        # Completed leaves the End date empty, with the shortcuts offered.
+        modal = self._open_new_movie_tracker(Status.COMPLETED.value)
+        end_input = modal.locator('input[name="end_date"]')
+        start_input = modal.locator('input[name="start_date"]')
+        end_actions = modal.get_by_role("group", name="End date quick actions")
+        expect(end_input).to_have_value("")
+        expect(start_input).to_have_value("")
+        expect(end_actions).to_be_visible()
+        expect(end_actions).to_contain_text("Not set")
+
+        # Just Finished sets the end to now and the start a runtime earlier.
+        before = self.page.evaluate("Date.now()")
+        end_actions.get_by_role("button", name="Just Finished", exact=True).click()
+        after = self.page.evaluate("Date.now()")
+        end_ms = self._ms(end_input.input_value())
+        start_ms = self._ms(start_input.input_value())
+        self.assertGreaterEqual(end_ms, before - 1000)
+        self.assertLessEqual(end_ms, after + 1000)
+        self.assertGreaterEqual(start_ms, before - runtime_ms - 1000)
+        self.assertLessEqual(start_ms, after - runtime_ms + 1000)
+
+        # Start Now sets the start to now and the end to now plus the runtime.
+        modal = self._open_new_movie_tracker(Status.COMPLETED.value)
+        end_input = modal.locator('input[name="end_date"]')
+        start_input = modal.locator('input[name="start_date"]')
+        start_actions = modal.get_by_role("group", name="Start date quick actions")
+        before = self.page.evaluate("Date.now()")
+        start_actions.get_by_role("button", name="Start Now", exact=True).click()
+        after = self.page.evaluate("Date.now()")
+        start_ms = self._ms(start_input.input_value())
+        end_ms = self._ms(end_input.input_value())
+        self.assertGreaterEqual(start_ms, before - 1000)
+        self.assertLessEqual(start_ms, after + 1000)
+        self.assertGreaterEqual(end_ms, before + runtime_ms - 1000)
+        self.assertLessEqual(end_ms, after + runtime_ms + 1000)
+        expect(modal.locator('select[name="status"]')).to_have_value(
+            Status.IN_PROGRESS.value,
+        )
+
+        # An end date the user picked is kept when Start Now is pressed.
+        modal = self._open_new_movie_tracker(Status.COMPLETED.value)
+        end_input = modal.locator('input[name="end_date"]')
+        start_input = modal.locator('input[name="start_date"]')
+        start_actions = modal.get_by_role("group", name="Start date quick actions")
+        modal.get_by_role("button", name="Open End date picker").click()
+        end_picker = modal.get_by_role("dialog", name="End date picker")
+        end_picker.get_by_role("button", name="Release Date", exact=True).click()
+        expect(end_input).to_have_value(re.compile(r"^2019-11-08T"))
+        # Picking a release date back-fills the start from the runtime; clear it
+        # so the Start Now shortcut is offered again.
+        modal.locator(".date-picker-closed-field").first.get_by_role(
+            "button",
+            name="Clear date",
+        ).click()
+        start_actions.get_by_role("button", name="Start Now", exact=True).click()
+        expect(start_input).not_to_have_value("")
+        expect(end_input).to_have_value(re.compile(r"^2019-11-08T"))
+
+    @patch("app.models.Item.fetch_releases")
+    @patch("app.providers.services.get_media_metadata")
+    def test_track_modal_untouched_end_date_saves_as_now(
+        self,
+        mock_get_metadata,
+        _mock_fetch_releases,
+    ):
+        """A new Completed entry still gets an end date of now when saved.
+
+        Choosing None keeps it empty.
+        """
+        item = self._create_test_movie_item(mock_get_metadata)
+
+        modal = self._open_new_movie_tracker(Status.COMPLETED.value)
+        expect(modal.locator('input[name="end_date"]')).to_have_value("")
+        before = timezone.now()
+        movie = self._save_movie(modal, item)
+        self.assertIsNotNone(movie)
+        self.assertIsNotNone(movie.end_date)
+        self.assertGreaterEqual(movie.end_date, before - timedelta(minutes=1))
+        self.assertLessEqual(movie.end_date, timezone.now() + timedelta(minutes=1))
+        movie.delete()
+
+        modal = self._open_new_movie_tracker(Status.COMPLETED.value)
+        modal.get_by_role("button", name="Open End date picker").click()
+        modal.get_by_role("dialog", name="End date picker").get_by_role(
+            "button",
+            name="None",
+            exact=True,
+        ).click()
+        expect(
+            modal.get_by_role("group", name="End date quick actions")
+        ).to_contain_text(
+            "Not set",
+        )
+        movie = self._save_movie(modal, item)
+        self.assertIsNotNone(movie)
+        self.assertIsNone(movie.end_date)
+
+    @patch("app.models.Item.fetch_releases")
+    @patch("app.views._should_queue_game_lengths_refresh", return_value=False)
+    @patch("app.providers.services.get_media_metadata")
+    def test_game_progress_fills_end_and_start_dates(
+        self,
+        mock_get_metadata,
+        _mock_should_queue_game_lengths_refresh,
+        _mock_fetch_releases,
+    ):
+        """New game entry: typing progress sets the end to now and the start before it.
+
+        Just Finished afterwards keeps the start about the progress earlier.
+        """
+        mock_get_metadata.return_value = {
+            "media_id": "186090",
+            "title": "Wordle",
+            "media_type": MediaTypes.GAME.value,
+            "source": Sources.IGDB.value,
+            "image": "http://example.com/wordle.jpg",
+            "details": {"release_date": "2021-06-21"},
+            "related": {},
+            "score": 8.5,
+            "score_count": 17,
+        }
+        Item.objects.create(
+            media_id="186090",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="Wordle",
+            image="http://example.com/wordle.jpg",
+            release_datetime=datetime(2021, 6, 21, 12, 0, tzinfo=UTC),
+        )
+        self.page.goto(
+            self.live_server_url
+            + reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.IGDB.value,
+                    "media_type": MediaTypes.GAME.value,
+                    "media_id": "186090",
+                    "title": "wordle",
+                },
+            ),
+        )
+        expect(self.page.get_by_role("main")).to_contain_text("Wordle")
+        self.page.get_by_role("button", name="Add to tracker").click()
+        modal = self.page.locator("[data-track-modal-root]:visible").first
+        expect(modal).to_be_visible()
+        modal.locator('select[name="status"]').select_option(Status.IN_PROGRESS.value)
+
+        end_input = modal.locator('input[name="end_date"]')
+        start_input = modal.locator('input[name="start_date"]')
+        expect(end_input).to_have_value("")
+        before = self.page.evaluate("Date.now()")
+        modal.locator('input[name="progress"]').fill("90min")
+        expect(start_input).not_to_have_value("")
+        after = self.page.evaluate("Date.now()")
+        auto_end_ms = self._ms(end_input.input_value())
+        auto_start_ms = self._ms(start_input.input_value())
+        self.assertGreaterEqual(auto_end_ms, before - 60 * 1000)
+        self.assertLessEqual(auto_end_ms, after + 1000)
+        self.assertEqual(auto_end_ms - auto_start_ms, 90 * 60 * 1000)
 
     def test_statistics_status_composition_legend_scrolls_without_page_overflow(self):
         """Status legend scrolls inside its card at responsive widths."""
@@ -1139,7 +1619,9 @@ class IntegrationTest(StaticLiveServerTestCase):
                 progress=1 if status == Status.COMPLETED.value else 0,
             )
 
-        self.page.set_viewport_size({"width": 1024, "height": 774})
+        # Wider layouts give the legend the card's full width; a phone keeps it
+        # beside the chart, where five statuses still need to scroll.
+        self.page.set_viewport_size({"width": 390, "height": 844})
         self.page.goto(
             self.live_server_url
             + reverse("statistics")
@@ -1160,7 +1642,6 @@ class IntegrationTest(StaticLiveServerTestCase):
         )
         self.assertEqual(layout["overflowX"], "auto")
         self.assertEqual(layout["overflowY"], "hidden")
-        self.assertGreater(layout["scrollWidth"], layout["clientWidth"])
 
         page_layout = self.page.evaluate(
             """() => ({
@@ -1190,7 +1671,13 @@ class IntegrationTest(StaticLiveServerTestCase):
         )
         self.assertEqual(filtered_layout["overflowX"], "auto")
         self.assertEqual(filtered_layout["overflowY"], "hidden")
-        self.assertGreater(filtered_layout["scrollWidth"], filtered_layout["clientWidth"])
+        # A wider card may fit every row. Constrain the legend to exercise
+        # horizontal scrolling without depending on sidebar/card breakpoints.
+        legend.evaluate("element => element.style.maxWidth = '180px'")
+        self.assertTrue(
+            legend.evaluate("element => element.scrollWidth > element.clientWidth")
+        )
+        legend.evaluate("element => element.style.removeProperty('max-width')")
 
         self.page.set_viewport_size({"width": 390, "height": 774})
         mobile_layout = self.page.evaluate(
@@ -1200,7 +1687,9 @@ class IntegrationTest(StaticLiveServerTestCase):
                 bodyWidth: document.body.scrollWidth,
             })""",
         )
-        self.assertLessEqual(mobile_layout["documentWidth"], mobile_layout["viewportWidth"])
+        self.assertLessEqual(
+            mobile_layout["documentWidth"], mobile_layout["viewportWidth"]
+        )
         self.assertLessEqual(mobile_layout["bodyWidth"], mobile_layout["viewportWidth"])
 
         self.page.set_viewport_size({"width": 1440, "height": 774})
@@ -1212,11 +1701,15 @@ class IntegrationTest(StaticLiveServerTestCase):
                     ?.getBoundingClientRect().width,
             })""",
         )
-        self.assertLessEqual(desktop_layout["documentWidth"], desktop_layout["viewportWidth"])
+        self.assertLessEqual(
+            desktop_layout["documentWidth"], desktop_layout["viewportWidth"]
+        )
         self.assertEqual(desktop_layout["chartWidth"], 150)
 
     @patch("app.discover_views.discover.get_discover_rows")
-    def test_discover_match_signal_wraps_without_page_overflow(self, mock_get_discover_rows):
+    def test_discover_match_signal_wraps_without_page_overflow(
+        self, mock_get_discover_rows
+    ):
         """Long Discover row metadata stays inside the viewport on mobile."""
         match_signal = (
             "Driven by your current 90-109 Minutes, 2010s, Adventure phase "
@@ -1293,4 +1786,6 @@ class IntegrationTest(StaticLiveServerTestCase):
             desktop_signal_box["x"] + desktop_signal_box["width"],
             desktop_row_box["x"] + desktop_row_box["width"],
         )
-        self.assertEqual(desktop_signal_box["height"], 16)
+        # Layout boxes are sub-pixel (15.99997 is 16 on screen), so compare
+        # to within a rounding error rather than exactly.
+        self.assertAlmostEqual(desktop_signal_box["height"], 16, delta=0.5)

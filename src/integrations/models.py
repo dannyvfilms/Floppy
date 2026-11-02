@@ -2,6 +2,7 @@
 
 import hashlib
 import secrets
+from datetime import timedelta
 
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
@@ -53,6 +54,18 @@ class PlexAccount(models.Model):
         help_text="Last Plex watchlist sync error",
     )
     watchlist_last_error_at = models.DateTimeField(blank=True, null=True)
+    mark_watched_sync_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Whether recurring Plex history polling for manually marked "
+            "watched items is enabled"
+        ),
+    )
+    mark_watched_checkpoint = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="Newest Plex history viewedAt already polled",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -423,6 +436,145 @@ class AudiobookshelfAccount(models.Model):
         return bool(self.base_url and self.api_token) and not self.connection_broken
 
 
+class ReadingServerAccount(models.Model):
+    """Connection settings and sync state shared by Komga and Kavita."""
+
+    SYNC_INTERVAL_CHOICES = (5, 15, 30, 60)
+
+    base_url = models.URLField(help_text="Server URL")
+    api_key = models.TextField(help_text="Encrypted API key")
+    create_missing = models.BooleanField(
+        default=True,
+        help_text="Create Floppy items when server items cannot be matched",
+    )
+    sync_interval_minutes = models.PositiveSmallIntegerField(
+        default=15,
+        help_text="How often reading progress is synced",
+    )
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        abstract = True
+
+    @property
+    def is_connected(self):
+        """Return True when the account appears connected."""
+        return bool(self.base_url and self.api_key) and not self.connection_broken
+
+
+class KomgaAccount(ReadingServerAccount):
+    """Store Komga connection settings and sync state for a user."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="komga_account",
+    )
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Komga account"
+        verbose_name_plural = "Komga accounts"
+
+    def __str__(self):
+        """Readable representation."""
+        return f"KomgaAccount({self.user.username})"
+
+
+class KomgaBookLink(models.Model):
+    """Remember which Floppy item a Komga book was matched to for a user."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="komga_book_links",
+    )
+    komga_book_id = models.CharField(max_length=64)
+    item = models.ForeignKey(
+        "app.Item",
+        on_delete=models.CASCADE,
+        related_name="komga_book_links",
+    )
+    linked_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Komga book link"
+        verbose_name_plural = "Komga book links"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "komga_book_id"],
+                name="integrations_komgabooklink_unique_user_book",
+            ),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"KomgaBookLink({self.user.username}, {self.komga_book_id})"
+
+
+class KavitaAccount(ReadingServerAccount):
+    """Store Kavita connection settings and sync state for a user."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="kavita_account",
+    )
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Kavita account"
+        verbose_name_plural = "Kavita accounts"
+
+    def __str__(self):
+        """Readable representation."""
+        return f"KavitaAccount({self.user.username})"
+
+
+class KavitaLink(models.Model):
+    """Remember which Floppy item a Kavita series or chapter was matched to."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="kavita_links",
+    )
+    # "series:<id>" for manga and books, "chapter:<id>" for comic issues.
+    kavita_key = models.CharField(max_length=64)
+    item = models.ForeignKey(
+        "app.Item",
+        on_delete=models.CASCADE,
+        related_name="kavita_links",
+    )
+    linked_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Kavita link"
+        verbose_name_plural = "Kavita links"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "kavita_key"],
+                name="integrations_kavitalink_unique_user_key",
+            ),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"KavitaLink({self.user.username}, {self.kavita_key})"
+
+
 class LastFMAccount(models.Model):
     """Store Last.fm username and sync state for a user."""
 
@@ -523,6 +675,132 @@ class LastFMAccount(models.Model):
         self.history_import_started_at = None
         self.history_import_completed_at = None
         self.history_import_last_error_message = ""
+
+
+class MALFullSyncStatus(models.TextChoices):
+    """Lifecycle of a manual full sync to MyAnimeList."""
+
+    IDLE = "idle", "Not started"
+    QUEUED = "queued", "Queued"
+    RUNNING = "running", "Running"
+    COMPLETED = "completed", "Completed"
+    FAILED = "failed", "Failed"
+
+
+# Progress (full_sync_processed/results) is saved after every entry, so
+# updated_at is a live heartbeat while a sync genuinely runs. A queued/running
+# row this quiet means the worker died mid-sync (e.g. the container
+# restarted), not that the sync is merely slow.
+STALE_FULL_SYNC_AGE = timedelta(minutes=15)
+
+
+class MALAccount(models.Model):
+    """Store a user's MyAnimeList OAuth connection, used to sync watch status.
+
+    Floppy pushes status/progress/score to MyAnimeList. A full sync can also
+    adopt higher MAL progress and missing ratings locally, when enabled
+    (pull_higher_progress_enabled, pull_ratings_enabled).
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="mal_account",
+    )
+    mal_username = models.CharField(max_length=255, blank=True, default="")
+    access_token = models.TextField()
+    refresh_token = models.TextField()
+    token_expires_at = models.DateTimeField()
+    sync_enabled = models.BooleanField(default=True)
+    connection_broken = models.BooleanField(
+        default=False,
+        help_text="True once MyAnimeList rejects the refresh token, until reconnected",
+    )
+    last_error_message = models.TextField(blank=True, default="")
+    last_failed_at = models.DateTimeField(null=True, blank=True)
+    per_item_sync_enabled = models.BooleanField(
+        default=True,
+        help_text="Push status/progress/score to MyAnimeList as each entry is edited",
+    )
+    sync_filter_completed = models.BooleanField(
+        default=True,
+        help_text="Include Completed entries in a full sync to MyAnimeList",
+    )
+    sync_filter_in_progress = models.BooleanField(
+        default=True,
+        help_text="Include In Progress entries in a full sync to MyAnimeList",
+    )
+    sync_filter_dropped = models.BooleanField(
+        default=True,
+        help_text="Include Dropped entries in a full sync to MyAnimeList",
+    )
+    sync_filter_planning = models.BooleanField(
+        default=False,
+        help_text="Include Planning entries in a full sync to MyAnimeList",
+    )
+    sync_filter_paused = models.BooleanField(
+        default=False,
+        help_text="Include Paused entries in a full sync to MyAnimeList",
+    )
+    sync_filter_rated_only = models.BooleanField(
+        default=False,
+        help_text="Only include entries that have a score set in a full sync to MyAnimeList",
+    )
+    sync_ratings_enabled = models.BooleanField(
+        default=True,
+        help_text="Include the score/rating when pushing status to MyAnimeList",
+    )
+    pull_higher_progress_enabled = models.BooleanField(
+        default=True,
+        help_text="Adopt MyAnimeList's progress locally when it's ahead of Floppy's own record",
+    )
+    pull_ratings_enabled = models.BooleanField(
+        default=True,
+        help_text="Adopt a MyAnimeList rating locally when Floppy doesn't have one recorded",
+    )
+    full_sync_status = models.CharField(
+        max_length=16,
+        choices=MALFullSyncStatus,
+        default=MALFullSyncStatus.IDLE,
+    )
+    full_sync_total = models.PositiveIntegerField(default=0)
+    full_sync_processed = models.PositiveIntegerField(default=0)
+    full_sync_succeeded = models.PositiveIntegerField(default=0)
+    full_sync_failed = models.PositiveIntegerField(default=0)
+    full_sync_results = models.JSONField(default=list, blank=True)
+    full_sync_started_at = models.DateTimeField(null=True, blank=True)
+    full_sync_completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Meta options for MALAccount."""
+
+        verbose_name = "MyAnimeList account"
+
+    def __str__(self):
+        """Return a readable representation of the connection."""
+        return f"{self.user}'s MyAnimeList connection"
+
+    @property
+    def is_connected(self):
+        """Return True when we have a token stored and the connection isn't broken."""
+        return bool(self.access_token) and not self.connection_broken
+
+    @property
+    def full_sync_is_active(self):
+        """Return True while a manual full sync is queued or running."""
+        return self.full_sync_status in {
+            MALFullSyncStatus.QUEUED,
+            MALFullSyncStatus.RUNNING,
+        }
+
+    @property
+    def full_sync_is_stale(self):
+        """True once an active sync's heartbeat has gone quiet too long to be alive."""
+        if not self.full_sync_is_active:
+            return False
+        return self.updated_at < timezone.now() - STALE_FULL_SYNC_AGE
 
 
 class KoitoAccount(models.Model):
@@ -714,6 +992,110 @@ class SonarrInstance(models.Model):
         return bool(self.base_url and self.api_key) and not self.connection_broken
 
 
+class MylarInstance(models.Model):
+    """Store connection settings and sync state for one Mylar3 instance.
+
+    Mylar3 keys its series and issues by Comic Vine id, so a sync can mark
+    Floppy's Comic Vine comic issues as owned without title matching.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="mylar_instances",
+    )
+    name = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Optional label to distinguish multiple instances",
+    )
+    base_url = models.URLField(help_text="Mylar3 server URL")
+    api_key = models.TextField(help_text="Encrypted Mylar3 API key")
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Mylar3 instance"
+        verbose_name_plural = "Mylar3 instances"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "base_url"],
+                name="integrations_mylarinstance_unique_user_base_url",
+            ),
+        ]
+
+    def __str__(self):
+        """Return a readable label for this Mylar3 instance."""
+        return f"{self.display_name} ({self.user})"
+
+    @property
+    def display_name(self):
+        """Return the instance's label, falling back to a generic name."""
+        return self.name or "Mylar3"
+
+    def is_connected(self):
+        """Return True when the instance appears connected."""
+        return bool(self.base_url and self.api_key) and not self.connection_broken
+
+
+class KapowarrInstance(models.Model):
+    """Store connection settings and sync state for one Kapowarr instance.
+
+    Kapowarr keys its volumes and issues by Comic Vine id, like Mylar3, so a
+    sync can mark Floppy's Comic Vine comic issues as owned without matching.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="kapowarr_instances",
+    )
+    name = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Optional label to distinguish multiple instances",
+    )
+    base_url = models.URLField(help_text="Kapowarr server URL")
+    api_key = models.TextField(help_text="Encrypted Kapowarr API key")
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Kapowarr instance"
+        verbose_name_plural = "Kapowarr instances"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "base_url"],
+                name="integrations_kapowarrinstance_unique_user_base_url",
+            ),
+        ]
+
+    def __str__(self):
+        """Return a readable label for this Kapowarr instance."""
+        return f"{self.display_name} ({self.user})"
+
+    @property
+    def display_name(self):
+        """Return the instance's label, falling back to a generic name."""
+        return self.name or "Kapowarr"
+
+    def is_connected(self):
+        """Return True when the instance appears connected."""
+        return bool(self.base_url and self.api_key) and not self.connection_broken
+
+
 class MDBListAccount(models.Model):
     """Store MDBList connection settings and sync state for a user."""
 
@@ -842,6 +1224,8 @@ class CollectionSourceState(models.Model):
         ("jellyfin", "Jellyfin"),
         ("radarr", "Radarr"),
         ("sonarr", "Sonarr"),
+        ("mylar", "Mylar3"),
+        ("kapowarr", "Kapowarr"),
     ]
 
     user = models.ForeignKey(
@@ -859,7 +1243,7 @@ class CollectionSourceState(models.Model):
         null=True,
         blank=True,
         help_text=(
-            "PK of the RadarrInstance/SonarrInstance this row came from; "
+            "PK of the Radarr/Sonarr/Mylar/Kapowarr instance this row came from; "
             "unused for plex/jellyfin"
         ),
     )
@@ -1107,6 +1491,9 @@ class PSNAccount(models.Model):
     account_id = models.CharField(max_length=32, blank=True, default="")
     online_id = models.CharField(max_length=64, blank=True, default="")
     last_sync_at = models.DateTimeField(null=True, blank=True)
+    # Setup choice, read the first time a played game is seen: record the
+    # lifetime playtime PSN already holds, or only track play from now on.
+    import_existing_playtime = models.BooleanField(default=True)
     connection_broken = models.BooleanField(default=False)
     last_error_message = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -1126,6 +1513,38 @@ class PSNAccount(models.Model):
     def is_connected(self):
         """Return True when the account appears connected."""
         return bool(self.npsso) and not self.connection_broken
+
+
+class PlaytimeSnapshot(models.Model):
+    """The lifetime playtime a console service last reported for one game.
+
+    Console services only report cumulative minutes, so the time played since
+    the previous sync is the difference from this row.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="playtime_snapshots",
+    )
+    source = models.CharField(max_length=16)
+    media_id = models.CharField(max_length=64)
+    minutes = models.PositiveIntegerField(default=0)
+    seen_at = models.DateTimeField()
+
+    class Meta:
+        """Model options."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "source", "media_id"],
+                name="unique_playtime_snapshot",
+            ),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"PlaytimeSnapshot({self.source}, {self.media_id}, {self.minutes})"
 
 
 class TraktAccount(models.Model):
@@ -1161,8 +1580,8 @@ class TraktAccount(models.Model):
 
     @property
     def is_configured(self):
-        """Return True when client credentials are stored."""
-        return bool(self.client_id and self.client_secret)
+        """Return True when a client ID is stored (PKCE apps have no secret)."""
+        return bool(self.client_id)
 
 
 class ImportRun(models.Model):
@@ -1202,12 +1621,29 @@ class ImportRun(models.Model):
     started_at = models.DateTimeField(auto_now_add=True)
     finished_at = models.DateTimeField(null=True, blank=True)
     cancel_requested = models.BooleanField(default=False)
+    phase = models.CharField(max_length=24, blank=True, default="")
+    prepared_state = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
+    prepared_digest = models.CharField(max_length=64, blank=True, default="")
+    commit_cursor = models.PositiveIntegerField(default=0)
+    chunk_rows = models.PositiveIntegerField(default=100)
+    lease_owner = models.CharField(max_length=64, blank=True, default="")
+    lease_expires_at = models.DateTimeField(null=True, blank=True)
+    fence = models.PositiveIntegerField(default=0)
+    terminal_error = models.JSONField(default=dict)
 
     class Meta:
         """Model options."""
 
         verbose_name = "import run"
         verbose_name_plural = "import runs"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "source"],
+                condition=models.Q(source="trakt", status="running")
+                & ~models.Q(phase=""),
+                name="one_active_durable_import",
+            )
+        ]
         indexes = [
             models.Index(fields=["user", "-started_at"]),
             models.Index(fields=["user", "status"]),
@@ -1216,6 +1652,93 @@ class ImportRun(models.Model):
     def __str__(self):
         """Readable representation."""
         return f"ImportRun({self.source}, {self.user.username}, {self.status})"
+
+
+class PreparedImportEntry(models.Model):
+    """Sealed, ordered persistence decisions; never contains provider credentials."""
+
+    run = models.ForeignKey(
+        ImportRun, on_delete=models.CASCADE, related_name="prepared_entries"
+    )
+    ordinal = models.PositiveIntegerField()
+    model_label = models.CharField(max_length=100)
+    operation = models.CharField(max_length=16)
+    payload = models.JSONField(encoder=DjangoJSONEncoder)
+    digest = models.CharField(max_length=64)
+    persisted_pk = models.PositiveBigIntegerField(null=True, blank=True)
+
+    class Meta:
+        """Ordered cursor lookup and input identity."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["run", "ordinal"], name="import_entry_run_ordinal"
+            )
+        ]
+        ordering = ["ordinal"]
+
+    def __str__(self):
+        """Identify the staged ordinal without revealing history."""
+        return f"PreparedImportEntry({self.run_id}, {self.ordinal})"
+
+
+class ImportChunkReceipt(models.Model):
+    """Media/history and this receipt commit together; publication is repeatable."""
+
+    run = models.ForeignKey(
+        ImportRun, on_delete=models.CASCADE, related_name="chunk_receipts"
+    )
+    phase = models.CharField(max_length=16, default="persist")
+    start = models.PositiveIntegerField()
+    end = models.PositiveIntegerField()
+    digest = models.CharField(max_length=64)
+    fence = models.PositiveIntegerField()
+    rows_persisted = models.PositiveIntegerField(default=0)
+    metrics = models.JSONField(default=dict)
+    publication_pending = models.BooleanField(default=True)
+    committed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Unique commit and bounded outbox lookup."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["run", "phase", "start"], name="import_chunk_run_start"
+            )
+        ]
+        indexes = [models.Index(fields=["publication_pending", "run"])]
+
+    def __str__(self):
+        """Identify the committed range."""
+        return f"ImportChunkReceipt({self.run_id}, {self.start}:{self.end})"
+
+
+class ImportOverwriteTarget(models.Model):
+    """Original row identities: a resumed delete never targets replacements."""
+
+    run = models.ForeignKey(
+        ImportRun, on_delete=models.CASCADE, related_name="overwrite_targets"
+    )
+    ordinal = models.PositiveIntegerField()
+    model_label = models.CharField(max_length=100)
+    original_pk = models.PositiveBigIntegerField()
+    fingerprint = models.CharField(max_length=64)
+    deleted = models.BooleanField(default=False)
+
+    class Meta:
+        """Stable deletion identity and cursor."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["run", "model_label", "original_pk"],
+                name="import_overwrite_original",
+            )
+        ]
+        indexes = [models.Index(fields=["run", "deleted", "ordinal"])]
+
+    def __str__(self):
+        """Identify the private target record."""
+        return f"ImportOverwriteTarget({self.run_id}, {self.ordinal})"
 
 
 # What a tracking client needs and no more. Mirrored by api.scopes.TRACKING_PRESET,
@@ -1382,18 +1905,17 @@ class IntegrationEventReceipt(models.Model):
         return f"IntegrationEventReceipt({self.user.username}, {self.client_event_id})"
 
 
-
-
 class CatalogGrant(models.Model):
-    """A revocable, per-resource grant for published read-only catalogs.
+    """A revocable grant for catalogs and optional playback tracking.
 
     The Stremio add-on install URL carries its credential in the path, which
     means it lands in server logs, browser history and any screenshot of the
     settings page. Before this that credential was the account token: full
     API access, and revoking it broke every webhook and integration at once.
 
-    A grant reads the selected catalogs and nothing else, and revoking one
-    affects only the install it was minted for.
+    A grant reads selected catalogs and, when allow_playback_start is enabled,
+    permits the add-on's playback tracking. Revoking one affects only the
+    install it was minted for.
     """
 
     user = models.ForeignKey(
@@ -1402,10 +1924,9 @@ class CatalogGrant(models.Model):
         related_name="catalog_grants",
     )
     name = models.CharField(max_length=255)
-    # Stored in the clear, unlike IntegrationToken: Stremio replays the install
-    # URL on every request, so there is nothing to compare a digest against
-    # without indexing the digest anyway. Entropy is the control here, plus
-    # the narrow read-only scope and independent revocation.
+    # Stored in the clear, unlike IntegrationToken. Treat database copies as
+    # bearer-credential stores. A digest-based lookup is possible, but changing
+    # storage requires a compatibility plan for existing installs and token UI.
     token = models.CharField(max_length=64, unique=True, db_index=True)
     # Empty means every supported catalog. A populated list is an allowlist of
     # CatalogSpec.catalog_id values.
@@ -1529,6 +2050,8 @@ class SyncClientKind(models.TextChoices):
     STREMIO = "stremio", "Stremio"
     AUDIOBOOKSHELF = "audiobookshelf", "Audiobookshelf"
     GENERIC = "generic", "Generic client"
+    TMDB = "tmdb", "TMDb"
+    WETRAKR = "wetrakr", "WeTrakr"
 
 
 class SyncDirection(models.TextChoices):
@@ -1556,6 +2079,18 @@ CAPABILITY_WATCHED_WRITE_UNPLAYED = "watched.write_unplayed"
 CAPABILITY_WATCHED_PUSH_PLAYED = "watched.push_played"
 CAPABILITY_WATCHED_PUSH_UNPLAYED = "watched.push_unplayed"
 CAPABILITY_LISTEN_READ = "listen.read"
+CAPABILITY_RATING_PUSH = "rating.push"
+CAPABILITY_PLAY_PUSH = "play.push"
+CAPABILITY_STATUS_PUSH = "status.push"
+CAPABILITY_PLAY_REMOVE = "play.remove"
+
+
+class SyncDeliverySchedule(models.TextChoices):
+    """How soon queued deliveries for one binding are sent."""
+
+    LIVE = "live", "As it happens"
+    HOURLY = "hourly", "Hourly"
+    DAILY = "daily", "Daily"
 
 
 class SyncBinding(models.Model):
@@ -1595,6 +2130,14 @@ class SyncBinding(models.Model):
     kill_switch = models.BooleanField(default=False)
 
     label = models.CharField(max_length=255, blank=True, default="")
+    # Live sends within a short batching window; the others hold deliveries and
+    # send them together once the interval since the last flush has passed.
+    delivery_schedule = models.CharField(
+        max_length=16,
+        choices=SyncDeliverySchedule,
+        default=SyncDeliverySchedule.LIVE.value,
+    )
+    last_flushed_at = models.DateTimeField(null=True, blank=True)
     last_reconciled_at = models.DateTimeField(null=True, blank=True)
     last_error_message = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -1638,9 +2181,9 @@ class SyncBinding(models.Model):
         """
         if not self.is_operational():
             return False
-        return direction in (
-            self.approved_directions or []
-        ) and self.has_capability(capability)
+        return direction in (self.approved_directions or []) and self.has_capability(
+            capability
+        )
 
 
 class SyncCheckpoint(models.Model):
@@ -2010,6 +2553,21 @@ class OutboundStateDelivery(models.Model):
     # that revision describes. Both are needed: the revision orders the write,
     # the digest is what a read-back is compared against.
     target_revision = models.PositiveIntegerField(default=0)
+    operation = models.CharField(
+        max_length=16,
+        default="watched",
+        choices=[
+            ("watched", "Watched"),
+            ("rating", "Rating"),
+            ("play", "Play"),
+            ("status", "Status"),
+            ("play_remove", "Play removal"),
+        ],
+    )
+    rating = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)
+    # Operation-specific values that need no column of their own: a play's
+    # watch time, a status name.
+    payload = models.JSONField(default=dict, blank=True)
     target_digest = models.CharField(max_length=64, blank=True, default="")
     intent = models.BooleanField(
         default=True,
@@ -2023,6 +2581,9 @@ class OutboundStateDelivery(models.Model):
     )
     attempts = models.PositiveIntegerField(default=0)
     next_attempt_at = models.DateTimeField(null=True, blank=True)
+    # When the current attempt started. A row still in flight long after this
+    # belongs to a worker that died, and is put back in the queue.
+    claimed_at = models.DateTimeField(null=True, blank=True)
     last_error_message = models.TextField(blank=True, default="")
 
     client_event_id = models.CharField(max_length=255, blank=True, default="")
@@ -2045,14 +2606,14 @@ class OutboundStateDelivery(models.Model):
         ordering = ["binding", "item", "target_revision"]
         constraints = [
             models.UniqueConstraint(
-                fields=["binding", "item", "target_revision"],
+                fields=["binding", "item", "operation", "target_revision"],
                 name="unique_delivery_per_revision",
             ),
             # Serialization primitive: at most one write per (destination, item)
             # can be in flight, enforced by the database rather than by a lock
             # that a crashed worker could hold forever.
             models.UniqueConstraint(
-                fields=["binding", "item"],
+                fields=["binding", "item", "operation"],
                 condition=models.Q(status="in_flight"),
                 name="unique_inflight_delivery_per_item",
             ),
@@ -2065,6 +2626,101 @@ class OutboundStateDelivery(models.Model):
     def __str__(self):
         """Readable representation."""
         return f"OutboundStateDelivery({self.binding_id}, item={self.item_id})"
+
+
+class RatingSyncEdit(models.Model):
+    """Latest explicit edit, including clears whose rating-only row was deleted."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    item = models.ForeignKey("app.Item", on_delete=models.CASCADE)
+    score = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)
+    edited_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        """One latest explicit edit per user and item."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "item"], name="unique_rating_sync_edit"
+            )
+        ]
+
+    def __str__(self):
+        """Identify the edit without loading its related rows."""
+        return f"RatingSyncEdit(user={self.user_id}, item={self.item_id})"
+
+
+class TMDbAccount(models.Model):
+    """Personal TMDb authorization, separate from metadata API credentials."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="tmdb_account"
+    )
+    account_id = models.CharField(max_length=64)
+    username = models.CharField(max_length=255, blank=True)
+    session_id = models.TextField(help_text="Encrypted TMDb session ID")
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    last_failed_at = models.DateTimeField(null=True, blank=True)
+    failure_count = models.PositiveIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        """Readable identity without exposing the session credential."""
+        return f"TMDbAccount({self.username})"
+
+
+class WeTrakrAccount(models.Model):
+    """A WeTrakr login made with the user's own application key.
+
+    The tokens are only valid for the application key they were issued to, so
+    the key is kept alongside them: changing the key in Settings must not break
+    a connection that is already working. A connection starts as a pending
+    device-flow approval (``device_code`` set) and becomes usable once WeTrakr
+    returns tokens.
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="wetrakr_account",
+    )
+    # Names this connection's binding. WeTrakr is not asked who the user is, so
+    # a reconnect mints a new one and the old binding is stopped.
+    profile_key = models.CharField(max_length=64)
+    client_id = models.CharField(max_length=255)
+    username = models.CharField(max_length=255, blank=True, default="")
+    access_token = models.TextField(blank=True, default="", help_text="Encrypted")
+    refresh_token = models.TextField(blank=True, default="", help_text="Encrypted")
+    access_expires_at = models.DateTimeField(null=True, blank=True)
+
+    # A device-flow approval that has been started and not yet completed.
+    device_code = models.TextField(blank=True, default="", help_text="Encrypted")
+    user_code = models.CharField(max_length=64, blank=True, default="")
+    verification_url = models.URLField(blank=True, default="")
+    device_interval = models.PositiveIntegerField(default=5)
+    device_expires_at = models.DateTimeField(null=True, blank=True)
+
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    last_failed_at = models.DateTimeField(null=True, blank=True)
+    failure_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        """Readable identity without exposing a credential."""
+        return f"WeTrakrAccount({self.user_id})"
+
+    @property
+    def is_connected(self):
+        """Return whether tokens exist and WeTrakr has not rejected them."""
+        return bool(self.refresh_token and not self.connection_broken)
+
+    @property
+    def is_pending(self):
+        """Return whether a device-flow approval is waiting on the user."""
+        return bool(self.device_code and not self.refresh_token)
 
 
 class EmbyAccount(models.Model):

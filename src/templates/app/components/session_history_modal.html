@@ -10,23 +10,29 @@
      hx-target="this"
      hx-swap="outerHTML"
      hx-sync="this:replace"
-     class="relative flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)] shadow-2xl"
+     class="relative flex max-h-[90dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)] shadow-2xl"
      aria-labelledby="session-history-title">
   {{ marker_days|json_script:"session-history-markers" }}
   {{ visible_marker_days|json_script:"session-history-visible-markers" }}
 
-  <div class="flex items-center justify-between gap-4 border-b border-[var(--color-border)] px-4 py-3 md:px-6">
-    <div>
+  <div class="flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3 md:gap-4 md:px-6">
+    <div class="min-w-0">
       <h2 id="session-history-title"
-          class="text-lg font-semibold text-[var(--color-text)]">{% translate "Activity history" %}</h2>
-      <p class="text-xs text-[var(--color-text-muted)]">{% translate "Select a day to jump to its activity." %}</p>
+          class="whitespace-nowrap text-base font-semibold text-[var(--color-text)] md:text-lg">{% translate "Activity history" %}</h2>
+      <p class="hidden text-xs text-[var(--color-text-muted)] md:block">{% translate "Select a day to jump to its activity." %}</p>
     </div>
-    <button type="button"
-            x-ref="close"
-            data-session-history-close
-            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-            aria-label="{% translate "Close activity history" %}"
-            @click="sessionHistoryOpen = false">{% include "app/icons/x.svg" with classes="h-5 w-5" %}</button>
+    <div class="flex shrink-0 items-center gap-1 md:gap-2">
+      <a class="inline-flex items-center gap-2 whitespace-nowrap rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-2.5 py-1.5 text-sm md:px-3 md:py-2 font-medium text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]"
+         href="{% url 'history' %}{% if history_querystring %}?{{ history_querystring }}{% endif %}">
+        <span class="md:hidden">{% translate "History" %}</span><span class="hidden md:inline">{% translate "View History" %}</span>
+      </a>
+      <button type="button"
+              x-ref="close"
+              data-session-history-close
+              class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              aria-label="{% translate "Close activity history" %}"
+              @click="sessionHistoryOpen = false">{% include "app/icons/x.svg" with classes="h-5 w-5" %}</button>
+    </div>
   </div>
 
   <div class="flex min-h-0 flex-1 flex-col overflow-hidden md:grid md:grid-cols-[minmax(0,1fr)_18rem]">
@@ -85,12 +91,4 @@
     </aside>
   </div>
 
-  {% if history_capped %}
-    <div class="border-t border-[var(--color-border)] px-4 py-3 text-center md:px-6">
-      <a class="text-sm font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)]"
-         href="{% url 'history' %}{% if history_querystring %}?{{ history_querystring }}{% endif %}">
-        {% translate "View all activity history" %}
-      </a>
-    </div>
-  {% endif %}
 </div>

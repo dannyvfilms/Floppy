@@ -1,18 +1,20 @@
 
 {% load i18n %}
 
-<div class="tag-modal-shell bg-[var(--color-surface)] p-6 rounded-lg max-h-[70svh] overflow-y-auto">
+<div class="tag-modal-shell{% if tag_surface != 'track' %} bg-[var(--color-surface)] p-6 rounded-lg max-h-[70svh] overflow-y-auto{% endif %}">
   <input type="hidden"
          name="preview_genres_json"
          value="{{ preview_genres_json|default:'[]'|escape }}">
   <input type="hidden"
          name="preview_implied_genres_json"
          value="{{ preview_implied_genres_json|default:'[]'|escape }}">
-  <div class="flex items-center justify-between mb-6">
-    <h2 class="text-2xl font-bold text-[var(--color-text)]">{% translate "Tags" %}</h2>
-    <button class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
-            @click="tagsOpen = false">{% include "app/icons/x.svg" with classes="w-6 h-6" %}</button>
-  </div>
+  {% if tag_surface != 'track' %}
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-2xl font-bold text-[var(--color-text)]">{% translate "Tags" %}</h2>
+      <button class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
+              @click="tagsOpen = false">{% include "app/icons/x.svg" with classes="w-6 h-6" %}</button>
+    </div>
+  {% endif %}
   <ul class="space-y-3">
     {% for tag in user_tags %}
       <li class="flex items-center justify-between bg-[var(--color-surface-strong)] p-3 rounded-md gap-1">
@@ -22,7 +24,7 @@
           <button type="button"
                   hx-post="{% url 'tag_delete' %}"
                   hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                  hx-vals='{"tag_id": "{{ tag.id }}", "item_id": "{{ item.id }}", "preview_genres_json": "{{ preview_genres_json|default:'[]'|escapejs }}", "preview_implied_genres_json": "{{ preview_implied_genres_json|default:'[]'|escapejs }}"}'
+                  hx-vals='{"tag_id": "{{ tag.id }}", "item_id": "{{ item.id }}", "tag_surface": "{{ tag_surface|default:'modal' }}", "preview_genres_json": "{{ preview_genres_json|default:'[]'|escapejs }}", "preview_implied_genres_json": "{{ preview_implied_genres_json|default:'[]'|escapejs }}"}'
                   hx-target="closest .tag-modal-shell"
                   hx-swap="outerHTML"
                   hx-confirm="Delete the &quot;{{ tag.name|escape }}&quot; tag from your library? This removes it from every item."
@@ -44,6 +46,9 @@
         class="mt-4 flex gap-2">
     {% csrf_token %}
     <input type="hidden" name="item_id" value="{{ item.id }}">
+    <input type="hidden"
+           name="tag_surface"
+           value="{{ tag_surface|default:'modal' }}">
     <input type="hidden"
            name="preview_genres_json"
            value="{{ preview_genres_json|default:'[]'|escape }}">

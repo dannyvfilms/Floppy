@@ -13,11 +13,12 @@ from allauth.urls import build_provider_urlpatterns
 from django.conf import settings
 from django.contrib import admin
 from django.contrib.auth.decorators import login_not_required
+from django.contrib.staticfiles.views import serve
 from django.http import JsonResponse
 from django.urls import include, path, re_path
-from django.views.decorators.cache import never_cache
+from django.utils import translation
+from django.utils.cache import add_never_cache_headers, patch_cache_control
 from django.views.i18n import JavaScriptCatalog
-from django.views.static import serve
 from health_check.views import MainView
 
 from api.contract_views import (
@@ -40,10 +41,39 @@ handler403 = "app.error_views.permission_denied"
 handler404 = "app.error_views.page_not_found"
 handler500 = "app.error_views.server_error"
 
+_javascript_catalog_view = JavaScriptCatalog.as_view()
+
+
+def javascript_catalog(request):
+    """Serve the translation catalog, browser-cached only when versioned.
+
+    Pages link it with a release and language token (javascript_catalog_url),
+    so that URL can be kept for a year: a new release or a language switch
+    changes the URL. A bare URL names neither, so it is never cached.
+    """
+    # The catalog must be built in the language the URL names, not the one the
+    # request's cookie or header resolves to; otherwise a shared cache could
+    # store one language under another's URL for a year.
+    try:
+        language = translation.get_supported_language_variant(
+            request.GET.get("l") or ""
+        )
+    except LookupError:
+        language = None
+    if request.GET.get("v") and language:
+        with translation.override(language):
+            response = _javascript_catalog_view(request)
+        patch_cache_control(response, public=True, max_age=31536000, immutable=True)
+    else:
+        response = _javascript_catalog_view(request)
+        add_never_cache_headers(response)
+    return response
+
+
 urlpatterns = [
     path(
         "jsi18n/",
-        login_not_required(never_cache(JavaScriptCatalog.as_view())),
+        login_not_required(javascript_catalog),
         name="javascript-catalog",
     ),
     path("api/v1/", include("api.urls")),
@@ -64,6 +94,7 @@ urlpatterns = [
     path("medialist/<str:media_type>", media_list_with_entry_grouping),
     path("", include("app.rapid_rating_urls")),
     path("", include("app.urls")),
+    path("", include("integrations.oauth_urls")),
     path("", include("integrations.urls")),
     path("", include("users.urls")),
     path("", include("lists.urls")),
@@ -138,13 +169,14 @@ if settings.ENABLE_DEBUG_TOOLBAR:
     urlpatterns.append(path("__debug__/", include("debug_toolbar.urls")))
 
 # Serve static files for local Django commands like runserver even when
-# DEBUG is disabled in the user's .env.
+# DEBUG is disabled in the user's .env. The finders cover installed apps'
+# static (django_select2, admin), not just the project's own directory.
 if not settings.IS_PROD:
     static_url_pattern = re.escape(settings.STATIC_URL.lstrip("/"))
     urlpatterns.append(
         re_path(
             rf"^{static_url_pattern}(?P<path>.*)$",
             login_not_required(serve),
-            {"document_root": str(settings.STATICFILES_DIRS[0])},
+            {"insecure": True},
         ),
     )

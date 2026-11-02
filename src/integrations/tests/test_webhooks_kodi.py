@@ -124,7 +124,8 @@ class KodiWebhookMovieTests(TestCase):
         self.assertEqual(movie.status, Status.IN_PROGRESS.value)
 
     @tag("network")
-    def test_movie_start_event_creates_in_progress(self):
+    def test_movie_start_event_writes_nothing(self):
+        """Start only proves playback began; the stop records it (write_policy)."""
         payload = {
             **MOVIE_PAYLOAD,
             "event": "start",
@@ -132,8 +133,7 @@ class KodiWebhookMovieTests(TestCase):
         }
         response = self._post(payload)
         self.assertEqual(response.status_code, 200)
-        movie = Movie.objects.get(item__media_id="603", user=self.user)
-        self.assertEqual(movie.status, Status.IN_PROGRESS.value)
+        self.assertFalse(Movie.objects.filter(user=self.user).exists())
 
     @tag("network")
     def test_movie_repeated_watches_tracked(self):
@@ -237,17 +237,9 @@ class KodiWebhookTVTests(TestCase):
         }
         response = self._post(payload)
         self.assertEqual(response.status_code, 200)
-        # Start event creates TV/Season in IN_PROGRESS but no completed episode
-        tv = TV.objects.get(item__media_id="1668", user=self.user)
-        self.assertEqual(tv.status, Status.IN_PROGRESS.value)
-        self.assertFalse(
-            Episode.objects.filter(
-                item__media_id="1668",
-                item__season_number=1,
-                item__episode_number=1,
-                end_date__isnull=False,
-            ).exists()
-        )
+        # Start only proves playback began; the stop records it (write_policy).
+        self.assertFalse(TV.objects.filter(user=self.user).exists())
+        self.assertFalse(Episode.objects.filter(related_season__user=self.user).exists())
 
 
 class KodiWebhookEdgeCaseTests(TestCase):

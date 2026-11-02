@@ -6,12 +6,16 @@ Write operations live in views_list_actions.py; detail views live in
 views_list_detail.py and views_smart_list.py.
 """
 
+import hashlib
 import logging
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_not_required
+from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db.models import Count, Exists, F, OuterRef, Q, Subquery
+from django.db.models.functions import Coalesce
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
@@ -37,6 +41,36 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
+def _attach_cached_covers(custom_lists):
+    """Reuse resolved covers without doing provider lookups during page render."""
+    first_item = CustomListItem.objects.filter(custom_list_id=OuterRef("pk")).order_by(
+        "date_added", "pk"
+    )
+    first_memberships = (
+        CustomList.objects.filter(pk__in=[cl.pk for cl in custom_lists])
+        .order_by()
+        .annotate(first_membership_id=Subquery(first_item.values("pk")[:1]))
+        .values("first_membership_id")
+    )
+    rows = (
+        CustomListItem.objects.filter(pk__in=Subquery(first_memberships))
+        .order_by()
+        .values_list("custom_list_id", "item_id", "item__image")
+    )
+    keys = {
+        pk: "list-cover:v1:" + hashlib.sha256(f"{item_id}:{image}".encode()).hexdigest()
+        for pk, item_id, image in rows
+    }
+    cached = cache.get_many(list(keys.values()))
+    for custom_list in custom_lists:
+        custom_list.cover_cache_key = keys.get(custom_list.pk)
+        custom_list.cached_cover_url = (
+            cached.get(custom_list.cover_cache_key)
+            if custom_list.cover_cache_key
+            else settings.IMG_NONE
+        )
+
+
 @login_not_required
 @never_cache
 @require_GET
@@ -58,6 +92,7 @@ def user_profile(request, username):
         .prefetch_related("collaborators", "items")
         .order_by("-id")
     )
+    _attach_cached_covers(public_lists)
 
     tag_map = {}
     for custom_list in public_lists:
@@ -128,13 +163,20 @@ def lists(request):
     if selected_media_type != "all" and selected_media_type not in enabled_media_types:
         selected_media_type = "all"
 
-    # Start with base queryset and annotate items_count first (before prefetch)
-    # This ensures the count is accurate and not affected by prefetch cache
+    # Count memberships separately: grouping the outer query also groups every
+    # selected owner preference for every membership in large lists.
+    item_counts = (
+        CustomListItem.objects.filter(custom_list_id=OuterRef("pk"))
+        .order_by()
+        .values("custom_list_id")
+        .annotate(total=Count("pk"))
+        .values("total")
+    )
     custom_lists = (
         CustomList.objects.filter(Q(owner=request.user) | Q(collaborators=request.user))
         .select_related("owner")
         .annotate(
-            items_count=Count("items", distinct=True),
+            items_count=Coalesce(Subquery(item_counts), 0),
         )
         .distinct()
     )
@@ -238,6 +280,7 @@ def lists(request):
     # cheap permission flag here.
     for custom_list in lists_page:
         custom_list.can_edit = custom_list.user_can_edit(request.user)
+    _attach_cached_covers(lists_page)
 
     # Add timestamp to context for cache busting
     import time
@@ -313,7 +356,7 @@ def lists(request):
 @login_not_required
 @require_GET
 def list_cover_image(request, list_id):
-    """Return an <img> fragment for a list card's cover image (HTMX lazy load).
+    """Resolve a cold list cover after page render, then remember its URL.
 
     Called per-card via hx-trigger="revealed" so the expensive IGDB/TMDB
     backdrop lookups happen after the page has already rendered.
@@ -321,7 +364,11 @@ def list_cover_image(request, list_id):
     custom_list = get_object_or_404(CustomList, id=list_id)
     if not custom_list.user_can_view(request.user):
         return HttpResponseForbidden()
-    image_url = custom_list.image
+    _attach_cached_covers([custom_list])
+    image_url = custom_list.cached_cover_url
+    if image_url is None:
+        image_url = custom_list.image
+        cache.set(custom_list.cover_cache_key, image_url, 60 * 60)
     return render(
         request,
         "lists/components/list_cover_image.html",

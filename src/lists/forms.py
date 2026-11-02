@@ -160,7 +160,23 @@ class CustomListForm(forms.ModelForm):
             instance.include_notes = False
 
         is_smart = bool(self.cleaned_data.get("is_smart"))
+        was_smart = bool(
+            instance.pk
+            and type(instance).objects.filter(pk=instance.pk, is_smart=True).exists(),
+        )
         instance.is_smart = is_smart
+        if is_smart and not was_smart:
+            # A new smart list is evaluated with the current semantics; lists
+            # saved before them keep theirs (app.library_query.adapters).
+            from app.library_query.adapters import (
+                SMART_RULES_CURRENT_SEMANTICS,
+                SMART_RULES_SEMANTICS_KEY,
+            )
+
+            instance.smart_filters = {
+                **(instance.smart_filters or {}),
+                SMART_RULES_SEMANTICS_KEY: str(SMART_RULES_CURRENT_SEMANTICS),
+            }
         if not is_smart:
             instance.smart_media_types = []
             instance.smart_excluded_media_types = []

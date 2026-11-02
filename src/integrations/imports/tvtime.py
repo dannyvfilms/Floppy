@@ -333,7 +333,7 @@ class TvTimeShowImporter(TraktMetadataResolverMixin):
         tv_metadata,
     ):
         """Mark the season (and show, if it's also finished) Completed."""
-        if episode_number != season_metadata.get("max_progress"):
+        if episode_number != helpers.season_last_episode_number(season_metadata):
             return
 
         season_obj.status = Status.COMPLETED.value

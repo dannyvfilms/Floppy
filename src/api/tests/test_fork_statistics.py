@@ -57,7 +57,7 @@ class StatisticsOverviewTests(FloppyApiTestCase):
 class StatisticsRefreshTests(FloppyApiTestCase):
     """POST /statistics/refresh."""
 
-    @patch("api.fork_views_statistics.statistics_cache.schedule_statistics_refresh")
+    @patch("app.statistics_sync.request_manual_refresh")
     def test_refresh_valid_range(self, mock_schedule):
         """A valid predefined range schedules a refresh."""
         response = self.call_api(

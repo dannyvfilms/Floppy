@@ -1,0 +1,26 @@
+{% load i18n %}
+    <div class="bg-[var(--color-surface)] rounded-lg p-6">
+      <div class="flex items-center mb-4">
+        {% include "app/icons/list.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
+        <h2 class="text-xl font-semibold">{% translate "Media Server Scrobbles" %}</h2>
+      </div>
+      <form method="post"
+            action="{% url 'update_group_scrobbled_anime' %}"
+            class="mb-2">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.path }}?tab=tracking">
+        <label class="flex items-center text-sm text-[var(--color-text-secondary)]">
+          <input type="checkbox"
+                 name="enabled"
+                 value="true"
+                 {% if user.group_scrobbled_anime %}checked{% endif %}
+                 onchange="this.form.requestSubmit()"
+                 class="mr-2 rounded bg-[var(--color-surface)] border-gray-600 text-indigo-600 focus:outline-none focus:ring-indigo-500 focus:ring-offset-0">
+          {% translate "Track scrobbled anime per episode" %}
+        </label>
+      </form>
+      <p class="text-xs text-[var(--color-text-muted)]">
+        {% translate "When a media server or scrobbler reports an episode of an anime you track as a MAL entry, or you mark that entry completed, convert it to per-episode tracking so each watched episode shows as watched. This is the same conversion as marking an episode by hand. MAL sync keeps working after the conversion." %}
+      </p>
+    </div>
+

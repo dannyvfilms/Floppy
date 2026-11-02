@@ -25,6 +25,7 @@ from app.models import (
     MediaTypes,
     MetadataBackfillField,
     MetadataBackfillState,
+    Movie,
     Person,
     PersonGender,
     Season,
@@ -47,6 +48,57 @@ class MetadataBackfillTaskTests(TestCase):
     def tearDown(self):
         cache.delete(INTERACTIVE_REQUEST_CACHE_KEY)
         super().tearDown()
+
+    @patch("app.tasks._fetch_item_metadata")
+    @patch("app.tasks_metadata_language.services.get_media_metadata")
+    def test_periodic_backfill_repairs_existing_language_within_its_budget(
+        self, mock_language_metadata, mock_other_metadata,
+    ):
+        user = User.objects.create_user(username="spanish", metadata_language="es-ES")
+        item = Item.objects.create(
+            media_id="238", source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value, title="The Godfather",
+            synopsis="An English overview.", metadata_fetched_at=timezone.now(),
+        )
+        Movie.objects.bulk_create([
+            Movie(item=item, user=user, status=Status.PLANNING.value),
+        ])
+        mock_language_metadata.return_value = {
+            "title": "El padrino", "synopsis": "La historia de una familia.",
+        }
+
+        result = tasks.backfill_item_metadata_task(batch_size=1)
+
+        self.assertEqual(result["success_count"], 1)
+        self.assertEqual(result["metadata_language_repair"]["attempted"], 1)
+        mock_other_metadata.assert_not_called()
+        item.refresh_from_db()
+        self.assertEqual(item.localized_title, "El padrino")
+        self.assertEqual(item.synopsis, "La historia de una familia.")
+
+    @patch("app.tasks._fetch_item_metadata")
+    def test_status_backfill_preserves_existing_localized_synopsis(self, mock_metadata):
+        item = Item.objects.create(
+            media_id="238",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="El padrino",
+            localized_title="El padrino",
+            synopsis="La historia de una familia.",
+            metadata_fetched_at=timezone.now(),
+        )
+        mock_metadata.return_value = {
+            "title": "The Godfather",
+            "synopsis": "An English overview.",
+            "details": {"status": "Released"},
+            "related": {},
+        }
+        result = tasks.backfill_item_metadata_task(batch_size=1)
+        self.assertEqual(result["success_count"], 1)
+        item.refresh_from_db()
+        self.assertEqual(item.status, "Released")
+        self.assertEqual(item.synopsis, "La historia de una familia.")
+        self.assertEqual(item.localized_title, "El padrino")
 
     @patch("app.tasks._fetch_item_metadata")
     def test_backfill_item_metadata_task_skips_when_interactive_request_active(
@@ -1614,6 +1666,60 @@ class MetadataBackfillTaskTests(TestCase):
         self.assertIn(missing_movie.id, candidate_ids)
         self.assertIn(episode_missing_strategy.id, candidate_ids)
         self.assertNotIn(complete_movie.id, candidate_ids)
+
+    def _completed_credits_items(self, count):
+        items = Item.objects.bulk_create(
+            [
+                Item(
+                    media_id=f"done-{i}",
+                    source=Sources.TMDB.value,
+                    media_type=MediaTypes.MOVIE.value,
+                    title=f"Done {i}",
+                    image="https://example.com/done.jpg",
+                )
+                for i in range(count)
+            ]
+        )
+        MetadataBackfillState.objects.bulk_create(
+            [
+                MetadataBackfillState(
+                    item=item,
+                    field=MetadataBackfillField.CREDITS,
+                    strategy_version=CREDITS_BACKFILL_VERSION,
+                    last_success_at=timezone.now(),
+                )
+                for item in items
+            ]
+        )
+        return items
+
+    def test_next_credits_backfill_item_ids_reaches_past_completed_window(self):
+        self._completed_credits_items(12)
+        missing = Item.objects.create(
+            media_id="late-missing",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Late Missing",
+            image="https://example.com/late.jpg",
+        )
+
+        # Window is batch_size * multiplier = 4, far smaller than the 12
+        # completed rows ahead of the missing one.
+        candidate_ids = tasks._next_credits_backfill_item_ids(
+            batch_size=2, scan_multiplier=2
+        )
+
+        self.assertEqual(candidate_ids, [missing.id])
+
+    def test_next_credits_backfill_item_ids_query_count_is_bounded(self):
+        self._completed_credits_items(40)
+
+        with self.assertNumQueries(1):
+            candidate_ids = tasks._next_credits_backfill_item_ids(
+                batch_size=2, scan_multiplier=2
+            )
+
+        self.assertEqual(candidate_ids, [])
 
     @patch("app.tasks.enqueue_credits_backfill_items", return_value=4)
     @patch("app.tasks.enqueue_episode_runtime_backfill", return_value=3)

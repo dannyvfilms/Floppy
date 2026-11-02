@@ -4,8 +4,6 @@
 # branch for clear integration diagnostics.
 # ruff: noqa: EM101, TRY003
 
-from django.db.models import Q
-
 from app.models import TV, EpisodeOrder, Item, MediaTypes
 
 
@@ -37,11 +35,26 @@ def active_order(user, media_id, source):
     order = order_from_media_id(media_id, source)
     if order is not None:
         return order if TV.objects.filter(user=user, active_episode_order=order).exists() else None
-    trackers = TV.objects.filter(user=user, active_episode_order__isnull=False).filter(
-        Q(item__media_id=str(media_id), item__source=source)
-        | Q(active_episode_order__series_id=str(media_id), active_episode_order__provider=source)
-    ).select_related("active_episode_order", "active_episode_order__show")
-    matches = list(trackers[:2])
+    # Two index-driven lookups instead of one OR across the user's whole
+    # library: the OR defeats the item index, so SQLite scans every tracked
+    # show of the user.
+    by_item = TV.objects.filter(
+        user=user,
+        active_episode_order__isnull=False,
+        item__media_id=str(media_id),
+        item__source=source,
+    )
+    order_ids = list(
+        EpisodeOrder.objects.filter(
+            series_id=str(media_id), provider=source,
+        ).values_list("id", flat=True),
+    )
+    related = ("active_episode_order", "active_episode_order__show")
+    found = {t.pk: t for t in by_item.select_related(*related)[:2]}
+    if order_ids:
+        by_order = TV.objects.filter(user=user, active_episode_order_id__in=order_ids)
+        found.update({t.pk: t for t in by_order.select_related(*related)[:2]})
+    matches = list(found.values())
     if len(matches) > 1:
         raise OrderResolutionError("Multiple tracked shows match this provider identity.")
     return matches[0].active_episode_order if matches else None

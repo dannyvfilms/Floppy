@@ -154,22 +154,10 @@ def _install_media_list_policy() -> None:
         direction=None,
         *,
         list_sql_filters=None,
-        sql_limit=None,
-        sql_offset=None,
         needs_watch_providers=False,
     ):
-        """Return media rows under the active entry-grouping policy.
-
-        # FORK (#1004): the SQL pagination fast path (sql_limit/sql_offset)
-        # has no equivalent in _get_separate_media_list's simpler, dedup-free
-        # query — always defer to current_method when it's requested, same
-        # as when entry-grouping mode isn't active at all. The API media-list
-        # path (the only caller that ever passes these) never enables
-        # entry-grouping mode, so this combination isn't expected in
-        # practice; falling through here is a defensive no-op, not a
-        # silently-wrong result.
-        """
-        if _ENTRY_GROUPING_MODE.get() is not True or sql_limit is not None:
+        """Return media rows under the active entry-grouping policy."""
+        if _ENTRY_GROUPING_MODE.get() is not True:
             return current_method(
                 manager,
                 user,
@@ -179,8 +167,6 @@ def _install_media_list_policy() -> None:
                 search,
                 direction,
                 list_sql_filters=list_sql_filters,
-                sql_limit=sql_limit,
-                sql_offset=sql_offset,
                 needs_watch_providers=needs_watch_providers,
             )
 

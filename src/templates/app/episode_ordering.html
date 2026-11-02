@@ -1,72 +1,285 @@
 {% extends "base.html" %}
 {% load i18n %}
-{% block title %}{% translate "Episode ordering" %} - {{ tv.item.title }}{% endblock title %}
+{% load app_tags user_tags %}
+
+{% block title %}
+  {% translate "Episode ordering" %} - {{ tv.item.title }}
+{% endblock title %}
+
 {% block content %}
-  <div class="mx-auto max-w-4xl space-y-6">
+  {% translate "Matched" as label_matched %}
+  {% translate "Suggested" as label_suggested %}
+  {% translate "Needs choice" as label_needs %}
+  {% translate "Chosen" as label_chosen %}
+  {% translate "Archived" as label_archived %}
+  {% translate "Combined" as label_combined %}
+  <div class="mx-auto max-w-5xl space-y-6">
     <header>
-      <h1 class="text-3xl font-bold">{% translate "Episode ordering" %}</h1>
-      <p class="mt-2 text-lg">{{ tv.item.title }}</p>
-      <p class="text-[var(--color-text-muted)]">{% translate "Current order:" %} {{ tv.active_episode_order.label|default:"Original numbering" }}</p>
-      <p class="mt-2">{% translate "Choose how this series is numbered in your library. Review your viewing history before applying a change." %}</p>
+      <a href="{{ tv.item|media_url }}"
+         class="inline-flex items-center gap-1 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors mb-3">
+        {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
+        {{ tv.item.title }}
+      </a>
+      <h1 class="text-3xl font-bold mb-2">{% translate "Episode ordering" %}</h1>
+      <p class="text-[var(--color-text-muted)]">
+        {% translate "Choose how this series is numbered in your library. Your viewing history is reviewed before anything changes." %}
+      </p>
+      <p class="mt-2 text-sm text-[var(--color-text-secondary)]">
+        {% translate "Current order:" %}
+        <span class="font-semibold">{{ tv.active_episode_order.label|default:_("Original numbering") }}</span>
+      </p>
     </header>
-    {% if error %}<p role="alert" class="rounded-lg border p-4">{{ error }}</p>{% endif %}
-    {% for provider_error in provider_errors %}<p role="status">{{ provider_error }}</p>{% endfor %}
+
+    {% for provider_error in provider_errors %}
+      <p role="status"
+         class="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-[var(--color-text-secondary)]">
+        {{ provider_error }}
+      </p>
+    {% endfor %}
+
     {% if not preview %}
-      <div class="space-y-3">
-        {% for choice in orders %}
-          <form method="post" class="flex items-center justify-between gap-4 rounded-lg border p-4">
-            {% csrf_token %}
-            <input type="hidden" name="provider" value="{{ choice.provider }}">
-            <input type="hidden" name="key" value="{{ choice.key }}">
-            <span>{{ choice.label }}</span>
-            <button type="submit" class="rounded-lg border px-4 py-2">{% translate "Preview" %}</button>
-          </form>
+      <section class="space-y-6">
+        {% if tv.active_episode_order %}
+          <div class="flex items-center justify-between gap-4 rounded-lg bg-[var(--color-surface-strong)] px-4 py-3">
+            <div class="min-w-0">
+              <p class="font-medium">{{ revert_label }}</p>
+              <p class="text-xs text-[var(--color-text-muted)] mt-1">
+                {% if can_revert %}
+                  {% translate "The order before the latest change." %}
+                {% else %}
+                  {% translate "Can't be restored automatically because viewings were added or edited after the change." %}
+                {% endif %}
+              </p>
+            </div>
+            {% if can_revert %}
+              <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="revert">
+                <button type="submit"
+                        class="inline-flex items-center rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-4 py-2 text-sm text-[var(--color-text)] shadow-sm transition-colors hover:bg-[var(--color-surface-muted)] cursor-pointer">
+                  {% translate "Undo ordering change" %}
+                </button>
+              </form>
+            {% endif %}
+          </div>
+        {% endif %}
+
+        {% for provider_label, choices in order_groups %}
+          <div class="space-y-2">
+            <h2 class="text-xl font-semibold">{{ provider_label }}</h2>
+            {% for choice in choices %}
+              <form method="post"
+                    class="flex items-center justify-between gap-4 rounded-lg bg-[var(--color-surface-strong)] px-4 py-3">
+                {% csrf_token %}
+                <input type="hidden" name="provider" value="{{ choice.provider }}">
+                <input type="hidden" name="key" value="{{ choice.key }}">
+                <div class="flex min-w-0 items-center gap-2">
+                  <span class="truncate">{{ choice.label }}</span>
+                  {% if choice.current %}
+                    <span class="shrink-0 text-[11px] px-2 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/50 text-[var(--color-text)]">{% translate "Current" %}</span>
+                  {% endif %}
+                </div>
+                <button type="submit"
+                        class="shrink-0 inline-flex items-center rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-4 py-2 text-sm text-[var(--color-text)] shadow-sm transition-colors hover:bg-[var(--color-surface-muted)] cursor-pointer">
+                  {% translate "Review changes" %}
+                </button>
+              </form>
+            {% endfor %}
+          </div>
         {% empty %}
-          <p>{% translate "No episode orders are available. Configure a provider credential and a verified series provider identity in metadata settings." %}</p>
+          <p class="text-sm text-[var(--color-text-muted)]">
+            {% translate "No episode orders are available. Configure a provider credential and a verified series provider identity in metadata settings." %}
+          </p>
         {% endfor %}
-      </div>
+      </section>
     {% else %}
-      <h2 class="text-xl font-semibold">{{ order.label }}</h2>
-      <details class="rounded-lg border p-4">
-        <summary>{% translate "Preview episodes" %} ({{ episodes|length }})</summary>
-        <ol class="mt-4 space-y-2">
-          {% for episode in episodes %}<li>S{{ episode.season_number }} E{{ episode.episode_number }} — {{ episode.title }}</li>{% endfor %}
-        </ol>
-      </details>
-      <form method="post" class="space-y-6">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="apply">
-        <input type="hidden" name="order_id" value="{{ order.pk }}">
-        <input type="hidden" name="token" value="{{ preview.token }}">
-        <p>{% translate "Select the destination episode for each viewing. Select multiple episodes for a split. A combined viewing uses the destination and metadata of the viewing selected below; select that viewing only when the records represent the same play." %}</p>
-        {% for watch in watches %}
-          <fieldset class="space-y-3 rounded-lg border p-4">
-            <legend class="px-2 font-semibold">{{ watch.title }} — {% translate "Viewing" %} #{{ watch.id }}</legend>
-            <p>{% translate "Dates:" %} {{ watch.start_date|default:"—" }} – {{ watch.end_date|default:"—" }} · {% translate "Score:" %} {{ watch.score|default_if_none:"—" }} · {{ watch.status }}</p>
-            {% if watch.notes %}<p>{{ watch.notes }}</p>{% endif %}
-            <label class="block" for="episodes_{{ watch.id }}">{% translate "Destination episodes (hold Ctrl or Command to select several)" %}</label>
-            <select id="episodes_{{ watch.id }}" name="episodes_{{ watch.id }}" multiple size="5" class="w-full rounded-lg border p-2">
-              {% for episode in episodes %}
-                <option value="{{ episode.provider_episode_id }}" {% if episode.provider_episode_id in watch.proposed %}selected{% endif %}>S{{ episode.season_number }} E{{ episode.episode_number }} — {{ episode.title }}</option>
-              {% endfor %}
-            </select>
-            <label class="block" for="combine_{{ watch.id }}">{% translate "Combine with viewing and use its dates, score, notes and status" %}</label>
-            <select id="combine_{{ watch.id }}" name="combine_{{ watch.id }}" class="w-full rounded-lg border p-2">
-              <option value="{{ watch.id }}">{% translate "Keep as a separate viewing" %}</option>
-              {% for other in watches %}
-                {% if other.id != watch.id %}<option value="{{ other.id }}">#{{ other.id }} — {{ other.title }} ({{ other.end_date|default:"undated" }})</option>{% endif %}
-              {% endfor %}
-            </select>
-            <label class="flex items-center gap-2"><input type="checkbox" name="archive_{{ watch.id }}">{% translate "Archive this viewing under the original order, excluding it from active progress" %}</label>
-          </fieldset>
-        {% empty %}
-          <p>{% translate "There is no episode viewing history to reconcile." %}</p>
-        {% endfor %}
-        <div class="flex gap-4">
-          <button type="submit" class="rounded-lg border px-4 py-2 font-semibold">{% translate "Apply episode ordering" %}</button>
-          <a href="{% url 'episode_ordering_settings' tv.pk %}" class="px-4 py-2">{% translate "Cancel" %}</a>
+      {{ review|json_script:"episode-order-review-data" }}
+      <section x-data="episodeOrderReview('episode-order-review-data', {matched: '{{ label_matched|escapejs }}', suggested: '{{ label_suggested|escapejs }}', needs: '{{ label_needs|escapejs }}', chosen: '{{ label_chosen|escapejs }}', archived: '{{ label_archived|escapejs }}', combined: '{{ label_combined|escapejs }}'})"
+               class="space-y-6">
+        <div class="rounded-lg bg-[var(--color-surface-strong)] p-4 space-y-3">
+          <div>
+            <h2 class="text-xl font-semibold">{% blocktranslate trimmed with label=order.label %}Moving to {{ label }}{% endblocktranslate %}</h2>
+            <p class="text-sm text-[var(--color-text-muted)] mt-1">
+              {% translate "Pick the episode each viewing belongs to under the new numbering. Matches by identity, air date and title are filled in for you; check anything marked Suggested or Needs choice." %}
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <div class="inline-flex rounded-md border border-[var(--color-surface-border)] overflow-hidden text-sm">
+              <button type="button"
+                      @click="filter = 'all'"
+                      :class="filter === 'all' ? 'bg-[var(--color-border)] text-[var(--color-text)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'"
+                      class="px-3 py-1.5 cursor-pointer">{% translate "All viewings" %}</button>
+              <button type="button"
+                      @click="filter = 'needs'"
+                      :class="filter === 'needs' ? 'bg-[var(--color-border)] text-[var(--color-text)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'"
+                      class="px-3 py-1.5 cursor-pointer">{% translate "Needs choice" %} (<span x-text="needsCount"></span>)</button>
+            </div>
+            <button type="button"
+                    x-show="pendingCount > 0"
+                    x-cloak
+                    @click="acceptAllSuggestions()"
+                    class="inline-flex items-center rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] cursor-pointer">
+              {% translate "Accept all suggestions" %} (<span x-text="pendingCount"></span>)
+            </button>
+          </div>
+          <p x-show="pendingCount > 0" x-cloak class="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-[var(--color-text-secondary)]">
+            {% translate "Some suggestions only share a season and episode number with the old episode. Split or merged episodes shift later numbers, so check them before accepting." %}
+          </p>
         </div>
-      </form>
+
+        <form method="post" class="space-y-6">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="apply">
+          <input type="hidden" name="order_id" value="{{ order.pk }}">
+          <input type="hidden" name="token" value="{{ preview.token }}">
+
+          {% regroup watches by season_number as seasons %}
+          {% for season in seasons %}
+            <div class="space-y-2">
+              <h3 class="text-lg font-semibold">{% blocktranslate trimmed with number=season.grouper %}Season {{ number }}{% endblocktranslate %}</h3>
+              {% for w in season.list %}
+                <div x-show="visible({{ w.id }})"
+                     class="rounded-lg bg-[var(--color-surface-strong)] p-3 space-y-3">
+                  <div class="flex flex-col gap-3 md:flex-row md:items-start">
+                    <div class="min-w-0 md:w-5/12">
+                      <p class="text-sm font-medium">S{{ w.season_number }}E{{ w.episode_number }} · {{ w.title }}</p>
+                      <p class="text-xs text-[var(--color-text-muted)] mt-1">
+                        {% if w.start_date %}{{ w.start_date|user_date_format:user }} – {% endif %}{% if w.end_date %}{{ w.end_date|user_date_format:user }}{% else %}{% translate "No date" %}{% endif %}
+                        {% if w.score is not None %}· {% translate "Score:" %} {{ w.score }}{% endif %}
+                        · {{ w.status }}
+                      </p>
+                      {% if w.notes %}
+                        <p class="text-xs text-[var(--color-text-muted)] mt-1 line-clamp-2">{{ w.notes }}</p>
+                      {% endif %}
+                    </div>
+
+                    <div class="relative min-w-0 flex-1 space-y-2"
+                         @click.outside="openPicker === {{ w.id }} && (openPicker = null)">
+                      <template x-if="isCombined({{ w.id }})">
+                        <p class="text-sm text-[var(--color-text-muted)]">
+                          {% translate "Uses the episode, dates, score and status of" %}
+                          <span x-text="row(row({{ w.id }}).combine).label"></span>
+                        </p>
+                      </template>
+                      <template x-if="row({{ w.id }}).archive">
+                        <p class="text-sm text-[var(--color-text-muted)]">
+                          {% translate "Kept under the original order and left out of active progress." %}
+                        </p>
+                      </template>
+                      <div x-show="!row({{ w.id }}).archive && !isCombined({{ w.id }})" class="flex flex-wrap items-center gap-2">
+                        <template x-for="episodeId in row({{ w.id }}).selected" :key="episodeId">
+                          <span class="inline-flex items-center gap-1 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-2 py-1 text-sm">
+                            <span x-text="episodeLabel(episodeId)"></span>
+                            <button type="button"
+                                    @click="removeEpisode({{ w.id }}, episodeId)"
+                                    class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
+                                    aria-label="{% translate "Remove episode" %}">
+                              {% include "app/icons/x.svg" with classes="w-3 h-3" %}
+                            </button>
+                          </span>
+                        </template>
+                        <button type="button"
+                                @click="togglePicker({{ w.id }})"
+                                class="inline-flex items-center rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-1 text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] cursor-pointer">
+                          <span x-show="row({{ w.id }}).selected.length === 0">{% translate "Choose episode" %}</span>
+                          <span x-show="row({{ w.id }}).selected.length > 0" x-cloak>{% translate "Add or change" %}</span>
+                        </button>
+                        <button type="button"
+                                x-show="row({{ w.id }}).pending && row({{ w.id }}).selected.length === 0"
+                                x-cloak
+                                @click="acceptSuggestion({{ w.id }})"
+                                class="text-sm text-[var(--color-accent)] hover:underline cursor-pointer">
+                          {% translate "Use suggestion:" %} <span x-text="episodeLabel(row({{ w.id }}).pending)"></span>
+                        </button>
+                      </div>
+
+                      <template x-if="openPicker === {{ w.id }}">
+                        <div class="absolute left-0 right-0 z-20 mt-1 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-panel)] shadow-lg">
+                          <input type="text"
+                                 x-model="query"
+                                 x-init="$nextTick(() => $el.focus())"
+                                 @keydown.escape="openPicker = null"
+                                 placeholder="{% translate "Search by number, title or air date" %}"
+                                 class="w-full h-10 px-3 bg-[var(--color-surface-strong)] rounded-t-md text-[var(--color-text)] text-sm border-b border-[var(--color-surface-border)] focus:outline-none">
+                          <div class="max-h-64 overflow-y-auto py-1">
+                            <template x-for="item in pickerResults()" :key="item.id">
+                              <button type="button"
+                                      @click="toggleEpisode({{ w.id }}, item.id)"
+                                      :class="row({{ w.id }}).selected.includes(item.id) ? 'bg-[var(--color-surface-strong)] text-[var(--color-text)]' : 'text-[var(--color-text-secondary)]'"
+                                      class="flex w-full items-baseline gap-2 px-3 py-2 text-left text-sm hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)] cursor-pointer">
+                                <span class="shrink-0 font-medium" x-text="item.code"></span>
+                                <span class="min-w-0 flex-1 truncate" x-text="item.title"></span>
+                                <span class="shrink-0 text-xs text-[var(--color-text-muted)]" x-text="item.air_date"></span>
+                                <span x-show="row({{ w.id }}).selected.includes(item.id)" class="shrink-0 text-[var(--color-accent)]">✓</span>
+                              </button>
+                            </template>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+
+                    <div class="flex items-center gap-2 md:justify-end">
+                      <span class="shrink-0 rounded-full border px-2 py-1 text-[11px]"
+                            :class="statusChip({{ w.id }}).classes"
+                            x-text="statusChip({{ w.id }}).label"></span>
+                      <button type="button"
+                              @click="openOptions = openOptions === {{ w.id }} ? null : {{ w.id }}"
+                              class="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
+                        {% translate "Options" %}
+                      </button>
+                    </div>
+                  </div>
+
+                  <template x-if="openOptions === {{ w.id }}">
+                    <div class="space-y-3 border-t border-[var(--color-border)] pt-3">
+                      <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
+                        <input type="checkbox"
+                               x-model="row({{ w.id }}).archive"
+                               :disabled="!canArchive({{ w.id }})">
+                        {% translate "Archive under the original order, excluding it from active progress" %}
+                      </label>
+                      <label class="block text-sm text-[var(--color-text-secondary)]">
+                        {% translate "Combine with another viewing and use its episode, dates, score, notes and status" %}
+                        <select x-model="row({{ w.id }}).combine"
+                                :disabled="row({{ w.id }}).archive"
+                                class="mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface-strong)] p-2 text-[var(--color-text)] text-sm">
+                          <option value="{{ w.id }}">{% translate "Keep as a separate viewing" %}</option>
+                          <template x-for="other in combineTargets({{ w.id }})" :key="other">
+                            <option :value="other" x-text="row(other).label"></option>
+                          </template>
+                        </select>
+                      </label>
+                    </div>
+                  </template>
+
+                  <template x-for="episodeId in row({{ w.id }}).selected" :key="episodeId">
+                    <input type="hidden" name="episodes_{{ w.id }}" :value="episodeId">
+                  </template>
+                  <input type="hidden" name="combine_{{ w.id }}" :value="row({{ w.id }}).combine">
+                  <input type="hidden" name="archive_{{ w.id }}" value="on" :disabled="!row({{ w.id }}).archive">
+                </div>
+              {% endfor %}
+            </div>
+          {% empty %}
+            <p class="text-sm text-[var(--color-text-muted)]">{% translate "This series has no viewings to move." %}</p>
+          {% endfor %}
+
+          <div class="flex flex-wrap items-center gap-3">
+            <button type="submit"
+                    :disabled="needsCount > 0"
+                    class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+              {% translate "Apply episode ordering" %}
+            </button>
+            <a href="{% url 'episode_ordering_settings' tv.pk %}"
+               class="inline-flex items-center rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-4 py-2 text-sm text-[var(--color-text)] shadow-sm transition-colors hover:bg-[var(--color-surface-muted)]">
+              {% translate "Cancel" %}
+            </a>
+            <p x-show="needsCount > 0" x-cloak class="text-sm text-[var(--color-text-secondary)]">
+              <span x-text="needsCount"></span> {% translate "viewings still need an episode, or can be archived." %}
+            </p>
+          </div>
+        </form>
+      </section>
     {% endif %}
   </div>
 {% endblock content %}

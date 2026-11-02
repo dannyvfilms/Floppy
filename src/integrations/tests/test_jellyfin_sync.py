@@ -7,6 +7,7 @@ from django.utils import timezone
 from app.models import TV, Episode, Item, MediaTypes, Movie, Season, Sources, Status
 from integrations import tasks
 from integrations.imports.helpers import MediaImportError, encrypt
+from integrations.jellyfin_client import JellyfinAuthError, JellyfinClientError
 from integrations.jellyfin_sync import (
     JellyfinPushSyncService,
     format_jellyfin_push_message,
@@ -411,14 +412,14 @@ class PushJellyfinWatchedTaskTests(TestCase):
 
     @patch("integrations.tasks._media_imports.JellyfinPushSyncService.sync")
     def test_task_records_error_on_failure(self, mock_sync):
-        """A sync failure should mark the account broken and record the error."""
+        """A non-auth failure records the error without marking the account broken."""
         mock_sync.side_effect = MediaImportError("boom")
 
         with self.assertRaises(MediaImportError):
             tasks.push_jellyfin_watched(user_id=self.user.id)
 
         self.account.refresh_from_db()
-        self.assertTrue(self.account.connection_broken)
+        self.assertFalse(self.account.connection_broken)
         self.assertEqual(self.account.last_error_message, "boom")
 
     @patch("integrations.tasks._media_imports.JellyfinPushSyncService.sync")
@@ -432,3 +433,106 @@ class PushJellyfinWatchedTaskTests(TestCase):
         self.assertFalse(self.account.connection_broken)
         self.assertEqual(self.account.last_error_message, "")
         self.assertIsNotNone(self.account.last_sync_at)
+
+
+class PushJellyfinConnectionHealthTests(TestCase):
+    """A transient failure must never latch ``connection_broken`` (#1267)."""
+
+    def setUp(self):
+        """Create a user with a connected Jellyfin account."""
+        self.user = get_user_model().objects.create_user(username="jf-health-user")
+        self.account = JellyfinAccount.objects.create(
+            user=self.user,
+            base_url="https://jellyfin.local:8096",
+            api_key=encrypt("api-key"),
+            jellyfin_user_id="jf-user-1",
+        )
+
+    def _mark_broken(self):
+        self.account.connection_broken = True
+        self.account.last_error_message = "old"
+        self.account.save(update_fields=["connection_broken", "last_error_message"])
+
+    @patch("integrations.jellyfin_client.JellyfinClient.iter_library_items")
+    def test_timeout_records_error_without_marking_broken(self, mock_items):
+        """A read timeout says nothing about the credentials."""
+        mock_items.side_effect = JellyfinClientError(
+            "Could not reach Jellyfin: Read timed out. (read timeout=15)",
+        )
+
+        with self.assertRaises(MediaImportError):
+            tasks.push_jellyfin_watched(user_id=self.user.id)
+
+        self.account.refresh_from_db()
+        self.assertFalse(self.account.connection_broken)
+        self.assertIn("Read timed out", self.account.last_error_message)
+
+    @patch("integrations.jellyfin_client.JellyfinClient.iter_library_items")
+    def test_timeout_is_retried(self, mock_items):
+        """A transient failure is retried before the task gives up."""
+        mock_items.side_effect = JellyfinClientError("Could not reach Jellyfin")
+
+        result = tasks.push_jellyfin_watched.apply(kwargs={"user_id": self.user.id})
+
+        self.assertTrue(result.failed())
+        self.assertEqual(mock_items.call_count, 4)
+        self.account.refresh_from_db()
+        self.assertFalse(self.account.connection_broken)
+
+    @patch("integrations.jellyfin_client.JellyfinClient.iter_library_items")
+    def test_auth_error_marks_broken(self, mock_items):
+        """A rejected API key is the one failure that marks the account broken."""
+        mock_items.side_effect = JellyfinAuthError("Jellyfin API key is invalid")
+
+        with self.assertRaises(MediaImportError):
+            tasks.push_jellyfin_watched(user_id=self.user.id)
+
+        self.account.refresh_from_db()
+        self.assertTrue(self.account.connection_broken)
+
+    @patch("integrations.jellyfin_client.JellyfinClient.healthcheck")
+    @patch("integrations.tasks._media_imports.JellyfinPushSyncService.sync")
+    def test_broken_account_heals_when_probe_succeeds(self, mock_sync, mock_health):
+        """The next scheduled push re-probes and clears a stale flag."""
+        self._mark_broken()
+        mock_health.return_value = {"Id": "server"}
+        mock_sync.return_value = ({"marked_played": 1}, "")
+
+        tasks.push_jellyfin_watched(user_id=self.user.id)
+
+        mock_sync.assert_called_once()
+        self.account.refresh_from_db()
+        self.assertFalse(self.account.connection_broken)
+        self.assertEqual(self.account.last_error_message, "")
+        self.assertIsNotNone(self.account.last_sync_at)
+
+    @patch("integrations.jellyfin_client.JellyfinClient.healthcheck")
+    @patch("integrations.tasks._media_imports.JellyfinPushSyncService.sync")
+    def test_broken_account_stays_broken_when_probe_is_rejected(
+        self,
+        mock_sync,
+        mock_health,
+    ):
+        """A key that is still rejected skips the push without raising."""
+        self._mark_broken()
+        mock_health.side_effect = JellyfinAuthError("Jellyfin API key is invalid")
+
+        tasks.push_jellyfin_watched(user_id=self.user.id)
+
+        mock_sync.assert_not_called()
+        self.account.refresh_from_db()
+        self.assertTrue(self.account.connection_broken)
+
+    @patch("integrations.jellyfin_client.JellyfinClient.healthcheck")
+    @patch("integrations.tasks._media_imports.JellyfinPushSyncService.sync")
+    def test_gate_error_does_not_restamp_flag(self, mock_sync, mock_health):
+        """The service's own "not connected" error is not an auth failure."""
+        mock_sync.side_effect = MediaImportError(
+            "Jellyfin is not connected for this user.",
+        )
+
+        with self.assertRaises(MediaImportError):
+            tasks.push_jellyfin_watched(user_id=self.user.id)
+
+        self.account.refresh_from_db()
+        self.assertFalse(self.account.connection_broken)

@@ -108,6 +108,7 @@ class KoitoScrobbleProcessor:
             external_ids=external_ids,
             completed=True,
             played_at=played_at,
+            entry_source="koito",
         )
 
         try:

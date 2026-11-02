@@ -25,14 +25,20 @@
     </button>
     <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg space-y-3">
       <h4 class="font-medium">
-        {% blocktranslate with type=entry.media_type|media_type_readable_plural %}{{ type }} Provider{% endblocktranslate %}
+        {% blocktranslate with type=entry.media_type|media_type_readable_plural %}Default {{ type }} Provider{% endblocktranslate %}
       </h4>
+      {% if entry.configurable %}
+        <p class="text-xs text-[var(--color-text-muted)]">
+          {% translate "Used for new titles. Existing entries keep their provider and keep receiving new plays until you move them." %}
+        </p>
+      {% endif %}
 
       {% if entry.configurable %}
         <form method="post" action="{% url 'set_media_type_provider' entry.media_type %}" class="space-y-3">
           {% csrf_token %}
+          {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.get_full_path }}">{% endif %}
           <div>
-            <label class="block text-[var(--color-text-secondary)] text-xs font-medium mb-2">{% translate "Provider" %}</label>
+            <label class="block text-[var(--color-text-secondary)] text-xs font-medium mb-2">{% translate "Provider for new titles" %}</label>
             <div class="relative" x-data="{ open: false, selectedValue: '{{ entry.current_provider }}', selectedLabel: '', options: [
               {% for choice in entry.choices %}
                 { value: '{{ choice.value }}', label: '{{ choice.label|escapejs }}', configured: {{ choice.configured|yesno:'true,false' }} }

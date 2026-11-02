@@ -240,10 +240,13 @@ class ImportXbox(TestCase):
                 side_effect=self.search_stub(media_id="1"),
             ),
         ):
-            xbox.importer(None, self.user, "overwrite")
+            with helpers.record_bulk_rows() as recorded:
+                xbox.importer(None, self.user, "overwrite")
 
         game = Game.objects.get(user=self.user, item=item)
         self.assertEqual(game.progress, 1250)
+        # bulk_update sends no signal, so the import must name the row it changed.
+        self.assertEqual([row.pk for row in recorded], [game.pk])
 
     def test_overwrite_preserves_completed_status(self):
         """A manually completed game keeps its status on re-sync."""
@@ -499,7 +502,7 @@ class ImportXbox(TestCase):
         self.assertTrue(self.account.connection_broken)
 
     @patch("integrations.xbox_api.services.api_request")
-    def test_unreachable_provider_marks_account_broken(self, mock_api_request):
+    def test_unreachable_provider_records_error_without_breaking(self, mock_api_request):
         """A wrapped transport failure flags the account instead of escaping."""
         mock_api_request.side_effect = services.ProviderAPIError(
             "OpenXBL",
@@ -511,12 +514,12 @@ class ImportXbox(TestCase):
 
         self.assertIn("Could not reach OpenXBL", str(context.exception))
         self.account.refresh_from_db()
-        self.assertTrue(self.account.connection_broken)
+        self.assertFalse(self.account.connection_broken)
         self.assertIn("Could not reach OpenXBL", self.account.last_error_message)
         self.assertNotIn("HTTPSConnectionPool", self.account.last_error_message)
 
     @patch("integrations.xbox_api.services.api_request")
-    def test_transport_failure_marks_account_broken(self, mock_api_request):
+    def test_transport_failure_records_error_without_breaking(self, mock_api_request):
         """A bare requests failure is translated rather than left to escape."""
         mock_api_request.side_effect = RequestsConnectionError(
             "Max retries exceeded with url: /api/v2/account?api_key=super-secret",
@@ -526,7 +529,7 @@ class ImportXbox(TestCase):
             xbox.importer(None, self.user, "new")
 
         self.account.refresh_from_db()
-        self.assertTrue(self.account.connection_broken)
+        self.assertFalse(self.account.connection_broken)
         self.assertNotIn("super-secret", self.account.last_error_message)
 
     @patch("integrations.xbox_api.services.api_request")
@@ -539,10 +542,10 @@ class ImportXbox(TestCase):
 
         self.assertIn("OpenXBL request failed", str(context.exception))
         self.account.refresh_from_db()
-        self.assertTrue(self.account.connection_broken)
+        self.assertFalse(self.account.connection_broken)
 
     @patch("integrations.xbox_api.services.api_request")
-    def test_unexpected_fetch_failure_marks_account_broken(self, mock_api_request):
+    def test_unexpected_fetch_failure_records_error_without_breaking(self, mock_api_request):
         """An error xbox_api doesn't model still lands as durable account state."""
         mock_api_request.side_effect = ValueError(
             "bad payload from https://xbl.io/api/v2/account?token=super-secret",
@@ -554,7 +557,7 @@ class ImportXbox(TestCase):
         self.assertIn("ValueError", str(context.exception))
         self.assertNotIn("super-secret", str(context.exception))
         self.account.refresh_from_db()
-        self.assertTrue(self.account.connection_broken)
+        self.assertFalse(self.account.connection_broken)
         self.assertIn("ValueError", self.account.last_error_message)
         self.assertNotIn("super-secret", self.account.last_error_message)
 
@@ -566,7 +569,7 @@ class ImportXbox(TestCase):
         )
 
         importer = xbox.XboxImporter(self.user, "new")
-        importer._mark_broken("x" * 5000)
+        importer._mark_failed("x" * 5000, auth=False)
 
         self.account.refresh_from_db()
         self.assertLessEqual(
@@ -833,7 +836,7 @@ class ImportXbox(TestCase):
         self.assertIn("Could not reach", str(context.exception))
         self.assertEqual(Game.objects.filter(user=self.user).count(), 0)
         self.account.refresh_from_db()
-        self.assertTrue(self.account.connection_broken)
+        self.assertFalse(self.account.connection_broken)
 
     @patch("integrations.imports.xbox.services.search")
     @patch("integrations.xbox_api.services.api_request")
@@ -1051,7 +1054,7 @@ class XboxViewTests(TestCase):
             {"api_key": "openxbl-key", "frequency": "once", "mode": "new"},
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         mock_get_account.assert_called_once_with("openxbl-key")
         mock_delay.assert_called_once_with(user_id=self.user.id, mode="new")
 
@@ -1097,7 +1100,7 @@ class XboxViewTests(TestCase):
         """Submitting an empty key is rejected before calling OpenXBL."""
         response = self.client.post(reverse("xbox_connect"), {})
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         mock_get_account.assert_not_called()
         self.assertFalse(XboxAccount.objects.filter(user=self.user).exists())
 
@@ -1150,7 +1153,7 @@ class XboxViewTests(TestCase):
 
         response = self.client.post(reverse("xbox_disconnect"))
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         self.assertFalse(XboxAccount.objects.filter(user=self.user).exists())
         self.assertFalse(
             PeriodicTask.objects.filter(

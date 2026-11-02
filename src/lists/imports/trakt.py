@@ -22,28 +22,64 @@ def import_trakt_lists(user, access_token, client_id=None):
     skipped_lists = 0
     skipped_items = 0
 
-    with transaction.atomic():
-        helpers.retry_on_lock(
-            lambda: CustomList.objects.filter(owner=user, source="trakt").delete(),
+    # Fetch everything from Trakt, and resolve each entry against TMDB, before
+    # the rebuild transaction opens. The delete below takes SQLite's write
+    # lock, and holding it across paginated HTTP calls and a TMDB lookup per
+    # entry blocked every other writer, page views included, meanwhile.
+    fetched_lists = []
+    for trakt_list in trakt_lists:
+        list_id = trakt_list.get("ids", {}).get("trakt")
+        if not list_id:
+            skipped_lists += 1
+            continue
+        list_items = _get_trakt_list_items(
+            access_token,
+            list_id,
+            client_id=client_id,
         )
+        list_resolved, list_skipped = _resolve_entries(list_items)
+        skipped_items += list_skipped
+        fetched_lists.append((trakt_list, list_id, list_resolved))
 
-        for trakt_list in trakt_lists:
-            list_id = trakt_list.get("ids", {}).get("trakt")
-            if not list_id:
-                skipped_lists += 1
-                continue
+    try:
+        logger.info("Fetching Watchlist for user %s", user.username)
+        watchlist_items = _get_trakt_watchlist_items(
+            access_token,
+            client_id=client_id,
+        )
+        logger.info(
+            "Fetched %s items from Watchlist for user %s",
+            len(watchlist_items) if watchlist_items else 0,
+            user.username,
+        )
+        watchlist_fetched = True
+    except Exception as e:
+        logger.warning(
+            "Failed to import Watchlist for %s: %s",
+            user.username,
+            e,
+            exc_info=True,
+        )
+        watchlist_items = []
+        watchlist_fetched = False
+        skipped_lists += 1
+    # Outside the try: a TMDB failure while resolving entries aborts the
+    # import before anything is deleted, rather than dropping the Watchlist.
+    watchlist_resolved, watchlist_skipped = _resolve_entries(watchlist_items or [])
+    skipped_items += watchlist_skipped
+
+    previous_lists = CustomList.objects.filter(owner=user, source="trakt")
+    if not watchlist_fetched:
+        # Keep the Watchlist already imported when Trakt would not return it.
+        previous_lists = previous_lists.exclude(source_id="watchlist")
+
+    with transaction.atomic():
+        helpers.retry_on_lock(previous_lists.delete)
+
+        for trakt_list, list_id, list_resolved in fetched_lists:
             custom_list = _create_custom_list(user, trakt_list, list_id)
             imported_count += 1
-            list_items = _get_trakt_list_items(
-                access_token,
-                list_id,
-                client_id=client_id,
-            )
-            for entry in list_items:
-                item = _build_item_from_entry(entry)
-                if not item:
-                    skipped_items += 1
-                    continue
+            for item in list_resolved:
                 CustomListItem.objects.get_or_create(
                     custom_list=custom_list,
                     item=item,
@@ -51,17 +87,7 @@ def import_trakt_lists(user, access_token, client_id=None):
                 )
 
         # Import Watchlist as a special list
-        try:
-            logger.info("Fetching Watchlist for user %s", user.username)
-            watchlist_items = _get_trakt_watchlist_items(
-                access_token,
-                client_id=client_id,
-            )
-            logger.info(
-                "Fetched %s items from Watchlist for user %s",
-                len(watchlist_items) if watchlist_items else 0,
-                user.username,
-            )
+        if watchlist_fetched:
             watchlist_list = CustomList.objects.create(
                 name="Watchlist",
                 description="",
@@ -72,30 +98,17 @@ def import_trakt_lists(user, access_token, client_id=None):
                 source_id="watchlist",
             )
             imported_count += 1
-            if watchlist_items:
-                for entry in watchlist_items:
-                    item = _build_item_from_entry(entry)
-                    if not item:
-                        skipped_items += 1
-                        continue
-                    CustomListItem.objects.get_or_create(
-                        custom_list=watchlist_list,
-                        item=item,
-                        defaults={"added_by": user},
-                    )
+            for item in watchlist_resolved:
+                CustomListItem.objects.get_or_create(
+                    custom_list=watchlist_list,
+                    item=item,
+                    defaults={"added_by": user},
+                )
             logger.info(
                 "Successfully imported Watchlist for user %s (%s items)",
                 user.username,
                 watchlist_list.items.count(),
             )
-        except Exception as e:
-            logger.warning(
-                "Failed to import Watchlist for %s: %s",
-                user.username,
-                e,
-                exc_info=True,
-            )
-            skipped_lists += 1
 
     logger.info(
         "Imported %s Trakt lists for %s (%s lists skipped, %s items skipped)",
@@ -123,31 +136,41 @@ def import_trakt_lists_from_export(user, archive):
     skipped_items = 0
     warnings = []
 
+    # Resolve entries against TMDB before the rebuild transaction takes the
+    # write lock (see import_trakt_lists).
+    resolved_lists = []
+    for trakt_list in trakt_lists:
+        list_id = trakt_list.get("ids", {}).get("trakt")
+        if not list_id:
+            continue
+        entries = [
+            entry
+            for base_name in items_by_list_id.get(str(list_id), [])
+            for entry in archive.read_json(base_name, default=[]) or []
+        ]
+        list_resolved, list_skipped = _resolve_entries(entries)
+        skipped_items += list_skipped
+        resolved_lists.append((trakt_list, list_id, list_resolved))
+    watchlist_resolved, watchlist_skipped = _resolve_entries(
+        archive.load("lists-watchlist")
+    )
+    skipped_items += watchlist_skipped
+
     with transaction.atomic():
         helpers.retry_on_lock(
             lambda: CustomList.objects.filter(owner=user, source="trakt").delete(),
         )
 
-        for trakt_list in trakt_lists:
-            list_id = trakt_list.get("ids", {}).get("trakt")
-            if not list_id:
-                continue
+        for trakt_list, list_id, list_resolved in resolved_lists:
             custom_list = _create_custom_list(user, trakt_list, list_id)
             imported_count += 1
+            for item in list_resolved:
+                CustomListItem.objects.get_or_create(
+                    custom_list=custom_list,
+                    item=item,
+                    defaults={"added_by": user},
+                )
 
-            for base_name in items_by_list_id.get(str(list_id), []):
-                for entry in archive.read_json(base_name, default=[]) or []:
-                    item = _build_item_from_entry(entry)
-                    if not item:
-                        skipped_items += 1
-                        continue
-                    CustomListItem.objects.get_or_create(
-                        custom_list=custom_list,
-                        item=item,
-                        defaults={"added_by": user},
-                    )
-
-        watchlist_entries = archive.load("lists-watchlist")
         watchlist_list = CustomList.objects.create(
             name="Watchlist",
             description="",
@@ -158,11 +181,7 @@ def import_trakt_lists_from_export(user, archive):
             source_id="watchlist",
         )
         imported_count += 1
-        for entry in watchlist_entries:
-            item = _build_item_from_entry(entry)
-            if not item:
-                skipped_items += 1
-                continue
+        for item in watchlist_resolved:
             CustomListItem.objects.get_or_create(
                 custom_list=watchlist_list,
                 item=item,
@@ -277,6 +296,19 @@ def _create_custom_list(user, trakt_list, list_id):
         source="trakt",
         source_id=str(list_id),
     )
+
+
+def _resolve_entries(entries):
+    """Return the Items for Trakt entries and how many could not be matched."""
+    items = []
+    skipped = 0
+    for entry in entries or []:
+        item = _build_item_from_entry(entry)
+        if item is None:
+            skipped += 1
+        else:
+            items.append(item)
+    return items, skipped
 
 
 def _build_item_from_entry(entry):

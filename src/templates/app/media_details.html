@@ -17,52 +17,62 @@
     {% include "app/components/detail_music_artist.html" %}
   {% elif music_detail_kind == "album" %}
     {% include "app/components/detail_music_album.html" %}
+  {% elif music_detail_kind == "track" %}
+    {% include "app/components/detail_music_track.html" %}
   {% else %}
     {% if not render_secondary_only %}
       {# Top section #}
       {% if carousel_supported %}
-        {# Carousel temporarily disabled below md while the mobile layout gets polished; mobile keeps today's stacked order, md+ gets the new two-row layout. See .detail-carousel-grid in input.css. #}
-        <div class="detail-carousel-grid">
+        {# Phones get the compact header, or the backdrop hero once the carousel fragment brings one (reserved up front for movies and TV so the page does not jump); md+ gets the two-row carousel layout. See .detail-carousel-grid in input.css. #}
+        <div class="detail-carousel-grid{% if not initial_carousel and media_type != MediaTypes.GAME.value %} detail-hero-pending{% endif %}">
           <div class="detail-carousel-grid__poster w-full max-w-[250px] mx-auto md:mx-0">
-            <img alt="{{ media|display_title:user }}"
-                 class="w-full aspect-[2/3] rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
-                 src="{{ media.image|image_url }}">
+            {% if media_type == MediaTypes.VIDEO.value %}
+              <img data-media-artwork alt="{{ media|display_title:user }}" class="md:hidden w-full rounded-lg shadow-lg object-cover" src="{{ media.image|image_url }}">
+              <div id="video-channel-avatar" class="video-channel-avatar hidden md:flex" aria-label="{% translate 'Channel artwork' %}">
+                <span aria-hidden="true">{{ current_instance.channel|default:media.title|first|upper }}</span>
+              </div>
+            {% else %}
+              <img data-media-artwork alt="{{ media|display_title:user }}"
+                   class="w-full aspect-[2/3] rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
+                   src="{{ media.image|image_url }}">
+            {% endif %}
           </div>
 
           <div class="detail-carousel-grid__carousel relative min-w-0">
-            {% comment %}
-              Left empty (not a loading skeleton) so .detail-carousel-grid's
-              :has(#detail-carousel-wrap:not(:empty)) rule in input.css only
-              expands into the carousel layout once real content lands --
-              a skeleton here would count as "not empty" and expand the
-              grid immediately, showing the carousel's layout before we
-              know whether there's anything to put in it.
-            {% endcomment %}
-            <div class="absolute inset-0"
-                 id="detail-carousel-wrap"
+            {# Warm galleries render immediately; cold lookups stay deferred. Keep the empty wrapper free of whitespace for the CSS :empty layout hook. #}
+            <div id="detail-carousel-wrap"{% if not initial_carousel %}
                  hx-get="{{ detail_carousel_fragment_url }}"
                  hx-trigger="load delay:100ms"
-                 hx-swap="innerHTML"></div>
+                 hx-swap="innerHTML"
+                 hx-on::after-settle="this.closest('.detail-carousel-grid').classList.remove('detail-hero-pending')"{% endif %}>{% if initial_carousel %}{% include "app/components/detail_carousel_fragment.html" with carousel=initial_carousel inline=True %}{% elif media_type != MediaTypes.GAME.value %}<div class="detail-carousel-content detail-carousel-pending" aria-hidden="true"><div class="detail-carousel-preview detail-carousel-preview--bounded"></div><div class="detail-carousel-strip-wrap"></div></div>{% endif %}</div>
           </div>
 
-          <div class="detail-carousel-grid__header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div class="min-w-0">{% include "app/components/detail_title_block.html" %}</div>
-            <div class="shrink-0">{% include "app/components/detail_action_buttons.html" %}</div>
+          <div class="detail-carousel-grid__header flex flex-col md:flex-row md:flex-wrap md:items-center {% if media_type == MediaTypes.VIDEO.value %}md:justify-start{% else %}md:justify-between{% endif %} gap-4">
+            <div class="detail-carousel-grid__title min-w-0{% if media_type != MediaTypes.VIDEO.value %} flex-1 md:basis-64{% endif %}"><div id="detail-carousel-logo-slot">{% if initial_carousel.overview.logo_url %}<img data-media-artwork class="detail-carousel-overview-logo" src="{{ initial_carousel.overview.logo_url }}" alt="{% translate 'Media title logo' %}">{% endif %}</div>{% include "app/components/detail_title_block.html" %}{% include "app/components/detail_mobile_meta.html" %}</div>
+            <div class="detail-carousel-grid__actions max-w-full shrink-0">{% include "app/components/detail_action_buttons.html" %}</div>
           </div>
           <div class="detail-carousel-grid__chips">{% include "app/components/detail_score_chips.html" %}</div>
-          <div class="detail-carousel-grid__synopsis">{% include "app/components/detail_synopsis.html" %}</div>
+          <div class="detail-carousel-grid__synopsis">
+            {% if media_type == MediaTypes.VIDEO.value %}
+              <h1 class="text-2xl font-bold mb-3">{{ media|display_title:user }}</h1>
+              <div id="video-synopsis-content">{% include "app/components/detail_synopsis.html" %}</div>
+              {% if media.source == 'youtube' %}<div hx-get="{{ request.path }}?fragment=video-metadata" hx-trigger="load" hx-swap="none"></div>{% endif %}
+            {% else %}
+              {% include "app/components/detail_synopsis.html" %}
+            {% endif %}
+          </div>
         </div>
       {% else %}
-        <div class="flex flex-col md:flex-row gap-8 md:gap-10 mb-2 md:mb-8">
-          <div class="w-full md:w-1/4 max-w-[250px] mx-auto md:mx-0">
-            <img alt="{{ media|display_title:user }}"
+        <div class="detail-flat-top flex flex-col md:flex-row gap-8 md:gap-10 mb-2 md:mb-8">
+          <div class="detail-flat-top__poster w-full md:w-1/4 max-w-[250px] mx-auto md:mx-0">
+            <img data-media-artwork alt="{{ media|display_title:user }}"
                  class="w-full rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
                  src="{{ media.image|image_url }}">
           </div>
 
           {# Media details #}
-          <div class="md:w-3/4">
-            {% include "app/components/detail_title_block.html" %}
+          <div class="detail-flat-top__info md:w-3/4">
+            <div class="detail-flat-top__title">{% include "app/components/detail_title_block.html" %}{% include "app/components/detail_mobile_meta.html" %}</div>
             {% include "app/components/detail_score_and_actions.html" %}
             {% include "app/components/detail_synopsis.html" %}
           </div>
@@ -71,17 +81,19 @@
 
       {% if defer_detail_secondary %}
         <div id="detail-secondary-content"
-             class="flex flex-col-reverse md:flex-row gap-0 md:gap-10"
+             class="detail-secondary-content"
              hx-get="{{ detail_secondary_fragment_url }}"
              hx-trigger="load delay:150ms"
              hx-swap="outerHTML">
-          <div class="w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0">
-            <div class="h-64 rounded-lg bg-[var(--color-surface)] animate-pulse"></div>
-            <div class="mt-6 h-56 rounded-lg bg-[var(--color-surface)] animate-pulse"></div>
-          </div>
-          <div class="w-full md:w-3/4 space-y-6">
-            <div class="h-64 rounded-lg bg-[var(--color-surface)] animate-pulse"></div>
-            <div class="h-80 rounded-lg bg-[var(--color-surface)] animate-pulse"></div>
+          <div class="detail-secondary-layout flex flex-col md:flex-row gap-6 md:gap-10">
+            <div class="w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0">
+              <div class="h-64 rounded-lg bg-[var(--color-surface)] animate-pulse"></div>
+              <div class="mt-6 h-56 rounded-lg bg-[var(--color-surface)] animate-pulse"></div>
+            </div>
+            <div class="w-full md:w-3/4 space-y-6">
+              <div class="h-64 rounded-lg bg-[var(--color-surface)] animate-pulse"></div>
+              <div class="h-80 rounded-lg bg-[var(--color-surface)] animate-pulse"></div>
+            </div>
           </div>
         </div>
       {% else %}
@@ -92,7 +104,7 @@
 
   {% endif %}
 
-  {% if music_detail_kind != "album" %}
+  {% if music_detail_kind != "album" and music_detail_kind != "track" %}
     <div x-data="{ sessionHistoryOpen: false }"
          @open-session-history.window="sessionHistoryOpen = true; $nextTick(() => $el.querySelector('[data-session-history-close]')?.focus())"
          @keydown.escape.window="if (!$event.target.closest('[data-session-history-track-modal]')) sessionHistoryOpen = false">

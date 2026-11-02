@@ -249,7 +249,7 @@ class PocketCastsRepeatPollTests(TestCase):
         )
         return stack
 
-    def _run_import(self):
+    def _run_import(self, play_states=None):
         with (
             self._artwork_patches(),
             patch.object(PocketCastsImporter, "_ensure_valid_token"),
@@ -261,7 +261,7 @@ class PocketCastsRepeatPollTests(TestCase):
             patch.object(
                 PocketCastsImporter,
                 "_fetch_show_play_states",
-                return_value={},
+                return_value=play_states or {},
             ),
             patch.object(
                 PocketCastsImporter,
@@ -270,8 +270,40 @@ class PocketCastsRepeatPollTests(TestCase):
             ),
             CaptureQueriesContext(connection) as queries,
         ):
-            PocketCastsImporter(self.user, "new").import_data()
+            importer = PocketCastsImporter(self.user, "new")
+            importer.import_data()
+        self.last_counters = importer._catalog_counters
         return len(queries)
+
+    def test_listened_episodes_with_their_own_duration_stop_being_rewritten(self):
+        """The user's play state differs from the public feed; polls must settle.
+
+        Production (2026-09-29): eight recurring runs that imported nothing
+        each reported ~5,300 episodes changed and ~4,300 rows written. The
+        catalog pass wrote the feed's duration and isDeleted, then the
+        listened-episode pass wrote the play state's over it, so the next poll
+        saw the difference again.
+        """
+        play_states = {
+            f"uuid-{index}": {
+                "uuid": f"uuid-{index}",
+                "playingStatus": 3,
+                "playedUpTo": 1795,
+                "duration": 1797,
+                "isDeleted": True,
+            }
+            for index in range(10)
+        }
+
+        self._run_import(play_states)
+        self._run_import(play_states)
+
+        self.assertEqual(self.last_counters["changed"], 0)
+        self.assertEqual(self.last_counters["written"], 0)
+        stored = PodcastEpisode.objects.get(episode_uuid="uuid-0")
+        self.assertEqual(stored.duration, 1797)
+        self.assertTrue(stored.is_deleted)
+        self.assertEqual(PodcastEpisode.objects.get(episode_uuid="uuid-20").duration, 1800)
 
     def test_second_poll_of_an_unchanged_catalog_is_far_cheaper(self):
         first = self._run_import()
@@ -491,3 +523,98 @@ class DuplicateCleanupScanTests(CatalogFixtureMixin, TestCase):
             PodcastEpisode.objects.filter(title="Episode One").count(),
             1,
         )
+
+
+class PocketCastsAliasedCatalogTests(PocketCastsRepeatPollTests):
+    """TASKS-19: provider UUIDs that differ from the stored canonical UUID.
+
+    Production (2026-10-25): two no-media recurring imports each reported
+    4,570 index misses, zero creations and ~30,000 queries, every run. The
+    sync resolves those episodes onto existing rows by title/date and writes
+    nothing, but it re-ran that discovery per episode on every poll.
+    """
+
+    COUNT = 60
+    # Inherited from the plain-catalog fixture; not meaningful with aliases.
+    test_listened_episodes_with_their_own_duration_stop_being_rewritten = None
+    test_second_poll_of_an_unchanged_catalog_is_far_cheaper = None
+
+    def setUp(self):
+        super().setUp()
+        from app.models import Item, MediaTypes, Sources
+
+        show = PodcastShow.objects.create(podcast_uuid="show-1", title="Test Show")
+        self.metadata = {}
+        for index in range(self.COUNT):
+            title = f"Episode {index}"
+            published = datetime(2025, 1, 1 + index % 28, 8, index % 60, tzinfo=UTC)
+            self.metadata[f"provider-{index}"] = {
+                "uuid": f"provider-{index}",
+                "title": title,
+                "published": published.isoformat(),
+                "duration": 1800,
+                "url": f"https://example.com/{index}.mp3",
+            }
+            PodcastEpisode.objects.create(
+                show=show,
+                episode_uuid=f"canonical-{index}",
+                title=title,
+                published=published,
+                duration=1800,
+                audio_url=f"https://example.com/{index}.mp3",
+            )
+            Item.objects.create(
+                media_id=f"canonical-{index}",
+                source=Sources.POCKETCASTS.value,
+                media_type=MediaTypes.PODCAST.value,
+                title=title,
+            )
+
+    def test_repeat_poll_of_aliased_episodes_does_no_per_episode_work(self):
+        with patch.object(PocketCastsImporter, "_catalog_alias_row", return_value=None):
+            before = self._run_import()
+        before_counters = dict(self.last_counters)
+
+        after = self._run_import()
+
+        self.assertEqual(before_counters["differs_index_miss"], self.COUNT)
+        self.assertEqual(self.last_counters["alias_matched"], self.COUNT)
+        self.assertEqual(self.last_counters.get("differs_index_miss", 0), 0)
+        self.assertEqual(self.last_counters["written"], 0)
+        self.assertEqual(PodcastEpisode.objects.count(), self.COUNT)
+        self.assertEqual(
+            set(PodcastEpisode.objects.values_list("episode_uuid", flat=True)),
+            {f"canonical-{i}" for i in range(self.COUNT)},
+        )
+        # Per-episode discovery was ~5 queries each; now it is a fixed few.
+        self.assertLess(after * 5, before)
+        self.assertLess(after, 40)
+
+    def test_a_changed_aliased_episode_is_still_written(self):
+        self._run_import()
+        self.metadata["provider-3"]["duration"] = 2222
+        self._run_import()
+        self.assertEqual(
+            PodcastEpisode.objects.get(episode_uuid="canonical-3").duration, 2222
+        )
+
+    def test_a_new_episode_is_still_created(self):
+        self._run_import()
+        self.metadata["provider-new"] = {
+            "uuid": "provider-new",
+            "title": "Brand New",
+            "published": PUBLISHED.isoformat(),
+            "duration": 60,
+            "url": "https://example.com/new.mp3",
+        }
+        self._run_import()
+        self.assertTrue(PodcastEpisode.objects.filter(episode_uuid="provider-new").exists())
+
+    def test_untracked_alias_is_left_to_the_full_sync(self):
+        from app.models import Item
+
+        Item.objects.filter(media_id="canonical-0").delete()
+        self._run_import()
+        # The sync adopts the provider UUID for untracked episodes.
+        self.assertTrue(PodcastEpisode.objects.filter(episode_uuid="provider-0").exists())
+        self.assertEqual(self.last_counters["differs_index_miss"], 1)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 from collections.abc import Iterable
 from itertools import batched
@@ -12,7 +13,7 @@ from django.db import connection
 from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
-from app.models import CollectionEntry, Item, ItemTag, MediaTypes, Sources, Status
+from app.models import CollectionEntry, Item, MediaTypes, Sources, Status
 from app.providers import tmdb
 
 SMART_FILTER_KEYS = (
@@ -51,6 +52,9 @@ SMART_FILTER_KEYS = (
     "tag",
     "tag_mode",
     "list",
+    # Which evaluation semantics the rules were saved under; missing means
+    # the pre-engine semantics (see app.library_query.adapters).
+    "semantics_version",
 )
 
 TAG_MODE_CHOICES = {"and", "or", "not"}
@@ -91,6 +95,7 @@ SMART_FILTER_DEFAULTS = {
     "tag": [],
     "tag_mode": "or",
     "list": [],
+    "semantics_version": "",
 }
 
 MAX_RATING = 10.0
@@ -155,7 +160,8 @@ FORMAT_MEDIA_TYPES = {
     MediaTypes.MANGA.value,
     MediaTypes.COMIC.value,
 }
-AUTHOR_MEDIA_TYPES = FORMAT_MEDIA_TYPES
+# A video's channel is stored as its author, so videos filter by it too.
+AUTHOR_MEDIA_TYPES = FORMAT_MEDIA_TYPES | {MediaTypes.VIDEO.value}
 
 
 def _normalize_filter_value(value) -> str:
@@ -496,6 +502,9 @@ def normalize_rule_payload(payload, owner):
         deduped_tags.append(value)
 
     list_ids = _valid_linked_list_ids(owner, _payload_getlist(payload, "list"))
+    semantics_version = str(_payload_get(payload, "semantics_version", "") or "").strip()
+    if not semantics_version.isdigit():
+        semantics_version = ""
 
     return {
         "media_types": normalized_media_types,
@@ -529,7 +538,24 @@ def normalize_rule_payload(payload, owner):
         "tag": deduped_tags,
         "tag_mode": tag_mode,
         "list": list_ids,
+        "semantics_version": semantics_version,
     }
+
+
+def saved_filters(normalized_rules: dict, custom_list) -> dict:
+    """Return the rules to store for a list, keeping its semantics version.
+
+    Editing a list's rules never changes how the list is evaluated; only a
+    newly created smart list starts on the current semantics.
+    """
+    filters = {
+        key: normalized_rules.get(key, SMART_FILTER_DEFAULTS[key])
+        for key in SMART_FILTER_KEYS
+    }
+    filters["semantics_version"] = str(
+        (custom_list.smart_filters or {}).get("semantics_version") or "",
+    )
+    return filters
 
 
 def normalize_list_rules(custom_list) -> dict:
@@ -635,191 +661,6 @@ def _target_media_types(owner, rules_media_types: list[str]) -> list[str]:
         for media_type in available
         if media_type not in IMPLICIT_ALL_EXCLUDED_MEDIA_TYPES
     ]
-
-
-def _matches_item_filters(item: Item, rules: dict, today, region=None) -> bool:
-    genre_filter = _normalize_filter_value(rules.get("genre"))
-    implied_genre_filter = _normalize_filter_value(rules.get("implied_genre"))
-    year_filter = _normalize_filter_value(rules.get("year"))
-    source_filter = _normalize_filter_value(rules.get("source"))
-    language_filter = _normalize_filter_value(rules.get("language"))
-    country_filter = _normalize_filter_value(rules.get("country"))
-    platform_filter = _normalize_filter_value(rules.get("platform"))
-    origin_filter = _normalize_filter_value(rules.get("origin"))
-    release_filter = _normalize_filter_value(rules.get("release") or "all")
-
-    if genre_filter:
-        item_genres = getattr(item, "genres", None) or []
-        if not any(
-            _normalize_filter_value(genre) == genre_filter for genre in item_genres
-        ):
-            return False
-    if implied_genre_filter:
-        item_implied_genres = getattr(item, "implied_genres", None) or []
-        if not any(
-            _normalize_filter_value(genre) == implied_genre_filter
-            for genre in item_implied_genres
-        ):
-            return False
-
-    if year_filter == "unknown":
-        if getattr(item, "release_datetime", None):
-            return False
-    elif year_filter.isdigit():
-        release_value = getattr(item, "release_datetime", None)
-        release_year = getattr(release_value, "year", None) if release_value else None
-        if release_year != int(year_filter):
-            return False
-
-    if (
-        source_filter
-        and _normalize_filter_value(getattr(item, "source", "")) != source_filter
-    ):
-        return False
-
-    release_date_from = rules.get("release_date_from")
-    release_date_to = rules.get("release_date_to")
-    if release_date_from or release_date_to:
-        item_release = _release_date_from_value(getattr(item, "release_datetime", None))
-        if item_release is None:
-            return False
-        if release_date_from:
-            try:
-                if item_release < datetime.date.fromisoformat(release_date_from):
-                    return False
-            except ValueError:
-                pass
-        if release_date_to:
-            try:
-                if item_release > datetime.date.fromisoformat(release_date_to):
-                    return False
-            except ValueError:
-                pass
-
-    if release_filter and not _matches_release_filter_value(
-        getattr(item, "release_datetime", None),
-        release_filter,
-        today,
-    ):
-        return False
-
-    if language_filter:
-        languages = _extract_languages(item)
-        if not any(
-            _normalize_filter_value(language) == language_filter
-            for language in languages
-        ):
-            return False
-
-    if country_filter:
-        country = _extract_country(item)
-        if _normalize_filter_value(country) != country_filter:
-            return False
-
-    if origin_filter:
-        origin = _extract_country(item)
-        if _normalize_filter_value(origin) != origin_filter:
-            return False
-
-    if platform_filter:
-        platforms = _extract_platforms(item)
-        if not any(
-            _normalize_filter_value(platform) == platform_filter
-            for platform in platforms
-        ):
-            return False
-
-    format_filter = _normalize_filter_value(rules.get("format"))
-    if format_filter:
-        item_format = _normalize_filter_value(getattr(item, "format", "") or "")
-        if item_format != format_filter:
-            return False
-
-    author_filter = _normalize_filter_value(rules.get("author"))
-    if author_filter:
-        authors = _extract_authors(item)
-        if not any(
-            _normalize_filter_value(author) == author_filter for author in authors
-        ):
-            return False
-
-    provider_filter = _normalize_filter_value(rules.get("provider"))
-    if provider_filter:
-        providers = _extract_item_providers(item, region)
-        if not providers or not any(
-            _normalize_filter_value(provider) == provider_filter
-            for provider in providers
-        ):
-            return False
-
-    return True
-
-
-def _rules_require_item_scan(normalized_rules: dict) -> bool:
-    """Return whether matching requires per-item inspection beyond the base queryset."""
-    if _normalize_filter_value(normalized_rules.get("release") or "all") != "all":
-        return True
-
-    if normalized_rules.get("collection", "all") != "all":
-        return True
-
-    if normalized_rules.get("rating", "all") != "all":
-        return True
-    if _normalize_decimal_value(
-        normalized_rules.get("rating_min")
-    ) or _normalize_decimal_value(normalized_rules.get("rating_max")):
-        return True
-
-    if normalized_rules.get("tag"):
-        return True
-
-    for key in (
-        "genre",
-        "implied_genre",
-        "year",
-        "release_date_from",
-        "release_date_to",
-        "source",
-        "language",
-        "country",
-        "platform",
-        "origin",
-        "format",
-        "author",
-        "provider",
-    ):
-        if _normalize_filter_value(normalized_rules.get(key)):
-            return True
-
-    return False
-
-
-def _matches_collection_filter(
-    entry,
-    media_type: str,
-    collection_filter: str,
-    collected_item_ids: set[int],
-    collected_episode_pairs: set[tuple[str, str]],
-) -> bool:
-    if collection_filter == "all":
-        return True
-
-    item = getattr(entry, "item", None)
-    if not item:
-        return False
-
-    has_collection = item.id in collected_item_ids
-    if not has_collection and media_type in SHOW_COLLECTION_MEDIA_TYPES:
-        has_collection = (
-            str(item.media_id),
-            str(item.source),
-        ) in collected_episode_pairs
-
-    if collection_filter == "collected":
-        return has_collection
-    if collection_filter == "not_collected":
-        return not has_collection
-    return True
 
 
 def _id_batch_size(value_count: int) -> int:
@@ -934,89 +775,10 @@ def _collection_only_item_ids(
     return result_ids
 
 
-def _filter_item_ids_by_rating(
-    owner,
-    media_type: str,
-    item_ids: Iterable[int],
-    rating_filter: str,
-    rating_min: str = "",
-    rating_max: str = "",
-) -> set[int]:
-    """Filter candidate item ids using the same rated/unrated semantics as media lists."""
-    candidate_item_ids = {item_id for item_id in item_ids if item_id}
-    if not candidate_item_ids or (
-        rating_filter == "all" and not rating_min and not rating_max
-    ):
-        return candidate_item_ids
+def _library_query(owner, normalized_rules: dict, target_media_types: list[str]):
+    from app.library_query.adapters import from_smart_rules
 
-    model = apps.get_model("app", media_type)
-    # Episode has no `user` field; it hangs off its season.
-    owner_lookup = (
-        {"related_season__user": owner}
-        if media_type == MediaTypes.EPISODE.value
-        else {"user": owner}
-    )
-    rated_item_ids = set()
-    for id_batch in batched(candidate_item_ids, _id_batch_size(len(candidate_item_ids))):
-        queryset = model.objects.filter(
-            **owner_lookup,
-            item_id__in=id_batch,
-            score__isnull=False,
-        )
-        if rating_min:
-            queryset = queryset.filter(score__gte=float(rating_min))
-        if rating_max:
-            queryset = queryset.filter(score__lte=float(rating_max))
-        rated_item_ids.update(queryset.values_list("item_id", flat=True))
-
-    if rating_filter == "not_rated":
-        return candidate_item_ids - rated_item_ids
-    if rating_filter == "rated":
-        return candidate_item_ids & rated_item_ids
-    if rating_min or rating_max:
-        return candidate_item_ids & rated_item_ids
-    return candidate_item_ids
-
-
-def _resolve_tag_id_sets(
-    owner,
-    tag_values: list[str],
-    tag_mode: str,
-) -> tuple[set[int] | None, set[int] | None]:
-    """Return (matching_ids_or_None, excluded_ids_or_None) for a mode-aware tag filter."""
-    if not tag_values:
-        return None, None
-
-    per_tag_id_sets = [
-        set(
-            ItemTag.objects.filter(
-                tag__user=owner,
-                tag__name__iexact=value,
-            ).values_list("item_id", flat=True),
-        )
-        for value in tag_values
-    ]
-
-    if tag_mode == "and":
-        return set.intersection(*per_tag_id_sets), None
-    if tag_mode == "not":
-        return None, set().union(*per_tag_id_sets)
-    return set().union(*per_tag_id_sets), None
-
-
-def _resolve_list_membership_item_ids(list_ids: list[int]) -> set[int]:
-    """Return the union of item ids belonging to the given linked lists."""
-    if not list_ids:
-        return set()
-
-    from lists.models import CustomListItem
-
-    return set(
-        CustomListItem.objects.filter(custom_list_id__in=list_ids).values_list(
-            "item_id",
-            flat=True,
-        ),
-    )
+    return from_smart_rules(owner, normalized_rules, tuple(target_media_types))
 
 
 def collect_matching_item_ids(
@@ -1028,148 +790,35 @@ def collect_matching_item_ids(
 ) -> set[int]:
     """Return matching Item IDs for a normalized smart-rule definition.
 
-    `collection_context_cache`, when passed a plain dict by the caller, lets
-    repeated calls for the same owner within one request (e.g. one Home page
-    build iterating several rows/media types) reuse a single collection scan
-    instead of re-querying `CollectionEntry` for every row.
+    Evaluated by the shared library-query engine under the semantics the rules
+    were saved with (see ``app.library_query.adapters``).
+    ``collection_context_cache`` is accepted for existing callers; collection
+    state is now read in SQL, so there is nothing to share.
     """
-    normalized_rules = resolve_relative_date_windows(normalized_rules)
+    from app.library_query import LibraryQueryExecutor
+
     target_media_types = _target_media_types(
         owner, normalized_rules.get("media_types", [])
     )
     if not target_media_types:
         return set()
+    query = _library_query(owner, normalized_rules, target_media_types)
+    if include_collection_only_untracked:
+        query = dataclasses.replace(query, include_collection_only=True)
+    return LibraryQueryExecutor(owner, query).ids()
 
-    collection_filter = normalized_rules.get("collection", "all")
-    rating_filter = normalized_rules.get("rating", "all")
-    rating_min = normalized_rules.get("rating_min", "")
-    rating_max = normalized_rules.get("rating_max", "")
-    has_rating_constraints = (
-        rating_filter != "all" or bool(rating_min) or bool(rating_max)
+
+def matching_items(owner, normalized_rules: dict):
+    """Return the rules' matches as a scope for ``LibraryQuery.within``."""
+    from app.library_query import LibraryQueryExecutor
+
+    target_media_types = _target_media_types(
+        owner, normalized_rules.get("media_types", [])
     )
-    today = timezone.localdate()
-    item_scan_required = _rules_require_item_scan(normalized_rules)
-    region = getattr(owner, "watch_provider_region", None)
-
-    collected_item_ids: set[int] = set()
-    collected_episode_pairs: set[tuple[str, str]] = set()
-    if collection_filter != "all":
-        collected_item_ids, collected_episode_pairs = _resolve_collection_context(
-            owner, None, collection_context_cache,
-        )
-
-    tag_match_ids, tag_excluded_ids = _resolve_tag_id_sets(
-        owner,
-        normalized_rules.get("tag") or [],
-        normalized_rules.get("tag_mode", "or"),
-    )
-
-    def _tag_filter_excludes(item_id: int) -> bool:
-        if tag_match_ids is not None and item_id not in tag_match_ids:
-            return True
-        return bool(tag_excluded_ids is not None and item_id in tag_excluded_ids)
-
-    matched_ids = set()
-    for media_type in target_media_types:
-        queryset = _base_media_queryset(
-            owner=owner,
-            media_type=media_type,
-            status_filter=normalized_rules.get("status") or [],
-            search_query=normalized_rules.get("search", ""),
-            date_added_from=normalized_rules.get("date_added_from", ""),
-            date_added_to=normalized_rules.get("date_added_to", ""),
-            completed_date_from=normalized_rules.get("completed_date_from", ""),
-            completed_date_to=normalized_rules.get("completed_date_to", ""),
-        )
-        queryset_item_ids = set(queryset.values_list("item_id", flat=True))
-
-        if not item_scan_required:
-            matched_ids.update(queryset_item_ids)
-            if (
-                include_collection_only_untracked
-                and not normalized_rules.get("status")
-                and collection_filter != "not_collected"
-                and not has_rating_constraints
-            ):
-                matched_ids.update(
-                    _collection_only_item_ids(
-                        owner,
-                        media_type,
-                        queryset_item_ids,
-                        search_query=normalized_rules.get("search", ""),
-                        collection_context_cache=collection_context_cache,
-                    ),
-                )
-            continue
-
-        if has_rating_constraints:
-            candidate_item_ids = _filter_item_ids_by_rating(
-                owner,
-                media_type,
-                queryset_item_ids,
-                rating_filter,
-                rating_min,
-                rating_max,
-            )
-            if not candidate_item_ids:
-                continue
-            batch_size = _id_batch_size(len(candidate_item_ids))
-            entry_querysets = [
-                queryset.filter(item_id__in=id_batch)
-                for id_batch in batched(candidate_item_ids, batch_size)
-            ]
-        else:
-            entry_querysets = [queryset]
-
-        for entry_queryset in entry_querysets:
-            for entry in entry_queryset.iterator():
-                item = getattr(entry, "item", None)
-                if not item:
-                    continue
-
-                if not _matches_item_filters(item, normalized_rules, today, region):
-                    continue
-
-                if collection_filter != "all" and not _matches_collection_filter(
-                    entry=entry,
-                    media_type=media_type,
-                    collection_filter=collection_filter,
-                    collected_item_ids=collected_item_ids,
-                    collected_episode_pairs=collected_episode_pairs,
-                ):
-                    continue
-
-                if _tag_filter_excludes(item.id):
-                    continue
-
-                matched_ids.add(item.id)
-
-        if (
-            include_collection_only_untracked
-            and not normalized_rules.get("status")
-            and collection_filter != "not_collected"
-            and not has_rating_constraints
-        ):
-            collection_only_ids = _collection_only_item_ids(
-                owner,
-                media_type,
-                queryset_item_ids,
-                search_query=normalized_rules.get("search", ""),
-                collection_context_cache=collection_context_cache,
-            )
-            if collection_only_ids:
-                batch_size = _id_batch_size(len(collection_only_ids))
-                for id_batch in batched(collection_only_ids, batch_size):
-                    for item in Item.objects.filter(id__in=id_batch).iterator():
-                        if not _matches_item_filters(item, normalized_rules, today, region):
-                            continue
-                        if _tag_filter_excludes(item.id):
-                            continue
-                        matched_ids.add(item.id)
-
-    matched_ids |= _resolve_list_membership_item_ids(normalized_rules.get("list") or [])
-
-    return matched_ids
+    if not target_media_types:
+        return Item.objects.none().values("pk")
+    query = _library_query(owner, normalized_rules, target_media_types)
+    return LibraryQueryExecutor(owner, query).matches()
 
 
 def item_matches_rules(
@@ -1180,96 +829,15 @@ def item_matches_rules(
     collection_context: tuple[set[int], set[tuple[str, str]]] | None = None,
 ) -> bool:
     """Return whether a single item currently matches a normalized rule set for an owner."""
+    from app.library_query import LibraryQueryExecutor
+
     if not owner or not item:
         return False
-
-    normalized_rules = resolve_relative_date_windows(normalized_rules)
-
-    list_ids = normalized_rules.get("list") or []
-    if list_ids:
-        from lists.models import CustomListItem
-
-        if CustomListItem.objects.filter(
-            custom_list_id__in=list_ids,
-            item_id=item.id,
-        ).exists():
-            return True
-
     target_media_types = _target_media_types(
         owner, normalized_rules.get("media_types", [])
     )
-    if item.media_type not in target_media_types:
-        return False
-
-    queryset = _base_media_queryset(
-        owner=owner,
-        media_type=item.media_type,
-        status_filter=normalized_rules.get("status") or [],
-        search_query=normalized_rules.get("search", ""),
-        date_added_from=normalized_rules.get("date_added_from", ""),
-        date_added_to=normalized_rules.get("date_added_to", ""),
-        completed_date_from=normalized_rules.get("completed_date_from", ""),
-        completed_date_to=normalized_rules.get("completed_date_to", ""),
-    ).filter(item_id=item.id)
-
-    rating_filter = normalized_rules.get("rating", "all")
-    rating_min = normalized_rules.get("rating_min", "")
-    rating_max = normalized_rules.get("rating_max", "")
-    if not _filter_item_ids_by_rating(
-        owner,
-        item.media_type,
-        [item.id],
-        rating_filter,
-        rating_min,
-        rating_max,
-    ):
-        return False
-
-    today = timezone.localdate()
-    region = getattr(owner, "watch_provider_region", None)
-    if not _matches_item_filters(item, normalized_rules, today, region):
-        return False
-
-    tag_values = normalized_rules.get("tag") or []
-    if tag_values:
-        tag_mode = normalized_rules.get("tag_mode", "or")
-        item_tag_names = {
-            name.lower()
-            for name in ItemTag.objects.filter(
-                tag__user=owner,
-                item=item,
-            ).values_list("tag__name", flat=True)
-        }
-        wanted = {value.lower() for value in tag_values}
-        if tag_mode == "and":
-            if not wanted.issubset(item_tag_names):
-                return False
-        elif tag_mode == "not":
-            if wanted & item_tag_names:
-                return False
-        elif not (wanted & item_tag_names):
-            return False
-
-    collection_filter = normalized_rules.get("collection", "all")
-    if collection_filter != "all":
-        if collection_context is None:
-            collection_context = _collection_filter_context(owner)
-        collected_item_ids, collected_episode_pairs = collection_context
-    else:
-        collected_item_ids = set()
-        collected_episode_pairs = set()
-
-    for entry in queryset.iterator():
-        if _matches_collection_filter(
-            entry=entry,
-            media_type=item.media_type,
-            collection_filter=collection_filter,
-            collected_item_ids=collected_item_ids,
-            collected_episode_pairs=collected_episode_pairs,
-        ):
-            return True
-
-    return False
+    query = _library_query(owner, normalized_rules, target_media_types)
+    return LibraryQueryExecutor(owner, query).contains(item.id)
 
 
 def sync_smart_lists_for_item(owner, item: Item) -> dict[str, int]:
@@ -1299,23 +867,15 @@ def sync_smart_lists_for_item(owner, item: Item) -> dict[str, int]:
         ).values_list("custom_list_id", flat=True),
     )
 
-    collection_context = None
     pending_adds = []
     pending_removals = []
 
     for custom_list in smart_lists:
         normalized_rules = normalize_list_rules(custom_list)
-        if (
-            normalized_rules.get("collection", "all") != "all"
-            and collection_context is None
-        ):
-            collection_context = _collection_filter_context(owner)
-
         should_include = item_matches_rules(
             owner=owner,
             item=item,
             normalized_rules=normalized_rules,
-            collection_context=collection_context,
         )
         currently_in_list = custom_list.id in existing_memberships
 
@@ -1379,6 +939,29 @@ def build_rule_filter_data(
                 ),
             )
 
+    return build_filter_data_for_items(
+        owner,
+        item_ids,
+        target_media_types,
+        precomputed_tags=precomputed_tags,
+        include_list_options=include_list_options,
+    )
+
+
+def build_filter_data_for_items(
+    owner,
+    item_ids,
+    target_media_types,
+    *,
+    precomputed_tags: list[str] | None = None,
+    include_list_options: bool = True,
+):
+    """Build filter-menu options (genres, years, platforms...) from ``item_ids``.
+
+    ``owner`` supplies the tag names, provider region and linked-list options;
+    ``target_media_types`` decides which type-specific panes the menu shows.
+    """
+    item_ids = set(item_ids)
     region = getattr(owner, "watch_provider_region", None)
 
     only_fields = (
@@ -1392,8 +975,11 @@ def build_rule_filter_data(
         "format",
         "media_type",
         "authors",
-        "watch_providers",
     )
+    # The column holds every region's availability (~146 KiB a title); read it
+    # only when the menu will show the providers pane.
+    if region and region != "UNSET":
+        only_fields += ("watch_providers",)
     item_batch_size = _id_batch_size(len(item_ids))
     items = [
         item
@@ -1526,6 +1112,8 @@ def build_rule_filter_data(
         "show_authors": any(
             media_type in AUTHOR_MEDIA_TYPES for media_type in target_media_types
         ),
+        "author_is_channel": bool(target_media_types)
+        and all(media_type == MediaTypes.VIDEO.value for media_type in target_media_types),
         "providers": [
             {"value": value, "label": value}
             for value in sorted(providers_set, key=lambda value: value.lower())

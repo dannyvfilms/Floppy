@@ -66,8 +66,17 @@ class RapidRatingTests(SimpleTestCase):
 
     def test_rapid_rating_is_linked_from_sidebar(self):
         template = (
-            settings.BASE_DIR / "templates" / "base.html"
+            settings.BASE_DIR
+            / "templates"
+            / "app"
+            / "components"
+            / "sidebar_navigation_items.html"
         ).read_text(encoding="utf-8")
+        script = (settings.BASE_DIR / "static" / "js" / "savedViews.js").read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn("{% url 'rapid_rating' as rapid_rating_url %}", template)
         self.assertIn('<span>{% trans "Rapid Rating" %}</span>', template)
+        self.assertIn('pin_key="rapid_rating"', template)
+        self.assertIn('"rapid_rating"', script)

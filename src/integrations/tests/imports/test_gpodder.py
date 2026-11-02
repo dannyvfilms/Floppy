@@ -38,24 +38,23 @@ class GPodderImporterTests(TestCase):
     @patch("integrations.imports.gpodder.gpodder_api.fetch_episode_actions")
     @patch("integrations.imports.gpodder.gpodder_api.fetch_subscriptions")
     @patch("integrations.imports.gpodder.gpodder_api.verify_login")
-    @patch("integrations.imports.gpodder.podcast_rss.fetch_episodes_from_rss")
-    @patch("integrations.imports.gpodder.podcast_rss.fetch_show_metadata_from_rss")
+    @patch("integrations.imports.gpodder.podcast_rss.fetch_feed_from_rss")
     def test_initial_sync_creates_show_episode_and_progress(
         self,
-        mock_show_metadata,
-        mock_fetch_rss_episodes,
+        mock_fetch_feed,
         _mock_verify_login,
         mock_fetch_subscriptions,
         mock_fetch_actions,
         _mock_register_device,
     ):
         mock_fetch_subscriptions.return_value = ["https://example.com/feed.xml"]
-        mock_show_metadata.return_value = {
+        mock_fetch_feed.side_effect = lambda _url: (show_metadata, rss_episodes)
+        show_metadata = {
             "title": "Example Show",
             "description": "Desc",
             "author": "Host",
         }
-        mock_fetch_rss_episodes.return_value = [
+        rss_episodes = [
             {
                 "title": "Episode 1",
                 "published": timezone.now(),
@@ -90,6 +89,7 @@ class GPodderImporterTests(TestCase):
         podcast = Podcast.objects.get(item=item, user=self.user)
         self.assertEqual(podcast.status, Status.IN_PROGRESS.value)
         self.assertEqual(podcast.played_up_to_seconds, 120)
+        self.assertEqual(podcast.entry_source, "gpodder")
         self.account.refresh_from_db()
         self.assertEqual(self.account.episode_actions_since, 77)
 
@@ -97,12 +97,10 @@ class GPodderImporterTests(TestCase):
     @patch("integrations.imports.gpodder.gpodder_api.fetch_episode_actions")
     @patch("integrations.imports.gpodder.gpodder_api.fetch_subscriptions")
     @patch("integrations.imports.gpodder.gpodder_api.verify_login")
-    @patch("integrations.imports.gpodder.podcast_rss.fetch_episodes_from_rss")
-    @patch("integrations.imports.gpodder.podcast_rss.fetch_show_metadata_from_rss")
+    @patch("integrations.imports.gpodder.podcast_rss.fetch_feed_from_rss")
     def test_incremental_sync_updates_to_completion_and_stays_idempotent(
         self,
-        mock_show_metadata,
-        mock_fetch_rss_episodes,
+        mock_fetch_feed,
         _mock_verify_login,
         mock_fetch_subscriptions,
         mock_fetch_actions,
@@ -144,8 +142,9 @@ class GPodderImporterTests(TestCase):
         )
 
         mock_fetch_subscriptions.return_value = ["https://example.com/feed.xml"]
-        mock_show_metadata.return_value = {"title": "Example Show"}
-        mock_fetch_rss_episodes.return_value = [
+        mock_fetch_feed.side_effect = lambda _url: (show_metadata, rss_episodes)
+        show_metadata = {"title": "Example Show"}
+        rss_episodes = [
             {
                 "title": "Episode 1",
                 "published": now,
@@ -190,23 +189,22 @@ class GPodderImporterTests(TestCase):
     @patch("integrations.imports.gpodder.gpodder_api.fetch_episode_actions")
     @patch("integrations.imports.gpodder.gpodder_api.fetch_subscriptions")
     @patch("integrations.imports.gpodder.gpodder_api.verify_login")
-    @patch("integrations.imports.gpodder.podcast_rss.fetch_episodes_from_rss")
-    @patch("integrations.imports.gpodder.podcast_rss.fetch_show_metadata_from_rss")
+    @patch("integrations.imports.gpodder.podcast_rss.fetch_feed_from_rss")
     def test_initial_sync_populates_show_and_item_artwork_from_rss(
         self,
-        mock_show_metadata,
-        mock_fetch_rss_episodes,
+        mock_fetch_feed,
         _mock_verify_login,
         mock_fetch_subscriptions,
         mock_fetch_actions,
         _mock_register_device,
     ):
         mock_fetch_subscriptions.return_value = ["https://example.com/feed.xml"]
-        mock_show_metadata.return_value = {
+        mock_fetch_feed.side_effect = lambda _url: (show_metadata, rss_episodes)
+        show_metadata = {
             "title": "Example Show",
             "image": "https://example.com/art.jpg",
         }
-        mock_fetch_rss_episodes.return_value = [
+        rss_episodes = [
             {
                 "title": "Episode 1",
                 "published": timezone.now(),
@@ -242,12 +240,10 @@ class GPodderImporterTests(TestCase):
     @patch("integrations.imports.gpodder.gpodder_api.fetch_episode_actions")
     @patch("integrations.imports.gpodder.gpodder_api.fetch_subscriptions")
     @patch("integrations.imports.gpodder.gpodder_api.verify_login")
-    @patch("integrations.imports.gpodder.podcast_rss.fetch_episodes_from_rss")
-    @patch("integrations.imports.gpodder.podcast_rss.fetch_show_metadata_from_rss")
+    @patch("integrations.imports.gpodder.podcast_rss.fetch_feed_from_rss")
     def test_resync_backfills_item_image_once_show_gains_artwork(
         self,
-        mock_show_metadata,
-        mock_fetch_rss_episodes,
+        mock_fetch_feed,
         _mock_verify_login,
         mock_fetch_subscriptions,
         mock_fetch_actions,
@@ -289,11 +285,12 @@ class GPodderImporterTests(TestCase):
         )
 
         mock_fetch_subscriptions.return_value = ["https://example.com/feed.xml"]
-        mock_show_metadata.return_value = {
+        mock_fetch_feed.side_effect = lambda _url: (show_metadata, rss_episodes)
+        show_metadata = {
             "title": "Example Show",
             "image": "https://example.com/new-art.jpg",
         }
-        mock_fetch_rss_episodes.return_value = [
+        rss_episodes = [
             {
                 "title": "Episode 1",
                 "published": now,
@@ -327,12 +324,10 @@ class GPodderImporterTests(TestCase):
     @patch("integrations.imports.gpodder.gpodder_api.fetch_episode_actions")
     @patch("integrations.imports.gpodder.gpodder_api.fetch_subscriptions")
     @patch("integrations.imports.gpodder.gpodder_api.verify_login")
-    @patch("integrations.imports.gpodder.podcast_rss.fetch_episodes_from_rss")
-    @patch("integrations.imports.gpodder.podcast_rss.fetch_show_metadata_from_rss")
+    @patch("integrations.imports.gpodder.podcast_rss.fetch_feed_from_rss")
     def test_resync_backfills_website_url_on_an_existing_show_and_episode(
         self,
-        mock_show_metadata,
-        mock_fetch_rss_episodes,
+        mock_fetch_feed,
         _mock_verify_login,
         mock_fetch_subscriptions,
         mock_fetch_actions,
@@ -361,11 +356,12 @@ class GPodderImporterTests(TestCase):
         )
 
         mock_fetch_subscriptions.return_value = ["https://example.com/feed.xml"]
-        mock_show_metadata.return_value = {
+        mock_fetch_feed.side_effect = lambda _url: (show_metadata, rss_episodes)
+        show_metadata = {
             "title": "Example Show",
             "website_url": "https://www.spreaker.com/show/example",
         }
-        mock_fetch_rss_episodes.return_value = [
+        rss_episodes = [
             {
                 "title": "Episode 1",
                 "published": now,
@@ -446,12 +442,10 @@ class GPodderImporterTests(TestCase):
     @patch("integrations.imports.gpodder.gpodder_api.fetch_episode_actions")
     @patch("integrations.imports.gpodder.gpodder_api.fetch_subscriptions")
     @patch("integrations.imports.gpodder.gpodder_api.verify_login")
-    @patch("integrations.imports.gpodder.podcast_rss.fetch_episodes_from_rss")
-    @patch("integrations.imports.gpodder.podcast_rss.fetch_show_metadata_from_rss")
+    @patch("integrations.imports.gpodder.podcast_rss.fetch_feed_from_rss")
     def test_recently_full_resynced_account_stays_incremental(
         self,
-        mock_show_metadata,
-        mock_fetch_rss_episodes,
+        mock_fetch_feed,
         _mock_verify_login,
         mock_fetch_subscriptions,
         mock_fetch_actions,
@@ -462,8 +456,9 @@ class GPodderImporterTests(TestCase):
         self.account.save(update_fields=["episode_actions_since", "last_full_resync_at"])
 
         mock_fetch_subscriptions.return_value = []
-        mock_show_metadata.return_value = {}
-        mock_fetch_rss_episodes.return_value = []
+        mock_fetch_feed.side_effect = lambda _url: (show_metadata, rss_episodes)
+        show_metadata = {}
+        rss_episodes = []
         mock_fetch_actions.return_value = ([], 55)
 
         gpodder_import.importer(None, self.user, "new")
@@ -475,12 +470,10 @@ class GPodderImporterTests(TestCase):
     @patch("integrations.imports.gpodder.gpodder_api.fetch_episode_actions")
     @patch("integrations.imports.gpodder.gpodder_api.fetch_subscriptions")
     @patch("integrations.imports.gpodder.gpodder_api.verify_login")
-    @patch("integrations.imports.gpodder.podcast_rss.fetch_episodes_from_rss")
-    @patch("integrations.imports.gpodder.podcast_rss.fetch_show_metadata_from_rss")
+    @patch("integrations.imports.gpodder.podcast_rss.fetch_feed_from_rss")
     def test_stale_cursor_triggers_full_resync_and_recovers_missed_completion(
         self,
-        mock_show_metadata,
-        mock_fetch_rss_episodes,
+        mock_fetch_feed,
         _mock_verify_login,
         mock_fetch_subscriptions,
         mock_fetch_actions,
@@ -526,8 +519,9 @@ class GPodderImporterTests(TestCase):
         self.account.save(update_fields=["episode_actions_since", "last_full_resync_at"])
 
         mock_fetch_subscriptions.return_value = ["https://example.com/feed.xml"]
-        mock_show_metadata.return_value = {"title": "Voicemail Dump Truck"}
-        mock_fetch_rss_episodes.return_value = [
+        mock_fetch_feed.side_effect = lambda _url: (show_metadata, rss_episodes)
+        show_metadata = {"title": "Voicemail Dump Truck"}
+        rss_episodes = [
             {
                 "title": "Daymare.mp3 | Voicemail Dump Truck 221",
                 "published": now,
@@ -595,12 +589,10 @@ class GPodderImporterTests(TestCase):
     @patch("integrations.imports.gpodder.gpodder_api.fetch_episode_actions")
     @patch("integrations.imports.gpodder.gpodder_api.fetch_subscriptions")
     @patch("integrations.imports.gpodder.gpodder_api.verify_login")
-    @patch("integrations.imports.gpodder.podcast_rss.fetch_episodes_from_rss")
-    @patch("integrations.imports.gpodder.podcast_rss.fetch_show_metadata_from_rss")
+    @patch("integrations.imports.gpodder.podcast_rss.fetch_feed_from_rss")
     def test_full_resync_replay_does_not_duplicate_repeated_listens(
         self,
-        mock_show_metadata,
-        mock_fetch_rss_episodes,
+        mock_fetch_feed,
         _mock_verify_login,
         mock_fetch_subscriptions,
         mock_fetch_actions,
@@ -666,8 +658,9 @@ class GPodderImporterTests(TestCase):
         self.account.save(update_fields=["episode_actions_since", "last_full_resync_at"])
 
         mock_fetch_subscriptions.return_value = ["https://example.com/feed.xml"]
-        mock_show_metadata.return_value = {"title": "Example Show"}
-        mock_fetch_rss_episodes.return_value = [
+        mock_fetch_feed.side_effect = lambda _url: (show_metadata, rss_episodes)
+        show_metadata = {"title": "Example Show"}
+        rss_episodes = [
             {
                 "title": "Episode 1",
                 "published": now,
@@ -705,3 +698,120 @@ class GPodderImporterTests(TestCase):
         second_completion.refresh_from_db()
         self.assertEqual(first_completion.status, Status.COMPLETED.value)
         self.assertEqual(second_completion.status, Status.COMPLETED.value)
+
+
+@patch("integrations.imports.gpodder.gpodder_api.register_device")
+@patch("integrations.imports.gpodder.gpodder_api.verify_login")
+@patch("integrations.imports.gpodder.gpodder_api.fetch_subscriptions")
+@patch("integrations.imports.gpodder.gpodder_api.fetch_episode_actions")
+@patch("integrations.imports.gpodder.podcast_rss.fetch_feed_from_rss")
+@patch("app.statistics_cache.invalidate_all_statistics_days")
+@patch("app.history_cache.invalidate_history_cache")
+class GPodderRecurringPollCostTests(TestCase):
+    """An empty 15-minute poll must not wipe caches or download feeds (#1158)."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="poller", password="pass"
+        )
+        GPodderAccount.objects.create(
+            user=self.user,
+            server_url=encrypt("https://gpodder.net"),
+            username=encrypt("poller"),
+            password=encrypt("secret"),
+            device_id=f"yamtrack-{self.user.id}",
+            episode_actions_since=10,
+            last_full_resync_at=timezone.now(),
+        )
+
+    def _run_recurring(self):
+        from integrations import tasks
+
+        with patch("events.tasks.reload_calendar.delay"):
+            tasks.import_gpodder_recurring(self.user.id)
+
+    def test_empty_incremental_poll_skips_feeds_and_invalidation(
+        self,
+        mock_invalidate,
+        mock_stats_refresh,
+        mock_fetch_feed,
+        mock_fetch_actions,
+        mock_fetch_subscriptions,
+        *_mocks,
+    ):
+        mock_fetch_actions.return_value = ([], 10)
+
+        self._run_recurring()
+
+        mock_fetch_subscriptions.assert_not_called()
+        mock_fetch_feed.assert_not_called()
+        mock_invalidate.assert_not_called()
+        mock_stats_refresh.assert_not_called()
+
+    @patch("app.statistics_cache.invalidate_statistics_days")
+    def test_poll_with_a_play_reads_each_feed_once_and_marks_only_its_day(
+        self,
+        mock_mark_days,
+        mock_invalidate,
+        mock_stats_refresh,
+        mock_fetch_feed,
+        mock_fetch_actions,
+        mock_fetch_subscriptions,
+        *_mocks,
+    ):
+        mock_fetch_subscriptions.return_value = ["https://example.com/feed.xml"]
+        mock_fetch_feed.return_value = (
+            {"title": "Example Show"},
+            [
+                {
+                    "title": "Episode 1",
+                    "published": timezone.now(),
+                    "duration": 300,
+                    "audio_url": "https://cdn.example.com/ep1.mp3",
+                    "guid": "ep-1",
+                },
+            ],
+        )
+        mock_fetch_actions.return_value = (
+            [
+                {
+                    "action": "play",
+                    "podcast": "https://example.com/feed.xml",
+                    "episode": "https://cdn.example.com/ep1.mp3",
+                    "timestamp": "2026-01-01T12:00:00Z",
+                    "position": 300,
+                    "total": 300,
+                },
+            ],
+            11,
+        )
+
+        with (
+            patch("events.tasks.reload_calendar.delay") as mock_calendar,
+            patch("events.tasks.reload_calendar.apply_async") as mock_scoped,
+        ):
+            from integrations import tasks
+
+            result = tasks.import_gpodder_recurring(self.user.id)
+
+        self.assertIn("Imported 1", result)
+        mock_fetch_feed.assert_called_once_with("https://example.com/feed.xml")
+        # The play's own post_save marks its day; the library-wide catch-up
+        # that bulk importers need is skipped.
+        marked_days = [
+            day
+            for call in mock_mark_days.call_args_list
+            for day in call.kwargs["day_values"]
+        ]
+        self.assertIn("20260101", [str(day) for day in marked_days])
+        mock_calendar.assert_not_called()
+        # The new episode still gets its calendar event, scoped to that item.
+        new_item = Item.objects.get(source=Sources.GPODDER.value)
+        mock_scoped.assert_called_once_with(
+            kwargs={"item_ids": [new_item.id]}, countdown=3
+        )
+        self.assertNotIn(
+            ((self.user.id,), {"force": True}),
+            [(c.args, c.kwargs) for c in mock_invalidate.call_args_list],
+        )
+        mock_stats_refresh.assert_not_called()

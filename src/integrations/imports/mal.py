@@ -45,6 +45,7 @@ class MyAnimeListImporter:
 
         # Track existing media for "new" mode
         self.existing_media = helpers.get_existing_media(user)
+        self.deleted_media = helpers.get_deleted_media(user)
 
         # Track media IDs to delete in overwrite mode
         self.to_delete = defaultdict(lambda: defaultdict(set))
@@ -159,10 +160,12 @@ class MyAnimeListImporter:
             Sources.MAL.value,
             str(content["node"]["id"]),
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 
-        item, _ = app.models.Item.objects.get_or_create(
+        item, _ = helpers.get_or_create_item_across_buckets(
+            user=self.user,
             media_id=str(content["node"]["id"]),
             source=Sources.MAL.value,
             media_type=media_type,
@@ -262,6 +265,7 @@ class MyAnimeListImporter:
             source,
             tmdb_movie_id_str,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 

@@ -3,24 +3,77 @@ import logging
 from collections import defaultdict
 from datetime import UTC, date, timedelta
 
-import icalendar
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required
+from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
-from django.utils import timezone
+from django.utils import formats, timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from app import backdrops
 from app.models import Item, MediaTypes, PodcastEpisode, Status
 from events import tasks
-from events.models import INACTIVE_TRACKING_STATUSES, Event
+from events.history_feed import (
+    DEFAULT_MEDIA_TYPES,
+    HISTORY_MEDIA_TYPES,
+    get_history_plays,
+    selected_history_media_types,
+)
+from events.models import INACTIVE_TRACKING_STATUSES, Event, ReleaseTypes
 from users.models import User, WeekStartDayChoices
 
 logger = logging.getLogger(__name__)
+
+CALENDAR_FEED_CACHE_SECONDS = 15 * 60
+ICS_DATETIME_FORMAT = "%Y%m%dT%H%M%SZ"
+ICS_LINE_OCTETS = 75
+
+
+def _escape_ics_text(value):
+    """Escape a TEXT value (RFC 5545 section 3.3.11)."""
+    return (
+        value.replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\r\n", "\\n")
+        .replace("\n", "\\n")
+        .replace("\r", "\\n")
+    )
+
+
+def _fold_ics_line(line):
+    """Fold a content line at 75 octets without splitting a UTF-8 character."""
+    if len(line) * 4 <= ICS_LINE_OCTETS:
+        return line
+    folded = []
+    current = ""
+    limit = ICS_LINE_OCTETS
+    for char in line:
+        if len((current + char).encode()) > limit:
+            folded.append(current)
+            current = char
+            limit = ICS_LINE_OCTETS - 1  # continuation lines start with a space
+        else:
+            current += char
+    folded.append(current)
+    return "\r\n ".join(folded)
+
+
+def _user_for_token(token):
+    """Return the user a calendar link belongs to, or None for an unknown one."""
+    try:
+        return User.objects.get(token=token)
+    except ObjectDoesNotExist:
+        logger.warning(
+            "Could not process Calendar request: Invalid token: %s",
+            token,
+        )
+        return None
 
 
 @require_GET
@@ -69,8 +122,10 @@ def calendar(request):
     calendar_format = cal.Calendar(firstweekday=first_weekday).monthdayscalendar(
         year, month
     )
-    month_name = cal.month_name[month]
-    base_weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    month_name = formats.date_format(current_date, "F")
+    base_weekdays = [
+        formats.date_format(date(2024, 1, day), "D") for day in range(1, 8)
+    ]
     weekday_headers = (
         [base_weekdays[6], *base_weekdays[:6]] if week_start_sunday else base_weekdays
     )
@@ -117,6 +172,10 @@ def calendar(request):
         key=lambda media_type: MediaTypes(media_type).label,
     )
 
+    available_release_types = sorted(
+        {release.release_type for release in releases if release.release_type},
+    )
+
     item_ids_by_type = defaultdict(list)
     for release in releases:
         item_ids_by_type[release.item.media_type].append(release.item_id)
@@ -149,9 +208,39 @@ def calendar(request):
         if media_type not in {MediaTypes.TV.value, MediaTypes.EPISODE.value}
     }
 
+    season_identities = {
+        (release.item.source, release.item.media_id)
+        for release in releases
+        if release.item.media_type == MediaTypes.SEASON.value
+    }
+    show_titles = {}
+    if season_identities:
+        show_titles = {
+            (source, media_id): title
+            for source, media_id, title in Item.objects.filter(
+                tv__user=request.user,
+                media_type=MediaTypes.TV.value,
+                source__in={source for source, _ in season_identities},
+                media_id__in={media_id for _, media_id in season_identities},
+            ).values_list("source", "media_id", "title")
+        }
+
     release_dict = {}
+    backdrop_by_item = {}
+    backdrop_misses = []
     for release in releases:
         release.status = status_by_item_id.get(release.item_id)
+        release.calendar_title = (
+            show_titles.get((release.item.source, release.item.media_id))
+            or release.item.title
+            if release.item.media_type == MediaTypes.SEASON.value
+            else str(release.item)
+        )
+        if release.item_id not in backdrop_by_item:
+            backdrop_by_item[release.item_id] = backdrops.cached_backdrop(release.item)
+            if not backdrop_by_item[release.item_id]:
+                backdrop_misses.append(release.item)
+        release.calendar_backdrop = backdrop_by_item[release.item_id]
 
         if (
             release.item.media_type == MediaTypes.PODCAST.value
@@ -168,6 +257,9 @@ def calendar(request):
         if day not in release_dict:
             release_dict[day] = []
         release_dict[day].append(release)
+
+    if backdrop_misses:
+        backdrops.schedule_backdrop_warm(backdrop_misses)
 
     # Get today's date for highlighting
     today = timezone.localdate()
@@ -186,6 +278,8 @@ def calendar(request):
             if media_type != MediaTypes.EPISODE
         ],
         "event_statuses": event_status_values,
+        "history_media_types": HISTORY_MEDIA_TYPES,
+        "history_default_media_types": DEFAULT_MEDIA_TYPES,
         "calendar": calendar_format,
         "month": month,
         "month_name": month_name,
@@ -198,6 +292,9 @@ def calendar(request):
         "today": today,
         "view_type": view_type,
         "available_media_types": available_media_types,
+        "release_type_choices": ReleaseTypes.choices,
+        "available_release_types": available_release_types,
+        "region_unset": request.user.watch_provider_region == "UNSET",
         "available_statuses_by_type": available_statuses_by_type,
         "filter_media_types": filter_media_types,
         "filter_statuses_by_type": filter_statuses_by_type,
@@ -221,16 +318,20 @@ def reload_calendar(request):
 @require_http_methods(["GET", "HEAD", "PROPFIND"])
 def download_calendar(request, token: str):
     """Download the calendar as a iCalendar file."""
-    try:
-        user = User.objects.get(token=token)
-    except ObjectDoesNotExist:
-        logger.warning(
-            "Could not process Calendar request: Invalid token: %s",
-            token,
-        )
+    user = _user_for_token(token)
+    if user is None:
         return HttpResponse(status=401)
 
     now = timezone.now()
+
+    # Calendar apps poll this feed on their own schedule, and each build walks
+    # the whole event window, so a rendered feed is reused briefly per filter.
+    feed_cache_key = (
+        f"calendar_feed:{user.id}:{now.date().isoformat()}:{request.GET.urlencode()}"
+    )
+    cached_feed = cache.get(feed_cache_key)
+    if cached_feed is not None:
+        return _calendar_feed_response(cached_feed)
 
     # Define default start and end date (from past 30 days to incoming 90 days)
     start_date = now.date() - timedelta(days=30)
@@ -254,10 +355,21 @@ def download_calendar(request, token: str):
         if valid_media_types:
             releases = releases.filter(item__media_type__in=valid_media_types)
 
+    # No parameter means every release date; "none" leaves only main releases.
+    if "release_types" in request.GET:
+        allowed_release_types = set(request.GET.getlist("release_types")) & set(
+            ReleaseTypes.values,
+        )
+        releases = releases.filter(
+            Q(release_type="") | Q(release_type__in=allowed_release_types),
+        )
+
     selected_statuses = request.GET.getlist("status")
     if selected_statuses:
         valid_statuses = {
-            status for status in selected_statuses if status in {c.value for c in Status}
+            status
+            for status in selected_statuses
+            if status in {c.value for c in Status}
         }
 
         if valid_statuses:
@@ -271,27 +383,105 @@ def download_calendar(request, token: str):
                 )
             releases = releases.filter(status_query)
 
-    # Create iCalendar object
-    cal = icalendar.Calendar()
-    cal.add("prodid", "-//Floppy//EN")
-    cal.add("version", "2.0")
+    # An entry only needs its time and its title, and reading every Item
+    # column (a dozen of them JSON) for each row was most of the query time.
+    releases = releases.only(
+        "datetime",
+        "content_number",
+        "release_type",
+        "item__title",
+        "item__media_type",
+        "item__season_number",
+        "item__episode_number",
+    )
 
+    # Written out directly: building an icalendar.Event per release spent most
+    # of the request's time (about 0.3 ms each, on feeds of thousands).
+    dtstamp = now.astimezone(UTC).strftime(ICS_DATETIME_FORMAT)
+    lines = ["BEGIN:VCALENDAR", "PRODID:-//Floppy//EN", "VERSION:2.0"]
     for release in releases:
-        cal_event = icalendar.Event()
-        cal_event.add("uid", release.id)
-        cal_event.add("summary", str(release))
         if release.is_sentinel_time:
             start_date = release.datetime.date()
-            cal_event.add("dtstart", start_date)
-            cal_event.add("dtend", start_date + timedelta(days=1))
+            dtstart = f"DTSTART;VALUE=DATE:{start_date:%Y%m%d}"
+            dtend = f"DTEND;VALUE=DATE:{start_date + timedelta(days=1):%Y%m%d}"
         else:
             dt_tz_aware = release.datetime.replace(tzinfo=UTC)
-            cal_event.add("dtstart", dt_tz_aware)
-            cal_event.add("dtend", dt_tz_aware)
-        cal_event.add("dtstamp", now)
-        cal.add_component(cal_event)
+            dtstart = f"DTSTART:{dt_tz_aware.strftime(ICS_DATETIME_FORMAT)}"
+            dtend = f"DTEND:{dt_tz_aware.strftime(ICS_DATETIME_FORMAT)}"
+        lines += [
+            "BEGIN:VEVENT",
+            f"UID:{release.id}",
+            _fold_ics_line(f"SUMMARY:{_escape_ics_text(str(release))}"),
+            dtstart,
+            dtend,
+            f"DTSTAMP:{dtstamp}",
+            "END:VEVENT",
+        ]
+    lines.append("END:VCALENDAR")
 
-    # Return the iCal file
-    response = HttpResponse(cal.to_ical(), content_type="text/calendar")
-    response["Content-Disposition"] = 'attachment; filename="calendar.ics"'
+    feed = ("\r\n".join(lines) + "\r\n").encode()
+    cache.set(feed_cache_key, feed, CALENDAR_FEED_CACHE_SECONDS)
+    return _calendar_feed_response(feed)
+
+
+@login_not_required
+@csrf_exempt
+@require_http_methods(["GET", "HEAD", "PROPFIND"])
+def download_history_calendar(request, token: str):
+    """Download finished plays (what the user watched, read, played) as iCal."""
+    user = _user_for_token(token)
+    if user is None:
+        return HttpResponse(status=401)
+
+    now = timezone.now()
+    media_types = selected_history_media_types(request.GET.getlist("media_types"))
+
+    # Calendar apps poll this link on their own schedule, so a built feed is
+    # reused briefly. The key holds the resolved types, so a link with no
+    # selection shares an entry with one that lists the defaults.
+    feed_cache_key = (
+        f"calendar_history_feed:{user.id}:{now.date().isoformat()}:"
+        f"{','.join(sorted(media_types))}"
+    )
+    cached_feed = cache.get(feed_cache_key)
+    if cached_feed is not None:
+        return _calendar_feed_response(cached_feed, "history.ics")
+
+    dtstamp = now.astimezone(UTC).strftime(ICS_DATETIME_FORMAT)
+    lines = [
+        "BEGIN:VCALENDAR",
+        "PRODID:-//Floppy//EN",
+        "VERSION:2.0",
+        "X-WR-CALNAME:Floppy history",
+    ]
+    for play in get_history_plays(user, media_types, now):
+        if play.is_date_only:
+            dtstart = f"DTSTART;VALUE=DATE:{play.local_date:%Y%m%d}"
+            dtend = (
+                f"DTEND;VALUE=DATE:{play.local_date + timedelta(days=1):%Y%m%d}"
+            )
+        else:
+            played_at = play.played_at.astimezone(UTC).strftime(ICS_DATETIME_FORMAT)
+            dtstart = f"DTSTART:{played_at}"
+            dtend = f"DTEND:{played_at}"
+        lines += [
+            "BEGIN:VEVENT",
+            f"UID:{play.uid}@floppy-history",
+            _fold_ics_line(f"SUMMARY:{_escape_ics_text(play.summary)}"),
+            dtstart,
+            dtend,
+            f"DTSTAMP:{dtstamp}",
+            "END:VEVENT",
+        ]
+    lines.append("END:VCALENDAR")
+
+    feed = ("\r\n".join(lines) + "\r\n").encode()
+    cache.set(feed_cache_key, feed, CALENDAR_FEED_CACHE_SECONDS)
+    return _calendar_feed_response(feed, "history.ics")
+
+
+def _calendar_feed_response(feed, filename="calendar.ics"):
+    """Return the iCal file."""
+    response = HttpResponse(feed, content_type="text/calendar")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response

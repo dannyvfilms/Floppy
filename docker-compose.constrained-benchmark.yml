@@ -4,9 +4,9 @@ services:
   # memswap_limit removes swap the same way `swapoff -a` did in the report.
   floppy:
     image: ${FLOPPY_BENCHMARK_IMAGE:-floppy:issue521-validation}
-    mem_limit: 2g
-    memswap_limit: 2g
-    cpus: 2.0
+    mem_limit: ${FLOPPY_BENCHMARK_MEMORY:-2g}
+    memswap_limit: ${FLOPPY_BENCHMARK_MEMORY:-2g}
+    cpus: ${FLOPPY_BENCHMARK_CPUS:-2.0}
     environment:
       SECRET: constrained-benchmark-only-secret
       REDIS_URL: redis://redis:6379
@@ -25,6 +25,8 @@ services:
         condition: service_healthy
     ports:
       - "18000:8000"
+    volumes:
+      - floppy-data:/floppy/db
 
   db:
     image: postgres:16-alpine
@@ -37,6 +39,8 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
 
   redis:
     image: redis:8-alpine
@@ -44,3 +48,10 @@ services:
     # one either. The point of this run is to confirm redis_tuning.py applies
     # its own ceiling for a 2GB/no-swap host at Floppy startup.
     command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+
+volumes:
+  floppy-data:
+  postgres-data:
+  redis-data:

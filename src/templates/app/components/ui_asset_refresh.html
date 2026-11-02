@@ -1,0 +1,23 @@
+{% load static app_tags %}
+{% static 'ui/settings-islands.js' as ui_loader_url %}
+{% static 'ui/settings-islands.css' as ui_styles_url %}
+{% get_static_file_mtime 'ui/settings-islands.js' as ui_loader_version %}
+{% get_static_file_mtime 'ui/settings-islands.css' as ui_styles_version %}
+<script data-ui-asset-refresh>
+  (() => {
+    // Boosted navigation replaces the body but retains the previous page's head.
+    // A new island must not run against an older loader or stylesheet.
+    const assets = [
+      ['script[src*="ui/settings-islands.js"]', 'src', '{{ ui_loader_url|escapejs }}{{ ui_loader_version|escapejs }}'],
+      ['link[href*="ui/settings-islands.css"]', 'href', '{{ ui_styles_url|escapejs }}{{ ui_styles_version|escapejs }}'],
+    ];
+    const stale = assets.some(([selector, attribute, expected]) => {
+      const current = document.head.querySelector(selector);
+      return !current || current[attribute] !== new URL(expected, document.baseURI).href;
+    });
+    if (stale && !window.__floppyUiRefreshPending) {
+      window.__floppyUiRefreshPending = true;
+      window.location.replace('{{ request.get_full_path|escapejs }}');
+    }
+  })();
+</script>

@@ -8,7 +8,7 @@ This playbook is the hard-gate process for implementing an accepted Yamtrack mig
 - `latest` is Floppy's integration branch. Upstream outcomes reach it through reviewed Floppy branches and PRs.
 - `release` remains the versioned release/container publication branch.
 
-[`UPSTREAM_PORTS.md`](../../UPSTREAM_PORTS.md) records whether an upstream outcome is Pending, Ported, Adapted, Superseded, Deferred, or Discarded. An upstream migration is evidence of intent and historical data shape, not a file to retain or cherry-pick.
+The local `UPSTREAM_PORTS.md` ledger (not committed) records whether an upstream outcome is Pending, Ported, Adapted, Superseded, Deferred, or Discarded. An upstream migration is evidence of intent and historical data shape, not a file to retain or cherry-pick.
 
 ## Migration policy
 

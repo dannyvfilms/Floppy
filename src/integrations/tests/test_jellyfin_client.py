@@ -1,8 +1,11 @@
 from unittest.mock import MagicMock, patch
 
+import requests
 from django.test import SimpleTestCase
 
 from integrations.jellyfin_client import (
+    LIBRARY_TIMEOUT,
+    REQUEST_TIMEOUT,
     JellyfinAuthError,
     JellyfinClient,
     JellyfinClientError,
@@ -33,6 +36,30 @@ class JellyfinClientTests(SimpleTestCase):
             mock_request.call_args.kwargs["headers"]["Authorization"],
             'MediaBrowser Token="api-key"',
         )
+
+    @patch("integrations.jellyfin_client.requests.request")
+    def test_timeout_raises_client_error_not_auth_error(self, mock_request):
+        """A read timeout is transient: it must not look like a rejected key."""
+        mock_request.side_effect = requests.ReadTimeout("Read timed out")
+
+        with self.assertRaises(JellyfinClientError) as ctx:
+            self.client.healthcheck()
+
+        self.assertNotIsInstance(ctx.exception, JellyfinAuthError)
+
+    @patch("integrations.jellyfin_client.requests.request")
+    def test_library_pages_use_longer_timeout(self, mock_request):
+        """Recursive library pages get the long read timeout; lookups do not."""
+        mock_request.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {"Items": [], "TotalRecordCount": 0},
+        )
+
+        list(self.client.iter_library_items())
+        self.assertEqual(mock_request.call_args.kwargs["timeout"], LIBRARY_TIMEOUT)
+
+        self.client.healthcheck()
+        self.assertEqual(mock_request.call_args.kwargs["timeout"], REQUEST_TIMEOUT)
 
     @patch("integrations.jellyfin_client.requests.request")
     def test_unauthorized_raises_auth_error(self, mock_request):

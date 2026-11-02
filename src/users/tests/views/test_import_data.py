@@ -1,13 +1,20 @@
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from django_celery_results.models import TaskResult
 
-from integrations.models import LastFMAccount, LastFMHistoryImportStatus, PlexAccount
+from app.models import Status, Tag
+from integrations.models import (
+    AudiobookshelfAccount,
+    LastFMAccount,
+    LastFMHistoryImportStatus,
+    PlexAccount,
+)
 from integrations.plex import PlexAuthError
 
 
@@ -20,6 +27,65 @@ class ImportDataViewTests(TestCase):
         self.plex_token = get_random_string(16)
         self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
+        cache.delete(f"import_source_media:{self.user.pk}")
+
+    def test_watchlist_preferences_validate_ownership_and_clear(self):
+        tag = Tag.objects.create(user=self.user, name="Watch later")
+        other = get_user_model().objects.create_user(username="other")
+        foreign_tag = Tag.objects.create(user=other, name="Private")
+        url = reverse("save_import_settings")
+        response = self.client.post(url, {"watchlist_status": Status.COMPLETED.value, "watchlist_tag": tag.pk})
+        self.assertEqual(response.status_code, 204)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.watchlist_import_status, Status.COMPLETED.value)
+        self.assertEqual(self.user.watchlist_import_tag_id, tag.pk)
+        self.assertEqual(self.client.post(url, {"watchlist_status": "invalid"}).status_code, 400)
+        self.assertEqual(self.client.post(url, {"watchlist_tag": foreign_tag.pk}).status_code, 400)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.watchlist_import_tag_id, tag.pk)
+        self.assertEqual(self.client.post(url, {"watchlist_tag": ""}).status_code, 204)
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.watchlist_import_tag_id)
+
+    def test_clz_wishlist_preferences_are_saved_and_validated(self):
+        url = reverse("save_import_settings")
+        response = self.client.post(url, {"clz_wishlist_status": "Planning", "clz_wishlist_tag": "  Wanted  comics "})
+        self.assertEqual(response.status_code, 204)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.clz_wishlist_status, "Planning")
+        self.assertEqual(self.user.clz_wishlist_tag, "Wanted comics")
+        self.assertEqual(self.client.post(url, {"clz_wishlist_status": "Hoarding"}).status_code, 400)
+        self.assertEqual(self.client.post(url, {"clz_wishlist_tag": "x" * 51}).status_code, 400)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.clz_wishlist_status, "Planning")
+        self.assertEqual(self.user.clz_wishlist_tag, "Wanted comics")
+        self.assertEqual(self.client.post(url, {"clz_wishlist_status": "", "clz_wishlist_tag": ""}).status_code, 204)
+        self.user.refresh_from_db()
+        self.assertEqual((self.user.clz_wishlist_status, self.user.clz_wishlist_tag), ("", ""))
+
+    def test_audiobookshelf_connection_has_inline_shared_form_without_secrets(self):
+        url = reverse("provider_detail", args=["audiobookshelf"])
+        response = self.client.get(url, {"tab": "connection"})
+        self.assertContains(response, "data-account-connection-root")
+        self.assertContains(response, reverse("audiobookshelf_connect"))
+        self.assertContains(response, 'name="base_url"')
+        self.assertContains(response, 'name="api_token"')
+        self.assertNotContains(response, "Open connection setup")
+        self.assertContains(response, "Connecting starts an initial import and recurring sync.")
+        self.assertContains(response, reverse("provider_detail", args=["audiobookshelf"]) + "?tab=activity")
+        disconnected_import = self.client.get(url, {"tab": "import"})
+        self.assertNotContains(disconnected_import, reverse("import_audiobookshelf"))
+        self.assertContains(disconnected_import, "Open Connection")
+        account = AudiobookshelfAccount.objects.create(user=self.user, base_url="https://private.example/", api_token="encrypted-secret")
+        response = self.client.get(url, {"tab": "connection"})
+        self.assertContains(response, reverse("audiobookshelf_disconnect"))
+        self.assertNotContains(response, "encrypted-secret")
+        self.assertNotContains(response, "https://private.example/")
+        self.assertContains(self.client.get(url, {"tab": "import"}), reverse("import_audiobookshelf"))
+        account.connection_broken = True
+        account.save(update_fields=["connection_broken"])
+        self.assertContains(self.client.get(url, {"tab": "connection"}), reverse("audiobookshelf_connect"))
+        self.assertNotContains(self.client.get(url, {"tab": "import"}), reverse("import_audiobookshelf"))
 
     def test_import_data_ignores_structured_recurring_wrapper_results(self):
         """Recurring wrapper payloads should not break the import page."""
@@ -32,18 +98,20 @@ class ImportDataViewTests(TestCase):
             result='["child-task-id", null]',
         )
 
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_activity"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "users/import_data.html")
+        self.assertTemplateUsed(response, "users/provider_activity.html")
 
     @patch("users.models.User.get_import_tasks")
     def test_import_data_defers_import_activity_loading(self, mock_get_import_tasks):
         """The initial page should not block on import activity queries."""
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["plex"]) + "?tab=import")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, reverse("import_data_activity"))
+        self.assertNotContains(response, reverse("import_data_activity"))
+        activity = self.client.get(reverse("provider_detail", args=["plex"]) + "?tab=activity")
+        self.assertContains(activity, reverse("import_data_activity"))
         mock_get_import_tasks.assert_not_called()
 
     def test_import_data_activity_renders_history_and_schedules(self):
@@ -62,10 +130,97 @@ class ImportDataViewTests(TestCase):
             HTTP_HX_REQUEST="true",
         )
 
-        self.assertEqual(response.status_code, 200)
+        # Idle: 286 tells htmx to stop polling, but the body is still swapped.
+        self.assertEqual(response.status_code, 286)
         self.assertTemplateUsed(response, "users/components/import_activity.html")
-        self.assertContains(response, "Active Periodic Imports")
-        self.assertContains(response, "Import History")
+        self.assertContains(response, "Active Periodic Imports", status_code=286)
+        self.assertContains(response, "Import History", status_code=286)
+
+    def test_import_activity_polling_pauses_while_details_open(self):
+        """An open failed-items/traceback section must not be refreshed away."""
+        response = self.client.get(reverse("provider_activity"))
+        self.assertContains(response, "[data-keep-open=true]", count=2)
+        self.assertContains(response, "shouldSwap = false")
+
+    def test_import_activity_marks_open_details(self):
+        """Result details expose their open state so the panel can skip refreshes."""
+        from integrations.models import ImportRun
+
+        ImportRun.objects.create(user=self.user, source="plex", status="finished")
+        TaskResult.objects.create(
+            task_id="task-errors",
+            task_name="Import from Plex",
+            task_kwargs=(f'{{"user_id": {self.user.id}}}'),
+            status="SUCCESS",
+            result='"Imported 1 Movies."',
+            traceback="Skipping Plex entry without external IDs: Heat",
+        )
+        response = self.client.get(
+            reverse("import_data_activity"),
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertContains(response, ':data-keep-open="showDetails"', status_code=286)
+
+    @patch("users.views._import_source_media_summary", return_value=[])
+    def test_import_data_activity_reuses_media_summary_while_active(self, summary):
+        """Polls during a live import must not recount every media table."""
+        TaskResult.objects.create(
+            task_id="task-live",
+            task_name="Import from Trakt",
+            task_kwargs=(f'{{"user_id": {self.user.id}}}'),
+            status="STARTED",
+        )
+        url = reverse("import_data_activity")
+        with patch("users.models.AsyncResult") as async_result:
+            async_result.return_value.status = "STARTED"
+            for _ in range(3):
+                self.client.get(url, HTTP_HX_REQUEST="true")
+        self.assertEqual(summary.call_count, 1)
+
+        TaskResult.objects.filter(task_id="task-live").update(status="SUCCESS")
+        self.client.get(url, HTTP_HX_REQUEST="true")
+        self.assertEqual(summary.call_count, 2)
+
+    def test_import_data_activity_keeps_polling_while_import_active(self):
+        """A pending/started task or running ImportRun keeps the poll alive."""
+        TaskResult.objects.create(
+            task_id="task-started",
+            task_name="Import from Trakt",
+            task_kwargs=(f'{{"user_id": {self.user.id}}}'),
+            status="STARTED",
+        )
+        with patch("users.models.AsyncResult") as async_result:
+            async_result.return_value.status = "STARTED"
+            response = self.client.get(
+                reverse("import_data_activity"),
+                HTTP_HX_REQUEST="true",
+            )
+        self.assertEqual(response.status_code, 200)
+
+    def test_import_activity_shows_initial_reading_stage(self):
+        TaskResult.objects.create(
+            task_id="youtube-reading", task_name="Import from YouTube Takeout",
+            task_kwargs=f'{{"user_id": {self.user.id}}}', status="STARTED",
+        )
+        with patch("users.models.AsyncResult") as result, patch(
+            "integrations.import_progress.get_progress",
+            return_value={"current": 0, "total": None, "label": "Reading YouTube history"},
+        ):
+            result.return_value.status = "STARTED"
+            response = self.client.get(reverse("import_data_activity"), HTTP_HX_REQUEST="true")
+        self.assertContains(response, "Started")
+        self.assertContains(response, "Reading YouTube history")
+
+    def test_import_data_activity_keeps_polling_for_running_import_run(self):
+        """A running ImportRun keeps the poll alive."""
+        from integrations.models import ImportRun
+
+        ImportRun.objects.create(user=self.user, source="trakt", status="running")
+        response = self.client.get(
+            reverse("import_data_activity"),
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(response.status_code, 200)
 
     def test_import_data_activity_lists_media_by_import_source(self):
         """Media is grouped by media type and import source."""
@@ -110,9 +265,9 @@ class ImportDataViewTests(TestCase):
         )
 
         self.assertContains(response, "Imported Media by Source")
-        self.assertContains(response, "movie · 2 items")
-        self.assertContains(response, "movie · 1 item")
-        self.assertEqual(response.content.decode().count("movie · 2 items"), 1)
+        self.assertContains(response, "Movie · 2 items")
+        self.assertContains(response, "Movie · 1 item")
+        self.assertEqual(response.content.decode().count("Movie · 2 items"), 1)
         self.assertContains(
             response,
             reverse("bulk_delete_by_import_source", args=["movie", "trakt"]),
@@ -162,6 +317,7 @@ class ImportDataViewTests(TestCase):
             import_run=extra_run,
         )
 
+        cache.delete(f"import_source_media:{self.user.pk}")
         with CaptureQueriesContext(connection) as more_sources:
             self.client.get(reverse("import_data_activity"), HTTP_HX_REQUEST="true")
 
@@ -179,19 +335,53 @@ class ImportDataViewTests(TestCase):
             history_import_last_error_message="Temporary Last.fm error",
         )
 
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["lastfm"]) + "?tab=import")
 
         self.assertContains(response, "Full history import:")
         self.assertContains(response, "Failed")
         self.assertContains(response, "Page 2 of 6")
         self.assertContains(response, "Reimport full history")
 
+    def test_file_upload_forms_disclose_one_time_import_and_ignore_frequency(self):
+        """Uploads run once whatever Import Frequency says: never disabled, badged One-time."""
+        badge = ">One-time</span>"
+        upload_routes = (
+            "import_trakt_export_file",
+            "import_yamtrack",
+            "import_clz",
+            "import_hltb",
+            "import_playnite",
+            "import_grouvee",
+            "import_imdb",
+            "import_goodreads",
+            "import_hardcover",
+            "import_storygraph",
+            "import_youtube_takeout",
+            "import_wetrakr",
+            "import_tvtime",
+        )
+        for route in upload_routes:
+            with self.subTest(route=route):
+                slug = {"import_trakt_export_file": "trakt", "import_yamtrack": "yamtrack", "import_youtube_takeout": "youtube"}.get(route, route.removeprefix("import_"))
+                target = reverse("data_management") if slug == "yamtrack" else reverse("provider_detail", args=[slug]) + "?tab=import"
+                html = self.client.get(target).content.decode()
+                action = f'action="{reverse(route)}"'
+                self.assertIn(action, html)
+                start = html.index(action)
+                form_start = html.rindex("<form", 0, start)
+                form = html[form_start : html.index("</form>", start)]
+                if route == "import_clz":
+                    self.assertIn("One Time Import", html[:form_start])
+                else:
+                    self.assertIn(badge, html[:form_start])
+                self.assertNotIn("importFrequency", form.replace('x-model="importFrequency"', ""))
+
     @override_settings(
         TRAKT_API="test-client-id", TRAKT_API_SECRET="test-client-secret"
     )
     def test_import_data_renders_trakt_profile_dropdown_when_configured(self):
         """With TRAKT_API/SECRET set, the Trakt card offers the public/private dropdown."""
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["trakt"]) + "?tab=import")
 
         self.assertContains(
             response, "x-data=\"{ traktProfileType: 'public' }\"", html=False
@@ -213,7 +403,7 @@ class ImportDataViewTests(TestCase):
     @override_settings(TRAKT_API="", TRAKT_API_SECRET="")
     def test_import_data_hides_trakt_public_private_when_unconfigured(self):
         """Without TRAKT_API/SECRET, only the data-export fallback should render."""
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["trakt"]) + "?tab=import")
 
         self.assertContains(
             response, "x-data=\"{ traktProfileType: 'csv' }\"", html=False
@@ -228,9 +418,17 @@ class ImportDataViewTests(TestCase):
         )
         self.assertContains(response, "Select Export File", html=False)
 
+    def test_import_data_renders_playnite_upload(self):
+        """The import page should expose Playnite's library CSV upload."""
+        response = self.client.get(reverse("provider_detail", args=["playnite"]) + "?tab=import")
+
+        self.assertContains(response, reverse("import_playnite"))
+        self.assertContains(response, 'name="playnite_csv"', html=False)
+        self.assertContains(response, "Import a Playnite library CSV backup.")
+
     def test_import_data_renders_trakt_export_upload(self):
         """The Trakt card should offer a data-export file upload fallback."""
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["trakt"]) + "?tab=import")
 
         self.assertContains(response, reverse("import_trakt_export_file"))
         self.assertContains(response, "trakt_export")
@@ -251,7 +449,7 @@ class ImportDataViewTests(TestCase):
             plex_username="listener",
         )
 
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["plex"]) + "?tab=import")
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Checking")
@@ -362,3 +560,27 @@ class ImportDataViewTests(TestCase):
         self.assertEqual(self.user.plex_account.sections[0]["title"], "Movies")
         self.assertIsNotNone(self.user.plex_account.sections_refreshed_at)
         mock_list_sections.assert_called_once_with(self.plex_token)
+
+    def test_arr_cards_show_connected_only_for_a_working_instance(self):
+        """The Radarr/Sonarr/Mylar3 cards read their instance lists, not an account."""
+        from integrations.imports.helpers import encrypt
+        from integrations.models import MylarInstance, RadarrInstance, SonarrInstance
+
+        RadarrInstance.objects.create(
+            user=self.user, base_url="https://radarr.local", api_key=encrypt("k")
+        )
+        SonarrInstance.objects.create(
+            user=self.user,
+            base_url="https://sonarr.local",
+            api_key=encrypt("k"),
+            connection_broken=True,
+        )
+        MylarInstance.objects.create(
+            user=self.user, base_url="https://mylar.local", api_key=encrypt("k")
+        )
+
+        response = self.client.get(reverse("provider_detail", args=["radarr"]) + "?tab=import")
+
+        self.assertTrue(response.context["radarr_connected"])
+        self.assertFalse(response.context["sonarr_connected"])
+        self.assertTrue(response.context["mylar_connected"])

@@ -1,4 +1,5 @@
 import hashlib
+import json
 import re
 from pathlib import Path
 
@@ -107,15 +108,21 @@ class StaticLibraryContractTests(SimpleTestCase):
 
         self.assertEqual(content.count(expected_tag), 1)
 
-    def test_zxing_loads_before_barcode_scanner_helper(self):
-        """ZXing must load before the helper reads the window.ZXing export."""
-        content = self.base_template_path.read_text(encoding="utf-8")
-        zxing_tag = f"{{% static '{ZXING_ASSET}' %}}"
-        scanner_tag = "{% static 'js/barcode-scanner.js' %}"
+    def test_barcode_scanner_helper_loads_the_local_zxing_asset(self):
+        """The helper loads ZXing on first scan from the reviewed local file.
 
-        self.assertIn(zxing_tag, content)
-        self.assertIn(scanner_tag, content)
-        self.assertLess(content.index(zxing_tag), content.index(scanner_tag))
+        ZXing is not a <script> in every page's head any more; the helper's own
+        tag names the pinned asset in data-zxing-src and injects it when needed.
+        """
+        content = self.base_template_path.read_text(encoding="utf-8")
+        scanner_tag = "{% static 'js/barcode-scanner.js' %}"
+        scanner_start = content.index(scanner_tag)
+        scanner_end = content.index("</script>", scanner_start)
+
+        self.assertIn(
+            f"data-zxing-src=\"{{% static '{ZXING_ASSET}' %}}\"",
+            content[scanner_start:scanner_end],
+        )
 
     def test_configured_static_url_is_local(self):
         """Django must resolve the ZXing file without an external origin."""
@@ -152,3 +159,42 @@ class StaticLibraryContractTests(SimpleTestCase):
         self.assertIn("window.ZXing", content)
         self.assertIn("initBarcodeScanner", content)
         self.assertIn("normalizeIsbn", content)
+
+
+class VendorManifestTests(SimpleTestCase):
+    """Every vendored browser file must match its reviewed identity."""
+
+    def setUp(self):
+        """Load the manifest from the source static tree."""
+        self.static_dir = Path(settings.BASE_DIR) / "static"
+        manifest = json.loads(
+            (self.static_dir / "vendor-manifest.json").read_text(encoding="utf-8"),
+        )
+        self.entries = manifest["libraries"]
+
+    def test_vendored_files_match_recorded_digest(self):
+        """A changed bundle fails until the manifest is updated with it."""
+        for entry in self.entries:
+            path = self.static_dir / entry["file"]
+            self.assertTrue(path.exists(), entry["file"])
+            self.assertEqual(
+                hashlib.sha256(path.read_bytes()).hexdigest(),
+                entry["sha256"],
+                f"{entry['file']} changed; follow docs/architecture/build-inputs.md",
+            )
+
+    def test_every_vendored_library_file_is_recorded(self):
+        """A new minified file cannot be added without an inventory entry."""
+        recorded = {entry["file"] for entry in self.entries}
+        found = {
+            path.relative_to(self.static_dir).as_posix()
+            for folder in ("js/libraries", "css/libraries")
+            for path in (self.static_dir / folder).glob("*.min.*")
+        }
+        self.assertEqual(found - recorded, set())
+
+    def test_entries_record_version_license_and_source(self):
+        """Each record names its version, license and upstream source."""
+        for entry in self.entries:
+            for key in ("name", "version", "license", "upstream", "source_artifact"):
+                self.assertTrue(entry[key], f"{entry['file']} lacks {key}")

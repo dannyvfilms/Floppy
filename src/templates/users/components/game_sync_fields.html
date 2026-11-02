@@ -1,0 +1,43 @@
+{% load i18n %}
+{# Fields for a game source that syncs lifetime playtime (PlayStation today; Xbox and Steam follow). Pass field_id, sync_hours and, when the account chose it, new_only. Posts "existing_playtime". #}
+{% translate "Each sync adds one entry for the hours played since the last sync. Your existing entries are never changed." as every_tip %}
+{% translate "Games you don't track yet get one entry from their first to last played date. Games you already track are left alone." as playtime_tip %}
+<div class="relative flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
+  <span>{% blocktranslate %}Syncs automatically every {{ sync_hours }} hours.{% endblocktranslate %}</span>
+  {% translate "Show how syncing works" as every_label %}
+  {% include "users/components/info_tip.html" with tip=every_tip label=every_label %}
+</div>
+<div>
+  <div class="relative flex items-center gap-2 mb-2">
+    <label class="block text-sm text-[var(--color-text-muted)]"
+           for="{{ field_id }}">{% translate "Playtime" %}</label>
+    {% translate "Show how backlog games are handled" as playtime_label %}
+    {% include "users/components/info_tip.html" with tip=playtime_tip label=playtime_label %}
+  </div>
+  <div class="relative">
+    <select id="{{ field_id }}"
+            name="existing_playtime"
+            class="w-full py-2 px-3 pr-9 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none">
+      <option value="import">{% translate "Import Backlog and Scrobble New Data" %}</option>
+      <option value="new_only" {% if new_only %}selected{% endif %}>{% translate "Scrobble New Data Only" %}</option>
+    </select>
+    {% include "app/icons/chevron-down.svg" with classes="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
+  </div>
+</div>
+<div class="relative flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
+  <span>{% translate "Game Logging:" %}</span>
+  <span class="text-[var(--color-text)]">
+    {% if user.game_logging_style == "sessions" %}
+      {% translate "Sessions" %}
+    {% else %}
+      {% translate "Repeats" %}
+    {% endif %}
+  </span>
+  {% if user.game_logging_style == "sessions" %}
+    {% translate "Sessions shows each entry in History as one play with its own dates and hours. Change this in Preferences." as logging_tip %}
+  {% else %}
+    {% translate "Repeats spreads each entry's hours evenly across its dates in History. Change this in Preferences." as logging_tip %}
+  {% endif %}
+  {% translate "Show how History displays game entries" as logging_label %}
+  {% include "users/components/info_tip.html" with tip=logging_tip label=logging_label %}
+</div>

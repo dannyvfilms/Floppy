@@ -3,15 +3,18 @@ from decimal import Decimal
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest import mock
 
+from django.core.cache import cache
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from django.urls import reverse
 from django.utils import timezone
 
+from app import image_cache
 from app.media_list_filters import MediaListFilters
-from app.media_list_pagination import can_paginate_in_sql
 from app.models import (
     TV,
     CollectionEntry,
+    Episode,
     Game,
     Item,
     ItemTag,
@@ -23,6 +26,8 @@ from app.models import (
 )
 from events.models import Event
 from lists.models import CustomListItem
+from users import home_screen
+from users.models import HomeScreenRow, HomeScreenRowTypeChoices
 
 from .base import FloppyApiTestCase
 
@@ -121,10 +126,152 @@ class MediaListFilterParityTests(FloppyApiTestCase):
         # The base fixture has a real S01E02 Item (episode_medias), so
         # next_episode enriches from it instead of only carrying numbers.
         next_episode = results["1001"]["next_episode"]
-        self.assertEqual(next_episode["title"], "TV Show 1")
         self.assertEqual(next_episode["image"], "https://example.com/episode-2.jpg")
         self.assertIn("ids", next_episode)
         self.assertIsNotNone(next_episode["url"])
+        self.assertEqual(next_episode["episode_code"], "S01E02")
+        # That Item carries the show's title as a placeholder, which is not
+        # the episode's name, and nothing else knows the name (#1281).
+        self.assertIsNone(next_episode["title"])
+
+    def test_historical_repeats_do_not_lower_fully_watched_show_progress(self):
+        """Uneven historical plays must agree across API, dashboard and Home (#1584)."""
+        season = self.season_medias[0]
+        watched_at = timezone.now() - timezone.timedelta(days=1)
+        Event.objects.filter(item=season.item).update(datetime=watched_at)
+        Episode.objects.filter(related_season=season).update(
+            status=Status.COMPLETED.value,
+            end_date=watched_at,
+        )
+        Episode.objects.bulk_create([
+            Episode(
+                item=episode.item,
+                related_season=season,
+                status=Status.COMPLETED.value,
+                end_date=watched_at,
+            )
+            for episode in self.episode_medias[:2]
+        ])
+
+        response = self._get_tv(progress="caught_up")
+        self.assertEqual(response.status_code, HTTP.OK)
+        results = {entry["item"]["media_id"]: entry for entry in response.json()["results"]}
+        self.assertIn("1001", results)
+        self.assertEqual(results["1001"]["progress"], 3)
+        self.assertEqual(results["1001"]["episodes_left"], 0)
+        self.assertIsNone(results["1001"]["next_episode"])
+        response = self._get_tv(progress="not_caught_up")
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertNotIn(
+            "1001", [entry["item"]["media_id"] for entry in response.json()["results"]],
+        )
+
+        self.client.force_login(self.user1)
+        response = self.client.get(
+            reverse("medialist", args=["tv"]), {"progress": "not_caught_up"},
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertNotIn(
+            "1001", [entry.item.media_id for entry in response.context["media_list"].object_list],
+        )
+        row = HomeScreenRow.objects.create(
+            user=self.user1,
+            media_type="tv",
+            position=0,
+            row_type=HomeScreenRowTypeChoices.LIBRARY_QUERY,
+            filters={"progress": "not_caught_up"},
+        )
+        section = home_screen._build_row_section(self.user1, row, "tv", 14)
+        self.assertNotIn(
+            self.tv_medias[0].item_id, [entry.item.pk for entry in section["items"]],
+        )
+        row.filters = {"progress": "caught_up"}
+        row.save()
+        cache.clear()
+        section = home_screen._build_row_section(self.user1, row, "tv", 14)
+        caught_up = {
+            entry.item.pk: entry for entry in section["items"]
+        }
+        self.assertIn(self.tv_medias[0].item_id, caught_up)
+        self.assertEqual(caught_up[self.tv_medias[0].item_id].media.progress, 3)
+
+    def _next_episode_1001(self):
+        response = self._get_tv(
+            status="1",
+            progress="not_caught_up",
+            sort="next_episode_air_date",
+            direction="asc",
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        results = {entry["item"]["media_id"]: entry for entry in response.json()["results"]}
+        return results["1001"]["next_episode"]
+
+    def test_next_episode_title_is_the_stored_episode_name(self):
+        """A stored episode name is returned as the next episode's title."""
+        Item.objects.filter(
+            media_id="1001",
+            media_type="episode",
+            season_number=1,
+            episode_number=2,
+        ).update(title="The Second One")
+        self.assertEqual(self._next_episode_1001()["title"], "The Second One")
+
+    def test_next_episode_title_prefers_a_named_duplicate_item(self):
+        """A duplicate Item with the real name wins over the show-title placeholder."""
+        Item.objects.create(
+            media_id="1001",
+            source=Sources.TMDB.value,
+            media_type="episode",
+            library_media_type="tv",
+            title="The Second One",
+            season_number=1,
+            episode_number=2,
+        )
+        self.assertEqual(self._next_episode_1001()["title"], "The Second One")
+
+    def test_next_episode_title_falls_back_to_cached_season(self):
+        """The cached TMDB season names the episode when no Item does."""
+        from django.core.cache import cache
+
+        from app.providers.tmdb import _season_cache_key
+
+        cache.set(
+            _season_cache_key("1001", 1),
+            {"episodes": [{"episode_number": 2, "name": "Cached Name"}]},
+        )
+        self.addCleanup(cache.delete, _season_cache_key("1001", 1))
+        with mock.patch("app.providers.services.api_request") as api_request:
+            self.assertEqual(self._next_episode_1001()["title"], "Cached Name")
+        api_request.assert_not_called()
+
+    def test_next_episode_cached_titles_are_read_once_per_page(self):
+        """A page resolves every cached season in one get_many, not a get per row."""
+        from django.core.cache import cache
+
+        with (
+            mock.patch.object(cache, "get_many", wraps=cache.get_many) as get_many,
+            mock.patch.object(cache, "get", wraps=cache.get) as get,
+        ):
+            self._next_episode_1001()
+        season_keys = [
+            call.args[0]
+            for call in get.call_args_list
+            if "_season_" in str(call.args[0])
+        ]
+        self.assertEqual(season_keys, [])
+        self.assertEqual(get_many.call_count, 1)
+
+    def test_season_row_ignores_the_show_title_placeholder(self):
+        """A season row titled "Season 1" still treats the show title as a placeholder."""
+        from app.media_list_filters import next_episode_for_media
+
+        season = self.season_medias[0]
+        Item.objects.filter(pk=season.item.pk).update(title="Season 1")
+        season.refresh_from_db()
+        season.item.refresh_from_db()
+        next_episode = next_episode_for_media(season)
+        self.assertEqual(next_episode["episode_number"], 2)
+        self.assertIsNone(next_episode["title"])
 
     def test_next_episode_missing_item_degrades_gracefully(self):
         """No matching local Item leaves enrichment fields None/empty, not a 500."""
@@ -332,6 +479,9 @@ class MediaListQueryBudgetTests(FloppyApiTestCase):
 
     def test_query_count_does_not_scale_with_library_size(self):
         self._seed_extra_games(5)
+        # Warm the lazily cached image-caching toggle (5-minute TTL, shared
+        # across tests) so neither count depends on which test ran before.
+        image_cache.is_enabled()
         with CaptureQueriesContext(connection) as small_ctx:
             response = self.client.get(
                 "/api/v1/media/game/",
@@ -342,6 +492,9 @@ class MediaListQueryBudgetTests(FloppyApiTestCase):
         small_queries = len(small_ctx.captured_queries)
 
         self._seed_extra_games(120, start=5)
+        # Warm the lazily cached image-caching toggle (5-minute TTL, shared
+        # across tests) so neither count depends on which test ran before.
+        image_cache.is_enabled()
         with CaptureQueriesContext(connection) as big_ctx:
             response = self.client.get(
                 "/api/v1/media/game/",
@@ -564,6 +717,9 @@ class MediaListSqlPushdownTests(FloppyApiTestCase):
     def test_fast_path_query_count_does_not_scale_with_library_size(self):
         """Same scaling proof as MediaListQueryBudgetTests, for an aggregated sort key."""
         self._seed_games(5)
+        # Warm the lazily cached image-caching toggle (5-minute TTL, shared
+        # across tests) so neither count depends on which test ran before.
+        image_cache.is_enabled()
         with CaptureQueriesContext(connection) as small_ctx:
             response = self.client.get(
                 "/api/v1/media/game/",
@@ -574,6 +730,9 @@ class MediaListSqlPushdownTests(FloppyApiTestCase):
         small_queries = len(small_ctx.captured_queries)
 
         self._seed_games(200, start=5)
+        # Warm the lazily cached image-caching toggle (5-minute TTL, shared
+        # across tests) so neither count depends on which test ran before.
+        image_cache.is_enabled()
         with CaptureQueriesContext(connection) as big_ctx:
             response = self.client.get(
                 "/api/v1/media/game/",
@@ -648,12 +807,6 @@ class MediaListSqlPushdownTests(FloppyApiTestCase):
             "direction": "asc",
         }
         fast_path_order = self._ordering_for(params)
-        with mock.patch(
-            "app.media_list_filters.can_paginate_in_sql", return_value=False,
-        ):
-            fallback_order = self._ordering_for(params)
-
-        self.assertEqual(fast_path_order, fallback_order)
         self.assertEqual(
             [item_a.media_id, item_b.media_id],
             fast_path_order,
@@ -692,19 +845,13 @@ class MediaListSqlPushdownTests(FloppyApiTestCase):
 
         params = {"status": "1", "limit": 10, "sort": "score", "direction": "desc"}
         fast_path_order = self._ordering_for(params)
-        with mock.patch(
-            "app.media_list_filters.can_paginate_in_sql", return_value=False,
-        ):
-            fallback_order = self._ordering_for(params)
-
-        self.assertEqual(fast_path_order, fallback_order)
         # Item A's aggregated score falls back to its dropped play's score
         # (3.0) since its visible in_progress row has no score of its own —
         # still below Item B's 8.0.
         self.assertEqual([item_b.media_id, item_a.media_id], fast_path_order)
 
-    def test_fallback_path_still_used_for_python_only_filters(self):
-        """Rating/collection/author/tags-with-format filters keep routing to fallback."""
+    def test_python_only_filters_answer_normally(self):
+        """Rating, collection and author requests page like any other."""
         self._seed_games(3)
         for params in (
             {"status": "1", "rating": "rated"},
@@ -715,67 +862,3 @@ class MediaListSqlPushdownTests(FloppyApiTestCase):
                 "/api/v1/media/game/", params, **self.auth_headers,
             )
             self.assertEqual(response.status_code, HTTP.OK, params)
-
-    def test_can_paginate_in_sql_eligibility(self):
-        """Direct coverage of the routing decision itself (app.media_list_pagination)."""
-        base = MediaListFilters()
-        self.assertTrue(can_paginate_in_sql(base, MediaTypes.GAME.value, "start_date"))
-        self.assertTrue(can_paginate_in_sql(base, MediaTypes.GAME.value, ""))
-        self.assertTrue(can_paginate_in_sql(base, MediaTypes.GAME.value, "title"))
-
-        self.assertFalse(can_paginate_in_sql(base, None, "title"))
-        self.assertFalse(can_paginate_in_sql(base, MediaTypes.TV.value, "title"))
-        self.assertFalse(can_paginate_in_sql(base, MediaTypes.ANIME.value, "title"))
-        self.assertFalse(can_paginate_in_sql(base, MediaTypes.EPISODE.value, "title"))
-        self.assertFalse(can_paginate_in_sql(base, MediaTypes.GAME.value, "author"))
-        self.assertFalse(can_paginate_in_sql(base, MediaTypes.GAME.value, "runtime"))
-
-        self.assertFalse(
-            can_paginate_in_sql(
-                replace(base, include_no_status=True), MediaTypes.GAME.value, "title",
-            ),
-        )
-        self.assertFalse(
-            can_paginate_in_sql(
-                replace(base, rating="rated"), MediaTypes.GAME.value, "title",
-            ),
-        )
-        self.assertFalse(
-            can_paginate_in_sql(
-                replace(base, collection="collected"), MediaTypes.GAME.value, "title",
-            ),
-        )
-        self.assertFalse(
-            can_paginate_in_sql(
-                replace(base, format="digital"), MediaTypes.GAME.value, "title",
-            ),
-        )
-        # Game platforms are SQL-filterable; other types' aren't.
-        self.assertTrue(
-            can_paginate_in_sql(
-                replace(base, platforms=("PC",)), MediaTypes.GAME.value, "title",
-            ),
-        )
-        self.assertFalse(
-            can_paginate_in_sql(
-                replace(base, platforms=("PC",)), MediaTypes.MOVIE.value, "title",
-            ),
-        )
-        # Tags are SQL-safe unconditionally now (#1004) — do not force fallback.
-        self.assertTrue(
-            can_paginate_in_sql(
-                replace(base, tags=("favorite",)), MediaTypes.GAME.value, "title",
-            ),
-        )
-        # Season rows derive end_date/progressed_at from episodes, so the SQL
-        # latest-status subquery is only unsafe when a status filter is active.
-        self.assertTrue(
-            can_paginate_in_sql(base, MediaTypes.SEASON.value, "title"),
-        )
-        self.assertFalse(
-            can_paginate_in_sql(
-                replace(base, statuses=("In progress",)),
-                MediaTypes.SEASON.value,
-                "title",
-            ),
-        )

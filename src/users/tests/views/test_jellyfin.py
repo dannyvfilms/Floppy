@@ -1,7 +1,13 @@
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
+
+from integrations.webhooks.jellyfin import (
+    JELLYFIN_TEMPLATE_OUTDATED_KEY,
+    JellyfinWebhookProcessor,
+)
 
 
 class JellyfinWebhookEventsUpdateTests(TestCase):
@@ -23,7 +29,7 @@ class JellyfinWebhookEventsUpdateTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, reverse("integrations"))
+        self.assertRedirects(response, reverse("provider_detail", args=["jellyfin"]) + "?tab=tracking")
         self.user.refresh_from_db()
         self.assertTrue(self.user.jellyfin_mark_played_enabled)
         self.assertTrue(self.user.jellyfin_mark_unplayed_enabled)
@@ -54,3 +60,60 @@ class JellyfinWebhookEventsUpdateTests(TestCase):
         self.user.refresh_from_db()
         self.assertTrue(self.user.jellyfin_mark_played_enabled)
         self.assertFalse(self.user.jellyfin_mark_unplayed_enabled)
+
+
+class JellyfinTemplateOutdatedNoticeTests(TestCase):
+    """The Integrations page tells old-template users to re-copy it (#1250)."""
+
+    def setUp(self):
+        """Create and log in a user."""
+        self.credentials = {"username": "notice", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+        self.key = JELLYFIN_TEMPLATE_OUTDATED_KEY.format(user_id=self.user.id)
+        cache.delete(self.key)
+
+    def tearDown(self):
+        """Drop the flag so it cannot leak into other tests."""
+        cache.delete(self.key)
+
+    def test_notice_hidden_by_default(self):
+        """No old-template traffic means no notice."""
+        response = self.client.get(
+            reverse("provider_detail", args=["jellyfin"]) + "?tab=connection"
+        )
+        self.assertNotContains(response, 'data-testid="jellyfin-template-outdated"')
+        tracking = self.client.get(
+            reverse("provider_detail", args=["jellyfin"]) + "?tab=tracking"
+        )
+        self.assertContains(tracking, "Manual Watched Changes")
+
+    def test_notice_shown_after_old_template_event(self):
+        """An old-template UserDataSaved shows the re-copy notice."""
+        JellyfinWebhookProcessor().process_payload(
+            {
+                "Event": "UserDataSaved",
+                "Item": {"Type": "Movie", "UserData": {"Played": True}},
+            },
+            self.user,
+        )
+        response = self.client.get(
+            reverse("provider_detail", args=["jellyfin"]) + "?tab=connection"
+        )
+        self.assertContains(response, 'data-testid="jellyfin-template-outdated"')
+
+    def test_current_template_event_clears_notice(self):
+        """A UserDataSaved with SaveReason clears the notice."""
+        cache.set(self.key, True)
+        JellyfinWebhookProcessor().process_payload(
+            {
+                "Event": "UserDataSaved",
+                "SaveReason": "PlaybackProgress",
+                "Item": {"Type": "Movie", "UserData": {"Played": False}},
+            },
+            self.user,
+        )
+        response = self.client.get(
+            reverse("provider_detail", args=["jellyfin"]) + "?tab=connection"
+        )
+        self.assertNotContains(response, 'data-testid="jellyfin-template-outdated"')

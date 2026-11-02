@@ -9,7 +9,7 @@ from http import HTTPStatus as HTTP  # noqa: N814
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
-from app.models import Item, MediaTypes, Sources
+from app.models import TV, Item, MediaTypes, Movie, Sources
 from lists.models import CustomList, CustomListItem
 
 from .base import FloppyApiTestCase
@@ -110,3 +110,43 @@ class ListPaginationCostTests(FloppyApiTestCase):
         response = self._get("api_list_add_item", sort="not-a-sort")
 
         self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+
+
+class ListItemsTrackedMixCostTests(FloppyApiTestCase):
+    """Tracked shows/movies/anime used to cost ~5 queries per item on a page."""
+
+    def test_page_of_tracked_media_batches_its_prefetches(self):
+        custom_list = CustomList.objects.create(name="Mixed", owner=self.user1)
+        for index in range(10):
+            show = Item.objects.create(
+                media_id=f"mix-tv-{index}",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+                title=f"Mix Show {index}",
+            )
+            TV.objects.create(item=show, user=self.user1)
+            movie = Item.objects.create(
+                media_id=f"mix-movie-{index}",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title=f"Mix Movie {index}",
+            )
+            Movie.objects.create(item=movie, user=self.user1)
+            for item in (show, movie):
+                CustomListItem.objects.create(custom_list=custom_list, item=item)
+
+        with CaptureQueriesContext(connection) as queries:
+            response = self.call_api(
+                "get",
+                "api_list_add_item",
+                args=(custom_list.id,),
+                params={"limit": 20},
+                headers=self.auth_headers,
+            )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        results = response.json()["results"]
+        self.assertEqual(len(results), 20)
+        self.assertTrue(all(result["tracked"] for result in results))
+        # Was 4 prefetch queries per item (~110 here); now one per media type.
+        self.assertLess(len(queries), 60)

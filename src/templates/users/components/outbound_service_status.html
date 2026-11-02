@@ -1,0 +1,14 @@
+{% load i18n %}
+{% if service.state == "connected" %}
+  {% translate "Connected" as status_label %}
+  {% include "users/components/provider_status_badge.html" with label=status_label tone="success" %}
+{% elif service.state == "attention" %}
+  {% translate "Needs attention" as status_label %}
+  {% include "users/components/provider_status_badge.html" with label=status_label tone="warning" %}
+{% elif service.state == "waiting" %}
+  {% translate "Waiting for approval" as status_label %}
+  {% include "users/components/provider_status_badge.html" with label=status_label tone="warning" %}
+{% else %}
+  {% translate "Not connected" as status_label %}
+  {% include "users/components/provider_status_badge.html" with label=status_label tone="neutral" %}
+{% endif %}

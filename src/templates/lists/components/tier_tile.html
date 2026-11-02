@@ -1,0 +1,14 @@
+{% load i18n %}
+{% load app_tags %}
+<div class="tier-tile" data-item-id="{{ item.id }}">
+  {% media_card "tier" media=item.media item=item title=item public_view=public_view|default:False public_list_reference=public_list_reference card_media_type=item.media_type image_override=item.card_image_override|default:item.image %}
+  {% if can_edit %}
+    <button type="button"
+            class="tier-move"
+            title="{% translate "Move to tier" %}"
+            aria-label="{% translate "Move to tier" %}"
+            @click.stop="openMove({{ item.id }}, '{{ item.title|escapejs }}', $el.closest('.tier-drop').dataset.tier)">
+      {% include "app/icons/arrows-up-down.svg" with classes="w-3.5 h-3.5" %}
+    </button>
+  {% endif %}
+</div>

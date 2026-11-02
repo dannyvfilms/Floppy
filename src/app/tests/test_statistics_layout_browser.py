@@ -1,0 +1,190 @@
+import datetime
+import os
+
+from django.contrib.auth import get_user_model
+from django.test import tag
+from django.utils import timezone
+from playwright.sync_api import expect, sync_playwright
+
+from app.models import Item, MediaTypes, Movie, Sources, Status
+from app.tests.live_server import SerialStaticLiveServerTestCase
+
+# Widths where the five summary cards are narrowest: a phone, and a laptop with the
+# sidebar open (the cards only get ~130px each there).
+NARROW_WIDTHS = (360, 1024, 1280)
+
+
+@tag("slow", "playwright")
+class StatisticsLayoutTests(SerialStaticLiveServerTestCase):
+    """Nothing on Statistics may spill out of its card or off the screen (#1526)."""
+
+    @classmethod
+    def setUpClass(cls):
+        os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
+        super().setUpClass()
+        cls.playwright = sync_playwright().start()
+        cls.browser = cls.playwright.chromium.launch()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.browser.close()
+        cls.playwright.stop()
+        super().tearDownClass()
+
+    def setUp(self):
+        self.credentials = {"username": "stats-layout", "password": "12345"}
+        user = get_user_model().objects.create_user(**self.credentials)
+        # Most plays on a Wednesday, the longest English weekday name.
+        now = timezone.now()
+        wednesday = (now - datetime.timedelta(days=(now.weekday() - 2) % 7)).replace(
+            hour=12,
+            minute=0,
+        )
+        for index in range(4):
+            item = Item.objects.create(
+                media_id=f"movie-{index}",
+                source=Sources.MANUAL.value,
+                media_type=MediaTypes.MOVIE.value,
+                title=f"Movie {index}",
+                runtime_minutes=120,
+            )
+            Movie.objects.create(
+                item=item,
+                user=user,
+                status=Status.COMPLETED.value,
+                score=7,
+                start_date=wednesday - datetime.timedelta(days=7 * index),
+                end_date=wednesday - datetime.timedelta(days=7 * index),
+            )
+
+    def open_statistics(self, width, height=800):
+        context = self.browser.new_context(
+            viewport={"width": width, "height": height},
+        )
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.goto(f"{self.live_server_url}/")
+        page.get_by_placeholder("Enter your username").fill(
+            self.credentials["username"],
+        )
+        page.get_by_placeholder("Enter your password").fill(
+            self.credentials["password"],
+        )
+        page.get_by_role("button", name="Sign in").click()
+        page.goto(f"{self.live_server_url}/statistics")
+        expect(page.locator(".stats-hero-title").nth(1)).to_contain_text("4 titles")
+        return page
+
+    def test_summary_cards_keep_their_text_inside(self):
+        for width in NARROW_WIDTHS:
+            with self.subTest(width=width):
+                page = self.open_statistics(width)
+                expect(
+                    page.locator(".stats-summary-row").get_by_text("Wednesday"),
+                ).to_be_visible()
+                spills = page.evaluate(
+                    """() => [...document.querySelectorAll('.stats-summary-row > div')]
+                      .map((card) => {
+                        const box = card.getBoundingClientRect();
+                        const text = card.lastElementChild;
+                        return {
+                          title: card.querySelector('h3').textContent.trim(),
+                          cardOverflows: card.scrollWidth > card.clientWidth,
+                          textOverflows: text.scrollWidth > text.clientWidth,
+                          offScreen: box.left < 0 || box.right > window.innerWidth,
+                        };
+                      })
+                      .filter((c) => c.cardOverflows || c.textOverflows || c.offScreen)""",
+                )
+                self.assertEqual(spills, [])
+
+    def test_summary_values_are_not_broken_mid_word(self):
+        for width in NARROW_WIDTHS:
+            with self.subTest(width=width):
+                page = self.open_statistics(width)
+                value = page.locator(".stats-summary-row").get_by_text("Wednesday")
+                expect(value).to_be_visible()
+                lines = value.evaluate(
+                    "(el) => Math.round(el.getBoundingClientRect().height"
+                    " / parseFloat(getComputedStyle(el).lineHeight))",
+                )
+                self.assertEqual(lines, 1)
+
+    def test_average_rating_rows_stay_inside_their_card(self):
+        for width in NARROW_WIDTHS:
+            with self.subTest(width=width):
+                page = self.open_statistics(width)
+                card = page.get_by_role("heading", name="Average Rating", level=2).locator("..")
+                score = card.get_by_text("7.0")
+                expect(score).to_be_visible()
+                inside = page.evaluate(
+                    """([cardEl, scoreEl]) =>
+                      scoreEl.getBoundingClientRect().right
+                        <= cardEl.getBoundingClientRect().right""",
+                    [card.element_handle(), score.element_handle()],
+                )
+                self.assertTrue(inside)
+
+    def test_boosted_sidebar_navigation_initialises_the_page(self):
+        # hx-boost swaps the body, and Alpine used to run before the externally
+        # loaded date-range.js, leaving the whole component uninitialised (#1667).
+        # Build the snapshot through the test client first: a cold Statistics
+        # response can take longer than the boosted swap's timeout on CI, and
+        # this test is about the swap, not the first build.
+        self.client.force_login(
+            get_user_model().objects.get(username=self.credentials["username"]),
+        )
+        self.assertEqual(self.client.get("/statistics").status_code, 200)
+        context = self.browser.new_context(viewport={"width": 1280, "height": 800})
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.goto(f"{self.live_server_url}/")
+        page.get_by_placeholder("Enter your username").fill(
+            self.credentials["username"],
+        )
+        page.get_by_placeholder("Enter your password").fill(
+            self.credentials["password"],
+        )
+        page.get_by_role("button", name="Sign in").click()
+        # Wait for the post-login document and its deferred Home rows, otherwise
+        # the login/navigation can finish after the marker is set or the boosted
+        # request can queue behind them on the serial test server.
+        expect(page.locator("#sidebar-nav")).to_be_visible()
+        page.wait_for_load_state("networkidle")
+
+        # A full page load would drop this marker; a boosted swap keeps it.
+        page.evaluate("window.__floppyBoostMarker = 'home'")
+        # Statistics moved to Explore; this lower nav remains hx-boosted.
+        page.get_by_role("button", name="Explore").click()
+        page.get_by_role("link", name="Statistics", exact=True).click()
+
+        expect(page.locator(".stats-hero-title").nth(1)).to_contain_text(
+            "4 titles",
+            timeout=15000,
+        )
+        expect(page.locator(".stats-range-button .stats-button-title")).not_to_be_empty()
+        expect(
+            page.locator(".stats-summary-row").get_by_text("Wednesday"),
+        ).to_be_visible()
+        self.assertEqual(page.evaluate("window.__floppyBoostMarker"), "home")
+
+    def test_dropdown_menus_stay_on_a_short_screen(self):
+        # 640px is where the toolbar wraps and the "Updated ... ago" line pushes the
+        # menus further down, so the room left below them is smaller than at 1100px.
+        for width in (1100, 640):
+            page = self.open_statistics(width, height=600)
+            for button, panel in (
+                (".stats-mediatype-button", ".stats-mediatype-wrapper"),
+                (".stats-range-button", ".stats-range-wrapper"),
+                (".stats-compare-button", ".stats-compare-wrapper"),
+            ):
+                with self.subTest(width=width, menu=button):
+                    page.locator(button).click()
+                    menu = page.locator(f"{panel} .stats-dropdown-panel")
+                    expect(menu).to_be_visible()
+                    # Let the open animation finish before measuring.
+                    page.wait_for_timeout(400)
+                    bottom = menu.evaluate("(el) => el.getBoundingClientRect().bottom")
+                    self.assertLessEqual(bottom, 600)
+                    page.locator(button).click()
+                    expect(menu).to_be_hidden()

@@ -1,0 +1,173 @@
+{% load i18n %}
+{% load app_tags %}
+{{ tier_config|json_script:"tier-config" }}
+<div id="tier-board"
+     class="tier-board"
+     x-data="tierBoard(JSON.parse(document.getElementById('tier-config').textContent))">
+  {% if tier_board_truncated %}
+    <p class="mb-3 text-sm text-[var(--color-text-muted)]">{% blocktranslate with count=tier_limit %}Showing the first {{ count }} items. Filter the list to see the rest.{% endblocktranslate %}</p>
+  {% endif %}
+
+  <div class="flex flex-col gap-1">
+    {% for column in tier_columns %}
+      <div class="tier-row">
+        {% if can_edit %}
+          <button type="button"
+                  class="tier-label"
+                  style="background: {{ column.tier.color }}; color: {{ column.tier.ink }}"
+                  @click="editTier('{{ column.tier.id }}')"
+                  title="{% translate "Edit tier" %}">
+            <span>{{ column.tier.name }}</span>
+            {% include "app/icons/edit.svg" with classes="tier-label-edit w-3.5 h-3.5" %}
+          </button>
+        {% else %}
+          <div class="tier-label" style="background: {{ column.tier.color }}; color: {{ column.tier.ink }}">
+            <span>{{ column.tier.name }}</span>
+          </div>
+        {% endif %}
+        <div class="tier-drop" data-tier="{{ column.tier.id }}">
+          {% for item in column.items %}
+            {% include "lists/components/tier_tile.html" %}
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="mt-2 flex flex-wrap items-center gap-2">
+  {% if can_edit %}
+    <button type="button"
+            class="inline-flex h-10 items-center gap-2 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-4 text-sm text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface-hover)] cursor-pointer"
+            x-show="tiers.length < maxTiers"
+            @click="addTier()">
+      {% include "app/icons/plus.svg" with classes="w-4 h-4" %}
+      {% translate "Add tier" %}
+    </button>
+  {% endif %}
+  <button type="button"
+          class="inline-flex h-10 items-center gap-2 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-4 text-sm text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface-hover)] cursor-pointer"
+          x-show="canFill && unrankedCount > 0"
+          x-cloak
+          @click="fillFromRatings()">
+    {% include "app/icons/star.svg" with classes="w-4 h-4" %}
+    {% translate "Fill from ratings" %}
+  </button>
+  {% if user.is_authenticated %}
+    <a href="{% url 'list_tier_export' custom_list.id %}"
+       download
+       class="inline-flex h-10 items-center gap-2 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-4 text-sm text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface-hover)]">
+      {% include "app/icons/download.svg" with classes="w-4 h-4" %}
+      {% translate "Export image" %}
+    </a>
+  {% endif %}
+  </div>
+
+  <p class="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--color-text-muted)]"
+     x-show="notice"
+     x-cloak>
+    <span x-text="notice"></span>
+    <button type="button"
+            class="font-medium text-[var(--color-link)] hover:underline cursor-pointer"
+            x-show="undoable.length"
+            @click="undoFill()">{% translate "Undo" %}</button>
+  </p>
+
+  <div class="tier-unranked">
+    <div class="px-3 pt-2.5 text-sm font-semibold">
+      {% translate "Unranked" %}
+      <span class="font-medium text-[var(--color-text-muted)]" x-text="unrankedCount"></span>
+    </div>
+    <div class="tier-drop" data-tier="">
+      {% for item in tier_unranked %}
+        {% include "lists/components/tier_tile.html" %}
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if can_edit %}
+    {# Move menu: the keyboard and touch way to change an item's tier. #}
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
+         x-cloak
+         x-show="moving"
+         @click.self="moving = null"
+         @keydown.escape.window="moving = null">
+      <div class="w-full max-w-sm rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface-strong)] p-4 shadow-xl" role="dialog" aria-modal="true">
+        <h3 class="mb-1 truncate text-base font-bold" x-text="moving && moving.title"></h3>
+        <p class="mb-3 text-xs text-[var(--color-text-muted)]">{% translate "Move to tier" %}</p>
+        <div class="flex flex-wrap gap-2">
+          <template x-for="tier in tiers" :key="tier.id">
+            <button type="button"
+                    class="h-9 min-w-9 rounded-md px-3 text-sm font-semibold cursor-pointer"
+                    :class="moving && moving.tierId === tier.id ? 'ring-2 ring-indigo-500' : ''"
+                    :style="`background: ${tier.color}; color: ${tier.ink}`"
+                    x-text="tier.name"
+                    @click="moveTo(tier.id)"></button>
+          </template>
+          <button type="button"
+                  class="h-9 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 text-sm font-semibold cursor-pointer"
+                  :class="moving && moving.tierId === '' ? 'ring-2 ring-indigo-500' : ''"
+                  @click="moveTo('')">{% translate "Unranked" %}</button>
+        </div>
+      </div>
+    </div>
+
+    {# Edit one tier, or add a new one. #}
+    <template x-if="editing">
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
+         @click.self="editing = null"
+         @keydown.escape.window="editing = null">
+      <div class="flex w-full max-w-sm flex-col gap-3 rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface-strong)] p-4 shadow-xl" role="dialog" aria-modal="true">
+        <h3 class="text-base font-bold" x-text="editing.isNew ? '{% translate "Add tier" %}' : '{% translate "Edit tier" %}'"></h3>
+        <div>
+          <label class="mb-1 block text-xs text-[var(--color-text-muted)]" for="tier-name">{% translate "Name" %}</label>
+          <input id="tier-name"
+                 type="text"
+                 maxlength="16"
+                 class="h-9 w-full rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-text)]"
+                 x-model="editing.name"
+                 @keydown.enter.prevent="saveEditing()">
+        </div>
+        <div>
+          <span class="mb-1 block text-xs text-[var(--color-text-muted)]">{% translate "Color" %}</span>
+          <div class="flex flex-wrap items-center gap-2">
+            <template x-for="color in colors" :key="color">
+              <button type="button"
+                      class="h-7 w-7 rounded-full border-2 cursor-pointer"
+                                            :class="editing.color === color ? 'border-[var(--color-text)]' : 'border-transparent'"
+                      :style="`background: ${color}`"
+                      :aria-label="color"
+                      @click="editing.color = color"></button>
+            </template>
+            <input type="color"
+                   class="h-8 w-9 cursor-pointer border-0 bg-transparent p-0"
+                   aria-label="{% translate "Custom color" %}"
+                   :value="editing.color"
+                   @input="editing.color = $event.target.value">
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-2" x-show="!editing.isNew">
+          <button type="button"
+                  class="h-9 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 text-sm cursor-pointer disabled:opacity-40"
+                  :disabled="tiers[0].id === editing.id"
+                  @click="shiftEditing(-1)">{% translate "Move up" %}</button>
+          <button type="button"
+                  class="h-9 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 text-sm cursor-pointer disabled:opacity-40"
+                  :disabled="tiers[tiers.length - 1].id === editing.id"
+                  @click="shiftEditing(1)">{% translate "Move down" %}</button>
+        </div>
+        <p class="text-sm text-[var(--color-error-text)]" x-show="error" x-text="error"></p>
+        <div class="flex items-center justify-between gap-2">
+          <button type="button"
+                  class="h-9 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-error-text)] cursor-pointer"
+                  x-show="!editing.isNew"
+                  @click="deleteEditing()">{% translate "Delete tier" %}</button>
+          <span x-show="editing.isNew"></span>
+          <button type="button"
+                  class="h-9 rounded-md bg-indigo-600 px-4 text-sm text-white hover:bg-indigo-700 cursor-pointer"
+                  @click="saveEditing()">{% translate "Save" %}</button>
+        </div>
+      </div>
+    </div>
+    </template>
+  {% endif %}
+</div>

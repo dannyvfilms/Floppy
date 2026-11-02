@@ -37,6 +37,7 @@ def provider_metadata_cache_keys(
                 media_type,
                 season_number=season_number,
                 episode_number=episode_number,
+                language=language,
             ),
         )
     elif source == Sources.TVDB.value:
@@ -118,6 +119,8 @@ PROVIDER_METADATA_FIELDS = [
     "provider_certification",
     "provider_collection_id",
     "provider_collection_name",
+    "provider_franchise_id",
+    "provider_franchise_name",
     "igdb_user_rating",
     "igdb_user_rating_count",
 ]
@@ -156,7 +159,7 @@ def _coerce_list(value, *, allow_scalar: bool = True) -> list:
 
 def normalize_genres(value) -> list[str]:
     """Normalize a provider or model genre payload into unique strings."""
-    from app.statistics import _coerce_genre_list
+    from app.stats_utils import _coerce_genre_list
 
     genres = _coerce_genre_list(value)
     return list(dict.fromkeys([str(genre) for genre in genres if genre]))
@@ -303,6 +306,12 @@ def extract_item_metadata_values(metadata: dict | None) -> dict[str, object]:
         ).strip(),
         "provider_collection_name": str(
             payload.get("provider_collection_name") or ""
+        ).strip(),
+        "provider_franchise_id": str(
+            payload.get("provider_franchise_id") or ""
+        ).strip(),
+        "provider_franchise_name": str(
+            payload.get("provider_franchise_name") or ""
         ).strip(),
         "igdb_user_rating": payload.get("igdb_user_rating"),
         "igdb_user_rating_count": payload.get("igdb_user_rating_count"),

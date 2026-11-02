@@ -39,6 +39,7 @@ CACHES = {
         "LOCATION": REDIS_CACHE_URL,  # noqa: F405
         "TIMEOUT": 18000,  # 5 hours
         "OPTIONS": {
+            "COMPRESSOR": "app.cache_safety.SizedZlibCompressor",
             "CONNECTION_POOL_KWARGS": {"connection_class": FakeConnection},
         },
     },
@@ -65,8 +66,11 @@ PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 # migration graph and skips RunPython data migrations. Use it for iterating;
 # let CI and any migration-sensitive run replay the real thing.
 if os.environ.get("FLOPPY_TEST_FAST_DB") == "1":
+    # PostgreSQL validates deferred user -> auth -> contenttypes foreign keys
+    # when syncdb finishes, before migrations for the remaining apps run.
+    # Build those referenced tables in the same syncdb pass.
     MIGRATION_MODULES = dict.fromkeys(
-        ("app", "users", "lists", "integrations", "events")
+        ("app", "users", "lists", "integrations", "events", "auth", "contenttypes")
     )
 
 # Django's parallel runner has been seen to lose worker results and then wait

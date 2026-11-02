@@ -169,20 +169,25 @@ def missing_credits_backfill_item_ids(item_ids):
     current_credit_ids = current_credits_backfill_item_ids(candidate_ids)
 
     person_credit_ids = set(
-        ItemPersonCredit.objects.filter(item_id__in=candidate_ids).values_list(
-            "item_id", flat=True
-        ),
+        ItemPersonCredit.objects.filter(item_id__in=candidate_ids)
+        .order_by()
+        .values_list("item_id", flat=True)
+        .distinct(),
     )
     cast_credit_ids = set(
         ItemPersonCredit.objects.filter(
             item_id__in=candidate_ids,
             role_type=CreditRoleType.CAST.value,
-        ).values_list("item_id", flat=True),
+        )
+        .order_by()
+        .values_list("item_id", flat=True)
+        .distinct(),
     )
     studio_credit_ids = set(
-        ItemStudioCredit.objects.filter(item_id__in=candidate_ids).values_list(
-            "item_id", flat=True
-        ),
+        ItemStudioCredit.objects.filter(item_id__in=candidate_ids)
+        .order_by()
+        .values_list("item_id", flat=True)
+        .distinct(),
     )
 
     missing_ids = []
@@ -280,6 +285,113 @@ def _normalize_studio_rows(rows):
     return normalized
 
 
+# SQLite caps bound parameters per statement, so IN lists are read in chunks.
+_UPSERT_CHUNK_SIZE = 500
+
+
+def _bulk_upsert(model, id_field, source, fields_by_id):
+    """Create or update one ``model`` row per external id; return ``{id: row}``.
+
+    Reads the existing rows once and writes only what changed, instead of an
+    ``update_or_create`` (a lock, a read, a savepoint and a write) per row: a
+    film with a thousand credits was issuing about 6,000 queries per sync.
+    Fields not named in ``fields_by_id`` (a biography, say) are left alone.
+    """
+    ids = list(fields_by_id)
+    rows = {}
+    for start in range(0, len(ids), _UPSERT_CHUNK_SIZE):
+        chunk = ids[start : start + _UPSERT_CHUNK_SIZE]
+        rows.update(
+            {
+                getattr(row, id_field): row
+                for row in model.objects.filter(
+                    source=source,
+                    **{f"{id_field}__in": chunk},
+                )
+            },
+        )
+
+    to_create = []
+    to_update = []
+    field_names = []
+    for external_id, fields in fields_by_id.items():
+        field_names = list(fields)
+        row = rows.get(external_id)
+        if row is None:
+            to_create.append(model(source=source, **{id_field: external_id}, **fields))
+        elif any(getattr(row, name) != value for name, value in fields.items()):
+            for name, value in fields.items():
+                setattr(row, name, value)
+            to_update.append(row)
+
+    if to_update:
+        model.objects.bulk_update(to_update, field_names, batch_size=_UPSERT_CHUNK_SIZE)
+    if to_create:
+        # ignore_conflicts does not set primary keys, so read the rows back.
+        # It also keeps a concurrent sync that created the same row first from
+        # failing this one.
+        model.objects.bulk_create(
+            to_create,
+            ignore_conflicts=True,
+            batch_size=_UPSERT_CHUNK_SIZE,
+        )
+        created_ids = [getattr(row, id_field) for row in to_create]
+        for start in range(0, len(created_ids), _UPSERT_CHUNK_SIZE):
+            chunk = created_ids[start : start + _UPSERT_CHUNK_SIZE]
+            rows.update(
+                {
+                    getattr(row, id_field): row
+                    for row in model.objects.filter(
+                        source=source,
+                        **{f"{id_field}__in": chunk},
+                    )
+                },
+            )
+    return rows
+
+
+def _replace_person_credits(item, role_types):
+    """Delete an item's credits of ``role_types`` before they are re-created.
+
+    Each deleted row would fire its own Discover invalidation (two reads apiece:
+    a thousand credits cost two thousand queries), so they are deleted with the
+    per-row side effect off and invalidated once. A caller that already
+    suppresses the side effects, such as a bulk backfill, does its own.
+    """
+    from app.signals import (
+        invalidate_discover_for_credit_item,
+        media_change_side_effects_suppressed,
+        suppress_media_change_side_effects,
+    )
+
+    already_suppressed = media_change_side_effects_suppressed()
+    with suppress_media_change_side_effects():
+        deleted, _ = ItemPersonCredit.objects.filter(
+            item=item,
+            role_type__in=role_types,
+        ).delete()
+    if deleted and not already_suppressed:
+        invalidate_discover_for_credit_item(item)
+
+
+def _upsert_people(source, credit_rows):
+    """Upsert the people named by normalized credit rows; return ``{id: Person}``."""
+    return _bulk_upsert(
+        Person,
+        "source_person_id",
+        source,
+        {
+            row["person_id"]: {
+                "name": row["name"] or "Unknown Person",
+                "image": row["image"],
+                "known_for_department": row["known_for_department"],
+                "gender": row["gender"],
+            }
+            for row in credit_rows
+        },
+    )
+
+
 @transaction.atomic
 def sync_item_credits_from_metadata(item, metadata, person_source=None):
     """Persist cast/crew and studios for an item from normalized metadata.
@@ -302,27 +414,12 @@ def sync_item_credits_from_metadata(item, metadata, person_source=None):
     studio_rows = _normalize_studio_rows(metadata.get("studios_full", []))
 
     if has_people_payload:
-        people_by_source_id = {}
-        for row in cast_rows + crew_rows:
-            person, _ = Person.objects.update_or_create(
-                source=person_source,
-                source_person_id=row["person_id"],
-                defaults={
-                    "name": row["name"] or "Unknown Person",
-                    "image": row["image"],
-                    "known_for_department": row["known_for_department"],
-                    "gender": row["gender"],
-                },
-            )
-            people_by_source_id[row["person_id"]] = person
+        people_by_source_id = _upsert_people(person_source, cast_rows + crew_rows)
 
-        ItemPersonCredit.objects.filter(
-            item=item,
-            role_type__in=(
-                CreditRoleType.CAST.value,
-                CreditRoleType.CREW.value,
-            ),
-        ).delete()
+        _replace_person_credits(
+            item,
+            (CreditRoleType.CAST.value, CreditRoleType.CREW.value),
+        )
         credits_to_create = []
 
         for row in cast_rows:
@@ -361,17 +458,18 @@ def sync_item_credits_from_metadata(item, metadata, person_source=None):
             )
 
     if has_studio_payload:
-        studios_by_source_id = {}
-        for row in studio_rows:
-            studio, _ = Studio.objects.update_or_create(
-                source=person_source,
-                source_studio_id=row["studio_id"],
-                defaults={
+        studios_by_source_id = _bulk_upsert(
+            Studio,
+            "source_studio_id",
+            person_source,
+            {
+                row["studio_id"]: {
                     "name": row["name"] or "Unknown Studio",
                     "logo": row["logo"],
-                },
-            )
-            studios_by_source_id[row["studio_id"]] = studio
+                }
+                for row in studio_rows
+            },
+        )
 
         ItemStudioCredit.objects.filter(item=item).delete()
         studio_links = []
@@ -424,27 +522,12 @@ def sync_item_author_credits(item, authors_full):
         return
 
     author_rows = _normalize_author_rows(authors_full)
-    ItemPersonCredit.objects.filter(
-        item=item,
-        role_type=CreditRoleType.AUTHOR.value,
-    ).delete()
+    _replace_person_credits(item, (CreditRoleType.AUTHOR.value,))
 
     if not author_rows:
         return
 
-    people_by_source_id = {}
-    for row in author_rows:
-        person, _ = Person.objects.update_or_create(
-            source=item.source,
-            source_person_id=row["person_id"],
-            defaults={
-                "name": row["name"] or "Unknown Person",
-                "image": row["image"],
-                "known_for_department": row["known_for_department"],
-                "gender": row["gender"],
-            },
-        )
-        people_by_source_id[row["person_id"]] = person
+    people_by_source_id = _upsert_people(item.source, author_rows)
 
     credits_to_create = []
     for row in author_rows:

@@ -6,7 +6,7 @@ import requests
 from django.conf import settings
 from django.core.cache import cache
 
-from app import helpers
+from app import helpers, request_timing
 from app.models import MediaTypes, Sources
 from app.providers import services
 
@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 ITUNES_API_BASE = "https://itunes.apple.com/search"
 ITUNES_LOOKUP_BASE = "https://itunes.apple.com/lookup"
+ITUNES_MAX_RESULTS = 200
 USER_AGENT = "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"
 
 
@@ -25,6 +26,7 @@ def handle_error(error):
     )
 
 
+@request_timing.timed_provider_call
 def search(query, page):
     """Search for podcasts using iTunes API."""
     cache_key = (
@@ -33,15 +35,15 @@ def search(query, page):
     data = cache.get(cache_key)
 
     if data is None:
-        # Calculate offset for pagination
+        # iTunes ignores `offset` for podcasts (every page came back identical,
+        # #1817), so fetch the maximum once and paginate locally.
         per_page = settings.PER_PAGE
         offset = (page - 1) * per_page
 
         params = {
             "term": query,
             "media": "podcast",
-            "limit": per_page,
-            "offset": offset,
+            "limit": ITUNES_MAX_RESULTS,
         }
 
         try:
@@ -49,7 +51,7 @@ def search(query, page):
                 ITUNES_API_BASE,
                 params=params,
                 headers={"User-Agent": USER_AGENT},
-                timeout=settings.REQUEST_TIMEOUT,
+                timeout=services.request_timeout(),
             )
             response.raise_for_status()
             response_data = response.json()
@@ -85,18 +87,19 @@ def search(query, page):
                 },
             )
 
-        total_results = response_data.get("resultCount", len(results))
+        total_results = len(results)
         data = helpers.format_search_response(
             page,
             per_page,
             total_results,
-            results,
+            results[offset : offset + per_page],
         )
 
         cache.set(cache_key, data)
     return data
 
 
+@request_timing.timed_provider_call
 def lookup_by_itunes_id(itunes_collection_id):
     """Look up podcast metadata by iTunes collection ID.
 
@@ -125,7 +128,7 @@ def lookup_by_itunes_id(itunes_collection_id):
                 ITUNES_LOOKUP_BASE,
                 params=params,
                 headers={"User-Agent": USER_AGENT},
-                timeout=settings.REQUEST_TIMEOUT,
+                timeout=services.request_timeout(),
             )
             response.raise_for_status()
             response_data = response.json()

@@ -18,7 +18,7 @@
     {% for section in tag_sections %}
       <div class="mb-6">
         <div class="flex items-center gap-2 mb-4">
-          <h2 class="text-lg font-semibold text-[var(--color-text)]">{{ section.tag }}</h2>
+          <h2 class="text-lg font-semibold text-[var(--color-text)]">{% translate section.tag %}</h2>
           <span class="text-xs text-[var(--color-text-muted)]">
             {% blocktranslate trimmed with value_1=section.lists|length count count=section.lists|length %}{{ value_1 }} list{% plural %}{{ value_1 }} lists{% endblocktranslate %}
           </span>

@@ -6,9 +6,13 @@ from django.db import IntegrityError
 from django.http import JsonResponse
 from django.template.response import ContentNotRenderedError, TemplateResponse
 
+from api.errors import database_busy_response
+
 logger = logging.getLogger(__name__)
 
-_TRACKED_MEDIA_CONSTRAINT_SUFFIX = "_unique_item_user"
+# TV, movies etc. are unique per user and item; a season per show and item.
+_TRACKED_MEDIA_CONSTRAINT_SUFFIXES = ("_unique_item_user", "_unique_tv_item")
+_TRACKED_MEDIA_UNIQUE_COLUMNS = ({"user_id", "item_id"}, {"related_tv_id", "item_id"})
 _TRACKED_MEDIA_UNIQUE_COLUMN_COUNT = 2
 _MEDIA_COLLECTION_PATH_PART_COUNT = 4
 
@@ -35,7 +39,7 @@ def _is_sqlite_tracked_media_unique_error(exception):
     return (
         first_table == second_table
         and first_table.startswith("app_")
-        and {first_column, second_column} == {"user_id", "item_id"}
+        and {first_column, second_column} in _TRACKED_MEDIA_UNIQUE_COLUMNS
     )
 
 
@@ -52,11 +56,13 @@ def is_tracked_media_unique_error(exception):
     cause = exception.__cause__ or exception
     diagnostic = getattr(cause, "diag", None)
     constraint_name = getattr(diagnostic, "constraint_name", "") or ""
-    if constraint_name.endswith(_TRACKED_MEDIA_CONSTRAINT_SUFFIX):
+    if constraint_name.endswith(_TRACKED_MEDIA_CONSTRAINT_SUFFIXES):
         return True
 
     message = str(cause).lower()
-    if "duplicate key" in message and _TRACKED_MEDIA_CONSTRAINT_SUFFIX in message:
+    if "duplicate key" in message and any(
+        suffix in message for suffix in _TRACKED_MEDIA_CONSTRAINT_SUFFIXES
+    ):
         return True
 
     return _is_sqlite_tracked_media_unique_error(cause)
@@ -171,6 +177,10 @@ class ApiJsonErrorMiddleware:
 
         if not path.startswith("/api/"):
             return None
+
+        busy = database_busy_response(exception, request=request)
+        if busy is not None:
+            return busy
 
         if _is_media_collection_post(request, path) and is_tracked_media_unique_error(
             exception,

@@ -690,6 +690,35 @@ class RedisCheckTests(SimpleTestCase):
         rendered = json.dumps(result.as_dict())
         self.assertNotIn("hunter2", rendered)
 
+    @override_settings(
+        REDIS_URL="redis://redis:6379",
+        REDIS_CACHE_URL="redis://redis:6379",
+        REDIS_ADMIN_URL="redis://redis:6379",
+        CELERY_BROKER_URL="redis://redis:6379",
+        CELERY_RESULT_BACKEND="redis://redis:6379",
+    )
+    def test_an_unresolvable_hostname_points_at_the_shared_network(self):
+        """#1263. Redis was running, on a network Floppy was not on.
+
+        "Check that the Redis service is running" sent the operator to a
+        container that was healthy. The fix is the compose file's networks.
+        """
+        client = mock.Mock()
+        client.ping.side_effect = preflight.redis.ConnectionError(
+            "Error -2 connecting to redis:6379. Name does not resolve."
+        )
+        with (
+            mock.patch.object(preflight.redis, "from_url", return_value=client),
+            mock.patch.object(preflight, "in_container", return_value=True),
+        ):
+            result = preflight.check_redis()
+
+        self.assertEqual(result.status, FAIL)
+        self.assertIn('"redis" does not resolve', result.cause)
+        self.assertTrue(result.fix.startswith(preflight.CONFIG))
+        self.assertIn("network", result.fix)
+        self.assertNotIn("is running", result.fix)
+
 
 class CommandTests(TestCase):
     """Command-level behaviour.
@@ -1004,3 +1033,73 @@ class CommandTests(TestCase):
                         result.fix.startswith(scopes),
                         f"{result.name} fix does not name where to run it",
                     )
+
+
+class DemoAccountCheckTests(TestCase):
+    """The demo check exposes known-credential access, read-only."""
+
+    @override_settings(
+        PASSWORD_HASHERS=["django.contrib.auth.hashers.PBKDF2PasswordHasher"]
+    )
+    def test_does_not_upgrade_an_old_password_hash(self):
+        from django.contrib.auth.hashers import PBKDF2PasswordHasher
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from users.demo import DEMO_PASSWORD, ensure_demo_user
+
+        demo = ensure_demo_user()
+        old_hash = PBKDF2PasswordHasher().encode(DEMO_PASSWORD, "fixture-salt", iterations=1)
+        type(demo).objects.filter(pk=demo.pk).update(password=old_hash)
+        with CaptureQueriesContext(connection) as queries:
+            result = preflight.check_demo_account(database_ok=True)
+        demo.refresh_from_db()
+        self.assertEqual(result.status, WARN)
+        self.assertEqual(demo.password, old_hash)
+        self.assertFalse(any(q["sql"].lstrip().upper().startswith("UPDATE") for q in queries))
+
+    @override_settings(DEMO_ACCOUNT_ENABLED=True)
+    def test_warns_that_provisioning_resets_a_changed_demo_password(self):
+        from users.demo import ensure_demo_user
+
+        demo = ensure_demo_user()
+        demo.set_password("changed-demo-fixture")
+        demo.save(update_fields=["password"])
+        result = preflight.check_demo_account(database_ok=True)
+        self.assertEqual(result.status, WARN)
+        self.assertIn("reset", result.summary)
+
+    def test_warns_on_an_active_demo_account_with_the_known_password(self):
+        from users.demo import ensure_demo_user
+
+        ensure_demo_user()
+        result = preflight.check_demo_account(database_ok=True)
+        self.assertEqual(result.status, WARN)
+        self.assertIn("deactivate", result.fix)
+
+    def test_reports_a_repassworded_demo_account_as_ok(self):
+        from users.demo import ensure_demo_user
+
+        demo = ensure_demo_user()
+        demo.set_password("not-the-default")
+        demo.save(update_fields=["password"])
+        result = preflight.check_demo_account(database_ok=True)
+        self.assertEqual(result.status, OK)
+
+    def test_warns_when_provisioning_is_enabled_and_no_account_exists(self):
+        with override_settings(DEMO_ACCOUNT_ENABLED=True):
+            result = preflight.check_demo_account(database_ok=True)
+        self.assertEqual(result.status, WARN)
+        self.assertIn("DEMO_ACCOUNT_ENABLED", result.fix)
+
+    def test_ok_when_no_account_and_provisioning_off(self):
+        result = preflight.check_demo_account(database_ok=True)
+        self.assertEqual(result.status, OK)
+
+    def test_skipped_when_the_database_is_unavailable(self):
+        result = preflight.check_demo_account(database_ok=False)
+        self.assertEqual(result.status, SKIPPED)
+
+    def test_demo_check_appears_in_the_report(self):
+        results = preflight.run_checks(include_redis=False)
+        self.assertIn("demo", {result.name for result in results})

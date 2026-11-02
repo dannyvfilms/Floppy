@@ -8,6 +8,7 @@ from django_celery_beat.models import PeriodicTask
 from app.models import (
     TV,
     CollectionEntry,
+    DeletedMedia,
     Episode,
     Item,
     MediaTypes,
@@ -505,6 +506,38 @@ class ImportMDBList(TestCase):
             2,
         )
 
+    def test_rerating_a_saved_episode_names_the_row_it_changed(self):
+        """The score update sends no signal, so the import must report the row."""
+        show = {"title": "Test Show", "ids": {"tmdb": 12345}}
+        responses = {
+            "/sync/watched": {
+                "episodes": [
+                    {
+                        "watched_at": "2023-01-01T00:00:00Z",
+                        "episode": {"season": 1, "number": 1, "show": show},
+                    },
+                ],
+            },
+            "/sync/ratings": {
+                "episodes": [
+                    {
+                        "rated_at": "2023-01-03T00:00:00Z",
+                        "rating": 9,
+                        "episode": {"season": 1, "number": 1, "show": show},
+                    },
+                ],
+            },
+        }
+        self._run_import(responses)
+        responses["/sync/ratings"]["episodes"][0]["rating"] = 4
+
+        with helpers.record_bulk_rows() as recorded:
+            self._run_import(responses)
+
+        episode = Episode.objects.get(item__media_id="12345")
+        self.assertEqual(episode.score, self.user.scale_score_for_storage(Decimal(4)))
+        self.assertIn(episode.pk, [row.pk for row in recorded])
+
     def test_dropped_show_marks_existing_tv(self):
         """Dropped shows set DROPPED on the TV row built during the import."""
         responses = {
@@ -530,6 +563,55 @@ class ImportMDBList(TestCase):
 
         tv = TV.objects.get(item__media_id="12345", user=self.user)
         self.assertEqual(tv.status, Status.DROPPED.value)
+
+    def test_deleted_show_is_not_brought_back(self):
+        """A show the user deleted stays deleted across syncs (#1133)."""
+        DeletedMedia.objects.create(
+            user=self.user,
+            media_type=MediaTypes.TV.value,
+            source=Sources.TMDB.value,
+            media_id="12345",
+        )
+        responses = {
+            "/sync/watched": {
+                "episodes": [
+                    {
+                        "watched_at": "2023-01-01T00:00:00Z",
+                        "episode": {
+                            "season": 1,
+                            "number": 1,
+                            "show": {"title": "Test Show", "ids": {"tmdb": 12345}},
+                        },
+                    },
+                ],
+            },
+        }
+
+        self._run_import(responses)
+
+        self.assertFalse(TV.objects.filter(user=self.user).exists())
+
+    def test_overwrite_does_not_stop_later_syncs_of_the_same_show(self):
+        """Replacing a show in overwrite mode must not mark it as deleted."""
+        responses = {
+            "/sync/watched": {
+                "episodes": [
+                    {
+                        "watched_at": "2023-01-01T00:00:00Z",
+                        "episode": {
+                            "season": 1,
+                            "number": 1,
+                            "show": {"title": "Test Show", "ids": {"tmdb": 12345}},
+                        },
+                    },
+                ],
+            },
+        }
+        self._run_import(responses)
+        self._run_import(responses, mode="overwrite")
+
+        self.assertTrue(TV.objects.filter(user=self.user).exists())
+        self.assertFalse(DeletedMedia.objects.filter(user=self.user).exists())
 
     def test_new_mode_rerun_does_not_duplicate(self):
         """Rerunning the same import in new mode creates no duplicates."""

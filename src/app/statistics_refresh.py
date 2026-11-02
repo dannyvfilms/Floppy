@@ -13,40 +13,20 @@ from django.utils import timezone
 
 from app import statistics as stats
 from app.models import MediaTypes
-from app.statistics_aggregator import _aggregate_statistics_from_days
 
 # Controlled circular: all of these are defined in statistics_cache before the
 # re-export block, so they are available on the partial module object when this
 # module is first imported (which happens at the bottom of statistics_cache.py).
 from app.statistics_cache import (
     PREDEFINED_RANGES,
-    STATISTICS_ALL_TIME_REFRESH_DELAY,
-    STATISTICS_REFRESH_LOCK_PREFIX,
-    STATISTICS_SCHEDULE_DEDUPE_TTL,
-    STATISTICS_TASK_PRIORITY_BACKGROUND,
-    STATISTICS_TASK_PRIORITY_FOLLOWUP,
-    STATISTICS_TASK_PRIORITY_INTERACTIVE,
-    _cache_key,
-    _dirty_days_key,
-    _get_empty_statistics_data,
-    _lock_is_stale,
-    _normalize_hours_per_media_type,
-    _preferred_range_for_user,
-    _refresh_lock_key,
-    _schedule_dedupe_key,
-    cache_statistics_data,
-    is_statistics_cache_stale,
 )
 from app.statistics_day_builder import (
     _iter_day_range,
 )
 from app.statistics_day_cache import (
     _day_cache_key,
-    _get_history_version,
     _normalize_day_value,
-    _set_history_version,
 )
-from app.statistics_highlights import _normalize_history_highlight_images
 
 logger = logging.getLogger(__name__)
 
@@ -59,72 +39,13 @@ def _range_day_bounds(start_date, end_date):
     return start_day, end_day
 
 
-def _range_cache_covers_days(range_name: str, start_day, end_day) -> bool:
-    if not start_day or not end_day:
-        return False
-    if range_name == "All Time":
-        return True
-
-    cached_start, cached_end = _get_predefined_range_dates(range_name)
-    cached_start_day, cached_end_day = _range_day_bounds(cached_start, cached_end)
-    if not cached_start_day or not cached_end_day:
-        return False
-    return cached_start_day <= start_day and cached_end_day >= end_day
-
-
-def _has_covering_range_cache(
-    user_id: int, range_name: str, start_date, end_date, history_version: str
-) -> bool:
-    start_day, end_day = _range_day_bounds(start_date, end_date)
-    if not start_day or not end_day:
-        return False
-
-    for candidate_range in PREDEFINED_RANGES:
-        if candidate_range == range_name:
-            continue
-        cache_entry = cache.get(_cache_key(user_id, candidate_range))
-        if not isinstance(cache_entry, dict):
-            continue
-        if cache_entry.get("history_version") != history_version:
-            continue
-        if is_statistics_cache_stale(cache_entry, user_id):
-            continue
-        if _range_cache_covers_days(candidate_range, start_day, end_day):
-            return True
-    return False
-
-
-def _build_predefined_range_from_day_caches(
-    user, start_date, end_date, range_name: str, history_version: str
-):
-    day_list = _resolve_day_list(user, start_date, end_date)
-    if not day_list:
-        data = _get_empty_statistics_data()
-        cache_statistics_data(
-            user.id, range_name, data, history_version=history_version
-        )
-        return data
-
-    data = _aggregate_statistics_from_days(
-        user,
-        day_list,
-        start_date,
-        end_date,
-        build_missing=False,
-    )
-    _normalize_hours_per_media_type(data.get("hours_per_media_type"))
-    _normalize_history_highlight_images(data.get("history_highlights"))
-    cache_statistics_data(user.id, range_name, data, history_version=history_version)
-    logger.debug(
-        "Derived statistics cache for user %s, range %s from warmed day caches",
-        user.id,
-        range_name,
-    )
-    return data
-
-
 def invalidate_all_statistics_days(user_id: int, reason: str | None = None) -> int:
-    """Remove all warmed per-day statistics caches for a user."""
+    """Drop every per-day payload for a user and have the next sync rebuild them.
+
+    The published snapshots stay and keep being served until then.
+    """
+    from app import statistics_sync
+
     user_model = get_user_model()
     try:
         user = user_model.objects.get(id=user_id)
@@ -142,9 +63,7 @@ def invalidate_all_statistics_days(user_id: int, reason: str | None = None) -> i
     if day_keys:
         cache.delete_many(day_keys)
 
-    cache.delete(_dirty_days_key(user_id))
-    _set_history_version(user_id)
-
+    statistics_sync.mark_aggregate(user_id, reason=reason, full_sweep=True)
     logger.info(
         "stats_day_invalidate_all user_id=%s days=%s reason=%s",
         user_id,
@@ -155,20 +74,12 @@ def invalidate_all_statistics_days(user_id: int, reason: str | None = None) -> i
 
 
 def invalidate_statistics_cache(user_id: int, range_name: str | None = None):
-    """Mark statistics stale while retaining the last usable result.
+    """Mark every range stale while keeping the last published result."""
+    from app import statistics_sync
 
-    Readers compare the history version and schedule a background refresh. Keep
-    the payload even before a worker starts, so invalidation cannot turn a warm
-    page into a cold one. The shared version also invalidates derived fragments.
-    """
     if range_name and range_name not in PREDEFINED_RANGES:
         return
-    _set_history_version(user_id)
-    logger.debug(
-        "Marked statistics stale for user %s, range %s",
-        user_id,
-        range_name or "all",
-    )
+    statistics_sync.mark_aggregate(user_id, reason=f"range:{range_name or 'all'}")
 
 
 def _get_predefined_range_dates(range_name: str):
@@ -288,6 +199,13 @@ def _get_activity_bounds(user):
         end_date__isnull=False,
     ).aggregate(min_date=Min("end_date"), max_date=Max("end_date"))
     _add_bounds(podcast_bounds.get("min_date"), podcast_bounds.get("max_date"))
+
+    VideoPlay = apps.get_model("app", "VideoPlay")
+    video_bounds = VideoPlay.objects.filter(video__user=user).aggregate(
+        min_date=Min("end_date"),
+        max_date=Max("end_date"),
+    )
+    _add_bounds(video_bounds.get("min_date"), video_bounds.get("max_date"))
 
     for media_type in (
         MediaTypes.ANIME.value,
@@ -452,6 +370,16 @@ def _get_sparse_activity_days(user):
         )
         days.update(day for day in podcast_days if day)
 
+    if MediaTypes.VIDEO.value in active_media_types:
+        VideoPlay = apps.get_model("app", "VideoPlay")
+        video_days = (
+            VideoPlay.objects.filter(video__user=user)
+            .annotate(day=TruncDate("end_date", tzinfo=tz))
+            .values_list("day", flat=True)
+            .distinct()
+        )
+        days.update(day for day in video_days if day)
+
     for media_type in (
         MediaTypes.ANIME.value,
         MediaTypes.GAME.value,
@@ -527,21 +455,16 @@ def _enqueue_collected_backfills(user_id: int, collector: dict) -> None:
 
 
 def refresh_statistics_cache(user_id: int, range_name: str, chunk_size=None):
-    """Rebuild and store statistics for a user and range, synchronously.
+    """Rebuild one range synchronously and return its payload.
 
-    This is the inline driver for the resumable run in
-    ``app.statistics_refresh_run``: it walks the same START -> CHUNK -> FINISH
-    state machine to completion in this process and returns the published
-    payload. Callers that need the result back (the eager/test path, the
-    Celery-unavailable fallback) use this; the interactive worker runs the same
-    machine one chunk per Celery message instead, so it can yield the fast lane
-    in between.
+    Used by the eager/test read path; production rebuilds through the
+    background sync (``app.statistics_sync``).
     """
-    from app import statistics_refresh_run
+    from app import statistics_sync
 
-    return statistics_refresh_run.run_refresh_inline(
-        user_id, range_name, chunk_size=chunk_size
-    )
+    if range_name not in PREDEFINED_RANGES:
+        return None
+    return statistics_sync.refresh_range_inline(user_id, range_name)
 
 
 def schedule_statistics_refresh(
@@ -553,101 +476,17 @@ def schedule_statistics_refresh(
     priority: int | None = None,
     force: bool = False,
 ):
-    """Queue a background refresh for a user's statistics cache.
+    """Make sure a background Statistics sync is queued for the user.
 
-    Args:
-        user_id: User ID
-        range_name: Predefined range name
-        debounce_seconds: Seconds to debounce refresh requests
-        countdown: Seconds to delay task execution (default 3)
-        allow_inline: Whether to run inline if Celery is unavailable
-        force: Treat this as a user-demanded refresh. A forced request is
-            never silently dropped: if a run is already active it is recorded
-            as a follow-up pass and started when that run finishes.
+    Kept for its many callers. A sync covers every range, so ``range_name``
+    only validates the request; ``force`` queues it ahead of other syncs. The
+    debounce and countdown arguments are ignored: the sync coalesces itself.
     """
+    from app import statistics_sync
+
     if range_name not in PREDEFINED_RANGES:
         return False
-
-    # ``debounce_seconds=0`` has always been how the Refresh button asks for an
-    # unconditional rebuild. Keep that meaning rather than making every caller
-    # pass the new flag.
-    force = force or not debounce_seconds
-
-    history_version = _get_history_version(user_id)
-    cache_entry = cache.get(_cache_key(user_id, range_name))
-    if not force and not is_statistics_cache_stale(cache_entry, user_id):
-        return False
-
-    from app import statistics_refresh_run
-
-    active_run = statistics_refresh_run.load_run(user_id, range_name)
-    if active_run is not None:
-        # A run owns this user/range. Two normal requests must not become two
-        # heavy concurrent runs; a forced one must not vanish.
-        if force:
-            statistics_refresh_run.request_rerun(
-                user_id, range_name, reason="forced_during_active_run"
-            )
-        return False
-
-    lock_key = _refresh_lock_key(user_id, range_name)
-    lock_value = {"started_at": timezone.now().isoformat()}
-    # Use a longer TTL (5 minutes) to ensure lock exists for entire task duration
-    # The lock is deleted when task completes, but we need it to last longer than
-    # the longest possible task execution time
-    lock_ttl = 300  # 5 minutes should be more than enough for any statistics task
-    if debounce_seconds and not cache.add(lock_key, lock_value, debounce_seconds):
-        existing_lock = cache.get(lock_key)
-        if _lock_is_stale(existing_lock):
-            cache.delete(lock_key)
-            if not cache.add(lock_key, lock_value, debounce_seconds):
-                return False
-        else:
-            return False
-
-    # Extend the lock TTL to cover the full task duration
-    # This ensures the lock exists even if the task takes longer than debounce_seconds
-    cache.set(lock_key, lock_value, lock_ttl)
-
-    dedupe_key = None
-    if cache_entry and STATISTICS_SCHEDULE_DEDUPE_TTL and not force:
-        dedupe_key = _schedule_dedupe_key(user_id, range_name, history_version)
-        if not cache.add(dedupe_key, True, STATISTICS_SCHEDULE_DEDUPE_TTL):
-            cache.delete(lock_key)
-            return False
-
-    try:
-        from app.tasks_interactive import refresh_statistics_cache_task
-
-        refresh_statistics_cache_task.apply_async(
-            args=[user_id, range_name, force],
-            countdown=countdown,
-            priority=(
-                STATISTICS_TASK_PRIORITY_INTERACTIVE if priority is None else priority
-            ),
-        )
-    except Exception as exc:  # pragma: no cover - Celery not available
-        if allow_inline:
-            logger.debug(
-                "Falling back to inline statistics cache rebuild for user %s, range %s: %s",
-                user_id,
-                range_name,
-                exc,
-            )
-            refresh_statistics_cache(user_id, range_name)
-            return False
-        logger.debug(
-            "Failed to schedule statistics refresh for user %s, range %s: %s",
-            user_id,
-            range_name,
-            exc,
-        )
-        cache.delete(lock_key)
-        if dedupe_key:
-            cache.delete(dedupe_key)
-        return False
-    else:
-        return True
+    return statistics_sync.ensure_sync(user_id, urgent=force)
 
 
 def schedule_all_ranges_refresh(
@@ -657,53 +496,11 @@ def schedule_all_ranges_refresh(
     preferred_priority: int | None = None,
     all_time_priority: int | None = None,
 ):
-    """Schedule proactive statistics refresh for the ranges most likely to be reopened.
+    """Record that the user's statistics changed, so every range rebuilds.
 
-    Media-change flows no longer enqueue every predefined range. They refresh the
-    user's preferred range first and only keep "All Time" warm if it already exists.
-    Less-frequently used ranges stay lazily repairable on demand via history_version.
+    Callers that know which days changed should mark them first
+    (``invalidate_statistics_days``); this covers the change either way.
     """
-    all_ranges_lock_key = f"{STATISTICS_REFRESH_LOCK_PREFIX}_all_{user_id}"
-    if debounce_seconds and not cache.add(all_ranges_lock_key, True, debounce_seconds):
-        return
+    from app import statistics_sync
 
-    all_time_range = "All Time"
-    preferred_range = _preferred_range_for_user(user_id)
-    preferred_priority = (
-        STATISTICS_TASK_PRIORITY_FOLLOWUP
-        if preferred_priority is None
-        else preferred_priority
-    )
-    all_time_priority = (
-        STATISTICS_TASK_PRIORITY_BACKGROUND
-        if all_time_priority is None
-        else all_time_priority
-    )
-    should_refresh_all_time = (
-        preferred_range != all_time_range
-        and cache.get(_cache_key(user_id, all_time_range)) is not None
-    )
-
-    logger.debug(
-        "Scheduling proactive statistics refreshes for user %s (preferred=%s refresh_all_time=%s)",
-        user_id,
-        preferred_range,
-        should_refresh_all_time,
-    )
-    schedule_statistics_refresh(
-        user_id,
-        preferred_range,
-        debounce_seconds=debounce_seconds,
-        countdown=countdown,
-        allow_inline=False,
-        priority=preferred_priority,
-    )
-    if should_refresh_all_time:
-        schedule_statistics_refresh(
-            user_id,
-            all_time_range,
-            debounce_seconds=debounce_seconds,
-            countdown=countdown + STATISTICS_ALL_TIME_REFRESH_DELAY,
-            allow_inline=False,
-            priority=all_time_priority,
-        )
+    statistics_sync.mark_aggregate(user_id, reason="schedule_all_ranges_refresh")

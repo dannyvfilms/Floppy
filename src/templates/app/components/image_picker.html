@@ -1,0 +1,130 @@
+{% load i18n %}
+{% load app_tags %}
+{% comment %}
+  Plex-style image picker. One bar with the three ways to bring a picture in
+  (choose a file, drag and drop, enter a link), over the pictures on offer.
+  Pick one and Save Changes.
+
+  Needs: uid (unique on the page), title, current (the image now in use),
+  save_url (POST: cover_file or cover_url), candidates_url (GET: tiles from
+  image_picker_tiles.html), next_url.
+  The pictures sit in one horizontally scrolling row, like the Home rows.
+{% endcomment %}
+<section class="space-y-3"
+         x-data="{
+           choice: { value: '', custom: false },
+           showUrl: false,
+           url: '',
+           dragging: false,
+           pick(value) {
+             this.$refs.file.value = '';
+             this.url = '';
+             this.choice = { value: value, custom: false };
+           },
+           onFile() {
+             const file = this.$refs.file.files[0];
+             this.url = '';
+             this.choice = file ? { value: URL.createObjectURL(file), custom: true, file: true } : { value: '', custom: false };
+           },
+           onUrl() {
+             this.$refs.file.value = '';
+             const value = this.url.trim();
+             this.choice = value ? { value: value, custom: true } : { value: '', custom: false };
+           },
+           drop(event) {
+             this.dragging = false;
+             const file = event.dataTransfer.files[0];
+             if (!file) return;
+             this.$refs.file.files = event.dataTransfer.files;
+             this.onFile();
+           },
+           reset() {
+             this.$refs.file.value = '';
+             this.url = '';
+             this.choice = { value: '', custom: false };
+           }
+         }"
+         @dragover.prevent="dragging = true"
+         @dragleave.prevent="dragging = false"
+         @drop.prevent="drop($event)">
+  <h3 class="text-xl font-semibold text-[var(--color-text)]">{{ title }}</h3>
+
+  <form method="post"
+        action="{{ save_url }}"
+        enctype="multipart/form-data"
+        class="space-y-3">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ next_url }}">
+    <input type="hidden" name="cover_url" :value="choice.file ? '' : choice.value">
+    <input type="file"
+           name="cover_file"
+           accept="image/jpeg,image/png,image/webp"
+           class="hidden"
+           x-ref="file"
+           @change="onFile()">
+
+    <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-lg border px-4 py-6 text-sm transition-colors bg-[var(--color-surface-strong)]"
+         :class="dragging ? 'border-dashed border-[var(--color-accent)]' : 'border-transparent'">
+      <button type="button"
+              class="text-[var(--color-accent)] hover:underline cursor-pointer"
+              @click="$refs.file.click()">{% translate "choose an image" %}</button>
+      <span aria-hidden="true" class="text-[var(--color-text-muted)]">&middot;</span>
+      <span class="text-[var(--color-text-secondary)]">{% translate "drag and drop" %}</span>
+      <span aria-hidden="true" class="text-[var(--color-text-muted)]">&middot;</span>
+      <button type="button"
+              class="text-[var(--color-accent)] hover:underline cursor-pointer"
+              @click="showUrl = !showUrl; $nextTick(() => showUrl && $refs.url.focus())">{% translate "enter a URL" %}</button>
+    </div>
+
+    <div x-show="showUrl" x-cloak>
+      <input type="url"
+             x-ref="url"
+             x-model="url"
+             @input.debounce.400ms="onUrl()"
+             placeholder="{% translate "Link to an image, or to a book or comic page" %}"
+             aria-label="{% translate "Image or page link" %}"
+             class="w-full h-10 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]">
+    </div>
+
+    <div class="flex flex-nowrap gap-4 overflow-x-auto p-1 pb-3 scrollbar-hidden"
+         id="{{ uid }}-tiles"
+         hx-get="{{ candidates_url }}"
+         hx-trigger="intersect once"
+         hx-target="this"
+         hx-swap="beforeend">
+      {# The picture in use now #}
+      <button type="button"
+              class="relative group w-32 sm:w-36 shrink-0 text-left cursor-pointer"
+              @click="reset()">
+        <img src="{{ current|image_url }}"
+             alt=""
+             loading="lazy"
+             class="w-full aspect-[2/3] rounded-md object-cover bg-[var(--color-surface-alt)] ring-2"
+             :class="!choice.value ? 'ring-[var(--color-accent)]' : 'ring-transparent'">
+        <span class="absolute top-1 right-1 rounded bg-[var(--color-accent)] px-1.5 text-xs text-[var(--color-accent-contrast)]" x-show="!choice.value" x-cloak>&#10003;</span>
+        <span class="mt-1 block text-xs text-[var(--color-text-muted)]">{% translate "Current" %}</span>
+      </button>
+
+      {# A file or link the person has just supplied #}
+      <template x-if="choice.custom">
+        <div class="relative w-32 sm:w-36 shrink-0">
+          <img :src="choice.value"
+               alt=""
+               class="w-full aspect-[2/3] rounded-md object-cover bg-[var(--color-surface-alt)] ring-2 ring-[var(--color-accent)]">
+          <span class="absolute top-1 right-1 rounded bg-[var(--color-accent)] px-1.5 text-xs text-[var(--color-accent-contrast)]">&#10003;</span>
+          <span class="mt-1 block text-xs text-[var(--color-text-muted)]">{% translate "New" %}</span>
+        </div>
+      </template>
+    </div>
+
+    <div class="flex justify-end gap-2" x-show="choice.value" x-cloak>
+      <button type="button"
+              class="inline-flex h-10 items-center justify-center px-4 rounded-md bg-gray-600 text-white hover:bg-gray-500 transition-colors text-sm cursor-pointer"
+              @click="reset()">{% translate "Cancel" %}</button>
+      <button type="submit"
+              class="inline-flex h-10 items-center justify-center px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
+        {% translate "Save Changes" %}
+      </button>
+    </div>
+  </form>
+</section>

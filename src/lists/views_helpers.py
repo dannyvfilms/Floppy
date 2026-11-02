@@ -5,14 +5,13 @@ Nothing in this module handles HTTP requests directly — all symbols are
 pure helpers called by views in views.py (and its submodules).
 """
 
-import datetime
 import logging
-from itertools import islice
+from dataclasses import replace
 
 from django.apps import apps
 from django.conf import settings
 from django.core.paginator import Paginator
-from django.db.models import Count, Exists, F, Max, OuterRef, Q
+from django.db.models import Count, F, Max, Q
 from django.urls import reverse
 from django.utils.text import slugify
 from django.utils.translation import ngettext
@@ -27,6 +26,7 @@ from app.models import (
     Status,
 )
 from app.providers import services
+from app.services import metadata_resolution
 from integrations.imports import helpers as import_helpers
 from integrations.models import TraktAccount
 from lists.models import CustomList, CustomListItem
@@ -63,6 +63,7 @@ ASCENDING_LIST_SORTS = {
     ListDetailSortChoices.RELEASE_DATE,
     ListDetailSortChoices.START_DATE,
     ListDetailSortChoices.PLATFORM,
+    ListDetailSortChoices.TIER,
 }
 
 
@@ -407,8 +408,19 @@ def _episode_title_fields_from_season_metadata(item, season_metadata):
     return None
 
 
+def list_metadata_language(user, fallback_user=None):
+    """Return the metadata language list search and add flows should request.
+
+    Anonymous visitors (public recommendations) fall back to the list owner's
+    language so titles match what the list owner sees.
+    """
+    if user is not None and getattr(user, "is_authenticated", False):
+        return metadata_resolution.metadata_language_default(user)
+    return metadata_resolution.metadata_language_default(fallback_user)
+
+
 def _maybe_backfill_episode_title(
-    item, *, season_item=None, season_metadata=None, force=False
+    item, *, season_item=None, season_metadata=None, force=False, language=None
 ):
     """Resolve malformed episode item titles that still store the show title."""
     if not force and not _episode_title_needs_backfill(item, season_item=season_item):
@@ -423,6 +435,7 @@ def _maybe_backfill_episode_title(
                 item.media_id,
                 item.source,
                 [item.season_number],
+                language=language,
             )
         except Exception as exc:
             logger.debug(
@@ -443,6 +456,7 @@ def _maybe_backfill_episode_title(
                 item.source,
                 [item.season_number],
                 item.episode_number,
+                language=language,
             )
         except Exception as exc:
             logger.debug(
@@ -597,34 +611,6 @@ def _build_collection_platforms_by_item_id(user, item_ids):
     return platforms_by_item_id
 
 
-def _filter_items_by_media_status(items, media_user, statuses):
-    """Filter a mixed Item queryset by the user's tracker status in SQL."""
-    statuses = tuple(statuses or ())
-    if not statuses:
-        return items
-
-    matching = Q(pk__in=[])
-    media_types = items.order_by().values_list("media_type", flat=True).distinct()
-    for index, media_type in enumerate(media_types):
-        model = apps.get_model("app", media_type)
-        if media_type == MediaTypes.EPISODE.value:
-            status_rows = model.objects.filter(
-                item_id=OuterRef("pk"),
-                related_season__user=media_user,
-                related_season__status__in=statuses,
-            )
-        else:
-            status_rows = model.objects.filter(
-                item_id=OuterRef("pk"),
-                user=media_user,
-                status__in=statuses,
-            )
-        annotation_name = f"_has_list_status_{index}"
-        items = items.annotate(**{annotation_name: Exists(status_rows)})
-        matching |= Q(media_type=media_type, **{annotation_name: True})
-    return items.filter(matching)
-
-
 def _resolve_list_table_media_type(selected_media_types, filtered_media_types):
     if len(selected_media_types) == 1:
         return selected_media_types[0]
@@ -642,17 +628,20 @@ def _resolve_list_table_media_type(selected_media_types, filtered_media_types):
 
 
 def _get_trakt_credentials(user):
-    """Return decrypted Trakt client credentials for a user, if configured."""
+    """Return decrypted Trakt ``(client_id, client_secret)`` for a user, if set.
+
+    The secret is empty for a PKCE app, which has none.
+    """
     trakt_account = TraktAccount.objects.filter(user=user).first()
-    if (
-        not trakt_account
-        or not trakt_account.client_id
-        or not trakt_account.client_secret
-    ):
+    if not trakt_account or not trakt_account.client_id:
         return None
     try:
         client_id = import_helpers.decrypt(trakt_account.client_id)
-        client_secret = import_helpers.decrypt(trakt_account.client_secret)
+        client_secret = (
+            import_helpers.decrypt(trakt_account.client_secret)
+            if trakt_account.client_secret
+            else ""
+        )
     except Exception:
         logger.exception(
             "Failed to decrypt Trakt credentials for user %s", user.username
@@ -664,6 +653,125 @@ def _get_trakt_credentials(user):
 # ---------------------------------------------------------------------------
 # Media aggregation helpers (shared by smart-list and regular-list detail views)
 # ---------------------------------------------------------------------------
+
+
+# List sort choices, expressed as library-query sort keys.
+LIST_SORT_KEYS = {
+    ListDetailSortChoices.DATE_ADDED: "list_added",
+    ListDetailSortChoices.CUSTOM: "list_added",
+    ListDetailSortChoices.TITLE: "title",
+    ListDetailSortChoices.MEDIA_TYPE: "type",
+    ListDetailSortChoices.RATING: "score",
+    ListDetailSortChoices.PROGRESS: "progress",
+    ListDetailSortChoices.STATUS: "status",
+    ListDetailSortChoices.RELEASE_DATE: "release_date",
+    ListDetailSortChoices.START_DATE: "start_date",
+    ListDetailSortChoices.END_DATE: "end_date",
+    ListDetailSortChoices.PLATFORM: "platform",
+    ListDetailSortChoices.TIER: "list_tier",
+}
+
+
+def paginate_list_items(
+    *,
+    custom_list,
+    media_user,
+    candidates,
+    filters,
+    sort_by,
+    direction,
+    page,
+    page_size=16,
+    media_types=None,
+    initial="",
+    title_user=None,
+    include_alphabet=False,
+):
+    """Order and paginate a list's items with the library-query engine.
+
+    ``candidates`` are the items the list shows (its members, or a smart
+    list's live matches) as an ``Item`` id queryset or ids. Tracking values -
+    status, rating, progress - are read for ``media_user``. Only the requested
+    page is loaded and decorated. ``media_types`` is the candidates' distinct
+    media types when the caller already read them, which saves re-evaluating
+    ``candidates``. Returns ``(items_page, filtered_count)``.
+    """
+    from app.library_query import LibraryQuery, LibraryQueryExecutor, SortSpec
+    from app.library_query.alphabet import (
+        initial_condition,
+        normalize_initial,
+        query_other_initial,
+    )
+    from app.library_query.spec import ROUTING_MODEL
+
+    if media_types is None:
+        media_types = Item.objects.filter(pk__in=candidates).order_by().values_list(
+            "media_type", flat=True
+        ).distinct()
+    media_types = tuple(media_types)
+    if sort_by == ListDetailSortChoices.CUSTOM:
+        direction = "asc"  # The list's own order has no direction.
+    query = LibraryQuery(
+        media_types=media_types,
+        filters=filters,
+        sort=SortSpec(key=LIST_SORT_KEYS.get(sort_by, "list_added"), direction=direction),
+        within=candidates,
+        sort_list_id=custom_list.id,
+        routing=ROUTING_MODEL,
+        dedupe_cross_provider=False,
+        provider_region=str(getattr(media_user, "watch_provider_region", "") or ""),
+        pinned_providers=tuple(getattr(media_user, "pinned_watch_providers", None) or ()),
+    )
+    other_initial = query_other_initial(media_user, query, display_user=title_user) if include_alphabet else None
+    if normalize_initial(initial):
+        query = replace(query, within=Item.objects.filter(pk__in=candidates).filter(
+            initial_condition(initial, title_user or media_user)
+        ).values("pk"))
+    executor = LibraryQueryExecutor(media_user, query)
+    total = executor.count()
+    items_page = Paginator(range(total), page_size).get_page(page)
+    offset = (items_page.number - 1) * page_size
+    items = executor.page(offset, page_size, total=total).items
+    added = {
+        item_id: (date_added, rank)
+        for item_id, date_added, rank in CustomListItem.objects.filter(
+            custom_list=custom_list,
+            item_id__in=[item.pk for item in items],
+        ).values_list("item_id", "date_added", "rank")
+    }
+    for item in items:
+        item.list_date_added, item.list_rank = added.get(item.pk, (None, None))
+    items_page.object_list = items
+    items_page.alphabet_other_initial = other_initial
+    _attach_media_with_aggregation(items_page, media_user)
+    return items_page, total
+
+
+def build_tier_columns(custom_list, items):
+    """Group one page of list items by tier.
+
+    Returns ``(columns, unranked)``: one ``{"tier", "items"}`` per tier in the
+    list's tier order, then the items with no (or an unknown) tier. Each group
+    keeps the order of ``items``.
+    """
+    from lists.tiers import ink_for, resolve_tiers
+
+    tier_by_item = dict(
+        CustomListItem.objects.filter(
+            custom_list=custom_list,
+            item_id__in=[item.pk for item in items],
+        ).values_list("item_id", "tier"),
+    )
+    columns = [
+        {"tier": {**tier, "ink": ink_for(tier["color"])}, "items": []}
+        for tier in resolve_tiers(custom_list)
+    ]
+    column_by_id = {column["tier"]["id"]: column for column in columns}
+    unranked = []
+    for item in items:
+        column = column_by_id.get(tier_by_item.get(item.pk, ""))
+        (column["items"] if column else unranked).append(item)
+    return columns, unranked
 
 
 def _attach_media_with_aggregation(item_list, media_user):
@@ -735,6 +843,9 @@ def _attach_media_with_aggregation(item_list, media_user):
 
     for item in item_list:
         item.media = media_by_item_id.get(item.id)
+    from app.media_list_filters import attach_card_collection_platforms
+
+    attach_card_collection_platforms(media_user, item_list)
     _attach_list_card_overrides(item_list)
 
 
@@ -749,10 +860,7 @@ def _attach_kometa_episode_urls(items_page):
     """
     items = list(getattr(items_page, "object_list", items_page) or [])
     episode_items = [
-        item
-        for item in items
-        if item.media_type == MediaTypes.EPISODE.value
-        and item.source == Sources.TMDB.value
+        item for item in items if item.media_type == MediaTypes.EPISODE.value
     ]
     if not episode_items:
         return
@@ -769,11 +877,13 @@ def _attach_kometa_episode_urls(items_page):
     tvdb_by_parent_key = {}
     parent_item_ids = []
     parent_key_by_id = {}
+    parent_id_by_key = {}
     parent_title_by_key = {}
     for parent in parent_items:
         parent_item_ids.append(parent.id)
         parent_key = (parent.source, parent.media_id)
         parent_key_by_id[parent.id] = parent_key
+        parent_id_by_key[parent_key] = parent.id
         parent_title_by_key[parent_key] = parent.title
         tvdb_id = (parent.provider_external_ids or {}).get("tvdb_id")
         if str(tvdb_id or "").isdigit():
@@ -794,12 +904,14 @@ def _attach_kometa_episode_urls(items_page):
                     (str(provider_media_id), parent_title_by_key.get(parent_key)),
                 )
 
+    missing_tvdb_parent_ids = set()
     for item in episode_items:
-        tvdb_id, parent_title = tvdb_by_parent_key.get(
-            (item.source, item.media_id),
-            ("", None),
-        )
+        parent_key = (item.source, item.media_id)
+        tvdb_id, parent_title = tvdb_by_parent_key.get(parent_key, ("", None))
         if not tvdb_id.isdigit():
+            parent_id = parent_id_by_key.get(parent_key)
+            if parent_id is not None:
+                missing_tvdb_parent_ids.add(parent_id)
             continue
 
         item.kometa_episode_url = reverse(
@@ -813,123 +925,26 @@ def _attach_kometa_episode_urls(items_page):
             },
         )
 
+    if missing_tvdb_parent_ids:
+        _enqueue_tvdb_id_backfill(missing_tvdb_parent_ids)
 
-def _paginate_python_sorted_items(
-    items_queryset,
-    media_user,
-    page,
-    page_size,
-    value_getter,
-    *,
-    reverse=False,
-    needs_collection_platforms=False,
-    batch_size=256,
-):
-    """Batch-hydrate candidates, retain compact sort rows, then hydrate one page.
 
-    Python-only list semantics still require an O(n) candidate scan, but this
-    keeps media graphs and duplicate aggregation bounded to ``batch_size`` and
-    only loads full Item/media objects for the requested page at the end.
+def _enqueue_tvdb_id_backfill(item_ids):
+    """Best-effort queue a metadata refresh for shows missing a TVDB id.
+
+    Reuses the existing external-IDs backfill sweep (which fetches provider
+    metadata and persists tvdb_id as a side effect) so future page loads can
+    resolve the Kometa episode anchor. Failures here must never break list
+    rendering.
     """
-    ranked_rows = []
-    iterator = items_queryset.iterator(chunk_size=batch_size)
-    while True:
-        batch = list(islice(iterator, batch_size))
-        if not batch:
-            break
-        _attach_media_with_aggregation(batch, media_user)
-        collection_platforms = {}
-        if needs_collection_platforms:
-            collection_platforms = _build_collection_platforms_by_item_id(
-                media_user,
-                [item.id for item in batch],
-            )
-        ranked_rows.extend(
-            (value_getter(item, collection_platforms), item.id)
-            for item in batch
-        )
+    try:
+        from app.tasks_external_ids import enqueue_external_ids_backfill_items
 
-    ranked_rows.sort(key=lambda row: (row[0], row[1]), reverse=reverse)
-    paginator = Paginator(range(len(ranked_rows)), page_size)
-    items_page = paginator.get_page(page)
-    start = (items_page.number - 1) * page_size
-    selected_ids = [
-        item_id for _sort_value, item_id in ranked_rows[start : start + page_size]
-    ]
-
-    final_items = list(items_queryset.filter(id__in=selected_ids))
-    final_by_id = {item.id: item for item in final_items}
-    final_items = [final_by_id[item_id] for item_id in selected_ids if item_id in final_by_id]
-    _attach_media_with_aggregation(final_items, media_user)
-    items_page.object_list = final_items
-    collection_platforms = (
-        _build_collection_platforms_by_item_id(
-            media_user,
-            selected_ids,
-        )
-        if needs_collection_platforms
-        else {}
-    )
-    return items_page, paginator.count, collection_platforms
+        enqueue_external_ids_backfill_items(list(item_ids))
+    except Exception:
+        logger.exception("Failed to enqueue TVDB id backfill for items")
 
 
-def _find_statusless_item_ids(items_queryset, media_user, *, batch_size=256):
-    """Find statusless list items while bounding tracker/media hydration."""
-    statusless_ids = set()
-    iterator = items_queryset.iterator(chunk_size=batch_size)
-    while True:
-        batch = list(islice(iterator, batch_size))
-        if not batch:
-            break
-        _attach_media_with_aggregation(batch, media_user)
-        statusless_ids.update(
-            item.id
-            for item in batch
-            if item.media is None
-            or (
-                getattr(item.media, "aggregated_status", None) is None
-                and getattr(item.media, "status", None) is None
-            )
-        )
-    return statusless_ids
-
-
-def _rating_value(media):
-    if not media:
-        return -1
-    aggregated_score = getattr(media, "aggregated_score", None)
-    if aggregated_score is not None:
-        return aggregated_score
-    score = getattr(media, "score", None)
-    if score is not None:
-        return score
-    return -1
-
-
-def _progress_value(media):
-    if not media:
-        return -1
-    aggregated_progress = getattr(media, "aggregated_progress", None)
-    if aggregated_progress is not None:
-        return aggregated_progress
-    progress = getattr(media, "progress", None)
-    if progress is not None:
-        return progress
-    return -1
-
-
-_STATUS_SORT_ORDER = {
-    Status.PLANNING: 0,
-    Status.IN_PROGRESS: 1,
-    Status.COMPLETED: 2,
-    Status.PAUSED: 3,
-    Status.DROPPED: 4,
-}
-
-
-def _status_value(media):
-    status = getattr(media, "status", None) if media else None
-    return _STATUS_SORT_ORDER.get(status, len(_STATUS_SORT_ORDER))
 
 
 def _extract_display_platform(item, collection_platforms_by_item_id=None):
@@ -951,25 +966,16 @@ def _extract_display_platform(item, collection_platforms_by_item_id=None):
     return ""
 
 
-def _platform_sort_value(item, collection_platforms_by_item_id=None):
-    platform = _extract_display_platform(item, collection_platforms_by_item_id)
-    return platform.lower() if platform else "￿"
+def list_has_item_identity(custom_list, item):
+    """Return True if the list holds this title in any library bucket.
 
-
-def _media_date_value(media, attr_name):
-    if not media:
-        return None
-    aggregated_value = getattr(media, f"aggregated_{attr_name}", None)
-    if aggregated_value is not None:
-        return aggregated_value
-    return getattr(media, attr_name, None)
-
-
-def _date_sort_value(value, direction):
-    if value is None:
-        return float("inf") if direction == "asc" else float("-inf")
-    if isinstance(value, datetime.datetime):
-        return value.timestamp()
-    if isinstance(value, datetime.date):
-        return datetime.datetime.combine(value, datetime.time.min).timestamp()
-    return float("inf") if direction == "asc" else float("-inf")
+    The same title can be stored as several Item rows (one per library bucket),
+    so checking only ``item.id`` would let a second bucket's row in twice.
+    """
+    return custom_list.items.filter(
+        media_id=item.media_id,
+        source=item.source,
+        media_type=item.media_type,
+        season_number=item.season_number,
+        episode_number=item.episode_number,
+    ).exists()

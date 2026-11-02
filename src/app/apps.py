@@ -24,6 +24,8 @@ STARTUP_SWEEP_COUNTDOWNS = {
     "provider": 540,
     "podcast_website": 660,
     "external_ids": 780,
+    "game_groups": 900,
+    "watch_state": 1020,
 }
 
 
@@ -70,6 +72,9 @@ class AppConfig(AppConfig):
         """Import signals when the app is ready."""
         import_module("app.signals")
         import_module("app.signals_watch_state")
+        from app.signals_music import load_music_listen_hooks
+
+        load_music_listen_hooks()
         # Task-boundary memory sampling. Connected from ready() rather than
         # at module import so the handlers exist exactly once per process,
         # before any task can run, and are skipped entirely when the
@@ -77,6 +82,12 @@ class AppConfig(AppConfig):
         from app.memory_envelope import connect_celery_signals
 
         connect_celery_signals()
+        # Task identity is cheap to keep and is what turns a lock error into a
+        # correlatable record (#1609). Transaction timing itself stays inside
+        # the performance instrumentation.
+        from app.db_diagnostics import connect_celery_signals as connect_db_signals
+
+        connect_db_signals()
         if _is_management_command_process():
             # One-off manage.py commands (migrate, shell, check, ...) must
             # not enqueue startup tasks or consume the once-per-day startup
@@ -133,6 +144,8 @@ class AppConfig(AppConfig):
             self._schedule_provider_backfill_reconcile()
             self._schedule_podcast_website_backfill_reconcile()
             self._schedule_external_ids_backfill_reconcile()
+            self._schedule_game_groups_backfill_reconcile()
+            self._schedule_watch_state_repair()
 
     def _add_startup_cache_key(
         self,
@@ -304,7 +317,12 @@ class AppConfig(AppConfig):
             if status in {"done", "pending"}:
                 return
 
-            cache.set(version_key, "pending", timeout=300)
+            if not cache.add(
+                version_key,
+                "pending",
+                timeout=STARTUP_SWEEP_COUNTDOWNS["igdb_ratings"] + 300,
+            ):
+                return
 
             try:
                 reconcile_igdb_rating_backfill.apply_async(
@@ -324,6 +342,28 @@ class AppConfig(AppConfig):
             logger.warning(
                 "Failed to schedule IGDB ratings backfill reconcile: %s", error
             )
+
+    def _schedule_watch_state_repair(self):
+        """Queue the one-time watch state repair gate for a worker to evaluate.
+
+        The worker-side task owns the durable gate, so ready() runs no query.
+        """
+        try:
+            from app.tasks_watch_state import REPAIR_VERSION, ensure_watch_state_repair
+
+            if not self._add_startup_cache_key(
+                f"watch_state_repair_startup_v{REPAIR_VERSION}",
+                timeout=3600,
+            ):
+                return
+
+            ensure_watch_state_repair.apply_async(
+                countdown=STARTUP_SWEEP_COUNTDOWNS["watch_state"],
+                priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9),
+            )
+            logger.info("Scheduled watch state repair (version=%s)", REPAIR_VERSION)
+        except Exception as error:
+            logger.warning("Failed to schedule watch state repair: %s", error)
 
     def _schedule_podcast_website_backfill_reconcile(self):
         """Queue the podcast website backfill gate for a worker to evaluate.
@@ -438,6 +478,54 @@ class AppConfig(AppConfig):
         except Exception as error:
             logger.warning(
                 "Failed to schedule external ID backfill reconcile: %s", error
+            )
+
+    def _schedule_game_groups_backfill_reconcile(self):
+        """Schedule a one-time IGDB franchise/collection backfill for games.
+
+        Games tracked before catalog grouping was stored have blank franchise
+        and collection fields, so the new Games Group By view would show them
+        all as Ungrouped until each detail page happened to be visited. Runs
+        once per strategy version.
+        """
+        try:
+            from app.tasks_game_groups import (
+                GAME_GROUPS_BACKFILL_VERSION,
+                reconcile_game_groups_backfill,
+                reopen_unconfigured_game_groups,
+            )
+
+            reopen_unconfigured_game_groups()
+            version_key = f"game_groups_backfilled_v{GAME_GROUPS_BACKFILL_VERSION}"
+            status = cache.get(version_key)
+
+            if status in {"done", "pending"}:
+                return
+
+            if not cache.add(
+                version_key,
+                "pending",
+                timeout=STARTUP_SWEEP_COUNTDOWNS["game_groups"] + 300,
+            ):
+                return
+
+            try:
+                reconcile_game_groups_backfill.apply_async(
+                    kwargs={"strategy_version": GAME_GROUPS_BACKFILL_VERSION},
+                    countdown=STARTUP_SWEEP_COUNTDOWNS["game_groups"],
+                    priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9),
+                )
+            except Exception:
+                cache.delete(version_key)
+                raise
+
+            logger.info(
+                "Scheduled game groups backfill reconcile (version=%s)",
+                GAME_GROUPS_BACKFILL_VERSION,
+            )
+        except Exception as error:
+            logger.warning(
+                "Failed to schedule game groups backfill reconcile: %s", error
             )
 
     def _schedule_trakt_popularity_reconcile(self):

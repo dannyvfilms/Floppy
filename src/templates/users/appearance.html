@@ -1,8 +1,8 @@
 {% extends "users/base.html" %}
-{% load static %}
+{% load i18n static %}
 
 {% block title %}
-  Appearance - Floppy
+  {% translate "Appearance" %} - Floppy
 {% endblock title %}
 
 {% block settings_content %}
@@ -23,8 +23,8 @@
       <div class="preferences-section-header">
         <div class="preferences-section-icon">{% include "app/icons/sun.svg" with classes="w-5 h-5" %}</div>
         <div>
-          <h2>Theme</h2>
-          <p>Choose a starting point, then make it yours.</p>
+          <h2>{% translate "Theme" %}</h2>
+          <p>{% translate "Choose a starting point, then make it yours." %}</p>
         </div>
       </div>
 
@@ -36,7 +36,7 @@
                   :class="theme === '{{ value }}' ? 'border-[var(--color-accent)] ring-2 ring-[var(--color-accent)]/30' : 'border-[var(--color-surface-border)] hover:border-[var(--color-text-muted)]'"
                   class="flex items-center gap-3 rounded-xl border bg-[var(--color-surface)] p-4 text-left transition-colors cursor-pointer">
             <span class="theme-swatch theme-swatch-{{ value }}" aria-hidden="true"></span>
-            <span class="font-medium">{{ preset.label }}</span>
+            <span class="font-medium" x-text="gettext('{{ preset.label|escapejs }}')"></span>
           </button>
         {% endfor %}
       </div>
@@ -44,16 +44,16 @@
       <div x-show="theme === 'custom'"
            x-cloak
            class="mt-5 rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-panel)] p-4">
-        <h3 class="mb-4 font-semibold">Custom palette</h3>
+        <h3 class="mb-4 font-semibold">{% translate "Custom palette" %}</h3>
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {% for key, color in custom_theme_colors.items %}
             <label class="flex items-center justify-between gap-3 rounded-lg bg-[var(--color-surface)] p-3">
-              <span class="text-sm text-[var(--color-text-secondary)]">{{ color.label }}</span>
+              <span class="text-sm text-[var(--color-text-secondary)]" x-text="gettext('{{ color.label|escapejs }}')"></span>
               <span class="flex items-center gap-2">
                 <input type="color"
                        x-model="palette.{{ key }}"
                        class="h-9 w-11 cursor-pointer rounded border-0 bg-transparent p-0"
-                       aria-label="{{ color.label }} color">
+                       :aria-label="interpolate(gettext('%s color'), [gettext('{{ color.label|escapejs }}')])">
                 <code class="text-xs text-[var(--color-text-muted)]"
                       x-text="palette.{{ key }}"></code>
               </span>
@@ -64,7 +64,7 @@
           {% for key, effect in custom_theme_effects.items %}
             <label class="rounded-lg bg-[var(--color-surface)] p-3">
               <span class="mb-2 flex items-center justify-between gap-3 text-sm">
-                <span class="text-[var(--color-text-secondary)]">{{ effect.label }}</span>
+                <span class="text-[var(--color-text-secondary)]" x-text="gettext('{{ effect.label|escapejs }}')"></span>
                 <output class="font-mono text-xs text-[var(--color-text-muted)]"
                         x-text="palette.{{ key }} + '{{ effect.unit }}'"></output>
               </span>
@@ -74,7 +74,7 @@
                      step="{{ effect.step }}"
                      x-model.number="palette.{{ key }}"
                      class="w-full accent-[var(--color-accent)]"
-                     aria-label="{{ effect.label }}">
+                     :aria-label="gettext('{{ effect.label|escapejs }}')">
             </label>
           {% endfor %}
         </div>
@@ -85,24 +85,24 @@
       <div class="preferences-section-header">
         <div class="preferences-section-icon">{% include "app/icons/vertical-sliders.svg" with classes="w-5 h-5" %}</div>
         <div>
-          <h2>Detail pages</h2>
-          <p>Keep useful sections visible and place them where you expect them.</p>
+          <h2>{% translate "Detail pages" %}</h2>
+          <p>{% translate "Keep useful sections visible and place them where you expect them." %}</p>
         </div>
       </div>
 
       <label class="block md:hidden">
-        <span class="mb-2 block text-sm font-medium text-[var(--color-text-secondary)]">Page type</span>
+        <span class="mb-2 block text-sm font-medium text-[var(--color-text-secondary)]">{% translate "Page type" %}</span>
         <select x-model="selectedFamily"
                 class="w-full rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2.5 text-[var(--color-text)]">
           <template x-for="(family, familyKey) in families" :key="familyKey">
-            <option :value="familyKey" x-text="family.label"></option>
+            <option :value="familyKey" x-text="gettext(family.label)"></option>
           </template>
         </select>
       </label>
 
       <div class="hidden flex-wrap gap-2 md:flex"
            role="tablist"
-           aria-label="Detail page family">
+           aria-label="{% translate 'Detail page family' %}">
         <template x-for="(family, familyKey) in families" :key="familyKey">
           <button type="button"
                   role="tab"
@@ -110,7 +110,7 @@
                   :aria-selected="(selectedFamily === familyKey).toString()"
                   :class="selectedFamily === familyKey ? 'bg-[var(--color-accent)] text-[var(--color-accent-contrast)]' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'"
                   class="rounded-full px-4 py-2 text-sm font-medium transition-colors cursor-pointer"
-                  x-text="family.label"></button>
+                  x-text="gettext(family.label)"></button>
         </template>
       </div>
 
@@ -119,7 +119,7 @@
           <template x-for="(zone, zoneKey) in families[selectedFamily].zones"
                     :key="zoneKey">
             <div class="rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-panel)] p-4">
-              <h3 class="mb-3 font-semibold" x-text="zone.label"></h3>
+              <h3 class="mb-3 font-semibold" x-text="gettext(zone.label)"></h3>
               <div class="space-y-2">
                 <template x-for="section in orderedSections(selectedFamily, zoneKey)"
                           :key="section.key">
@@ -128,18 +128,18 @@
                            :checked="isEnabled(selectedFamily, zoneKey, section.key)"
                            @change="toggleSection(selectedFamily, zoneKey, section.key)"
                            class="size-4 rounded border-[var(--color-surface-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]">
-                    <span class="min-w-0 flex-1 text-sm" x-text="section.label"></span>
+                    <span class="min-w-0 flex-1 text-sm" x-text="gettext(section.label)"></span>
                     <div class="flex gap-1">
                       <button type="button"
                               @click="moveSection(selectedFamily, zoneKey, section.key, -1)"
                               :disabled="!canMove(selectedFamily, zoneKey, section.key, -1)"
                               class="rounded p-1.5 text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] disabled:opacity-25 cursor-pointer disabled:cursor-default"
-                              aria-label="Move up">↑</button>
+                              aria-label="{% translate 'Move up' %}">↑</button>
                       <button type="button"
                               @click="moveSection(selectedFamily, zoneKey, section.key, 1)"
                               :disabled="!canMove(selectedFamily, zoneKey, section.key, 1)"
                               class="rounded p-1.5 text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] disabled:opacity-25 cursor-pointer disabled:cursor-default"
-                              aria-label="Move down">↓</button>
+                              aria-label="{% translate 'Move down' %}">↓</button>
                     </div>
                   </div>
                 </template>
@@ -152,17 +152,43 @@
 
     <div class="preferences-actions">
       <div>
-        <p class="font-medium">Appearance</p>
-        <p class="text-sm text-[var(--color-text-muted)]">Changes apply after saving.</p>
+        <p class="font-medium">{% translate "Appearance" %}</p>
+        <p class="text-sm text-[var(--color-text-muted)]">{% translate "Changes apply after saving." %}</p>
       </div>
       <button type="submit"
               class="rounded-lg bg-[var(--color-accent)] px-5 py-2.5 font-medium text-[var(--color-accent-contrast)] transition-[filter] hover:brightness-110 cursor-pointer">
-        Save appearance
+        {% translate "Save appearance" %}
       </button>
     </div>
   </form>
 
   <script>
+    // These labels arrive from configuration at runtime. Literal gettext calls
+    // keep them in djangojs.po so gettext(family.label) can resolve them.
+    void [
+      gettext('System default'), gettext('Light'), gettext('Dark'),
+      gettext('Catppuccin Mocha'), gettext('Dracula'), gettext('Nord'),
+      gettext('Gruvbox'), gettext('OLED'), gettext('Glass cinema'),
+      gettext('Plex inspired'), gettext('Projector'), gettext('Video store'),
+      gettext('Custom palette'), gettext('Page'), gettext('Cards'),
+      gettext('Panels'), gettext('Text'), gettext('Muted text'),
+      gettext('Accent'), gettext('Text on accent'), gettext('Corner radius'),
+      gettext('Backdrop blur'), gettext('Surface opacity'),
+      gettext('Films, books and manga'), gettext('Series and seasons'),
+      gettext('Games'), gettext('Episodes'), gettext('Comic volumes'),
+      gettext('Comic issues'), gettext('Music albums'), gettext('Music artists'),
+      gettext('Podcasts'), gettext('People'), gettext('Studios'),
+      gettext('Information column'), gettext('Main content'),
+      gettext('Your history'), gettext('Details'), gettext('Genres'),
+      gettext('Collection'), gettext('Notes'), gettext('Related titles'),
+      gettext('Cast'), gettext('Crew'), gettext('Recommendations'),
+      gettext('Seasons'), gettext('Play times'), gettext('Content'),
+      gettext('Issues'), gettext('Authors'), gettext('Tracks'),
+      gettext('Related artists'), gettext('Discography'), gettext('Profile'),
+      gettext('Biography and facts'), gettext('Filmography'),
+      gettext('Overview and facts'), gettext('Works')
+    ];
+
     function appearanceEditor() {
       return {
         theme: '{{ appearance_theme|escapejs }}',

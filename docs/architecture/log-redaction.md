@@ -15,8 +15,8 @@ Celery, the Gunicorn workers, and background tasks.
 HTTP request
      |
      v
-Nginx (port 8000) -----> access log: "$request_method $uri $server_protocol"
-     |                   Query strings and referrers are not written.
+Nginx (port 8000) -----> access log: "$request_method $server_protocol"
+     |                   Paths, query strings and referrers are not written.
      v
 Gunicorn (port 8001) --> accesslog = None. Nginx owns the request log.
      |                   Gunicorn still writes its error log.
@@ -72,6 +72,9 @@ enforce these rules.
 | List value | `{'password': ['pw']}` | `{'password': [REDACTED]}` |
 | Quoted value | `{"api_key": "two words"}` | `{"api_key": "[REDACTED]"}` |
 | Unquoted value | `?X-Plex-Token=abc&size=10` | `?X-Plex-Token=[REDACTED]&size=10` |
+| urllib3 connection host | `Starting new HTTPS connection (1): my.duckdns.org:32400` | `Starting new HTTPS connection (1): [REDACTED]` |
+| urllib3 request-line host | `https://my.duckdns.org:32400 "GET /x HTTP/1.1" 200 760` | `https://[REDACTED] "GET /x HTTP/1.1" 200 760` |
+| urllib3 error host | `HTTPSConnectionPool(host='my.duckdns.org', port=443): Read timed out.` | `HTTPSConnectionPool(host='[REDACTED]', port=443): Read timed out.` |
 
 A value is a credential when its name **ends** with one of these keywords:
 `token`, `secret`, `password`, `passwd`, `apikey`, `api_key`, `api-key`,
@@ -94,31 +97,45 @@ readable: `status_code=200`, `error_code=RATE_LIMIT`, `token_count=512` and
 
 ## Structured payloads
 
-A webhook payload holds a person's account identity, their device's public
-address, and the private server's name and machine identifier next to the media
-event the log line exists to diagnose. A text rule cannot tell `Account.title`
-(a username) from `Metadata.title` (a media title), so
-`redact_payload_pii()` in `src/app/log_safety.py` matches on structure before
-`_process_webhook` dumps the payload.
+The webhook worker logs the provider and top-level payload keys, not the payload
+values. Plex, Jellyfin and Emby processor diagnostics also log structural keys
+rather than dumping incoming account, server, device and media objects. Media
+titles and activity are private data too; credential redaction alone does not
+make a payload safe to retain or share.
 
-| Key | Treatment |
-|---|---|
-| `Account`, `Server` | The whole object is replaced with `[REDACTED]`. |
-| `publicAddress`, `uuid`, `machineIdentifier` | The value is replaced, at any depth. |
-| `librarySectionTitle` | The value is replaced. |
-| `Metadata.title`, ids, `event`, `Player.local` | Kept: media identity is not PII. |
+`redact_payload_pii()` remains a structural scrubber for callers that need it:
+it replaces `Account` and `Server` containers and named address, device and
+library fields, without mutating the input. It does not anonymize arbitrary
+payloads or remove media titles. Other operational logs still contain usernames,
+local user IDs, media IDs and titles; inspect log downloads before sharing them.
 
-The scrubber returns a copy, so the payload the processor handles is unchanged.
-It runs before `redact_secrets()`, which still applies to the dumped text as a
-second boundary.
+Pocket Casts authentication diagnostics log response keys/types and HTTP status,
+without response values or error bodies. Unknown response fields can contain
+credentials even when their names do not contain `token` or `password`.
+
+## Third-party debug logging
+
+`requests`/`plexapi` connect straight to a user's Plex server, and the
+`urllib3` connection-pool logger writes the literal host it dials at DEBUG
+level: `Starting new HTTPS connection (1): my.duckdns.org:32400` and the
+matching `https://my.duckdns.org:32400 "GET /path HTTP/1.1" 200 760` request
+line. For a custom Plex server URL that host is a direct route to the user's
+self-hosted server ([#1274](https://github.com/dannyvfilms/Floppy/issues/1274)),
+so two more rules in `_SECRET_PATTERNS` strip it independent of the
+keyword-name rules above. Both match only urllib3's own line shape (the
+literal `Starting new ... connection (N):` prefix, or a URL immediately
+followed by a quoted HTTP method), so an ordinary URL an app log line builds
+with `safe_url()` is untouched. The same host also appears in urllib3's own error
+text (`HTTPSConnectionPool(host='...', port=...)`), which reaches Celery's
+task-failure line and every traceback, so a third rule strips the quoted
+`host=` value there ([#1307](https://github.com/dannyvfilms/Floppy/issues/1307)).
 
 ## What the rules do not cover
 
-**OAuth `code` parameters.** `code` is too general to match. `status_code`,
-`error_code` and `country_code` are common in diagnostic output, and a rule for
-`code` would remove all of them. Nginx removes query strings from the request
-log, and Django logs the request path without the query, so an authorization
-code has no ordinary route into the log. Do not put one in a log message.
+**Bare OAuth codes.** URL query parameters named `code`, `state`, `device_code`
+and `user_code` are redacted. Unlabelled codes and arbitrary response bodies are
+not safe to log. Nginx omits request URLs entirely; external reverse proxies
+need their own log policy.
 
 **OAuth `client_id` parameters.** A `client_id` identifies the application, not
 the user, so it is not a secret and it stays readable. One case needs care.
@@ -175,3 +192,11 @@ processor time.
    `test_redact_secrets_strips_every_credential_name_spelling`.
 4. Add any diagnostic name that is now at risk to
    `test_redact_secrets_keeps_names_that_only_end_in_a_keyword_word`.
+
+## What the console shows
+
+With `DEBUG` off, the console hides routine below-warning lines: Celery's
+per-task and scheduler messages and anything about the `/health` and `/ping`
+endpoints. `DEBUG` on shows everything. The log file keeps the full record, so
+the download in Settings > Advanced is complete for a bug report without anyone
+changing a setting first.

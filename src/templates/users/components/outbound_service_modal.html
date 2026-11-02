@@ -1,0 +1,27 @@
+{% load i18n %}
+{% load user_tags %}
+{# Modal shell for one outbound service; the service supplies only its body template. #}
+<div x-show="activeModal === 'send-{{ service.slug }}'"
+     x-cloak
+     {% if service.state == 'waiting' %}x-init="activeModal = 'send-{{ service.slug }}'"{% endif %}
+     @keydown.escape.window="activeModal = null"
+     x-transition.opacity.duration.150ms
+     class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+     @mousedown.self="activeModal = null">
+  <div class="modal-max-height overflow-y-auto w-full"
+       style="width: min(96vw, 32rem);">
+    <button type="button"
+            @click="activeModal = null"
+            title="{% translate 'Close' %}"
+            class="block w-fit ml-auto mb-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer p-1 rounded-md hover:bg-[var(--color-surface-hover)] bg-[var(--color-surface)]">
+      {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+    </button>
+    <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg space-y-3">
+      <div class="flex items-center justify-between">
+        {% source_display service.slug as logo_html %}{{ logo_html }}
+        {% include "users/components/outbound_service_status.html" %}
+      </div>
+      {% include service.body %}
+    </div>
+  </div>
+</div>

@@ -166,21 +166,16 @@ def enqueue_igdb_rating_backfill_items(item_ids, countdown=10):
 @shared_task(name="app.tasks.populate_igdb_rating_backfill_queue")
 def populate_igdb_rating_backfill_queue(batch_size: int = 25):
     """Drain the IGDB ratings backfill queue and process items in small batches."""
-    batch, more_remaining = backfill_queue.take(
+    with backfill_queue.drain(
         IGDB_RATINGS_BACKFILL_ITEMS_QUEUE_KEY,
         IGDB_RATINGS_BACKFILL_ITEMS_SCHEDULED_KEY,
         batch_size,
-    )
-    if not batch:
-        return {"processed": 0, "message": "No queued IGDB rating items"}
+        drain_task=populate_igdb_rating_backfill_queue,
+    ) as batch:
+        if not batch:
+            return {"processed": 0, "message": "No queued IGDB rating items"}
 
-    if more_remaining:
-        backfill_queue.reschedule(
-            IGDB_RATINGS_BACKFILL_ITEMS_SCHEDULED_KEY,
-            populate_igdb_rating_backfill_queue,
-        )
-
-    return populate_igdb_rating_data_for_items(batch)
+        return populate_igdb_rating_data_for_items(batch)
 
 
 @shared_task(name="app.tasks.reconcile_igdb_rating_backfill")

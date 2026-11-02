@@ -283,3 +283,43 @@ class CalendarCheckRecordingTests(CalendarFixturesMixin, TestCase):
         self.movie_item.refresh_from_db()
         self.assertIsNone(self.book_item.calendar_checked_at)
         self.assertIsNotNone(self.movie_item.calendar_checked_at)
+
+
+class CalendarVideoTests(CalendarFixturesMixin, TestCase):
+    """A video lands on the Calendar on the day it was uploaded."""
+
+    def test_process_video_adds_an_event_on_the_upload_date(self):
+        """The event uses the stored date and no provider is called."""
+        from events.calendar.video import process_video
+
+        uploaded = timezone.now() - timezone.timedelta(days=30)
+        item = Item.objects.create(
+            media_id="vid1",
+            source=Sources.YOUTUBE.value,
+            media_type=MediaTypes.VIDEO.value,
+            title="A Video",
+            image="http://example.com/video.jpg",
+            release_datetime=uploaded,
+        )
+        events_bulk = []
+
+        self.assertTrue(process_video(item, events_bulk))
+
+        self.assertEqual(len(events_bulk), 1)
+        self.assertEqual(events_bulk[0].datetime, uploaded)
+
+    def test_process_video_without_an_upload_date_adds_nothing(self):
+        """No date reported means no event, and nothing to retry."""
+        from events.calendar.video import process_video
+
+        item = Item.objects.create(
+            media_id="vid2",
+            source=Sources.YOUTUBE.value,
+            media_type=MediaTypes.VIDEO.value,
+            title="Undated",
+            image="http://example.com/video.jpg",
+        )
+        events_bulk = []
+
+        self.assertTrue(process_video(item, events_bulk))
+        self.assertEqual(events_bulk, [])

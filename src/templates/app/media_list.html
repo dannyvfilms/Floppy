@@ -2,46 +2,31 @@
 {% load i18n %}
 
 {% load static %}
-{% load app_tags %}
+{% load app_tags alphabet_tags %}
 
 {% block title %}
   {{ media_type|media_type_readable_plural }} - Floppy
 {% endblock title %}
 
+{% block alphabet_filter %}{% alphabet_filter "filter-form" %}{% endblock alphabet_filter %}
+
 {% block content %}
+  <div class="alphabet-surface">
   {% include "app/components/filter_toolbar_scripts.html" %}
 
-  {% translate "All" as media_i18n_2 %}{% translate "Rated" as media_i18n_3 %}{% translate "Not Rated" as media_i18n_4 %}{% translate "Collected" as media_i18n_5 %}{% translate "Not Collected" as media_i18n_6 %}{% translate "Any" as media_i18n_7 %}{% translate "Not Caught Up" as media_i18n_8 %}{% translate "Caught Up" as media_i18n_9 %}{% translate "Released" as media_i18n_10 %}{% translate "Not Released" as media_i18n_11 %}{% translate "Rated" as media_i18n_3 %}{% translate "Collected" as media_i18n_5 %}{% translate "Any Progress" as media_i18n_93 %}{% translate "Implied: " as media_i18n_82 %}{% translate "Unknown Year" as media_i18n_83 %}{% translate "Completed: " as media_i18n_94 %}{% translate "Released" as media_i18n_10 %}{% translate "All" as media_i18n_2 %}<div x-data="{ mediaListUrl: '{% url 'medialist' media_type %}', sort: '{{ current_sort|escapejs }}', direction: '{{ current_direction|escapejs }}', statuses: [
-    {% for value in current_status %}
-      '{{ value|escapejs }}'
-      {% if not forloop.last %},{% endif %}
-
-    {% endfor %}
-    ], rating: '{{ current_rating|escapejs }}', collection: '{{ current_collection|escapejs }}', progress: '{{ current_progress|default:'all'|escapejs }}', genre: '{{ current_genre|default:''|escapejs }}', implied_genre: '{{ current_implied_genre|default:''|escapejs }}', year: '{{ current_year|default:''|escapejs }}', completed_date_from: '{{ current_completed_date_from|default:''|escapejs }}', completed_date_to: '{{ current_completed_date_to|default:''|escapejs }}', completed_date_within: '{{ current_completed_date_within|default:''|escapejs }}', completed_date_within_unit: '{{ current_completed_date_within_unit|default:'days'|escapejs }}', release: '{{ current_release|default:'all'|escapejs }}', source: '{{ current_source|default:''|escapejs }}', media_status: '{{ current_media_status|default:''|escapejs }}', department: '', language: '{{ current_language|default:''|escapejs }}', country: '{{ current_country|default:''|escapejs }}', platform: '{{ current_platform|default:''|escapejs }}', selectedPlatforms: [
-    {% for value in current_platform_values %}
-      '{{ value|escapejs }}'
-      {% if not forloop.last %},{% endif %}
-
-    {% endfor %}
-    ], platformMode: '{{ current_platform_mode|default:'or'|escapejs }}', origin: '{{ current_origin|default:''|escapejs }}', format: '{{ current_format|default:''|escapejs }}', author: '{{ current_author|default:''|escapejs }}', provider: '{{ current_provider|default:''|escapejs }}', selectedTags: [
-    {% for value in current_tag %}
-      '{{ value|escapejs }}'
-      {% if not forloop.last %},{% endif %}
-
-    {% endfor %}
-    ], tagMode: '{{ current_tag_mode|default:'or'|escapejs }}', layout: '{{ current_layout|escapejs }}', search: '{{ request.GET.search|default:''|escapejs }}', showLanguages: {{ filter_data.show_languages|yesno:'true,false' }}, showCountries: {{ filter_data.show_countries|yesno:'true,false' }}, showPlatforms: {{ filter_data.show_platforms|yesno:'true,false' }}, showOrigins: {{ filter_data.show_origins|yesno:'true,false' }}, showFormats: {{ filter_data.show_formats|yesno:'true,false' }}, showAuthors: {{ filter_data.show_authors|yesno:'true,false' }}, showProviders: {{ filter_data.show_providers|yesno:'true,false' }}, showProgress: {{ filter_data.show_progress|yesno:'true,false' }}, statusLabels: {
+  {% translate "Name this view" as save_view_prompt %}{% translate "All" as media_i18n_2 %}{% translate "Rated" as media_i18n_3 %}{% translate "Not Rated" as media_i18n_4 %}{% translate "Collected" as media_i18n_5 %}{% translate "Not Collected" as media_i18n_6 %}{% translate "Any" as media_i18n_7 %}{% translate "Not Caught Up" as media_i18n_8 %}{% translate "Caught Up" as media_i18n_9 %}{% translate "Released" as media_i18n_10 %}{% translate "Not Released" as media_i18n_11 %}{% translate "Rated" as media_i18n_3 %}{% translate "Collected" as media_i18n_5 %}{% translate "Any Progress" as media_i18n_93 %}{% translate "Implied: " as media_i18n_82 %}{% translate "Unknown Year" as media_i18n_83 %}{% translate "Completed: " as media_i18n_94 %}{% translate "Released" as media_i18n_10 %}{% translate "All" as media_i18n_2 %}{{ media_list_filter_state|json_script:"media-list-filter-state" }}<div x-data="{ ...libraryFilterState(JSON.parse(document.getElementById('media-list-filter-state').textContent), JSON.parse(document.getElementById('media-filter-data')?.textContent || '{}')), mediaListUrl: '{% url 'medialist' media_type %}', sort: '{{ current_sort|escapejs }}', direction: '{{ current_direction|escapejs }}', layout: '{{ current_layout|escapejs }}', search: '{{ request.GET.search|default:''|escapejs }}', group_by: '{{ current_group_by|escapejs }}', statusLabels: {
     {% for value, label in status_choices %}
       '{{ value }}': '{% translate label as media_dynamic_label %}{{ media_dynamic_label|escapejs }}'
       {% if not forloop.last %},{% endif %}
 
     {% endfor %}
-    }, ratingLabels: { 'all': '{{ media_i18n_2|escapejs }}', 'rated': '{{ media_i18n_3|escapejs }}', 'not_rated': '{{ media_i18n_4|escapejs }}' }, collectionLabels: { 'all': '{{ media_i18n_2|escapejs }}', 'collected': '{{ media_i18n_5|escapejs }}', 'not_collected': '{{ media_i18n_6|escapejs }}' }, progressLabels: { 'all': '{{ media_i18n_7|escapejs }}', 'not_caught_up': '{{ media_i18n_8|escapejs }}', 'caught_up': '{{ media_i18n_9|escapejs }}' }, releaseLabels: { 'all': '{{ media_i18n_7|escapejs }}', 'released': '{{ media_i18n_10|escapejs }}', 'not_released': '{{ media_i18n_11|escapejs }}' }, sortLabels: {
+    }, progressLabels: { 'all': '{{ media_i18n_7|escapejs }}', 'not_caught_up': '{{ media_i18n_8|escapejs }}', 'caught_up': '{{ media_i18n_9|escapejs }}' }, sortLabels: {
     {% for value, label in sort_choices %}
       '{{ value }}': '{% translate label as media_dynamic_label %}{{ media_dynamic_label|escapejs }}'
       {% if not forloop.last %},{% endif %}
 
     {% endfor %}
-    }, selectMode: false, selectedItemIds: [], bulkTagLoading: false, toggleSelectMode() { this.selectMode = !this.selectMode; if (!this.selectMode) { this.selectedItemIds = []; } }, isItemSelected(id) { return this.selectedItemIds.includes(String(id)); }, toggleItemSelected(id) { const key = String(id); if (this.selectedItemIds.includes(key)) { this.selectedItemIds = this.selectedItemIds.filter((i) => i !== key); } else { this.selectedItemIds = [...this.selectedItemIds, key]; } }, clearSelection() { this.selectedItemIds = []; }, bulkTagAction(tagName, action) { if (!this.selectedItemIds.length || this.bulkTagLoading) { return; } this.bulkTagLoading = true; const body = new URLSearchParams(); body.append('tag_name', tagName); body.append('action', action); this.selectedItemIds.forEach((id) => body.append('item_ids', id)); fetch('{% url "tag_bulk_toggle" %}', { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' }, body }).then((response) => { if (response.ok) { this.selectMode = false; this.selectedItemIds = []; htmx.trigger(document.getElementById('bulk-tag-refresh'), 'click'); } }).finally(() => { this.bulkTagLoading = false; }); }, defaultDirection(value) { return ['author', 'popularity', 'runtime', 'start_date', 'title', 'time_left', 'time_to_beat', 'platform', 'next_episode_air_date'].includes(value) ? 'asc' : 'desc'; }, toggleSort(value) { this.direction = (this.sort === value) ? (this.direction === 'asc' ? 'desc' : 'asc') : this.defaultDirection(value); this.sort = value; }, toggleRating() { if (this.rating === 'all') { this.rating = 'rated'; } else if (this.rating === 'rated') { this.rating = 'not_rated'; } else { this.rating = 'all'; } }, toggleCollection() { if (this.collection === 'all') { this.collection = 'collected'; } else if (this.collection === 'collected') { this.collection = 'not_collected'; } else { this.collection = 'all'; } }, layoutHref(nextLayout) { return buildMediaListHref(this.mediaListUrl, document.getElementById('filter-form'), { layout: nextLayout }); }, isStatusSelected(value) { return this.statuses.includes(value); }, toggleStatus(value) { if (this.statuses.includes(value)) { this.statuses = this.statuses.filter((s) => s !== value); } else { this.statuses = [...this.statuses, value]; } }, isTagSelected(value) { return this.selectedTags.includes(value); }, toggleTag(value) { if (this.selectedTags.includes(value)) { this.selectedTags = this.selectedTags.filter((t) => t !== value); } else { this.selectedTags = [...this.selectedTags, value]; } }, cycleTagMode() { this.tagMode = this.tagMode === 'and' ? 'or' : (this.tagMode === 'or' ? 'not' : 'and'); }, isPlatformSelected(value) { return this.selectedPlatforms.includes(value); }, togglePlatform(value) { if (this.selectedPlatforms.includes(value)) { this.selectedPlatforms = this.selectedPlatforms.filter((p) => p !== value); } else { this.selectedPlatforms = [...this.selectedPlatforms, value]; } }, cyclePlatformMode() { this.platformMode = this.platformMode === 'and' ? 'or' : (this.platformMode === 'or' ? 'not' : 'and'); }, filterLabel() { const labels = []; if (this.rating && this.rating !== 'all') { labels.push(this.ratingLabels[this.rating] || '{{ media_i18n_3|escapejs }}'); } if (this.collection && this.collection !== 'all') { labels.push(this.collectionLabels[this.collection] || '{{ media_i18n_5|escapejs }}'); } if (this.progress && this.progress !== 'all') { labels.push(this.progressLabels[this.progress] || '{{ media_i18n_93|escapejs }}'); } if (this.genre) { labels.push(this.genre); } if (this.implied_genre) { labels.push('{{ media_i18n_82|escapejs }}' + this.implied_genre); } if (this.year) { labels.push(this.year === 'unknown' ? '{{ media_i18n_83|escapejs }}' : this.year); } if (this.completed_date_from || this.completed_date_to) { labels.push('{{ media_i18n_94|escapejs }}' + (this.completed_date_from || '…') + ' – ' + (this.completed_date_to || '…')); } if (this.release && this.release !== 'all') { labels.push(this.releaseLabels[this.release] || '{{ media_i18n_10|escapejs }}'); } if (this.source) { labels.push(this.source.toUpperCase()); } if (this.media_status) { labels.push(this.media_status); } if (this.department) { labels.push(this.department); } if (this.showLanguages && this.language) { labels.push(this.language.length <= 3 ? this.language.toUpperCase() : this.language); } if (this.showCountries && this.country) { labels.push(this.country.length <= 3 ? this.country.toUpperCase() : this.country); } if (this.showPlatforms && this.selectedPlatforms.length) { const platformPrefix = this.platformMode === 'not' ? '-' : '+'; labels.push(platformPrefix + this.selectedPlatforms.join(this.platformMode === 'and' ? ' & ' : ', ')); } if (this.showOrigins && this.origin) { labels.push(this.origin.length <= 3 ? this.origin.toUpperCase() : this.origin); } if (this.showFormats && this.format) { labels.push(this.format === 'ebook' ? 'eBook' : this.format.charAt(0).toUpperCase() + this.format.slice(1)); } if (this.showAuthors && this.author) { labels.push(this.author); } if (this.showProviders && this.provider) { labels.push(this.provider); } if (this.selectedTags.length) { const prefix = this.tagMode === 'not' ? '-' : '+'; labels.push(prefix + this.selectedTags.join(this.tagMode === 'and' ? ' & ' : ', ')); } if (labels.length === 0) { return '{{ media_i18n_2|escapejs }}'; } if (labels.length === 1) { return labels[0]; } return `${labels[0]} +${labels.length - 1}`; }, clearFilters() { this.rating = 'all'; this.collection = 'all'; this.progress = 'all'; this.genre = ''; this.implied_genre = ''; this.year = ''; this.completed_date_within = ''; this.completed_date_from = ''; this.completed_date_to = ''; this.release = 'all'; this.source = ''; this.media_status = ''; this.department = ''; this.language = ''; this.country = ''; this.platform = ''; this.selectedPlatforms = []; this.platformMode = 'or'; this.origin = ''; this.format = ''; this.author = ''; this.provider = ''; this.selectedTags = []; this.tagMode = 'or'; }, shareView() { /* Open the tab synchronously (within the click handler) so browsers don't treat it as a blocked popup once the fetch resolves later. */ const shareWindow = window.open('', '_blank'); const form = document.getElementById('filter-form'); const params = buildMediaListFilterParams(form); params.set('media_type', '{{ media_type|escapejs }}'); return fetch('{% url "list_share_view" %}', { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' }, body: params, }) .then((response) => response.json()) .then((data) => { if (data.url && shareWindow) { shareWindow.location.href = data.url; } else if (data.url) { window.open(data.url, '_blank'); } else if (shareWindow) { shareWindow.close(); } }) .catch(() => { if (shareWindow) { shareWindow.close(); } }); } }">
+    }, selectMode: false, selectedItemIds: [], bulkTagLoading: false, toggleSelectMode() { this.selectMode = !this.selectMode; if (!this.selectMode) { this.selectedItemIds = []; } }, isItemSelected(id) { return this.selectedItemIds.includes(String(id)); }, toggleItemSelected(id) { const key = String(id); if (this.selectedItemIds.includes(key)) { this.selectedItemIds = this.selectedItemIds.filter((i) => i !== key); } else { this.selectedItemIds = [...this.selectedItemIds, key]; } }, clearSelection() { this.selectedItemIds = []; }, bulkTagAction(tagName, action) { if (!this.selectedItemIds.length || this.bulkTagLoading) { return; } this.bulkTagLoading = true; const body = new URLSearchParams(); body.append('tag_name', tagName); body.append('action', action); this.selectedItemIds.forEach((id) => body.append('item_ids', id)); fetch('{% url "tag_bulk_toggle" %}', { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' }, body }).then((response) => { if (response.ok) { this.selectMode = false; this.selectedItemIds = []; htmx.trigger(document.getElementById('bulk-tag-refresh'), 'click'); } }).finally(() => { this.bulkTagLoading = false; }); }, defaultDirection(value) { return ['author', 'popularity', 'runtime', 'start_date', 'title', 'time_left', 'time_to_beat', 'platform', 'next_episode_air_date'].includes(value) ? 'asc' : 'desc'; }, toggleSort(value) { this.direction = (this.sort === value) ? (this.direction === 'asc' ? 'desc' : 'asc') : this.defaultDirection(value); this.sort = value; }, toggleRating() { if (this.rating === 'all') { this.rating = 'rated'; } else if (this.rating === 'rated') { this.rating = 'not_rated'; } else { this.rating = 'all'; } }, toggleCollection() { if (this.collection === 'all') { this.collection = 'collected'; } else if (this.collection === 'collected') { this.collection = 'not_collected'; } else { this.collection = 'all'; } }, layoutHref(nextLayout) { return buildMediaListHref(this.mediaListUrl, document.getElementById('filter-form'), { layout: nextLayout }); }, isPlatformSelected(value) { return this.selectedPlatforms.includes(value); }, togglePlatform(value) { if (this.selectedPlatforms.includes(value)) { this.selectedPlatforms = this.selectedPlatforms.filter((p) => p !== value); } else { this.selectedPlatforms = [...this.selectedPlatforms, value]; } }, cyclePlatformMode() { this.platformMode = this.platformMode === 'and' ? 'or' : (this.platformMode === 'or' ? 'not' : 'and'); }, setGroupBy(next) { this.group_by = next; const form = document.getElementById('filter-form'); if (form.elements.group_by) { form.elements.group_by.value = next; } const groupField = form.elements.group; if (groupField) { groupField.remove(); } window.location.href = buildMediaListHref(this.mediaListUrl, form); }, shareView() { /* Open the tab synchronously (within the click handler) so browsers don't treat it as a blocked popup once the fetch resolves later. */ const shareWindow = window.open('', '_blank'); const form = document.getElementById('filter-form'); const params = buildMediaListFilterParams(form); params.set('media_type', '{{ media_type|escapejs }}'); return fetch('{% url "list_share_view" %}', { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' }, body: params, }) .then((response) => response.json()) .then((data) => { if (data.url && shareWindow) { shareWindow.location.href = data.url; } else if (data.url) { window.open(data.url, '_blank'); } else if (shareWindow) { shareWindow.close(); } }) .catch(() => { if (shareWindow) { shareWindow.close(); } }); }, saveView() { const name = window.prompt('{{ save_view_prompt|escapejs }}', this.statuses.join(', ')); if (!name || !name.trim()) { return; } const params = buildMediaListFilterParams(document.getElementById('filter-form')); params.set('media_type', '{{ media_type|escapejs }}'); params.set('name', name.trim()); return fetch('{% url "saved_view_create" %}', { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' }, body: params, }) .then((response) => response.json()) .then((data) => { if (data.url) { window.location.href = data.url; } else if (data.error) { window.alert(data.error); } }); } }">
 
     {% if enable_bulk_select %}
       {{ bulk_action_data|json_script:"media-bulk-action-data" }}
@@ -52,18 +37,14 @@
       <h1 class="text-3xl font-bold">{{ media_type|media_type_readable_plural }}</h1>
       <div data-result-count
            class="result-count-badge result-count-mobile px-4 py-2 bg-[var(--color-surface)] rounded-md text-[var(--color-text-secondary)] text-sm font-semibold">
-        {% if media_list.paginator %}
-          {{ media_list.paginator.count }}
-        {% else %}
-          {{ media_list|length }}
-        {% endif %}
+        {{ result_count }}
       </div>
       {% include "app/components/media_settings_menu.html" with menu_class="ml-auto media-settings-menu-mobile" %}
     </div>
 
-    {% include "app/components/filter_form.html" with filter_show_completed_date=True filter_platform_multi=True %}
+    {% include "app/components/filter_form.html" with filter_show_completed_date=True filter_platform_multi=True filter_show_ranges=True %}
 
-    {% include "app/components/filter_toolbar.html" with filter_hx_endpoint=media_list_url filter_show_completed_date=True filter_hx_target=filter_hx_target show_layout_toggle=True filter_platform_multi=True %}
+    {% include "app/components/filter_toolbar.html" with filter_hx_endpoint=media_list_url filter_show_completed_date=True filter_hx_target=filter_hx_target show_layout_toggle=True filter_platform_multi=True filter_show_ranges=True %}
 
     <button id="bulk-tag-refresh"
             type="button"
@@ -77,7 +58,20 @@
       {% include "app/components/bulk_selection_toolbar.html" %}
     {% endif %}
 
-    {% if not media_list %}
+    {% if current_game_group %}
+      <div class="flex flex-wrap items-center gap-3 mb-4">
+        <a href="{{ group_back_href }}"
+           class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors">
+          {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
+          {% blocktranslate with group_label=group_by_label %}All {{ group_label }}{% endblocktranslate %}
+        </a>
+        <span class="text-lg font-semibold">{{ current_game_group_name }}</span>
+      </div>
+    {% endif %}
+
+    {% if not media_list and request.GET.initial|alphabet_initial %}
+      <div id="empty_list">{% alphabet_filter "filter-form" "empty" %}</div>
+    {% elif not media_list %}
       <div id="empty_list"
            class="flex flex-col items-center justify-center py-16 bg-[var(--color-surface)] rounded-lg">
         <div class="text-center max-w-md mx-auto p-6">
@@ -94,13 +88,15 @@
           </a>
         </div>
       </div>
+    {% elif current_group_by != "item" and media_groups %}
+      {% include "app/components/game_grouped_items.html" %}
     {% elif current_layout == "grid" %}
       {% if is_artist_list %}
         <div class="media-grid">{% include "app/components/artist_grid_items.html" %}</div>
       {% elif is_album_list %}
         <div class="media-grid">{% include "app/components/album_list_grid_items.html" %}</div>
       {% else %}
-        <div class="media-grid">{% include "app/components/media_grid_items.html" %}</div>
+        <div class="media-grid{% if media_type == 'video' %} media-grid-video{% endif %}">{% include "app/components/media_grid_items.html" %}</div>
       {% endif %}
     {% else %}
       <div class="bg-[var(--color-surface)] p-4 rounded-lg overflow-hidden max-w-[calc(100svw-4rem)] overflow-x-scroll">
@@ -241,121 +237,6 @@
         window.location.reload();
       }
     });
-
-    // var (not let/const): this script re-executes on boosted navigation
-    var paginationDebugLog = [];
-    var activePaginationRequests = new Set();
-    var paginationInProgress = false;
-
-    // Debug logging function
-    function logPaginationEvent(event, details) {
-      const timestamp = new Date().toISOString();
-      const logEntry = `[${timestamp}] ${event}: ${details}`;
-      paginationDebugLog.push(logEntry);
-      console.log(logEntry);
-      
-      // Keep only last 20 entries
-      if (paginationDebugLog.length > 20) {
-        paginationDebugLog.shift();
-      }
-    }
-    
-    // Bind once: a second copy of these handlers would see
-    // paginationInProgress=true and block every pagination request.
-    if (!window.__floppyMediaListPaginationBound) {
-    window.__floppyMediaListPaginationBound = true;
-
-    // Prevent multiple pagination triggers from being active at once
-    document.body.addEventListener('htmx:beforeRequest', function(evt) {
-      if (evt.detail.elt.classList.contains('pagination-trigger')) {
-        const pageUrl = evt.detail.requestConfig.path;
-        const pageMatch = pageUrl.match(/page=(\d+)/);
-        const pageNumber = pageMatch ? pageMatch[1] : 'unknown';
-
-        logPaginationEvent('PAGINATION_REQUEST_START', `Page ${pageNumber}, URL: ${pageUrl}`);
-        
-        // Check if any pagination is already in progress
-        if (paginationInProgress) {
-          logPaginationEvent('PAGINATION_REQUEST_BLOCKED', `Page ${pageNumber} blocked - pagination already in progress`);
-          evt.preventDefault();
-          return;
-        }
-        
-        // Check if this page is already being requested
-        if (activePaginationRequests.has(pageNumber)) {
-          logPaginationEvent('PAGINATION_REQUEST_BLOCKED', `Page ${pageNumber} already in progress`);
-          evt.preventDefault();
-          return;
-        }
-        
-        paginationInProgress = true;
-        activePaginationRequests.add(pageNumber);
-        
-        // Disable ALL pagination triggers immediately
-        const allTriggers = document.querySelectorAll('.pagination-trigger');
-        logPaginationEvent('PAGINATION_TRIGGERS_FOUND', `Found ${allTriggers.length} pagination triggers`);
-        
-        allTriggers.forEach(trigger => {
-          const triggerPageNumber = trigger.getAttribute('data-page') || 'unknown';
-          logPaginationEvent('PAGINATION_TRIGGER_DISABLED', `Page ${triggerPageNumber} trigger disabled`);
-          trigger.setAttribute('hx-trigger', 'none');
-        });
-      }
-    });
-
-    // Re-enable pagination triggers after request completes
-    document.body.addEventListener('htmx:afterRequest', function(evt) {
-      if (evt.detail.elt.classList.contains('pagination-trigger')) {
-        const pageUrl = evt.detail.requestConfig.path;
-        const pageMatch = pageUrl.match(/page=(\d+)/);
-        const pageNumber = pageMatch ? pageMatch[1] : 'unknown';
-        
-        logPaginationEvent('PAGINATION_REQUEST_COMPLETE', `Page ${pageNumber} completed`);
-        activePaginationRequests.delete(pageNumber);
-        
-        // Wait a bit before re-enabling to prevent rapid-fire requests
-        setTimeout(() => {
-          paginationInProgress = false;
-          
-          // Do not immediately re-enable all triggers; wait for next repaint, then re-enable only the last one
-          requestAnimationFrame(() => {
-            const allTriggers = document.querySelectorAll('.pagination-trigger');
-            if (allTriggers.length > 0) {
-              const lastTrigger = allTriggers[allTriggers.length - 1];
-              const triggerPageNumber = lastTrigger.getAttribute('data-page') || 'unknown';
-              logPaginationEvent('PAGINATION_TRIGGER_REENABLED', `Page ${triggerPageNumber} trigger re-enabled`);
-              lastTrigger.setAttribute('hx-trigger', 'revealed threshold:150px once');
-            }
-          });
-        }, 200); // 200ms delay to prevent rapid-fire requests
-      }
-    });
-    
-    // Log intersection observer events
-    document.body.addEventListener('htmx:beforeRequest', function(evt) {
-      if (evt.detail.elt.classList.contains('pagination-trigger')) {
-        logPaginationEvent('INTERSECTION_OBSERVER_TRIGGER', `Element: ${evt.detail.elt.tagName}, Classes: ${evt.detail.elt.className}`);
-      }
-    });
-    
-    // Add global debug function
-    window.debugPagination = function() {
-      console.log('=== PAGINATION DEBUG LOG ===');
-      paginationDebugLog.forEach(log => console.log(log));
-      console.log('=== ACTIVE REQUESTS ===');
-      console.log(Array.from(activePaginationRequests));
-      console.log('=== PAGINATION IN PROGRESS ===');
-      console.log(paginationInProgress);
-      console.log('=== PAGINATION TRIGGERS ===');
-      document.querySelectorAll('.pagination-trigger').forEach((trigger, index) => {
-        const url = trigger.getAttribute('hx-get') || 'no-url';
-        const triggerType = trigger.getAttribute('hx-trigger') || 'no-trigger';
-        const pageNumber = trigger.getAttribute('data-page') || 'unknown';
-        console.log(`Trigger ${index}: Page ${pageNumber}, URL: ${url}, Trigger: ${triggerType}`);
-      });
-    };
-
-    }
   </script>
 
   <script>
@@ -373,4 +254,5 @@
     });
     }
   </script>
+  </div>
 {% endblock content %}

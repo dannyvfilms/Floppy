@@ -238,8 +238,8 @@ class CompletionNormalizationTests(TestCase):
 
         self.assertEqual(TV.objects.filter(item=tv_item, user=self.user).count(), 1)
 
-    def test_undated_planning_delete_invalidates_history_and_statistics(self):
-        """Removing undated Planning clears user-level cached activity."""
+    def test_undated_planning_delete_invalidates_statistics_not_history_days(self):
+        """Removing undated Planning re-aggregates but keeps every History day."""
         with (
             patch("app.signals.history_cache.invalidate_history_cache") as history,
             patch("app.signals.statistics_cache.invalidate_statistics_cache") as stats,
@@ -259,6 +259,9 @@ class CompletionNormalizationTests(TestCase):
 
             planning.delete()
 
-        history.assert_called_once_with(self.user.id)
+        # An undated row is on no History day, so none is thrown away.
+        history.assert_not_called()
         stats.assert_called_once_with(self.user.id)
-        stats_days.assert_called_once_with(self.user.id, reason="movie_change")
+        # Undated rows are read straight from the database when aggregating, so
+        # no day payload needs to be thrown away.
+        stats_days.assert_not_called()

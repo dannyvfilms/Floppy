@@ -1,0 +1,3 @@
+# Reviewed container-scan exceptions (issue #1625). Each entry needs an id,
+# a statement of why it does not apply, and an expiry.
+vulnerabilities: []

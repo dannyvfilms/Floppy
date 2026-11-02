@@ -1,9 +1,12 @@
 from importlib import import_module
+from pathlib import Path
 
 from celery import shared_task
 from django.contrib.auth import get_user_model
 
 _EXPORT_MODULES = {
+    "export_tmdb_ratings": "integrations.tasks._ratings",
+    "export_wetrakr_library": "integrations.tasks._wetrakr_export",
     **dict.fromkeys(
         ("COMPACT_CHANGE_LOG_TASK_NAME", "compact_watch_state_changes"),
         "integrations.tasks._change_log",
@@ -48,9 +51,21 @@ _EXPORT_MODULES = {
             "_run_incremental_lastfm_sync",
             "import_lastfm_history",
             "poll_all_lastfm_scrobbles",
+            "poll_lastfm_account",
             "poll_lastfm_for_user",
         ),
         "integrations.tasks._lastfm",
+    ),
+    **dict.fromkeys(
+        (
+            "MAL_FULL_SYNC_TASK_NAME",
+            "MAL_SYNC_TASK_NAME",
+            "bulk_sync_mal_status",
+            "preview_mal_sync",
+            "retry_failed_mal_status",
+            "sync_mal_status",
+        ),
+        "integrations.tasks._mal_sync",
     ),
     **dict.fromkeys(
         (
@@ -67,14 +82,25 @@ _EXPORT_MODULES = {
             "import_gpodder_recurring",
             "import_grouvee",
             "import_hardcover",
+            "import_hardcover_account",
             "import_hltb",
             "import_imdb",
             "import_jellyfin_playback_reporting",
+            "import_kavita",
+            "import_kavita_recurring",
             "import_kitsu",
+            "import_komga",
+            "import_komga_recurring",
             "import_koreader",
             "import_mal",
+            "import_mangabaka",
             "import_mdblist",
             "import_media",
+            "import_playnite",
+            "import_kapowarr",
+            "import_kapowarr_recurring",
+            "import_mylar",
+            "import_mylar_recurring",
             "import_plex",
             "import_pocketcasts",
             "import_pocketcasts_history",
@@ -96,10 +122,14 @@ _EXPORT_MODULES = {
             "import_trakt_export",
             "import_tvtime_movies",
             "import_tvtime_shows",
+            "import_wetrakr_export",
             "import_xbox",
             "import_xbox_recurring",
             "import_yamtrack",
+    "import_youtube_takeout",
+            "import_youtube_takeout",
             "push_jellyfin_watched",
+            "sync_plex_mark_watched",
             "sync_plex_watchlist",
         ),
         "integrations.tasks._media_imports",
@@ -122,6 +152,7 @@ _EXPORT_MODULES = {
     **dict.fromkeys(
         (
             "deliver_watched_state",
+            "flush_outbound_batch",
             "reconcile_watched_state",
             "sweep_watched_state_deliveries",
         ),
@@ -131,6 +162,7 @@ _EXPORT_MODULES = {
         (
             "WEBHOOK_PROCESSORS",
             "_webhook_history_user",
+            "process_stremio_tracker_event",
             "process_stremio_webhook",
             "process_webhook",
             "verify_stremio_playback",
@@ -163,16 +195,22 @@ def scheduled_backup_export(
     include_collection=True,
 ):
     """Celery task for exporting a CSV backup to the backup directory."""
+    from app import backup_status
     from integrations import exports
 
     user_model = get_user_model()
     user = user_model.objects.get(id=user_id)
-    filepath = exports.write_backup(
-        user,
-        media_types=media_types,
-        include_lists=include_lists,
-        include_collection=include_collection,
-    )
+    try:
+        filepath = exports.write_backup(
+            user,
+            media_types=media_types,
+            include_lists=include_lists,
+            include_collection=include_collection,
+        )
+    except Exception as error:
+        backup_status.record_failure(backup_status.CSV_EXPORT, error)
+        raise
+    backup_status.record_success(backup_status.CSV_EXPORT, Path(filepath).name)
     return f"Backup saved to {filepath}"
 
 
@@ -187,6 +225,8 @@ __all__ = [
     "KOITO_POLL_TASK_NAME",
     "LASTFM_PARTIAL_SYNC_ERROR",
     "LEGACY_GOODREADS_IMPORT_TASK_NAMES",
+    "MAL_FULL_SYNC_TASK_NAME",
+    "MAL_SYNC_TASK_NAME",
     "WEBHOOK_PROCESSORS",
     "_aggregate_tv_show_collection_metadata",
     "_coerce_uploaded_file",
@@ -199,10 +239,14 @@ __all__ = [
     "_run_incremental_koito_sync",
     "_run_incremental_lastfm_sync",
     "_webhook_history_user",
+    "bulk_sync_mal_status",
     "compact_integration_event_receipts",
     "compact_watch_state_changes",
     "deliver_watched_state",
+    "export_tmdb_ratings",
+    "export_wetrakr_library",
     "fetch_collection_metadata_for_item",
+    "flush_outbound_batch",
     "format_import_message",
     "format_media_type_display",
     "format_watchlist_sync_message",
@@ -217,16 +261,25 @@ __all__ = [
     "import_gpodder_recurring",
     "import_grouvee",
     "import_hardcover",
+    "import_hardcover_account",
     "import_hltb",
     "import_imdb",
     "import_jellyfin_playback_reporting",
+    "import_kapowarr",
+    "import_kapowarr_recurring",
     "import_kitsu",
     "import_koito_history",
+    "import_komga",
+    "import_komga_recurring",
     "import_koreader",
     "import_lastfm_history",
     "import_mal",
+    "import_mangabaka",
     "import_mdblist",
     "import_media",
+    "import_mylar",
+    "import_mylar_recurring",
+    "import_playnite",
     "import_plex",
     "import_pocketcasts",
     "import_pocketcasts_history",
@@ -238,6 +291,7 @@ __all__ = [
     "import_sonarr",
     "import_sonarr_recurring",
     "import_steam",
+    "import_storygraph",
     "import_storyteller",
     "import_storyteller_recurring",
     "import_stremio",
@@ -247,20 +301,27 @@ __all__ = [
     "import_trakt_export",
     "import_tvtime_movies",
     "import_tvtime_shows",
+    "import_wetrakr_export",
     "import_xbox",
     "import_xbox_recurring",
     "import_yamtrack",
     "poll_all_koito_accounts",
     "poll_all_lastfm_scrobbles",
     "poll_koito_for_user",
+    "poll_lastfm_account",
     "poll_lastfm_for_user",
+    "preview_mal_sync",
+    "process_stremio_tracker_event",
     "process_stremio_webhook",
     "process_webhook",
     "pull_jellyfin_history",
     "push_jellyfin_watched",
     "reconcile_watched_state",
     "refresh_plex_sections",
+    "retry_failed_mal_status",
     "sweep_watched_state_deliveries",
+    "sync_mal_status",
+    "sync_plex_mark_watched",
     "sync_plex_watchlist",
     "update_collection_metadata_from_plex",
     "update_collection_metadata_from_plex_webhook",

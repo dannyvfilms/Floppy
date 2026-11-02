@@ -1,20 +1,27 @@
 {% comment %}
   Single shared poller for music/podcast home-row artwork. One request
-  refreshes every row still missing covers (rows swap in out-of-band).
-  Renders inert (no hx-trigger) once no rows need polling, which stops
-  the client-side poll automatically.
+  refreshes every loaded row still missing covers (rows swap in out-of-band).
+  The row ids come from the DOM, so rows that load after first paint join
+  the next poll without racing over the poller markup.
+
+  Renders inert (no hx-trigger) once no rows need polling, which stops the
+  client-side poll automatically.
 
   Context:
-    poll_row_ids — row ids that still need artwork polling
+    poll_row_ids — row ids that still need artwork polling (arms the poller)
+    active       — arm the poller before any row ids are known
     initial      — set on the first (page) render to fire an early poll
+    retry_soon   — poll again shortly because deferred rows are still loading
 {% endcomment %}
-{% if poll_row_ids %}
-<div id="home-artwork-poller"
-     {% if oob %}hx-swap-oob="outerHTML"{% endif %}
-     hx-get="{% url 'home_rows_artwork_refresh' %}?ids={% for rid in poll_row_ids %}{{ rid }}{% if not forloop.last %},{% endif %}{% endfor %}"
-     hx-trigger="{% if initial %}load delay:1s, {% endif %}every 30s"
-     hx-sync="this:abort"
-     hx-swap="outerHTML"></div>
+{% if poll_row_ids or active %}
+  <div id="home-artwork-poller" {% if oob %}hx-swap-oob="outerHTML"{% endif %} hx-get="{% url 'home_rows_artwork_refresh' %}" hx-vals='js:{ids: Array.from(document.querySelectorAll("[data-home-row-poll-id]")).map(el => el.dataset.homeRowPollId).join(","), pending: document.querySelectorAll("[data-home-row-slot]").length}'
+    {% if initial or retry_soon %}
+      hx-trigger="load delay:1s, every 30s"
+    {% else %}
+      hx-trigger="every 30s"
+    {% endif %}
+    hx-sync="this:abort" hx-swap="outerHTML"></div>
 {% else %}
-<div id="home-artwork-poller" {% if oob %}hx-swap-oob="outerHTML"{% endif %}></div>
+  <div id="home-artwork-poller"
+       {% if oob %}hx-swap-oob="outerHTML"{% endif %}></div>
 {% endif %}

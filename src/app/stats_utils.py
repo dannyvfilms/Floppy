@@ -23,6 +23,7 @@ MEDIA_TYPE_HOURS_ORDER = [
     MediaTypes.GAME.value,
     MediaTypes.BOARDGAME.value,
     MediaTypes.PODCAST.value,
+    MediaTypes.VIDEO.value,
     MediaTypes.MUSIC.value,
     MediaTypes.BOOK.value,
     MediaTypes.COMIC.value,

@@ -6,9 +6,9 @@
     }
 
     const omitDefaults = {
-      status: 'all',
       rating: 'all',
       collection: 'all',
+      group_by: 'item',
       progress: 'all',
       release: 'all',
     };
@@ -68,6 +68,19 @@
       return;
     }
     const form = document.getElementById(formId || 'filter-form');
+    // Grouping changes the list's structure, not just its rows, so filters in a
+    // grouped Games view take the full-page path instead of swapping items.
+    const groupBy = form && form.elements.group_by ? form.elements.group_by.value : '';
+    const currentGroupBy = new URLSearchParams(window.location.search).get('group_by');
+    if ((groupBy && groupBy !== 'item') || (currentGroupBy && currentGroupBy !== 'item')) {
+      const params = buildMediaListFilterParams(form);
+      if (!groupBy || groupBy === 'item') {
+        params.delete('group');
+      }
+      const query = params.toString();
+      window.location.href = query ? `${endpoint}?${query}` : endpoint;
+      return;
+    }
     htmx.ajax('GET', endpoint, {
       source: form || document.body,
       target,

@@ -916,6 +916,27 @@ class MetadataResolutionTests(TestCase):
         )
         self.assertEqual(mock_update_or_create.call_count, 6)
 
+    @patch("app.services.metadata_resolution.anime_mapping.resolve_provider_series_id")
+    @patch("app.services.metadata_resolution.ItemProviderLink.objects.update_or_create")
+    def test_read_only_mapping_returns_id_without_persisting(self, upsert, resolve):
+        item = Item.objects.create(
+            media_id="52991",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Frieren",
+        )
+        resolve.return_value = "9350138"
+        self.assertEqual(
+            metadata_resolution.resolve_provider_media_id(
+                item,
+                Sources.TVDB.value,
+                route_media_type=MediaTypes.ANIME.value,
+                persist_links=False,
+            ),
+            "9350138",
+        )
+        upsert.assert_not_called()
+
     @patch("app.db_retry.time.sleep")
     @patch("app.services.metadata_resolution.ItemProviderLink.objects.update_or_create")
     def test_upsert_provider_links_required_mode_raises_on_lock(

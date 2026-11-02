@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
@@ -67,7 +69,7 @@ class EpisodeHistoryPollTests(TestCase):
             item=self.episode_item,
             related_season=self.season,
         )
-        old_entry.created_at = timezone.now() - timezone.timedelta(minutes=5)
+        old_entry.created_at = timezone.now() - timedelta(minutes=5)
         old_entry.save(update_fields=["created_at"])
 
         response = self.client.get(
@@ -102,3 +104,28 @@ class EpisodeHistoryPollTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+    def test_polled_status_pill_is_marked_so_an_open_dialog_is_kept(self):
+        """The poll's pill refresh is flagged; the page skips it while the dialog is open."""
+        response = self.client.get(
+            reverse("episode_history_poll", args=[self.season.id]),
+        )
+
+        self.assertContains(response, "data-track-action-root", html=False)
+        self.assertContains(response, "data-polled", html=False)
+
+    def test_gap_widens_lookback_for_hidden_tab_catch_up(self):
+        """A play older than the default lookback is caught when `gap` covers it."""
+        episode = Episode.objects.create(
+            item=self.episode_item,
+            related_season=self.season,
+        )
+        Episode.objects.filter(pk=episode.pk).update(
+            created_at=timezone.now() - timedelta(minutes=10),
+        )
+        url = reverse("episode_history_poll", args=[self.season.id])
+        marker = f'id="episode-history-{self.episode_item.id}"'
+
+        self.assertNotContains(self.client.get(url), marker)
+        self.assertNotContains(self.client.get(url, {"gap": "junk"}), marker)
+        self.assertContains(self.client.get(url, {"gap": "600"}), marker)

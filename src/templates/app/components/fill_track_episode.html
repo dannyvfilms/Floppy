@@ -11,7 +11,7 @@
      data-track-modal-root
      @keydown.escape.window="trackOpen = false"
      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-  <div class="w-[400px] max-h-[90vh] px-4 md:px-0 relative z-60">
+  <div class="w-[400px] max-h-[90dvh] px-4 md:px-0 relative z-60">
     <div class="bg-[var(--color-surface)] p-6 rounded-lg max-h-[70svh] overflow-y-auto">
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-xl font-bold text-[var(--color-text)]">{% translate "Track Episode" %}</h2>
@@ -22,7 +22,7 @@
       {# Episode preview data #}
       <div class="bg-[var(--color-surface-muted)] rounded-lg p-4 mb-6">
         <div class="flex items-start gap-4">
-          <img alt="{{ episode.title }}"
+          <img data-media-artwork loading="lazy" decoding="sync" alt="{{ episode.title }}"
                class="w-20 h-20 rounded object-cover shrink-0"
                data-image-source="{{ episode.image_source|default:'primary' }}"
                src="{{ episode.image|image_url }}">

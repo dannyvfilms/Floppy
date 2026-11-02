@@ -1,12 +1,30 @@
+import base64
+import hashlib
 import json
+import sqlite3
+import tempfile
+import threading
+import time
+from collections import defaultdict
+from contextlib import closing
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
-from unittest.mock import call, patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, call, patch
 
 import redis
 import requests
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
+from django.db import OperationalError, connection
+from django.test import (
+    RequestFactory,
+    SimpleTestCase,
+    TestCase,
+    TransactionTestCase,
+    override_settings,
+    tag,
+)
 from requests import Response
 
 from app.models import (
@@ -21,16 +39,226 @@ from app.models import (
     Sources,
     Status,
 )
-from app.providers import services
+from app.providers import credentials, services
 from app.services.grouped_anime import GroupedAnimeMatch
 from integrations.imports import helpers, trakt
 from integrations.imports.helpers import MediaImportError
 from integrations.imports.trakt import TraktImporter, importer
+from integrations.models import ExternalReference, TraktAccount
 
 mock_path = Path(__file__).resolve().parent.parent / "mock_data"
 app_mock_path = (
     Path(__file__).resolve().parent.parent.parent.parent / "app" / "tests" / "mock_data"
 )
+
+
+class TraktSqliteWriteRetryTests(SimpleTestCase):
+    def test_transient_lock_retries_complete_operation(self):
+        with (
+            patch.object(connection, "in_atomic_block", False),
+            patch("integrations.imports.trakt.time.sleep") as pause,
+        ):
+            operation = SimpleNamespace(calls=0)
+
+            def write():
+                operation.calls += 1
+                if operation.calls < 3:
+                    msg = "database is locked"
+                    raise OperationalError(msg)
+                return "saved"
+
+            self.assertEqual(trakt._retry_sqlite_write(write), "saved")
+        self.assertEqual(operation.calls, 3)
+        self.assertEqual(pause.call_count, 2)
+
+    def test_enclosing_transaction_is_never_retried(self):
+        with (
+            patch.object(connection, "in_atomic_block", True),
+            patch("integrations.imports.trakt.time.sleep") as pause,
+            self.assertRaises(OperationalError),
+        ):
+            trakt._retry_sqlite_write(self._raise_lock)
+        pause.assert_not_called()
+
+    def test_exhausted_locks_are_bounded(self):
+        with (
+            patch.object(connection, "in_atomic_block", False),
+            patch("integrations.imports.trakt.time.sleep") as pause,
+            self.assertRaises(OperationalError),
+        ):
+            trakt._retry_sqlite_write(self._raise_lock)
+        self.assertEqual(pause.call_count, trakt.SQLITE_WRITE_ATTEMPTS - 1)
+
+    def test_long_busy_timeout_is_not_multiplied(self):
+        with (
+            patch.object(connection, "in_atomic_block", False),
+            patch("integrations.imports.trakt.time.monotonic", side_effect=[0, 2]),
+            patch("integrations.imports.trakt.time.sleep") as pause,
+            self.assertRaises(OperationalError),
+        ):
+            trakt._retry_sqlite_write(self._raise_lock)
+        pause.assert_not_called()
+
+    @staticmethod
+    def _raise_lock():
+        msg = "database is locked"
+        raise OperationalError(msg)
+
+
+class TraktResolutionMemoTests(SimpleTestCase):
+    """Import snapshots bound positive reuse and collapse confirmed misses."""
+
+    def setUp(self):
+        self.importer = object.__new__(TraktImporter)
+        self.importer.warnings = []
+        self.importer.user = SimpleNamespace(tv_metadata_source_default="tmdb")
+
+    def missing_error(self, status=404, *, confirmed=True):
+        response = Response()
+        response.status_code = status
+        error = services.ProviderAPIError("tmdb", requests.HTTPError(response=response))
+        error.confirmed_absent = confirmed
+        return error
+
+    @tag("slow", "benchmark")
+    def test_repeated_confirmed_absence_needs_no_redis_or_repeated_warning(self):
+        with (
+            patch.object(services, "get_media_metadata", side_effect=self.missing_error()) as metadata,
+            patch("django.core.cache.cache.set", side_effect=redis.ConnectionError("offline")) as cache_write,
+        ):
+            for _ in range(80_849):
+                self.assertIsNone(self.importer._get_metadata("season", "123", "Show", 1986))
+        metadata.assert_called_once()
+        cache_write.assert_not_called()
+        self.assertEqual(len(self.importer.warnings), 1)
+        self.assertEqual(len(self.importer._missing_metadata), 1)
+
+    def test_missing_keys_distinguish_language_show_and_season(self):
+        with patch.object(services, "get_media_metadata", side_effect=self.missing_error()) as metadata:
+            with override_settings(TMDB_LANG="en-US"):
+                for show, season in (("123", 1986), ("123", 1987), ("456", 1986)):
+                    self.importer._get_metadata("season", show, "Show", season)
+                self.importer._get_metadata("season", "123", "Show", "01986")
+            with override_settings(TMDB_LANG="fr-FR"):
+                self.importer._get_metadata("season", "123", "Show", 1986)
+        self.assertEqual(metadata.call_count, 4)
+        self.assertEqual(len(self.importer.warnings), 4)
+
+    def test_generic_not_found_and_transient_errors_are_not_memoized(self):
+        for error in (self.missing_error(confirmed=False), self.missing_error(503)):
+            with self.subTest(status=error.status_code), patch.object(services, "get_media_metadata", side_effect=error) as metadata:
+                for _ in range(2):
+                    if error.status_code == 404:
+                        self.assertIsNone(self.importer._get_metadata("season", "123", "Show", 1))
+                    else:
+                        with self.assertRaises(services.ProviderAPIError):
+                            self.importer._get_metadata("season", "123", "Show", 1)
+                self.assertEqual(metadata.call_count, 2)
+
+    @tag("slow", "benchmark")
+    def test_warm_metadata_and_items_do_not_repeat_resolution_operations(self):
+        item = SimpleNamespace(library_media_type="tv")
+        dto = {"title": "Show", "image": "image"}
+        with (
+            patch.object(services, "get_media_metadata", return_value=dto) as metadata,
+            patch.object(Item.objects, "filter", return_value=[item]) as lookup,
+        ):
+            for _ in range(1000):
+                resolved = self.importer._get_metadata("tv", "123", "Show")
+                self.assertIs(self.importer._get_or_create_item("tv", "123", resolved), item)
+        metadata.assert_called_once()
+        lookup.assert_called_once()
+
+    def test_metadata_lru_is_bounded_and_refreshes_recent_entries(self):
+        with patch.object(services, "get_media_metadata", return_value={"title": "Show"}) as metadata:
+            for identity in range(8):
+                self.importer._get_metadata("tv", identity, "Show")
+            self.importer._get_metadata("tv", 0, "Show")
+            self.importer._get_metadata("tv", 8, "Show")
+            self.assertEqual(len(self.importer._metadata_memo), 8)
+            self.assertEqual(metadata.call_count, 9)
+            self.importer._get_metadata("tv", 1, "Show")
+            self.assertEqual(metadata.call_count, 10)
+
+    def test_empty_metadata_is_not_confirmed_absence(self):
+        with patch.object(services, "get_media_metadata", return_value=None) as metadata:
+            for _ in range(2):
+                self.assertIsNone(self.importer._get_metadata("tv", "123", "Show"))
+            self.assertEqual(metadata.call_count, 2)
+
+    def test_real_metadata_dates_are_admitted_without_changing_the_dto(self):
+        dto = {"details": {"first_air_date": date(2020, 1, 1)}, "score": Decimal("1.5")}
+        with patch.object(services, "get_media_metadata", return_value=dto) as metadata:
+            self.assertIs(self.importer._get_metadata("tv", "123", "Show"), dto)
+            self.assertIs(self.importer._get_metadata("tv", "123", "Show"), dto)
+        metadata.assert_called_once()
+        self.assertIsInstance(dto["details"]["first_air_date"], date)
+
+    def test_large_or_non_json_metadata_is_returned_without_retention(self):
+        for dto in ({"synopsis": "x" * (129 * 1024)}, {"value": object()}):
+            with self.subTest(large="synopsis" in dto), patch.object(services, "get_media_metadata", return_value=dto) as metadata:
+                for _ in range(2):
+                    self.assertIs(self.importer._get_metadata("tv", "large", "Show"), dto)
+                self.assertEqual(metadata.call_count, 2)
+                self.assertEqual(len(self.importer._metadata_memo), 0)
+
+    def test_item_memo_distinguishes_buckets_coordinates_and_provider_preference(self):
+        tv = SimpleNamespace(library_media_type="tv")
+        anime = SimpleNamespace(library_media_type="anime")
+        with patch.object(Item.objects, "filter", return_value=[tv, anime]) as lookup:
+            self.assertIs(self.importer._get_or_create_item("tv", "123", {}, library_media_type="tv"), tv)
+            self.assertIs(self.importer._get_or_create_item("tv", "123", {}, library_media_type="anime"), anime)
+            self.importer._get_or_create_item("episode", "123", {}, season_number=1, episode_number=1)
+            self.importer._get_or_create_item("episode", "123", {}, season_number=1, episode_number=2)
+            self.importer.user.tv_metadata_source_default = "tvdb"
+            self.importer._get_or_create_item("tv", "123", {}, library_media_type="tv")
+            self.assertEqual(lookup.call_count, 5)
+
+    def test_item_lru_is_bounded_and_retains_preferred_provider_items(self):
+        preferred = SimpleNamespace(library_media_type="tv", source="tvdb")
+        with (
+            patch.object(Item.objects, "filter", return_value=[]) as lookup,
+            patch.object(self.importer, "_find_preferred_provider_item", return_value=preferred) as resolve,
+        ):
+            for identity in range(65):
+                self.assertIs(self.importer._get_or_create_item("tv", identity, {}), preferred)
+            self.assertEqual(len(self.importer._item_memo), 64)
+            self.importer._get_or_create_item("tv", 64, {})
+            self.assertEqual(resolve.call_count, 65)
+            self.importer._get_or_create_item("tv", 0, {})
+            self.assertEqual(lookup.call_count, 66)
+            self.assertEqual(resolve.call_count, 66)
+
+    def test_unknown_play_runtime_is_reread_until_enrichment_supplies_it(self):
+        unknown = SimpleNamespace(library_media_type="episode", runtime_minutes=0)
+        enriched = SimpleNamespace(library_media_type="episode", runtime_minutes=30)
+        with patch.object(Item.objects, "filter", side_effect=[[unknown], [enriched]]) as lookup:
+            self.assertIs(self.importer._get_or_create_item("episode", "123", {}, 1, 1), unknown)
+            self.assertIs(self.importer._get_or_create_item("episode", "123", {}, 1, 1), enriched)
+            self.assertIs(self.importer._get_or_create_item("episode", "123", {}, 1, 1), enriched)
+        self.assertEqual(lookup.call_count, 2)
+
+    def test_reference_reuses_only_current_entry_and_observes_next_correction(self):
+        self.importer.external_reference_integration = "trakt"
+        show = {"title": "Show", "ids": {"trakt": 10, "tmdb": 123}}
+        corrected = SimpleNamespace(
+            review_status="matched", episode_mapping={"1986:3": [2, 7]},
+        )
+        with (
+            patch.object(trakt.external_references, "lookup_reference", side_effect=[None, corrected]) as lookup,
+            patch.object(trakt.external_references, "reference_target", return_value=None),
+        ):
+            self.assertEqual(self.importer._get_tmdb_id(show, "tv"), "123")
+            self.assertIsNone(self.importer._get_trakt_reference(show, "tv"))
+            self.assertEqual(lookup.call_count, 1)
+            # Deliberately reuse the same input object on the next entry.
+            self.assertEqual(self.importer._get_tmdb_id(show, "tv"), "123")
+            reference = self.importer._get_trakt_reference(show, "tv")
+            self.assertEqual(lookup.call_count, 2)
+            self.assertEqual(
+                trakt.external_references.map_episode_coordinates(reference, 1986, 3),
+                (2, 7),
+            )
 
 
 class ImportTrakt(TestCase):
@@ -40,6 +268,33 @@ class ImportTrakt(TestCase):
         """Create user for the tests."""
         credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**credentials)
+
+    def test_history_year_coordinate_only_changes_with_explicit_mapping(self):
+        """Trakt's episode.season is not implicitly interpreted as a year."""
+        entry = {
+            "show": {"title": "Diagnostic show", "ids": {"tmdb": 123}},
+            "episode": {"season": 1986, "number": 3},
+            "watched_at": "2023-01-02T00:00:00.000Z",
+        }
+        for reference, expected_season in (
+            (None, 1986),
+            (SimpleNamespace(episode_mapping={"1986:3": [2, 7]}), 2),
+        ):
+            with self.subTest(mapped=reference is not None):
+                trakt_importer = TraktImporter("test", self.user, "new")
+                with (
+                    patch.object(trakt_importer, "_get_tmdb_id", return_value="123"),
+                    patch.object(trakt_importer, "_get_trakt_reference", return_value=reference),
+                    patch.object(trakt_importer, "_get_metadata", side_effect=[{"title": "Diagnostic show"}, None]) as metadata,
+                ):
+                    trakt_importer.process_watched_episode(entry)
+                self.assertEqual(
+                    metadata.call_args_list,
+                    [
+                        call("tv", "123", "Diagnostic show"),
+                        call("season", "123", "Diagnostic show", expected_season),
+                    ],
+                )
 
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_process_watched_movie(self, mock_get_metadata):
@@ -156,6 +411,119 @@ class ImportTrakt(TestCase):
         )
 
         self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value]), 0)
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_process_watched_movie_adds_older_watch_to_tracked_movie(
+        self,
+        mock_get_metadata,
+    ):
+        """An older Trakt watch is kept when the movie is already tracked (#1423)."""
+        item = Item.objects.create(
+            media_id="299537",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Captain Marvel",
+        )
+        Movie.objects.create(
+            item=item,
+            user=self.user,
+            end_date="2023-06-01T20:00:00Z",
+            status=Status.COMPLETED.value,
+            progress=1,
+        )
+        mock_get_metadata.return_value = {
+            "title": "Captain Marvel",
+            "image": "movie_image.jpg",
+        }
+        entry = {
+            "type": "movie",
+            "movie": {"title": "Captain Marvel", "ids": {"tmdb": 299537}},
+            "watched_at": "2019-06-01T22:19:00.000Z",
+        }
+
+        trakt_importer = TraktImporter("test", self.user, "new")
+        trakt_importer.process_watched_movie(entry)
+        helpers.bulk_create_media(trakt_importer.bulk_media, self.user)
+
+        end_dates = sorted(
+            Movie.objects.filter(user=self.user, item=item).values_list(
+                "end_date",
+                flat=True,
+            ),
+        )
+        self.assertEqual(
+            [d.isoformat() for d in end_dates],
+            ["2019-06-01T22:19:00+00:00", "2023-06-01T20:00:00+00:00"],
+        )
+
+        # Importing the same history again must not add the watch twice.
+        again = TraktImporter("test", self.user, "new")
+        again.process_watched_movie(entry)
+        self.assertEqual(len(again.bulk_media[MediaTypes.MOVIE.value]), 0)
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_process_watched_movie_without_date_skips_tracked_movie(
+        self,
+        mock_get_metadata,
+    ):
+        """An undated Trakt watch cannot be deduped, so a tracked movie is left alone."""
+        item = Item.objects.create(
+            media_id="299537",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Captain Marvel",
+        )
+        Movie.objects.create(
+            item=item,
+            user=self.user,
+            end_date="2023-06-01T20:00:00Z",
+            status=Status.COMPLETED.value,
+            progress=1,
+        )
+        mock_get_metadata.return_value = {
+            "title": "Captain Marvel",
+            "image": "movie_image.jpg",
+        }
+
+        trakt_importer = TraktImporter("test", self.user, "new")
+        trakt_importer.process_watched_movie(
+            {
+                "type": "movie",
+                "movie": {"title": "Captain Marvel", "ids": {"tmdb": 299537}},
+                "watched_at": trakt.TRAKT_UNKNOWN_DATE,
+            },
+        )
+
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.MOVIE.value]), 0)
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_process_watched_movie_completes_planned_movie(self, mock_get_metadata):
+        """A Trakt watch of a movie planned locally completes it, with no extra row."""
+        item = Item.objects.create(
+            media_id="299537",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Captain Marvel",
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.PLANNING.value)
+        mock_get_metadata.return_value = {
+            "title": "Captain Marvel",
+            "image": "movie_image.jpg",
+        }
+
+        trakt_importer = TraktImporter("test", self.user, "new")
+        trakt_importer.process_watched_movie(
+            {
+                "type": "movie",
+                "movie": {"title": "Captain Marvel", "ids": {"tmdb": 299537}},
+                "watched_at": "2019-06-01T22:19:00.000Z",
+            },
+        )
+        helpers.bulk_create_media(trakt_importer.bulk_media, self.user)
+
+        movie = Movie.objects.get(user=self.user, item=item)
+        self.assertEqual(movie.status, Status.COMPLETED.value)
+        self.assertEqual(movie.end_date.year, 2019)
 
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_process_watched_episode(self, mock_get_metadata):
@@ -446,6 +814,77 @@ class ImportTrakt(TestCase):
         # overwritten to Completed.
         self.assertEqual(len(trakt_importer.completed_seasons), 0)
         self.assertEqual(len(trakt_importer.completed_tvs), 0)
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_new_mode_still_syncs_a_show_an_overwrite_import_replaced(
+        self,
+        mock_get_metadata,
+    ):
+        """An overwrite import must not make later syncs skip the show (#375)."""
+        tv_item = Item.objects.get_or_create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            defaults={"title": "Test Show"},
+        )[0]
+        season_item = Item.objects.get_or_create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            defaults={"title": "Season 1"},
+        )[0]
+        TV.objects.create(item=tv_item, user=self.user, status=Status.IN_PROGRESS.value)
+
+        # What an overwrite import does: delete the show, then write it back.
+        to_delete = defaultdict(lambda: defaultdict(set))
+        to_delete[MediaTypes.TV.value][Sources.TMDB.value].add("12345")
+        helpers.cleanup_existing_media(to_delete, self.user)
+        # Imports write with bulk_create, which sends no post_save signal.
+        tv_obj = TV.objects.bulk_create(
+            [TV(item=tv_item, user=self.user, status=Status.IN_PROGRESS.value)],
+        )[0]
+        Season.objects.bulk_create(
+            [
+                Season(
+                    item=season_item,
+                    user=self.user,
+                    related_tv=tv_obj,
+                    status=Status.IN_PROGRESS.value,
+                ),
+            ],
+        )
+
+        def mock_metadata_side_effect(media_type, _, __, ___=None):
+            if media_type == MediaTypes.TV.value:
+                return {
+                    "title": "Test Show",
+                    "image": "tv_image.jpg",
+                    "last_episode_season": 2,
+                    "max_progress": 2,
+                }
+            if media_type == MediaTypes.SEASON.value:
+                return {
+                    "title": "Season 1",
+                    "image": "season_image.jpg",
+                    "episodes": [{"episode_number": 2, "still_path": "/still2.jpg"}],
+                    "max_progress": 5,
+                }
+            return None
+
+        mock_get_metadata.side_effect = mock_metadata_side_effect
+
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        trakt_importer.process_watched_episode(
+            {
+                "type": "episode",
+                "episode": {"season": 1, "number": 2, "title": "Episode 2"},
+                "show": {"title": "Test Show", "ids": {"tmdb": 12345}},
+                "watched_at": "2023-01-02T00:00:00.000Z",
+            },
+        )
+
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.EPISODE.value]), 1)
 
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_process_watched_episode_overwrite_mode_existing_show(
@@ -2426,6 +2865,20 @@ class ImportTrakt(TestCase):
             trakt_importer.warnings,
         )
 
+    def test_process_history_database_failure_aborts_without_skipping(self):
+        """Persistent locking must fail the run instead of losing a watch."""
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        entry = {"type": "movie", "movie": {"title": "Test"},
+                 "watched_at": "2023-01-01T00:00:00Z"}
+        with (
+            patch.object(trakt_importer, "_get_paginated_data", return_value=[entry]),
+            patch.object(trakt_importer, "process_watched_movie",
+                         side_effect=OperationalError("database is locked")),
+            self.assertRaisesMessage(MediaImportError, "database write failed"),
+        ):
+            trakt_importer.process_history()
+        self.assertFalse(trakt_importer.warnings)
+
     @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_process_collection_movie(self, mock_get_metadata, mock_make_request):
@@ -2755,6 +3208,108 @@ class ImportTrakt(TestCase):
         self.assertEqual(TV.objects.filter(user=self.user).count(), 0)
 
 
+@tag("slow", "benchmark")
+class TraktSqliteWriteContentionTests(TransactionTestCase):
+    """Real rollback-journal writer contention against a disposable file."""
+
+    def test_reference_lock_retry_preserves_every_watch_once(self):
+        self._run_locked_history(existing_item=True)
+
+    def test_item_lock_retry_preserves_every_watch_once(self):
+        self._run_locked_history(existing_item=False)
+
+    def _run_locked_history(self, *, existing_item):
+        if connection.vendor != "sqlite":
+            self.skipTest("SQLite lock semantics")
+        user = get_user_model().objects.create_user(username="lock-test")
+        item = None
+        if existing_item:
+            item = Item.objects.create(media_id="67890", source=Sources.TMDB.value,
+                                       media_type=MediaTypes.MOVIE.value, title="Test Movie",
+                                       image="movie.jpg")
+        ExternalReference.objects.create(
+            user=user, integration="trakt", source_account="test",
+            external_namespace="trakt", external_identity="123",
+            media_type=MediaTypes.MOVIE.value, matched_item=item,
+            metadata={"title": "Old title"},
+        )
+        importer_instance = TraktImporter("test", user, "new")
+        original_name = connection.settings_dict["NAME"]
+        original_connection = connection.connection
+        with tempfile.TemporaryDirectory() as directory:
+            database_path = str(Path(directory) / "contention.sqlite3")
+            with closing(sqlite3.connect(database_path)) as database, database:
+                original_connection.backup(database)
+                database.execute("PRAGMA journal_mode=DELETE")
+            connection.connection = None
+            connection.settings_dict["NAME"] = database_path
+            locked = threading.Event()
+            release = threading.Event()
+            failures = []
+
+            def competing_writer():
+                try:
+                    with closing(sqlite3.connect(database_path, timeout=1)) as database, database:
+                        database.execute("BEGIN IMMEDIATE")
+                        database.execute("UPDATE integrations_externalreference SET metadata = metadata")
+                        locked.set()
+                        self.assertTrue(release.wait(5), "test writer was not released")
+                except Exception as error:
+                    failures.append(error)
+                    locked.set()
+
+            thread = threading.Thread(target=competing_writer)
+            try:
+                connection.ensure_connection()
+                with connection.cursor() as cursor:
+                    cursor.execute("PRAGMA busy_timeout=50")
+                thread.start()
+                self.assertTrue(locked.wait(5))
+                self.assertFalse(failures)
+
+                def release_on_retry(_delay):
+                    release.set()
+                    thread.join(5)
+                    self.assertFalse(thread.is_alive())
+
+                entries = [
+                    {"type": "movie", "movie": {"title": "Test Movie",
+                      "ids": {"tmdb": 67890, "trakt": 123}},
+                     "watched_at": f"2023-01-0{day}T00:00:00Z"}
+                    for day in (2, 1)
+                ]
+                with (
+                    patch.object(importer_instance, "_get_paginated_data", return_value=entries),
+                    patch.object(importer_instance, "_get_metadata",
+                                 return_value={"title": "Test Movie", "image": "movie.jpg"}),
+                    # Patch the importer's own `time` name, not time.sleep itself:
+                    # that is the process-wide function, so any other thread
+                    # sleeping meanwhile would be counted and spin without waiting.
+                    patch(
+                        "integrations.imports.trakt.time",
+                        SimpleNamespace(
+                            monotonic=time.monotonic,
+                            sleep=(pause := MagicMock(side_effect=release_on_retry)),
+                        ),
+                    ),
+                ):
+                    importer_instance.process_history()
+                self.assertEqual(pause.call_count, 1)
+                helpers.bulk_create_media(importer_instance.bulk_media, user)
+                self.assertEqual(Movie.objects.filter(user=user).count(), 2)
+                self.assertEqual(Item.objects.filter(media_id="67890").count(), 1)
+                self.assertEqual(ExternalReference.objects.filter(user=user).count(), 1)
+                self.assertFalse(importer_instance.warnings)
+                self.assertFalse(failures)
+            finally:
+                release.set()
+                if thread.ident is not None:
+                    thread.join(5)
+                connection.close()
+                connection.settings_dict["NAME"] = original_name
+                connection.connection = original_connection
+
+
 class ImportTraktPreferredProviderDedup(TestCase):
     """A TVDB-preferring user's Trakt import must not create a duplicate Item (#620)."""
 
@@ -3036,6 +3591,7 @@ class TraktDeviceFlow(TestCase):
             {
                 "access_token": "access",
                 "refresh_token": "refresh",
+                "redirect_uri": trakt.TRAKT_OOB_REDIRECT_URI,
                 "username": "floppy",
             },
         )
@@ -3088,6 +3644,7 @@ class TraktDeviceFlow(TestCase):
             {
                 "access_token": "access",
                 "refresh_token": "refresh",
+                "redirect_uri": trakt.TRAKT_OOB_REDIRECT_URI,
                 "username": "floppy",
             },
         )
@@ -3111,3 +3668,308 @@ class TraktRefreshRedirectUri(TestCase):
             trakt._refresh_redirect_uri(),
             "https://floppy.example.com/import/trakt/private",
         )
+
+
+class TraktRefreshUsesAuthorizedRedirectUri(TestCase):
+    """The refresh grant repeats the redirect URI the connection was made with (#1404)."""
+
+    CALLBACK_URI = "https://floppy.example.com/import/trakt/private"
+
+    @staticmethod
+    def _rejected(payload):
+        response = Response()
+        response.status_code = 400
+        response.headers["Content-Type"] = "application/json"
+        response._content = json.dumps(payload).encode()
+        return services.ProviderAPIError(
+            "TRAKT",
+            requests.HTTPError(response=response),
+        )
+
+    @override_settings(URLS=[], BASE_URL=None)
+    @patch("integrations.imports.trakt.update_refresh_token")
+    @patch("integrations.imports.trakt.helpers.decrypt_or_raise", return_value="old")
+    @patch("integrations.imports.trakt.services.api_request")
+    def test_stored_redirect_uri_is_sent_even_when_none_is_configured(
+        self,
+        mock_api_request,
+        _mock_decrypt,
+        _mock_update,
+    ):
+        # No URLS/BASE_URL in the worker would otherwise mean the out-of-band
+        # value, which a custom Trakt app that only lists its https callback
+        # rejects.
+        mock_api_request.return_value = {"access_token": "a", "refresh_token": "r"}
+
+        trakt.get_access_token("enc", self.CALLBACK_URI)
+
+        sent = mock_api_request.call_args.kwargs["params"]
+        self.assertEqual(sent["redirect_uri"], self.CALLBACK_URI)
+
+    @override_settings(URLS=[], BASE_URL=None)
+    @patch("integrations.imports.trakt.update_refresh_token")
+    @patch("integrations.imports.trakt.helpers.decrypt_or_raise", return_value="old")
+    @patch("integrations.imports.trakt.services.api_request")
+    def test_connections_without_a_stored_uri_keep_the_old_fallback(
+        self,
+        mock_api_request,
+        _mock_decrypt,
+        _mock_update,
+    ):
+        mock_api_request.return_value = {"access_token": "a", "refresh_token": "r"}
+
+        trakt.get_access_token("enc")
+
+        sent = mock_api_request.call_args.kwargs["params"]
+        self.assertEqual(sent["redirect_uri"], trakt.TRAKT_OOB_REDIRECT_URI)
+
+    @patch("integrations.imports.trakt.helpers.decrypt_or_raise", return_value="old")
+    @patch("integrations.imports.trakt.services.api_request")
+    def test_rejected_refresh_names_the_oauth_error(
+        self,
+        mock_api_request,
+        _mock_decrypt,
+    ):
+        mock_api_request.side_effect = self._rejected({"error": "invalid_grant"})
+
+        with (
+            self.assertLogs("integrations.imports.trakt", level="WARNING") as logs,
+            self.assertRaises(MediaImportError) as ctx,
+        ):
+            trakt.get_access_token("enc", self.CALLBACK_URI)
+
+        self.assertIn("invalid_grant", str(ctx.exception))
+        self.assertIn("Redirect URI", str(ctx.exception))
+        self.assertIn("invalid_grant", "\n".join(logs.output))
+
+    @patch("integrations.imports.trakt.helpers.decrypt_or_raise", return_value="old")
+    @patch("integrations.imports.trakt.services.api_request")
+    def test_rejected_refresh_without_a_json_body_still_explains(
+        self,
+        mock_api_request,
+        _mock_decrypt,
+    ):
+        response = Response()
+        response.status_code = 400
+        response._content = b"<html>Bad Request</html>"
+        mock_api_request.side_effect = services.ProviderAPIError(
+            "TRAKT",
+            requests.HTTPError(response=response),
+        )
+
+        with self.assertRaises(MediaImportError) as ctx:
+            trakt.get_access_token("enc", self.CALLBACK_URI)
+
+        self.assertIn("rejected the token refresh", str(ctx.exception))
+
+    @patch("integrations.imports.trakt.get_access_token", return_value="access")
+    @patch("integrations.imports.trakt.services.api_request", return_value={})
+    def test_importer_passes_the_stored_uri_to_the_refresh(
+        self,
+        _mock_api_request,
+        mock_get_access_token,
+    ):
+        user = get_user_model().objects.create_user(username="trakt-1404")
+        trakt_importer = TraktImporter(
+            "trakt-user",
+            user,
+            "new",
+            refresh_token="enc",
+            redirect_uri=self.CALLBACK_URI,
+        )
+
+        trakt_importer._make_api_request("https://api.trakt.tv/users/me")
+
+        mock_get_access_token.assert_called_once_with("enc", self.CALLBACK_URI)
+
+    @patch("integrations.imports.trakt.get_username_from_oauth", return_value="floppy")
+    @patch("integrations.imports.trakt.services.api_request")
+    def test_sign_in_result_carries_the_redirect_uri_it_used(
+        self,
+        mock_api_request,
+        _mock_username,
+    ):
+        mock_api_request.return_value = {"access_token": "a", "refresh_token": "r"}
+        request = RequestFactory().get("/import/trakt/private", {"code": "abc"})
+
+        result = trakt.handle_oauth_callback(
+            request,
+            redirect_uri=self.CALLBACK_URI,
+            client_id="client",
+            client_secret="secret",
+        )
+
+        self.assertEqual(result["redirect_uri"], self.CALLBACK_URI)
+        sent = mock_api_request.call_args.kwargs["params"]
+        self.assertEqual(sent["redirect_uri"], self.CALLBACK_URI)
+
+
+class TraktWithoutClientSecret(TestCase):
+    """An app made without a client secret (PKCE) never sends one (#1523)."""
+
+    CALLBACK_URI = "https://floppy.example.com/import/trakt/private"
+
+    def test_pkce_pair_is_an_s256_challenge_of_the_verifier(self):
+        verifier, challenge = trakt.new_pkce_pair()
+
+        digest = hashlib.sha256(verifier.encode()).digest()
+        self.assertEqual(
+            challenge,
+            base64.urlsafe_b64encode(digest).decode().rstrip("="),
+        )
+        self.assertNotEqual(verifier, trakt.new_pkce_pair()[0])
+
+    @patch("integrations.imports.trakt.get_username_from_oauth", return_value="floppy")
+    @patch("integrations.imports.trakt.services.api_request")
+    def test_code_exchange_sends_the_verifier_and_no_secret(
+        self,
+        mock_api_request,
+        _mock_username,
+    ):
+        mock_api_request.return_value = {"access_token": "a", "refresh_token": "r"}
+        request = RequestFactory().get("/import/trakt/private", {"code": "abc"})
+
+        trakt.handle_oauth_callback(
+            request,
+            redirect_uri=self.CALLBACK_URI,
+            client_id="client",
+            client_secret="",
+            code_verifier="verifier",
+        )
+
+        sent = mock_api_request.call_args.kwargs["params"]
+        self.assertEqual(sent["code_verifier"], "verifier")
+        self.assertNotIn("client_secret", sent)
+
+    @patch("integrations.imports.trakt.get_username_from_oauth", return_value="floppy")
+    @patch("integrations.imports.trakt.services.api_request")
+    def test_code_exchange_with_a_secret_is_unchanged(
+        self,
+        mock_api_request,
+        _mock_username,
+    ):
+        mock_api_request.return_value = {"access_token": "a", "refresh_token": "r"}
+        request = RequestFactory().get("/import/trakt/private", {"code": "abc"})
+
+        trakt.handle_oauth_callback(
+            request,
+            redirect_uri=self.CALLBACK_URI,
+            client_id="client",
+            client_secret="secret",
+        )
+
+        sent = mock_api_request.call_args.kwargs["params"]
+        self.assertEqual(sent["client_secret"], "secret")
+        self.assertNotIn("code_verifier", sent)
+
+    @patch("integrations.imports.trakt.update_refresh_token")
+    @patch("integrations.imports.trakt.helpers.decrypt_or_raise", return_value="old")
+    @patch("integrations.imports.trakt.services.api_request")
+    def test_refresh_omits_the_secret_when_there_is_none(
+        self,
+        mock_api_request,
+        _mock_decrypt,
+        _mock_update,
+    ):
+        mock_api_request.return_value = {"access_token": "a", "refresh_token": "r"}
+
+        with patch(
+            "integrations.imports.trakt.credentials.get",
+            side_effect=lambda _slug, field: {"client_id": "client"}.get(field, ""),
+        ):
+            trakt.get_access_token("enc", self.CALLBACK_URI)
+
+        sent = mock_api_request.call_args.kwargs["params"]
+        self.assertEqual(sent["client_id"], "client")
+        self.assertNotIn("client_secret", sent)
+
+    @patch("integrations.imports.trakt.get_username_from_oauth", return_value="floppy")
+    @patch("integrations.imports.trakt.services.resilient_request")
+    def test_device_poll_omits_the_secret_when_there_is_none(
+        self,
+        mock_request,
+        _mock_username,
+    ):
+        response = Response()
+        response.status_code = 200
+        response._content = json.dumps(
+            {"access_token": "a", "refresh_token": "r"},
+        ).encode()
+        mock_request.return_value = response
+
+        trakt.poll_device_token("device-code", "client", "")
+
+        self.assertEqual(
+            mock_request.call_args.kwargs["json"],
+            {"code": "device-code", "client_id": "client"},
+        )
+
+
+@override_settings(TRAKT_API="env-id", TRAKT_API_SECRET="env-secret")
+class TraktSecretBelongsToTheClientId(TestCase):
+    """A secret from another source is never paired with someone's own client ID (#1523)."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="trakt-pkce-owner")
+
+    def _use_own_app(self, secret=None):
+        TraktAccount.objects.create(
+            user=self.user,
+            client_id=helpers.encrypt("own-id"),
+            client_secret=helpers.encrypt(secret) if secret else None,
+        )
+        credentials.invalidate_user_cache(self.user)
+
+    def test_instance_secret_is_not_paired_with_a_pkce_client_id(self):
+        self._use_own_app()
+
+        with credentials.current_user_scope(self.user):
+            self.assertEqual(trakt.default_client_secret(), "")
+
+    def test_own_secret_is_used_with_own_client_id(self):
+        self._use_own_app("own-secret")
+
+        with credentials.current_user_scope(self.user):
+            self.assertEqual(trakt.default_client_secret(), "own-secret")
+
+    def test_instance_secret_is_used_with_the_instance_client_id(self):
+        self.assertEqual(trakt.default_client_secret(), "env-secret")
+
+    @patch("integrations.imports.trakt.get_username_from_oauth", return_value="floppy")
+    @patch("integrations.imports.trakt.services.api_request")
+    def test_explicit_empty_secret_is_not_replaced_by_the_instance_secret(
+        self,
+        mock_api_request,
+        _mock_username,
+    ):
+        mock_api_request.return_value = {"access_token": "a", "refresh_token": "r"}
+        request = RequestFactory().get("/lists/import/trakt/callback", {"code": "abc"})
+
+        trakt.handle_oauth_callback(
+            request,
+            redirect_uri="https://floppy.example.com/lists/import/trakt/callback",
+            client_id="own-id",
+            client_secret="",
+            code_verifier="verifier",
+        )
+
+        sent = mock_api_request.call_args.kwargs["params"]
+        self.assertNotIn("client_secret", sent)
+
+    @patch("integrations.imports.trakt.get_username_from_oauth", return_value="floppy")
+    @patch("integrations.imports.trakt.services.resilient_request")
+    def test_device_poll_with_an_empty_secret_ignores_the_instance_secret(
+        self,
+        mock_request,
+        _mock_username,
+    ):
+        response = Response()
+        response.status_code = 200
+        response._content = json.dumps(
+            {"access_token": "a", "refresh_token": "r"},
+        ).encode()
+        mock_request.return_value = response
+
+        trakt.poll_device_token("device-code", "own-id", "")
+
+        self.assertNotIn("client_secret", mock_request.call_args.kwargs["json"])

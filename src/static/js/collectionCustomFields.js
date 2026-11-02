@@ -16,7 +16,6 @@ if (!window.__floppyCollectionCustomFieldsBound) {
       nextClientId: 1,
       savedSchema: [],
       savedSnapshot: "",
-      sortableLoadPromise: null,
       openMenu: null,
       menuStyle: {},
 
@@ -254,50 +253,10 @@ if (!window.__floppyCollectionCustomFieldsBound) {
         if (typeof Sortable !== "undefined") {
           return Promise.resolve(true);
         }
-        if (!this.sortableLoadPromise) {
-          this.sortableLoadPromise = new Promise((resolve) => {
-            const existingScript = document.querySelector(
-              "script[data-collection-fields-sortable]",
-            );
-            if (existingScript) {
-              if (existingScript.dataset.loaded === "true") {
-                resolve(true);
-                return;
-              }
-              existingScript.addEventListener("load", () => resolve(true), {
-                once: true,
-              });
-              existingScript.addEventListener("error", () => resolve(false), {
-                once: true,
-              });
-              return;
-            }
-
-            const script = document.createElement("script");
-            script.src = "https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js";
-            script.dataset.collectionFieldsSortable = "true";
-            script.addEventListener(
-              "load",
-              () => {
-                script.dataset.loaded = "true";
-                resolve(true);
-              },
-              { once: true },
-            );
-            script.addEventListener(
-              "error",
-              () => {
-                console.warn(
-                  "Collection field drag-and-drop is unavailable because SortableJS could not be loaded.",
-                );
-                resolve(false);
-              },
-              { once: true },
-            );
-            document.head.appendChild(script);
-          });
-        }
-        return this.sortableLoadPromise;
+        console.warn(
+          "Collection field drag-and-drop is unavailable because SortableJS could not be loaded.",
+        );
+        return Promise.resolve(false);
       },
 
       async initSortables() {

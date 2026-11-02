@@ -52,8 +52,7 @@
             {% translate "Need an account?" %}
             <a class="text-[var(--color-link)] hover:text-[var(--color-link-hover)]"
                href="{% url 'account_signup' %}">{% translate "Register now" %}</a>
-            <span class="mx-2 text-gray-600">|</span>
-            <a class="text-[var(--color-link)] hover:text-[var(--color-link-hover)]"
+            <a class="block mt-2 text-[var(--color-link)] hover:text-[var(--color-link-hover)]"
                href="{% url 'password_recover' %}">{% translate "Forgot Password" %}</a>
           {% endif %}
         {% else %}
@@ -66,8 +65,7 @@
           {% else %}
             {% translate "Host your own." %}
           {% endif %}
-          <span class="mx-2 text-gray-600">|</span>
-          <a class="text-[var(--color-link)] hover:text-[var(--color-link-hover)]"
+          <a class="block mt-2 text-[var(--color-link)] hover:text-[var(--color-link-hover)]"
              href="{% url 'password_recover' %}">{% translate "Forgot Password" %}</a>
         {% endif %}
       </p>

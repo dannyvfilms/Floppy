@@ -81,6 +81,24 @@ class MovieWatchModel(TestCase):
         self.assertEqual(first_play.id, second_play.id)
         self.assertEqual(MoviePlay.objects.filter(movie=self.movie).count(), 1)
 
+    def test_watch_records_source_on_play_and_movie(self):
+        """A source label lands on both the play and the Movie row (issue #1258)."""
+        play, _created = self.movie.watch(
+            datetime(2024, 1, 1, tzinfo=UTC), entry_source="plex",
+        )
+
+        self.assertEqual(play.entry_source, "plex")
+        self.movie.refresh_from_db()
+        self.assertEqual(self.movie.entry_source, "plex")
+
+    def test_watch_without_source_leaves_play_source_blank(self):
+        """A manual/UI watch with no source stays blank (displayed as 'Manual')."""
+        play, _created = self.movie.watch(datetime(2024, 1, 1, tzinfo=UTC))
+
+        self.assertEqual(play.entry_source, "")
+        self.movie.refresh_from_db()
+        self.assertEqual(self.movie.entry_source, "")
+
     def test_unwatch_removes_most_recent_play_by_end_date(self):
         """unwatch() removes the play with the latest end_date, not creation order."""
         self.movie.watch(datetime(2024, 1, 1, tzinfo=UTC))

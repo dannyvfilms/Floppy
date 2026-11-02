@@ -64,7 +64,34 @@ def _find_plain_tv_duplicate(anime):
     )
 
 
-def duplicate_pairs(batch_size=None):
+def duplicate_pair_count(*, user_id=None):
+    """Return how many stray TV rows have a duplicate Anime home.
+
+    A single query for the settings-page count; the repair task still uses
+    `duplicate_pairs` because it needs each pair's objects.
+    """
+    from django.db.models import Exists, OuterRef
+
+    from app.models import TV, ItemProviderLink, MediaTypes, Sources
+
+    duplicate_exists = ItemProviderLink.objects.filter(
+        item__anime__user_id=OuterRef("user_id"),
+        provider=OuterRef("item__source"),
+        provider_media_id=OuterRef("item__media_id"),
+        provider__in=(Sources.TMDB.value, Sources.TVDB.value),
+        provider_media_type=MediaTypes.TV.value,
+    )
+    queryset = TV.objects.filter(
+        item__media_type=MediaTypes.TV.value,
+        item__library_media_type__in=NON_ANIME_TV_BUCKETS,
+        item__source__in=(Sources.TMDB.value, Sources.TVDB.value),
+    ).annotate(has_duplicate_anime=Exists(duplicate_exists))
+    if user_id is not None:
+        queryset = queryset.filter(user_id=user_id)
+    return queryset.filter(has_duplicate_anime=True).count()
+
+
+def duplicate_pairs(batch_size=None, *, user_id=None):
     """Yield (anime, tv) pairs where one show is tracked in both libraries.
 
     MAL identity is per cour, so several Anime rows routinely map to one TV
@@ -72,12 +99,39 @@ def duplicate_pairs(batch_size=None):
     series). Only one pair is yielded per stray TV row: converting the flat
     row collapses all of that user's sibling MAL entries for the same series,
     and the TV row can only be folded in once.
+
+    ``user_id`` scopes both detection and repair to one account, which is what
+    the settings-page repair action uses. A global run still repairs every
+    account.
     """
-    from app.models import Anime
+    from django.db.models import Exists, OuterRef
+
+    from app.models import TV, Anime, ItemProviderLink, MediaTypes, Sources
 
     found = 0
     seen_tv_rows = set()
-    queryset = Anime.objects.select_related("item", "user").order_by("id")
+    # Narrow to anime that have a plain TV twin in one set-based query, so a
+    # clean library costs one query instead of two per Anime row. The per-row
+    # lookup below still picks the pair, so results are unchanged.
+    plain_tv_twin = TV.objects.filter(
+        user_id=OuterRef(OuterRef("user_id")),
+        item__source=OuterRef("provider"),
+        item__media_id=OuterRef("provider_media_id"),
+        item__media_type=MediaTypes.TV.value,
+        item__library_media_type__in=NON_ANIME_TV_BUCKETS,
+    )
+    twin_link = ItemProviderLink.objects.filter(
+        item_id=OuterRef("item_id"),
+        provider__in=(Sources.TMDB.value, Sources.TVDB.value),
+        provider_media_type=MediaTypes.TV.value,
+    ).filter(Exists(plain_tv_twin))
+    queryset = (
+        Anime.objects.filter(Exists(twin_link))
+        .select_related("item", "user")
+        .order_by("id")
+    )
+    if user_id is not None:
+        queryset = queryset.filter(user_id=user_id)
     for anime in queryset.iterator(chunk_size=200):
         duplicate = _find_plain_tv_duplicate(anime)
         if duplicate is None or duplicate.pk in seen_tv_rows:
@@ -137,12 +191,16 @@ def _repair_pair(anime, tv):
 
 
 @shared_task(name="Repair duplicated anime libraries")
-def repair_duplicated_anime_libraries_task(batch_size: int = 25):
+def repair_duplicated_anime_libraries_task(
+    batch_size: int = 25,
+    *,
+    user_id: int | None = None,
+):
     """Fold shows tracked in both Anime and TV Shows back into one row.
 
     Best effort and idempotent: a pair that cannot be resolved safely is left
     completely untouched and reported, never guessed at. Re-running picks up
-    where the last run stopped.
+    where the last run stopped. Pass ``user_id`` to repair only one account.
     """
     from app.providers.services import ProviderAPIError
     from app.services.anime_migration import AnimeMigrationError
@@ -152,7 +210,7 @@ def repair_duplicated_anime_libraries_task(batch_size: int = 25):
     skipped = 0
     unresolved = []
 
-    for anime, tv in duplicate_pairs(batch_size=batch_size):
+    for anime, tv in duplicate_pairs(batch_size=batch_size, user_id=user_id):
         title = anime.item.title
         try:
             outcome = _repair_pair(anime, tv)

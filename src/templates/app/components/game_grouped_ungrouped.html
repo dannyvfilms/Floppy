@@ -1,0 +1,13 @@
+{% load i18n %}
+{% load app_tags %}
+
+{% for media in ungrouped_page.object_list %}
+  {% media_card "library" media=media item=media.item title=media.item current_sort=current_sort card_media_type=media_type image_override=media.media.card_image_override|default:media.item.image image_source=media.media.card_image_source|default:"primary" enable_bulk_select=enable_bulk_select %}
+{% endfor %}
+{% if ungrouped_page.has_next %}
+  <div class="h-1" style="grid-column: 1 / -1"
+       hx-get="{{ ungrouped_next_url }}"
+       hx-trigger="revealed once"
+       hx-swap="outerHTML"
+       hx-indicator="#loading-indicator"></div>
+{% endif %}

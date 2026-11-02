@@ -1,0 +1,111 @@
+{% load i18n user_tags %}
+{% with connect_url=slug|add:"_connect" disconnect_url=slug|add:"_disconnect" sync_url="import_"|add:slug %}
+{# Reading server modal. Params: slug, name, account, blurb, help, placeholder (translated). #}
+{% if provider_tab != 'import' %}
+<div x-show="activeModal === '{{ slug }}'"
+     x-cloak
+     @keydown.escape.window="closeModal()"
+     x-transition.opacity.duration.150ms
+     class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+     @mousedown.self="closeModal()">
+  <div class="modal-max-height overflow-y-auto w-full"
+       style="width: min(96vw, 32rem);">
+    <button type="button"
+            @click="closeModal()"
+            class="block w-fit ml-auto mb-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer p-1 rounded-md hover:bg-[var(--color-surface-hover)] bg-[var(--color-surface)]">
+      {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+    </button>
+{% endif %}
+<div class="{% if provider_tab != 'import' %}bg-[var(--color-surface-strong)] p-4 rounded-lg {% endif %}space-y-3">
+  <div class="flex items-center justify-between">
+    {% if provider_tab != 'import' %}<div class="flex items-center">{% source_display slug %}</div>{% endif %}
+    {% if account and account.is_connected %}
+      <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-[var(--color-success-text)] border border-emerald-500/30">{% translate "Connected" %}</span>
+    {% else %}
+      <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">{% translate "Disconnected" %}</span>
+    {% endif %}
+  </div>
+
+  {% if account %}
+    <p class="text-sm text-[var(--color-text-muted)]">{{ blurb }}</p>
+    <div class="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
+      <span>{{ account.base_url }}</span>
+      {% if account.last_sync_at %}
+        <span>•</span>
+        <span>{% blocktranslate with value1=account.last_sync_at|user_datetime_format:user %}Last sync: {{ value1 }}{% endblocktranslate %}</span>
+      {% endif %}
+    </div>
+    {% if account.last_error_message %}
+      <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
+        <strong>{% translate "Error:" %}</strong> {{ account.last_error_message }}
+      </div>
+    {% endif %}
+    <div class="space-y-3">
+      {% if provider_tab != 'connection' %}
+      <form method="post" action="{% url sync_url %}">
+        {% csrf_token %}
+              {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
+        <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
+          {% translate "Sync now" %}
+        </button>
+      </form>
+      {% if slug == "kavita" %}
+        <p class="text-xs text-[var(--color-text-muted)]">
+          {% translate "Refresh metadata and progress scans your full Kavita library and retries unresolved items. It may take longer and use more server resources than a regular sync." %}
+        </p>
+        <form method="post" action="{% url "refresh_kavita" %}">
+          {% csrf_token %}
+              {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
+          <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
+            {% translate "Refresh metadata and progress" %}
+          </button>
+        </form>
+      {% endif %}
+      {% endif %}
+      <form method="post" action="{% url disconnect_url %}">
+        {% csrf_token %}
+              {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
+        <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
+          {% translate "Disconnect" %}
+        </button>
+      </form>
+    </div>
+  {% else %}
+    <p class="text-sm text-[var(--color-text-muted)] mb-3">{{ help }}</p>
+    <form method="post" action="{% url connect_url %}" class="space-y-3">
+      {% csrf_token %}
+              {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
+      <div>
+        <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Server URL" %}</label>
+        <input type="url" name="base_url" required
+               class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+               placeholder="https://{{ slug }}.example.com">
+      </div>
+      <div>
+        <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "API Key" %}</label>
+        <input type="password" name="api_key" required
+               class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+               placeholder="{{ placeholder }}">
+      </div>
+      <div>
+        <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Sync every" %}</label>
+        <div class="relative">
+          <select name="sync_interval_minutes"
+                  class="w-full py-2 px-3 pr-9 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none appearance-none">
+            <option value="5">{% translate "5 minutes" %}</option>
+            <option value="15" selected>{% translate "15 minutes" %}</option>
+            <option value="30">{% translate "30 minutes" %}</option>
+            <option value="60">{% translate "60 minutes" %}</option>
+          </select>
+          {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
+        </div>
+      </div>
+      <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
+        {% blocktranslate %}Connect {{ name }}{% endblocktranslate %}
+      </button>
+    </form>
+  {% endif %}
+</div>
+  {% if provider_tab != 'import' %}</div>
+</div>{% endif %}
+{% endwith %}

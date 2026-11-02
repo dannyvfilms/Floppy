@@ -70,11 +70,10 @@ def import_mdblist_lists_task(user_id):
     """Celery task syncing all of a user's MDBList lists (also runs on a schedule)."""
     user = User.objects.get(pk=user_id)
     account = getattr(user, "mdblist_account", None)
-    if not account or account.connection_broken:
-        logger.info(
-            "Skipping MDBList sync for user %s (no account or connection broken)",
-            user.username,
-        )
+    # A broken account still runs: the sync is the probe, and it clears the
+    # flag when the key works again.
+    if not account or not account.api_key:
+        logger.info("Skipping MDBList sync for user %s (no account)", user.username)
         return
     try:
         mdblist_lists.import_mdblist_lists(user)

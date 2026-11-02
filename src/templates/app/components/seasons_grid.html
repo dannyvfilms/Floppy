@@ -1,5 +1,6 @@
 
 {% load i18n %}
+{% load app_tags %}
 <section class="mb-8"
          x-data="{ detailGridExpanded: false, detailGridIsMobile: false, detailGridVisibleCount: 6, syncDetailGrid() { this.detailGridIsMobile = window.matchMedia('(max-width: 768px)').matches; this.detailGridVisibleCount = document.body.dataset.mobileGrid === 'comfortable' ? 4 : 6; }, shouldShowDetailCard(index) { return !this.detailGridIsMobile || this.detailGridExpanded || index < this.detailGridVisibleCount; }, canToggleDetailGrid(total) { return this.detailGridIsMobile && total > this.detailGridVisibleCount; } }"
          x-init="syncDetailGrid()"
@@ -8,7 +9,7 @@
   <div class="detail-media-grid">
     {% for result in media.related.seasons %}
       <div x-show="shouldShowDetailCard({{ forloop.counter0 }})">
-        {% include "app/components/media_card.html" with item=result.item title=result.item.season_header_title|default:result.item.title season_card_title_override=result.card_title media=result.media user=user from_grid=True show_progress_chip=False show_release_year_placeholder=True %}
+        {% media_card "seasons" item=result.item title=result.item.season_header_title|default:result.item.title season_card_title_override=result.card_title media=result.media %}
       </div>
     {% endfor %}
   </div>

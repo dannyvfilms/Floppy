@@ -1,9 +1,8 @@
 {% load app_tags %}
 {% with track_id=media.id|default_if_none:'' %}
-  <img alt="{{ media.item }}"
-       class="lazyload min-w-10 w-10 h-10 object-cover rounded-md{% if not public_view|default:False %} parent-hover-tap:hidden{% endif %}"
-       data-src="{{ media.item.image|default:IMG_NONE|image_url }}"
-       src="{{ IMG_NONE }}">
+  <img data-media-artwork loading="lazy" decoding="sync" alt="{{ media.item }}"
+       class="min-w-10 w-10 h-10 object-cover rounded-md{% if not public_view|default:False %} parent-hover-tap:hidden{% endif %}"
+       src="{{ media.item.image|default:IMG_NONE|image_url }}">
   {% if not public_view|default:False %}
     <button class="w-10 h-10 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md transition-colors items-center justify-center hidden cursor-pointer parent-hover-tap:flex"
             hx-get="{% media_view_url 'track_modal' media.item %}"

@@ -1,0 +1,19 @@
+{% load i18n app_tags %}
+{% for guide in setup_guides %}
+  {% with index=forloop.counter0|stringformat:"s" %}{% with props_id="setup-guide-props-"|add:index %}
+  {{ guide|json_script:props_id }}
+  <div data-setup-guide-root data-props-id="{{ props_id }}" x-ignore hx-disable>
+    <section class="settings-card">
+      {% if not guide.bare %}<h4>{{ guide.title }}</h4>
+      <p>{{ guide.description }}</p>{% endif %}
+      {% if guide.warning %}<p role="alert" data-testid="jellyfin-template-outdated"><strong>{{ guide.warning.title }}</strong> {{ guide.warning.text }}</p>{% endif %}
+      <h4>{{ guide.heading }}</h4>
+      <ol class="ui-guide-steps">
+        {% for step in guide.steps %}<li>{% include "users/providers/setup_guide_parts.html" with parts=step.parts|default:step %}
+          {% if step.items %}<ul>{% for item in step.items %}<li>{% include "users/providers/setup_guide_parts.html" with parts=item %}</li>{% endfor %}</ul>{% endif %}</li>{% endfor %}
+      </ol>
+      {% for key, value in guide_copy.items %}<input type="hidden" data-copy-id="{{ key }}" value="{{ value }}" readonly>{% endfor %}
+    </section>
+  </div>
+  {% endwith %}{% endwith %}
+{% endfor %}

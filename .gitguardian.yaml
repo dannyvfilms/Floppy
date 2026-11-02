@@ -15,5 +15,3 @@ secret:
       match: 79fd68a41169290e678c0ea0eab1ce4b4a1f5fdd1627d01f59aab2c2cad1ca7b
     - name: shared Comic Vine metadata key
       match: 2d86816ac5f868462d9c5d647a3d9621ea55055ec54da255a25afd1f13835331
-    - name: shared SIMKL metadata client id
-      match: 53398b38adbc19a251a932ca4776f9074a17db279799997204de72a3e1cd7ba0

@@ -6,6 +6,7 @@ from celery import Celery
 from celery.beat import ScheduleEntry, Scheduler
 from django.conf import settings
 from django.test import SimpleTestCase, override_settings
+from kombu.utils.functional import retry_over_time
 
 from app import celery_broker
 from app.tasks import repair_celery_broker_bindings
@@ -54,6 +55,34 @@ class _FakeRedisClient:
 
     def pipeline(self):
         return _FakeRedisPipeline(self)
+
+
+class CeleryBrokerRetryTests(SimpleTestCase):
+    def test_broker_retries_until_connection_recovers(self):
+        from config.celery import app
+
+        self.assertTrue(app.conf.broker_connection_retry_on_startup)
+        self.assertIsNone(app.conf.broker_connection_max_retries)
+
+        with patch(
+            "kombu.connection.Connection.connect",
+            side_effect=[
+                ConnectionError("Broker unavailable"),
+                ConnectionError("Broker unavailable"),
+                "connected",
+            ],
+        ) as connect:
+            result = retry_over_time(
+                connect,
+                (ConnectionError,),
+                max_retries=app.conf.broker_connection_max_retries,
+                interval_start=0,
+                interval_step=0,
+                interval_max=0,
+            )
+
+        self.assertEqual(result, "connected")
+        self.assertEqual(connect.call_count, 3)
 
 
 class CeleryTaskPriorityTests(SimpleTestCase):
@@ -142,6 +171,7 @@ class CeleryDispatchRoutingTests(SimpleTestCase):
         self.background_task = _register("Backfill item metadata")
         self.followup_task = _register("Import from Radarr (Recurring)")
         self.interactive_task = _register("Process media server webhook")
+        self.reconcile_task = _register("Reconcile statistics sync")
         self.fallback_task = _register("Unclassified priority test task")
 
     def _dispatch_and_capture(self, dispatch):
@@ -200,6 +230,27 @@ class CeleryDispatchRoutingTests(SimpleTestCase):
         call = self._dispatch_and_capture(self.fallback_task.delay)
 
         self.assertEqual(self._priority(call), settings.CELERY_TASK_PRIORITY_DEFAULT)
+
+    def test_periodic_reconciler_uses_default_queue_for_direct_and_beat_dispatch(self):
+        self.assertNotIn("queue", settings.CELERY_TASK_ROUTES[self.reconcile_task.name])
+        entry = ScheduleEntry(
+            name="reconcile_statistics_sync",
+            task=self.reconcile_task.name,
+            schedule=60,
+            options={"expires": 60},
+        )
+        scheduler = Scheduler(app=self.app, schedule={}, lazy=True)
+        for dispatch in (
+            self.reconcile_task.delay,
+            lambda: scheduler.apply_async(entry, advance=False),
+        ):
+            with self.subTest(dispatch=dispatch):
+                call = self._dispatch_and_capture(dispatch)
+                queue = call.kwargs.get("queue") or self.app.amqp.default_queue
+                self.assertEqual(queue.name, "celery")
+                self.assertEqual(
+                    self._priority(call), settings.CELERY_TASK_PRIORITY_STATISTICS_SYNC
+                )
 
     def test_explicit_priority_remains_a_contextual_override(self):
         call = self._dispatch_and_capture(

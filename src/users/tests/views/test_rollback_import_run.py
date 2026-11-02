@@ -1,6 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
-from django.test import TestCase
+from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -52,7 +52,7 @@ class RollbackImportRunTests(TestCase):
             reverse("rollback_import_run", args=[run.id]),
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         self.assertFalse(Movie.objects.filter(id=movie_from_run.id).exists())
         self.assertTrue(Movie.objects.filter(id=movie_from_other_run.id).exists())
         self.assertTrue(Movie.objects.filter(id=manual_movie.id).exists())
@@ -75,6 +75,25 @@ class RollbackImportRunTests(TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertTrue(Movie.objects.filter(id=other_movie.id).exists())
 
+    def test_rollback_requires_post_and_csrf(self):
+        run = ImportRun.objects.create(
+            user=self.user, source="trakt", status=ImportRun.Status.COMPLETED
+        )
+        movie = self._movie("csrf-protected-movie", self.user, run)
+        url = reverse("rollback_import_run", args=[run.id])
+
+        self.assertEqual(self.client.get(url).status_code, 405)
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.force_login(self.user)
+        response = csrf_client.post(url, HTTP_REFERER=reverse("import_data"))
+        self.assertRedirects(
+            response, reverse("import_data"), fetch_redirect_response=False
+        )
+        self.assertIn(
+            "quick refresh", str(next(iter(get_messages(response.wsgi_request))))
+        )
+        self.assertTrue(Movie.objects.filter(pk=movie.pk).exists())
+
     def test_rollback_refuses_while_run_is_still_running(self):
         """A running import must be cancelled before it can be rolled back."""
         run = ImportRun.objects.create(
@@ -86,7 +105,7 @@ class RollbackImportRunTests(TestCase):
             reverse("rollback_import_run", args=[run.id]),
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         self.assertTrue(Movie.objects.filter(id=movie.id).exists())
         messages = list(get_messages(response.wsgi_request))
         self.assertIn("Cancel the import", str(messages[0]))
@@ -114,7 +133,7 @@ class RollbackImportRunTests(TestCase):
             reverse("rollback_import_run", args=[run.id]),
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         self.assertFalse(Music.objects.filter(id=music.id).exists())
         messages = list(get_messages(response.wsgi_request))
         self.assertIn("removed 1 item", str(messages[0]))
@@ -148,7 +167,7 @@ class RollbackImportRunTests(TestCase):
             reverse("rollback_import_run", args=[run.id]),
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         music.refresh_from_db()
         self.assertEqual(music.progress, 1)
         self.assertEqual(music.end_date, original_end_date)

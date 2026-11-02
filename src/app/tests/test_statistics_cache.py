@@ -1,3 +1,4 @@
+import json
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
@@ -15,16 +16,30 @@ from app import (
     statistics_aggregator,
     statistics_cache,
     statistics_refresh,
-    statistics_refresh_run,
+    statistics_sync,
 )
-from app.models import Item, MediaTypes, Movie, Sources, Status
+from app.models import (
+    Album,
+    Artist,
+    BoardGame,
+    Item,
+    MediaTypes,
+    Movie,
+    Music,
+    Podcast,
+    PodcastEpisode,
+    PodcastShow,
+    Sources,
+    Status,
+    Track,
+)
 from app.statistics_aggregator import (
     _aggregate_minutes_per_media_type_from_days,
     _build_combined_hours_charts,
     _build_platform_breakdown,
     _build_weekday_hour_charts,
 )
-from app.statistics_day_cache import _normalize_day_value
+from app.statistics_day_cache import STATISTICS_DAY_PREFIX, _normalize_day_value
 
 
 class StatisticsDayBatchingTests(SimpleTestCase):
@@ -73,17 +88,8 @@ class StatisticsRefreshPayloadRetentionTests(TestCase):
         cache.clear()
 
     def test_refresh_rebuilds_days_whose_cache_write_failed(self):
-        """A run cannot carry day payloads across Celery task boundaries.
-
-        The single-shot refresh kept a failed day's payload in Python and
-        handed it to the aggregator as ``prebuilt_days``. A chunked run records
-        the day identifier instead and lets the aggregator's existing
-        ``build_missing`` path rebuild it, so the published numbers are
-        unchanged while nothing unbounded is retained between chunks.
-        """
+        """A day whose payload write failed is rebuilt by the aggregate."""
         failed_key = statistics_refresh._day_cache_key(self.user.id, self.days[0])
-        # Creating the fixture already warmed these through the eager refresh
-        # signal; drop them so the run genuinely has to rebuild them.
         cache.delete_many(
             [statistics_refresh._day_cache_key(self.user.id, day) for day in self.days]
         )
@@ -99,7 +105,7 @@ class StatisticsRefreshPayloadRetentionTests(TestCase):
 
         with (
             patch.object(
-                statistics_refresh_run.cache,
+                statistics_sync.cache,
                 "set_many",
                 side_effect=set_many_dropping_one_day,
             ),
@@ -126,6 +132,7 @@ class StatisticsRefreshPayloadRetentionTests(TestCase):
         )
 
 
+@override_settings(CELERY_TASK_ALWAYS_EAGER=False, TESTING=False)
 class StatisticsRefreshSchedulingTests(TestCase):
     def setUp(self):
         cache.clear()
@@ -137,87 +144,45 @@ class StatisticsRefreshSchedulingTests(TestCase):
     def tearDown(self):
         cache.clear()
 
-    @patch("app.tasks.refresh_statistics_cache_task.apply_async")
-    def test_schedule_statistics_refresh_uses_interactive_priority_by_default(
-        self,
-        mock_apply_async,
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
+    def test_background_sync_runs_on_the_bulk_lane_but_keeps_its_priority(
+        self, enqueue
     ):
         scheduled = statistics_cache.schedule_statistics_refresh(
-            self.user.id,
-            "This Month",
-            allow_inline=False,
+            self.user.id, "This Month", allow_inline=False
         )
 
         self.assertTrue(scheduled)
-        mock_apply_async.assert_called_once()
+        priority = enqueue.call_args.kwargs["priority"]
+        self.assertEqual(priority, settings.CELERY_TASK_PRIORITY_STATISTICS_SYNC)
+        self.assertGreater(priority, settings.CELERY_TASK_PRIORITY_INTERACTIVE)
+        self.assertLess(priority, settings.CELERY_TASK_PRIORITY_FOLLOWUP)
+        self.assertEqual(enqueue.call_args.kwargs["queue"], "celery")
+        route = settings.CELERY_TASK_ROUTES["app.tasks.statistics_sync_task"]
+        self.assertEqual(route["queue"], "celery")
+
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
+    def test_forced_refresh_stays_on_the_interactive_lane(self, enqueue):
+        statistics_cache.schedule_statistics_refresh(
+            self.user.id, "This Month", force=True
+        )
+
         self.assertEqual(
-            mock_apply_async.call_args.kwargs["priority"],
+            enqueue.call_args.kwargs["priority"],
             settings.CELERY_TASK_PRIORITY_INTERACTIVE,
         )
+        self.assertEqual(enqueue.call_args.kwargs["queue"], "interactive")
 
-    @patch("app.statistics_refresh.schedule_statistics_refresh")
-    def test_schedule_all_ranges_refresh_prioritizes_preferred_and_cached_all_time(
-        self,
-        mock_schedule_statistics_refresh,
-    ):
-        self.user.statistics_default_range = "This Month"
-        self.user.save(update_fields=["statistics_default_range"])
-        cache.set(
-            statistics_cache._cache_key(self.user.id, "All Time"),
-            {"history_version": "cached"},
-            timeout=60,
-        )
+    def test_talent_fragment_rebuild_runs_on_the_bulk_lane(self):
+        route = settings.CELERY_TASK_ROUTES["Refresh statistics talent fragment"]
+        self.assertEqual(route["queue"], "celery")
 
-        statistics_cache.schedule_all_ranges_refresh(
-            self.user.id,
-            debounce_seconds=0,
-            countdown=3,
-        )
+    def test_schedule_all_ranges_refresh_records_a_change(self):
+        before = statistics_sync.current_generation(self.user.id)
+        with self.captureOnCommitCallbacks(execute=False):
+            statistics_cache.schedule_all_ranges_refresh(self.user.id)
 
-        mock_schedule_statistics_refresh.assert_has_calls(
-            [
-                call(
-                    self.user.id,
-                    "This Month",
-                    debounce_seconds=0,
-                    countdown=3,
-                    allow_inline=False,
-                    priority=settings.CELERY_TASK_PRIORITY_FOLLOWUP,
-                ),
-                call(
-                    self.user.id,
-                    "All Time",
-                    debounce_seconds=0,
-                    countdown=3 + statistics_cache.STATISTICS_ALL_TIME_REFRESH_DELAY,
-                    allow_inline=False,
-                    priority=settings.CELERY_TASK_PRIORITY_BACKGROUND,
-                ),
-            ],
-        )
-        self.assertEqual(mock_schedule_statistics_refresh.call_count, 2)
-
-    @patch("app.statistics_refresh.schedule_statistics_refresh")
-    def test_schedule_all_ranges_refresh_skips_uncached_all_time(
-        self,
-        mock_schedule_statistics_refresh,
-    ):
-        self.user.statistics_default_range = "Last 90 Days"
-        self.user.save(update_fields=["statistics_default_range"])
-
-        statistics_cache.schedule_all_ranges_refresh(
-            self.user.id,
-            debounce_seconds=0,
-            countdown=5,
-        )
-
-        mock_schedule_statistics_refresh.assert_called_once_with(
-            self.user.id,
-            "Last 90 Days",
-            debounce_seconds=0,
-            countdown=5,
-            allow_inline=False,
-            priority=settings.CELERY_TASK_PRIORITY_FOLLOWUP,
-        )
+        self.assertGreater(statistics_sync.current_generation(self.user.id), before)
 
 
 @override_settings(CELERY_TASK_ALWAYS_EAGER=False, TESTING=False)
@@ -232,15 +197,17 @@ class StatisticsStaleResultTests(TestCase):
     def tearDown(self):
         cache.clear()
 
-    @patch("app.tasks.refresh_statistics_cache_task.apply_async")
-    def test_invalidation_serves_previous_result_and_schedules_refresh(self, enqueue):
+    def _invalidate(self, range_name=None):
+        with self.captureOnCommitCallbacks(execute=False):
+            statistics_cache.invalidate_statistics_cache(self.user.id, range_name)
+        cache.delete(statistics_sync._gate_key(self.user.id))
+
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
+    def test_invalidation_serves_previous_result_and_queues_a_sync(self, enqueue):
         for range_name in ("This Month", None):
             with self.subTest(range_name=range_name):
-                cache.delete(
-                    statistics_cache._refresh_lock_key(self.user.id, "This Month")
-                )
+                self._invalidate(range_name)
                 enqueue.reset_mock()
-                statistics_cache.invalidate_statistics_cache(self.user.id, range_name)
 
                 result = statistics_cache.get_statistics_data(
                     self.user, None, None, "This Month"
@@ -251,13 +218,13 @@ class StatisticsStaleResultTests(TestCase):
 
     @patch("app.statistics_cache.refresh_statistics_cache")
     @patch(
-        "app.tasks.refresh_statistics_cache_task.apply_async",
+        "app.tasks_interactive.statistics_sync_task.apply_async",
         side_effect=OSError("offline"),
     )
     def test_unavailable_worker_keeps_previous_result_without_inline_rebuild(
         self, enqueue, rebuild
     ):
-        statistics_cache.invalidate_statistics_cache(self.user.id)
+        self._invalidate()
 
         result = statistics_cache.get_statistics_data(
             self.user, None, None, "This Month"
@@ -266,16 +233,13 @@ class StatisticsStaleResultTests(TestCase):
         self.assertEqual(result, self.data)
         enqueue.assert_called_once()
         rebuild.assert_not_called()
-        self.assertIsNone(
-            cache.get(statistics_cache._refresh_lock_key(self.user.id, "This Month"))
-        )
 
     def test_completed_refresh_replaces_previous_result(self):
-        statistics_cache.invalidate_statistics_cache(self.user.id)
+        self._invalidate()
         updated = statistics_cache._get_empty_statistics_data()
         statistics_cache.cache_statistics_data(self.user.id, "This Month", updated)
 
-        with patch("app.tasks.refresh_statistics_cache_task.apply_async") as enqueue:
+        with patch("app.tasks_interactive.statistics_sync_task.apply_async") as enqueue:
             result = statistics_cache.get_statistics_data(
                 self.user, None, None, "This Month"
             )
@@ -283,10 +247,10 @@ class StatisticsStaleResultTests(TestCase):
         self.assertEqual(result, updated)
         enqueue.assert_not_called()
 
-    @patch("app.tasks.refresh_statistics_cache_task.apply_async")
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
     def test_previous_day_result_refreshes_even_without_new_activity(self, enqueue):
         later = timezone.now() + timedelta(days=1)
-        with patch("app.statistics_cache.timezone.now", return_value=later):
+        with patch("django.utils.timezone.now", return_value=later):
             result = statistics_cache.get_statistics_data(
                 self.user, None, None, "This Month"
             )
@@ -296,15 +260,15 @@ class StatisticsStaleResultTests(TestCase):
         self.assertEqual(result, self.data)
         enqueue.assert_called_once()
 
-    @patch("app.tasks.refresh_statistics_cache_task.apply_async")
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
     def test_local_midnight_refreshes_a_recent_today_snapshot(self, enqueue):
         # UTC is still the same date, but Tokyo has crossed midnight.
         before = datetime(2026, 6, 1, 14, 59, tzinfo=UTC)
         after = before + timedelta(minutes=2)
         with timezone.override(ZoneInfo("Asia/Tokyo")):
-            with patch("app.statistics_cache.timezone.now", return_value=before):
+            with patch("django.utils.timezone.now", return_value=before):
                 statistics_cache.cache_statistics_data(self.user.id, "Today", self.data)
-            with patch("app.statistics_cache.timezone.now", return_value=after):
+            with patch("django.utils.timezone.now", return_value=after):
                 result = statistics_cache.get_statistics_data(
                     self.user, None, None, "Today"
                 )
@@ -312,13 +276,11 @@ class StatisticsStaleResultTests(TestCase):
         self.assertEqual(result, self.data)
         enqueue.assert_called_once()
 
-    @patch("app.tasks.refresh_statistics_cache_task.apply_async")
-    def test_polling_refreshes_previous_day_results_with_matching_history_version(
-        self, enqueue
-    ):
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
+    def test_polling_reports_and_queues_a_previous_day_result(self, enqueue):
         self.client.force_login(self.user)
         later = timezone.now() + timedelta(days=1)
-        with patch("app.statistics_cache.timezone.now", return_value=later):
+        with patch("django.utils.timezone.now", return_value=later):
             response = self.client.get(
                 reverse("cache_status"),
                 {"cache_type": "statistics", "range_name": "This Month"},
@@ -327,19 +289,19 @@ class StatisticsStaleResultTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["exists"])
         self.assertTrue(response.json()["is_stale"])
-        self.assertTrue(response.json()["refresh_scheduled"])
+        self.assertTrue(response.json()["is_refreshing"])
         enqueue.assert_called_once()
 
-    @patch("app.tasks.refresh_statistics_cache_task.apply_async")
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
     def test_unchanged_same_day_snapshot_does_not_rebuild_every_fifteen_minutes(
         self, enqueue
     ):
         before = datetime(2026, 6, 1, 12, tzinfo=UTC)
         with timezone.override(ZoneInfo("UTC")):
-            with patch("app.statistics_cache.timezone.now", return_value=before):
+            with patch("django.utils.timezone.now", return_value=before):
                 statistics_cache.cache_statistics_data(self.user.id, "Today", self.data)
             with patch(
-                "app.statistics_cache.timezone.now",
+                "django.utils.timezone.now",
                 return_value=before + timedelta(hours=2),
             ):
                 result = statistics_cache.get_statistics_data(
@@ -348,7 +310,7 @@ class StatisticsStaleResultTests(TestCase):
         self.assertEqual(result, self.data)
         enqueue.assert_not_called()
 
-    @patch("app.tasks.refresh_statistics_cache_task.apply_async")
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
     def test_lightweight_statistics_reads_refresh_retained_stale_results(self, enqueue):
         for reader, key in (
             (statistics_cache.get_statistics_minutes_by_type, "minutes_per_media_type"),
@@ -356,11 +318,8 @@ class StatisticsStaleResultTests(TestCase):
             (statistics_cache.get_top_talent_data, "top_talent"),
         ):
             with self.subTest(reader=reader.__name__):
-                cache.delete(
-                    statistics_cache._refresh_lock_key(self.user.id, "This Month")
-                )
+                self._invalidate()
                 enqueue.reset_mock()
-                statistics_cache.invalidate_statistics_cache(self.user.id)
                 result = reader(self.user, None, None, "This Month")
                 self.assertEqual(result, self.data[key])
                 enqueue.assert_called_once()
@@ -369,19 +328,28 @@ class StatisticsStaleResultTests(TestCase):
         ttl = cache.ttl(statistics_cache._cache_key(self.user.id, "This Month"))
         self.assertGreater(ttl, 24 * 60 * 60)
 
-    def test_stale_covering_range_cannot_publish_a_fresh_derived_snapshot(self):
-        statistics_cache.cache_statistics_data(self.user.id, "All Time", self.data)
-        start, end = statistics_cache._get_predefined_range_dates("This Month")
-        later = timezone.now() + timedelta(days=1)
-        with patch("app.statistics_cache.timezone.now", return_value=later):
-            covers = statistics_cache._has_covering_range_cache(
-                self.user.id,
-                "This Month",
-                start,
-                end,
-                statistics_cache.get_history_version(self.user.id),
-            )
-        self.assertFalse(covers)
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
+    def test_snapshot_survives_a_cache_flush(self, enqueue):
+        cache.clear()
+
+        result = statistics_cache.get_statistics_data(
+            self.user, None, None, "This Month"
+        )
+
+        self.assertEqual(
+            result["hours_per_media_type"], self.data["hours_per_media_type"]
+        )
+        self.assertNotIn("statistics_building", result)
+
+    @patch("app.tasks_interactive.statistics_sync_task.apply_async")
+    def test_never_built_range_reports_building_and_queues_urgently(self, enqueue):
+        result = statistics_cache.get_statistics_data(self.user, None, None, "All Time")
+
+        self.assertTrue(result["statistics_building"])
+        self.assertEqual(
+            enqueue.call_args.kwargs["priority"],
+            settings.CELERY_TASK_PRIORITY_INTERACTIVE,
+        )
 
 
 class StatisticsHourBucketTests(TestCase):
@@ -437,6 +405,253 @@ class StatisticsHourBucketTests(TestCase):
         self.assertEqual(
             day_stats["totals"]["plays_by_type"][MediaTypes.MOVIE.value],
             2,
+        )
+        # Day payloads cross the cache boundary before the range aggregator
+        # consumes them. IDs/hours and datetimes must survive serialization.
+        serialized_day = json.loads(json.dumps(day_stats))
+        self.assertEqual(serialized_day["day"], midnight.date().isoformat())
+        self.assertEqual(serialized_day["activity"], {"count": 2})
+        self.assertEqual(
+            set(serialized_day["items"]["movie"]),
+            {str(item_id) for item_id in Item.objects.values_list("id", flat=True)},
+        )
+        self.assertEqual(
+            {
+                entry["activity_dt"]
+                for entry in serialized_day["items"]["movie"].values()
+            },
+            {midnight.isoformat(), (midnight + timedelta(minutes=30)).isoformat()},
+        )
+        self.assertEqual(
+            _aggregate_minutes_per_media_type_from_days(self.user, [midnight.date()]),
+            {"movie": 210},
+        )
+
+
+class StatisticsBoardGameDayTests(TestCase):
+    """Board game plays contribute minutes, one play and spread daily time."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(
+            username="stats-boardgame-user",
+            password="secret123",
+        )
+        self.day = timezone.make_aware(datetime(2025, 1, 15, 12))
+
+    def tearDown(self):
+        cache.clear()
+
+    def _boardgame(self, key, progress, start, end):
+        item = Item.objects.create(
+            media_id=key,
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.BOARDGAME.value,
+            title=key,
+        )
+        BoardGame.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=progress,
+            start_date=start,
+            end_date=end,
+        )
+        return item
+
+    def _day_stats(self):
+        return statistics_cache.build_stats_for_day(self.user.id, self.day.date())
+
+    def test_play_ending_today_counts_minutes_play_and_top_played(self):
+        item = self._boardgame("bg-same-day", 90, self.day, self.day)
+
+        stats = self._day_stats()
+
+        key = MediaTypes.BOARDGAME.value
+        self.assertEqual(stats["totals"]["minutes_by_type"][key], 90)
+        self.assertEqual(stats["daily_minutes_by_type"][key], 90)
+        self.assertEqual(stats["top_played"][key][str(item.id)]["plays"], 1)
+        self.assertEqual(stats["top_played"][key][str(item.id)]["minutes"], 90)
+        self.assertIn(str(item.id), stats["items"][key])
+
+    def test_multi_day_span_spreads_daily_time_without_counting_a_play(self):
+        self._boardgame(
+            "bg-span",
+            300,
+            self.day - timedelta(days=1),
+            self.day + timedelta(days=1),
+        )
+
+        stats = self._day_stats()
+
+        key = MediaTypes.BOARDGAME.value
+        self.assertEqual(stats["daily_minutes_by_type"][key], 100)
+        self.assertEqual(stats["totals"]["minutes_by_type"].get(key, 0), 0)
+        self.assertEqual(stats["top_played"].get(key, {}), {})
+
+    def test_zero_progress_records_item_but_no_time(self):
+        item = self._boardgame("bg-zero", 0, self.day, self.day)
+
+        stats = self._day_stats()
+
+        key = MediaTypes.BOARDGAME.value
+        self.assertIn(str(item.id), stats["items"][key])
+        self.assertEqual(stats["totals"]["minutes_by_type"].get(key, 0), 0)
+        self.assertEqual(stats["daily_minutes_by_type"].get(key, 0), 0)
+
+
+class StatisticsMusicDayTests(TestCase):
+    """Music plays count once, with runtime from the track and rollups."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(
+            username="stats-music-user",
+            password="secret123",
+        )
+        self.day = timezone.make_aware(datetime(2025, 1, 15, 12))
+        self.artist = Artist.objects.create(name="Day Artist", genres=["rock"])
+        self.album = Album.objects.create(title="Day Album", artist=self.artist)
+
+    def tearDown(self):
+        cache.clear()
+
+    def _music(self, key, duration_ms):
+        track = Track.objects.create(
+            album=self.album, title=key, track_number=1, duration_ms=duration_ms
+        )
+        item = Item.objects.create(
+            media_id=key,
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.MUSIC.value,
+            title=key,
+        )
+        return Music.objects.create(
+            item=item,
+            user=self.user,
+            album=self.album,
+            artist=self.artist,
+            track=track,
+            status=Status.COMPLETED.value,
+            progress=1,
+            start_date=self.day,
+            end_date=self.day,
+        )
+
+    def test_play_adds_runtime_play_hour_and_rollups(self):
+        music = self._music("song", 180000)
+
+        stats = statistics_cache.build_stats_for_day(self.user.id, self.day.date())
+
+        key = MediaTypes.MUSIC.value
+        self.assertEqual(stats["totals"]["minutes_by_type"][key], 3)
+        self.assertEqual(stats["totals"]["plays_by_type"][key], 1)
+        self.assertEqual(stats["daily_minutes_by_type"][key], 3)
+        self.assertEqual(stats["hour_counts"][key], {"12": 1})
+        self.assertEqual(stats["top_played"][key][str(music.item_id)]["plays"], 1)
+        rollups = stats["music"]
+        self.assertEqual(rollups["tracks"][str(music.id)]["minutes"], 3)
+        self.assertEqual(rollups["artists"][str(self.artist.id)]["plays"], 1)
+        self.assertEqual(rollups["albums"][str(self.album.id)]["minutes"], 3)
+        self.assertEqual(rollups["genres"]["Rock"]["plays"], 1)
+
+    def test_play_without_runtime_counts_play_but_no_minutes(self):
+        self._music("silent", 0)
+
+        stats = statistics_cache.build_stats_for_day(self.user.id, self.day.date())
+
+        key = MediaTypes.MUSIC.value
+        self.assertEqual(stats["totals"]["plays_by_type"][key], 1)
+        self.assertEqual(stats["totals"]["minutes_by_type"].get(key, 0), 0)
+        self.assertEqual(stats["top_played"].get(key, {}), {})
+
+
+class StatisticsPodcastDayTests(TestCase):
+    """Podcast plays count once, with runtime from the episode and show rollups."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(
+            username="stats-podcast-user",
+            password="secret123",
+        )
+        self.day = timezone.make_aware(datetime(2025, 1, 15, 12))
+        self.show = PodcastShow.objects.create(
+            podcast_uuid="show-uuid-1", title="Day Show", slug="day-show"
+        )
+
+    def tearDown(self):
+        cache.clear()
+
+    def _podcast(self, key, duration_seconds, *, with_episode=True, progress=0):
+        item = Item.objects.create(
+            media_id=key,
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.PODCAST.value,
+            title=key,
+        )
+        episode = (
+            PodcastEpisode.objects.create(
+                show=self.show,
+                episode_uuid=f"ep-{key}",
+                title=f"Episode {key}",
+                duration=duration_seconds,
+            )
+            if with_episode
+            else None
+        )
+        return Podcast.objects.create(
+            item=item,
+            user=self.user,
+            show=self.show if with_episode else None,
+            episode=episode,
+            status=Status.COMPLETED.value,
+            progress=progress,
+            start_date=self.day,
+            end_date=self.day,
+        )
+
+    def _day_stats(self):
+        return statistics_cache.build_stats_for_day(self.user.id, self.day.date())
+
+    def test_play_adds_runtime_play_hour_and_rollups(self):
+        podcast = self._podcast("pod", 1800)
+
+        stats = self._day_stats()
+
+        key = MediaTypes.PODCAST.value
+        self.assertEqual(stats["totals"]["minutes_by_type"][key], 30)
+        self.assertEqual(stats["totals"]["plays_by_type"][key], 1)
+        self.assertEqual(stats["daily_minutes_by_type"][key], 30)
+        self.assertEqual(stats["hour_counts"][key], {"12": 1})
+        self.assertIn(str(podcast.item_id), stats["items"][key])
+        rollups = stats["podcast"]
+        self.assertEqual(rollups["shows"][str(self.show.id)]["plays"], 1)
+        self.assertEqual(rollups["shows"][str(self.show.id)]["title"], "Day Show")
+        episode_stats = rollups["episodes"][str(podcast.episode_id)]
+        self.assertEqual(episode_stats["title"], f"Episode {podcast.item.title}")
+        self.assertEqual(episode_stats["duration_seconds"], 1800)
+
+    def test_play_without_runtime_is_skipped(self):
+        self._podcast("silent", 0, with_episode=False)
+
+        stats = self._day_stats()
+
+        key = MediaTypes.PODCAST.value
+        self.assertEqual(stats["totals"]["plays_by_type"].get(key, 0), 0)
+        self.assertEqual(stats["totals"]["minutes_by_type"].get(key, 0), 0)
+
+    def test_progress_stands_in_when_episode_runtime_is_unknown(self):
+        podcast = self._podcast("progress", 0, with_episode=False, progress=12)
+
+        stats = self._day_stats()
+
+        key = MediaTypes.PODCAST.value
+        self.assertEqual(stats["totals"]["minutes_by_type"][key], 12)
+        self.assertEqual(stats["totals"]["plays_by_type"][key], 1)
+        # Without a show, the rollup is keyed by the entry and titled from the item.
+        self.assertEqual(
+            stats["podcast"]["shows"][str(podcast.id)]["title"], podcast.item.title
         )
 
 
@@ -573,7 +788,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     """
     Tests for statistics_cache._get_horizontal_history_image.
 
-    Every test mocks CustomList._get_tmdb_backdrop / _get_igdb_backdrop so no
+    Every test mocks backdrops.get_tmdb_backdrop / _get_igdb_backdrop so no
     real network calls are made. The Redis cache is cleared before each test so
     _cached_horizontal_backdrop always starts cold unless explicitly primed.
     """
@@ -611,7 +826,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     # Cached backdrop already in Redis — no network call needed
     # ------------------------------------------------------------------
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_tv_show_uses_redis_cache_without_network_call(self, mock_backdrop):
         item = _tv_item_dict()  # Breaking Bad, media_id=1396
         cache.set("tmdb_backdrop_tv_1396", BACKDROP_URL, 60)
@@ -621,7 +836,7 @@ class GetHorizontalHistoryImageTests(TestCase):
         self.assertEqual(result, BACKDROP_URL)
         mock_backdrop.assert_not_called()
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_movie_uses_redis_cache_without_network_call(self, mock_backdrop):
         item = _movie_item_dict()  # On Stranger Tides, media_id=1865
         cache.set("tmdb_backdrop_movie_1865", BACKDROP_URL, 60)
@@ -635,7 +850,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     # Network fetch — TMDB TV (Breaking Bad)
     # ------------------------------------------------------------------
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_tv_show_fetches_tmdb_backdrop_when_cache_cold(self, mock_backdrop):
         """Breaking Bad (tv, 1396): cold Redis → should call TMDB and return backdrop."""
         item = _tv_item_dict(media_id="1396", title="Breaking Bad")
@@ -647,7 +862,7 @@ class GetHorizontalHistoryImageTests(TestCase):
         self.assertEqual(result, BACKDROP_URL)
         mock_backdrop.assert_called_once_with(MediaTypes.TV.value, "1396")
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_anime_tmdb_fetches_backdrop_via_tv_endpoint(self, mock_backdrop):
         """
         Devil May Cry (media_type=anime, source=tmdb): cold Redis → backdrop fetched.
@@ -667,7 +882,7 @@ class GetHorizontalHistoryImageTests(TestCase):
         # Anime from TMDB must use the /tv/{id} endpoint
         mock_backdrop.assert_called_once_with(MediaTypes.TV.value, "94954")
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_anime_tmdb_redis_cache_hit_skips_network(self, mock_backdrop):
         """TMDB anime whose backdrop is already in Redis must not re-fetch."""
         item = _anime_item_dict(media_id="94954")
@@ -679,7 +894,7 @@ class GetHorizontalHistoryImageTests(TestCase):
         self.assertEqual(result, BACKDROP_URL)
         mock_backdrop.assert_not_called()
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_anime_mal_source_falls_back_to_portrait(self, mock_backdrop):
         """
         MAL-sourced anime has no backdrop provider, so the portrait poster is
@@ -698,7 +913,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     # Network fetch — TMDB movie (Pirates of the Caribbean: On Stranger Tides)
     # ------------------------------------------------------------------
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_movie_fetches_tmdb_backdrop_when_cache_cold(self, mock_backdrop):
         """On Stranger Tides (movie, 1865): cold Redis → should call TMDB."""
         item = _movie_item_dict(
@@ -717,7 +932,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     # Network fetch — TMDB episode (Game of Thrones)
     # ------------------------------------------------------------------
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_episode_fetches_show_backdrop_via_tv_path(self, mock_backdrop):
         """
         Game of Thrones episode (media_type=episode, media_id=1399).
@@ -733,7 +948,7 @@ class GetHorizontalHistoryImageTests(TestCase):
         # Must request the TV backdrop, not an episode-specific path
         mock_backdrop.assert_called_once_with(MediaTypes.TV.value, "1399")
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_season_fetches_show_backdrop_via_tv_path(self, mock_backdrop):
         """Season items (media_type=season) also resolve via the TV backdrop path."""
         item = {
@@ -769,7 +984,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     # Media types that have no backdrop path — should fall back gracefully
     # ------------------------------------------------------------------
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_music_media_type_falls_back_to_portrait(self, mock_backdrop):
         """Music has no backdrop source; portrait poster should be returned."""
         item = {
@@ -790,7 +1005,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     # allow_network=False — must NOT make network calls
     # ------------------------------------------------------------------
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_allow_network_false_returns_fallback_without_network_call(
         self, mock_backdrop
     ):
@@ -812,7 +1027,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     # TMDB returns IMG_NONE — fall back to portrait
     # ------------------------------------------------------------------
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=settings.IMG_NONE)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=settings.IMG_NONE)
     def test_tmdb_returns_img_none_falls_back_to_portrait(self, mock_backdrop):
         item = _tv_item_dict()
 
@@ -827,7 +1042,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     # ------------------------------------------------------------------
 
     @patch(
-        "lists.models.CustomList._get_tmdb_backdrop",
+        "app.backdrops.get_tmdb_backdrop",
         side_effect=Exception("network error"),
     )
     def test_tmdb_exception_falls_back_to_portrait(self, mock_backdrop):
@@ -843,7 +1058,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     # Model instance (not dict) — Breaking Bad as a real Item object
     # ------------------------------------------------------------------
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_model_instance_tv_fetches_backdrop(self, mock_backdrop):
         """_get_horizontal_history_image must work with Django Item instances too."""
         item = Item.objects.create(
@@ -865,7 +1080,7 @@ class GetHorizontalHistoryImageTests(TestCase):
     # TVDB source — cross-reference to TMDB via provider_external_ids
     # ------------------------------------------------------------------
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_tvdb_tv_show_uses_tmdb_cross_reference(self, mock_backdrop):
         """
         Game of Thrones / Breaking Bad / HIMYM added via TVDB:
@@ -886,7 +1101,7 @@ class GetHorizontalHistoryImageTests(TestCase):
         self.assertEqual(result, BACKDROP_URL)
         mock_backdrop.assert_called_once_with(MediaTypes.TV.value, "1399")
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_tvdb_episode_uses_tmdb_cross_reference(self, mock_backdrop):
         """TVDB episodes carry the show-level provider_external_ids tmdb_id."""
         item = _tvdb_episode_item_dict(tvdb_id="121361", tmdb_id="1399")
@@ -898,7 +1113,7 @@ class GetHorizontalHistoryImageTests(TestCase):
         self.assertEqual(result, BACKDROP_URL)
         mock_backdrop.assert_called_once_with(MediaTypes.TV.value, "1399")
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_tvdb_tv_redis_cache_hit_skips_network(self, mock_backdrop):
         """TVDB show whose TMDB backdrop is already cached avoids a network call."""
         item = _tvdb_tv_item_dict(tvdb_id="121361", tmdb_id="1399")
@@ -909,7 +1124,7 @@ class GetHorizontalHistoryImageTests(TestCase):
         self.assertEqual(result, BACKDROP_URL)
         mock_backdrop.assert_not_called()
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_tvdb_tv_without_tmdb_cross_reference_falls_back_to_portrait(
         self, mock_backdrop
     ):
@@ -933,7 +1148,7 @@ class GetHorizontalHistoryImageTests(TestCase):
         self.assertEqual(result, PORTRAIT_POSTER)
         mock_backdrop.assert_not_called()
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_tvdb_tv_missing_provider_external_ids_falls_back_to_portrait(
         self, mock_backdrop
     ):
@@ -958,19 +1173,36 @@ class GetHorizontalHistoryImageTests(TestCase):
 
 
 # ---------------------------------------------------------------------------
-# _normalize_history_highlight_images  (the serve-time fix — issue #211)
+# normalize_highlight_images  (issue #211, made cache-only by issue #1249)
 # ---------------------------------------------------------------------------
+
+
+def _fill_tmdb_backdrop_cache(media_type, media_id):
+    """Stand-in for backdrops.get_tmdb_backdrop that caches like the real one."""
+    cache.set(f"tmdb_backdrop_{media_type}_{media_id}", BACKDROP_URL, 60)
+    return BACKDROP_URL
+
+
+def _portrait_highlights():
+    return {
+        "first_play": _highlight_entry(_tv_item_dict(), image=PORTRAIT_POSTER),
+        "last_play": _highlight_entry(_movie_item_dict(), image=PORTRAIT_POSTER),
+        "today_card": {
+            "entry": _highlight_entry(_episode_item_dict(), image=PORTRAIT_POSTER),
+        },
+        "today_month": 5,
+        "today_day": 20,
+    }
 
 
 class NormalizeHistoryHighlightImagesTests(TestCase):
     """
-    Tests for statistics_cache._normalize_history_highlight_images.
+    Tests for statistics_cache.normalize_highlight_images.
 
-    This function runs on every stats page serve. Pre-fix it used
-    allow_network=False, meaning a cold Redis cache always produced portrait
-    posters even when the stats cache was built correctly. Post-fix it uses
-    allow_network=True so the first page load after the fix immediately
-    upgrades portrait posters to backdrops.
+    It runs on every stats page serve and before a rebuilt payload is
+    published on the interactive worker, so it must never call a provider
+    (#1249). A cold backdrop cache is repaired by a background warm, and the
+    next serve picks the landscape artwork up from Redis (#211).
     """
 
     def setUp(self):
@@ -979,116 +1211,221 @@ class NormalizeHistoryHighlightImagesTests(TestCase):
     def tearDown(self):
         cache.clear()
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
-    def test_portrait_poster_upgraded_to_backdrop_on_serve(self, mock_backdrop):
-        """
-        Core regression test for issue #211.
+    @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
+    def test_serve_never_calls_the_provider(self, mock_backdrop, mock_warm):
+        """Core regression test for issue #1249: a cold cache means no network."""
+        data = {"history_highlights": _portrait_highlights()}
 
-        Scenario: stats cache was built with the old code and stores a portrait
-        poster in highlights[*].image. Redis has no cached backdrop. On the next
-        serve, _normalize_history_highlight_images must call TMDB and swap in
-        the backdrop.
-        """
-        highlights = {
-            "first_play": _highlight_entry(_tv_item_dict(), image=PORTRAIT_POSTER),
-            "last_play": _highlight_entry(_movie_item_dict(), image=PORTRAIT_POSTER),
-            "today_card": {
-                "entry": _highlight_entry(_episode_item_dict(), image=PORTRAIT_POSTER),
-            },
-            "today_month": 5,
-            "today_day": 20,
-        }
+        statistics_cache.normalize_highlight_images(data)
 
-        statistics_cache._normalize_history_highlight_images(highlights)
-
-        for key in ("first_play", "last_play"):
-            self.assertEqual(
-                highlights[key]["image"],
-                BACKDROP_URL,
-                msg=f"{key} still has portrait poster after normalization",
-            )
+        mock_backdrop.assert_not_called()
+        highlights = data["history_highlights"]
+        self.assertEqual(highlights["first_play"]["image"], PORTRAIT_POSTER)
+        self.assertEqual(highlights["today_card"]["entry"]["image"], PORTRAIT_POSTER)
+        # One background task carries every missing backdrop.
+        mock_warm.assert_called_once()
+        identities = mock_warm.call_args.kwargs["args"][0]
         self.assertEqual(
-            highlights["today_card"]["entry"]["image"],
-            BACKDROP_URL,
-            msg="today_card entry still has portrait poster after normalization",
+            sorted((i["media_type"], i["media_id"]) for i in identities),
+            [
+                (MediaTypes.EPISODE.value, "1399"),
+                (MediaTypes.MOVIE.value, "1865"),
+                (MediaTypes.TV.value, "1396"),
+            ],
         )
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
-    def test_all_highlight_slots_normalized(self, mock_backdrop):
-        """All named highlight slots are processed independently."""
-        entries = {
-            "first_play": _highlight_entry(_tv_item_dict(media_id="1396")),
-            "last_play": _highlight_entry(_movie_item_dict(media_id="1865")),
-            "today_card": {
-                "entry": _highlight_entry(_episode_item_dict(media_id="1399")),
-            },
+    @patch(
+        "app.backdrops.get_tmdb_backdrop",
+        side_effect=_fill_tmdb_backdrop_cache,
+    )
+    def test_portrait_poster_recovers_on_next_serve(self, mock_backdrop):
+        """
+        Issue #211 recovery, now off the request path.
+
+        The stats cache stores portrait posters and Redis has no backdrops. The
+        first serve queues the warm (run inline by eager Celery here); the next
+        serve swaps in the backdrop from Redis without calling the provider.
+        """
+        statistics_cache.normalize_highlight_images(
+            {"history_highlights": _portrait_highlights()}
+        )
+        self.assertEqual(mock_backdrop.call_count, 3)  # the background warm
+
+        mock_backdrop.reset_mock()
+        data = {"history_highlights": _portrait_highlights()}
+        statistics_cache.normalize_highlight_images(data)
+
+        mock_backdrop.assert_not_called()
+        highlights = data["history_highlights"]
+        for entry in (
+            highlights["first_play"],
+            highlights["last_play"],
+            highlights["today_card"]["entry"],
+        ):
+            self.assertEqual(entry["image"], BACKDROP_URL)
+            self.assertTrue(entry["image_is_backdrop"])
+
+    @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
+    def test_repeat_serves_queue_the_warm_once(self, mock_warm):
+        for _ in range(3):
+            statistics_cache.normalize_highlight_images(
+                {"history_highlights": _portrait_highlights()}
+            )
+
+        mock_warm.assert_called_once()
+
+    @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
+    @patch("app.backdrops.cached_backdrop")
+    def test_marked_backdrop_is_served_without_any_lookup(self, mock_cached, mock_warm):
+        """A payload built after #1249 keeps its backdrop after Redis expiry."""
+        entry = _highlight_entry(_tv_item_dict(), image=BACKDROP_URL)
+        entry["image_is_backdrop"] = True
+        data = {"history_highlights": {"first_play": entry}}
+
+        statistics_cache.normalize_highlight_images(data)
+
+        self.assertEqual(entry["image"], BACKDROP_URL)
+        mock_cached.assert_not_called()
+        mock_warm.assert_not_called()
+
+    @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
+    def test_per_type_highlights_are_upgraded(self, mock_warm):
+        cache.set("tmdb_backdrop_tv_1396", BACKDROP_URL, 60)
+        entry = _highlight_entry(_tv_item_dict(media_id="1396"))
+        data = {"history_highlights_by_type": {"tv": {"first_play": entry}}}
+
+        statistics_cache.normalize_highlight_images(data)
+
+        self.assertEqual(entry["image"], BACKDROP_URL)
+        self.assertTrue(entry["image_is_backdrop"])
+        mock_warm.assert_not_called()
+
+    @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
+    def test_items_without_backdrops_queue_nothing(self, mock_warm):
+        podcast = {
+            "media_type": MediaTypes.PODCAST.value,
+            "media_id": "p1",
+            "source": Sources.GPODDER.value,
         }
-        highlights = {**entries, "today_month": 5, "today_day": 20}
-
-        statistics_cache._normalize_history_highlight_images(highlights)
-
-        # TMDB should have been consulted for each distinct item
-        self.assertEqual(mock_backdrop.call_count, 3)
-
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
-    def test_none_entries_are_skipped_without_error(self, mock_backdrop):
-        """Partial highlights (some slots empty) must not raise."""
-        highlights = {
-            "first_play": _highlight_entry(_tv_item_dict()),
-            "last_play": None,
-            "today_in_history": None,
-            "today_in_user_history": None,
+        data = {
+            "history_highlights": {
+                "first_play": _highlight_entry(podcast),
+                "last_play": {"item": None, "image": PORTRAIT_POSTER},
+            }
         }
 
-        statistics_cache._normalize_history_highlight_images(
-            highlights
-        )  # must not raise
+        statistics_cache.normalize_highlight_images(data)
 
-        self.assertEqual(highlights["first_play"]["image"], BACKDROP_URL)
+        mock_warm.assert_not_called()
+        self.assertEqual(
+            data["history_highlights"]["last_play"]["image"], PORTRAIT_POSTER
+        )
 
     def test_non_dict_highlights_returns_without_error(self):
         """Passing None or non-dict must be a no-op."""
-        statistics_cache._normalize_history_highlight_images(None)
-        statistics_cache._normalize_history_highlight_images("not-a-dict")
-        statistics_cache._normalize_history_highlight_images([])
+        for value in (None, "not-a-dict", []):
+            statistics_cache.normalize_highlight_images(value)
+            statistics_cache._normalize_history_highlight_images(value)
+            statistics_cache._normalize_history_highlights_by_type(value)
 
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
-    def test_entry_with_none_item_uses_existing_image(self, mock_backdrop):
-        """
-        If the serialised item is missing (e.g. old cache format), the function
-        should return whatever image is already stored rather than crashing.
-        """
-        highlights = {
-            "first_play": {"item": None, "image": PORTRAIT_POSTER, "title": "Unknown"},
-            "last_play": None,
-            "today_in_history": None,
-            "today_in_user_history": None,
-        }
-
-        statistics_cache._normalize_history_highlight_images(highlights)
-
-        # item is None so no TMDB call; existing image is preserved
-        self.assertEqual(highlights["first_play"]["image"], PORTRAIT_POSTER)
-        mock_backdrop.assert_not_called()
-
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_backdrop_already_stored_in_cache_is_reused(self, mock_backdrop):
-        """
-        If the TMDB Redis cache was already populated (e.g. Lists Hub visit),
-        _normalize must use the cached value and make no extra network calls.
-        """
+        """A warm Redis backdrop (e.g. from a Lists Hub visit) is used directly."""
         cache.set("tmdb_backdrop_tv_1396", BACKDROP_URL, 60)
-        highlights = {
-            "first_play": _highlight_entry(_tv_item_dict(media_id="1396")),
-            "last_play": None,
-            "today_in_history": None,
-            "today_in_user_history": None,
-        }
+        highlights = {"first_play": _highlight_entry(_tv_item_dict(media_id="1396"))}
 
         statistics_cache._normalize_history_highlight_images(highlights)
 
         self.assertEqual(highlights["first_play"]["image"], BACKDROP_URL)
         mock_backdrop.assert_not_called()
+
+
+class HighlightArtworkRequestPathTests(TestCase):
+    """End-to-end: building and serving highlights never calls a provider."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(
+            username="stats-highlight-artwork",
+            password="secret123",
+        )
+
+    def tearDown(self):
+        cache.clear()
+
+    @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
+    def test_warm_statistics_cache_serve_makes_no_provider_call(
+        self, mock_backdrop, mock_warm
+    ):
+        data = statistics_cache._get_empty_statistics_data()
+        data["history_highlights"] = _portrait_highlights()
+        statistics_cache.cache_statistics_data(self.user.id, "Last 30 Days", data)
+
+        start, end = statistics_refresh._get_predefined_range_dates("Last 30 Days")
+        served = statistics_cache.get_statistics_data(
+            self.user, start, end, range_name="Last 30 Days"
+        )
+
+        mock_backdrop.assert_not_called()
+        mock_warm.assert_called_once()
+        self.assertEqual(
+            served["history_highlights"]["first_play"]["image"], PORTRAIT_POSTER
+        )
+
+    @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
+    def test_release_candidates_are_not_resolved_before_selection(self, _mock_warm):
+        """Only the chosen "Today in history" card is ever given a backdrop."""
+        release = timezone.now().replace(year=2001)
+        for index in range(3):
+            item = Item.objects.create(
+                media_id=f"98{index}",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title=f"Released today {index}",
+                image=PORTRAIT_POSTER,
+                release_datetime=release,
+            )
+            Movie.objects.create(
+                user=self.user, item=item, status=Status.COMPLETED.value
+            )
+
+        with (
+            patch("app.backdrops.cached_backdrop") as mock_cached,
+            patch("app.backdrops.resolve_backdrop") as mock_resolve,
+        ):
+            entry, year = statistics_cache._get_today_release_entry(self.user)
+
+        self.assertEqual(year, 2001)
+        self.assertEqual(entry["image"], PORTRAIT_POSTER)
+        mock_cached.assert_not_called()
+        mock_resolve.assert_not_called()
+
+    def test_today_release_candidates_are_scanned_once_per_window(self):
+        """Every range and media type of a sync pass shares one library scan.
+
+        The scan cannot use a date index (it matches a month/day across all
+        years), so repeating it per range is what made range rebuilds slow.
+        """
+        release = timezone.now().replace(year=2001)
+        item = Item.objects.create(
+            media_id="release-cache-1",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Released today once",
+            release_datetime=release,
+        )
+        Movie.objects.create(
+            user=self.user, item=item, status=Status.COMPLETED.value
+        )
+
+        statistics_cache._get_today_release_entry(self.user)
+        with self.assertNumQueries(0):
+            entry, year = statistics_cache._get_today_release_entry(self.user)
+
+        self.assertEqual(year, 2001)
+        self.assertEqual(entry["item"].pk, item.pk)
 
 
 class RequestPathDayBuildTests(TestCase):
@@ -1168,7 +1505,7 @@ class DayCacheContractTests(SimpleTestCase):
             with self.subTest(day=day):
                 self.assertEqual(
                     statistics_cache._day_cache_key(42, day),
-                    "stats:day:v7:42:2026-09-05",
+                    f"{STATISTICS_DAY_PREFIX}:42:2026-09-05",
                 )
         self.assertEqual(statistics_cache._day_cache_key(42, "invalid"), "")
 

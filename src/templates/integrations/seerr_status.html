@@ -1,0 +1,16 @@
+{% load i18n %}
+<span class="rounded-full border border-[var(--color-surface-border)] px-2 py-0.5 text-xs text-[var(--color-text-secondary)]">
+  {% if status == "available" %}
+    {% translate "Available" %}
+  {% elif status == "partially_available" %}
+    {% translate "Partially available" %}
+  {% elif status == "processing" %}
+    {% translate "Processing" %}
+  {% elif status == "pending" %}
+    {% translate "Requested" %}
+  {% elif status == "blocklisted" %}
+    {% translate "Blocklisted" %}
+  {% else %}
+    {% translate "Not requested" %}
+  {% endif %}
+</span>

@@ -168,6 +168,17 @@ class DuplicateAggregationProjectionTests(MediaListProjectionTestCase):
                 self.assertIsNotNone(entry.aggregated_progress)
                 self.assertIsNotNone(entry.repeats)
 
+    def test_aggregated_date_added_is_the_earliest_entry(self):
+        """A grouped row's Date added is when the item was first tracked."""
+        for entry in self.media_list():
+            earliest = (
+                Movie.objects.filter(user=self.user, item=entry.item)
+                .order_by("created_at")
+                .first()
+                .created_at
+            )
+            self.assertEqual(entry.aggregated_created_at, earliest)
+
     def test_aggregation_result_is_unchanged_by_the_narrower_projection(self):
         """Narrowing the columns must not change a single aggregated value.
 

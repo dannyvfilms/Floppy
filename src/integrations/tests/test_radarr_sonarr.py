@@ -13,7 +13,11 @@ from app.models import CollectionEntry, Item, MediaTypes, Sources
 from integrations import tasks
 from integrations.imports import helpers, radarr, sonarr
 from integrations.models import CollectionSourceState, RadarrInstance, SonarrInstance
-from integrations.source_sync import upsert_collection_source_state
+from integrations.source_sync import (
+    prune_collection_source_states,
+    remove_collection_source_state,
+    upsert_collection_source_state,
+)
 
 
 class ArrImportViewTests(TestCase):
@@ -223,6 +227,39 @@ class ArrMultiInstanceTests(TestCase):
             ).exists()
         )
 
+    def test_disconnect_removes_copies_only_that_instance_created(self):
+        """A synced-only copy goes; one another instance still backs stays."""
+        only = RadarrInstance.objects.create(
+            user=self.user, base_url="https://radarr-a.local", api_key=helpers.encrypt("k")
+        )
+        other = RadarrInstance.objects.create(
+            user=self.user, base_url="https://radarr-b.local", api_key=helpers.encrypt("k")
+        )
+        lone, shared = (
+            Item.objects.create(
+                media_id=media_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title=media_id,
+            )
+            for media_id in ("10", "11")
+        )
+        upsert_collection_source_state(
+            user=self.user, item=lone, source="radarr", source_instance_id=only.id
+        )
+        for instance in (only, other):
+            upsert_collection_source_state(
+                user=self.user,
+                item=shared,
+                source="radarr",
+                source_instance_id=instance.id,
+            )
+
+        self.client.post(reverse("radarr_disconnect"), {"instance_id": only.id})
+
+        self.assertFalse(CollectionEntry.objects.filter(item=lone).exists())
+        self.assertTrue(CollectionEntry.objects.filter(item=shared).exists())
+
     def test_disconnect_scoped_to_owner(self):
         """A user cannot disconnect another user's Radarr instance."""
         other_instance = RadarrInstance.objects.create(
@@ -282,7 +319,7 @@ class ArrImporterTests(TestCase):
 
         imported_counts, warnings = radarr.importer(None, self.user, "new")
 
-        self.assertEqual(imported_counts[MediaTypes.MOVIE.value], 1)
+        self.assertEqual(imported_counts["collection"], 1)
         self.assertEqual(warnings, "")
         mock_get_media_metadata.assert_called_once_with(
             MediaTypes.MOVIE.value,
@@ -315,7 +352,7 @@ class ArrImporterTests(TestCase):
 
         imported_counts, warnings = sonarr.importer(None, self.user, "new")
 
-        self.assertEqual(imported_counts[MediaTypes.TV.value], 1)
+        self.assertEqual(imported_counts["collection"], 1)
         self.assertEqual(warnings, "")
         mock_get_media_metadata.assert_called_once_with(
             MediaTypes.TV.value,
@@ -326,13 +363,13 @@ class ArrImporterTests(TestCase):
     @patch("integrations.imports.sonarr.services.get_media_metadata")
     @patch("integrations.imports.sonarr.SonarrClient.episodes")
     @patch("integrations.imports.sonarr.SonarrClient.series")
-    def test_sonarr_import_syncs_episode_collection_and_clears_legacy_show_state(
+    def test_sonarr_import_syncs_episode_collection_and_keeps_show_entry(
         self,
         mock_series,
         mock_episodes,
         mock_get_media_metadata,
     ):
-        """Sonarr should replace the old show-level placeholder with episode rows."""
+        """Sonarr should add episode rows and keep one show entry for TV Shows."""
         show_item = Item.objects.create(
             media_id="95396",
             source=Sources.TMDB.value,
@@ -388,21 +425,21 @@ class ArrImporterTests(TestCase):
 
         imported_counts, warnings = sonarr.importer(None, self.user, "new")
 
-        self.assertEqual(imported_counts[MediaTypes.TV.value], 1)
+        self.assertEqual(imported_counts["collection"], 1)
         self.assertEqual(warnings, "")
-        self.assertFalse(
+        self.assertTrue(
             CollectionSourceState.objects.filter(
                 user=self.user,
                 item=show_item,
                 source="sonarr",
             ).exists(),
         )
-        self.assertFalse(
-            CollectionEntry.objects.filter(
-                user=self.user,
-                item=show_item,
-            ).exists(),
+        show_entries = CollectionEntry.objects.filter(
+            user=self.user,
+            item=show_item,
         )
+        self.assertEqual(show_entries.count(), 1)
+        self.assertEqual(show_entries.get().audio_codec, "AAC")
 
         season_item = Item.objects.get(
             media_id="95396",
@@ -454,6 +491,60 @@ class ArrImporterTests(TestCase):
                 "collected_episodes": 1,
                 "total_episodes": 2,
             },
+        )
+
+    @patch("integrations.imports.sonarr.services.get_media_metadata")
+    @patch("integrations.imports.sonarr.SonarrClient.episodes")
+    @patch("integrations.imports.sonarr.SonarrClient.series")
+    def test_sonarr_import_adds_show_entry_once_and_drops_it_with_the_files(
+        self,
+        mock_series,
+        mock_episodes,
+        mock_get_media_metadata,
+    ):
+        """A series with files lists once as a show and leaves with its files."""
+        mock_get_media_metadata.return_value = {
+            "title": "Severance",
+            "image": "https://example.com/severance.jpg",
+            "genres": [],
+        }
+        mock_episodes.return_value = [
+            {
+                "seasonNumber": 1,
+                "episodeNumber": 1,
+                "title": "Good News About Hell",
+                "airDateUtc": "2022-02-18T00:00:00Z",
+                "episodeFileId": 11,
+            },
+        ]
+        row = {
+            "id": 77,
+            "title": "Severance",
+            "statistics": {"episodeFileCount": 1},
+            "tmdbId": 95396,
+            "seasons": [{"seasonNumber": 1}],
+        }
+        mock_series.return_value = [row]
+
+        sonarr.importer(None, self.user, "new")
+        sonarr.importer(None, self.user, "new")
+
+        show_entries = CollectionEntry.objects.filter(
+            user=self.user,
+            item__media_type=MediaTypes.TV.value,
+            item__media_id="95396",
+        )
+        self.assertEqual(show_entries.count(), 1)
+
+        mock_series.return_value = [{**row, "statistics": {"episodeFileCount": 0}}]
+        sonarr.importer(None, self.user, "new")
+
+        self.assertFalse(show_entries.exists())
+        self.assertFalse(
+            CollectionEntry.objects.filter(
+                user=self.user,
+                item__media_type=MediaTypes.EPISODE.value,
+            ).exists(),
         )
 
     @patch("integrations.imports.sonarr.services.get_media_metadata")
@@ -788,31 +879,206 @@ class ArrImporterTests(TestCase):
             ).exists(),
         )
 
+    @patch("integrations.imports.radarr.RadarrClient.movies", return_value=[])
+    def test_radarr_import_removes_movies_deleted_from_radarr(self, _mock_movies):
+        """A movie no longer in Radarr loses its synced collection copy."""
+        item = Item.objects.create(
+            media_id="26718",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Arrival",
+        )
+        CollectionSourceState.objects.create(
+            user=self.user,
+            item=item,
+            source="radarr",
+            source_instance_id=self.radarr_instance.id,
+        )
+        CollectionEntry.objects.create(user=self.user, item=item)
+
+        imported_counts, _warnings = radarr.importer(None, self.user, "new")
+
+        self.assertEqual(imported_counts["removed"], 1)
+        self.assertFalse(
+            CollectionSourceState.objects.filter(
+                user=self.user,
+                item=item,
+                source="radarr",
+                source_instance_id=self.radarr_instance.id,
+            ).exists()
+        )
+        self.assertFalse(CollectionEntry.objects.filter(user=self.user, item=item).exists())
+
+    @patch("integrations.imports.radarr.RadarrClient.movies")
+    def test_radarr_import_removes_movie_without_a_file(self, mock_movies):
+        """A movie whose file Radarr deleted is no longer owned."""
+        item = Item.objects.create(
+            media_id="26718",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Arrival",
+        )
+        CollectionSourceState.objects.create(
+            user=self.user,
+            item=item,
+            source="radarr",
+            source_instance_id=self.radarr_instance.id,
+        )
+        mock_movies.return_value = [
+            {"title": "Arrival", "hasFile": False, "tmdbId": 26718},
+        ]
+
+        imported_counts, _warnings = radarr.importer(None, self.user, "new")
+
+        self.assertEqual(imported_counts["removed"], 1)
+        self.assertFalse(
+            CollectionSourceState.objects.filter(
+                user=self.user,
+                item=item,
+                source="radarr",
+            ).exists()
+        )
+
+    @patch("integrations.imports.sonarr.SonarrClient.series", return_value=[])
+    def test_sonarr_import_removes_series_deleted_from_sonarr(self, _mock_series):
+        """A series no longer in Sonarr loses its synced collection copies."""
+        show_item = Item.objects.create(
+            media_id="95396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Severance",
+        )
+        episode_item = Item.objects.create(
+            media_id="95396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Good News About Hell",
+        )
+        for item in (show_item, episode_item):
+            CollectionSourceState.objects.create(
+                user=self.user,
+                item=item,
+                source="sonarr",
+                source_instance_id=self.sonarr_instance.id,
+            )
+            CollectionEntry.objects.create(user=self.user, item=item)
+
+        imported_counts, _warnings = sonarr.importer(None, self.user, "new")
+
+        self.assertEqual(imported_counts["removed"], 2)
+        self.assertFalse(
+            CollectionSourceState.objects.filter(
+                user=self.user,
+                source="sonarr",
+                source_instance_id=self.sonarr_instance.id,
+            ).exists()
+        )
+        self.assertFalse(
+            CollectionEntry.objects.filter(
+                user=self.user,
+                item__in=[show_item, episode_item],
+            ).exists()
+        )
+
+    @patch("integrations.imports.sonarr.SonarrClient.episodes")
+    @patch("integrations.imports.sonarr.SonarrClient.series")
+    def test_sonarr_import_keeps_copies_when_episode_fetch_fails(
+        self,
+        mock_series,
+        mock_episodes,
+    ):
+        """A partial Sonarr run must not treat unread servers as deletions."""
+        Item.objects.create(
+            media_id="95396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Severance",
+        )
+        stale_item = Item.objects.create(
+            media_id="1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Still owned elsewhere",
+        )
+        CollectionSourceState.objects.create(
+            user=self.user,
+            item=stale_item,
+            source="sonarr",
+            source_instance_id=self.sonarr_instance.id,
+        )
+        mock_series.return_value = [
+            {
+                "id": 77,
+                "title": "Severance",
+                "statistics": {"episodeFileCount": 1},
+                "tmdbId": 95396,
+            },
+        ]
+        mock_episodes.side_effect = helpers.MediaImportError("timed out")
+
+        _counts, warnings = sonarr.importer(None, self.user, "new")
+
+        self.assertIn("failed to fetch Sonarr episodes", warnings)
+        self.assertTrue(
+            CollectionSourceState.objects.filter(
+                user=self.user,
+                item=stale_item,
+                source="sonarr",
+                source_instance_id=self.sonarr_instance.id,
+            ).exists()
+        )
+
     @patch("integrations.imports.radarr.requests.get")
-    def test_radarr_import_marks_connection_broken_on_timeout(self, mock_get):
-        """Radarr timeouts should become handled import errors with account state."""
+    def test_radarr_import_records_timeout_without_marking_broken(self, mock_get):
+        """A Radarr timeout is recorded but says nothing about the API key."""
         mock_get.side_effect = requests.exceptions.ConnectTimeout("connect timed out")
 
         with self.assertRaises(helpers.MediaImportError) as cm:
             radarr.importer(None, self.user, "new")
 
         self.radarr_instance.refresh_from_db()
-        self.assertTrue(self.radarr_instance.connection_broken)
+        self.assertFalse(self.radarr_instance.connection_broken)
         self.assertIn("Could not reach Radarr", str(cm.exception))
         self.assertIn("Could not reach Radarr", self.radarr_instance.last_error_message)
 
     @patch("integrations.imports.sonarr.requests.get")
-    def test_sonarr_import_marks_connection_broken_on_timeout(self, mock_get):
-        """Sonarr timeouts should become handled import errors with account state."""
+    def test_sonarr_import_records_timeout_without_marking_broken(self, mock_get):
+        """A Sonarr timeout is recorded but says nothing about the API key."""
         mock_get.side_effect = requests.exceptions.ConnectTimeout("connect timed out")
 
         with self.assertRaises(helpers.MediaImportError) as cm:
             sonarr.importer(None, self.user, "new")
 
         self.sonarr_instance.refresh_from_db()
-        self.assertTrue(self.sonarr_instance.connection_broken)
+        self.assertFalse(self.sonarr_instance.connection_broken)
         self.assertIn("Could not reach Sonarr", str(cm.exception))
         self.assertIn("Could not reach Sonarr", self.sonarr_instance.last_error_message)
+
+
+    @patch("integrations.imports.radarr.requests.get")
+    def test_radarr_import_marks_connection_broken_on_rejected_key(self, mock_get):
+        """Only a rejected Radarr API key marks the instance broken."""
+        mock_get.return_value.status_code = 401
+
+        with self.assertRaises(helpers.ConnectionAuthError):
+            radarr.importer(None, self.user, "new")
+
+        self.radarr_instance.refresh_from_db()
+        self.assertTrue(self.radarr_instance.connection_broken)
+
+
+    @patch("integrations.imports.sonarr.requests.get")
+    def test_sonarr_import_marks_connection_broken_on_rejected_key(self, mock_get):
+        """Only a rejected Sonarr API key marks the instance broken."""
+        mock_get.return_value.status_code = 401
+
+        with self.assertRaises(helpers.ConnectionAuthError):
+            sonarr.importer(None, self.user, "new")
+
+        self.sonarr_instance.refresh_from_db()
+        self.assertTrue(self.sonarr_instance.connection_broken)
 
 
 class ArrImportTaskTests(TestCase):
@@ -890,6 +1156,33 @@ class CollectionSourceSyncTests(TestCase):
         self.assertEqual(mock_update_or_create.call_count, 2)
         mock_reconcile.assert_called_once_with(user=self.user, item=self.item)
 
+    def test_a_state_without_quality_neither_blanks_nor_outranks_a_label(self):
+        """An empty label is unknown: an older Radarr label still wins and stays."""
+        upsert_collection_source_state(
+            user=self.user,
+            item=self.item,
+            source="radarr",
+            quality_label="DVD",
+            source_updated_at=datetime(2020, 1, 1, tzinfo=UTC),
+        )
+        upsert_collection_source_state(
+            user=self.user,
+            item=self.item,
+            source="jellyfin",
+        )
+
+        entry = CollectionEntry.objects.get(user=self.user, item=self.item)
+        self.assertEqual(entry.resolution, "DVD")
+
+        remove_collection_source_state(
+            user=self.user,
+            item=self.item,
+            source="radarr",
+        )
+
+        entry.refresh_from_db()
+        self.assertEqual(entry.resolution, "DVD")
+
     def test_two_radarr_instances_own_independent_states(self):
         """Two Radarr instances reporting the same item get separate rows.
 
@@ -942,6 +1235,90 @@ class CollectionSourceSyncTests(TestCase):
                 user=self.user, item=self.item, source="radarr", source_instance_id=first.id
             ).exists()
         )
+
+    def test_prune_is_scoped_to_the_calling_source_and_instance(self):
+        """A Radarr run may only remove states Radarr itself reported."""
+        radarr = RadarrInstance.objects.create(
+            user=self.user,
+            base_url="https://radarr.local:7878",
+            api_key=helpers.encrypt("radarr-key"),
+        )
+        sibling = RadarrInstance.objects.create(
+            user=self.user,
+            base_url="https://radarr-2.local:7878",
+            api_key=helpers.encrypt("radarr-key-2"),
+        )
+        for source, instance_id in (
+            ("radarr", radarr.id),
+            ("radarr", sibling.id),
+            ("sonarr", None),
+            ("jellyfin", None),
+        ):
+            CollectionSourceState.objects.create(
+                user=self.user,
+                item=self.item,
+                source=source,
+                source_instance_id=instance_id,
+            )
+
+        removed = prune_collection_source_states(
+            user=self.user,
+            source="radarr",
+            source_instance_id=radarr.id,
+            keep_item_ids=set(),
+        )
+
+        self.assertEqual(removed, 1)
+        remaining = set(
+            CollectionSourceState.objects.filter(
+                user=self.user, item=self.item
+            ).values_list("source", "source_instance_id")
+        )
+        self.assertEqual(
+            remaining,
+            {
+                ("radarr", sibling.id),
+                ("sonarr", None),
+                ("jellyfin", None),
+            },
+        )
+
+    def test_prune_keeps_a_manual_collection_entry(self):
+        """Pruning a source snapshot must not erase the user's own copy row."""
+        radarr = RadarrInstance.objects.create(
+            user=self.user,
+            base_url="https://radarr.local:7878",
+            api_key=helpers.encrypt("radarr-key"),
+        )
+        CollectionSourceState.objects.create(
+            user=self.user,
+            item=self.item,
+            source="radarr",
+            source_instance_id=radarr.id,
+        )
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=self.item,
+            media_type="digital",
+            audio_codec="AAC",
+            resolution="1080p",
+        )
+
+        prune_collection_source_states(
+            user=self.user,
+            source="radarr",
+            source_instance_id=radarr.id,
+            keep_item_ids=set(),
+        )
+
+        self.assertFalse(
+            CollectionSourceState.objects.filter(
+                user=self.user, item=self.item, source="radarr"
+            ).exists()
+        )
+        entry = CollectionEntry.objects.get(user=self.user, item=self.item)
+        self.assertEqual(entry.media_type, "digital")
+        self.assertEqual(entry.resolution, "1080p")
 
 
 class SonarrSeriesTypeIsNotAnimeRoutingTests(TestCase):

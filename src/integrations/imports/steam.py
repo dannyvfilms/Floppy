@@ -7,7 +7,8 @@ import requests
 import app
 from app.models import MediaTypes, Sources, Status
 from app.providers import credentials, services
-from app.providers.igdb import ExternalGameSource, external_game
+from app.providers.igdb import ExternalGameSource, describe_credentials, external_game
+from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 
@@ -52,9 +53,12 @@ class SteamImporter:
         self.bulk_media = defaultdict(list)
 
         logger.info(
-            "Initialized Steam importer for Steam ID %s with mode %s",
+            "Initialized Steam importer for Steam ID %s with mode %s "
+            "(steam_key_from=%s; igdb %s)",
             steam_id,
             mode,
+            credentials.source_of("steam", "api_key", user),
+            describe_credentials(user),
         )
 
     def import_data(self):
@@ -65,7 +69,9 @@ class SteamImporter:
             logger.info("No games found for Steam user %s", self.steam_id)
             return {}, ""
 
-        for game_data in owned_games:
+        total = len(owned_games)
+        for index, game_data in enumerate(owned_games, start=1):
+            import_progress.report(index, total, "Steam")
             self._process_game(game_data)
 
         helpers.bulk_create_media(self.bulk_media, self.user)
@@ -75,6 +81,8 @@ class SteamImporter:
             app.models.Game.objects.bulk_update(
                 self.to_update, fields=["progress", "status"]
             )
+            # bulk_update sends no save signal; publish these rows' days.
+            helpers.note_bulk_rows(self.to_update)
             logger.info(
                 "Updated %d existing games for user %s",
                 len(self.to_update),
@@ -96,6 +104,11 @@ class SteamImporter:
             media_type: len(media_list)
             for media_type, media_list in self.bulk_media.items()
         }
+        # Updates are reported too: a sync that only raised hours otherwise
+        # reads as "No media was imported" and skips the cache refresh that
+        # makes the new hours show up in History and Statistics.
+        imported_counts["created"] = len(self.bulk_media[MediaTypes.GAME.value])
+        imported_counts["updated"] = len(self.to_update)
 
         logger.info(
             "Steam import completed for user %s: %s",

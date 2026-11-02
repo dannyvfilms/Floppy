@@ -17,6 +17,7 @@ from django.utils import timezone
 
 from app.models import Item, MediaTypes, Sources
 from app.providers import services
+from integrations import connection_health
 from integrations.imports import helpers
 
 # Shared MDBList client helpers live with the full-account importer; keep the
@@ -284,6 +285,11 @@ def import_mdblist_lists(user):
 
     try:
         api_key = helpers.decrypt_or_raise(account.api_key)
+    except helpers.MediaImportError as error:
+        connection_health.record_failure(account, error, auth=True)
+        raise
+
+    try:
         own_lists = _request(api_key, "/lists/user")
         if not isinstance(own_lists, list):
             own_lists = []
@@ -317,17 +323,15 @@ def import_mdblist_lists(user):
                 continue
             skipped_items += _sync_list(user, api_key, list_info)
     except helpers.MediaImportError as error:
-        account.connection_broken = True
-        account.last_error_message = str(error)
-        account.save(update_fields=["connection_broken", "last_error_message"])
+        connection_health.record_failure(
+            account,
+            error,
+            auth=isinstance(error, helpers.ConnectionAuthError),
+        )
         raise
 
-    account.connection_broken = False
-    account.last_error_message = ""
     account.last_sync_at = timezone.now()
-    account.save(
-        update_fields=["connection_broken", "last_error_message", "last_sync_at"],
-    )
+    connection_health.record_success(account, extra_fields=["last_sync_at"])
     logger.info(
         "Synced %s MDBList lists for %s (%s lists skipped, %s items skipped)",
         len(synced_ids) + len(extra_ids) - skipped_lists,
@@ -347,9 +351,7 @@ def import_mdblist_list_by_reference(user, reference):
     try:
         api_key = helpers.decrypt_or_raise(account.api_key)
     except helpers.MediaImportError as error:
-        account.connection_broken = True
-        account.last_error_message = str(error)
-        account.save(update_fields=["connection_broken", "last_error_message"])
+        connection_health.record_failure(account, error, auth=True)
         raise
 
     list_info = resolve_list_reference(api_key, reference)

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block title %}{% translate "Move tracking" %} - {{ item.title }}{% endblock title %}
+{% block content %}
+  <div class="mx-auto max-w-2xl space-y-6">
+    <header>
+      <h1 class="text-3xl font-bold">{% translate "Move tracking" %}</h1>
+      <p class="mt-2 text-lg">{{ item.title }}</p>
+    </header>
+    {% if error %}
+      <p role="alert" class="rounded-lg border p-4">{{ error }}</p>
+      <a href="{% url 'media_details' item.source item.media_type item.media_id item.title|default:'item' %}" class="inline-block px-4 py-2">{% translate "Back" %}</a>
+    {% else %}
+      <p>
+        {% blocktranslate trimmed with source=source_label target=switch.target_label %}
+          This show is tracked on {{ source }}. Moving it keeps your status, ratings, notes and every watched episode, and only changes which provider ({{ target }}) supplies its seasons and episodes.
+        {% endblocktranslate %}
+      </p>
+      <dl class="grid grid-cols-2 gap-3 rounded-lg border p-4 sm:grid-cols-3">
+        <div>
+          <dt class="text-sm text-[var(--color-text-muted)]">{% translate "Matched on" %} {{ switch.target_label }}</dt>
+          <dd class="font-semibold">{{ switch.target_title }}</dd>
+        </div>
+        <div>
+          <dt class="text-sm text-[var(--color-text-muted)]">{% translate "Tracked seasons" %}</dt>
+          <dd class="font-semibold">{{ switch.seasons }}</dd>
+        </div>
+        <div>
+          <dt class="text-sm text-[var(--color-text-muted)]">{% translate "Watched episodes" %}</dt>
+          <dd class="font-semibold">{{ switch.episodes }}</dd>
+        </div>
+      </dl>
+      {% if switch.missing %}
+        <div role="alert" class="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4">
+          <p class="font-semibold">{% blocktranslate with target=switch.target_label %}{{ target }} is missing some of what you track, so this show can't be moved yet.{% endblocktranslate %}</p>
+          <p>{% translate "Missing:" %} {{ switch.missing|join:", " }}</p>
+        </div>
+      {% endif %}
+      <form method="post" class="flex gap-4">
+        {% csrf_token %}
+        <button type="submit"
+                {% if switch.missing %}disabled{% endif %}
+                class="rounded-lg border px-4 py-2 font-semibold disabled:cursor-not-allowed disabled:opacity-50">
+          {% blocktranslate with target=switch.target_label %}Move to {{ target }}{% endblocktranslate %}
+        </button>
+        <a href="{% url 'media_details' item.source item.media_type item.media_id item.title|default:'item' %}" class="px-4 py-2">{% translate "Cancel" %}</a>
+      </form>
+    {% endif %}
+  </div>
+{% endblock content %}

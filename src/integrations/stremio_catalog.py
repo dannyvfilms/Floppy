@@ -2,6 +2,7 @@
 
 import re
 from dataclasses import dataclass, field
+from itertools import chain
 from urllib.parse import parse_qsl, unquote
 
 from django.db.models import F, Max
@@ -111,11 +112,11 @@ def resolve_addon_credential(token):
 
     grant = CatalogGrant.objects.select_related("user").filter(token=token).first()
     if grant is not None:
-        if not grant.is_valid():
+        if not grant.is_valid() or not grant.user.is_active:
             return (None, None)
         return (grant.user, grant)
 
-    user = User.objects.filter(token=token).first()
+    user = User.objects.filter(token=token, is_active=True).first()
     return (user, None) if user is not None else (None, None)
 
 
@@ -124,7 +125,14 @@ def touch_grant(grant, *, interval_minutes=60):
 
     Stremio polls catalogs continuously; writing a row per request would make
     this the busiest table in the install for no added information.
+    The UPDATE is conditional on the *stored* timestamp, not the (possibly
+    stale) in-memory copy, and counts affected rows — two requests holding
+    separately-loaded expired snapshots collapse into at most one stored
+    advance per interval.
     """
+    from datetime import timedelta
+
+    from django.db.models import Q
     from django.utils import timezone
 
     now = timezone.now()
@@ -132,8 +140,15 @@ def touch_grant(grant, *, interval_minutes=60):
         interval_minutes * 60
     ):
         return
-    type(grant).objects.filter(pk=grant.pk).update(last_used_at=now)
-    grant.last_used_at = now
+    cutoff = now - timedelta(minutes=interval_minutes)
+    updated = (
+        type(grant)
+        .objects.filter(pk=grant.pk)
+        .filter(Q(last_used_at__isnull=True) | Q(last_used_at__lte=cutoff))
+        .update(last_used_at=now)
+    )
+    if updated:
+        grant.last_used_at = now
 
 
 def manifest_catalogs_for_grant(user, grant, selected=None):
@@ -484,7 +499,7 @@ def project_catalog(user, spec, skip):
     return build_metas(items, spec, skip)
 
 
-def project_meta(user, stremio_type, imdb_id):
+def project_meta(user, stremio_type, imdb_id, *, grant=None):
     """Return the publishable meta for one item the user actually tracks.
 
     Scoped to the user's own library on purpose. This endpoint is reachable by
@@ -500,18 +515,29 @@ def project_meta(user, stremio_type, imdb_id):
     if not media_types:
         return None
 
-    owned_list_ids = CustomList.objects.filter(owner=user).values_list("id", flat=True)
-    membership = (
-        CustomListItem.objects.filter(
-            custom_list_id__in=list(owned_list_ids),
-            item__media_type__in=media_types,
+    if grant is not None:
+        # An install may read only items its catalogs publish, not
+        # every private list belonging to the account (or just the same type).
+        items = chain.from_iterable(
+            status_source_items(user, spec)
+            if spec.statuses
+            else list_source_items(user, spec)
+            for spec in CATALOG_SPECS
+            if spec.stremio_type == stremio_type
+            and grant.allows_catalog(spec.catalog_id)
         )
-        .select_related("item")
-        .order_by("-date_added", "-id")
-    )
+    else:
+        membership = (
+            CustomListItem.objects.filter(
+                custom_list__owner=user,
+                item__media_type__in=media_types,
+            )
+            .select_related("item")
+            .order_by("-date_added", "-id")
+        )
+        items = (entry.item for entry in membership.iterator())
 
-    for entry in membership.iterator():
-        item = entry.item
+    for item in items:
         if local_imdb_id(item) != imdb_id:
             continue
 

@@ -440,11 +440,29 @@ class SeasonRewatch(TestCase):
             Status.IN_PROGRESS.value,
         )
 
-        TV.objects.get(pk=self.tv.pk).stop_rewatch()
+        ended = {**SEASON_METADATA, "details": {"status": "Ended"}}
+        with patch(METADATA_PATH, return_value=ended):
+            TV.objects.get(pk=self.tv.pk).stop_rewatch()
 
         self.assertEqual(
             TV.objects.get(pk=self.tv.pk).status,
             Status.COMPLETED.value,
+        )
+
+    def test_show_stop_rewatch_keeps_a_returning_series_in_progress(
+        self,
+        _mock_metadata,
+    ):
+        """Every season Completed again does not finish a show still airing (#1265)."""
+        TV.objects.get(pk=self.tv.pk).start_rewatch()
+
+        returning = {**SEASON_METADATA, "details": {"status": "Returning Series"}}
+        with patch(METADATA_PATH, return_value=returning):
+            TV.objects.get(pk=self.tv.pk).stop_rewatch()
+
+        self.assertEqual(
+            TV.objects.get(pk=self.tv.pk).status,
+            Status.IN_PROGRESS.value,
         )
 
     def test_show_stop_rewatch_resolves_each_season_by_its_own_length(

@@ -403,7 +403,7 @@ class MDBListImportTests(TestCase):
     def test_auth_failure_marks_connection_broken(self, mock_request):
         """An invalid key should flag the account and raise."""
         _make_account(self.user)
-        mock_request.side_effect = import_helpers.MediaImportError(
+        mock_request.side_effect = import_helpers.ConnectionAuthError(
             "MDBList API key is invalid or revoked.",
         )
 
@@ -413,6 +413,33 @@ class MDBListImportTests(TestCase):
         account = MDBListAccount.objects.get(user=self.user)
         self.assertTrue(account.connection_broken)
         self.assertIn("invalid", account.last_error_message)
+
+    @patch("lists.imports.mdblist._request")
+    def test_non_auth_failure_records_error_without_breaking(self, mock_request):
+        """Only a rejected key marks the account broken."""
+        _make_account(self.user)
+        mock_request.side_effect = import_helpers.MediaImportError("list is gone")
+
+        with self.assertRaises(import_helpers.MediaImportError):
+            mdblist.import_mdblist_lists(self.user)
+
+        account = MDBListAccount.objects.get(user=self.user)
+        self.assertFalse(account.connection_broken)
+        self.assertEqual(account.last_error_message, "list is gone")
+
+    @patch("lists.imports.mdblist._request", return_value=[])
+    def test_scheduled_sync_heals_broken_account(self, mock_request):
+        """The scheduled sync still runs for a broken account and clears the flag."""
+        from lists.tasks import import_mdblist_lists_task
+
+        account = _make_account(self.user)
+        account.connection_broken = True
+        account.save(update_fields=["connection_broken"])
+
+        import_mdblist_lists_task(self.user.id)
+
+        account.refresh_from_db()
+        self.assertFalse(account.connection_broken)
 
 
 class MDBListViewTests(TestCase):

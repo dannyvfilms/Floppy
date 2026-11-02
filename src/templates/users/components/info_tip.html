@@ -1,0 +1,15 @@
+{% load i18n %}
+{# A small info icon with a short explanation on hover or tap. Pass tip (already translated) and label (the button's accessible name). The tip opens above the nearest positioned parent, so put "relative" on the row that holds the icon. #}
+<div class="inline-flex" x-data="{ tooltipOpen: false }">
+  <button @mouseenter="tooltipOpen = true"
+          @mouseleave="tooltipOpen = false"
+          @click="tooltipOpen = !tooltipOpen"
+          @click.outside="tooltipOpen = false"
+          class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center"
+          type="button"
+          aria-label="{{ label }}">{% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}</button>
+  <div x-show="tooltipOpen"
+       x-cloak
+       class="absolute left-0 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-3 bg-[var(--color-surface-strong)] border border-[var(--color-surface-border)] text-[var(--color-text)] text-xs rounded-lg shadow-lg z-50"
+       style="display: none">{{ tip }}</div>
+</div>

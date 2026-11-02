@@ -15,7 +15,7 @@ from django.urls import reverse
 from app.models import Item, MediaTypes, Movie, Sources, Status
 from lists import tasks as list_tasks
 from lists.models import CustomList
-from users.home_screen import _custom_list_entries
+from users.home_screen import _custom_list_row_window
 from users.models import HomeScreenRowTypeChoices
 
 
@@ -141,12 +141,64 @@ class GetRequestsDoNotSyncInlineTests(TestCase):
         mock_delay,
         mock_sync,
     ):
-        """Home smart-list rows render from the dynamic queryset."""
+        """Home smart-list rows render saved membership and sync in the background."""
         row = self.user.home_screen_rows.create(
             media_type=MediaTypes.MOVIE.value,
             row_type=HomeScreenRowTypeChoices.CUSTOM_LIST,
             custom_list=self.smart_list,
         )
-        _custom_list_entries(self.user, row)
+        _custom_list_row_window(self.user, row, 0, 100, seed=0)
         mock_sync.assert_not_called()
         mock_delay.assert_called_once_with(self.smart_list.id)
+
+
+class MediaSaveDefersSmartListSyncTests(TestCase):
+    """A media write queues the rule evaluation instead of running it inline."""
+
+    def setUp(self):
+        """Create a user, a smart list and an untracked item."""
+        self.user = get_user_model().objects.create_user(
+            username="smartwriter",
+            password="12345",
+        )
+        self.item = Item.objects.create(
+            title="Written Movie",
+            media_id="789",
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/movie.jpg",
+        )
+        self.smart_list = _make_smart_list(self.user)
+
+    def test_save_queues_task_and_membership_follows(self):
+        """The save queues one task; running it adds the item to the list."""
+        with (
+            self.settings(CELERY_TASK_ALWAYS_EAGER=False),
+            patch("lists.tasks.sync_smart_lists_for_items_task.delay") as mock_delay,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            Movie.objects.create(
+                item=self.item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+            )
+        self.assertFalse(self.smart_list.items.filter(id=self.item.id).exists())
+        mock_delay.assert_called_with(self.user.id, [self.item.id])
+
+        list_tasks.sync_smart_lists_for_items_task(self.user.id, [self.item.id])
+        self.assertTrue(self.smart_list.items.filter(id=self.item.id).exists())
+
+    def test_save_without_smart_lists_queues_nothing(self):
+        """An owner with no smart lists pays no enqueue."""
+        self.smart_list.delete()
+        with (
+            self.settings(CELERY_TASK_ALWAYS_EAGER=False),
+            patch("lists.tasks.sync_smart_lists_for_items_task.delay") as mock_delay,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            Movie.objects.create(
+                item=self.item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+            )
+        mock_delay.assert_not_called()

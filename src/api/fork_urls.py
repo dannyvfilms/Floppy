@@ -4,6 +4,7 @@ from django.urls import re_path
 
 from . import (
     fork_views,
+    fork_views_consumption_batch,
     fork_views_discover,
     fork_views_integrations,
     fork_views_lists,
@@ -14,12 +15,16 @@ from . import (
     fork_views_progress_changes,
     fork_views_scrobble,
     fork_views_statistics,
+    fork_views_sync,
     fork_views_tracking,
     fork_views_users,
+    fork_views_video,
     fork_views_watched_state,
 )
 
 urlpatterns = [
+    re_path(r"^sync/bootstrap/?$", fork_views_sync.SyncBootstrapView.as_view(), name="api_sync_bootstrap"),
+    re_path(r"^sync/snapshot/?$", fork_views_sync.SyncSnapshotView.as_view(), name="api_sync_snapshot"),
     re_path(
         r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/episodes/(?P<episode_number>\d+)/watch/?$",
         fork_views_tracking.MediaEpisodeWatchView.as_view(),
@@ -101,9 +106,29 @@ urlpatterns = [
         name="api_collection",
     ),
     re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/episodes/(?P<episode_number>\d+)/collection/?$",
+        fork_views.MediaCollectionView.as_view(),
+        name="api_media_episode_collection",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/collection/?$",
+        fork_views.MediaCollectionView.as_view(),
+        name="api_media_collection",
+    ),
+    re_path(
         r"^collection/(?P<entry_id>\d+)/?$",
         fork_views.CollectionEntryView.as_view(),
         name="api_collection_entry",
+    ),
+    re_path(
+        r"^consumptions/batch/?$",
+        fork_views_consumption_batch.ConsumptionBatchView.as_view(),
+        name="api_consumption_batch",
+    ),
+    re_path(
+        r"^consumptions/batch/(?P<operation_id>[^/]+)/?$",
+        fork_views_consumption_batch.ConsumptionBatchDetailView.as_view(),
+        name="api_consumption_batch_detail",
     ),
     re_path(
         r"^tasks/(?P<task_id>[\w-]+)/?$",
@@ -191,6 +216,21 @@ urlpatterns = [
         name="api_podcast_mark_all_played",
     ),
     re_path(
+        r"^videos/(?P<source>[^/]+)/(?P<media_id>[^/]+)/plays/?$",
+        fork_views_video.VideoPlayView.as_view(),
+        name="api_video_play",
+    ),
+    re_path(
+        r"^videos/(?P<source>[^/]+)/(?P<media_id>[^/]+)/game/?$",
+        fork_views_video.VideoGameView.as_view(),
+        name="api_video_game",
+    ),
+    re_path(
+        r"^videos/(?P<source>[^/]+)/(?P<media_id>[^/]+)/plays/(?P<external_id>.+?)/?$",
+        fork_views_video.VideoPlayDetailView.as_view(),
+        name="api_video_play_detail",
+    ),
+    re_path(
         r"^podcasts/episodes/plays/?$",
         fork_views_podcast.PodcastEpisodePlayView.as_view(),
         name="api_podcast_episode_play",
@@ -221,6 +261,11 @@ urlpatterns = [
         name="api_list_items_order",
     ),
     re_path(
+        r"^lists/(?P<list_id>\d+)/items/ranks/?$",
+        fork_views_lists.ListItemsRanksView.as_view(),
+        name="api_list_items_ranks",
+    ),
+    re_path(
         r"^lists/(?P<list_id>\d+)/recommendations/?$",
         fork_views_lists.ListRecommendationsView.as_view(),
         name="api_list_recommendations",
@@ -249,6 +294,11 @@ urlpatterns = [
         r"^discover/?$",
         fork_views_discover.DiscoverRowsView.as_view(),
         name="api_discover",
+    ),
+    re_path(
+        r"^recommendations/?$",
+        fork_views_discover.RecommendationsView.as_view(),
+        name="api_recommendations",
     ),
     re_path(
         r"^discover/refresh/?$",
@@ -370,5 +420,20 @@ urlpatterns = [
         r"^sync/conflicts/(?P<conflict_id>\d+)/resolve/?$",
         fork_views_watched_state.SyncConflictResolveView.as_view(),
         name="api_sync_conflict_resolve",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/state/?$",
+        fork_views_tracking.MediaStateView.as_view(),
+        name="api_media_state",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/state/?$",
+        fork_views_tracking.MediaSeasonStateView.as_view(),
+        name="api_media_season_state",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/(?P<episode_number>\d+)/state/?$",
+        fork_views_tracking.MediaEpisodeStateView.as_view(),
+        name="api_media_episode_state",
     ),
 ]

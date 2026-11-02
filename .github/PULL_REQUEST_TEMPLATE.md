@@ -1,6 +1,18 @@
 ## Summary
 - What changed and why in plain, approachable terms.
-- For user interface or visual changes, attach before and after screenshots.
+
+## Screenshots
+Does this PR change anything a person can see (pages, buttons, colours, layout, text)? If so, please show it:
+
+- Add **before and after screenshots** (or a short screen recording) below. Drag and drop works. For brand-new UI, an after screenshot is enough.
+- Cover each view you touched, and the phone layout if it changed.
+- **If an AI agent did the work:** include screenshots of the running app, or a link to a published artifact page that shows them. A PR with visible changes and no pictures will be sent back.
+
+Before:
+
+After:
+
+- [ ] No UI change (nothing visible is different, so no screenshots needed)
 
 ## AI Assistance
 - If an AI assistant (such as Claude, Codex, Copilot) generated or shaped this code, specify the exact model name (e.g. `claude-sonnet-4-6`, `gpt-4o`).

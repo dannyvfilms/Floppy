@@ -17,6 +17,7 @@ from typing import Any
 import httpx
 
 DEFAULT_TIMEOUT = 30.0
+MAX_PORT = 65535
 CONTAINER_RUNTIME_PORT_FILE = Path("/run/floppy/server-port")
 
 
@@ -36,7 +37,6 @@ class FloppyAPIError(RuntimeError):
 
 def _container_runtime_url() -> str | None:
     """Return the packaged-container URL when its launcher publishes a port."""
-
     try:
         text = CONTAINER_RUNTIME_PORT_FILE.read_text(encoding="ascii").strip()
     except (FileNotFoundError, OSError, UnicodeDecodeError):
@@ -45,7 +45,7 @@ def _container_runtime_url() -> str | None:
     if not text.isascii() or not text.isdecimal():
         return None
     port = int(text, 10)
-    if not 1 <= port <= 65535:
+    if not 1 <= port <= MAX_PORT:
         return None
     return f"http://127.0.0.1:{port}"
 

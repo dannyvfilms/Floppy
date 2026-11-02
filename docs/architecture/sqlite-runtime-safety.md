@@ -86,3 +86,11 @@ Sources: [SQLite PRAGMA documentation](https://www.sqlite.org/pragma.html#pragma
 This guard prevents the known WAL-reset condition. It does not replace the startup integrity check, verified backups, or SQLite recovery tools. Those controls remain separate because an existing database can already contain damage from an older run, storage failure, or another cause.
 
 No schema migration is required for this runtime policy.
+
+## Planner statistics
+
+A database that has never been `ANALYZE`d has no `sqlite_stat1`, and SQLite then chooses indexes by heuristic: a lookup such as "this user's season for this show" walks every season the user tracks by `user_id` and probes each item, instead of seeking by item. On a 2 GB database on a spinning array disk one such query took 3.65 s for 1,126 rows (ledger: `USER-REPORTED/episode-page`).
+
+The `Optimize database planner statistics` Celery task runs `PRAGMA analysis_limit=1000; PRAGMA optimize=0x10002` once a day, and on the first beat start. It analyses only tables without statistics or that changed substantially, on a row sample, so steady-state runs are nearly free. SQLite only; disable with `DB_OPTIMIZE_ENABLED=false`, tune the sample with `DB_OPTIMIZE_ANALYSIS_LIMIT`. Its log line is `optimize_database_statistics stat_rows_before=… stat_rows_after=… duration_ms=…`.
+
+`app.tests.test_tasks_db_optimize` asserts the plan moves from `app_season_user_id` to `app_item_media_lookup_idx`.

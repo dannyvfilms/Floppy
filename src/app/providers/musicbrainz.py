@@ -5,13 +5,14 @@ import re
 import time
 from collections import OrderedDict
 from http import HTTPStatus
+from typing import NoReturn
 from urllib.parse import quote
 
 import requests
 from django.conf import settings
 from django.core.cache import cache
 
-from app import helpers
+from app import helpers, request_timing
 from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources
 from app.providers import credentials, services
@@ -100,6 +101,7 @@ def _infer_genre_parents(genre_name: str) -> list[str]:
     return _normalize_musicbrainz_genre_names(inferred)
 
 
+@request_timing.timed_provider_call
 def get_wikipedia_data(title):
     """Fetch Wikipedia data for a given title (bio extract and image).
 
@@ -168,6 +170,7 @@ _LASTFM_READ_MORE_RE = re.compile(r"\s*<a[^>]*>Read more on Last\.fm</a>\.?\s*$"
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 
+@request_timing.timed_provider_call
 def get_lastfm_bio(mbid):
     """Fetch an artist bio from Last.fm's artist.getInfo, keyed by MBID.
 
@@ -236,6 +239,19 @@ def _rate_limit():
     _last_request_time = time.time()
 
 
+def handle_error(error) -> NoReturn:
+    """Wrap a MusicBrainz HTTP failure in the shared provider error type.
+
+    ``services.api_request`` re-raises a bare ``requests.exceptions.HTTPError``
+    for any 4xx it does not retry and leaves wrapping to each provider. Every
+    other large provider module does this; musicbrainz did not, so callers that
+    classify by exception type - notably the metadata backfill's
+    terminal-vs-transient check - saw an unrecognised error and retried dead
+    recording ids forever.
+    """
+    raise services.ProviderAPIError(Sources.MUSICBRAINZ.value, error) from None
+
+
 def _mb_request(endpoint, params=None):
     """Make a rate-limited request to the MusicBrainz API."""
     _rate_limit()
@@ -267,7 +283,7 @@ def _mb_request(endpoint, params=None):
             logger.debug("MusicBrainz API request 404 for %s: %s", url, error)
         else:
             logger.warning("MusicBrainz API request failed: %s", error)
-        raise
+        handle_error(error)
     except Exception as error:  # pragma: no cover - defensive
         logger.warning("MusicBrainz API request failed: %s", error)
         raise

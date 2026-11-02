@@ -1,0 +1,111 @@
+{% load i18n %}
+<div class="library-panel mb-4 divide-y divide-[var(--color-surface-border)] border-b border-[var(--color-surface-border)] pb-1">
+  {% if message %}
+    <p class="pb-2 text-sm text-[var(--color-success-text)]">{{ message }}</p>
+  {% endif %}
+  {% if error %}
+    <p class="pb-2 text-sm text-[var(--color-error-text)]">{{ error }}</p>
+  {% endif %}
+
+  {% for panel in panels %}
+    <section class="py-3 space-y-2">
+      <div class="flex items-center justify-between gap-3">
+        <h3 class="min-w-0 truncate text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+          {{ panel.app }}{% if panel.name != panel.app %} <span class="normal-case font-medium">· {{ panel.name }}</span>{% endif %}
+        </h3>
+        {% if panel.error %}
+          <span class="text-xs text-[var(--color-error-text)]">{{ panel.error }}</span>
+        {% else %}
+          <div class="flex shrink-0 items-center gap-2">
+            <span class="rounded-full border border-[var(--color-surface-border)] px-2 py-0.5 text-xs
+                         {% if panel.status == "has_file" %}text-[var(--color-success-text)]{% elif panel.status == "downloading" %}text-[var(--color-info-text)]{% else %}text-[var(--color-warning-text)]{% endif %}">
+              {% if panel.status == "has_file" %}{% translate "Has file" %}{% elif panel.status == "downloading" %}{% translate "Downloading" %}{% else %}{% translate "Missing" %}{% endif %}
+            </span>
+            {% if panel.search %}
+              <form hx-post="{{ panel_url }}" hx-target="closest .library-panel" hx-swap="outerHTML">
+                {% csrf_token %}
+                <input type="hidden" name="app" value="{{ panel.app }}">
+                <input type="hidden" name="instance_id" value="{{ panel.instance_id }}">
+                <input type="hidden" name="kind" value="{{ panel.search.kind }}">
+                <input type="hidden" name="arr_id" value="{{ panel.search.arr_id }}">
+                {% if panel.search.season is not None %}<input type="hidden" name="season" value="{{ panel.search.season }}">{% endif %}
+                {% if season_number is not None %}<input type="hidden" name="season_number" value="{{ season_number }}">{% endif %}
+                {% if episode_number is not None %}<input type="hidden" name="episode_number" value="{{ episode_number }}">{% endif %}
+                <button type="submit"
+                        title="{% blocktranslate with app=panel.app %}Ask {{ app }} to look for a release{% endblocktranslate %}"
+                        class="rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-1 text-xs text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface-muted)] cursor-pointer">{% translate "Search now" %}</button>
+              </form>
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+
+      {% if not panel.error %}
+        <p class="text-sm text-[var(--color-text-secondary)]">
+          {% if panel.summary %}{% blocktranslate with have=panel.summary.0 total=panel.summary.1 %}{{ have }} of {{ total }} episodes have files{% endblocktranslate %}{% endif %}
+          {% if panel.quality %}{{ panel.quality }}{% endif %}
+          {% if panel.size %} · {{ panel.size|filesizeformat }}{% endif %}
+          {% if panel.added %} · {% blocktranslate with date=panel.added|date:"M j, Y" %}Added {{ date }}{% endblocktranslate %}{% endif %}
+          {% if not panel.monitored %} · {% translate "Not monitored" %}{% endif %}
+        </p>
+
+        {% if panel.path %}
+          <div class="flex items-center gap-2 rounded bg-[var(--color-surface-dim)] px-2 py-1" x-data="{ copied: false }">
+            <code class="min-w-0 flex-1 truncate text-xs text-[var(--color-text-secondary)]" title="{{ panel.path }}">{{ panel.path }}</code>
+            <button type="button"
+                    class="shrink-0 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
+                    @click="navigator.clipboard.writeText($el.previousElementSibling.textContent.trim()).then(() => { copied = true; setTimeout(() => copied = false, 1500) }).catch(() => {})"
+                    x-text="copied ? '{% translate "Copied" %}' : '{% translate "Copy" %}'">{% translate "Copy" %}</button>
+          </div>
+        {% endif %}
+
+        {% for download in panel.queue %}
+          <div class="text-xs">
+            <div class="flex items-center justify-between gap-3 text-[var(--color-text-secondary)]">
+              <span class="min-w-0 truncate">{{ download.title }}</span>
+              <span class="shrink-0 text-[var(--color-info-text)]">{{ download.percent }}%{% if download.timeleft %} · {{ download.timeleft }}{% endif %}</span>
+            </div>
+            <progress class="mt-1 h-1 w-full" max="100" value="{{ download.percent }}"></progress>
+          </div>
+        {% endfor %}
+
+        {% if panel.history %}
+          <details class="text-sm">
+            <summary class="cursor-pointer text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
+              {% blocktranslate with count=panel.history|length %}Activity ({{ count }}){% endblocktranslate %}
+              <span class="ml-1 text-[var(--color-text-secondary)]">· {{ panel.history.0.label }} {{ panel.history.0.when|date:"M j" }}</span>
+            </summary>
+            <ul class="mt-1 divide-y divide-[var(--color-surface-border)]">
+              {% for event in panel.history %}
+                <li class="flex items-baseline gap-3 py-1 text-xs">
+                  <span class="w-24 shrink-0 text-[var(--color-text-muted)]">{{ event.when|date:"M j, H:i" }}</span>
+                  <span class="w-16 shrink-0 {% if event.tone == "ok" %}text-[var(--color-success-text)]{% elif event.tone == "bad" %}text-[var(--color-error-text)]{% elif event.tone == "warn" %}text-[var(--color-warning-text)]{% else %}text-[var(--color-info-text)]{% endif %}">{{ event.label }}</span>
+                  <span class="min-w-0 truncate text-[var(--color-text-secondary)]">{{ event.quality }}{% if event.quality and event.detail %} · {% endif %}{{ event.detail }}</span>
+                </li>
+              {% endfor %}
+            </ul>
+          </details>
+        {% endif %}
+      {% endif %}
+    </section>
+  {% endfor %}
+
+  {% if seerr_requests is not None or seerr_error %}
+    <section class="py-3 space-y-1">
+      <h3 class="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">{% translate "Requests" %}</h3>
+      {% if seerr_error %}
+        <p class="text-sm text-[var(--color-error-text)]">{{ seerr_error }}</p>
+      {% elif seerr_requests %}
+        {% for request in seerr_requests %}
+          <p class="flex items-center gap-2 text-sm">
+            <span class="text-[var(--color-text-secondary)]">{{ request.by|default:"—" }}</span>
+            <span class="text-xs text-[var(--color-text-muted)]">{{ request.when|date:"M j, Y" }}</span>
+            <span class="ml-auto rounded-full border border-[var(--color-surface-border)] px-2 py-0.5 text-xs text-[var(--color-text-secondary)]">{{ request.status }}</span>
+          </p>
+        {% endfor %}
+      {% else %}
+        <p class="text-sm text-[var(--color-text-muted)]">{% translate "Not requested in Seerr." %}</p>
+      {% endif %}
+    </section>
+  {% endif %}
+</div>

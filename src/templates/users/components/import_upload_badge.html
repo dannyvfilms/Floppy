@@ -1,0 +1,6 @@
+{% load i18n %}
+{# Next to a file-upload modal's logo while Import Frequency is a schedule: an upload is never scheduled, it always imports once. #}
+<span x-cloak
+      x-show="importFrequency !== 'once'"
+      title="{% translate "File uploads can't be scheduled. This file imports once, now." %}"
+      class="ml-2 px-1.5 py-0.5 rounded text-xs border border-indigo-500/30 bg-indigo-500/10 text-[var(--color-text-secondary)] cursor-help">{% translate "One-time" %}</span>

@@ -2,6 +2,7 @@ import json
 from datetime import timedelta
 from unittest.mock import patch
 
+import requests
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
@@ -14,15 +15,23 @@ from app.models import (
     Anime,
     Episode,
     Item,
+    ItemProviderLink,
     MediaTypes,
     Movie,
+    PlaybackProgress,
     ProviderMetadataStatus,
     Season,
     Sources,
     Status,
 )
 from app.providers import tmdb
-from integrations.models import PlexAccount
+from app.providers.services import ProviderAPIError
+from integrations import tasks
+from integrations.models import (
+    ExternalReference,
+    ExternalReferenceReviewStatus,
+    PlexAccount,
+)
 from integrations.webhooks.plex import PlexWebhookProcessor
 
 
@@ -174,6 +183,7 @@ class PlexWebhookTests(TestCase):
                 "max_progress": 1,
                 "title": "Metadata Title",
                 "image": "",
+                "details": {"status": "Ended"},
                 "related": {
                     "seasons": [
                         {"season_number": 1, "image": ""},
@@ -222,6 +232,57 @@ class PlexWebhookTests(TestCase):
         url = reverse("plex_webhook", kwargs={"token": "invalid-token"})
         response = self.client.post(url, data={}, content_type="application/json")
         self.assertEqual(response.status_code, 401)
+
+    def test_local_provider_link_resolves_show_when_tmdb_find_misses(self):
+        """A tracked show resolves by TVDB link without a fresh TMDB lookup.
+
+        Regression for #1703: Plex supplies TVDB/IMDb but no TMDB id, and a
+        TMDB find miss used to drop the scrobble even though the show was
+        already in the user's library.
+        """
+        tv_item = Item.objects.create(
+            media_id="81924",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Schooled",
+        )
+        TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        ItemProviderLink.objects.create(
+            item=tv_item,
+            provider=Sources.TVDB.value,
+            provider_media_type=MediaTypes.TV.value,
+            provider_media_id="360289",
+        )
+
+        response = self._post_payload(
+            {
+                "event": "media.scrobble",
+                "Account": {"title": "testuser"},
+                "Metadata": {
+                    "type": "episode",
+                    "grandparentTitle": "Schooled",
+                    "title": "The Goldbergs",
+                    "parentIndex": 1,
+                    "index": 1,
+                    # The legacy TheTVDB agent names the series; a modern
+                    # tvdb:// episode id must not match a show link.
+                    "guid": "com.plexapp.agents.thetvdb://360289/1/1?lang=en",
+                },
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            Episode.objects.filter(
+                item__media_id="81924",
+                item__season_number=1,
+                item__episode_number=1,
+            ).exists(),
+        )
 
     def test_tv_episode_mark_played(self):
         """Test webhook handles TV episode mark played event."""
@@ -452,6 +513,94 @@ class PlexWebhookTests(TestCase):
         stopped_state = live_playback.get_user_playback_state(self.user.id)
         self.assertIsNotNone(stopped_state)
         self.assertEqual(stopped_state["status"], live_playback.PLAYBACK_STATUS_STOPPED)
+
+    def test_movie_scrobble_uses_play_time_as_start_date(self):
+        """A one-sitting watch records when Play arrived as its start (#1482)."""
+        metadata = {
+            "type": "movie",
+            "title": "The Matrix",
+            "ratingKey": "rk-movie-1",
+            "duration": 8100000,
+            "viewOffset": 30000,
+            "Guid": [{"id": "tmdb://603"}],
+        }
+        base = {"Account": {"title": "testuser"}, "Metadata": metadata}
+
+        self._post_payload({**base, "event": "media.play"})
+        state = cache.get(live_playback._cache_key(self.user.id))
+        started = timezone.now().replace(second=0, microsecond=0) - timedelta(
+            minutes=135,
+        )
+        state["started_at_ts"] = int(started.timestamp())
+        live_playback.set_user_playback_state(self.user.id, state)
+
+        response = self._post_payload({**base, "event": "media.scrobble"})
+
+        self.assertEqual(response.status_code, 200)
+        movie = Movie.objects.get(item__media_id="603", user=self.user)
+        self.assertEqual(movie.status, Status.COMPLETED.value)
+        self.assertEqual(movie.start_date, started)
+        self.assertGreater(movie.end_date, movie.start_date)
+
+    def test_late_queued_play_does_not_clear_a_scrobble(self):
+        """A play received before the scrobble but processed after it loses (#1708)."""
+        metadata = {
+            "type": "movie",
+            "title": "The Matrix",
+            "ratingKey": "rk-movie-order",
+            "duration": 8100000,
+            "Guid": [{"id": "tmdb://603"}],
+        }
+        base = {"Account": {"title": "testuser"}, "Metadata": metadata}
+        now = timezone.now()
+
+        tasks.process_webhook(
+            "plex",
+            {**base, "event": "media.scrobble", "Metadata": {**metadata, "viewOffset": 8000000}},
+            self.user.id,
+            received_at=(now - timedelta(seconds=2)).isoformat(),
+            event_id="scrobble-1",
+        )
+        tasks.process_webhook(
+            "plex",
+            {**base, "event": "media.play", "Metadata": {**metadata, "viewOffset": 0}},
+            self.user.id,
+            received_at=(now - timedelta(seconds=3)).isoformat(),
+            event_id="play-1",
+        )
+
+        movie = Movie.objects.get(item__media_id="603", user=self.user)
+        self.assertEqual(movie.status, Status.COMPLETED.value)
+        progress = PlaybackProgress.objects.get(
+            user=self.user,
+            item__media_id="603",
+        )
+        self.assertTrue(progress.completed)
+        self.assertGreater(progress.position_seconds, 0)
+        state = live_playback.get_user_playback_state(self.user.id)
+        self.assertIsNotNone(state)
+        self.assertEqual(state["event_type"], "media.scrobble")
+
+    def test_movie_scrobble_with_cold_cache_does_not_invent_a_start_date(self):
+        """No earlier Play (e.g. after a restart) leaves the start date unset."""
+        payload = {
+            "event": "media.scrobble",
+            "Account": {"title": "testuser"},
+            "Metadata": {
+                "type": "movie",
+                "title": "The Matrix",
+                "ratingKey": "rk-movie-1",
+                "duration": 8100000,
+                "Guid": [{"id": "tmdb://603"}],
+            },
+        }
+
+        response = self._post_payload(payload)
+
+        self.assertEqual(response.status_code, 200)
+        movie = Movie.objects.get(item__media_id="603", user=self.user)
+        self.assertEqual(movie.status, Status.COMPLETED.value)
+        self.assertIsNone(movie.start_date)
 
     def test_short_stop_only_applies_during_the_first_minute_of_playback(self):
         """A stop with viewOffset < 60s never creates an in-progress row."""
@@ -869,6 +1018,119 @@ class PlexWebhookTests(TestCase):
             ],
         }
 
+    @patch(
+        "integrations.webhooks.anime_mappings.fetch_mapping_data",
+        return_value={
+            "tvdb_show:76906:s2": {"anilist:1138": {"1-26": "27-52"}},
+            "tvdb_show:76906:s3": {"tmdb_show:11235:s2": {"1-39": "1-39"}},
+            "tmdb_show:11235:s1": {"anilist:1138": {"1-52": "1-52"}},
+        },
+    )
+    @patch.object(PlexWebhookProcessor, "_handle_tv_episode")
+    @patch.object(
+        PlexWebhookProcessor, "_find_tv_media_id", return_value=("11235", None, None),
+    )
+    @patch(
+        "app.providers.tmdb.tv_with_seasons",
+        side_effect=lambda _media_id, seasons: {
+            "title": "Medabots",
+            "tvdb_id": "76906",
+            **{
+                f"season/{number}": PlexWebhookTests._season_payload(count)
+                for number, count in ((1, 52), (2, 39))
+                if number in seasons
+            },
+        },
+    )
+    def test_tvdb_numbered_episode_is_filed_under_tmdb_numbering(
+        self, _tv_with_seasons, _find_tv_media_id, handle_tv_episode, _mapping_data,
+    ):
+        """Plex's Medabots S2 and S3 exist on TMDB but hold other episodes.
+
+        Regression: Plex S3E11 (Medabots Spirits) was filed as a local-only
+        TMDB S3E11, so it never reached the sequel's MAL entry.
+        """
+        self.user.anime_enabled = False
+        ids = {"tmdb_id": None, "tvdb_id": None, "imdb_id": None}
+        processor = PlexWebhookProcessor()
+
+        for plex_coordinates, tmdb_coordinates in (((2, 1), (1, 27)), ((3, 11), (2, 11))):
+            processor._process_tv(
+                self._rag_payload(*plex_coordinates), self.user, ids, *plex_coordinates,
+            )
+            self.assertEqual(handle_tv_episode.call_args.args[1:3], tmdb_coordinates)
+
+        processor._active_match_reference = ExternalReference(
+            review_status=ExternalReferenceReviewStatus.CORRECTED,
+        )
+        processor._process_tv(self._rag_payload(2, 1), self.user, ids, 2, 1)
+        self.assertEqual(handle_tv_episode.call_args.args[1:3], (2, 1))
+
+    @patch(
+        "integrations.webhooks.anime_mappings.fetch_mapping_data",
+        return_value={
+            "tvdb_show:76906:s2": {"tmdb_show:11235:s3": {"8-12": "1-5"}},
+        },
+    )
+    @patch("app.providers.tmdb.search", return_value={"results": []})
+    @patch("app.providers.tmdb.tv")
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_episode_missing_from_existing_season_remaps_via_anibridge(
+        self,
+        mock_tv_with_seasons,
+        mock_tmdb_tv,
+        _mock_tmdb_search,
+        _mock_mapping_data,
+    ):
+        """TVDB S2E10 lands on TMDB S3E3 when TMDB's S2 only has seven episodes."""
+        show_metadata = {
+            "title": "Demon Slayer",
+            "image": "",
+            "tvdb_id": "76906",
+            "synopsis": "",
+            "external_links": {},
+            "related": {
+                "seasons": [
+                    {"season_number": 2, "episode_count": 7},
+                    {"season_number": 3, "episode_count": 12},
+                ],
+            },
+        }
+
+        def fake_tv_with_seasons(_media_id, season_numbers):
+            metadata = dict(show_metadata)
+            for number, count in ((2, 7), (3, 12)):
+                if number in season_numbers:
+                    metadata[f"season/{number}"] = self._season_payload(count)
+            return metadata
+
+        mock_tv_with_seasons.side_effect = fake_tv_with_seasons
+        mock_tmdb_tv.return_value = dict(show_metadata)
+        self.user.anime_enabled = True
+        self.user.save(update_fields=["anime_enabled"])
+
+        PlexWebhookProcessor()._handle_tv_episode(
+            "11235",
+            2,
+            10,
+            self._rag_payload(2, 10),
+            self.user,
+        )
+
+        self.assertTrue(
+            Episode.objects.filter(
+                item__media_id="11235",
+                item__season_number=3,
+                item__episode_number=3,
+            ).exists(),
+        )
+        self.assertFalse(
+            Episode.objects.filter(
+                item__media_id="11235",
+                item__season_number=2,
+            ).exists(),
+        )
+
     @patch("app.providers.tmdb.search", return_value={"results": []})
     @patch("app.providers.tmdb.find")
     @patch("app.providers.tmdb.tv_with_seasons")
@@ -1004,6 +1266,90 @@ class PlexWebhookTests(TestCase):
         self.assertEqual(season.related_tv.status, Status.COMPLETED.value)
 
     @patch("app.providers.tmdb.search", return_value={"results": []})
+    @patch("app.providers.tmdb.tv")
+    @patch("app.providers.tmdb.find")
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_ten_plays_complete_a_season_of_a_returning_show(
+        self,
+        mock_tv_with_seasons,
+        mock_find,
+        mock_tmdb_tv,
+        _mock_tmdb_search,
+    ):
+        """A fully watched season is Completed while the returning show stays open (#1618).
+
+        Ten webhook plays finish a ten-episode season. The next season is
+        announced and unaired, so it neither reopens the finished season nor
+        finishes the show, whose provider says it is still running.
+        """
+        show_metadata = {
+            "title": "Rent-a-Girlfriend",
+            "image": "",
+            "tvdb_id": "371233",
+            "synopsis": "",
+            "external_links": {},
+            "details": {"status": "Returning Series"},
+            "related": {
+                "seasons": [
+                    {"season_number": 4, "episode_count": 10},
+                    {"season_number": 5, "first_air_date": "2099-01-01"},
+                ],
+            },
+        }
+
+        def fake_tv_with_seasons(_media_id, season_numbers):
+            metadata = dict(show_metadata)
+            if 4 in season_numbers:
+                metadata["season/4"] = self._season_payload(10)
+            return metadata
+
+        def fake_get_media_metadata(media_type, media_id, source, season_numbers=None, **_):
+            if media_type == "tv_with_seasons":
+                return fake_tv_with_seasons(media_id, season_numbers or [])
+            return dict(show_metadata)
+
+        mock_tv_with_seasons.side_effect = fake_tv_with_seasons
+        mock_tmdb_tv.return_value = dict(show_metadata)
+        mock_find.side_effect = lambda external_id, _source: {
+            "tv_episode_results": [
+                {
+                    "show_id": 96316,
+                    "season_number": 4,
+                    "episode_number": int(str(external_id)[-2:]),
+                },
+            ],
+            "tv_results": [],
+        }
+
+        processor = PlexWebhookProcessor()
+        with patch(
+            "app.providers.services.get_media_metadata",
+            side_effect=fake_get_media_metadata,
+        ):
+            for episode_number in range(1, 11):
+                processor._handle_tv_episode(
+                    "96316",
+                    5,
+                    episode_number,
+                    self._rag_payload(5, episode_number),
+                    self.user,
+                )
+
+        season = Season.objects.get(
+            item__media_id="96316",
+            item__season_number=4,
+            user=self.user,
+        )
+        self.assertEqual(season.status, Status.COMPLETED.value)
+        self.assertEqual(season.related_tv.status, Status.IN_PROGRESS.value)
+        self.assertFalse(
+            Season.objects.filter(
+                related_tv=season.related_tv,
+                item__season_number=5,
+            ).exists(),
+        )
+
+    @patch("app.providers.tmdb.search", return_value={"results": []})
     @patch(
         "app.providers.tmdb.find",
         return_value={"tv_episode_results": [], "tv_results": []},
@@ -1054,6 +1400,84 @@ class PlexWebhookTests(TestCase):
                 item__media_id="85937",
                 item__season_number=3,
                 item__episode_number=3,
+            ).exists(),
+        )
+
+    @patch(
+        "integrations.webhooks.anime_mappings.fetch_mapping_data",
+        return_value={
+            "tvdb_show:305089:s4": {
+                "tmdb_show:65942:s1": {"1-19": "67-85"},
+            },
+        },
+    )
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_anibridge_remaps_anime_webhook_before_fallback(
+        self,
+        mock_tv_with_seasons,
+        _mock_mapping,
+    ):
+        """Shared webhook remapping files Re:Zero under TMDB S1E78."""
+
+        def fake_tv_with_seasons(media_id, season_numbers):
+            if list(season_numbers) == [4]:
+                return {
+                    "title": "Re:ZERO -Starting Life in Another World-",
+                    "image": "",
+                    "tvdb_id": "305089",
+                    "related": {"seasons": [{"season_number": 1}]},
+                }
+            if list(season_numbers) == [1]:
+                return {
+                    "title": "Re:ZERO -Starting Life in Another World-",
+                    "image": "",
+                    "tvdb_id": "305089",
+                    "season/1": {
+                        "image": "",
+                        "episodes": [
+                            {"episode_number": 78, "runtime": 30},
+                        ],
+                    },
+                }
+            raise AssertionError(f"Unexpected seasons: {season_numbers}")
+
+        mock_tv_with_seasons.side_effect = fake_tv_with_seasons
+        payload = {
+            "event": "media.scrobble",
+            "Metadata": {
+                "type": "episode",
+                "grandparentTitle": "Re:ZERO -Starting Life in Another World-",
+                "index": 12,
+                "parentIndex": 4,
+                "Guid": [
+                    {"id": "tvdb://305089"},
+                    {"id": "imdb://tt5607616"},
+                ],
+            },
+        }
+
+        PlexWebhookProcessor()._handle_tv_episode(
+            "65942",
+            4,
+            12,
+            payload,
+            self.user,
+        )
+
+        self.assertTrue(
+            Episode.objects.filter(
+                item__media_id="65942",
+                item__season_number=1,
+                item__episode_number=78,
+                related_season__user=self.user,
+            ).exists(),
+        )
+        self.assertFalse(
+            Episode.objects.filter(
+                item__media_id="65942",
+                item__season_number=4,
+                item__episode_number=12,
+                related_season__user=self.user,
             ).exists(),
         )
 
@@ -1167,6 +1591,60 @@ class PlexWebhookTests(TestCase):
         )
         self.assertEqual(season.status, Status.IN_PROGRESS.value)
         self.assertEqual(season.related_tv.status, Status.IN_PROGRESS.value)
+
+    def test_duplicate_scrobble_does_not_reopen_completed_season(self):
+        """A re-delivered final scrobble must not undo season/show completion."""
+        self.user.anime_enabled = False
+        processor = PlexWebhookProcessor()
+
+        def payload(episode_number):
+            return {
+                "event": "media.scrobble",
+                "Metadata": {
+                    "type": "episode",
+                    "grandparentTitle": "Friends",
+                    "parentTitle": "Season 1",
+                    "index": episode_number,
+                    "parentIndex": 1,
+                    "duration": 1440000,
+                },
+            }
+
+        for episode_number in (1, 2):
+            processor._handle_tv_episode(
+                "1668",
+                1,
+                episode_number,
+                payload(episode_number),
+                self.user,
+            )
+
+        season = Season.objects.get(
+            item__media_id="1668",
+            item__season_number=1,
+            user=self.user,
+        )
+        self.assertEqual(season.status, Status.COMPLETED.value)
+        self.assertEqual(season.related_tv.status, Status.COMPLETED.value)
+
+        processor._handle_tv_episode(
+            "1668",
+            1,
+            2,
+            payload(2),
+            self.user,
+        )
+
+        season.refresh_from_db()
+        self.assertEqual(season.status, Status.COMPLETED.value)
+        self.assertEqual(season.related_tv.status, Status.COMPLETED.value)
+        self.assertEqual(
+            Episode.objects.filter(
+                related_season=season,
+                item__episode_number=2,
+            ).count(),
+            1,
+        )
 
     @patch("app.providers.tmdb.search", return_value={"results": []})
     @patch(
@@ -1529,6 +2007,449 @@ class PlexWebhookTests(TestCase):
         mock_tmdb_search.assert_called()
         self.assertEqual(str(mock_tv_with_seasons.call_args_list[0].args[0]), "88396")
 
+    @patch("app.providers.tmdb.search")
+    @patch(
+        "app.providers.tmdb.find",
+        return_value={"tv_episode_results": [], "tv_results": []},
+    )
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_tv_episode_title_search_ignores_episode_year(
+        self,
+        mock_tv_with_seasons,
+        mock_find,
+        mock_tmdb_search,
+    ):
+        """The title-search fallback must not be constrained by the
+        episode's own air year: a recently-aired episode of a multi-season
+        show would never match the show's (earlier) first-air year.
+
+        Regression test for issue #1239: Plex episode payloads never carry a
+        grandparent year, so the fallback fell through to the episode's own
+        `originallyAvailableAt`/`year` and searched for a show whose
+        first-air year equalled the episode's air year, which never matches
+        a show past its first season.
+        """
+        mock_tmdb_search.return_value = {
+            "results": [
+                {
+                    "media_id": 108255,
+                    "title": "All Creatures Great & Small",
+                    "year": "2020",
+                },
+            ],
+        }
+        mock_tv_with_seasons.return_value = {
+            "tvdb_id": "11969114",
+            "title": "All Creatures Great & Small",
+            "image": "",
+            "season/7": {
+                "image": "",
+                "episodes": [{"episode_number": 1, "runtime": 46}],
+            },
+            "related": {"seasons": [{"season_number": 7}]},
+        }
+
+        payload = {
+            "event": "media.scrobble",
+            "Account": {"title": "testuser"},
+            "Metadata": {
+                "type": "episode",
+                "grandparentTitle": "All Creatures Great & Small",
+                "title": "Back to School",
+                "index": 1,
+                "parentIndex": 7,
+                "year": 2026,
+                "originallyAvailableAt": "2026-09-17",
+            },
+        }
+
+        response = self._post_payload(payload)
+
+        self.assertEqual(response.status_code, 200)
+        episode = Episode.objects.get(
+            item__media_id="108255",
+            item__season_number=7,
+            item__episode_number=1,
+        )
+        self.assertIsNotNone(episode.end_date)
+        self.assertEqual(
+            str(mock_tv_with_seasons.call_args_list[0].args[0]),
+            "108255",
+        )
+
+    GAME_CHANGER_RESULTS = {
+        "results": [
+            {"media_id": 129412, "title": "Game Changer", "year": "2019"},
+            {"media_id": 116823, "title": "Game Changer", "year": "2021"},
+            {"media_id": 322147, "title": "Game Changer", "year": "2026"},
+        ],
+    }
+    GAME_CHANGER_PAYLOAD = {
+        "event": "media.scrobble",
+        "Account": {"title": "testuser"},
+        "Metadata": {
+            "librarySectionType": "show",
+            "type": "episode",
+            "ratingKey": "5010",
+            "grandparentRatingKey": "5000",
+            "grandparentTitle": "Game Changer",
+            "parentIndex": 8,
+            "index": 10,
+            "year": 2026,
+            "originallyAvailableAt": "2026-09-21",
+            "Guid": [{"id": "tmdb://7171350"}, {"id": "tvdb://11850032"}],
+        },
+    }
+
+    @staticmethod
+    def _game_changer_metadata(_media_id, _season_numbers):
+        return {
+            "title": "Game Changer",
+            "image": "",
+            "season/8": {
+                "image": "",
+                "episodes": [{"episode_number": 10, "runtime": 30}],
+            },
+            "related": {"seasons": [{"season_number": 8}]},
+        }
+
+    @staticmethod
+    def _shows_with_seasons(season_counts):
+        def fake_tv(media_id, language=None):
+            count = season_counts[str(media_id)]
+            return {
+                "title": "Game Changer",
+                "related": {
+                    "seasons": [{"season_number": n} for n in range(1, count + 1)],
+                },
+            }
+
+        return fake_tv
+
+    @patch("app.providers.tmdb.tv")
+    @patch("app.providers.tvdb.series_tmdb_id", return_value="129412")
+    @patch(
+        "app.providers.tvdb.episode_by_id",
+        return_value={"series_id": 1, "season_number": 8, "episode_number": 10},
+    )
+    @patch("app.providers.tvdb.enabled", return_value=True)
+    @patch("app.providers.tmdb.search")
+    @patch(
+        "app.providers.tmdb.find",
+        return_value={"tv_episode_results": [], "tv_results": []},
+    )
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_tv_episode_title_search_never_picks_show_by_episode_year(
+        self,
+        mock_tv_with_seasons,
+        mock_find,
+        mock_tmdb_search,
+        _mock_tvdb_enabled,
+        _mock_episode_by_id,
+        _mock_series_tmdb_id,
+        mock_tv,
+    ):
+        """A tie the title cannot break goes to review, never to the show
+        that premiered the year the episode aired (issue #1279).
+        """
+        mock_tmdb_search.return_value = self.GAME_CHANGER_RESULTS
+        # Two candidates have a season 8, so the season cannot break the tie.
+        mock_tv.side_effect = self._shows_with_seasons(
+            {"129412": 8, "116823": 8, "322147": 1},
+        )
+
+        def fake_tv_with_seasons(media_id, season_numbers):
+            if str(media_id) == "129412":
+                # A definitive failure for the TVDB-resolved show sends the
+                # webhook to its title fallback.
+                msg = "unusable show metadata"
+                raise ValueError(msg)
+            return self._game_changer_metadata(media_id, season_numbers)
+
+        mock_tv_with_seasons.side_effect = fake_tv_with_seasons
+
+        response = self._post_payload(self.GAME_CHANGER_PAYLOAD)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Episode.objects.exists())
+        self.assertFalse(Item.objects.filter(media_id="322147").exists())
+        show_reference = ExternalReference.objects.get(
+            external_identity="5000",
+            media_type=MediaTypes.TV.value,
+        )
+        self.assertIsNone(show_reference.matched_item)
+        self.assertEqual(
+            show_reference.review_status,
+            ExternalReferenceReviewStatus.NEEDS_REVIEW.value,
+        )
+
+    @patch("app.providers.tmdb.search")
+    @patch("app.providers.tvdb.series_tmdb_id", return_value="129412")
+    @patch(
+        "app.providers.tvdb.episode_by_id",
+        return_value={"series_id": 1, "season_number": 8, "episode_number": 10},
+    )
+    @patch("app.providers.tvdb.enabled", return_value=True)
+    @patch(
+        "app.providers.tmdb.find",
+        return_value={"tv_episode_results": [], "tv_results": []},
+    )
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_tv_episode_transient_tmdb_error_retries_instead_of_guessing(
+        self,
+        mock_tv_with_seasons,
+        _mock_find,
+        _mock_tvdb_enabled,
+        _mock_episode_by_id,
+        _mock_series_tmdb_id,
+        _mock_tmdb_search,
+    ):
+        """A TMDB blip on the ID-resolved show must surface to the task's
+        retry, not fall through to a title guess (issue #1279).
+        """
+        response = requests.Response()
+        response.status_code = 503
+        blip = ProviderAPIError(
+            Sources.TMDB.value,
+            requests.exceptions.HTTPError(response=response),
+        )
+        mock_tv_with_seasons.side_effect = blip
+
+        with self.assertRaises(ProviderAPIError):
+            PlexWebhookProcessor().process_payload(
+                self.GAME_CHANGER_PAYLOAD,
+                self.user,
+            )
+        self.assertFalse(Episode.objects.exists())
+        self.assertEqual(
+            {str(call.args[0]) for call in mock_tv_with_seasons.call_args_list},
+            {"129412"},
+        )
+
+        mock_tv_with_seasons.side_effect = self._game_changer_metadata
+        PlexWebhookProcessor().process_payload(self.GAME_CHANGER_PAYLOAD, self.user)
+
+        self.assertTrue(
+            Episode.objects.filter(
+                item__media_id="129412",
+                item__season_number=8,
+                item__episode_number=10,
+            ).exists(),
+        )
+
+    @patch("app.providers.tvdb.tv", return_value={})
+    @patch("app.providers.tmdb.search")
+    @patch("app.providers.tmdb.set_tvdb_id_override")
+    @patch("app.providers.tmdb.tv")
+    @patch("app.providers.tvdb.series_tmdb_id", return_value="11235")
+    @patch(
+        "app.providers.tvdb.episode_by_id",
+        return_value={"series_id": 76906, "season_number": 2, "episode_number": 25},
+    )
+    @patch("app.providers.tvdb.enabled", return_value=True)
+    @patch(
+        "app.providers.tmdb.find",
+        return_value={"tv_episode_results": [], "tv_results": [{"id": 37119}]},
+    )
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_tv_episode_tvdb_id_never_resolves_as_a_series_id(
+        self,
+        mock_tv_with_seasons,
+        _mock_find,
+        _mock_tvdb_enabled,
+        _mock_episode_by_id,
+        _mock_series_tmdb_id,
+        mock_tv,
+        mock_set_tvdb_override,
+        mock_tmdb_search,
+        _mock_tvdb_tv,
+    ):
+        """A modern-agent episode tvdb:// id is an episode, even when TMDB's
+        find returns the series that shares the number. TVDB episode 220181 is
+        Medabots S3E25 in TVDB order and also the series id of Norwegian Cozy;
+        the fixture keeps TMDB's S2E25 so the TVDB-order remap stays out of it.
+        """
+        mock_tv_with_seasons.return_value = {
+            "title": "Medabots",
+            "image": "",
+            "tvdb_id": "76906",
+            "season/2": {
+                "image": "",
+                "episodes": [{"episode_number": 25, "runtime": 24}],
+            },
+            "related": {"seasons": [{"season_number": 1}, {"season_number": 2}]},
+        }
+        mock_tv.return_value = mock_tv_with_seasons.return_value
+        payload = {
+            "event": "media.scrobble",
+            "Account": {"title": "testuser"},
+            "Metadata": {
+                "librarySectionType": "show",
+                "type": "episode",
+                "ratingKey": "159953",
+                "grandparentRatingKey": "159900",
+                "grandparentTitle": "Medabots",
+                "title": "I, Kilobot",
+                "parentIndex": 2,
+                "index": 25,
+                "Guid": [{"id": "tvdb://220181"}],
+            },
+        }
+
+        response = self._post_payload(payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Item.objects.filter(media_id="37119").exists())
+        self.assertTrue(
+            Episode.objects.filter(
+                item__media_id="11235",
+                item__season_number=2,
+                item__episode_number=25,
+            ).exists(),
+        )
+        mock_set_tvdb_override.assert_not_called()
+        mock_tmdb_search.assert_not_called()
+
+        # Ratings, live playback and the importer resolve through the same
+        # extracted ids, so the shared lookup must refuse the series hit too.
+        ids = PlexWebhookProcessor()._extract_external_ids(payload)
+        self.assertTrue(ids["tvdb_is_episode"])
+        self.assertEqual(
+            PlexWebhookProcessor()._find_tv_media_id(ids)[0],
+            "11235",
+        )
+
+    @patch("app.providers.tmdb.tv")
+    @patch("app.providers.tvdb.enabled", return_value=False)
+    @patch("app.providers.tmdb.search")
+    @patch(
+        "app.providers.tmdb.find",
+        return_value={"tv_episode_results": [], "tv_results": []},
+    )
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_tv_episode_title_tie_broken_by_played_season(
+        self,
+        mock_tv_with_seasons,
+        mock_find,
+        mock_tmdb_search,
+        _mock_tvdb_enabled,
+        mock_tv,
+    ):
+        """Without TVDB, only one same-title show has the played season."""
+        mock_tmdb_search.return_value = self.GAME_CHANGER_RESULTS
+        mock_tv.side_effect = self._shows_with_seasons(
+            {"129412": 8, "116823": 2, "322147": 1},
+        )
+        mock_tv_with_seasons.side_effect = self._game_changer_metadata
+
+        response = self._post_payload(self.GAME_CHANGER_PAYLOAD)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            Episode.objects.filter(
+                item__media_id="129412",
+                item__season_number=8,
+                item__episode_number=10,
+            ).exists(),
+        )
+        self.assertFalse(Item.objects.filter(media_id="322147").exists())
+
+    @patch("app.providers.tmdb.search")
+    @patch(
+        "app.providers.tmdb.find",
+        return_value={"tv_episode_results": [], "tv_results": []},
+    )
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_tv_episode_title_search_uses_year_suffix_in_series_title(
+        self,
+        mock_tv_with_seasons,
+        mock_find,
+        mock_tmdb_search,
+    ):
+        """Plex disambiguates remakes as "Title (YYYY)"; that year is the
+        show's first-air year and picks the right same-title result.
+        """
+        mock_tmdb_search.return_value = {
+            "results": [
+                {
+                    "media_id": 108255,
+                    "title": "All Creatures Great & Small",
+                    "year": "2020",
+                },
+                {
+                    "media_id": 7406,
+                    "title": "All Creatures Great and Small",
+                    "year": "1978",
+                },
+            ],
+        }
+        mock_tv_with_seasons.return_value = {
+            "title": "All Creatures Great & Small",
+            "image": "",
+            "season/7": {
+                "image": "",
+                "episodes": [{"episode_number": 1, "runtime": 46}],
+            },
+            "related": {"seasons": [{"season_number": 7}]},
+        }
+
+        payload = {
+            "event": "media.scrobble",
+            "Account": {"title": "testuser"},
+            "Metadata": {
+                "type": "episode",
+                "grandparentTitle": "All Creatures Great & Small (2020)",
+                "title": "Back to School",
+                "index": 1,
+                "parentIndex": 7,
+                "year": 2026,
+                "originallyAvailableAt": "2026-09-17",
+            },
+        }
+
+        response = self._post_payload(payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            Episode.objects.filter(
+                item__media_id="108255",
+                item__season_number=7,
+                item__episode_number=1,
+            ).exists(),
+        )
+        mock_tmdb_search.assert_called_with(
+            MediaTypes.TV.value,
+            "All Creatures Great & Small",
+            page=1,
+        )
+
+    def test_series_year_ignores_episode_and_season_air_years(self):
+        """Only show-level fields may constrain a title search (#1279)."""
+        processor = PlexWebhookProcessor()
+
+        def year_for(metadata):
+            return processor._extract_series_year({"Metadata": metadata})
+
+        self.assertIsNone(
+            year_for({"type": "episode", "year": 2026, "originallyAvailableAt": "2026-09-21"}),
+        )
+        self.assertEqual(
+            year_for(
+                {
+                    "type": "episode",
+                    "year": 2026,
+                    "grandparentOriginallyAvailableAt": "2019-05-17",
+                },
+            ),
+            "2019",
+        )
+        self.assertIsNone(year_for({"type": "season", "year": 2026}))
+        self.assertEqual(
+            year_for({"type": "season", "year": 2026, "parentYear": 2019}),
+            "2019",
+        )
+        self.assertEqual(year_for({"type": "show", "year": 2019}), "2019")
+
     @patch("app.providers.tmdb.find")
     @patch("app.providers.tmdb.tv_with_seasons")
     def test_tv_episode_tmdb_episode_id_collision_prefers_find_resolved_show(
@@ -1668,6 +2589,7 @@ class PlexWebhookTests(TestCase):
         )
         self.assertEqual(movie.status, Status.COMPLETED.value)
         self.assertEqual(movie.progress, 1)
+        self.assertEqual(movie.entry_source, "plex")
 
     @patch("app.providers.tmdb.search")
     def test_movie_plex_guid_does_not_match_unrelated_title(self, mock_tmdb_search):
@@ -1792,6 +2714,43 @@ class PlexWebhookTests(TestCase):
         )
         self.assertEqual(episode.related_season.related_tv.item, tv_item)
 
+    def _track_episode_play(self, tv_instance, *, score=None):
+        """Give a tracked show a play of S1E1 in the show's library bucket."""
+        show = tv_instance.item
+        season = Season.objects.create(
+            item=Item.objects.create(
+                media_id=show.media_id,
+                source=show.source,
+                media_type=MediaTypes.SEASON.value,
+                library_media_type=show.library_media_type,
+                title=show.title,
+                image="",
+                season_number=1,
+            ),
+            user=self.user,
+            related_tv=tv_instance,
+            status=Status.IN_PROGRESS.value,
+        )
+        with patch(
+            "app.providers.services.get_media_metadata",
+            return_value={"season/1": {"episodes": [{}, {}]}},
+        ):
+            return Episode.objects.create(
+                item=Item.objects.create(
+                    media_id=show.media_id,
+                    source=show.source,
+                    media_type=MediaTypes.EPISODE.value,
+                    library_media_type=show.library_media_type,
+                    title=f"{show.title} S1E1",
+                    image="",
+                    season_number=1,
+                    episode_number=1,
+                ),
+                related_season=season,
+                end_date=timezone.now(),
+                score=score,
+            )
+
     @patch("app.providers.tmdb.find")
     @patch("app.providers.tmdb.tv")
     def test_tv_rating_resolves_episode_ids_and_reuses_tracked_item(
@@ -1799,7 +2758,7 @@ class PlexWebhookTests(TestCase):
         mock_tv,
         mock_find,
     ):
-        """TV ratings resolve episode IDs before updating the tracked show."""
+        """An episode rating resolves the show, then rates only the episode."""
         mock_find.return_value = {
             "tv_episode_results": [
                 {
@@ -1828,6 +2787,7 @@ class PlexWebhookTests(TestCase):
             status=Status.IN_PROGRESS.value,
             score=2,
         )
+        episode = self._track_episode_play(tv_instance)
 
         payload = {
             "event": "media.rate",
@@ -1835,6 +2795,8 @@ class PlexWebhookTests(TestCase):
             "Metadata": {
                 "type": "episode",
                 "grandparentTitle": "Frieren: Beyond Journey's End",
+                "parentIndex": 1,
+                "index": 1,
                 "userRating": 8,
                 "Guid": [
                     {"id": "imdb://tt23861604"},
@@ -1848,7 +2810,9 @@ class PlexWebhookTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         tv_instance.refresh_from_db()
-        self.assertEqual(tv_instance.score, 8)
+        episode.refresh_from_db()
+        self.assertEqual(episode.score, 8)
+        self.assertEqual(tv_instance.score, 2)
         self.assertEqual(
             Item.objects.filter(
                 media_id="3946240",
@@ -1866,7 +2830,7 @@ class PlexWebhookTests(TestCase):
         mock_tv,
         mock_find,
     ):
-        """Rating removal uses the same show-level resolution as rating apply."""
+        """An episode rating removal clears the episode, not the show."""
         mock_find.return_value = {
             "tv_episode_results": [
                 {
@@ -1895,6 +2859,7 @@ class PlexWebhookTests(TestCase):
             status=Status.IN_PROGRESS.value,
             score=8,
         )
+        episode = self._track_episode_play(tv_instance, score=7)
 
         payload = {
             "event": "media.rate",
@@ -1902,6 +2867,8 @@ class PlexWebhookTests(TestCase):
             "Metadata": {
                 "type": "episode",
                 "grandparentTitle": "Frieren: Beyond Journey's End",
+                "parentIndex": 1,
+                "index": 1,
                 "userRating": -1.0,
                 "Guid": [
                     {"id": "imdb://tt23861604"},
@@ -1915,7 +2882,9 @@ class PlexWebhookTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         tv_instance.refresh_from_db()
-        self.assertIsNone(tv_instance.score)
+        episode.refresh_from_db()
+        self.assertIsNone(episode.score)
+        self.assertEqual(tv_instance.score, 8)
         mock_find.assert_called_once_with("6725919", "tvdb_id")
 
     @patch("app.providers.tmdb.tv")
@@ -1937,6 +2906,7 @@ class PlexWebhookTests(TestCase):
             user=self.user,
             status=Status.IN_PROGRESS.value,
         )
+        episode = self._track_episode_play(tv_instance)
 
         payload = {
             "event": "media.rate",
@@ -1944,6 +2914,8 @@ class PlexWebhookTests(TestCase):
             "Metadata": {
                 "type": "episode",
                 "grandparentTitle": "Breaking Bad",
+                "parentIndex": 1,
+                "index": 1,
                 "userRating": 9,
                 "Guid": [{"id": "tmdb://1396"}],
             },
@@ -1952,9 +2924,46 @@ class PlexWebhookTests(TestCase):
         response = self._post_payload(payload)
 
         self.assertEqual(response.status_code, 200)
-        tv_instance.refresh_from_db()
-        self.assertEqual(tv_instance.score, 9)
+        episode.refresh_from_db()
+        self.assertEqual(episode.score, 9)
         mock_tv.assert_called_with("1396")
+
+    @patch("app.providers.tmdb.tv")
+    def test_rating_for_unwatched_episode_is_ignored(self, mock_tv):
+        """Rating an episode with no play neither creates one nor rates the show."""
+        mock_tv.return_value = {"title": "Breaking Bad", "image": ""}
+        tv_instance = TV.objects.create(
+            item=Item.objects.create(
+                media_id="1396",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+                title="Breaking Bad",
+                image="",
+            ),
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            score=6,
+        )
+
+        response = self._post_payload(
+            {
+                "event": "media.rate",
+                "Account": {"title": "testuser"},
+                "Metadata": {
+                    "type": "episode",
+                    "grandparentTitle": "Breaking Bad",
+                    "parentIndex": 1,
+                    "index": 1,
+                    "userRating": 9,
+                    "Guid": [{"id": "tmdb://1396"}],
+                },
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        tv_instance.refresh_from_db()
+        self.assertEqual(tv_instance.score, 6)
+        self.assertFalse(Episode.objects.exists())
 
     @patch("app.providers.tmdb.search")
     @patch("app.providers.tmdb.tv")
@@ -1993,6 +3002,7 @@ class PlexWebhookTests(TestCase):
             user=self.user,
             status=Status.IN_PROGRESS.value,
         )
+        episode = self._track_episode_play(tv_instance)
 
         payload = {
             "event": "media.rate",
@@ -2000,6 +3010,8 @@ class PlexWebhookTests(TestCase):
             "Metadata": {
                 "type": "episode",
                 "grandparentTitle": "Frieren: Beyond Journey's End",
+                "parentIndex": 1,
+                "index": 1,
                 "userRating": 7,
                 "Guid": [{"id": "tmdb://1515183"}],
             },
@@ -2008,8 +3020,8 @@ class PlexWebhookTests(TestCase):
         response = self._post_payload(payload)
 
         self.assertEqual(response.status_code, 200)
-        tv_instance.refresh_from_db()
-        self.assertEqual(tv_instance.score, 7)
+        episode.refresh_from_db()
+        self.assertEqual(episode.score, 7)
         mock_search.assert_called_once_with(
             MediaTypes.TV.value,
             "Frieren: Beyond Journey's End",
@@ -2056,6 +3068,187 @@ class PlexWebhookTests(TestCase):
         self.assertEqual(response.status_code, 200)
         tv_instance.refresh_from_db()
         self.assertEqual(tv_instance.score, 7)
+
+    @patch("app.providers.tmdb.tv")
+    def test_show_rating_goes_to_flat_mal_anime(self, _mock_tv):
+        """A show tracked as flat MAL anime takes the rating on its Anime row.
+
+        A TV-library row is invisible to the anime details page and MAL sync,
+        so the rating must not create one.
+        """
+        anime_item = Item.objects.create(
+            media_id="35078",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Mitsuboshi Colors",
+            image="",
+        )
+        ItemProviderLink.objects.create(
+            item=anime_item,
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value,
+            provider_media_id="76134",
+            season_number=1,
+        )
+        anime = Anime.objects.create(
+            item=anime_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=8,
+        )
+
+        def rate(user_rating):
+            return self._post_payload(
+                {
+                    "event": "media.rate",
+                    "Account": {"title": "testuser"},
+                    "Metadata": {
+                        "type": "show",
+                        "title": "Mitsuboshi Colors",
+                        "userRating": user_rating,
+                        "Guid": [{"id": "tmdb://76134"}],
+                    },
+                },
+            )
+
+        self.assertEqual(rate(8).status_code, 200)
+        anime.refresh_from_db()
+        self.assertEqual(anime.score, 8)
+        self.assertFalse(TV.objects.filter(user=self.user).exists())
+
+        self.assertEqual(rate(-1).status_code, 200)
+        anime.refresh_from_db()
+        self.assertIsNone(anime.score)
+
+    @patch("app.providers.tmdb.tv")
+    def test_show_rating_stays_on_a_tracked_tv_row_beside_a_flat_mal_entry(self, _mock_tv):
+        """Regression: a flat MAL entry linked to the show (an OVA, one cour)
+        took the Plex rating away from the user's real TV-library row.
+        """
+        tv_item = Item.objects.create(
+            media_id="76134", source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value, title="Mitsuboshi Colors",
+        )
+        tv = TV.objects.create(item=tv_item, user=self.user, status=Status.IN_PROGRESS.value)
+        season = Season.objects.create(
+            item=Item.objects.create(
+                media_id="76134", source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value, season_number=1,
+                title="Mitsuboshi Colors",
+            ),
+            user=self.user, related_tv=tv, status=Status.IN_PROGRESS.value,
+        )
+        Episode.objects.create(
+            item=Item.objects.create(
+                media_id="76134", source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value, season_number=1, episode_number=1,
+                title="Episode 1",
+            ),
+            related_season=season,
+        )
+        anime_item = Item.objects.create(
+            media_id="35078", source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value, title="Mitsuboshi Colors OVA", image="",
+        )
+        ItemProviderLink.objects.create(
+            item=anime_item, provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value, provider_media_id="76134",
+            season_number=0,
+        )
+        anime = Anime.objects.create(
+            item=anime_item, user=self.user, status=Status.COMPLETED.value, progress=1,
+        )
+
+        self._post_payload(
+            {
+                "event": "media.rate",
+                "Account": {"title": "testuser"},
+                "Metadata": {
+                    "type": "show",
+                    "title": "Mitsuboshi Colors",
+                    "userRating": 8,
+                    "Guid": [{"id": "tmdb://76134"}],
+                },
+            },
+        )
+
+        tv.refresh_from_db()
+        anime.refresh_from_db()
+        self.assertEqual(tv.score, 8)
+        self.assertIsNone(anime.score)
+
+    def test_season_rating_no_flat_entry_covers_takes_the_tv_path(self):
+        """Regression: a season-2 rating beside a flat season-1 MAL entry
+        matched no title and was dropped instead of rating the season.
+        """
+        from integrations.webhooks.plex import PlexWebhookProcessor
+
+        anime_item = Item.objects.create(
+            media_id="35078", source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value, title="Mitsuboshi Colors", image="",
+        )
+        ItemProviderLink.objects.create(
+            item=anime_item, provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value, provider_media_id="76134",
+            season_number=1,
+        )
+        Anime.objects.create(
+            item=anime_item, user=self.user, status=Status.IN_PROGRESS.value, progress=8,
+        )
+
+        handled = PlexWebhookProcessor()._apply_flat_anime_rating(
+            self.user, "76134", 8, season_number=2,
+        )
+
+        self.assertFalse(handled)
+
+    @patch("app.providers.tmdb.tv")
+    def test_show_rating_reaches_a_rewatched_flat_mal_anime(self, _mock_tv):
+        """A rewatch row doesn't make the title ambiguous.
+
+        Regression: two Anime rows for one title were treated as two matches,
+        so the rating was skipped for every rewatched show.
+        """
+        anime_item = Item.objects.create(
+            media_id="35078",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Mitsuboshi Colors",
+            image="",
+        )
+        ItemProviderLink.objects.create(
+            item=anime_item,
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value,
+            provider_media_id="76134",
+            season_number=1,
+        )
+        for status, progress in ((Status.COMPLETED.value, 12), (Status.IN_PROGRESS.value, 3)):
+            Anime.objects.create(
+                item=anime_item, user=self.user, status=status, progress=progress,
+            )
+
+        response = self._post_payload(
+            {
+                "event": "media.rate",
+                "Account": {"title": "testuser"},
+                "Metadata": {
+                    "type": "show",
+                    "title": "Mitsuboshi Colors",
+                    "userRating": 9,
+                    "Guid": [{"id": "tmdb://76134"}],
+                },
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            sorted(
+                Anime.all_objects.filter(user=self.user, item=anime_item)
+                .values_list("score", flat=True)
+            ),
+            [9, 9],
+        )
 
     @patch("app.providers.tmdb.search")
     @patch("app.providers.tmdb.find")
@@ -3010,8 +4203,34 @@ class PlexWebhookTests(TestCase):
             "tvdb_id": "98765",
             "plex_guid": None,
             "anidb_id": None,
+            "tvdb_is_episode": False,
         }
 
+        self.assertEqual(result, expected)
+
+    def test_extract_external_ids_discards_large_tmdb_style_guid(self):
+        """A TMDB GUID above the IMDB-numeric threshold must be discarded, not
+        coined into a fabricated IMDB ID (issue #1239).
+
+        Modern TMDB episode IDs are 7 digits, so this GUID is too ambiguous
+        to trust as either a show-level TMDB ID or an IMDB ID.
+        """
+        payload = {
+            "Metadata": {
+                "Guid": [{"id": "tmdb://7762130"}, {"id": "tvdb://11969114"}],
+            },
+        }
+
+        result = PlexWebhookProcessor()._extract_external_ids(payload)
+
+        expected = {
+            "tmdb_id": None,
+            "imdb_id": None,
+            "tvdb_id": "11969114",
+            "plex_guid": None,
+            "anidb_id": None,
+            "tvdb_is_episode": False,
+        }
         self.assertEqual(result, expected)
 
     def test_extract_external_ids_from_guid_string(self):
@@ -3033,6 +4252,7 @@ class PlexWebhookTests(TestCase):
             "tvdb_id": None,
             "plex_guid": None,
             "anidb_id": "12345",
+            "tvdb_is_episode": False,
         }
 
         self.assertEqual(result, expected)
@@ -3049,6 +4269,7 @@ class PlexWebhookTests(TestCase):
             "tvdb_id": None,
             "plex_guid": None,
             "anidb_id": None,
+            "tvdb_is_episode": False,
         }
         self.assertEqual(result, expected)
 
@@ -3072,6 +4293,7 @@ class PlexWebhookTests(TestCase):
             "tvdb_id": "98765",
             "plex_guid": None,
             "anidb_id": None,
+            "tvdb_is_episode": False,
         }
         self.assertEqual(result, expected)
 

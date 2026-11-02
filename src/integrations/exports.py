@@ -1,8 +1,13 @@
 import csv
 import json
 import logging
+import os
+import tempfile
+import time
 from collections import defaultdict
+from contextlib import suppress
 from io import StringIO
+from pathlib import Path
 
 from django.apps import apps
 from django.conf import settings
@@ -29,6 +34,9 @@ from app.models import (
 from lists.models import CustomList
 
 logger = logging.getLogger(__name__)
+
+STAGING_PREFIX = ".staging-"
+STAGING_MAX_AGE_SECONDS = 24 * 3600
 
 
 class Echo:
@@ -91,8 +99,15 @@ def generate_rows(user, media_types=None, include_lists=True, include_collection
     fields = {
         # watch_providers scales with ~60 TMDB regions, is never read back on
         # import, and is fully re-fetchable via the provider backfill task.
-        "item": [*get_model_fields(Item, exclude={"watch_providers"}), "episode_order_data"],
-        "track": [*get_track_fields(), "active_episode_order_data", "episode_order_history"],
+        "item": [
+            *get_model_fields(Item, exclude={"watch_providers"}),
+            "episode_order_data",
+        ],
+        "track": [
+            *get_track_fields(),
+            "active_episode_order_data",
+            "episode_order_history",
+        ],
         "list": get_list_fields(),
         "collection": get_collection_fields(),
         "tags": get_tag_fields(),
@@ -131,8 +146,18 @@ def generate_rows(user, media_types=None, include_lists=True, include_collection
         # for each tv/season row despite never using them, tripling the
         # episode load for large libraries and causing exports to time out
         # partway through (issue #618).
-        manager = model.all_objects if media_type == MediaTypes.EPISODE.value else model.objects
-        queryset = manager.filter(**filter_kwargs).select_related("item")
+        manager = (
+            model.all_objects
+            if media_type == MediaTypes.EPISODE.value
+            else model.objects
+        )
+        # watch_providers is ~146 KiB a title and never exported (excluded from
+        # the item fields above), so keep it out of the streamed rows.
+        queryset = (
+            manager.filter(**filter_kwargs)
+            .select_related("item", "item__episode_order__show")
+            .defer("item__watch_providers")
+        )
 
         logger.debug("Streaming %ss to CSV", media_type)
 
@@ -159,7 +184,9 @@ def generate_rows(user, media_types=None, include_lists=True, include_collection
             from integrations.episode_orders import portable_order
 
             if media.item.episode_order_id:
-                row[1 + fields["item"].index("media_id")] = media.item.episode_order.show.media_id
+                row[1 + fields["item"].index("media_id")] = (
+                    media.item.episode_order.show.media_id
+                )
                 row[1 + fields["item"].index("episode_order_data")] = json.dumps(
                     portable_order(media.item.episode_order),
                 )
@@ -167,15 +194,23 @@ def generate_rows(user, media_types=None, include_lists=True, include_collection
                 from app.models import EpisodeOrderChange
 
                 track_offset = 1 + len(fields["item"])
-                row[track_offset + fields["track"].index("active_episode_order_data")] = (
+                row[
+                    track_offset + fields["track"].index("active_episode_order_data")
+                ] = (
                     json.dumps(portable_order(media.active_episode_order))
-                    if media.active_episode_order_id else ""
+                    if media.active_episode_order_id
+                    else ""
                 )
                 history = [
-                    {"order": portable_order(change.order), "mappings": change.mappings,
-                     "before_state": change.before_state, "created_at": change.created_at.isoformat()}
+                    {
+                        "order": portable_order(change.order),
+                        "mappings": change.mappings,
+                        "before_state": change.before_state,
+                        "created_at": change.created_at.isoformat(),
+                    }
                     for change in EpisodeOrderChange.objects.filter(tv=media, user=user)
-                    .select_related("order__show").order_by("created_at", "pk")
+                    .select_related("order__show")
+                    .order_by("created_at", "pk")
                 ]
                 row[track_offset + fields["track"].index("episode_order_history")] = (
                     json.dumps(history) if history else ""
@@ -186,6 +221,19 @@ def generate_rows(user, media_types=None, include_lists=True, include_collection
                 progress_index = fields["track"].index("progress")
                 row[progress_index + 1 + len(fields["item"])] = helpers.minutes_to_hhmm(
                     media.progress,
+                )
+
+            if media_type in (
+                MediaTypes.BOOK.value,
+                MediaTypes.COMIC.value,
+                MediaTypes.MANGA.value,
+            ):
+                # The importer reads a bare number as hours, so write hh:mm.
+                reading_index = fields["track"].index("reading_time")
+                row[reading_index + 1 + len(fields["item"])] = (
+                    helpers.minutes_to_hhmm(media.reading_time)
+                    if media.reading_time
+                    else ""
                 )
 
             yield writer.writerow(row)
@@ -426,10 +474,14 @@ def generate_letterboxd_rows(user):
             continue
         events.append((movie.item_id, play.end_date, movie))
 
-    movie_ids_with_plays = MoviePlay.objects.filter(movie__user=user).values_list(
-        "movie_id",
-        flat=True,
-    ).distinct()
+    movie_ids_with_plays = (
+        MoviePlay.objects.filter(movie__user=user)
+        .values_list(
+            "movie_id",
+            flat=True,
+        )
+        .distinct()
+    )
     fallback_movies = (
         Movie.objects.filter(user=user, status=Status.COMPLETED.value)
         .exclude(id__in=movie_ids_with_plays)
@@ -577,32 +629,86 @@ def _collection_identity_map(user):
     return identity
 
 
+def backup_directory(user):
+    """Keep user-controlled names within the configured backup directory."""
+    username = str(user.username)
+    # Django permits dot-only usernames. Legacy/admin-created usernames may
+    # also contain separators; none may become filesystem paths. A colon is
+    # forbidden in normal usernames, avoiding collisions with this fallback.
+    if username in {"", ".", ".."} or Path(username).name != username:
+        username = f"user:{user.pk}"
+    directory = Path(settings.BACKUP_DIR) / username
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return directory
+
+
+def _publish_without_overwrite(staged, backup_dir, stem):
+    """Move a finished staging file to a free final name; return its path.
+
+    A hard link fails rather than replacing an existing file, so a second
+    export in the same second gets a numbered name instead of clobbering the
+    first. Filesystems without hard links (some network mounts) fall back to a
+    check-then-rename.
+    """
+    for attempt in range(1000):
+        name = f"{stem}.csv" if attempt == 0 else f"{stem}_{attempt}.csv"
+        final = backup_dir / name
+        try:
+            os.link(staged, final)
+        except FileExistsError:
+            continue
+        except OSError:
+            if final.exists():
+                continue
+            staged.replace(final)
+            return final
+        staged.unlink()
+        return final
+    msg = "Could not find a free backup file name"
+    raise FileExistsError(msg)
+
+
+def _remove_stale_staging(backup_dir):
+    """Delete staging files an interrupted export left behind."""
+    cutoff = time.time() - STAGING_MAX_AGE_SECONDS
+    for stale in backup_dir.glob(f"{STAGING_PREFIX}*"):
+        with suppress(OSError):
+            if stale.is_file() and stale.stat().st_mtime < cutoff:
+                stale.unlink()
+
+
 def write_backup(user, media_types=None, include_lists=True, include_collection=True):
     """Write a CSV backup to the configured backup directory.
 
-    Returns the path to the created file.
+    The CSV is built in a private hidden staging file and only given its final
+    name once complete and flushed, so an interrupted export never leaves a
+    partial floppy_*.csv. Returns the path to the created file.
     """
-    from pathlib import Path
-
-    from django.conf import settings
-    from django.utils import timezone
-
-    backup_dir = Path(settings.BACKUP_DIR) / str(user.username)
-    backup_dir.mkdir(parents=True, exist_ok=True)
+    backup_dir = backup_directory(user)
+    _remove_stale_staging(backup_dir)
 
     now = timezone.localtime()
-    filename = f"floppy_{now.strftime('%Y-%m-%d_%H%M%S')}.csv"
-    filepath = backup_dir / filename
+    stem = f"floppy_{now.strftime('%Y-%m-%d_%H%M%S')}"
 
-    with filepath.open("w", newline="", encoding="utf-8") as f:
-        f.writelines(
-            generate_rows(
-                user,
-                media_types=media_types,
-                include_lists=include_lists,
-                include_collection=include_collection,
+    fd, staging_name = tempfile.mkstemp(dir=backup_dir, prefix=STAGING_PREFIX)
+    staged = Path(staging_name)
+    try:
+        with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
+            f.writelines(
+                generate_rows(
+                    user,
+                    media_types=media_types,
+                    include_lists=include_lists,
+                    include_collection=include_collection,
+                )
             )
-        )
+            f.flush()
+            os.fsync(f.fileno())
+        filepath = _publish_without_overwrite(staged, backup_dir, stem)
+    except BaseException:
+        with suppress(OSError):
+            staged.unlink()
+        raise
 
     logger.info("Backup written to %s for user %s", filepath, user.username)
     return str(filepath)
@@ -644,7 +750,7 @@ def get_track_fields():
         all_fields.insert(end_idx, "end_date")
         all_fields.insert(end_idx, "start_date")
 
-    for timestamp_field in ("created_at", "progressed_at"):
+    for timestamp_field in ("created_at", "progressed_at", "scored_at"):
         if timestamp_field in all_fields:
             all_fields.remove(timestamp_field)
             all_fields.append(timestamp_field)

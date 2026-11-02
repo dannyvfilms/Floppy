@@ -74,7 +74,7 @@ def resolve_incoming(user, media_id, source, season, episode, *, integration):
         return []
 
 
-def season_for_target(user, item):
+def season_for_target(user, item, *, prepare_only=False):
     """Return a target season using the application's order-aware resolver."""
     from app.fork_services_episode import resolve_or_create_season
 
@@ -84,6 +84,7 @@ def season_for_target(user, item):
         item.source,
         item.season_number,
         item.library_media_type,
+        prepare_only=prepare_only,
     )
 
 

@@ -64,6 +64,26 @@ class ListWriteBindingTests(FloppyApiTestCase):
 
         self.assertNotEqual(response.status_code, HTTP.FORBIDDEN)
 
+    def test_bound_token_cannot_create_an_unbound_list(self):
+        before = CustomList.objects.filter(owner=self.user1).count()
+        response = self.client.post(
+            "/api/v1/lists/",
+            {"name": "Outside binding"},
+            format="json",
+            **self.token_for([self.bound_list.id]),
+        )
+        self.assertEqual(response.status_code, HTTP.FORBIDDEN)
+        self.assertEqual(CustomList.objects.filter(owner=self.user1).count(), before)
+
+    def test_unbound_token_can_create_a_list(self):
+        response = self.client.post(
+            "/api/v1/lists/",
+            {"name": "New list"},
+            format="json",
+            **self.token_for([]),
+        )
+        self.assertEqual(response.status_code, HTTP.CREATED)
+
     def test_a_bound_token_may_not_write_another_list(self):
         """Binding to one list must not leave the rest reachable by id."""
         headers = self.token_for([self.bound_list.id])

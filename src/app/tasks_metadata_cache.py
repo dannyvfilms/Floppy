@@ -80,6 +80,22 @@ def _clear_item_metadata_cache(item: Item):
                 continue
 
 
+def _clear_items_metadata_cache(items):
+    keys = set()
+    for item in items:
+        keys.update(_metadata_cache_keys_for_item(item))
+    if not keys:
+        return
+    try:
+        cache.delete_many(keys)
+    except Exception:  # pragma: no cover - cache backends may not support delete_many
+        for key in keys:
+            try:
+                cache.delete(key)
+            except Exception:  # noqa: S112  # deliberate best-effort; skip the key and continue
+                continue
+
+
 def _fetch_item_metadata(item: Item):
     if item.media_type == MediaTypes.SEASON.value:
         if item.season_number is None:

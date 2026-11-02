@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Any
 from django.db import models, transaction
 from django.db.utils import IntegrityError, OperationalError
 
+from app import db_diagnostics
+
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -34,6 +36,18 @@ def is_lock_error(error: BaseException) -> bool:
     """Return True if the OperationalError was caused by a SQLite lock."""
     message = str(error).lower()
     return any(signal in message for signal in LOCK_ERROR_SIGNALS)
+
+
+def is_contention_error(error: BaseException) -> bool:
+    """Recognize transient SQLite locks and PostgreSQL transaction conflicts."""
+    if is_lock_error(error):
+        return True
+    current = error
+    while current is not None:
+        if getattr(current, "sqlstate", None) in {"40P01", "40001", "55P03"}:
+            return True
+        current = current.__cause__
+    return False
 
 
 def is_disk_io_error(error: BaseException) -> bool:
@@ -85,6 +99,8 @@ def run_retryable_db_operation(
         except OperationalError as error:
             if not is_retryable_error(error):
                 raise
+
+            db_diagnostics.report_database_error(error, operation=operation_name)
 
             if attempt >= max_retries:
                 if mode != "best_effort":

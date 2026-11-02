@@ -2,7 +2,9 @@
 {% load i18n %}
 {% load app_tags %}
 
-{% if collection_entries or is_pagination %}
+{% if collection_rows %}
+  {% include "app/components/collection_rows.html" %}
+{% elif collection_entries or is_pagination %}
   {% if layout == 'table' %}
     {% include "app/components/collection_table_rows.html" %}
   {% else %}
@@ -15,14 +17,14 @@
         {% include "app/icons/cube.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
       </div>
       <h3 class="text-xl font-semibold mb-2">
-        {% if media_type or search_query or format_filter or resolution_filter or hdr_filter or rating_filter != 'all' or completeness_filter != 'all' %}
+        {% if media_type or search_query or format_filter or resolution_filter or hdr_filter or location_filter or rating_filter != 'all' or completeness_filter != 'all' %}
           {% translate "No matches found" %}
         {% else %}
           {% translate "Your collection is empty" %}
         {% endif %}
       </h3>
       <p class="text-[var(--color-text-muted)]">
-        {% if media_type or search_query or format_filter or resolution_filter or hdr_filter or rating_filter != 'all' or completeness_filter != 'all' %}
+        {% if media_type or search_query or format_filter or resolution_filter or hdr_filter or location_filter or rating_filter != 'all' or completeness_filter != 'all' %}
           {% translate "Try adjusting your filters to see more items." %}
         {% else %}
           {% translate "Add items to your collection from a movie, show, or episode's track modal." %}

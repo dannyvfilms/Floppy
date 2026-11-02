@@ -9,6 +9,7 @@ informational, so an override or a stale identity is a warning.
 import json
 import shutil
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,6 +17,7 @@ from django.test import SimpleTestCase
 
 from app import preflight
 from app.preflight import FAIL, OK, WARN, build_report, check_runtime
+from config import runtime_profile
 
 
 class RuntimeCheckTests(SimpleTestCase):
@@ -171,6 +173,11 @@ class BootSizingTests(SimpleTestCase):
 
     def setUp(self):
         """Keep build info out of these cases."""
+        # sizing_report uses an import-time profile, not later env changes.
+        profile = replace(runtime_profile.PROFILE, tier="standard", overridden=True)
+        profile_patch = patch.object(runtime_profile, "PROFILE", profile)
+        profile_patch.start()
+        self.addCleanup(profile_patch.stop)
         patcher = patch.object(
             preflight,
             "_BUILD_INFO_PATH",
@@ -316,6 +323,11 @@ class RunningTopologyTests(SimpleTestCase):
 
     def setUp(self):
         """Keep build info out of these cases."""
+        # sizing_report uses an import-time profile, not later env changes.
+        profile = replace(runtime_profile.PROFILE, tier="standard", overridden=True)
+        profile_patch = patch.object(runtime_profile, "PROFILE", profile)
+        profile_patch.start()
+        self.addCleanup(profile_patch.stop)
         patcher = patch.object(
             preflight,
             "_BUILD_INFO_PATH",

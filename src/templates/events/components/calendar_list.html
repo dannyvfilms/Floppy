@@ -16,18 +16,20 @@
 
       <div class="p-4 space-y-3">
         {% for release in releases %}
-          <a data-release-media-type="{{ release.item.media_type }}" data-release-status="{{ release.status }}" href="{{ release.item|media_url }}" class="block">
+          <a data-release-media-type="{{ release.item.media_type }}" data-release-type="{{ release.release_type }}" data-release-status="{{ release.status|default_if_none:"" }}" href="{{ release|calendar_event_url }}" class="block">
             <div class="flex items-center gap-3 p-2 rounded-md hover:bg-[var(--color-surface-hover)] transition-colors">
-              <img alt="{{ release }}"
+              <img data-media-artwork loading="lazy" decoding="sync" alt="{{ release }}"
                    class="w-10 h-10 object-cover rounded-md shrink-0"
-                   src="{{ release.item.image|image_url }}">
+                   src="{{ release.calendar_backdrop|default:release.item.image|image_url }}">
               <div class="flex-1 min-w-0">
                 <h4 class="font-medium text-sm line-clamp-1">{{ release.item }}</h4>
                 <div class="flex items-center">
                   <span class="text-xs text-[var(--color-text-muted)] me-2">{{ release.item.media_type|media_type_readable }}</span>
+                  {% card_lines release.item.media_type release.item %}
                   {% if release.readable_content_number %}
                     <span class="text-xs text-[var(--color-link)]">{{ release.readable_content_number }} {{ release|user_event_time:user }}</span>
                   {% endif %}
+                  {% if release.release_type %}<span class="text-xs text-[var(--color-link)]">{{ release.get_release_type_display }} {% translate "release" %}</span>{% endif %}
                 </div>
               </div>
             </div>

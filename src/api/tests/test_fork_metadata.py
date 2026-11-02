@@ -265,6 +265,8 @@ class EpisodeScoreTests(FloppyApiTestCase):
         self._episode_metadata_patcher = patch(
             "api.views.services.get_media_metadata",
             return_value={
+                "title": "Show",
+                "image": "https://example.com/show.jpg",
                 "episodes": [
                     {"episode_number": episode_number}
                     for episode_number in (1, 2, 3)
@@ -324,6 +326,15 @@ class EpisodeScoreTests(FloppyApiTestCase):
             )
             self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
 
+    def _patch_score_for_episode(self, episode_number):
+        return self.call_api(
+            "patch",
+            "api_media_episode_score",
+            args=("tv", "tmdb", "1001", 1, episode_number),
+            payload={"score": 5},
+            headers=self.auth_headers,
+        )
+
     def test_untracked_episode_not_found(self):
         """Episodes with no plays return 404."""
         response = self.call_api(
@@ -334,6 +345,109 @@ class EpisodeScoreTests(FloppyApiTestCase):
             headers=self.auth_headers,
         )
         self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+
+
+    def _score_untracked(self, payload):
+        return self.call_api(
+            "patch",
+            "api_media_episode_score",
+            args=("tv", "tmdb", "424242", 1, 1),
+            payload=payload,
+            headers=self.auth_headers,
+        )
+
+    def _rating_rows(self, media_id="424242"):
+        return Episode.ratings.filter(related_season__item__media_id=media_id)
+
+    def test_untracked_show_score_is_stored_without_a_watch(self):
+        """Scoring an untracked show tracks the season as Planning (#1448)."""
+        response = self._score_untracked({"score": 7.0})
+        self.assertEqual(response.status_code, HTTP.OK)
+
+        season = Season.objects.get(item__media_id="424242")
+        self.assertEqual(season.status, "Planning")
+        (row,) = self._rating_rows()
+        self.assertEqual(str(row.score), "7.0")
+        self.assertTrue(row.rating_only)
+        # It is a rating, not a watch: no watch projection can see it.
+        self.assertFalse(Episode.objects.filter(related_season=season).exists())
+        self.assertFalse(Episode.all_objects.filter(related_season=season).exists())
+        self.assertEqual(season.progress, 0)
+        self.assertEqual(season.completed_episode_count, 0)
+
+    def test_unplayed_episode_of_tracked_season_is_rated(self):
+        """A tracked season with no play of the episode takes a rating-only row."""
+        Episode.objects.filter(
+            related_season__item__media_id="1001",
+            item__episode_number=3,
+        ).delete()
+        response = self._patch_score_for_episode(3)
+        self.assertEqual(response.status_code, HTTP.OK)
+        (row,) = self._rating_rows("1001").filter(item__episode_number=3)
+        self.assertTrue(row.rating_only)
+        self.assertEqual(str(row.score), "5.0")
+
+    def test_clearing_a_rating_only_row_removes_it(self):
+        """Clearing the score of an unwatched episode deletes the row."""
+        Episode.objects.filter(
+            related_season__item__media_id="1001",
+            item__episode_number=3,
+        ).delete()
+        self._patch_score_for_episode(3)
+        cleared = self.call_api(
+            "patch",
+            "api_media_episode_score",
+            args=("tv", "tmdb", "1001", 1, 3),
+            payload={"score": None},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(cleared.status_code, HTTP.OK)
+        self.assertFalse(
+            self._rating_rows("1001").filter(item__episode_number=3).exists(),
+        )
+
+    def test_clearing_an_untracked_episode_is_not_found(self):
+        """There is nothing to clear on a show nobody tracks, and nothing is made."""
+        response = self._score_untracked({"score": None})
+        self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+        self.assertFalse(Season.objects.filter(item__media_id="424242").exists())
+
+    def test_invalid_score_on_untracked_show_creates_nothing(self):
+        """A bad score is rejected before any season is created."""
+        response = self._score_untracked({"score": 11})
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+        self.assertFalse(Season.objects.filter(item__media_id="424242").exists())
+
+    def test_first_watch_takes_over_the_rating(self):
+        """Watching a rated-only episode keeps its score on the play."""
+        self._score_untracked({"score": 7.0})
+        season = Season.objects.get(item__media_id="424242")
+        season.watch(1, datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC))
+
+        rows = self._rating_rows()
+        self.assertEqual(rows.count(), 1)
+        self.assertFalse(rows.get().rating_only)
+        self.assertEqual(str(rows.get().score), "7.0")
+        self.assertEqual(Episode.objects.filter(related_season=season).count(), 1)
+
+    @patch("api.views.services.get_media_metadata", return_value={"title": "X"})
+    def test_post_provider_episode_is_rejected_not_500(self, _mock):
+        """Tracking a provider episode over POST returns 400, not a 500 (#1448)."""
+        response = self.call_api(
+            "post",
+            "api_media_type_list",
+            args=(MediaTypes.EPISODE.value,),
+            payload={
+                "source": "tmdb",
+                "media_id": "424242",
+                "season_number": 1,
+                "episode_number": 1,
+                "score": 7,
+            },
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+        self.assertIn("/watch/", response.json()["detail"])
 
 
 class EpisodePatchScoreTests(FloppyApiTestCase):

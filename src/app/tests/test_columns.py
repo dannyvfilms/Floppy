@@ -177,6 +177,7 @@ class ResolveColumnsTests(TestCase):
                 "date_added",
                 "start_date",
                 "end_date",
+                "entry_source",
                 "notes",
                 "synopsis",
             ],
@@ -216,6 +217,7 @@ class ResolveColumnsTests(TestCase):
                 "date_added",
                 "start_date",
                 "end_date",
+                "entry_source",
                 "notes",
                 "synopsis",
             ],
@@ -251,3 +253,25 @@ class ResolveColumnsTests(TestCase):
         keys = [column.key for column in columns]
 
         self.assertNotIn("notes", keys)
+
+    def test_entry_source_column_visible_and_hideable(self):
+        for media_type in (MediaTypes.BOOK.value, MediaTypes.MOVIE.value):
+            columns = resolve_columns(
+                media_type=media_type,
+                current_sort="score",
+                user=self.user,
+                table_type="media",
+            )
+            self.assertIn("entry_source", [column.key for column in columns])
+
+        self.user.table_column_prefs = {
+            MediaTypes.MOVIE.value: {"order": [], "hidden": ["entry_source"]},
+        }
+        self.user.save(update_fields=["table_column_prefs"])
+        columns = resolve_columns(
+            media_type=MediaTypes.MOVIE.value,
+            current_sort="score",
+            user=self.user,
+            table_type="media",
+        )
+        self.assertNotIn("entry_source", [column.key for column in columns])

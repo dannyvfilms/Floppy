@@ -87,6 +87,16 @@ ordered changes without any of them being edited.
 Backfill passes `record_changes=False`. Those rows were already there; calling
 them new decisions would deliver a whole library outward on upgrade.
 
+The backfill runs by itself once per `REPAIR_VERSION`
+(`app/tasks_watch_state.py`, `Ensure watch state repair`): the startup hook
+queues it, the beat entry resumes a library too large for one five-minute run,
+and per-user cursor rows in `BackfillReconcileState` keep it from restarting.
+It exists because bulk writes skip save signals: before 2026-10-18 an
+overwrite import projected "unwatched" while deleting rows and never projected
+the rows it wrote back. Any bulk write of a projected type must call
+`helpers.project_imported_watch_state`; bump `REPAIR_VERSION` when one is found
+that did not.
+
 ## The apply algorithm
 
 `integrations/state/apply.py`. The order is the design — each rule exists
@@ -145,6 +155,62 @@ never depends on the broker.
 Celery owns no retry: `deliver_watched_state` is `max_retries=0` and the row's
 `next_attempt_at` owns backoff, because a Celery retry would skip read-first.
 
+## Imports are marked, and a destination can decline them
+
+Importers write through the same projection as the UI, so an imported play and
+a play made a second ago look identical. `import_media` now wraps every importer
+in `importing_watch_state()`, which records the resulting changes with
+`WatchStateOrigin.IMPORT`. An adapter that sets `ACCEPTS_IMPORTED_CHANGES =
+False` receives no delivery for them. The default is `True`, so Jellyfin, Emby
+and Kodi behave as before. A destination that shows deliveries as new activity
+(a dated play log such as WeTrakr) should set it to `False` and receive imported
+history only through an explicit export.
+
+Adapters are found through `integrations.state.registry.ADAPTER_MODULES`: one
+line per `SyncClientKind`, plus an adapter module with `build_adapter(binding)`.
+
+## Plays, statuses and batching
+
+Three more delivery operations sit beside `watched` and `rating`:
+
+- `play` is one dated watch (`payload.watched_at`). It is queued only when a
+  change adds a play (the play count rose), never for a date edit, and never
+  coalesced: a rewatch is a second play. An unwatch queues no play. Removing a
+  sent play is a separate, explicit operation (`play_remove`) that nothing queues
+  yet.
+- `status` is the tracking status of a movie or show (`payload.status`), queued
+  from the `Movie`/`TV` save signal when the status changed. The latest waiting
+  one wins. Mapping Floppy's statuses to a service's is the adapter's job.
+- Both need their own approved capability (`play.push`, `status.push`), so a
+  service can be given one without the other.
+
+An adapter that declares `BATCH_SIZE` takes writes in groups (`write_batch`) and
+the engine holds its deliveries instead of sending each at once:
+
+- Each new delivery gets `next_attempt_at` from the binding's `delivery_schedule`:
+  *Live* waits a ten-second window so a burst (a season marked watched) leaves as
+  one request, *Hourly* and *Daily* wait for the next UTC hour or midnight.
+  Because the release time is the normal `next_attempt_at`, the sweeper needs no
+  second idea of "due". `set_delivery_schedule` moves waiting deliveries too.
+- `flush_binding` claims what is due, at most one delivery per item and operation
+  (the in-flight index allows no more), sends up to `BATCH_SIZE` per request and
+  repeats until nothing is due. A per-binding cache lock keeps two flushes from
+  spending the provider's rate limit twice.
+- The adapter answers per item (delivered with the provider's receipt, skipped,
+  failed, or retry). A whole-request failure raises: transient errors reschedule
+  every item and honour `retry_after`, terminal errors fail them.
+- A retry goes out apart from new work, so the same set is sent again under the
+  same `Idempotency-Key` (a UUID derived from the deliveries' `client_event_id`s).
+  The receipt is stored on the delivery (`payload.receipt`).
+- Adapters that take one write at a time (Jellyfin, Emby, Kodi, TMDb) are not
+  affected: no hold, no batching, and the schedule does not apply to them.
+
+The sweeper (`sweep_watched_state_deliveries`) is on the Celery beat schedule
+every minute. It flushes batch bindings and runs the single-write deliveries.
+It also puts any delivery still `in_flight` thirty minutes after its claim
+(`claimed_at`) back in the queue: its worker died, and the next attempt is safe
+because it reads first, or is sent under the same idempotency key.
+
 ## Provider capability matrix
 
 A direction ships enabled only after its adapter has been shown to hold the
@@ -157,9 +223,10 @@ what the user approved, and the settings page names the shortfall as
 | Jellyfin | Yes | Yes — `PlayedItems` is a *set*, so read-first retry is safe | inbound + outbound |
 | Emby | Yes | Unverified here | inbound only |
 | Kodi | Yes, via library id lookup | Unverified; its write assigns a *count* | inbound only |
-| Plex | Existing webhooks and history | `/:/scrobble` is undocumented | inbound only |
+| Plex | Existing webhooks and history; manual marks via an opt-in 15-minute history poll (Plex sends no webhook for them) | `/:/scrobble` is undocumented | inbound only |
 | Stremio | Existing bitfield parsing | `datastorePut` is a read-modify-write of an opaque bitfield with no CAS | inbound only |
 | Audiobookshelf | Existing pull | Documented, unverified | inbound only |
+| WeTrakr | No | Batched plays (dated), statuses and ratings with a per-item reply; no unwatch yet | outbound only, see [WeTrakr](../integrations/wetrakr.md) |
 | Last.fm / ListenBrainz / Koito | Listens | Append-only | out of scope — listens have no unwatch |
 
 **Never emulate unwatched by deleting listens.**
@@ -179,6 +246,10 @@ operations.
   grouped-anime watch cannot touch the TV-bucket row for the same episode.
 
 ## Known gaps
+
+Rating sync reuses this outbox and its delivery tasks with a separate operation
+and adapter capability. See [Rating sync-back](rating-sync.md) for the shared
+contract and TMDb behavior.
 
 - The projection dual-writes alongside the legacy stores until
   `effective_state()` becomes the only reader.

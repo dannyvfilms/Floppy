@@ -13,11 +13,13 @@ actually duplicates.
 """
 
 import logging
-from datetime import timedelta
+import random
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.utils import timezone
 
 from app import fork_services_play_dedupe as play_dedupe
@@ -127,6 +129,96 @@ class DuplicatePlayWindow(TestCase):
         times.add("key", old, runtime_minutes=120)
         times.add("key", timezone.now(), runtime_minutes=120)
         self.assertTrue(times.is_duplicate("key", old + timedelta(minutes=5)))
+
+    def test_index_matches_scan_for_unordered_sources_and_boundaries(self):
+        """Indexing retains strict windows, runtime changes and identity isolation."""
+        randomizer = random.Random(642)  # noqa: S311 -- deterministic test history
+        anchor = datetime(2020, 1, 1, tzinfo=UTC)
+        watches = [anchor + timedelta(minutes=n * 17) for n in range(300)]
+        randomizer.shuffle(watches)
+        times = play_dedupe.PlayTimes()
+        for watch in watches:
+            times.add("original", watch)
+        self.assertEqual(times.times_for("original"), watches)
+        for runtime in (None, 5, 22, 120, 600):
+            times = play_dedupe.PlayTimes()
+            for watch in watches:
+                times.add("migrated", watch, runtime)
+            window = play_dedupe.duplicate_play_window(runtime)
+            for candidate in [None, anchor - window, watches[-1] + window] + [
+                anchor + timedelta(seconds=randomizer.randrange(-15000, 400000))
+                for _ in range(300)
+            ]:
+                expected = candidate is not None and any(
+                    abs(candidate - watch) < window for watch in watches
+                )
+                self.assertEqual(times.is_duplicate("migrated", candidate), expected)
+                self.assertFalse(times.is_duplicate("unrelated", candidate))
+        times = play_dedupe.PlayTimes()
+        times.add("key", anchor)
+        times.record_runtime("key", 22)
+        self.assertFalse(times.is_duplicate("key", anchor + timedelta(minutes=22)))
+        self.assertTrue(times.is_duplicate("key", anchor))
+
+    def test_fallback_index_matches_scan_when_sortedcontainers_is_missing(self):
+        """A source install that missed `uv sync` (#1522) still dedupes correctly."""
+        randomizer = random.Random(1522)  # noqa: S311 -- deterministic test history
+        anchor = datetime(2020, 1, 1, tzinfo=UTC)
+        watches = [anchor + timedelta(minutes=n * 17) for n in range(100)]
+        randomizer.shuffle(watches)
+        window = play_dedupe.duplicate_play_window(None)
+        with patch.object(play_dedupe, "SortedList", play_dedupe._PlainSortedList):
+            times = play_dedupe.PlayTimes()
+            for watch in watches:
+                times.add("key", watch)
+            self.assertEqual(times.times_for("key"), watches)
+            for candidate in [anchor - window, watches[-1] + window] + [
+                anchor + timedelta(seconds=randomizer.randrange(-15000, 110000))
+                for _ in range(200)
+            ]:
+                expected = any(abs(candidate - watch) < window for watch in watches)
+                self.assertEqual(times.is_duplicate("key", candidate), expected)
+
+    def test_dst_and_mixed_awareness_keep_original_comparison_semantics(self):
+        """DST fold ordering and early duplicate matches retain scan behavior."""
+        zone = ZoneInfo("America/New_York")
+        watches = [
+            datetime(2020, 11, 1, 1, 20, tzinfo=zone, fold=1),
+            datetime(2020, 11, 1, 1, 30, tzinfo=zone, fold=0),
+        ]
+        times = play_dedupe.PlayTimes()
+        for watch in watches:
+            times.add("dst", watch, 15)
+        self.assertTrue(times.is_duplicate("dst", datetime(2020, 11, 1, 5, 32, tzinfo=UTC)))
+        anchor = datetime(2020, 1, 1, tzinfo=UTC)
+        times.add("mixed", anchor)
+        times.add("mixed", datetime(2020, 1, 1))
+        self.assertTrue(times.is_duplicate("mixed", anchor))
+        with self.assertRaises(TypeError):
+            times.is_duplicate("mixed", anchor + timedelta(days=2))
+
+    @tag("slow", "benchmark")
+    def test_large_same_identity_lookup_has_bounded_timestamp_comparisons(self):
+        """Growing repeated histories must not scan all earlier timestamps."""
+        class CountedDateTime(datetime):
+            comparisons = 0
+
+            def __sub__(self, other):
+                type(self).comparisons += 1
+                return super().__sub__(other)
+
+        anchor = CountedDateTime(1980, 1, 1, tzinfo=UTC)
+        size = 80849
+        for descending in (False, True):
+            times = play_dedupe.PlayTimes()
+            CountedDateTime.comparisons = 0
+            indexes = range(size - 1, -1, -1) if descending else range(size)
+            for n in indexes:
+                candidate = anchor + timedelta(hours=4 * n)
+                self.assertFalse(times.is_duplicate("same", candidate))
+                times.add("same", candidate, 30)
+            self.assertLessEqual(CountedDateTime.comparisons, size * 2)
+            self.assertEqual(len(times.times_for("same")), size)
 
 
 class ExistingPlayTimes(TestCase):

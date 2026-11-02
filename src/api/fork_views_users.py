@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 _CHOICE_PREFERENCE_FIELDS = (
     "date_format",
     "time_format",
+    "currency",
     "week_start_day",
     "activity_history_view",
     "duration_format",
@@ -60,12 +61,14 @@ _TEXT_PREFERENCE_FIELDS = (
 
 # Writable but never read back.
 #
-# `_serialize_preferences` echoes every listed field on GET, and the web form
-# renders this one with `render_value=False` precisely so the page never shows
-# it. Serializing it here would hand the secret to any client holding an API
-# token — a new exposure, and a wider one than the settings page it was kept
-# off. Writable, never returned.
-_WRITE_ONLY_PREFERENCE_FIELDS = frozenset({"playback_webhook_secret"})
+# A webhook URL can itself contain credentials in userinfo, path, or query.
+# Neither it nor the signing secret should be disclosed to user:read clients.
+_WRITE_ONLY_PREFERENCE_FIELDS = frozenset(
+    {
+        "playback_webhook_url",
+        "playback_webhook_secret",
+    }
+)
 
 # Longest value each text preference accepts. `playback_webhook_secret` is
 # stored encrypted in an unbounded column, so its cap cannot be read off the
@@ -91,17 +94,34 @@ _STATS_SENSITIVE_FIELDS = {
 
 
 def _field_choices(user, field_name):
+    if field_name == "media_card_subtitle_display":
+        from users.card_metadata import DISPLAY_CHOICES
+
+        return list(DISPLAY_CHOICES)
     field = user._meta.get_field(field_name)
     return [choice[0] for choice in (field.choices or [])]
 
 
 def _serialize_preferences(user):
-    payload = {}
+    from users.card_metadata import OMIT, absorbed_preference_value
+
+    payload = {"playback_webhook_configured": bool(user.playback_webhook_url.strip())}
     readable = (
         _CHOICE_PREFERENCE_FIELDS + _BOOLEAN_PREFERENCE_FIELDS + _TEXT_PREFERENCE_FIELDS
     )
+    absorbed = {
+        "media_card_subtitle_display",
+        "progress_bar",
+        "hide_zero_rating",
+    }
     for field in readable:
         if field in _WRITE_ONLY_PREFERENCE_FIELDS:
+            continue
+        if field in absorbed:
+            value = absorbed_preference_value(user, field)
+            if value is OMIT:
+                continue
+            payload[field] = value
             continue
         payload[field] = getattr(user, field)
     return payload
@@ -148,6 +168,14 @@ class UserPreferencesView(drf_views.APIView):
                     {"detail": f"Invalid value for {field}.", "choices": valid},
                     status=HTTP.BAD_REQUEST,
                 )
+            if field == "media_card_subtitle_display":
+                from users.card_metadata import apply_absorbed_preference
+
+                apply_absorbed_preference(user, field, value)
+                if "card_metadata" not in fields_to_update:
+                    fields_to_update.append("card_metadata")
+                changed.add(field)
+                continue
             if getattr(user, field) != value:
                 setattr(user, field, value)
                 fields_to_update.append(field)
@@ -162,6 +190,14 @@ class UserPreferencesView(drf_views.APIView):
                     {"detail": f"{field} must be a boolean."},
                     status=HTTP.BAD_REQUEST,
                 )
+            if field in {"progress_bar", "hide_zero_rating"}:
+                from users.card_metadata import apply_absorbed_preference
+
+                apply_absorbed_preference(user, field, value)
+                if "card_metadata" not in fields_to_update:
+                    fields_to_update.append("card_metadata")
+                changed.add(field)
+                continue
             if getattr(user, field) != value:
                 setattr(user, field, value)
                 fields_to_update.append(field)
@@ -306,13 +342,15 @@ class UserSidebarView(drf_views.APIView):
 
 # /api/v1/user/notifications/
 class UserNotificationsView(drf_views.APIView):
-    """Read or update notification settings (mirrors the web page)."""
+    """Read or update settings; credential-bearing notification URLs are write-only."""
 
     def get(self, request):
         """Return notification settings and excluded items."""
         return Response(
             {
-                "notification_urls": request.user.notification_urls,
+                "notification_urls_configured": bool(
+                    request.user.notification_urls.strip()
+                ),
                 "daily_digest_enabled": request.user.daily_digest_enabled,
                 "release_notifications_enabled": (
                     request.user.release_notifications_enabled
@@ -339,12 +377,16 @@ class UserNotificationsView(drf_views.APIView):
         }
         form = NotificationSettingsForm(data, instance=request.user)
         if not form.is_valid():
+            errors = dict(form.errors)
+            if "notification_urls" in errors:
+                # The web form quotes the URL, which may be a stored secret.
+                errors["notification_urls"] = ["Invalid notification URL."]
             return Response(
-                {"detail": "Invalid notification settings.", "errors": form.errors},
+                {"detail": "Invalid notification settings.", "errors": errors},
                 status=HTTP.BAD_REQUEST,
             )
         form.save()
-        return Response(data, status=HTTP.OK)
+        return self.get(request)
 
 
 # /api/v1/user/notifications/exclusions/
@@ -441,5 +483,10 @@ class UserTokenRegenerateView(drf_views.APIView):
 
     def post(self, request):
         """Regenerate and return the new token once."""
+        if request.user.is_demo:
+            return Response(
+                {"detail": "This section is view-only for demo accounts."},
+                status=HTTP.FORBIDDEN,
+            )
         request.user.regenerate_token()
         return Response({"token": request.user.token}, status=HTTP.OK)

@@ -9,13 +9,46 @@ to deliver it commit together or not at all.
 
 import logging
 
-from django.db.models.signals import post_save
+from django.core.exceptions import ObjectDoesNotExist
+from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 
-from app.models import WatchStateChange
-from integrations.state.outbound import enqueue_deliveries, schedule_delivery
+from app.models import TV, Movie, Season, WatchState, WatchStateChange
+from integrations.state.outbound import (
+    enqueue_deliveries,
+    enqueue_status_change,
+    schedule_delivery,
+)
 
 logger = logging.getLogger(__name__)
+
+
+@receiver(post_save, sender=Season)
+@receiver(post_save, sender=TV)
+@receiver(post_save, sender=WatchState)
+def sync_grouped_anime_change(sender, instance, **kwargs):
+    """Push grouped anime changes after the tracking transaction commits."""
+    from app.signals import media_change_side_effects_suppressed
+    from integrations.mal_sync import queue_grouped_sync
+
+    if kwargs.get("raw") or media_change_side_effects_suppressed():
+        return
+    if sender is WatchState and instance.item.media_type != "episode":
+        return
+    # Removing a show or season rating must clear it on MAL too, or the next
+    # full sync pulls MAL's old rating back.
+    clear_scope = None
+    if (
+        sender is not WatchState
+        and instance.score is None
+        and instance.tracker.has_changed("score")
+        and instance.tracker.previous("score") is not None
+    ):
+        clear_scope = "show" if sender is TV else instance.item.season_number
+    try:
+        queue_grouped_sync(instance.user_id, instance.item, clear_scope=clear_scope)
+    except ObjectDoesNotExist:
+        return
 
 
 @receiver(post_save, sender=WatchStateChange)
@@ -26,3 +59,25 @@ def enqueue_on_state_change(sender, instance, created, **kwargs):
 
     for delivery in enqueue_deliveries(instance):
         schedule_delivery(delivery)
+
+
+@receiver(pre_save, sender=Movie)
+@receiver(pre_save, sender=TV)
+def enqueue_on_status_change(sender, instance, update_fields=None, **kwargs):
+    """Queue a tracking-status change for destinations that mirror statuses.
+
+    Saving a Movie or TV is not wrapped in a transaction, so the intent is
+    recorded just before the write rather than after it: a crash in between
+    leaves an intent to send, never a status change nobody will send. Delivery
+    checks the entry still has that status, so an intent whose save never
+    landed is dropped.
+    """
+    from app.signals import media_change_side_effects_suppressed
+
+    if kwargs.get("raw") or media_change_side_effects_suppressed():
+        return
+    if update_fields is not None and "status" not in update_fields:
+        return
+    if not instance._state.adding and not instance.tracker.has_changed("status"):
+        return
+    enqueue_status_change(instance.user, instance.item, instance.status)

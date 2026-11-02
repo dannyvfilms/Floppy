@@ -1,0 +1,22 @@
+{% load i18n %}
+{# Repeat options for a modal whose source can sync on a schedule. The including form sets x-data="{ scheduleFrequency: 'once', scheduleTime: importTime }"; the fields post as "frequency" and "time". #}
+<div>
+  <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Import Frequency" %}</label>
+  <div class="relative">
+    <select x-model="scheduleFrequency"
+            name="frequency"
+            class="w-full py-2 px-3 pr-9 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none">
+      <option value="once">{% translate "One Time Import" %}</option>
+      <option value="daily">{% translate "Every Day" %}</option>
+      <option value="2days">{% translate "Every 2 Days" %}</option>
+    </select>
+    {% include "app/icons/chevron-down.svg" with classes="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
+  </div>
+</div>
+<div x-cloak x-show="scheduleFrequency !== 'once'">
+  <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Import Time" %}</label>
+  <input x-model="scheduleTime"
+         name="time"
+         class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 scheme-dark"
+         type="time">
+</div>

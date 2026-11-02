@@ -51,7 +51,7 @@ class DeleteImportScheduleTests(TestCase):
                 "task_name": self.task.name,
             },
         )
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
 
         with self.assertRaises(PeriodicTask.DoesNotExist):
             PeriodicTask.objects.get(id=self.task.id)
@@ -70,7 +70,7 @@ class DeleteImportScheduleTests(TestCase):
                 "task_name": "Non-existent Task",
             },
         )
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
 
         messages = list(get_messages(response.wsgi_request))
         self.assertEqual(len(messages), 1)
@@ -86,7 +86,7 @@ class DeleteImportScheduleTests(TestCase):
                 "task_name": self.other_task.name,
             },
         )
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
 
         messages = list(get_messages(response.wsgi_request))
         self.assertEqual(len(messages), 1)
@@ -115,7 +115,7 @@ class DeleteImportScheduleTests(TestCase):
             {"task_name": prefixed_task.name},
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         messages = list(get_messages(response.wsgi_request))
         self.assertIn("Import schedule not found", str(messages[0]))
         self.assertTrue(PeriodicTask.objects.filter(id=prefixed_task.id).exists())
@@ -141,7 +141,7 @@ class DeleteImportScheduleTests(TestCase):
             {"task_name": watchlist_task.name},
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         self.assertFalse(PeriodicTask.objects.filter(id=watchlist_task.id).exists())
 
         self.user.refresh_from_db()
@@ -171,7 +171,7 @@ class DeleteImportScheduleTests(TestCase):
             {"task_name": lastfm_task.name},
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
 
         messages = list(get_messages(response.wsgi_request))
         self.assertEqual(len(messages), 1)

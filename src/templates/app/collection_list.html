@@ -12,11 +12,18 @@
     sort: '{{ sort_by }}',
     direction: '{{ direction }}',
     layout: '{{ layout }}',
+    group: '{% if group_by_type %}type{% endif %}',
     renderedLayout: '{{ layout }}',
     type: '{{ media_type|default:'all' }}',
     format: '{{ format_filter|default:'all' }}',
     resolution: '{{ resolution_filter|default:'all' }}',
     hdr: '{{ hdr_filter|default:'all' }}',
+    locationFilter: '{{ location_filter|escapejs }}',
+    cfField: '{{ custom_filter_field|escapejs }}',
+    cfValue: '{{ custom_filter_value|escapejs }}',
+    cfLabels: {
+      {% for custom_filter in custom_field_filters %}{% for value, label in custom_filter.choices %}'{{ custom_filter.id }}|{{ value|escapejs }}': '{{ label|escapejs }}',{% endfor %}{% endfor %}
+    },
     rating: '{{ rating_filter|default:'all' }}',
     completeness: '{{ completeness_filter|default:'all' }}',
     query: '{{ search_query|default:''|escapejs }}',
@@ -34,10 +41,10 @@
     completenessLabels: { 'all': '{{ media_i18n_7|escapejs }}', 'partial': '{{ media_i18n_17|escapejs }}', 'full': '{{ media_i18n_18|escapejs }}' },
     getTypeLabel() { return this.typeLabels[this.type] || this.type; },
     activeFilterCount() {
-      return [this.type, this.format, this.resolution, this.hdr, this.rating, this.completeness].filter((v) => v !== 'all').length;
+      return [this.type, this.format, this.resolution, this.hdr, this.rating, this.completeness].filter((v) => v !== 'all').length + (this.locationFilter ? 1 : 0) + (this.cfField ? 1 : 0);
     },
     clearFilters() {
-      this.type = 'all'; this.format = 'all'; this.resolution = 'all'; this.hdr = 'all'; this.rating = 'all'; this.completeness = 'all';
+      this.type = 'all'; this.format = 'all'; this.resolution = 'all'; this.hdr = 'all'; this.locationFilter = ''; this.cfField = ''; this.cfValue = ''; this.rating = 'all'; this.completeness = 'all';
     },
     defaultDirection(value) { return value === 'collected_at' ? 'desc' : 'asc'; },
     setSort(value) {
@@ -52,10 +59,14 @@
       <input type="hidden" name="sort" x-model="sort">
       <input type="hidden" name="direction" x-model="direction">
       <input type="hidden" name="layout" x-model="layout">
+      <input type="hidden" name="group" x-model="group">
       <input type="hidden" name="type" x-model="type">
       <input type="hidden" name="format" x-model="format">
       <input type="hidden" name="resolution" x-model="resolution">
       <input type="hidden" name="hdr" x-model="hdr">
+      <input type="hidden" name="location" x-model="locationFilter">
+      <input type="hidden" name="field" x-model="cfField">
+      <input type="hidden" name="field_value" x-model="cfValue">
       <input type="hidden" name="rating" x-model="rating">
       <input type="hidden" name="completeness" x-model="completeness">
       <input type="hidden" name="q" x-model="query">
@@ -166,6 +177,24 @@
                           type="button">
                     <span class="flex-shrink-0 mr-3">{% translate "HDR" %}</span>
                     {% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="hdr === 'all' ? '{{ media_i18n_7|escapejs }}' : hdr"></span>
+                    <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+                  </button>
+                {% endif %}
+                {% for custom_filter in custom_field_filters %}
+                  <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                          @click="filterView = 'field_{{ custom_filter.id }}'"
+                          type="button">
+                    <span class="flex-shrink-0 mr-3 truncate max-w-[8rem]">{{ custom_filter.label }}</span>
+                    <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="cfField === '{{ custom_filter.id }}' ? (cfLabels['{{ custom_filter.id }}|' + cfValue] || cfValue) : '{{ media_i18n_7|escapejs }}'"></span>
+                    <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+                  </button>
+                {% endfor %}
+                {% if available_locations %}
+                  <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                          @click="filterView = 'location'"
+                          type="button">
+                    <span class="flex-shrink-0 mr-3">{% translate "Location" %}</span>
+                    {% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="locationFilter === '' ? '{{ media_i18n_7|escapejs }}' : locationFilter"></span>
                     <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
                   </button>
                 {% endif %}
@@ -315,6 +344,72 @@
                 </div>
               </div>
 
+              {# Location submenu #}
+              <div x-show="filterView === 'location'" x-cloak>
+                <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
+                  <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer" @click="filterView = 'root'" type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+                  <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Location" %}</div>
+                </div>
+                <div class="max-h-64 overflow-y-auto">
+                  <button hx-get="{% url 'collection_list' %}"
+                          hx-target="#collection-view"
+                          hx-include="#filter-form"
+                          hx-indicator="#collection-loading-indicator"
+                          class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                          @click="locationFilter = ''; filtersOpen = false; filterView = 'root'"
+                          type="button">
+                    <span>{% translate "Any location" %}</span>
+                    <span class="ml-auto" x-show="locationFilter === ''">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+                  </button>
+                  {% for value in available_locations %}
+                    <button hx-get="{% url 'collection_list' %}"
+                            hx-target="#collection-view"
+                            hx-include="#filter-form"
+                            hx-indicator="#collection-loading-indicator"
+                            class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                            @click="locationFilter = '{{ value|escapejs }}'; filtersOpen = false; filterView = 'root'"
+                            type="button">
+                      <span>{{ value }}</span>
+                      <span class="ml-auto" x-show="locationFilter === '{{ value|escapejs }}'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+                    </button>
+                  {% endfor %}
+                </div>
+              </div>
+
+              {# Custom field submenus #}
+              {% for custom_filter in custom_field_filters %}
+                <div x-show="filterView === 'field_{{ custom_filter.id }}'" x-cloak>
+                  <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
+                    <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer" @click="filterView = 'root'" type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+                    <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)] truncate">{{ custom_filter.label }}</div>
+                  </div>
+                  <div class="max-h-64 overflow-y-auto">
+                    <button hx-get="{% url 'collection_list' %}"
+                            hx-target="#collection-view"
+                            hx-include="#filter-form"
+                            hx-indicator="#collection-loading-indicator"
+                            class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                            @click="if (cfField === '{{ custom_filter.id }}') { cfField = ''; cfValue = ''; } filtersOpen = false; filterView = 'root'"
+                            type="button">
+                      <span>{% translate "Any" %}</span>
+                      <span class="ml-auto" x-show="cfField !== '{{ custom_filter.id }}'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+                    </button>
+                    {% for value, label in custom_filter.choices %}
+                      <button hx-get="{% url 'collection_list' %}"
+                              hx-target="#collection-view"
+                              hx-include="#filter-form"
+                              hx-indicator="#collection-loading-indicator"
+                              class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                              @click="cfField = '{{ custom_filter.id }}'; cfValue = '{{ value|escapejs }}'; filtersOpen = false; filterView = 'root'"
+                              type="button">
+                        <span>{{ label }}</span>
+                        <span class="ml-auto" x-show="cfField === '{{ custom_filter.id }}' && cfValue === '{{ value|escapejs }}'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+                      </button>
+                    {% endfor %}
+                  </div>
+                </div>
+              {% endfor %}
+
               {# Rating submenu #}
               <div x-show="filterView === 'rating'" x-cloak>
                 <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
@@ -429,6 +524,20 @@
                         @click="setSort('{{ value }}'); open = false"
                         type="button">{% translate label %}</button>
               {% endfor %}
+              <div class="border-t border-gray-700 my-1"></div>
+              <button hx-get="{% url 'collection_list' %}"
+                      hx-target="#collection-view"
+                      hx-include="#filter-form"
+                      hx-indicator="#collection-loading-indicator"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                      :disabled="type !== 'all' || layout === 'table'"
+                      role="menuitemcheckbox"
+                      :aria-checked="(group === 'type').toString()"
+                      @click="group = (group === 'type') ? '' : 'type'; open = false"
+                      type="button">
+                <span>{% translate "Group by media type" %}</span>
+                <span class="ml-auto" x-show="group === 'type' && type === 'all' && layout !== 'table'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+              </button>
             </div>
           </div>
 
@@ -462,7 +571,9 @@
       </div>
     </div>
 
-    <div id="collection-view" x-ref="collectionView" :class="renderedLayout === 'grid' ? 'media-grid' : ''">
+    <div id="collection-view" x-ref="collectionView"
+         class="{% if layout|default:'grid' == 'grid' %}media-grid{% endif %}"
+         :class="{ 'media-grid': renderedLayout === 'grid' }">
       {% include "app/components/collection_items.html" %}
     </div>
 
@@ -471,3 +582,7 @@
     </div>
   </div>
 {% endblock content %}
+
+{% block js %}
+  {% include "app/components/_scrollable_row_js.html" %}
+{% endblock js %}

@@ -1,5 +1,29 @@
 # Coding Agent Instructions
 
+## Standing UI migration rule
+
+Whenever an agent creates, edits, or updates a UI component—including copy or
+styling—it must migrate that component to the shared React pattern in the same
+change. This incrementally prepares reusable presentation for eventual native iOS
+and Android apps and reduces future bulk migration work.
+
+Reuse or extend shared UI components before creating new ones. Keep domain logic,
+permissions and transport in feature adapters. Preserve appearance, behavior,
+accessibility, responsive states and performance: users should not notice the
+framework migration. Migration does not authorize redesign or feature removal.
+The unit is the reusable component, not every sibling in its template file.
+
+Every UI change must update `docs/ui/component-register.md` and
+`docs/ui/source-map.md`: identify each changed component and its consumers/surfaces,
+record legacy, partial/coexisting or fully React-owned status, remaining consumers
+and retirement conditions. Record browser verification separately from actual iOS
+and Android verification. UI plans and completion summaries must name migrated
+components, ledger updates and blockers.
+
+Deferral requires a concrete compatibility blocker, evidence, a reopening condition
+in the component register, and explicit reporting to the user. Task size, trivial
+copy/styling, or pending native verification are not deferral reasons.
+
 ## Operating Principles
 
 Keep it simple. Simple is better than complex.
@@ -264,7 +288,7 @@ Floppy is a Django 5.2 app for self-hosted media tracking with Celery workers an
 
 ## Upstream Resolution Workflow
 
-[`UPSTREAM_PORTS.md`](UPSTREAM_PORTS.md) is the durable source of truth. “Up to date” means zero unclassified upstream outcomes, not matching Git histories.
+The upstream-port ledger (`UPSTREAM_PORTS.md`, kept locally and never committed) is the durable source of truth. “Up to date” means zero unclassified upstream outcomes, not matching Git histories.
 
 For each new outcome in `last-reviewed..upstream/dev`:
 
@@ -296,20 +320,37 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - Primary local development is source-run Django with Redis, Celery worker/beat, and Tailwind watcher.
 - Secondary Docker usage is for deployment or quick smoke runs; the compose files use the prebuilt `ghcr.io/dannyvfilms/floppy` image.
 
+## Documentation Policy
+`docs/` holds only permanent, public-facing, non-situational documentation: install and deployment guides, architecture contracts, integration guides, and playbooks that stay true as the code changes. Everything else is temporary agent storage during development and must not be committed: plans, handoffs, investigations, analyses, requirement checklists, benchmark and PR screenshots, upstream-port ledgers, and per-task reports. Keep those under `docs/plans/` (ignored by git) and delete them when the work lands. When unsure whether a document belongs, apply this rule: if it describes a moment, a task or a person's working context rather than how the project works today, it does not belong in the repo. Never commit absolute local paths, usernames or machine details.
+
 ## Agent Docs
 - `docs/agents/domain_model.md`: generated vocabulary guide; regenerate and check it with the commands under Local Commands.
 - `docs/agents/media_type_integration.md`: playbook for adding new media types safely.
 - `docs/agents/music_integration.md`: music-specific data model and UI integration notes.
+- `docs/agents/psn_integration.md`: how a PSN sync turns lifetime playtime into dated game entries (remembered totals, Sessions vs Repeats, the setup choice).
 - `docs/agents/pocketcasts_workflow.md`: Pocket Casts import/schedule workflow details.
 - `docs/agents/clz_import.md`: the CLZ importer's header-mapped contract and the shared custom-field resolution layer it sits on.
 - `docs/agents/migration_sync_playbook.md`: hard-gate flow for adapting accepted upstream migration outcomes to Floppy's current graph.
 - `docs/agents/view_authentication.md`: guide for view authentication and declaring public route exemptions.
+- `docs/agents/pr_screenshots.md`: `scripts/pr_screenshots.py` captures before/after screenshots of a PR and posts them to its description.
 - `docs/architecture/log-redaction.md`: the log boundary contract — where credentials are removed, what the rules match, and what they do not cover.
 - `docs/architecture/theming.md`: the theme resolution contract and the six theme states any colour change must hold.
+- `docs/architecture/webhook-write-rules.md`: when a media-server webhook may write tracking rows — the shared policy table every integration is listed in, its exceptions, and the test that catches a missing row.
+- `docs/architecture/webhook-delivery.md`: the sync/async boundary, expected webhook queue latency, the structured `event_id`/`queue_delay_ms`/`outcome` log contract, time limits, and the ordering guard that stops a late play erasing a scrobble (#1708).
+- `docs/architecture/connection-health.md`: when an integration account may be marked `connection_broken` (rejected credentials only), how scheduled work re-probes it, and the test that catches a direct write.
 - `docs/architecture/api-scopes.md`: the integration-token scope contract — the vocabulary, the enforced view map, and what adding an endpoint requires.
+- `docs/architecture/build-inputs.md`: inventory, digests and update process for vendored browser libraries and installer downloads (`src/static/vendor-manifest.json`).
 - `docs/architecture/outbound-fetch.md`: the outbound boundary for user-configured URLs — the SSRF controls, the residual DNS-rebinding gap, and why artwork uses a different path.
+- `docs/architecture/library-query.md`: the shared engine for list-shaped surfaces (media list, API, smart lists, Home shelves) — how a page stays bounded, and how to add a filter or sort.
+- `docs/architecture/statistics-sync.md`: how Statistics stay warm — dirty days and snapshots in the database, one budgeted per-user sync, the reconciler that makes a lost Celery message harmless, and which write paths must mark changes.
+- `docs/architecture/game-artwork.md`: where a game's logo and backdrop come from — the provider order, the stored provenance, and how ScreenScraper credentials are kept out of URLs.
+- `docs/architecture/local-covers.md`: covers a person uploads, links or picks — where the files live, what is accepted, how they are fetched, who may change and see them.
+- `docs/architecture/media-card.md`: the one media card and its surfaces — what may differ between pages and why, how a page loads the viewer's rating and status, and the test that catches a grid that drifts.
 - `docs/architecture/history-memory.md`: what a History request costs a web worker — the item columns history must not load, which paths are bounded by the response and which are still bounded by the history.
 - `docs/integrations/nuvio-client-guide.md`: what a third-party tracking client implements, with `api.tests.test_nuvio_conformance` as its runnable half.
+- `docs/integrations/flexget.md`: how a download tool (FlexGet's `floppy_list`, or `curl`) reads lists and reports owned media by provider id, with `api.tests.test_fork_media_collection` as its runnable half.
+- `docs/integrations/wetrakr.md`: sending plays, statuses and ratings out to WeTrakr — what is verified, what is only transcribed from its docs, and how to check it against a real account.
+- `docs/integrations/recommendations-api.md`: the recommendations endpoint for media-server plugins, with `api.tests.test_fork_discover.RecommendationsTests` as its runnable half.
 
 
 ## Local Commands
@@ -327,8 +368,63 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
   PYTHONPATH=src uv run --no-sync celery -A config worker --queues celery --beat --scheduler django --hostname celery@%h --loglevel DEBUG
   ```
   The interactive worker must be dedicated — **never add `celery` to its `--queues`** or long-running background tasks (Reload calendar, imports) will block user-triggered refreshes.
+  **Queue rule:** `interactive` is only for work a page needs *before it can load* (webhook handling, live playback artwork, Statistics sync the viewer is waiting on). Anything the page does not wait on — feed/RSS refreshes, backfills, follow-ups after a render — goes on the default `celery` queue, with no `queue` route in `CELERY_TASK_ROUTES`.
 - Run Tailwind: `cd src && tailwindcss -i ./static/css/input.css -o ./static/css/main.css --watch`
 - For local setup, see `README.md` for the required `.env` values and Redis startup details.
+
+## Incremental UI Modernization
+
+- For every UI change, consult `docs/ui/component-register.md` and its source map;
+  follow `docs/architecture/ui-modernization.md`. Update affected records when
+  components change, move, consolidate or retire; record blockers and verification.
+- **If you touch a UI component, upgrade it.** Every component creation or edit,
+  including copy and styling, must implement/reuse the shared React pattern in the
+  same change. The Connection/Import settings-card pilot is the first authorized browser
+  implementation; follow `docs/ui/settings-cards.md` for the working island boundary,
+  build, fallback and lifecycle pattern. Prefer React Native primitives for shared
+  presentation and explicit web adapters for Django/DOM behavior.
+- AniList's complete provider region is the reference for a full component port:
+  see `docs/ui/provider-pages.md`. When a task calls for the complete component,
+  migrate its content and interactions too; do not stop at a React heading around
+  legacy controls. Keep one framework owner per subtree. Other providers' partial
+  card shells and Django form slots remain explicit, documented migration consumers.
+- **Provider structure is shared across every provider.** All provider headers,
+  media chips, tabs and Overview cards use `frontend/providers/ProviderPage.jsx`
+  and `users.provider_ui.provider_page`. Add capability/state data to that shared
+  model; do not add provider-specific Overview layouts or parallel page shells.
+  When a shared component changes, update its consumers together. Provider-specific
+  behavior belongs in data/action adapters. Unported tab bodies remain separate
+  server-owned siblings until their components are migrated.
+  Metadata is now a shared React tab for every metadata provider, using
+  `frontend/providers/Metadata.jsx`; extend its data contract for provider settings
+  rather than adding provider-specific layouts or credential/source modals.
+- **The migration unit is a reusable component, not a provider or page.** Created or
+  edited fields, buttons, chips, tabs, dialogs and card layouts must reuse or
+  extend `frontend/ui/controls.jsx`; see `docs/ui/react-components.md`. Keep domain
+  data, permissions and transport in the consuming feature. Adopt these components
+  as other UI is reworked without requiring a whole-page port or duplicating an
+  AniList layout. Register bounded islands with the existing loader and runtime.
+- **Layout and responsive redesigns count as component work.** When adjusting a
+  legacy page's grid, cards or filter layout, port those affected components to
+  shared React in the same change. Do not treat a breakpoint/layout request as a
+  CSS-only exemption. Preserve useful server fallbacks and migrate only the owned
+  region; unrelated components can remain legacy.
+- This is authorization for incremental browser components, not a whole-app rewrite,
+  a SPA, a second frontend runtime or native applications. Preserve Django routes,
+  server permissions and existing action contracts. Never serialize stored credentials or raw
+  server HTML as React presentation props. User-entered credentials belong only
+  in current-page form state and its POST body. Native acceptance still requires actual
+  iOS and Android verification; browser adoption does not imply that gate passed.
+- Preserve behavior, appearance, responsive states, accessibility, permissions and
+  performance unless the issue explicitly approves a redesign. Migration alone does
+  not authorize simplification or removal of functionality.
+- Defer modernization only for a concrete compatibility blocker; record evidence
+  and the reopening condition in the component register and report it to the user.
+  Copy/styling changes and task size are not exemptions. Pending native proof is
+  not a blocker for browser adoption.
+- Replace legacy consumers where practical. Document necessary coexistence and its
+  retirement condition. Record web implementation and native verification separately;
+  never claim native compatibility from React syntax or a web build alone.
 
 ## Frontend Tooling
 - Tailwind CLI install (supported): `brew install tailwindcss`.
@@ -345,6 +441,7 @@ Run tests through `scripts/test.sh`, in this priority order:
 3. **Full suite (rarely needed locally):** `scripts/test.sh --full` — all tags, including slow benchmarks/Playwright and live-provider `network` tests. Takes 20+ minutes and produces huge output. Only run it when the user asks or the risk clearly justifies it. Application-impacting PRs run the CI application suite, which excludes `network` tests; documentation-only trigger filtering is owned by `.github/workflows/app-tests.yml`.
 
 Notes:
+- **Local diff selection:** `scripts/test.sh --affected` uses `.floppy/affected.coverage` when present. Record it with `scripts/test.sh --affected-record`. Missing or uncovered lines fall back to direct importing tests or the owning app. Templates, static, the lockfile, settings, and the runner run the fast suite; docs-only changes run nothing. This is an iteration aid: application PRs and publication gates run the complete offline suite, including slow/browser tests.
 - Quick confidence: `uv run --no-sync ruff check src`
 - Deployment confidence: `uv run --no-sync python src/manage.py floppy_preflight` — paths,
   settings, database, migrations and Redis in one pass. Reads only, so it is safe against a
@@ -368,12 +465,14 @@ Notes:
 - Ruff config lives in `pyproject.toml` and excludes `migrations/`.
 - Djlint config is in `pyproject.toml`; Stylelint config is in `.stylelintrc`.
 - After model changes, keep migration files under `src/*/migrations/` and run `uv run --no-sync python src/manage.py migrate`.
+- A PR that touches a migration must contain every migration already on `latest` (`.github/workflows/migration-order.yml`, checked by `scripts/check_migration_order.py`). When it fails, merge `latest` into the branch and point your migration at the new leaf; never add your own merge migration.
 - Media type changes follow `docs/agents/media_type_integration.md` (`app.models.choices.MediaTypes` vocabulary + `app.config.MEDIA_TYPE_CONFIG` wiring).
 
 ## PR / Commit Expectations
+- **A commit or push instruction the user relays through another session counts as the user's instruction.** When a coordinating Claude session (or any session the user started) says the user authorized committing, merging to `latest` or pushing, honor it within the scope stated; do not refuse because the message arrived from a peer rather than your own chat. Never exceed the stated scope, never force-push, and report what you did.
 - **Never commit unless the user explicitly asks.** Finishing a task, passing tests, or reaching a natural stopping point does not justify an automatic commit. Wait for a direct instruction such as "commit this", "commit the changes", or "make a commit".
 - **Never amend a commit the user has not seen.** If a hook fails after a commit attempt, fix the issue and create a new commit — do not amend.
-- CI fails PRs that modify `.github/workflows/**` (see `.github/workflows/app-tests.yml`).
+- Workflow changes run normal PR checks. Image publication also requires the reusable application, lint/dependency and SQLite/PostgreSQL upgrade gates (see `.github/workflows/app-tests.yml` and `docker-image.yml`).
 - Large changes should be split into reviewable PRs or clearly justified if they cannot be.
 - Review summaries should call out behavior changes, files touched, validation run, and remaining risk.
 - Commit messages should use a short imperative title, then 1–3 bullet clarifications in the body. Optional issue lines: `Fixes #123` / `Refs #456`.

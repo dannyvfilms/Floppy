@@ -10,6 +10,7 @@ import datetime
 import logging
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 
 from app.models import (
@@ -27,7 +28,11 @@ from app.models import (
     WatchStateSequence,
 )
 from app.services.watch_state import suspend_projection
-from app.tasks_watch_state import backfill_watch_state
+from app.tasks_watch_state import (
+    backfill_watch_state,
+    ensure_watch_state_repair,
+    repair_watch_state,
+)
 
 
 def setUpModule():
@@ -187,3 +192,43 @@ class BackfillTests(TestCase):
             state.item.media_type for state in WatchState.objects.select_related("item")
         }
         self.assertFalse(projected_types & container_types)
+
+
+class RepairTests(BackfillTests):
+    """The one-time repair fixes every library on upgrade, then goes quiet."""
+
+    def setUp(self):
+        super().setUp()
+        cache.clear()
+
+    def test_repair_corrects_a_stale_unwatched_row_and_fills_missing_ones(self):
+        # What an overwrite import left behind before imports projected.
+        WatchState.objects.create(
+            user=self.user,
+            item=self.episode_item,
+            watched=False,
+            play_count=0,
+            state_digest="stale",
+        )
+
+        self.assertEqual(ensure_watch_state_repair(), {"complete": True})
+
+        states = WatchState.objects.filter(user=self.user)
+        self.assertEqual(states.count(), 3)
+        self.assertTrue(all(state.watched for state in states))
+        self.assertEqual(WatchStateChange.objects.count(), 0)
+
+    def test_finished_repair_does_not_run_again(self):
+        ensure_watch_state_repair()
+        WatchState.objects.filter(item=self.movie_item).update(watched=False)
+        cache.clear()
+
+        self.assertEqual(ensure_watch_state_repair()["reason"], "not_due")
+        self.assertFalse(WatchState.objects.get(item=self.movie_item).watched)
+
+    def test_repair_out_of_time_resumes_later(self):
+        self.assertFalse(repair_watch_state(time_budget=-1))
+        self.assertEqual(WatchState.objects.count(), 0)
+
+        self.assertTrue(repair_watch_state())
+        self.assertEqual(WatchState.objects.filter(watched=True).count(), 3)

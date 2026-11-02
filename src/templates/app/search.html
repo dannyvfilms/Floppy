@@ -12,9 +12,13 @@
   <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-y-4">
     <h2 class="text-2xl font-bold">{% translate "Search Results" %}</h2>
     <div class="flex items-center flex-wrap gap-x-4 gap-y-2">
-      <span class="text-sm text-[var(--color-text-muted)]">{% translate "Source:" %}</span>
+      {% if media_type != "all" %}
+        <span class="text-sm text-[var(--color-text-muted)]">{% translate "Source:" %}</span>
+      {% endif %}
       <div class="flex gap-x-2">
-        {% if source_options %}
+        {% if media_type == "all" %}
+          {# Library-only search has no provider source to pick. #}
+        {% elif source_options %}
           {% for source_option in source_options %}
             <a href="{% url 'search' %}?q={{ request.GET.q|urlencode }}&media_type={{ media_type }}&source={{ source_option.value }}&layout={{ layout }}"
                class="px-3 py-1.5 text-sm rounded-md transition-colors duration-200 cursor-pointer flex items-center {% if source == source_option.value %}bg-indigo-600 text-white{% else %}bg-gray-700 text-gray-300 hover:bg-gray-600{% endif %}">
@@ -41,7 +45,73 @@
     </div>
   </div>
 
-  {% if media_type == MediaTypes.MUSIC.value %}
+  {% if media_type == "podcast" %}
+    <p class="mb-6 text-sm text-[var(--color-text-muted)]">{% translate "Search by name, or paste an Apple Podcasts link or an RSS feed address to add a show directly." %}</p>
+  {% endif %}
+
+  {% if media_type == "all" %}
+    <p class="mb-6 text-sm text-[var(--color-text-muted)]">{% translate "Searching your library only: items you track, collect or tag. Pick a media type to search online." %}</p>
+
+    {% for group in local_groups %}
+      <div class="mb-8">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <h3 class="text-lg font-semibold text-[var(--color-text-secondary)]">{{ group.label }}</h3>
+          <div class="flex items-center gap-x-4 text-sm text-[var(--color-text-muted)]">
+            <span>
+              {% blocktranslate trimmed with value_1=group.total count count=group.total %}{{ value_1 }} result{% plural %}{{ value_1 }} results{% endblocktranslate %}
+              {% if group.kind == "music" %}
+                {% if group.artists_total > group.artists|length or group.albums_total > group.albums|length %}
+                  <span>{% blocktranslate trimmed with value_1=local_group_limit %}· Showing first {{ value_1 }}{% endblocktranslate %}</span>
+                {% endif %}
+              {% elif group.total > group.results|length %}
+                <span>{% blocktranslate trimmed with value_1=group.results|length %}· Showing first {{ value_1 }}{% endblocktranslate %}</span>
+              {% endif %}
+            </span>
+            <a href="{% url 'search' %}?q={{ request.GET.q|urlencode }}&media_type={{ group.media_type }}&layout={{ layout }}"
+               class="text-[var(--color-link)] hover:underline">{% translate "Search online" %}</a>
+          </div>
+        </div>
+        {% if group.kind == "music" %}
+          {% if group.artists %}
+            <h4 class="text-base font-semibold text-[var(--color-text-secondary)] mb-4">{% translate "Artists" %}</h4>
+            <div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4 mb-6">
+              {% with media_list=group.artists %}
+                {% include "app/components/artist_grid_items.html" %}
+              {% endwith %}
+            </div>
+          {% endif %}
+          {% if group.albums %}
+            <h4 class="text-base font-semibold text-[var(--color-text-secondary)] mb-4">{% translate "Albums" %}</h4>
+            <div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
+              {% include "app/components/search_local_album_cards.html" with albums=group.albums %}
+            </div>
+          {% endif %}
+        {% elif layout == "grid" %}
+          <div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
+            {% for result in group.results %}
+              {% media_card "search" item=result.item title=result.item.title media=result.media matched_title=result.matched_title %}
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="grid grid-cols-1 gap-4">
+            {% for result in group.results %}
+              {% include "app/components/media_card_list.html" with item=result.item title=result.item.title media=result.media user=user matched_title=result.matched_title %}
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    {% empty %}
+      <div class="flex flex-col items-center justify-center py-32 px-4 bg-[var(--color-surface)] rounded-lg">
+        <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+          {% include "app/icons/magnifying-glass.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
+        </div>
+        <h3 class="text-xl font-semibold mb-2">{% translate "No results found" %}</h3>
+        <p class="text-[var(--color-text-muted)] text-center max-w-md mb-8">
+          {% blocktranslate trimmed with value_1=request.GET.q %}Nothing in your library matches “{{ value_1 }}”. Pick a media type to search online.{% endblocktranslate %}
+        </p>
+      </div>
+    {% endfor %}
+  {% elif media_type == MediaTypes.MUSIC.value %}
     {% if local_music_artists or local_music_albums %}
       <div class="mb-8">
         <h3 class="text-lg font-semibold text-[var(--color-text-secondary)] mb-4">{% translate "In Your Library" %}</h3>
@@ -77,109 +147,7 @@
               </div>
             </div>
             <div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
-              {% for tracker in local_music_albums %}
-                <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card-square hover:ring-2 hover:ring-indigo-500 transition-all group{% if request.user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}{% if user.clickable_media_cards %} media-card-hide-overlay{% endif %}"
-                     data-media-type="{{ MediaTypes.MUSIC.value }}"
-                     x-data="{ trackOpen: false, revealed: false, tapToReveal(e) { if (this.revealed) { if (e.target.closest('button, a, input, select, textarea')) { return; } const link = this.$root.querySelector('.media-card-overlay a[href]') || this.$root.querySelector('a.media-card-title[href]'); if (link) { e.preventDefault(); e.stopPropagation(); link.click(); } return; } if (!window.matchMedia('(pointer: coarse)').matches || this.$root.classList.contains('media-card-hide-overlay')) { return; } e.preventDefault(); e.stopPropagation(); this.revealed = true; window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: this.$root })); } }"
-                     @click.capture="tapToReveal($event)"
-                     @media-card-revealed.window="if ($event.detail !== $root) revealed = false"
-           @click.window="if (revealed && !$root.contains($event.target)) revealed = false"
-                     :class="revealed ? 'media-card-revealed' : ''">
-                  <div class="relative">
-                    <a href="{{ tracker.album|music_album_url }}">
-                      {% if tracker.album.image and tracker.album.image != IMG_NONE %}
-                        <img alt="{{ tracker.album.title }}"
-                             class="media-card-poster lazyload w-full aspect-[1/1] object-cover bg-[var(--color-surface-alt)]"
-                             data-src="{{ tracker.album.image|image_url }}"
-                             src="{{ IMG_NONE }}">
-                      {% else %}
-                        <div class="w-full aspect-[1/1] bg-[var(--color-surface-alt)] flex items-center justify-center">
-                          {% include "app/icons/speaker.svg" with classes="w-12 h-12 text-gray-600" %}
-                        </div>
-                      {% endif %}
-                    </a>
-
-                    <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md max-w-[calc(100%-1rem)] overflow-hidden">
-                      {% with status_value=tracker.status %}
-                        <div class="w-4 h-4 {{ status_value|status_color }}">
-                          {% if status_value == Status.COMPLETED.value %}
-                            {% include "app/icons/states/completed.svg" with classes="w-full h-full" %}
-                          {% elif status_value == Status.IN_PROGRESS.value %}
-                            {% include "app/icons/states/in-progress.svg" with classes="w-full h-full" %}
-                          {% elif status_value == Status.PAUSED.value %}
-                            {% include "app/icons/states/paused.svg" with classes="w-full h-full" %}
-                          {% elif status_value == Status.PLANNING.value %}
-                            {% include "app/icons/states/planning.svg" with classes="w-full h-full" %}
-                          {% elif status_value == Status.DROPPED.value %}
-                            {% include "app/icons/states/dropped.svg" with classes="w-full h-full" %}
-                          {% endif %}
-                        </div>
-                      {% endwith %}
-                    </div>
-
-                    <div class="media-card-overlay absolute inset-0 flex items-center justify-center transition-opacity duration-200 ease-in-out{% if user.clickable_media_cards %} pointer-coarse:hidden{% endif %}"
-                        :class="revealed ? 'opacity-100 pointer-events-auto media-card-overlay-revealed' : 'opacity-0 pointer-events-none'">
-                      <div class="absolute inset-0 bg-black/50 z-0"></div>
-                      <a href="{{ tracker.album|music_album_url }}" class="absolute inset-0 z-0"></a>
-                      <div class="relative z-10 flex w-full max-w-full flex-wrap items-center justify-center gap-2.5 px-2">
-                        <button class="p-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer"
-                                title="{% translate "Edit tracking" %}"
-                                hx-get="{% url 'album_track_modal' tracker.album.id %}"
-                                hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
-                                hx-target="#album-track-modal-{{ tracker.album.id }}"
-                                hx-trigger="click once"
-                                @click="trackOpen = true">
-                          {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
-                        </button>
-                        <a href="{{ tracker.album|music_album_url }}"
-                           class="p-2.5 bg-emerald-600 text-white rounded-full hover:bg-emerald-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(16,185,129,0.5)] transition-all duration-200 cursor-pointer"
-                           title="{% translate "View album" %}">
-                          {% include "app/icons/speaker.svg" with classes="w-4 h-4" %}
-                        </a>
-                        <a href="{% url 'history' %}?album={{ tracker.album.id }}"
-                           class="p-2.5 bg-amber-600 text-white rounded-full hover:bg-amber-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(245,158,11,0.5)] transition-all duration-200 cursor-pointer"
-                           title="{% translate "View listening history" %}">
-                          {% include "app/icons/history.svg" with classes="w-4 h-4" %}
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="media-card-body p-3 bg-card-body">
-                    <div class="media-card-title-row flex items-center gap-2 min-w-0">
-                      <a href="{{ tracker.album|music_album_url }}"
-                         class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-2 min-w-0"
-                         title="{{ tracker.album.title }}">
-                        {{ tracker.album.title }}
-                      </a>
-                      {% if tracker.score %}
-                        <span class="flex items-center gap-1 text-xs text-yellow-300 shrink-0">
-                          {% include "app/icons/star.svg" with classes="w-3 h-3 text-yellow-400 fill-current" %}
-                          <span class="font-medium">{{ tracker.score|score_display:user }}</span>
-                        </span>
-                      {% endif %}
-                    </div>
-                    <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1 line-clamp-1">
-                      {% with credits=tracker.album.artist_credits.all %}
-                        {% if credits %}{% for credit in credits %}{{ credit.artist.name }}{{ credit.join_phrase|music_artist_join_phrase }}{% endfor %}
-                        {% elif tracker.album.artist %}{{ tracker.album.artist.name }}{% endif %}
-                        {% if tracker.album.release_date %}{% if credits or tracker.album.artist %} • {% endif %}{{ tracker.album.release_date|date:"Y" }}{% endif %}
-                      {% endwith %}
-                    </p>
-                  </div>
-
-                  <div x-show="trackOpen"
-                  @mousedown.self="trackOpen = false"
-                       x-cloak
-                       @keydown.escape.window="trackOpen = false"
-                       class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
-                         style="width: min(96vw, 72rem);">
-                      <div id="album-track-modal-{{ tracker.album.id }}"></div>
-                    </div>
-                  </div>
-                </div>
-              {% endfor %}
+              {% include "app/components/search_local_album_cards.html" with albums=local_music_albums %}
             </div>
           </div>
         {% endif %}
@@ -197,14 +165,13 @@
               {% for artist in music_online_artists %}
                 {% if artist.artist_id %}
                   <a href="{% url 'create_artist_from_search' artist.artist_id %}"
-                     class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card hover:ring-2 hover:ring-indigo-500 transition-all group block{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}">
+                     class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card hover:ring-2 hover:ring-indigo-500 transition-all group block{% card_subtitle_class 'music' %}{% card_title_classes 'music' %}">
                     <div class="relative">
                       {% if artist.image and artist.image != IMG_NONE %}
-                        <img alt="{{ artist.name }}"
-                             class="media-card-poster lazyload w-full aspect-[2/3] object-cover bg-[var(--color-surface-alt)]"
-                             data-src="{{ artist.image|image_url }}"
-                             onerror="this.onerror=null;this.src='{{ IMG_NONE }}';"
-                             src="{{ IMG_NONE }}">
+                        <img loading="lazy" decoding="sync" alt="{{ artist.name }}"
+                             class="media-card-poster w-full aspect-[2/3] object-cover bg-[var(--color-surface-alt)]"
+                             src="{{ artist.image|image_url }}"
+                             onerror="this.onerror=null;this.src='{{ IMG_NONE }}';">
                       {% else %}
                         <div class="w-full aspect-[2/3] bg-[var(--color-surface-alt)] flex items-center justify-center">
                           {% include "app/icons/person.svg" with classes="w-16 h-16 text-gray-600" %}
@@ -217,27 +184,20 @@
                           {{ artist.name }}
                         </h4>
                       </div>
-                      <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1 line-clamp-1">
-                        {% if artist.type %}{{ artist.type }}{% endif %}
-                        {% if artist.begin_year %}
-                          {% if artist.type %} • {% endif %}
-                          {{ artist.begin_year }}
-                        {% endif %}
-                      </p>
+                      {% card_lines 'music' artist %}
                       {% if artist.disambiguation %}
                         <p class="text-xs text-[var(--color-text-muted)] mt-1 line-clamp-1">{{ artist.disambiguation }}</p>
                       {% endif %}
                     </div>
                   </a>
                 {% else %}
-                  <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}">
+                  <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card{% card_subtitle_class 'music' %}{% card_title_classes 'music' %}">
                     <div class="relative">
                       {% if artist.image and artist.image != IMG_NONE %}
-                        <img alt="{{ artist.name }}"
-                             class="media-card-poster lazyload w-full aspect-[2/3] object-cover bg-[var(--color-surface-alt)]"
-                             data-src="{{ artist.image|image_url }}"
-                             onerror="this.onerror=null;this.src='{{ IMG_NONE }}';"
-                             src="{{ IMG_NONE }}">
+                        <img loading="lazy" decoding="sync" alt="{{ artist.name }}"
+                             class="media-card-poster w-full aspect-[2/3] object-cover bg-[var(--color-surface-alt)]"
+                             src="{{ artist.image|image_url }}"
+                             onerror="this.onerror=null;this.src='{{ IMG_NONE }}';">
                       {% else %}
                         <div class="w-full aspect-[2/3] bg-[var(--color-surface-alt)] flex items-center justify-center">
                           {% include "app/icons/person.svg" with classes="w-16 h-16 text-gray-600" %}
@@ -261,14 +221,13 @@
               {% for release in music_online_releases %}
                 {% if release.release_id %}
                   <a href="{% url 'create_album_from_search' release.release_id %}"
-                     class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card-square hover:ring-2 hover:ring-indigo-500 transition-all group block{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}">
+                     class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card-square hover:ring-2 hover:ring-indigo-500 transition-all group block{% card_subtitle_class 'music' %}{% card_title_classes 'music' %}">
                     <div class="relative">
                       {% if release.image and release.image != IMG_NONE %}
-                        <img alt="{{ release.title }}"
-                             class="media-card-poster lazyload w-full aspect-[1/1] object-cover bg-[var(--color-surface-alt)]"
-                             data-src="{{ release.image|image_url }}"
-                             onerror="this.onerror=null;this.src='{{ IMG_NONE }}';"
-                             src="{{ IMG_NONE }}">
+                        <img loading="lazy" decoding="sync" alt="{{ release.title }}"
+                             class="media-card-poster w-full aspect-[1/1] object-cover bg-[var(--color-surface-alt)]"
+                             src="{{ release.image|image_url }}"
+                             onerror="this.onerror=null;this.src='{{ IMG_NONE }}';">
                       {% else %}
                         <div class="w-full aspect-[1/1] bg-[var(--color-surface-alt)] flex items-center justify-center">
                           {% include "app/icons/speaker.svg" with classes="w-12 h-12 text-gray-600" %}
@@ -281,14 +240,11 @@
                           {{ release.title }}
                         </h4>
                       </div>
-                      <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1 line-clamp-1">
-                        {{ release.artist_name }}
-                        {% if release.release_date %} • {{ release.release_date|slice:":4" }}{% endif %}
-                      </p>
+                      {% card_lines 'music' release %}
                     </div>
                   </a>
                 {% else %}
-                  <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card-square{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}">
+                  <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card-square{% card_subtitle_class 'music' %}{% card_title_classes 'music' %}">
                     <div class="relative">
                       <div class="w-full aspect-[1/1] bg-[var(--color-surface-alt)] flex items-center justify-center">
                         {% include "app/icons/speaker.svg" with classes="w-12 h-12 text-gray-600" %}
@@ -332,7 +288,7 @@
         <div {% if layout == 'grid' %}
           class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
           {% for result in local_results %}
-            {% include "app/components/media_card.html" with item=result.item title=result.item.title media=result.media user=user from_grid=True matched_title=result.matched_title %}
+            {% media_card "search" item=result.item title=result.item.title media=result.media matched_title=result.matched_title %}
           {% endfor %}
         {% else %}
           class="grid grid-cols-1 gap-4">
@@ -341,15 +297,27 @@
           {% endfor %}
         {% endif %}
       </div>
+      </div>
     {% endif %}
 
     {% if data.results %}
       <div {% if local_results %}class="mt-8"{% endif %}>
-        <h3 class="text-lg font-semibold mb-4 text-[var(--color-text-secondary)]">{% translate "Online Results" %}</h3>
+        {% if media_type == "podcast" %}
+          {% translate "About these results" as results_tip_label %}
+          {% if fallback_source_label %}
+            {% blocktranslate trimmed asvar results_tip with value_1=source_label value_2=fallback_source_label %}{{ value_1 }} had no match for this search, so these results come from {{ value_2 }}. Paste an Apple Podcasts link or an RSS feed address to add a show directly.{% endblocktranslate %}
+            {% include "app/components/results_heading.html" with title=fallback_source_label tip=results_tip label=results_tip_label %}
+          {% else %}
+            {% blocktranslate trimmed asvar results_tip with value_1=source_label %}These results come from {{ value_1 }}. Paste an Apple Podcasts link or an RSS feed address to add a show directly.{% endblocktranslate %}
+            {% include "app/components/results_heading.html" with title=source_label tip=results_tip label=results_tip_label %}
+          {% endif %}
+        {% else %}
+          <h3 class="text-lg font-semibold mb-4 text-[var(--color-text-secondary)]">{% translate "Online Results" %}</h3>
+        {% endif %}
         <div {% if layout == 'grid' %}
           class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
           {% for result in data.results %}
-            {% include "app/components/media_card.html" with item=result.item title=result.item.title media=result.media user=user from_grid=True matched_title=result.matched_title %}
+            {% media_card "search" item=result.item title=result.item.title media=result.media matched_title=result.matched_title %}
           {% endfor %}
         {% else %}
           class="grid grid-cols-1 gap-4">
@@ -405,6 +373,7 @@
           {% blocktranslate trimmed with value_1=data.page value_2=data.total_pages value_3=data.total_results %}Page {{ value_1 }} of {{ value_2 }} ({{ value_3 }} results){% endblocktranslate %}
         </div>
       {% endif %}
+      </div>
     {% endif %}
 
     {% if not local_results and not data.results %}
@@ -416,6 +385,9 @@
         <p class="text-[var(--color-text-muted)] text-center max-w-md mb-8">
           {% blocktranslate trimmed with value_1=request.GET.q %}We couldn't find any matches for "{{ value_1 }}". Try checking your spelling or using different keywords.{% endblocktranslate %}
         </p>
+        {% if media_type == "podcast" %}
+          <p class="text-[var(--color-text-muted)] text-center max-w-md mb-8">{% translate "Can't find it? Paste the show's RSS feed address into the search box to add it directly." %}</p>
+        {% endif %}
       </div>
     {% endif %}
   {% endif %}

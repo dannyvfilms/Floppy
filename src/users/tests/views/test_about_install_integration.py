@@ -1,9 +1,10 @@
 import os
 
 from django.contrib.auth import get_user_model
-from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.test import tag
 from playwright.sync_api import expect, sync_playwright
+
+from app.tests.live_server import SerialStaticLiveServerTestCase
 
 # Headless Chromium never fires a real beforeinstallprompt, so the suite
 # dispatches a stand-in carrying the same surface the About script uses:
@@ -37,7 +38,7 @@ FAILING_INSTALL_EVENT = """
 
 
 @tag("slow", "playwright")
-class AboutInstallSectionTests(StaticLiveServerTestCase):
+class AboutInstallSectionTests(SerialStaticLiveServerTestCase):
     """Browser coverage for the About page install control."""
 
     @classmethod

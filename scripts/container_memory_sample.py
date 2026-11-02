@@ -3,6 +3,8 @@
 
 import json
 import os
+import time
+from contextlib import suppress
 from pathlib import Path
 
 # Pss_Anon/Pss_File/Pss_Shmem need kernel >= 4.14. Shared_* and Private_* are
@@ -46,7 +48,7 @@ def _read_bytes(path):
 def _list_dir(path):
     """Return a directory's entries, or None if it cannot be listed."""
     try:
-        return os.listdir(path)
+        return [entry.name for entry in path.iterdir()]
     except OSError:
         return None
 
@@ -145,6 +147,7 @@ def _measure_process(proc_dir, clock_ticks, boot_uptime):
     ``status`` is world-readable, so a process is counted rather than dropped;
     ``measurement`` says which of the two it is.
     """
+    initial_stat = _read_text(proc_dir / "stat")
     status = _parse_status(_read_text(proc_dir / "status"))
     if status is None:
         return None
@@ -181,7 +184,16 @@ def _measure_process(proc_dir, clock_ticks, boot_uptime):
     if not measured:
         process["rss_kib"] = status["vmrss_kib"]
 
-    start_ticks = _parse_start_ticks(_read_text(proc_dir / "stat"))
+    final_stat = _read_text(proc_dir / "stat")
+    start_ticks = _parse_start_ticks(final_stat)
+    if start_ticks != _parse_start_ticks(initial_stat):
+        return None  # PID was reused during the non-atomic procfs walk.
+    process["start_ticks"] = start_ticks
+    process["cpu_seconds"] = None
+    if final_stat and clock_ticks:
+        fields = final_stat.rpartition(") ")[2].split()
+        with suppress(ValueError, IndexError):
+            process["cpu_seconds"] = (int(fields[11]) + int(fields[12])) / clock_ticks
     if start_ticks is not None and boot_uptime is not None and clock_ticks:
         process["uptime_seconds"] = round(boot_uptime - start_ticks / clock_ticks, 1)
     return process
@@ -237,7 +249,7 @@ def _roll_up(processes):
                 "max_uptime_seconds": None,
                 "max_pss_kib": None,
                 "max_pss_pid": None,
-                **{key: 0 for key in _SUMMED_KEYS},
+                **dict.fromkeys(_SUMMED_KEYS, 0),
             },
         )
         budget["process_count"] += 1
@@ -291,9 +303,20 @@ def _read_cgroup():
                 for line in (root / "memory.events").read_text().splitlines()
             )
         }
+        cpu_stat_path = root / "cpu.stat"
+        cpu_stat = (
+            dict(line.split() for line in cpu_stat_path.read_text().splitlines())
+            if cpu_stat_path.exists()
+            else {}
+        )
         return {
             "current_bytes": int(pre_sampler_current or observed_current),
             "current_observed_bytes": observed_current,
+            # Cumulative CPU time; the delta between two samples is the CPU
+            # the container spent in between (idle cost, #1158).
+            "cpu_usage_usec": (
+                int(cpu_stat["usage_usec"]) if "usage_usec" in cpu_stat else None
+            ),
             "peak_bytes": int(peak_path.read_text()) if peak_path.exists() else None,
             "oom": events["oom"],
             "oom_kill": events["oom_kill"],
@@ -317,6 +340,7 @@ def _read_cgroup():
         return {
             "current_bytes": None,
             "current_observed_bytes": None,
+            "cpu_usage_usec": None,
             "peak_bytes": None,
             "oom": None,
             "oom_kill": None,
@@ -327,6 +351,7 @@ def _read_cgroup():
     return {
         "current_bytes": int(pre_sampler_current or observed_current),
         "current_observed_bytes": observed_current,
+        "cpu_usage_usec": None,
         "peak_bytes": int((root / "memory.max_usage_in_bytes").read_text()),
         # v1 failcnt counts failed charges, not OOM kills. Do not mislabel it.
         "oom": None,
@@ -334,6 +359,29 @@ def _read_cgroup():
         "events": None,
         "memory_stat": {},
     }
+
+
+def _capture_warning(measured, rss_only, processes):
+    """Explain why a capture is not usable, or return None if it is.
+
+    Note `smaps_detail` reports "full" when nothing was measured at all, since
+    there are then no rss-only processes to report. That is the one case a
+    reader is most likely to mistake for success, so it is named separately.
+    """
+    if not processes:
+        return "no processes found; this is not a capture of a running container"
+    if not measured:
+        return (
+            "no process could be measured via smaps_rollup; re-run with "
+            "`docker exec --privileged -u 0` (CAP_SYS_PTRACE is required to "
+            "read another uid's smaps_rollup, and Docker drops it by default)"
+        )
+    if rss_only:
+        return (
+            f"PSS unavailable for {len(rss_only)} of {len(processes)} "
+            "processes; re-run with `docker exec --privileged -u 0`"
+        )
+    return None
 
 
 def _sum_or_none(processes, key):
@@ -347,9 +395,92 @@ def _sum_or_none(processes, key):
     return total * 1024
 
 
+def _pressure(path):
+    """Read PSI counters; missing controller/kernel support stays unknown."""
+    text = _read_text(path)
+    if text is None:
+        return None
+    values = {}
+    try:
+        for line in text.splitlines():
+            name, *fields = line.split()
+            values[name] = {
+                key: int(value) if key == "total" else float(value)
+                for key, value in (field.split("=", 1) for field in fields)
+            }
+    except (ValueError, TypeError):
+        return None
+    return values
+
+
+def _global_resources():
+    """Expose VM/global counters, without attributing their residual to a tenant."""
+    cpu = _read_text(Path("/proc/stat"))
+    ticks = None
+    if cpu:
+        fields = cpu.splitlines()[0].split()
+        if fields and fields[0] == "cpu":
+            with suppress(ValueError):
+                ticks = dict(
+                    zip(
+                        (
+                            "user",
+                            "nice",
+                            "system",
+                            "idle",
+                            "iowait",
+                            "irq",
+                            "softirq",
+                            "steal",
+                        ),
+                        (int(value) for value in fields[1:9]),
+                        strict=False,
+                    )
+                )
+    memory = {}
+    for line in (_read_text(Path("/proc/meminfo")) or "").splitlines():
+        name, _, value = line.partition(":")
+        if name in {"MemTotal", "MemAvailable", "SwapTotal", "SwapFree"}:
+            try:
+                memory[name] = int(value.split()[0]) * 1024
+            except (ValueError, IndexError):
+                continue
+    return {
+        "cpu_ticks": ticks,
+        "memory_total_bytes": memory.get("MemTotal"),
+        "memory_available_bytes": memory.get("MemAvailable"),
+        "swap_total_bytes": memory.get("SwapTotal"),
+        "swap_free_bytes": memory.get("SwapFree"),
+        "pressure": {
+            kind: _pressure(Path("/proc/pressure") / kind)
+            for kind in ("cpu", "memory", "io")
+        },
+    }
+
+
+def _clocks():
+    """Read wall and suspend-aware clocks; absent boottime is explicit."""
+    return {
+        "wall_seconds": time.time(),
+        "monotonic_seconds": time.monotonic(),
+        "boottime_seconds": (
+            time.clock_gettime(time.CLOCK_BOOTTIME)
+            if hasattr(time, "CLOCK_BOOTTIME")
+            else None
+        ),
+        "collector_cpu_seconds": time.process_time(),
+    }
+
+
 def sample():
     """Return cgroup accounting and readable process proportional/private memory."""
+    exposure_start = _clocks()
     cgroup = _read_cgroup()
+    global_resources = _global_resources()
+    cgroup_pressure = {
+        kind: _pressure(Path("/sys/fs/cgroup") / f"{kind}.pressure")
+        for kind in ("cpu", "memory", "io")
+    }
 
     uptime_text = _read_text(Path("/proc/uptime"))
     boot_uptime = float(uptime_text.split()[0]) if uptime_text else None
@@ -388,7 +519,7 @@ def sample():
     child_pids = {process["ppid"] for process in processes}
     for process in processes:
         process["role"] = _process_role(process, child_pids, processes_by_pid)
-    for process in (*processes, *( (sampler,) if sampler else () )):
+    for process in (*processes, *((sampler,) if sampler else ())):
         del process["is_beat"]
         del process["worker_queue"]
     processes.sort(key=lambda process: (-(process["pss_kib"] or 0), process["pid"]))
@@ -402,6 +533,21 @@ def sample():
 
     return {
         **cgroup,
+        "exposure": {"start": exposure_start, "end": _clocks()},
+        "global": global_resources,
+        "cgroup_pressure": cgroup_pressure,
+        "resource_scope": {
+            "global": "Linux /proc global; Docker Desktop VM, not physical host",
+            "cgroup": "/sys/fs/cgroup visible root; ownership requires runner receipt",
+            "processes": "visible PID namespace; sampler excluded from role totals",
+            "collector": "Python process cumulative CPU through capture; excludes docker exec/client, shell and exit",
+            "external_cpu_seconds": None,
+            "external_attribution": "unknown; global minus owned is not proof of external work",
+            "boot_id": (
+                _read_text(Path("/proc/sys/kernel/random/boot_id")) or ""
+            ).strip()
+            or None,
+        },
         "processes": processes,
         "roles": roles,
         "sampler": sampler,
@@ -411,6 +557,14 @@ def sample():
         "smaps_detail": (
             "full" if not rss_only else ("none" if not measured else "partial")
         ),
+        # A capture that silently fell back to VmRSS reports no PSS for the
+        # processes it could not read, and a reader who does not notice will
+        # compare a partial number against a full one. Docker drops
+        # CAP_SYS_PTRACE by default, so `docker exec --user root` is not
+        # enough: smaps_rollup for a process owned by another uid still fails
+        # the ptrace access check. Re-run with `docker exec --privileged -u 0`.
+        "capture_valid": not rss_only and bool(measured),
+        "capture_warning": _capture_warning(measured, rss_only, processes),
         "pss_breakdown_available": bool(measured)
         and measured[0]["pss_anon_kib"] is not None,
         "clock_ticks_per_second": clock_ticks,

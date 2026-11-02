@@ -15,6 +15,8 @@ from typing import Any
 import requests
 from django.utils.dateparse import parse_datetime
 
+from integrations.safe_fetch import send_to_self_hosted
+
 logger = logging.getLogger(__name__)
 
 USER_AGENT = "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"
@@ -91,7 +93,8 @@ def _make_api_request(
     for attempt in range(MAX_RETRIES):
         try:
             start_time = time.time()
-            response = requests.get(
+            response = send_to_self_hosted(
+                requests.get,
                 url,
                 params=params,
                 headers=headers,

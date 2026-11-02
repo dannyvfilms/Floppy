@@ -39,11 +39,17 @@ def build_cover_proxy_url(account_id, machine_identifier, thumb_path):
     payload = f"{account_id}:{machine_identifier}:{thumb_path}"
     token = base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii")
     signed = _signer().sign(token)
-    path = reverse("plex_cover", kwargs={"token": signed}, urlconf="config.urls")
+    path = reverse(
+        "plex_cover",
+        kwargs={"token": signed},
+        urlconf="integrations.urls",
+    )
     # This runs both from a real request (the Plex webhook view) and from a
     # Celery worker (the scheduled/manual library import), whose ROOT_URLCONF
     # is deliberately empty since it never serves HTTP - hence the explicit
-    # urlconf above. Celery also never handles a request, so the
+    # urlconf above. It is ``integrations.urls``, not ``config.urls``: the
+    # latter imports allauth, which workers leave out of INSTALLED_APPS.
+    # Celery also never handles a request, so the
     # script-prefix thread-local reverse() applies stays at its "/" default
     # and never picks up a configured BASE_URL subpath the way the webhook
     # request already does. Add it by hand only when that default is still

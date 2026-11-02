@@ -347,6 +347,13 @@ def enrich_music_library_task(user_id: int):
                         to_update.append(music)
                 if to_update:
                     Music.objects.bulk_update(to_update, ["track"])
+                    # Relinking changes the artist/album a play counts under.
+                    from app import statistics_sync
+
+                    for music in to_update:
+                        statistics_sync.mark_rows(
+                            music.user_id, [music], reason="music_track_relink"
+                        )
         except Exception as exc:  # pragma: no cover - defensive
             logger.debug(
                 "Music->Track relink failed for artist %s: %s",

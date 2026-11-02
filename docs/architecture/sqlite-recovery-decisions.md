@@ -67,6 +67,27 @@ The integrity scan remains bounded and grouped. Repair uses set-based `UPDATE` a
 
 For a large incident, the number shown in the report can be much larger than the number of affected rows because one row can violate more than one foreign key. Recovery plans and logs therefore report actual reference clears and row removals separately.
 
+### When the full scan runs
+
+`PRAGMA quick_check` and the relationship scan read the whole database. On a multi-gigabyte file on slow storage that takes many minutes, so startup avoids repeating it when the answer is already known. `recent_verification` in `src/config/sqlite_integrity.py` lets a start skip the full scan only when all of these hold:
+
+- A full check passed within the last 48 hours. Both a passing startup scan and the nightly database snapshot write this record (`db.sqlite3.integrity.verified.json`). The snapshot's `quick_check` runs on a page-for-page copy read from the live file.
+- The record was written by the same image commit. A new image may bring migrations, and the relationship scan exists to protect them.
+- The database is the same file (device and inode). A restored or replaced file never inherits the record.
+- No recovery report is open, and the previous start ended with `ok`, not `timeout`, `failed` or an interrupted `running`.
+
+A skipped start still opens the file and reads its schema, and any error there falls through to the full scan. The log says which path ran and why. If snapshots stop, the record goes stale and the full scan comes back without any configuration.
+
+The snapshot does not repeat the relationship scan. Django enforces foreign keys on SQLite at commit, so the application cannot create a relationship conflict between two starts of the same image.
+
+### Sequential warm-up
+
+Before `quick_check`, the `warm_cache` phase reads the database and its WAL once, front to back. `quick_check` walks b-trees. On a 1.5 GB test file it issued about 717,000 page reads, and 69% of them did not follow on from the previous read. Slow disks and network shares serve scattered reads at a few hundred per second. One sequential pass delivers the same bytes at the disk's streaming rate, and the scan then reads from the page cache. The scan reads every page anyway, so this changes the order of the reads, not how much is cached. `floppy_preflight` uses the same warm-up.
+
+### What a timeout means
+
+The entrypoint runs the check under `src/config/sqlite_startup_watchdog.py`, not a wall-clock `timeout`. The watchdog stops the check only when the process has read nothing and used no CPU for 180 seconds, or when it passes a 4-hour ceiling that exists only for a runaway loop. A slow scan that is still reading is left to finish. A stopped check parks on the recovery page with the reason, and **Retry** runs the full scan again.
+
 ## Incident history
 
 - #731 exposed the original SQLite relationship-conflict boot loop and recovery-page need.

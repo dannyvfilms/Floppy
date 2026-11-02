@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import IntegrityError
 from django.test import TestCase
@@ -10,13 +11,78 @@ from app.models import (
     MediaTypes,
     MetadataBackfillField,
     MetadataBackfillState,
+    MetadataProviderPreference,
+    Movie,
     Sources,
+    Status,
 )
 from app.services import tracking_hydration
 from app.tasks_backfill_state import WATCH_PROVIDERS_BACKFILL_VERSION
 
 
 class TrackingHydrationTests(TestCase):
+    @patch("app.services.tracking_hydration.credits.sync_item_credits_from_metadata")
+    @patch("app.services.tracking_hydration.upsert_provider_links")
+    @patch("app.services.tracking_hydration.services.get_media_metadata")
+    def test_tracking_refresh_preserves_spanish_titles_and_library_search(
+        self,
+        mock_metadata,
+        _mock_links,
+        _mock_credits,
+    ):
+        user = get_user_model().objects.create_user(
+            username="spanish",
+            metadata_language="es-ES",
+        )
+        item = Item.objects.create(
+            media_id="238",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="El padrino",
+            localized_title="El padrino",
+            original_title="The Godfather",
+        )
+        Movie.objects.create(
+            user=user, item=item, status=Status.PLANNING.value, progress=0
+        )
+
+        def fetch(*args, **kwargs):
+            spanish = kwargs.get("language") in {"es-ES", "es-MX"}
+            return {
+                "title": "El padrino" if spanish else "The Godfather",
+                "original_title": "The Godfather",
+                "image": "https://example.com/poster.jpg",
+                "details": {},
+                "related": {},
+            }
+
+        mock_metadata.side_effect = fetch
+        for override in ("", "es-MX"):
+            with self.subTest(override=override):
+                MetadataProviderPreference.objects.update_or_create(
+                    user=user,
+                    item=item,
+                    defaults={"language": override},
+                )
+                tracking_hydration.ensure_item_metadata(
+                    user,
+                    item.media_type,
+                    item.media_id,
+                    item.source,
+                )
+                self.assertEqual(
+                    mock_metadata.call_args.kwargs["language"],
+                    override or "es-ES",
+                )
+                item.refresh_from_db()
+                self.assertEqual(item.localized_title, "El padrino")
+        from app.search_views import get_saved_suggestions
+
+        for query in ("padrino", "godfather"):
+            with self.subTest(query=query):
+                results = get_saved_suggestions(user, item.media_type, query)
+                self.assertEqual(len(results), 1)
+
     @patch("app.services.tracking_hydration.credits.sync_item_credits_from_metadata")
     @patch("app.services.tracking_hydration.upsert_provider_links")
     @patch("app.services.tracking_hydration.services.get_media_metadata")
@@ -55,6 +121,37 @@ class TrackingHydrationTests(TestCase):
         item.refresh_from_db()
         self.assertFalse(result.created)
         self.assertEqual(item.genres, ["Comedy", "Anime"])
+
+    @patch("app.services.tracking_hydration.credits.sync_item_credits_from_metadata")
+    @patch("app.services.tracking_hydration.upsert_provider_links")
+    @patch("app.services.tracking_hydration.services.get_media_metadata")
+    def test_ensure_item_metadata_stores_anime_episode_count(
+        self,
+        mock_get_media_metadata,
+        _mock_upsert_provider_links,
+        _mock_sync_item_credits,
+    ):
+        mock_get_media_metadata.return_value = {
+            "media_id": "437",
+            "source": Sources.MAL.value,
+            "media_type": MediaTypes.ANIME.value,
+            "title": "Perfect Blue",
+            "image": "https://example.com/perfect-blue.jpg",
+            "max_progress": 12,
+            "details": {"episodes": 12, "runtime": "24 min", "status": "Finished"},
+            "related": {},
+        }
+
+        result = tracking_hydration.ensure_item_metadata(
+            None,
+            MediaTypes.ANIME.value,
+            "437",
+            Sources.MAL.value,
+        )
+
+        result.item.refresh_from_db()
+        self.assertEqual(result.item.provider_episode_count, 12)
+        self.assertEqual(result.item.runtime_minutes, 24)
 
     @patch("app.services.tracking_hydration.credits.sync_item_credits_from_metadata")
     @patch("app.services.tracking_hydration.upsert_provider_links")

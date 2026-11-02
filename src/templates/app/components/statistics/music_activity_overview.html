@@ -38,7 +38,7 @@
                   <a href="{{ artist|music_artist_url }}" class="flex items-center space-x-3 hover:bg-[var(--color-surface)] rounded-md p-1 -m-1 transition-colors cursor-pointer">
                     <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
                     {% if artist.image and artist.image != IMG_NONE %}
-                    <img src="{{ IMG_NONE }}" data-src="{{ artist.image|image_url }}" alt="{{ artist.name }}" class="lazyload w-10 h-10 rounded-full object-cover bg-[var(--color-surface)]">
+                    <img data-media-artwork loading="lazy" decoding="sync" src="{{ artist.image|image_url }}" alt="{{ artist.name }}" class="w-10 h-10 rounded-full object-cover bg-[var(--color-surface)]">
                     {% else %}
                     <div class="w-10 h-10 rounded-full bg-[var(--color-surface)] flex items-center justify-center">
                       <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-[var(--color-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -69,7 +69,7 @@
                   <a href="{{ album|music_album_url }}" class="flex items-center space-x-3 hover:bg-[var(--color-surface)] rounded-md p-1 -m-1 transition-colors cursor-pointer">
                     <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
                     {% if album.image and album.image != IMG_NONE %}
-                    <img src="{{ IMG_NONE }}" data-src="{{ album.image|image_url }}" alt="{{ album.title }}" class="lazyload w-10 h-10 rounded object-cover bg-[var(--color-surface)]">
+                    <img data-media-artwork loading="lazy" decoding="sync" src="{{ album.image|image_url }}" alt="{{ album.title }}" class="w-10 h-10 rounded object-cover bg-[var(--color-surface)]">
                     {% else %}
                     <div class="w-10 h-10 rounded bg-[var(--color-surface)] flex items-center justify-center">
                       <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-[var(--color-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -104,7 +104,7 @@
                   {% endif %}
                     <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
                     {% if track.album_image and track.album_image != IMG_NONE %}
-                    <img src="{{ IMG_NONE }}" data-src="{{ track.album_image|image_url }}" alt="{{ track.album }}" class="lazyload w-10 h-10 rounded object-cover bg-[var(--color-surface)]">
+                    <img data-media-artwork loading="lazy" decoding="sync" src="{{ track.album_image|image_url }}" alt="{{ track.album }}" class="w-10 h-10 rounded object-cover bg-[var(--color-surface)]">
                     {% else %}
                     <div class="w-10 h-10 rounded bg-[var(--color-surface)] flex items-center justify-center">
                       <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-[var(--color-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">

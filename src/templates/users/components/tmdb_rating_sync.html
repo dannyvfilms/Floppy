@@ -1,0 +1,58 @@
+{% load i18n %}
+{# Body of the TMDb modal; the shell is outbound_service_modal.html. #}
+<p class="text-sm text-[var(--color-text-muted)]">
+  {% translate "Send your movie, show and episode ratings to your TMDb account. Season ratings stay in Floppy." %}
+</p>
+<p class="text-xs text-[var(--color-text-muted)]">
+  {% translate "Scores are rounded to the nearest half-point (minimum 0.5). Your Floppy score is unchanged. Clearing a rating removes it from TMDb. TMDb may remove rated titles from its watchlist, depending on your TMDb account settings." %}
+</p>
+{% if provider_tab == "activity" %}
+  {% include "users/components/outbound_service_activity.html" with counts=tmdb_rating_sync.counts recent=tmdb_rating_sync.recent %}
+{% else %}
+{% if tmdb_rating_sync.account %}
+  <p class="text-sm text-[var(--color-text)]">{% translate "Connected as" %} {{ tmdb_rating_sync.account.username }}</p>
+  {% if tmdb_rating_sync.account.connection_broken %}
+    <div class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-[var(--color-warning-text)]">{% translate "TMDb rejected your credentials. Reconnect your account." %}</div>
+  {% endif %}
+  {% if tmdb_rating_sync.account.last_error_message %}
+    <div class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-[var(--color-warning-text)]">{{ tmdb_rating_sync.account.last_error_message }}</div>
+  {% endif %}
+  {% if not provider_tab or provider_tab == "sync" %}
+  <form method="post" action="{% url 'tmdb_settings' %}" class="space-y-2">
+    {% csrf_token %}
+    <label class="flex items-center gap-2 text-sm text-[var(--color-text)]">
+      <input type="checkbox" name="enabled" {% if tmdb_rating_sync.enabled %}checked{% endif %}>
+      {% translate "Automatically send my rating edits from Floppy" %}
+    </label>
+    <p class="text-xs text-[var(--color-text-muted)]">{% translate "Floppy replaces existing TMDb ratings. Imported ratings are only sent when you export them." %}</p>
+    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm cursor-pointer">{% translate "Save" %}</button>
+  </form>
+  {% if tmdb_rating_sync.enabled %}
+    <form method="post" action="{% url 'tmdb_export_ratings' %}" class="space-y-2">
+      {% csrf_token %}
+      <p class="text-xs text-[var(--color-text-muted)]">{% translate "Export uses your latest rating edit for each item, including clears. It can replace or remove existing TMDb ratings." %}</p>
+      <button type="submit" class="w-full px-4 py-2 rounded-lg text-sm bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] cursor-pointer">{% translate "Export existing ratings" %}</button>
+    </form>
+  {% endif %}
+  {% endif %}
+  {% if not provider_tab or provider_tab == "activity" %}
+    {% include "users/components/outbound_service_activity.html" with counts=tmdb_rating_sync.counts recent=tmdb_rating_sync.recent %}
+  {% endif %}
+  {% if not provider_tab or provider_tab == "connection" %}
+  <form method="post" action="{% url 'tmdb_disconnect' %}">
+    {% csrf_token %}
+    <button type="submit" class="text-sm text-[var(--color-link)] hover:underline cursor-pointer">{% translate "Disconnect TMDb" %}</button>
+  </form>
+  {% endif %}
+{% endif %}
+{% if not provider_tab or provider_tab == "connection" %}
+<form method="post" action="{% url 'tmdb_connect' %}">
+  {% csrf_token %}
+  <button type="submit" class="w-full {% if tmdb_rating_sync.account %}bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]{% else %}bg-indigo-600 hover:bg-indigo-500 text-white{% endif %} px-4 py-2 rounded-lg text-sm cursor-pointer">
+    {% if tmdb_rating_sync.account %}{% translate "Reconnect TMDb" %}{% else %}{% translate "Connect TMDb" %}{% endif %}
+  </button>
+</form>
+{% elif not tmdb_rating_sync.account %}
+  <p class="text-sm text-[var(--color-text-muted)]"><a class="text-[var(--color-link)] underline" href="{% url 'provider_detail' 'tmdb' %}?tab=connection">{% translate "Connect your TMDB account to use rating sync." %}</a></p>
+{% endif %}
+{% endif %}

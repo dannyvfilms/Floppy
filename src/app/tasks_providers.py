@@ -228,21 +228,16 @@ def populate_provider_data_for_items(item_ids: list[int]):
 @shared_task(name="app.tasks.populate_provider_backfill_queue")
 def populate_provider_backfill_queue(batch_size: int = 50):
     """Drain the watch-provider backfill queue and process items in small batches."""
-    batch, more_remaining = backfill_queue.take(
+    with backfill_queue.drain(
         WATCH_PROVIDERS_BACKFILL_ITEMS_QUEUE_KEY,
         WATCH_PROVIDERS_BACKFILL_ITEMS_SCHEDULED_KEY,
         batch_size,
-    )
-    if not batch:
-        return {"processed": 0, "message": "No queued watch-provider items"}
+        drain_task=populate_provider_backfill_queue,
+    ) as batch:
+        if not batch:
+            return {"processed": 0, "message": "No queued watch-provider items"}
 
-    if more_remaining:
-        backfill_queue.reschedule(
-            WATCH_PROVIDERS_BACKFILL_ITEMS_SCHEDULED_KEY,
-            populate_provider_backfill_queue,
-        )
-
-    return populate_provider_data_for_items(batch)
+        return populate_provider_data_for_items(batch)
 
 
 def enqueue_due_provider_backfill_retries(

@@ -326,3 +326,171 @@ class SeasonCompletionEvidenceTests(TestCase):
         Season.objects.filter(pk=self.season.pk).update(status=Status.IN_PROGRESS.value)
 
         self.assertEqual(self._sync_status(), Status.IN_PROGRESS.value)
+
+    def test_resync_of_completed_season_leaves_a_returning_show_in_progress(self):
+        """Editing a play of a finished season does not finish an airing show (#1265).
+
+        The re-sync used to mark the show Completed as soon as every season
+        was, without asking the provider whether the show has ended.
+        """
+        self._record_episodes(range(1, 11))
+        Season.objects.filter(pk=self.season.pk).update(status=Status.COMPLETED.value)
+        TV.objects.filter(pk=self.tv.pk).update(status=Status.IN_PROGRESS.value)
+        returning = {
+            "details": {"status": "Continuing"},
+            "related": {"seasons": [{"season_number": 1}]},
+        }
+
+        with patch(
+            "app.providers.services.get_media_metadata",
+            return_value=returning,
+        ):
+            self.assertEqual(self._sync_status(), Status.COMPLETED.value)
+
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.IN_PROGRESS.value)
+
+    def test_completed_season_finishes_an_ended_show(self):
+        self._record_episodes(range(1, 11))
+        ended = {
+            "details": {"status": "Ended"},
+            "related": {"seasons": [{"season_number": 1}]},
+        }
+
+        with patch(
+            "app.providers.services.get_media_metadata",
+            return_value=ended,
+        ):
+            self.assertEqual(self._sync_status(), Status.COMPLETED.value)
+
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.COMPLETED.value)
+
+    def test_added_plays_complete_an_in_progress_season(self):
+        """New plays covering every episode complete the season (#1265).
+
+        Unlike a bare re-sync, where In progress means a manual reopen.
+        """
+        self._record_episodes(range(1, 11))
+        Season.objects.filter(pk=self.season.pk).update(status=Status.IN_PROGRESS.value)
+        self.season.refresh_from_db()
+
+        with patch(
+            "app.providers.services.get_media_metadata",
+            return_value={"details": {"status": "Ended"}},
+        ):
+            self.season._sync_status_after_episode_change(plays_added=True)
+
+        self.season.refresh_from_db()
+        self.assertEqual(self.season.status, Status.COMPLETED.value)
+
+    def test_resync_of_completed_season_finishes_an_ended_show(self):
+        """A show left open by a provider outage is finished on a later re-sync."""
+        self._record_episodes(range(1, 11))
+        Season.objects.filter(pk=self.season.pk).update(status=Status.COMPLETED.value)
+        TV.objects.filter(pk=self.tv.pk).update(status=Status.IN_PROGRESS.value)
+        ended = {
+            "details": {"status": "Ended"},
+            "related": {"seasons": [{"season_number": 1}]},
+        }
+
+        with patch(
+            "app.providers.services.get_media_metadata",
+            return_value=ended,
+        ):
+            self.assertEqual(self._sync_status(), Status.COMPLETED.value)
+
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.COMPLETED.value)
+
+
+class AnnouncedSeasonCompletionTests(TestCase):
+    """An announced, unaired season never blocks or reopens earlier seasons (#1618)."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="announced-user",
+            password="x",
+        )
+        tv_item = Item.objects.create(
+            media_id="announced-show",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Announced Show",
+        )
+        self.tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        self.seasons = {}
+        for number, status in ((1, Status.COMPLETED.value), (2, Status.PLANNING.value)):
+            item = Item.objects.create(
+                media_id="announced-show",
+                source=Sources.TVDB.value,
+                media_type=MediaTypes.SEASON.value,
+                season_number=number,
+                title=f"Announced Show Season {number}",
+            )
+            self.seasons[number] = Season.objects.create(
+                item=item,
+                user=self.user,
+                related_tv=self.tv,
+                status=status,
+            )
+
+    def _metadata(self, production_status, season_two_air_date):
+        return {
+            "details": {"status": production_status},
+            "related": {
+                "seasons": [
+                    {"season_number": 1, "first_air_date": "2020-01-01"},
+                    {"season_number": 2, "first_air_date": season_two_air_date},
+                ],
+            },
+        }
+
+    def test_ended_show_ignores_a_season_dated_in_the_future(self):
+        with patch(METADATA_PATH, return_value=self._metadata("Ended", "2099-01-01")):
+            self.tv._handle_completed_season(1)
+
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.COMPLETED.value)
+
+    def test_ended_show_waits_for_an_undated_planning_season(self):
+        """Undated is not unaired: the season may be one the user skipped."""
+        with patch(METADATA_PATH, return_value=self._metadata("Ended", None)):
+            self.tv._handle_completed_season(1)
+
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.IN_PROGRESS.value)
+
+    def test_ended_show_waits_for_a_planning_season_that_already_aired(self):
+        with patch(METADATA_PATH, return_value=self._metadata("Ended", "2020-06-01")):
+            self.tv._handle_completed_season(1)
+
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.IN_PROGRESS.value)
+
+    def test_returning_show_stays_in_progress_with_a_future_season(self):
+        """The stored status stays In progress; the card says Caught Up (R5)."""
+        with patch(
+            METADATA_PATH,
+            return_value=self._metadata("Returning Series", "2099-01-01"),
+        ):
+            self.tv._handle_completed_season(1)
+
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.IN_PROGRESS.value)
+
+    def test_future_season_leaves_the_completed_season_alone(self):
+        with patch(
+            METADATA_PATH,
+            return_value=self._metadata("Returning Series", "2099-01-01"),
+        ):
+            self.tv._handle_completed_season(1)
+
+        self.seasons[1].refresh_from_db()
+        self.seasons[2].refresh_from_db()
+        self.assertEqual(self.seasons[1].status, Status.COMPLETED.value)
+        self.assertEqual(self.seasons[2].status, Status.PLANNING.value)

@@ -117,3 +117,23 @@ class UpdateTopTalentSortMediaTypeFilterTests(TestCase):
         data = response.json()
         self.assertIn("Movie Actor", data["role_leaders_html"])
         self.assertIn("Game Actor", data["role_leaders_html"])
+
+    def test_several_media_types_combine_their_casts(self):
+        response = self.client.post(
+            reverse("update_top_talent_sort"),
+            {"sort_by": "plays", "media_type": "movie,game"},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("Movie Actor", data["role_leaders_html"])
+        self.assertIn("Game Actor", data["role_leaders_html"])
+
+    def test_types_without_credits_are_dropped_from_a_selection(self):
+        response = self.client.post(
+            reverse("update_top_talent_sort"),
+            {"sort_by": "plays", "media_type": "boardgame,movie"},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("Movie Actor", data["role_leaders_html"])
+        self.assertNotIn("Game Actor", data["role_leaders_html"])

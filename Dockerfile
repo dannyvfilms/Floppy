@@ -1,15 +1,13 @@
-ARG PYTHON_VERSION=3.12
-ARG ALPINE_VERSION=3.24
+ARG PYTHON_IMAGE=python:3.12-alpine3.24@sha256:b658b05ce9c4eb97ec6fc19424818a1f31993659c2b505a532f470e83807815d
 
-FROM python:${PYTHON_VERSION}-alpine${ALPINE_VERSION} AS repo_meta
+FROM ${PYTHON_IMAGE} AS repo_meta
 
 WORKDIR /repo
-COPY . .
-RUN python - <<'PY'
+RUN --mount=type=bind,target=/context,ro python - <<'PY'
 from pathlib import Path
 from urllib.parse import urlparse
 
-config_path = Path(".git/config")
+config_path = Path("/context/.git/config")
 owner = ""
 
 if config_path.exists():
@@ -42,9 +40,9 @@ if config_path.exists():
 Path("/repo_owner").write_text(owner)
 PY
 
-FROM python:${PYTHON_VERSION}-alpine${ALPINE_VERSION} AS builder
+FROM ${PYTHON_IMAGE} AS builder
 
-COPY --from=ghcr.io/astral-sh/uv:0.12.3 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.12.3@sha256:2d890623d310b57771ce840f0da5eed5fc6d657da05ffaa45d82797b53fa3abc /uv /uvx /bin/
 ENV UV_LINK_MODE=copy
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 
@@ -59,7 +57,7 @@ COPY ./mcp_server ./mcp_server
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-default-groups --no-editable
 
-FROM python:${PYTHON_VERSION}-alpine${ALPINE_VERSION}
+FROM ${PYTHON_IMAGE}
 
 # https://stackoverflow.com/questions/58701233/docker-logs-erroneously-appears-empty-until-container-stops
 ENV PYTHONUNBUFFERED=1
@@ -88,6 +86,7 @@ ENV FLOPPY_CELERY_ROLE=background
 ENV FLOPPY_CELERY_QUEUES=celery
 ENV FLOPPY_START_INTERACTIVE_WORKER=true
 ENV FLOPPY_START_DISCOVER_WORKER=true
+ENV FLOPPY_SUPERVISORD_LOG=AUTO
 
 COPY ./runtime-entrypoint.sh /runtime-entrypoint.sh
 COPY ./entrypoint.sh /entrypoint.sh
@@ -103,7 +102,11 @@ WORKDIR /floppy
 # silently creates an empty database.
 RUN ln -s /floppy /yamtrack
 
-RUN apk add --no-cache nginx shadow \
+RUN apk add --no-cache --upgrade nginx shadow zlib \
+    # Dependency installation happens in builder; do not ship a second,
+    # unused installer (or ensurepip's bundled copy) from the Python base.
+    && python -m pip uninstall --yes pip \
+    && rm -rf /usr/local/lib/python3.12/ensurepip \
     && chmod +x /runtime-entrypoint.sh /entrypoint.sh \
     # create user abc for later PUID/PGID mapping
     && useradd -U -M -s /bin/sh abc \
@@ -117,7 +120,9 @@ RUN ln -s /opt/venv /floppy/.venv
 
 # Django app
 COPY src ./
-RUN SECRET=build-time-placeholder python manage.py collectstatic --noinput
+RUN SECRET=build-time-placeholder python manage.py collectstatic --noinput \
+    && chown -R 1000:1000 /floppy/staticfiles \
+    && SECRET=build-time-placeholder python config/static_collection.py --record
 
 # MCP server (mcp/floppy_mcp) — bundled so `docker exec` always runs the
 # version shipped with this image, instead of a user's local checkout that

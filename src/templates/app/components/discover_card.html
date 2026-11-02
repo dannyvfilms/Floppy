@@ -6,7 +6,7 @@
   <a href="{{ candidate|media_url }}"
      hx-boost="true"
      class="block overflow-hidden rounded-lg border border-[var(--color-surface-strong)] bg-[var(--color-surface)] transition-colors hover:border-indigo-500">
-    <img src="{{ candidate.image|default:IMG_NONE|image_url }}"
+    <img data-media-artwork loading="lazy" decoding="sync" src="{{ candidate.image|default:IMG_NONE|image_url }}"
          alt="{{ candidate|display_title:user }}"
          class="h-52 w-full bg-[var(--color-surface-alt)] object-cover sm:h-56 md:h-60">
     <div class="p-2.5">

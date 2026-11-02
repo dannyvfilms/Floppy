@@ -15,7 +15,7 @@
   <div class="min-h-screen bg-[var(--color-page-bg)] text-[var(--color-text)] flex flex-col">
     <div class="w-full max-w-5xl mx-auto px-4 pt-6 pb-16 flex-1 flex flex-col">
       <div class="mb-6 flex items-center justify-between gap-4 flex-wrap">
-        <div class="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+        <div class="flex items-center flex-wrap gap-2 text-xs text-[var(--color-text-muted)]">
           {% for slug, label in onboarding_steps %}
             <span class="px-2 py-1 rounded-md {% if slug == onboarding_active_step %}bg-indigo-600 text-white{% elif slug in onboarding_completed_steps %}bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)]{% else %}text-[var(--color-text-muted)]{% endif %}">
               {{ label }}

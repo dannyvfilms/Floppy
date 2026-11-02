@@ -21,7 +21,7 @@ import requests
 
 from app.log_safety import exception_summary
 from app.providers import services
-from integrations.imports.helpers import MediaImportError
+from integrations.imports.helpers import ConnectionAuthError, MediaImportError
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +75,11 @@ def _describe(response):
     return type(payload).__name__
 
 
+_AUTH_STATUS_CODES = frozenset(
+    {requests.codes.unauthorized, requests.codes.payment_required},
+)
+
+
 def _http_error_message(status_code):
     """Return the user-facing message for a failed OpenXBL response.
 
@@ -82,10 +87,7 @@ def _http_error_message(status_code):
     request URL and the response body, and the caller persists whatever comes
     back here on the account row, so nothing raw is reflected.
     """
-    if status_code in {
-        requests.codes.unauthorized,
-        requests.codes.payment_required,
-    }:
+    if status_code in _AUTH_STATUS_CODES:
         return "Invalid or expired OpenXBL API key. Reconnect your Xbox account."
     if status_code == requests.codes.forbidden:
         return "OpenXBL denied access to this Xbox profile. Check its privacy settings."
@@ -124,6 +126,8 @@ def _request(api_key, method, path, params=None):
             exception_summary(e),
         )
         msg = _http_error_message(status_code)
+        if status_code in _AUTH_STATUS_CODES:
+            raise ConnectionAuthError(msg) from e
         raise MediaImportError(msg) from e
     except (services.ProviderAPIError, requests.RequestException) as e:
         logger.warning(

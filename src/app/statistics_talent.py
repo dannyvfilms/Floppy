@@ -9,7 +9,6 @@ from django.conf import settings
 from django.db.models import Q
 
 from app import credits as credit_helpers
-from app import statistics as stats
 from app.models import (
     CreditRoleType,
     Episode,
@@ -23,6 +22,7 @@ from app.models import (
     PersonGender,
     Studio,
 )
+from app.stats_utils import _format_hours_minutes
 
 logger = logging.getLogger(__name__)
 
@@ -497,7 +497,7 @@ def _get_person_talent_totals_from_context(user, person, context):
             "bucket": bucket,
             "plays": int(bucket_plays.get(bucket, 0)),
             "watched_minutes": watched_minutes,
-            "watched_time": stats._format_hours_minutes(
+            "watched_time": _format_hours_minutes(
                 watched_minutes, user.duration_format
             ),
             "unique_movies": unique_movies,
@@ -574,6 +574,31 @@ def get_person_talent_totals(
     return _get_person_talent_totals_from_context(user, person, context)
 
 
+TALENT_MEDIA_TYPES = frozenset(
+    {
+        MediaTypes.MOVIE.value,
+        MediaTypes.TV.value,
+        MediaTypes.ANIME.value,
+        MediaTypes.GAME.value,
+    }
+)
+
+
+def _normalize_talent_media_types(media_type, allowed=TALENT_MEDIA_TYPES):
+    """Turn "tv", "tv,movie" or a collection into a set of `allowed` types.
+
+    Returns None (no filtering) for None/"all"/empty input. Types without
+    cast/crew data (books, music, ...) are dropped, so a selection made only of
+    them yields an empty set and therefore no talent.
+    """
+    if media_type in (None, "", "all"):
+        return None
+    if isinstance(media_type, str):
+        media_type = media_type.split(",")
+    selected = {str(value).strip() for value in media_type} & allowed
+    return frozenset(selected)
+
+
 def _aggregate_top_talent(
     user,
     start_date,
@@ -586,8 +611,9 @@ def _aggregate_top_talent(
 ):
     """Aggregate top cast/crew/studio rollups from watched movie and TV plays.
 
-    media_type restricts the aggregation to one of "movie", "tv", "anime", or
-    "game" — None/"all" (the default) keeps the unfiltered cross-type rollup.
+    media_type restricts the aggregation to "movie", "tv", "anime", and/or
+    "game": one value, or several as a comma-separated string or a collection.
+    None/"all" (the default) keeps the unfiltered cross-type rollup.
     `is_all_time` defaults to inferring "all time" from start_date/end_date
     both being None; callers that must pass concrete bounds for other
     reasons (e.g. day-list-derived aware datetimes) while still meaning "all
@@ -677,24 +703,23 @@ def _aggregate_top_talent(
             _calculate_game_time_in_range(game, start_date, end_date) or 0
         )
 
-    if media_type not in (None, "all"):
-        if media_type == MediaTypes.MOVIE.value:
+    selected_types = _normalize_talent_media_types(media_type)
+    if selected_types is not None:
+        if MediaTypes.MOVIE.value not in selected_types:
+            movie_play_counts = Counter()
+            movie_watch_minutes = Counter()
+        if MediaTypes.GAME.value not in selected_types:
+            game_play_counts = Counter()
+            game_watch_minutes = Counter()
+        selected_show_types = selected_types & {
+            MediaTypes.TV.value,
+            MediaTypes.ANIME.value,
+        }
+        if not selected_show_types:
             episode_play_rows = []
             season_item_ids = set()
             tv_item_ids = set()
-            game_play_counts = Counter()
-            game_watch_minutes = Counter()
-        elif media_type == MediaTypes.GAME.value:
-            movie_play_counts = Counter()
-            movie_watch_minutes = Counter()
-            episode_play_rows = []
-            season_item_ids = set()
-            tv_item_ids = set()
-        elif media_type in (MediaTypes.TV.value, MediaTypes.ANIME.value):
-            movie_play_counts = Counter()
-            movie_watch_minutes = Counter()
-            game_play_counts = Counter()
-            game_watch_minutes = Counter()
+        elif len(selected_show_types) == 1:
             # TV and Anime share the same related_tv FK chain in
             # _tv_episode_play_rows, so the split can only happen here once
             # each show's own Item.media_type is known.
@@ -704,21 +729,12 @@ def _aggregate_top_talent(
             tv_item_ids = {
                 item_id
                 for item_id in tv_item_ids
-                if show_media_type_by_id.get(item_id) == media_type
+                if show_media_type_by_id.get(item_id) in selected_show_types
             }
             episode_play_rows = [
                 row for row in episode_play_rows if row[2] in tv_item_ids
             ]
             season_item_ids = {row[1] for row in episode_play_rows if row[1]}
-        else:
-            # No cast/crew data exists for other media types (books, music, etc).
-            movie_play_counts = Counter()
-            movie_watch_minutes = Counter()
-            episode_play_rows = []
-            season_item_ids = set()
-            tv_item_ids = set()
-            game_play_counts = Counter()
-            game_watch_minutes = Counter()
 
     if not movie_play_counts and not episode_play_rows and not game_play_counts:
         by_sort = {mode: _empty_talent_bucket() for mode in valid_sort_modes}
@@ -1098,7 +1114,7 @@ def _aggregate_top_talent(
                     "person_id": person.source_person_id,
                     "plays": int(plays),
                     "watched_minutes": watched_minutes,
-                    "watched_time": stats._format_hours_minutes(
+                    "watched_time": _format_hours_minutes(
                         watched_minutes, user.duration_format
                     ),
                     "unique_movies": unique_movies,
@@ -1153,7 +1169,7 @@ def _aggregate_top_talent(
                     "studio_id": studio.source_studio_id,
                     "plays": int(plays),
                     "watched_minutes": watched_minutes,
-                    "watched_time": stats._format_hours_minutes(
+                    "watched_time": _format_hours_minutes(
                         watched_minutes, user.duration_format
                     ),
                     "unique_movies": unique_movies,

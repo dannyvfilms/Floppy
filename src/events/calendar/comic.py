@@ -1,6 +1,7 @@
 import logging
 
-from app.providers import comicvine, services
+from app.models import Sources
+from app.providers import comicvine, gcd, services
 from events.models import Event
 
 from .helpers import date_parser
@@ -34,8 +35,15 @@ def process_comic(item, events_bulk):
     if last_issue_event_number == last_published_issue_number:
         return True
 
+    if not metadata.get("last_issue_id"):
+        # GCD series too long to scan for their newest issue.
+        return True
+
     try:
-        issue_metadata = comicvine.issue(metadata["last_issue_id"])
+        if item.source == Sources.GCD.value:
+            issue_metadata = gcd.comic_issue(metadata["last_issue_id"])["details"]
+        else:
+            issue_metadata = comicvine.issue(metadata["last_issue_id"])
     except services.ProviderAPIError:
         logger.warning(
             "Failed to fetch issue metadata for %s",

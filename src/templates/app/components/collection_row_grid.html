@@ -1,0 +1,7 @@
+{% load app_tags %}
+
+{% for entry in media_list.items %}
+  <div class="home-row-card w-44 shrink-0">
+    {% media_card "collection" item=entry.item title=entry.item media=entry.media card_media_type=entry.item.media_type collection_completeness=entry.completeness %}
+  </div>
+{% endfor %}

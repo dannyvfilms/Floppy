@@ -13,6 +13,7 @@ from __future__ import annotations
 import contextlib
 import contextvars
 import logging
+import time
 
 from django.core.cache import cache
 from django.utils import timezone
@@ -20,7 +21,14 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 PROGRESS_CACHE_PREFIX = "import_progress"
-PROGRESS_CACHE_TIMEOUT_SECONDS = 5 * 60
+PROGRESS_CACHE_TIMEOUT_SECONDS = 24 * 60 * 60
+PROGRESS_WRITE_INTERVAL_SECONDS = 1.0
+PROGRESS_WRITE_ROW_INTERVAL = 250
+
+_last_report: contextvars.ContextVar[tuple | None] = contextvars.ContextVar(
+    "import_progress_last_report",
+    default=None,
+)
 
 _current_task_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "import_progress_task_id",
@@ -31,6 +39,7 @@ _current_import_run_id: contextvars.ContextVar[int | None] = contextvars.Context
     "import_progress_import_run_id",
     default=None,
 )
+_heartbeat = contextvars.ContextVar("import_heartbeat", default=None)
 
 
 def _cache_key(task_id: str) -> str:
@@ -38,7 +47,7 @@ def _cache_key(task_id: str) -> str:
 
 
 @contextlib.contextmanager
-def tracking(task_id: str | None, import_run_id: int | None = None):
+def tracking(task_id: str | None, import_run_id: int | None = None, *, heartbeat=None):
     """Mark ``task_id``/``import_run_id`` as active for this import.
 
     Clears the progress cache entry on exit regardless of success/failure,
@@ -50,11 +59,15 @@ def tracking(task_id: str | None, import_run_id: int | None = None):
     """
     task_token = _current_task_id.set(task_id)
     run_token = _current_import_run_id.set(import_run_id)
+    report_token = _last_report.set(None)
+    heartbeat_token = _heartbeat.set(heartbeat)
     try:
         yield
     finally:
         _current_task_id.reset(task_token)
         _current_import_run_id.reset(run_token)
+        _last_report.reset(report_token)
+        _heartbeat.reset(heartbeat_token)
         if task_id:
             cache.delete(_cache_key(task_id))
 
@@ -71,10 +84,29 @@ def report(current: int, total: int | None = None, label: str | None = None) -> 
     gathering items from a paginated API) — the UI renders this as an
     indeterminate state. No-ops outside a ``tracking()`` context, so this
     is safe to call from importer code under test or run standalone.
+    Stage changes and completion publish immediately; intermediate rows
+    publish after one second or 250 rows, whichever comes first.
     """
+    if heartbeat := _heartbeat.get():
+        heartbeat()
     task_id = _current_task_id.get()
     if not task_id:
         return
+
+    now = time.monotonic()
+    previous = _last_report.get()
+    if previous is not None:
+        last_current, last_total, last_label, last_written = previous
+        changed_stage = (total, label) != (last_total, last_label)
+        finished = total is not None and current >= total
+        if (
+            not changed_stage
+            and current >= last_current
+            and not (finished and current != last_current)
+            and current - last_current < PROGRESS_WRITE_ROW_INTERVAL
+            and now - last_written < PROGRESS_WRITE_INTERVAL_SECONDS
+        ):
+            return
 
     cache.set(
         _cache_key(task_id),
@@ -86,6 +118,7 @@ def report(current: int, total: int | None = None, label: str | None = None) -> 
         },
         timeout=PROGRESS_CACHE_TIMEOUT_SECONDS,
     )
+    _last_report.set((current, total, label, now))
 
 
 def get_progress(task_id: str | None) -> dict | None:

@@ -7,7 +7,8 @@ from urllib.parse import urljoin
 import yaml
 from bs4 import BeautifulSoup
 from django.conf import settings
-from django.test import RequestFactory, SimpleTestCase
+from django.contrib.auth import get_user_model
+from django.test import RequestFactory, SimpleTestCase, TestCase
 from django.test.utils import override_settings
 from django.urls import get_script_prefix, reverse, set_script_prefix
 from drf_spectacular.renderers import OpenApiYamlRenderer
@@ -129,12 +130,12 @@ class OfflineAPIDocsTests(SimpleTestCase):
             'curl --request GET --header "X-API-Key: YOUR_API_TOKEN" '
             f'"https://YOUR_FLOPPY_HOST{reverse("api_user_preferences")}/"',
         )
-        settings_link = soup.find("a", string="Settings -> Integrations")
+        settings_link = soup.find("a", string="Settings -> Access & Tokens")
         self.assertIsNotNone(settings_link)
-        self.assertEqual(settings_link.get("href"), reverse("integrations"))
+        self.assertEqual(settings_link.get("href"), reverse("access_tokens"))
         self.assertEqual(
             settings_link.parent.get_text().strip(),
-            "Copy your API Token in Settings -> Integrations.",
+            "Copy your API Token in Settings -> Access & Tokens.",
         )
 
     @override_settings(
@@ -392,6 +393,7 @@ class OpenAPIArtifactTests(SimpleTestCase):
                 "start_date",
                 "end_date",
                 "notes",
+                "entry_source",
             },
         )
         self.assertEqual(
@@ -403,6 +405,7 @@ class OpenAPIArtifactTests(SimpleTestCase):
                 "start_date",
                 "end_date",
                 "notes",
+                "entry_source",
                 "image_url",
             },
         )
@@ -417,6 +420,7 @@ class OpenAPIArtifactTests(SimpleTestCase):
                 "tracked",
                 "created_at",
                 "score",
+                "scored_at",
                 "status",
                 "progress",
                 "episodes_left",
@@ -427,6 +431,7 @@ class OpenAPIArtifactTests(SimpleTestCase):
                 "start_date",
                 "end_date",
                 "notes",
+                "source",
                 "lists",
                 "next_episode",
                 "show",
@@ -434,7 +439,17 @@ class OpenAPIArtifactTests(SimpleTestCase):
         )
         self.assertEqual(
             set(schemas["NextEpisode"]["properties"]),
-            {"season_number", "episode_number", "air_date"},
+            {
+                "season_number",
+                "episode_number",
+                "air_date",
+                "title",
+                "episode_code",
+                "image",
+                "ids",
+                "url",
+                "is_rewatch",
+            },
         )
         self.assertEqual(
             set(schemas["Show"]["properties"]),
@@ -446,12 +461,14 @@ class OpenAPIArtifactTests(SimpleTestCase):
                 "consumption_id",
                 "created",
                 "score",
+                "scored_at",
                 "progress",
                 "progressed_at",
                 "status",
                 "start_date",
                 "end_date",
                 "notes",
+                "source",
                 "external_id",
             },
         )
@@ -691,10 +708,30 @@ class OpenAPIArtifactTests(SimpleTestCase):
                 {"200", "400", "401", "403"},
             ),
             (
+                "/apis/listenbrainz/1/user/{username}/listens/",
+                "get",
+                "getListenBrainzUserListens",
+                {"200", "400", "401", "404"},
+            ),
+            (
                 "/apis/listenbrainz/1/validate-token/",
                 "get",
                 "validateListenBrainzToken",
                 {"200", "401"},
+            ),
+            *(
+                (
+                    f"/apis/listenbrainz/1/stats/user/{{username}}/{entity}/",
+                    "get",
+                    operation_id,
+                    {"200", "400", "401", "404"},
+                )
+                for entity, operation_id in (
+                    ("artists", "getListenBrainzUserArtists"),
+                    ("release-groups", "getListenBrainzUserReleaseGroups"),
+                    ("recordings", "getListenBrainzUserRecordings"),
+                    ("genre-activity", "getListenBrainzUserGenreActivity"),
+                )
             ),
         ):
             operation = paths[path][method]
@@ -976,7 +1013,7 @@ class SchemaFindingContractTests(SimpleTestCase):
         self.assertIn(SCHEMA_REGENERATION_COMMAND, message)
 
     def test_reviewed_baseline_has_expected_unique_counts(self):
-        self.assertEqual(len(EXPECTED_SCHEMA_ERRORS), 89)
+        self.assertEqual(len(EXPECTED_SCHEMA_ERRORS), 83)
         self.assertEqual(len(EXPECTED_SCHEMA_WARNINGS), 18)
 
     def test_generated_schema_findings_match_reviewed_baseline(self):
@@ -1045,7 +1082,7 @@ class MCPHTTPManifestTests(SimpleTestCase):
                 if not (
                     isinstance(call, ast.Call)
                     and isinstance(call.func, ast.Name)
-                    and call.func.id == "_call"
+                    and call.func.id in {"_call", "_write"}
                 ):
                     continue
                 if len(call.args) < 2:
@@ -1129,7 +1166,7 @@ async def exact_template():
     def test_manifest_covers_all_current_http_branches(self):
         routes = self._routes_from_source(inspect.getsource(mcp_server))
 
-        self.assertEqual(len(MCP_HTTP_MANIFEST), 40)
+        self.assertEqual(len(MCP_HTTP_MANIFEST), 44)
         self.assertEqual(len(MCP_HTTP_MANIFEST), len(set(MCP_HTTP_MANIFEST)))
         self.assertEqual(set(routes), set(MCP_HTTP_MANIFEST))
         self.assertTrue(
@@ -1214,3 +1251,45 @@ class AsyncAPIContractTests(SimpleTestCase):
 
         head_response = self.client.head(reverse("asyncapi-contract"))
         self.assertEqual(head_response.status_code, 200)
+
+
+class LiveSchemaNegotiationTests(TestCase):
+    """The ``/api/schema/`` response matrix (#1615; #1049 was the earlier report)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = get_user_model().objects.create_user("schema", password="x")
+
+    def setUp(self):
+        self.client.force_login(self.user)
+
+    def test_response_matrix(self):
+        cases = [
+            ("", {}, "text/yaml", "yaml"),
+            ("?format=yaml", {}, "text/yaml", "yaml"),
+            ("?format=json", {}, "application/json", "json"),
+            ("?format=bogus", {}, "text/yaml", "yaml"),
+            ("", {"HTTP_ACCEPT": "application/json"}, "application/json", "json"),
+            (
+                "",
+                {"HTTP_ACCEPT": "application/vnd.oai.openapi+json"},
+                "application/vnd.oai.openapi+json",
+                "json",
+            ),
+            ("", {"HTTP_ACCEPT": "text/yaml"}, "text/yaml", "yaml"),
+            (
+                "",
+                {"HTTP_ACCEPT": "application/vnd.oai.openapi"},
+                "application/vnd.oai.openapi",
+                "yaml",
+            ),
+        ]
+        for query, headers, mime, kind in cases:
+            with self.subTest(query=query, headers=headers):
+                response = self.client.get(f"/api/schema/{query}", **headers)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response["Content-Type"].split(";")[0], mime)
+                self.assertIn(f"openapi-live.{kind}", response["Content-Disposition"])
+                body = response.content.decode()
+                parsed = json.loads(body) if kind == "json" else yaml.safe_load(body)
+                self.assertEqual(parsed["openapi"], "3.0.3")

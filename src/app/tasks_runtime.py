@@ -18,6 +18,7 @@ from app.models import Item, MediaTypes, MetadataBackfillField, MetadataBackfill
 from app.providers import services
 from app.task_cooperation import CooperativeRun
 from app.tasks_backfill_state import (
+    METADATA_BACKFILL_EMPTY_ANSWER_DELAY_SECONDS,
     _apply_backfill_state_filters,
     _filter_backfill_item_ids,
     _normalize_item_ids,
@@ -73,6 +74,10 @@ def _reset_stale_give_up_episode_runtimes():
 
     Episodes aired within the last 30 days (or with no known air date) are eligible.
     Items must have been last attempted more than 7 days ago to avoid immediate re-triggering.
+
+    A terminal verdict (the provider said this id does not exist) is not stale
+    interest - re-asking the same id gets the same 404. Those stay given up
+    until a manual recheck or an identity change clears the state.
     """
     from datetime import timedelta
 
@@ -83,6 +88,7 @@ def _reset_stale_give_up_episode_runtimes():
         MetadataBackfillState.objects.filter(
             field=MetadataBackfillField.RUNTIME,
             give_up=True,
+            terminal=False,
             last_attempt_at__lt=attempt_cutoff,
             item__media_type=MediaTypes.EPISODE.value,
             item__runtime_minutes__isnull=True,
@@ -96,6 +102,7 @@ def _reset_stale_give_up_episode_runtimes():
             give_up=False,
             fail_count=0,
             next_retry_at=None,
+            terminal=False,
         )
     )
     if count:
@@ -238,7 +245,18 @@ def _populate_runtime_for_items(items, delay_seconds):
     updated_items = []
 
     def _mark_runtime_failure(item, reason):
-        give_up = _record_backfill_failure(item, MetadataBackfillField.RUNTIME, reason)
+        give_up = _record_backfill_failure(
+            item,
+            MetadataBackfillField.RUNTIME,
+            reason,
+            # The provider answered and has no runtime: asking again in an hour
+            # gets the same answer.
+            min_delay_seconds=(
+                METADATA_BACKFILL_EMPTY_ANSWER_DELAY_SECONDS
+                if reason == "no runtime"
+                else None
+            ),
+        )
         if give_up:
             try:
                 with transaction.atomic():
@@ -358,13 +376,10 @@ def populate_runtime_data_batch(batch_size=10, delay_seconds=1.0):
         items_to_update, delay_seconds
     )
 
-    # Check if there are more items to process (exclude previously failed items)
-    remaining_items = _runtime_items_queryset().count()
-
-    if remaining_items > 0:
-        logger.info(
-            "Found %s remaining items. Scheduling next batch...", remaining_items
-        )
+    # Probe for more items (excluding previously failed ones); a bounded EXISTS
+    # instead of counting the whole candidate set on every batch.
+    if _runtime_items_queryset().exists():
+        logger.info("More items need runtime data. Scheduling next batch...")
         # Schedule the next batch with a small delay
         populate_runtime_data_batch.apply_async(
             kwargs={"batch_size": batch_size, "delay_seconds": delay_seconds},
@@ -373,7 +388,6 @@ def populate_runtime_data_batch(batch_size=10, delay_seconds=1.0):
         return {
             "updated": updated_count,
             "errors": error_count,
-            "remaining_items": remaining_items,
             "next_batch_scheduled": True,
         }
     logger.info(
@@ -386,7 +400,6 @@ def populate_runtime_data_batch(batch_size=10, delay_seconds=1.0):
     return {
         "updated": updated_count,
         "errors": error_count,
-        "remaining_items": 0,
         "next_batch_scheduled": False,
         "completion_message": "All runtime data populated successfully!",
     }
@@ -421,21 +434,16 @@ def populate_runtime_data_for_items(item_ids: list[int], delay_seconds: float = 
 @shared_task(name="app.tasks.populate_runtime_backfill_queue")
 def populate_runtime_backfill_queue(batch_size: int = 50, delay_seconds: float = 0.0):
     """Drain the runtime backfill queue and process items in small batches."""
-    batch, more_remaining = backfill_queue.take(
+    with backfill_queue.drain(
         RUNTIME_BACKFILL_ITEMS_QUEUE_KEY,
         RUNTIME_BACKFILL_ITEMS_SCHEDULED_KEY,
         batch_size,
-    )
-    if not batch:
-        return {"processed": 0, "message": "No queued runtime items"}
+        drain_task=populate_runtime_backfill_queue,
+    ) as batch:
+        if not batch:
+            return {"processed": 0, "message": "No queued runtime items"}
 
-    if more_remaining:
-        backfill_queue.reschedule(
-            RUNTIME_BACKFILL_ITEMS_SCHEDULED_KEY,
-            populate_runtime_backfill_queue,
-        )
-
-    return populate_runtime_data_for_items(batch, delay_seconds=delay_seconds)
+        return populate_runtime_data_for_items(batch, delay_seconds=delay_seconds)
 
 
 @shared_task(name="app.tasks.populate_runtime_data_continuous")

@@ -244,7 +244,10 @@ class WebhookPlaybackProgressTests(TestCase):
         self.assertFalse(progress.completed)
 
     def test_jellyfin_stop_preserves_zero_position_and_rejects_invalid_ticks(self):
-        """Zero is a valid position; negative and boolean ticks are not."""
+        """Zero is a valid position; negative and boolean ticks are not.
+
+        A zero-position Stop is parsed, but like Plex it is too short to record.
+        """
         processor = JellyfinWebhookProcessor()
         base = {
             "Event": "Stop",
@@ -271,12 +274,11 @@ class WebhookPlaybackProgressTests(TestCase):
                 processor,
                 "_process_media",
                 return_value=self.movie_item,
-            ),
+            ) as process_media,
         ):
             processor.process_payload(zero_payload, self.user)
-        progress = PlaybackProgress.objects.get(user=self.user)
-        self.assertEqual(progress.position_seconds, 0)
-        self.assertFalse(progress.completed)
+        process_media.assert_not_called()
+        self.assertFalse(PlaybackProgress.objects.filter(user=self.user).exists())
 
         for position_ticks, duration_ticks, expected in (
             (-1, 100 * 10_000_000, (None, 100)),

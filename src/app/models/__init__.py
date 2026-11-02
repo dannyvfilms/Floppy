@@ -2,7 +2,14 @@
 # resolve app.models.providers, from when app/models.py was a single module.
 from app import providers  # noqa: F401
 from app.models.application_settings import ApplicationSettings
-from app.models.choices import MediaTypes, ProviderMetadataStatus, Sources, Status
+from app.models.choices import (
+    USER_HELD_STATUSES,
+    MediaTypes,
+    ProviderMetadataStatus,
+    Sources,
+    Status,
+)
+from app.models.consumption_batch import ConsumptionBatchItem
 from app.models.credits import (
     CREDITS_BACKFILL_VERSION,
     DISCOVER_MOVIE_METADATA_BACKFILL_VERSION,
@@ -41,6 +48,7 @@ from app.models.episode_runtimes import (
     build_episode_runtime_index,
     prefill_episode_runtime_index,
 )
+from app.models.game_artwork import GameArtwork
 from app.models.item import Item
 from app.models.manager import MediaManager
 from app.models.media import (
@@ -84,6 +92,12 @@ from app.models.provider_credential import (
     InstanceProviderCredential,
     UserProviderCredential,
 )
+from app.models.rewatch import RewatchCancellation
+from app.models.statistics import (
+    StatisticsDirtyDay,
+    StatisticsSnapshot,
+    StatisticsSyncState,
+)
 from app.models.tombstone import DeletedMedia
 from app.models.tv import (
     TV,
@@ -91,6 +105,8 @@ from app.models.tv import (
     RewatchAlreadyCompleteError,
     Season,
 )
+from app.models.video import Video, VideoPlay
+from app.models.video_game_tag import VideoGameLink, VideoGameTag
 from app.models.watch_state import (
     WatchState,
     WatchStateChange,
@@ -106,6 +122,7 @@ __all__ = [
     "PERSON_PROFILE_BACKFILL_VERSION",
     "TRAKT_POPULARITY_BACKFILL_VERSION",
     "TV",
+    "USER_HELD_STATUSES",
     "ActiveAnimeManager",
     "ActiveAnimeQuerySet",
     "Album",
@@ -128,6 +145,7 @@ __all__ = [
     "CollectionFieldType",
     "Comic",
     "ComicIssue",
+    "ConsumptionBatchItem",
     "CreditRoleType",
     "DeletedMedia",
     "DiscoverApiCache",
@@ -139,6 +157,7 @@ __all__ = [
     "EpisodeOrder",
     "EpisodeOrderChange",
     "Game",
+    "GameArtwork",
     "HardcoverEditionPreference",
     "InstanceProviderCredential",
     "Item",
@@ -168,13 +187,21 @@ __all__ = [
     "ProgressChangeKind",
     "ProviderMetadataStatus",
     "RewatchAlreadyCompleteError",
+    "RewatchCancellation",
     "Season",
     "Sources",
+    "StatisticsDirtyDay",
+    "StatisticsSnapshot",
+    "StatisticsSyncState",
     "Status",
     "Studio",
     "Tag",
     "Track",
     "UserProviderCredential",
+    "Video",
+    "VideoGameLink",
+    "VideoGameTag",
+    "VideoPlay",
     "WatchState",
     "WatchStateChange",
     "WatchStateChangeKind",

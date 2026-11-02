@@ -166,11 +166,15 @@ def resolve_or_create_season(
     source,
     season_number,
     library_media_type="",
+    *,
+    prepare_only=False,
+    status=Status.IN_PROGRESS.value,
 ):
     """Return the user's tracked Season row, creating it if it doesn't exist.
 
     Mirrors the season auto-create behavior of the web episode actions:
-    missing seasons are created In Progress with metadata-derived title/image.
+    missing seasons are created In Progress (or ``status``) with
+    metadata-derived title/image.
     """
     related_season = metadata_resolution.find_tracked_season(
         user,
@@ -207,15 +211,22 @@ def resolve_or_create_season(
                 "image": season_image,
             },
         )
-        related_season = Season.objects.create(
+        related_season = Season(
             item=item,
             user=user,
             score=None,
-            status=Status.IN_PROGRESS.value,
+            status=status,
             notes="",
         )
+        if prepare_only:
+            # Ordered destinations belong to an already tracked show. Resolve
+            # its identity without committing a tracking parent before sealing.
+            related_season.related_tv = related_season.get_tv()
+        else:
+            related_season.save()
 
-        logger.info("%s did not exist, it was created successfully.", related_season)
+        if not prepare_only:
+            logger.info("%s did not exist, it was created successfully.", related_season)
 
     _sync_library_media_type(related_season, library_media_type)
     return related_season

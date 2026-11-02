@@ -201,6 +201,25 @@ class TuneRedisTests(SimpleTestCase):
             "ConnectionError",
         )
 
+    def test_unresolvable_redis_warns_with_the_network_fix(self):
+        """#1263. The startup log must say why, not bury it at INFO."""
+        error = redis.exceptions.ConnectionError(
+            "Error -2 connecting to redis.example:6379. Name does not resolve."
+        )
+        with (
+            override_settings(REDIS_ADMIN_URL="redis://admin:password@redis:6379/0"),
+            mock.patch("app.preflight.in_container", return_value=True),
+            self.assertLogs("app.redis_tuning", level="WARNING") as logs,
+            mock.patch.object(redis.Redis, "from_url", side_effect=error),
+        ):
+            summary = tune_redis()
+
+        self.assertTrue(summary["errors"])
+        rendered = "\n".join(logs.output)
+        self.assertIn("cannot reach Redis at redis:6379", rendered)
+        self.assertIn("network", rendered)
+        self.assertNotIn("password", rendered)
+
     def test_policy_read_error_is_safe(self):
         """A CONFIG read error must not expose Redis connection details."""
         client = fake_client()

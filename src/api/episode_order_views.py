@@ -18,7 +18,10 @@ class EpisodeOrderView(APIView):
         """Return currently available provider orders for one tracked show."""
         tv = owned_tv(request.user, tv_id)
         orders, errors = available_orders(tv, request.user)
-        return Response({"active": tv.active_episode_order_id, "orders": orders, "errors": errors})
+        return Response({
+            "active": tv.active_episode_order_id, "orders": orders, "errors": errors,
+            "can_revert": episode_ordering.can_revert(tv),
+        })
 
     @extend_schema(request=OpenApiTypes.OBJECT, responses=OpenApiTypes.OBJECT)
     def post(self, request, tv_id):
@@ -32,6 +35,12 @@ class EpisodeOrderView(APIView):
                 )
                 preview = episode_ordering.preview_change(tv, order)
                 return Response({"order_id": order.pk, **preview})
+            if action == "revert":
+                change = episode_ordering.revert_change(tv)
+                tv.refresh_from_db()
+                return Response({
+                    "change_id": change.pk, "active_order": tv.active_episode_order_id,
+                })
             order = EpisodeOrder.objects.get(pk=request.data.get("order_id"), show=tv.item)
             journal = episode_ordering.apply_change(
                 tv,

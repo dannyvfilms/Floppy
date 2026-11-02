@@ -1,4 +1,26 @@
 (function () {
+// Keep a floating chart popup inside the viewport. A popup centered on a bar near
+// the screen edge otherwise hangs off the page and makes it scroll sideways.
+function placeChartTooltip(tooltipEl, context) {
+  const margin = 8;
+  const rect = context.chart.canvas.getBoundingClientRect();
+  const viewportWidth = document.documentElement.clientWidth;
+  // Fixed width first, so measuring does not depend on where the popup sits.
+  tooltipEl.style.width = "max-content";
+  tooltipEl.style.maxWidth = viewportWidth - margin * 2 + "px";
+  const half = tooltipEl.offsetWidth / 2;
+  const centerX = Math.min(
+    Math.max(rect.left + context.tooltip.caretX, margin + half),
+    viewportWidth - margin - half
+  );
+  tooltipEl.style.opacity = 1;
+  tooltipEl.style.position = "absolute";
+  tooltipEl.style.left = centerX + window.scrollX + "px";
+  tooltipEl.style.top = rect.top + window.scrollY + context.tooltip.caretY + "px";
+  tooltipEl.style.transform = "translate(-50%, -100%)";
+  tooltipEl.style.pointerEvents = "none";
+}
+
 function initStatisticsCharts() {
   if (typeof Chart === "undefined") {
     return;
@@ -144,18 +166,7 @@ function initStatisticsCharts() {
       tooltipEl.innerHTML = html;
     }
 
-    // Position and style the tooltip
-    const position = context.chart.canvas.getBoundingClientRect();
-
-    // Set tooltip styles
-    tooltipEl.style.opacity = 1;
-    tooltipEl.style.position = "absolute";
-    tooltipEl.style.left =
-      position.left + window.scrollX + tooltipModel.caretX + "px";
-    tooltipEl.style.top =
-      position.top + window.scrollY + tooltipModel.caretY + "px";
-    tooltipEl.style.transform = "translate(-50%, -100%)";
-    tooltipEl.style.pointerEvents = "none";
+    placeChartTooltip(tooltipEl, context);
   }
 
   // Common configuration for bar charts
@@ -712,15 +723,7 @@ function initStatisticsCharts() {
         tooltipEl.innerHTML = html;
       }
 
-      const position = context.chart.canvas.getBoundingClientRect();
-      tooltipEl.style.opacity = 1;
-      tooltipEl.style.position = "absolute";
-      tooltipEl.style.left =
-        position.left + window.scrollX + tooltipModel.caretX + "px";
-      tooltipEl.style.top =
-        position.top + window.scrollY + tooltipModel.caretY + "px";
-      tooltipEl.style.transform = "translate(-50%, -100%)";
-      tooltipEl.style.pointerEvents = "none";
+      placeChartTooltip(tooltipEl, context);
     }
 
     const chartOptions = JSON.parse(JSON.stringify(barChartConfig));
@@ -756,11 +759,21 @@ function initStatisticsCharts() {
     "podcast_plays_by_year"
   );
 
-  function getCurrentMediaType() {
+  // Video charts
+  initializeSingleSeriesBarChart(
+    "videoPlaysByYearChart",
+    "video_plays_by_year"
+  );
+
+  // The selected media types from the URL, in dropdown order. Empty = "All media".
+  function getCurrentMediaTypes() {
     try {
-      return new URL(window.location.href).searchParams.get("media-type") || "all";
+      return StatsMediaMerge.parseMediaTypeParam(
+        new URL(window.location.href).searchParams.get("media-type"),
+        Object.keys(MEDIA_SLUG_TO_LABEL),
+      );
     } catch (_) {
-      return "all";
+      return [];
     }
   }
 
@@ -769,9 +782,72 @@ function initStatisticsCharts() {
   // media_type_distribution payloads (e.g. "tv" -> "TV Show").
   const MEDIA_SLUG_TO_LABEL = {
     tv: "TV Show", movie: "Movie", anime: "Anime", music: "Music",
-    podcast: "Podcast", book: "Book", comic: "Comic",
+    podcast: "Podcast", video: "Video", book: "Book", comic: "Comic",
     boardgame: "Board Game", game: "Game", manga: "Manga",
   };
+
+  // ─── Activity History heatmap ──────────────────────────────────────────────
+  // The server renders every day for all media types; cells with activity carry
+  // their per-type counts so the heatmap can follow the media-type filter.
+  const HEATMAP_LEVEL_CLASSES = ["bg-[var(--color-surface-muted)]", "bg-indigo-700", "bg-indigo-600", "bg-indigo-500", "bg-indigo-400"];
+
+  // Same thresholds as stats_activity.get_level.
+  function heatmapLevel(count) {
+    if (count <= 0) return 0;
+    if (count <= 3) return 1;
+    if (count <= 6) return 2;
+    if (count <= 9) return 3;
+    return 4;
+  }
+
+  function updateActivityHeatmap() {
+    const heatmap = document.getElementById("activityHistory");
+    const cells = heatmap ? heatmap.querySelectorAll("[data-heatmap-counts]") : [];
+    if (!cells.length) return;
+    const types = getCurrentMediaTypes();
+    cells.forEach(function (cell) {
+      let count = 0;
+      cell.dataset.heatmapCounts.split(",").forEach(function (pair) {
+        const [type, n] = pair.split(":");
+        if (types.length === 0 || types.includes(type)) count += Number(n) || 0;
+      });
+      cell.classList.remove(...HEATMAP_LEVEL_CLASSES);
+      cell.classList.add(HEATMAP_LEVEL_CLASSES[heatmapLevel(count)]);
+    });
+  }
+
+  // Cells carry no per-cell date or title (all-time history is thousands of
+  // weeks); the tooltip is built on hover from the cell's position in the grid.
+  // The server rendered the translated tooltip for 0, 1 and 2 (the locale's
+  // plural rule decides which wording each uses); swap in the real count first
+  // (the template has no other digits), then the date.
+  const heatmapGrid = document.querySelector("#activityHistory [data-heatmap-grid]");
+  if (heatmapGrid) {
+    const start = new Date(heatmapGrid.dataset.heatmapStart + "T00:00:00Z");
+    heatmapGrid.addEventListener("mouseover", function (event) {
+      const cell = event.target;
+      if (!(cell instanceof HTMLElement) || !cell.classList.contains("hm")) return;
+      const column = cell.parentElement;
+      const offset = Array.prototype.indexOf.call(heatmapGrid.children, column) * 7 + Array.prototype.indexOf.call(column.children, cell);
+      const date = new Date(start.getTime() + offset * 86400000).toISOString().slice(0, 10);
+      if (cell.classList.contains("hm-f")) {
+        cell.title = date;
+        return;
+      }
+      const types = getCurrentMediaTypes();
+      let count = 0;
+      (cell.dataset.heatmapCounts || "").split(",").forEach(function (pair) {
+        const [type, n] = pair.split(":");
+        if (type && (types.length === 0 || types.includes(type))) count += Number(n) || 0;
+      });
+      const marker = count > 2 ? "2" : String(count);
+      const heatmap = document.getElementById("activityHistory");
+      cell.title = heatmap.getAttribute("data-title-" + marker).replace(marker, String(count)).replace("__DATE__", date);
+    });
+  }
+
+  updateActivityHeatmap();
+  window.addEventListener("stats-media-type-changed", updateActivityHeatmap);
 
   // ─── Activity Rhythm SVG dot matrix ────────────────────────────────────────
   const weekdayHourEl = document.getElementById("weekday_hour_chart_data");
@@ -805,9 +881,8 @@ function initStatisticsCharts() {
       return `rgba(99,102,241,${opacity.toFixed(2)})`;
     }
 
-    function drawRhythmChart(mediaType) {
-      const key = mediaType && mediaType !== "all" ? mediaType : "all";
-      const matrix = rhythmData[key] || (key !== "all" ? rhythmData["all"] : null);
+    function drawRhythmChart(mediaTypes) {
+      const matrix = StatsMediaMerge.sumMatrices(rhythmData, mediaTypes);
       if (!matrix) {
         rhythmContainer.innerHTML =
           '<p class="text-sm text-[var(--color-text-muted)] text-center py-6">' + chartEscapeHtml(gettext("No activity data for this range.")) + '</p>';
@@ -893,9 +968,9 @@ function initStatisticsCharts() {
         hourLabels + cells + `</svg>`;
     }
 
-    drawRhythmChart(getCurrentMediaType());
+    drawRhythmChart(getCurrentMediaTypes());
     window.addEventListener("stats-media-type-changed", function () {
-      drawRhythmChart(getCurrentMediaType());
+      drawRhythmChart(getCurrentMediaTypes());
     });
   }
 
@@ -961,7 +1036,7 @@ function initStatisticsCharts() {
           const dataIndex = tooltipModel.dataPoints[0].dataIndex;
           const title = tooltipModel.title[0] || "";
           const byKey = (combinedPlaysData && combinedPlaysData[spec.key]) || {};
-          const currentMediaType = getCurrentMediaType();
+          const currentMediaType = getCurrentMediaTypes();
           const relevantTypes =
             currentMediaType === "all" ? COMBINED_PLAYS_MEDIA_TYPES : [currentMediaType];
 
@@ -1002,20 +1077,14 @@ function initStatisticsCharts() {
           tooltipEl.innerHTML = html;
         }
 
-        const position = context.chart.canvas.getBoundingClientRect();
-        tooltipEl.style.opacity = 1;
-        tooltipEl.style.left =
-          position.left + window.scrollX + tooltipModel.caretX + "px";
-        tooltipEl.style.top =
-          position.top + window.scrollY + tooltipModel.caretY + "px";
-        tooltipEl.style.transform = "translate(-50%, -100%)";
+        placeChartTooltip(tooltipEl, context);
       };
     }
 
-    function drawCombinedChart(spec, mediaType) {
+    function drawCombinedChart(spec, mediaTypes) {
       const container = document.getElementById(spec.containerId);
       const byKey = (combinedPlaysData && combinedPlaysData[spec.key]) || {};
-      const chartData = byKey[mediaType] || byKey.all;
+      const chartData = StatsMediaMerge.mergeSeriesChart(byKey, mediaTypes);
 
       if (!chartData || !chartData.labels || chartData.labels.length === 0) {
         if (combinedChartInstances[spec.key]) {
@@ -1062,16 +1131,16 @@ function initStatisticsCharts() {
       }
     }
 
-    function drawAllCombinedCharts(mediaType) {
+    function drawAllCombinedCharts(mediaTypes) {
       COMBINED_CHART_SPECS.forEach(function (spec) {
-        drawCombinedChart(spec, mediaType);
+        drawCombinedChart(spec, mediaTypes);
       });
     }
 
     if (combinedPlaysData && typeof combinedPlaysData === "object") {
-      drawAllCombinedCharts(getCurrentMediaType());
+      drawAllCombinedCharts(getCurrentMediaTypes());
       window.addEventListener("stats-media-type-changed", function () {
-        drawAllCombinedCharts(getCurrentMediaType());
+        drawAllCombinedCharts(getCurrentMediaTypes());
       });
     }
   }
@@ -1134,7 +1203,9 @@ function initStatisticsCharts() {
     function loadGenreData(slug) {
       try {
         const el = document.getElementById(slug + "_top_genres");
-        return el ? JSON.parse(el.textContent || "[]") : [];
+        // An empty list is emitted as the string "[]" (template default), so check the type.
+        const genres = el ? JSON.parse(el.textContent || "[]") : [];
+        return Array.isArray(genres) ? genres : [];
       } catch (_) { return []; }
     }
 
@@ -1204,7 +1275,7 @@ function initStatisticsCharts() {
 
       // Flip left if near right edge of viewport.
       const tipW = tooltipEl.offsetWidth || 160;
-      const left = x + 12 + tipW > window.innerWidth ? x - tipW - 12 : x + 12;
+      const left = Math.max(8, x + 12 + tipW > window.innerWidth ? x - tipW - 12 : x + 12);
 
       tooltipEl.style.left = left + "px";
       tooltipEl.style.top = (y - 16) + "px";
@@ -1266,10 +1337,12 @@ function initStatisticsCharts() {
       });
     }
 
-    function drawTimeWorldsChart(mediaType) {
+    function drawTimeWorldsChart(mediaTypes) {
       const container = document.getElementById("timeWorldsContainer");
-      const isFiltered = mediaType && mediaType !== "all";
-      const hasGenres = isFiltered && GENRE_TYPES[mediaType];
+      const isFiltered = mediaTypes.length > 0;
+      // Genres are per type and overlap between types, so they only show for one type.
+      const mediaType = mediaTypes.length === 1 ? mediaTypes[0] : null;
+      const hasGenres = mediaType && GENRE_TYPES[mediaType];
       const genres = hasGenres ? loadGenreData(mediaType) : [];
 
       if (isFiltered && hasGenres && genres.length > 0) {
@@ -1308,17 +1381,17 @@ function initStatisticsCharts() {
         data = ds.data || [];
         colors = ds.backgroundColor || [];
       } else {
-        // Single-type filter for a type with no genre breakdown.
-        const targetLabel = MEDIA_SLUG_TO_LABEL[mediaType];
-        const idx = targetLabel ? (fullDistData.labels || []).indexOf(targetLabel) : -1;
-        if (idx >= 0) {
-          const ds = fullDistData.datasets[0];
-          labels = [fullDistData.labels[idx]];
-          data = [ds.data[idx]];
-          colors = [ds.backgroundColor[idx]];
-        } else {
-          labels = []; data = []; colors = [];
-        }
+        // Keep only the selected types' slices (also used for one type with no genre breakdown).
+        const ds = fullDistData.datasets[0];
+        labels = []; data = []; colors = [];
+        mediaTypes.forEach(function (type) {
+          const idx = MEDIA_SLUG_TO_LABEL[type] ? fullDistData.labels.indexOf(MEDIA_SLUG_TO_LABEL[type]) : -1;
+          if (idx >= 0) {
+            labels.push(fullDistData.labels[idx]);
+            data.push(ds.data[idx]);
+            colors.push(ds.backgroundColor[idx]);
+          }
+        });
       }
 
       if (!labels.length) {
@@ -1344,9 +1417,9 @@ function initStatisticsCharts() {
     }
 
     if (fullDistData.labels && fullDistData.labels.length > 0) {
-      drawTimeWorldsChart(getCurrentMediaType());
+      drawTimeWorldsChart(getCurrentMediaTypes());
       window.addEventListener("stats-media-type-changed", function () {
-        drawTimeWorldsChart(getCurrentMediaType());
+        drawTimeWorldsChart(getCurrentMediaTypes());
       });
     } else {
       const container = document.getElementById("timeWorldsContainer");
@@ -1402,7 +1475,7 @@ function initStatisticsCharts() {
       const x = rect.left + tooltip.caretX;
       const y = rect.top + tooltip.caretY;
       const tipW = tooltipEl.offsetWidth || 160;
-      const left = x + 12 + tipW > window.innerWidth ? x - tipW - 12 : x + 12;
+      const left = Math.max(8, x + 12 + tipW > window.innerWidth ? x - tipW - 12 : x + 12);
       tooltipEl.style.left = left + "px";
       tooltipEl.style.top = (y - 16) + "px";
       tooltipEl.style.opacity = "1";
@@ -1472,10 +1545,10 @@ function initStatisticsCharts() {
       }
     }
 
-    function drawStatusComposition(mediaType) {
+    function drawStatusComposition(mediaTypes) {
       const container = document.getElementById("statusCompositionContainer");
       const subtitleEl = document.getElementById("statusCompositionSubtitle");
-      const isFiltered = mediaType && mediaType !== "all";
+      const isFiltered = mediaTypes.length > 0;
       const statusLabels = (statusCompositionData.datasets || []).map(function (ds) { return ds.label; });
       const statusColors = (statusCompositionData.datasets || []).map(function (ds) { return ds.background_color; });
 
@@ -1494,18 +1567,19 @@ function initStatisticsCharts() {
           }
         });
       } else {
-        targetLabel = MEDIA_SLUG_TO_LABEL[mediaType];
-        const idx = targetLabel ? (statusCompositionData.labels || []).indexOf(targetLabel) : -1;
-        if (idx >= 0) {
-          (statusCompositionData.datasets || []).forEach(function (ds, i) {
-            const value = Number((ds.data || [])[idx]) || 0;
-            if (value > 0) {
-              labels.push(statusLabels[i]);
-              data.push(value);
-              colors.push(statusColors[i]);
-            }
-          });
-        }
+        // Sum each status over the selected types' columns.
+        if (mediaTypes.length === 1) targetLabel = MEDIA_SLUG_TO_LABEL[mediaTypes[0]];
+        const idxs = mediaTypes
+          .map(function (type) { return (statusCompositionData.labels || []).indexOf(MEDIA_SLUG_TO_LABEL[type]); })
+          .filter(function (idx) { return idx >= 0; });
+        (statusCompositionData.datasets || []).forEach(function (ds, i) {
+          const value = idxs.reduce(function (sum, idx) { return sum + (Number((ds.data || [])[idx]) || 0); }, 0);
+          if (value > 0) {
+            labels.push(statusLabels[i]);
+            data.push(value);
+            colors.push(statusColors[i]);
+          }
+        });
       }
 
       if (subtitleEl) {
@@ -1542,9 +1616,9 @@ function initStatisticsCharts() {
     }
 
     if (statusCompositionData.labels && statusCompositionData.labels.length > 0) {
-      drawStatusComposition(getCurrentMediaType());
+      drawStatusComposition(getCurrentMediaTypes());
       window.addEventListener("stats-media-type-changed", function () {
-        drawStatusComposition(getCurrentMediaType());
+        drawStatusComposition(getCurrentMediaTypes());
       });
     } else {
       const container = document.getElementById("statusCompositionContainer");
@@ -1561,8 +1635,8 @@ function initStatisticsCharts() {
     const ratingDistributionData = JSON.parse(ratingDistributionDataEl.textContent || "{}");
     let ratingDistributionChartInstance = null;
 
-    function buildRatingDistribution(mediaType) {
-      const isFiltered = mediaType && mediaType !== "all";
+    function buildRatingDistribution(mediaTypes) {
+      const isFiltered = mediaTypes.length > 0;
       const labels = ratingDistributionData.labels || [];
       const datasets = ratingDistributionData.datasets || [];
       const data = labels.map(function () { return 0; });
@@ -1580,18 +1654,18 @@ function initStatisticsCharts() {
       if (!isFiltered) {
         datasets.forEach(addDataset);
       } else {
-        targetLabel = MEDIA_SLUG_TO_LABEL[mediaType];
-        const match = datasets.find(function (ds) { return ds.label === targetLabel; });
-        if (match) addDataset(match);
+        if (mediaTypes.length === 1) targetLabel = MEDIA_SLUG_TO_LABEL[mediaTypes[0]];
+        const wanted = mediaTypes.map(function (type) { return MEDIA_SLUG_TO_LABEL[type]; });
+        datasets.filter(function (ds) { return wanted.indexOf(ds.label) >= 0; }).forEach(addDataset);
       }
 
       return { labels: labels, data: data, totalScored: totalScored, targetLabel: targetLabel };
     }
 
-    function drawRatingDistribution(mediaType) {
+    function drawRatingDistribution(mediaTypes) {
       const container = document.getElementById("ratingDistributionContainer");
       const subtitleEl = document.getElementById("ratingDistributionSubtitle");
-      const built = buildRatingDistribution(mediaType);
+      const built = buildRatingDistribution(mediaTypes);
 
       if (subtitleEl) {
         const summary = built.targetLabel
@@ -1674,11 +1748,7 @@ function initStatisticsCharts() {
               '<div style="font-weight:600;color:' + CHART_TOOLTIP_TEXT + '">' + chartEscapeHtml(interpolate(gettext("Rating %(rating)s"), { rating: built.labels[dataIndex] }, true)) + "</div>" +
               '<div style="margin-top:4px">' + chartEscapeHtml(interpolate(ngettext("%(count)s item", "%(count)s items", value), { count: value.toLocaleString(document.documentElement.lang || undefined) }, true)) + "</div>";
           }
-          const position = context.chart.canvas.getBoundingClientRect();
-          tooltipEl.style.opacity = 1;
-          tooltipEl.style.left = position.left + window.scrollX + tooltipModel.caretX + "px";
-          tooltipEl.style.top = position.top + window.scrollY + tooltipModel.caretY + "px";
-          tooltipEl.style.transform = "translate(-50%, -100%)";
+          placeChartTooltip(tooltipEl, context);
         },
       };
 
@@ -1709,9 +1779,9 @@ function initStatisticsCharts() {
     }
 
     if (ratingDistributionData.labels && ratingDistributionData.labels.length > 0) {
-      drawRatingDistribution(getCurrentMediaType());
+      drawRatingDistribution(getCurrentMediaTypes());
       window.addEventListener("stats-media-type-changed", function () {
-        drawRatingDistribution(getCurrentMediaType());
+        drawRatingDistribution(getCurrentMediaTypes());
       });
     } else {
       const container = document.getElementById("ratingDistributionContainer");
@@ -1740,10 +1810,11 @@ function initStatisticsCharts() {
       });
     }
 
-    function drawStatusBreakdown(mediaType) {
+    function drawStatusBreakdown(mediaTypes) {
       const container = document.getElementById("statusBreakdownContainer");
-      const isFiltered = mediaType && mediaType !== "all";
-      const targetLabel = isFiltered ? MEDIA_SLUG_TO_LABEL[mediaType] : null;
+      const isFiltered = mediaTypes.length > 0;
+      const targetLabel = mediaTypes.length === 1 ? MEDIA_SLUG_TO_LABEL[mediaTypes[0]] : null;
+      const selectedLabels = mediaTypes.map(function (type) { return MEDIA_SLUG_TO_LABEL[type]; });
       const subtitleText = targetLabel
         ? interpolate(gettext("%(type)s status counts."), { type: chartDisplayLabel(targetLabel) }, true)
         : gettext("Breakdown by type across all status states.");
@@ -1751,7 +1822,7 @@ function initStatisticsCharts() {
       const typeLabels = statusBreakdownData.labels || [];
       let rowIndices = [];
       typeLabels.forEach(function (label, i) {
-        if (!isFiltered || label === targetLabel) rowIndices.push(i);
+        if (!isFiltered || selectedLabels.indexOf(label) >= 0) rowIndices.push(i);
       });
 
       // Only show status columns that actually have items, mirroring the
@@ -1838,9 +1909,9 @@ function initStatisticsCharts() {
     }
 
     if (statusBreakdownData.labels && statusBreakdownData.labels.length > 0) {
-      drawStatusBreakdown(getCurrentMediaType());
+      drawStatusBreakdown(getCurrentMediaTypes());
       window.addEventListener("stats-media-type-changed", function () {
-        drawStatusBreakdown(getCurrentMediaType());
+        drawStatusBreakdown(getCurrentMediaTypes());
       });
     } else {
       const container = document.getElementById("statusBreakdownContainer");

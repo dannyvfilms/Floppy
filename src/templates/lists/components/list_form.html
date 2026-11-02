@@ -5,7 +5,7 @@
 
 {# djlint:off #}
 <div x-show="showModal" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @mousedown.self="showModal = false">
-  <div class="bg-[var(--color-surface)] p-6 rounded-lg w-152 max-h-[90vh] overflow-y-auto"
+  <div class="bg-[var(--color-surface)] p-6 rounded-lg w-152 max-h-[90dvh] overflow-y-auto"
     x-data="{
       isPublic: {{ form.instance.is_public|yesno:'true,false' }},
       includeNotes: {{ form.instance.include_notes|yesno:'true,false' }},
@@ -69,7 +69,7 @@
                     {% include "app/icons/globe.svg" with classes="w-5 h-5 mr-2" %}
                     <span class="text-sm font-medium">{% translate field.label %}</span>
                   </div>
-                  <p class="text-xs text-[var(--color-text-muted)] ml-7">{{ field.help_text }}</p>
+                  <p class="text-xs text-[var(--color-text-muted)] ml-7">{% translate field.help_text %}</p>
                 </div>
                 <label class="relative inline-flex items-center cursor-pointer ml-4">
                   <input class="sr-only peer" type="checkbox" name="{{ field.name }}" x-model="isPublic" {% if form.instance.is_public %}checked{% endif %}>
@@ -98,7 +98,7 @@
                     {% include "app/icons/bell.svg" with classes="w-5 h-5 mr-2" %}
                     <span class="text-sm font-medium">{% translate field.label %}</span>
                   </div>
-                  <p class="text-xs text-[var(--color-text-muted)] ml-7">{{ field.help_text }}</p>
+                  <p class="text-xs text-[var(--color-text-muted)] ml-7">{% translate field.help_text %}</p>
                 </div>
                 <label class="relative inline-flex items-center ml-4" :class="isPublic ? 'cursor-pointer' : 'cursor-not-allowed'">
                   <input class="sr-only peer" type="checkbox" name="{{ field.name }}" :disabled="!isPublic" {% if form.instance.allow_recommendations %}checked{% endif %}>
@@ -183,22 +183,22 @@
             {% translate "Activity History" %}
           </a>
           <div class="flex flex-row-reverse gap-2">
-            <button type="submit" formaction="{% url 'list_edit' %}?next={{ request.path }}"
+            <button type="submit" formaction="{% url 'list_edit' %}?next={{ next_url|default:request.path }}"
               class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 cursor-pointer">
               {% translate "Save" %}
             </button>
             {% if request.user == custom_list.owner %}
-              <button type="submit" formaction="{% url 'list_delete' %}?next={{ request.path }}"
+              <button type="submit" formaction="{% url 'list_delete' %}?next={{ next_url|default:request.path }}"
                 class="px-4 py-2 rounded-md transition duration-300 bg-red-700 text-white hover:bg-red-800 cursor-pointer">{% translate "Delete" %}</button>
             {% else %}
-              <button type="submit" formaction="{% url 'list_delete' %}?next={{ request.path }}"
+              <button type="submit" formaction="{% url 'list_delete' %}?next={{ next_url|default:request.path }}"
                 class="px-4 py-2 rounded-md transition duration-300 bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)] cursor-not-allowed" disabled>{% translate "Delete" %}</button>
             {% endif %}
           </div>
         </div>
       {% else %}
         <div class="flex justify-end pt-4">
-          <button type="submit" formaction="{% url 'list_create' %}?next={{ request.path }}"
+          <button type="submit" formaction="{% url 'list_create' %}?next={{ next_url|default:request.path }}"
             class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer">
             {% translate "Create List" %}
           </button>

@@ -307,10 +307,15 @@ Default TTL is `CACHE_TIMEOUT` unless specified.
 - ComicVine (`src/app/providers/comicvine.py`):
   - `search_COMICVINE_{media_type}_{query}_{page}`, `COMICVINE_comic_{media_id}`,
     `COMICVINE_issue_{media_id}`, `COMICVINE_similar_{publisher_id}_{current_id}`.
+- GCD (`src/app/providers/gcd.py`):
+  - `search_gcd_{media_type}_{query}_{page}`, `gcd_comic_{media_id}`,
+    `gcd_comicissue_{media_id}`, `gcd_series_{media_id}_issues`, `gcd_publisher_{publisher_id}`.
 - OpenLibrary (`src/app/providers/openlibrary.py`):
   - `search_OPENLIBRARY_{media_type}_{query}_{page}`, `OPENLIBRARY_book_{media_id}`.
 - MangaUpdates (`src/app/providers/mangaupdates.py`):
   - `search_MANGAUPDATES_{media_type}_nsfw_{MU_NSFW}_{query}_{page}` (the flag selects the result set, so both states cache separately), `MANGAUPDATES_manga_{media_id}`.
+- MangaBaka (`src/app/providers/mangabaka.py`):
+  - `search_MANGABAKA_manga_nsfw_{MANGABAKA_NSFW}_{query}_{page}` (the flag selects the result set, so both states cache separately), `MANGABAKA_manga_{media_id}`.
 - BGG (`src/app/providers/bgg.py`):
   - `bgg_search_ids_{query}` (24h).
   - `bgg_search_page_{query}_p{page}` (24h).

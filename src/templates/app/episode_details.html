@@ -259,6 +259,32 @@
 
             {# Secondary icon buttons — h-11 w-11 rounded-xl, same as season/show page #}
             <div class="flex w-full items-center gap-2 sm:w-auto sm:flex-wrap">
+              {# Notes shortcut: edits the latest watch (or starts a new one) with the notes field open. #}
+              <div x-data="{ trackOpen: false }" class="flex-1 sm:flex-none">
+                <button type="button"
+                        class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
+                        title="{% translate "Add or edit notes" %}"
+                        aria-label="{% translate "Add or edit notes" %}"
+                        hx-get="{% url 'track_modal' source=source media_type='episode' media_id=media_id season_number=season_number %}"
+                        hx-vals='{"return_url": "{{ detail_return_url|urlencode }}", "episode_number": "{{ episode_number }}", "focus": "notes"}'
+                        hx-target="#episode-notes-new-modal-{{ source }}-{{ media_id }}-{{ season_number }}-{{ episode_number }}"
+                        hx-trigger="click"
+                        @click="trackOpen = true">
+                  {% include "app/icons/page.svg" with classes="w-4 h-4" %}
+                </button>
+                <div x-show="trackOpen"
+                @mousedown.self="trackOpen = false"
+                     x-cloak
+                     @keydown.escape.window="trackOpen = false"
+                     class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                  <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
+                       style="width: min(96vw, 72rem);"
+                       @click.stop>
+                    <div id="episode-notes-new-modal-{{ source }}-{{ media_id }}-{{ season_number }}-{{ episode_number }}"></div>
+                  </div>
+                </div>
+              </div>
+
               {% if episode.item or season_metadata %}
                 <div x-data="{ listsOpen: false }" class="flex-1 sm:flex-none">
                   <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
@@ -275,7 +301,7 @@
                        x-cloak
                        @keydown.escape.window="listsOpen = false"
                        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div class="w-96 max-h-[90vh] px-4 md:px-0 relative z-60">
+                    <div class="w-96 max-h-[90dvh] px-4 md:px-0 relative z-60">
                       <div id="{% if episode.item %}{% component_id 'lists' episode.item %}{% else %}{% component_id 'lists' episode %}{% endif %}"></div>
                     </div>
                   </div>
@@ -297,7 +323,7 @@
                   @mousedown.self="historyOpen = false"
                        @keydown.escape.window="historyOpen = false"
                        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div class="w-full max-h-[90vh] px-4 md:px-0 relative z-60"
+                    <div class="w-full max-h-[90dvh] px-4 md:px-0 relative z-60"
                          style="width: min(96vw, 72rem);">
                       <div id="{% component_id 'history' episode.item %}"></div>
                     </div>
@@ -349,6 +375,20 @@
 {# Your Notes — same component the movie/season pages use, pointed at the watch that carries the note. #}
 {# Rendered even with no notes yet: the empty section is the anchor episode_save's OOB swap replaces. #}
 <div class="flex flex-col">
+{% if season_metadata.genres %}
+  <div {% detail_section_attrs user "episode" "content" "genres" %}>
+    {% url 'medialist' media_type=parent_media_type as genre_list_url %}
+    <h2 class="text-xl font-bold mb-4">{% translate "Genres" %}</h2>
+    <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start mb-8">
+      <div class="flex flex-wrap gap-2 justify-center md:justify-start">
+        {% for genre in season_metadata.genres %}
+          <a href="{{ genre_list_url }}?genre={{ genre|urlencode }}"
+             class="inline-flex h-6 items-center rounded-full border border-[var(--color-genre-badge-border)] bg-[var(--color-genre-badge-bg)] px-2.5 text-xs font-medium text-[var(--color-genre-badge-text)] hover:bg-[var(--color-genre-badge-hover-bg)] transition-colors duration-200">{% translate genre %}</a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+{% endif %}
 {% if show_notes %}
   <div {% detail_section_attrs user "episode" "content" "notes" %}>
     {% include "app/components/detail_notes_section.html" with notes_entries=notes_entries notes_entry=notes_entry detail_notes_target_id=episode_notes_modal_target_id detail_notes_modal_url=episode_notes_modal_url detail_return_url=detail_return_url public_notes_view=public_notes_view %}
@@ -384,15 +424,14 @@
            class="detail-media-grid">
         {% for person in episode_metadata.cast|slice:":20" %}
           <div x-show="shouldShowDetailCard({{ forloop.counter0 }})"
-               class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card group{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}">
+               class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card group{% card_subtitle_class 'person' %}{% card_title_classes 'person' %}">
             <div class="relative">
               {% if person.person_id and person.name %}
                 <a href="{% url 'person_detail' source=source person_id=person.person_id name=person.name|slug %}">
               {% endif %}
-              <img alt="{{ person.name|default:'Unknown Person' }}"
-                   class="media-card-poster lazyload w-full aspect-[2/3] aspect-2/3 bg-[var(--color-surface-alt)] {% if person.image and person.image != IMG_NONE %}object-cover{% endif %}"
-                   data-src="{{ person.image|default:IMG_NONE|image_url }}"
-                   src="{{ IMG_NONE }}">
+              <img loading="lazy" decoding="sync" alt="{{ person.name|default:'Unknown Person' }}"
+                   class="media-card-poster w-full aspect-[2/3] aspect-2/3 bg-[var(--color-surface-alt)] {% if person.image and person.image != IMG_NONE %}object-cover{% endif %}"
+                   src="{{ person.image|default:IMG_NONE|image_url }}">
               {% if person.person_id and person.name %}
                 </a>
               {% endif %}
@@ -411,9 +450,7 @@
                   </p>
                 {% endif %}
               </div>
-              <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1 line-clamp-2">
-                {% if person.role %}{{ person.role }}{% else %}{% translate "Cast" %}{% endif %}
-              </p>
+              {% card_lines 'person' person %}
             </div>
           </div>
         {% endfor %}
@@ -453,15 +490,14 @@
            class="detail-media-grid">
         {% for person in episode_metadata.crew|slice:":20" %}
           <div x-show="shouldShowDetailCard({{ forloop.counter0 }})"
-               class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card group{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}">
+               class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card group{% card_subtitle_class 'person' %}{% card_title_classes 'person' %}">
             <div class="relative">
               {% if person.person_id and person.name %}
                 <a href="{% url 'person_detail' source=source person_id=person.person_id name=person.name|slug %}">
               {% endif %}
-              <img alt="{{ person.name|default:'Unknown Person' }}"
-                   class="media-card-poster lazyload w-full aspect-[2/3] aspect-2/3 bg-[var(--color-surface-alt)] {% if person.image and person.image != IMG_NONE %}object-cover{% endif %}"
-                   data-src="{{ person.image|default:IMG_NONE|image_url }}"
-                   src="{{ IMG_NONE }}">
+              <img loading="lazy" decoding="sync" alt="{{ person.name|default:'Unknown Person' }}"
+                   class="media-card-poster w-full aspect-[2/3] aspect-2/3 bg-[var(--color-surface-alt)] {% if person.image and person.image != IMG_NONE %}object-cover{% endif %}"
+                   src="{{ person.image|default:IMG_NONE|image_url }}">
               {% if person.person_id and person.name %}
                 </a>
               {% endif %}
@@ -480,9 +516,7 @@
                   </p>
                 {% endif %}
               </div>
-              <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1 line-clamp-2">
-                {% if person.role %}{{ person.role }}{% elif person.department %}{{ person.department }}{% else %}{% translate "Crew" %}{% endif %}
-              </p>
+              {% card_lines 'person' person %}
             </div>
           </div>
         {% endfor %}

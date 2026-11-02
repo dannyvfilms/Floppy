@@ -56,12 +56,14 @@ stripped. Last.fm is the only family below without a `_FILE` input.
 | Hardcover | `HARDCOVER_API` | `HARDCOVER_API_FILE` | empty (metered per account, so no shared default; see #1025) |
 | Google Books | `GOOGLE_BOOKS_API_KEY` | `GOOGLE_BOOKS_API_KEY_FILE` | empty |
 | Comic Vine | `COMICVINE_API` | `COMICVINE_API_FILE` | non-empty shared key |
+| Grand Comics Database | `GCD_USERNAME` | `GCD_USERNAME_FILE` | empty (account login; anonymous is 30 requests/hour) |
+| Grand Comics Database | `GCD_PASSWORD` | `GCD_PASSWORD_FILE` | empty; operator/user supplied |
 | Last.fm | `LASTFM_API_KEY` | none | empty |
 | Trakt | `TRAKT_API` | `TRAKT_API_FILE` | empty |
 | Trakt | `TRAKT_API_SECRET` | `TRAKT_API_SECRET_FILE` | empty |
 | AniList | `ANILIST_ID` | `ANILIST_ID_FILE` | empty |
 | AniList | `ANILIST_SECRET` | `ANILIST_SECRET_FILE` | empty |
-| SIMKL | `SIMKL_ID` | `SIMKL_ID_FILE` | non-empty shared client ID |
+| SIMKL | `SIMKL_ID` | `SIMKL_ID_FILE` | empty; operator/user supplied |
 | SIMKL | `SIMKL_SECRET` | `SIMKL_SECRET_FILE` | empty; operator/user supplied |
 
 ### Shared-default security boundary
@@ -70,13 +72,17 @@ stripped. Last.fm is the only family below without a `_FILE` input.
 credentials intended for the free-tier defaults. They are public repository
 content by design and must never be treated as user or account credentials.
 The current shared-default settings are `TMDB_API`, `MAL_API`, `IGDB_ID`,
-`BGG_API_TOKEN`, `COMICVINE_API`, and `SIMKL_ID`.
+`BGG_API_TOKEN`, and `COMICVINE_API`.
 
 `IGDB_SECRET` and `SIMKL_SECRET` are deliberately excluded from that map. Their
 `*_FILE` and environment inputs remain supported, but no private provider
 secret may be added to the source-level shared-default map. A provider key
 that is tied to an individual account, paid quota, or private scope follows
 the same rule even if the provider offers a free tier.
+
+`SIMKL_ID` is not shared either. SIMKL only works with the secret, so a bundled
+ID on its own let users approve on SIMKL and then fail the token exchange
+(#1318). The SIMKL import stays blocked until both values resolve.
 
 Personal and instance credentials entered through Settings > Metadata are
 stored as Fernet ciphertext in `UserProviderCredential` and
@@ -257,7 +263,6 @@ The reviewed domain label is **Metadata & provider tokens**.
 | `mcp_server/README.md` | Currently documents user `manage_settings` and the API token location. Update only if the MCP contract or token location changes. |
 | `src/api/schema.py`, `src/api/serializers.py`, `src/api/views.py`, `src/config/urls.py` | OpenAPI is generated at `/api/schema/`; there is no checked-in generated schema file. Update source annotations only if a credential API is intentionally exposed. |
 | `docs/agents/metadata-backfill.md`, `docs/agents/media_type_integration.md`, `docs/agents/lastfm_integration.md` | Provider/backfill guidance must use the resolver once it exists. |
-| `docs/agents/dev_release_diff_report.md` | Temporary release/wiki staging document contains provider configuration references; reconcile it only if it remains active when the feature lands. |
 | Project wiki | The local `wiki/` checkout is empty here. The README links external configuration and API pages; update the separate wiki repository during release work. |
 
 ## Future resolver contract
