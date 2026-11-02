@@ -344,7 +344,7 @@ def _standard_grouped_domain(
     ``season_number`` scopes the domain to that one season.
     """
     related = base_metadata.get("related") if isinstance(base_metadata, dict) else {}
-    seasons = related.get("seasons") if isinstance(related, dict) else []
+    seasons = (related.get("seasons") or []) if isinstance(related, dict) else []
     season_numbers = [
         season.get("season_number")
         for season in seasons

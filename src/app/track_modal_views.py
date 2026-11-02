@@ -400,8 +400,9 @@ def _render_standard_track_modal(
         if media:
             instance_id = media.id
 
-    if media_type == MediaTypes.EPISODE.value and media:
+    if media_type in {MediaTypes.SEASON.value, MediaTypes.EPISODE.value} and media:
         season_number = media.item.season_number
+    if media_type == MediaTypes.EPISODE.value and media:
         episode_number = media.item.episode_number
 
     initial_data = {
