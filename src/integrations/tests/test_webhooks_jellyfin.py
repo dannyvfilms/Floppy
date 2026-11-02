@@ -3282,8 +3282,12 @@ class JellyfinWebhookTests(TestCase):
         self.assertEqual(state["episode_title"], 'Café de Paris & "Co"')
         self.assertEqual(state["series_title"], "Café Society")
 
+    @patch("app.live_playback._attach_resolved_image")
+    @patch.object(JellyfinWebhookProcessor, "_process_media", return_value=None)
     @patch("app.providers.tmdb.find")
-    def test_pause_and_stop_events_update_live_playback_state(self, mock_find):
+    def test_pause_and_stop_events_update_live_playback_state(
+        self, mock_find, mock_process_media, mock_resolve_image
+    ):
         """Pause should keep card state; stop should transition to stopped."""
         mock_find.return_value = {
             "tv_episode_results": [
@@ -3387,6 +3391,8 @@ class JellyfinWebhookTests(TestCase):
             stopped_state["status"],
             live_playback.PLAYBACK_STATUS_STOPPED,
         )
+        mock_process_media.assert_called()
+        mock_resolve_image.assert_called()
 
 
     @patch("app.live_playback._attach_resolved_image")
