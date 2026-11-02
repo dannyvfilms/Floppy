@@ -9,7 +9,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import EmptyPage, Paginator
 from django.db import connection
-from django.db.models import Count, Exists, OuterRef, Q
+from django.db.models import Count, Exists, JSONField, OuterRef, Q
 from django.db.models.expressions import RawSQL
 from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -145,7 +145,7 @@ def _custom_field_values(collection, field_id):
         ]
     rows = collection.order_by("id").values_list(
         "id",
-        RawSQL(f"{column} -> %s::text", [str(field_id)]),  # noqa: S611 - column is model metadata, key is bound
+        RawSQL(f"{column} -> %s::text", [str(field_id)], output_field=JSONField()),  # noqa: S611 - column is model metadata, key is bound
     )
     return [(pk, value) for pk, value in rows]
 
