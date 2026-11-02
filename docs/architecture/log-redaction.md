@@ -192,3 +192,11 @@ processor time.
    `test_redact_secrets_strips_every_credential_name_spelling`.
 4. Add any diagnostic name that is now at risk to
    `test_redact_secrets_keeps_names_that_only_end_in_a_keyword_word`.
+
+## What the console shows
+
+With `DEBUG` off, the console hides routine below-warning lines: Celery's
+per-task and scheduler messages and anything about the `/health` and `/ping`
+endpoints. `DEBUG` on shows everything. The log file keeps the full record, so
+the download in Settings > Advanced is complete for a bug report without anyone
+changing a setting first.
