@@ -16,6 +16,7 @@ def canonical_openapi_path(relative_path: str) -> str:
 
 MCP_HTTP_MANIFEST = (
     HTTPRoute("search_media", "get", canonical_openapi_path("search/{media_type}")),
+    HTTPRoute("resolve_game", "get", canonical_openapi_path("search/{media_type}")),
     HTTPRoute("search_tracked_media", "get", canonical_openapi_path("media")),
     HTTPRoute("get_discover", "get", canonical_openapi_path("discover")),
     HTTPRoute("get_home", "get", canonical_openapi_path("home")),

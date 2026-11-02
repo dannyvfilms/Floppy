@@ -27,7 +27,7 @@ import uuid
 from django.core.cache import cache
 from django.utils import timezone
 
-from app import checkin, live_playback
+from app import live_playback
 from app.checkin import SETTLE_DELAY_SECONDS, SOURCE_LABEL, CheckInError
 from app.models import (
     BoardGame,
@@ -64,8 +64,8 @@ def supports(media_type):
     return media_type in MODELS
 
 
-def _key(user_id):
-    return f"checkin_session_v2:{user_id}"
+def _key(user_id, media_type):
+    return f"checkin_session_v3:{user_id}:{media_type}"
 
 
 def _now_ts():
@@ -76,8 +76,8 @@ def _now():
     return timezone.now().replace(second=0, microsecond=0)
 
 
-def _record(user_id):
-    return cache.get(_key(user_id))
+def _record(user_id, media_type):
+    return cache.get(_key(user_id, media_type))
 
 
 def _item(user, source, media_type, media_id):
@@ -96,10 +96,9 @@ def _item(user, source, media_type, media_id):
 
 
 def _active_record(user, source, media_type, media_id):
-    record = _record(user.id)
+    record = _record(user.id, media_type)
     if (
         record is None
-        or record["media_type"] != media_type
         or record["media_id"] != str(media_id)
         or record["source"] != source
     ):
@@ -109,7 +108,7 @@ def _active_record(user, source, media_type, media_id):
 
 
 def _owns_card(user_id, record):
-    card = live_playback.peek_user_playback_state(user_id)
+    card = live_playback.peek_user_playback_state(user_id, record["media_type"])
     return card is None or card.get("checkin_token") == record["token"]
 
 
@@ -117,8 +116,8 @@ def _end(user_id, record):
     """Forget the session and take its card off Home if it is still ours."""
     owned = _owns_card(user_id, record)
     if owned:
-        live_playback.clear_user_playback_state(user_id)
-    cache.delete(_key(user_id))
+        live_playback.clear_user_playback_state(user_id, record["media_type"])
+    cache.delete(_key(user_id, record["media_type"]))
     return owned
 
 
@@ -157,13 +156,14 @@ def _begin_reading(user, item, media_type):
     return {"row_id": latest.id, "created": False, "previous": previous}
 
 
-def interrupt(user):
-    """End the running session because another check-in is replacing it.
+def interrupt(user, media_type):
+    """End the running session of this type because another is replacing it.
 
     Keeps what it measured: a game's minutes, a reading end, a video's progress.
+    Sessions of other media types keep running.
     """
-    settle(user.id)
-    running = _record(user.id)
+    _settle_slot(user.id, media_type)
+    running = _record(user.id, media_type)
     if running is None:
         return
     _end(user.id, running)
@@ -174,8 +174,7 @@ def interrupt(user):
 def start(user, source, media_type, media_id):
     """Start a session and put its card on Home."""
     item = _item(user, source, media_type, media_id)
-    interrupt(user)
-    checkin.release_running(user)
+    interrupt(user, media_type)
     row = {"row_id": None, "created": False, "previous": None}
     if media_type == MediaTypes.GAME.value:
         row = _begin_game(user, item)
@@ -217,8 +216,9 @@ def start(user, source, media_type, media_id):
         view_offset_seconds=0,
         checkin_token=token,
         ends_at_ts=end_ts,
+        slot=media_type,
     )
-    cache.set(_key(user.id), record, timeout=end_ts - now_ts + SETTLE_DELAY_SECONDS * 2)
+    cache.set(_key(user.id, media_type), record, timeout=end_ts - now_ts + SETTLE_DELAY_SECONDS * 2)
 
     from app.tasks import settle_checkin_session
 
@@ -294,8 +294,13 @@ def log_play(user, source, media_id):
 
 
 def settle(user_id):
-    """End a session that ran out its time; a video with a length counts as watched."""
-    record = _record(user_id)
+    """End sessions that ran out their time; a video with a length counts as watched."""
+    for media_type in MODELS:
+        _settle_slot(user_id, media_type)
+
+
+def _settle_slot(user_id, media_type):
+    record = _record(user_id, media_type)
     if not record or _now_ts() < record["end_ts"]:
         return
     owned = _end(user_id, record)
@@ -309,12 +314,11 @@ def settle(user_id):
 
 def phase(user, instance):
     """Return the session phase for a detail page."""
-    settle(user.id)
-    record = _record(user.id)
     item = instance.item
+    _settle_slot(user.id, item.media_type)
+    record = _record(user.id, item.media_type)
     if (
         record
-        and record["media_type"] == item.media_type
         and record["media_id"] == str(item.media_id)
         and record["source"] == item.source
     ):

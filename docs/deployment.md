@@ -8,6 +8,38 @@ New to Floppy? The [guided installer](install.md) is the shorter path on Linux,
 macOS and Windows. This page is for configuring an installation by hand or
 looking something up.
 
+## Synchronization after database restore
+
+Before reopening a restored instance to applications, invalidate previously
+issued reliable-sync contexts. If the backup is from an older Floppy version,
+apply migrations first with the restored database configuration:
+
+```bash
+docker compose run --rm app python manage.py migrate --noinput
+docker compose run --rm app python manage.py invalidate_sync_contexts --all-users
+```
+
+For a source installation, run
+`uv run --no-sync python src/manage.py invalidate_sync_contexts --all-users`
+with the normal database configuration and `SECRET`. To reset only one user,
+replace `--all-users` with `--user-id ID`. Exactly one selector is required.
+
+The command rotates per-user synchronization generations under the same lock
+used by event writers. It preserves media, sequence numbers, recording
+enablement, credentials, provider approvals, and outbound deliveries. Clients
+using `contract=2` receive `409 sync_reset_required` and must bootstrap again.
+It is also safe to use for an intentional protocol reset.
+
+Generations are persisted in the database: restoring an older backup restores
+its old generations too. Floppy does **not** automatically detect database
+rollback. Running invalidation before allowing client access is therefore a
+required restore step. Ordinary application restarts need no invalidation.
+
+On upgrade, new reliable clients must bootstrap; earlier recording gaps cannot
+be reconstructed. Legacy feed requests and native provider integrations retain
+their supported behavior. Preserve `SECRET` across ordinary restarts so signed
+snapshot contexts remain valid.
+
 ## Docker Compose (recommended)
 
 One stack, app plus Redis. Save it as `docker-compose.yml` and run `docker compose up -d`, or paste it straight into a Portainer stack.
@@ -443,6 +475,7 @@ The only universally required variable is `SECRET`. For Docker installs you shou
 - `HARDCOVER_API` - Hardcover book metadata/imports. **Required to use Hardcover** ([generate a token](https://hardcover.app/account/api)); Hardcover meters its free tier per account (5000 requests/day), so Floppy ships no shared default and book search falls back to Open Library without one. Individual users can also set a personal token in their own settings.
 - `GOOGLE_BOOKS_API_KEY` - optional Google Books book metadata ([Google Books API](https://developers.google.com/books/docs/v1/using)); supports `GOOGLE_BOOKS_API_KEY_FILE` for Docker secrets
 - `OPENCRITIC_API_KEY` - optional OpenCritic critic scores for games, from a [RapidAPI key](https://rapidapi.com/opencritic-opencritic-default/api/opencritic-api). The free plan (25 searches and 200 requests a day) is enough: a score is fetched when a game page is opened, and quota left over in the hour before the daily reset fills in tracked games. Supports `OPENCRITIC_API_KEY_FILE`; can also be set in Settings > Metadata
+- `PODCASTINDEX_API_KEY` and `PODCASTINDEX_API_SECRET` - optional [Podcast Index](https://api.podcastindex.org/signup) podcast search (free, both are needed). Supports `_FILE` variants; can also be set in Settings > Metadata
 - `COMICVINE_API` - comic metadata
 - `MANGABAKA_NSFW` - optional, set to `true` to include erotica and pornographic series in [MangaBaka](https://mangabaka.org/) manga search results. MangaBaka needs no API key and is available as a manga source next to MyAnimeList and MangaUpdates; light novels are left out
 - `GCD_USERNAME` / `GCD_PASSWORD` - optional [Grand Comics Database](https://www.comics.org/) comic metadata, as a second comic source next to Comic Vine. Use a free GCD account: GCD limits anonymous API access to 30 requests an hour, so Floppy ships no shared default and the source stays hidden until a login is set. Support `GCD_USERNAME_FILE` / `GCD_PASSWORD_FILE` for Docker secrets; can also be set in Settings > Metadata, then chosen as the default comic source there

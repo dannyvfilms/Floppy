@@ -7,6 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
     dependencies = [
         ("app", "0216_consumption_batch_item"),
+        ("app", "0218_backfill_entry_source_from_import_run"),
     ]
 
     operations = [

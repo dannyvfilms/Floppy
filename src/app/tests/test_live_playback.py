@@ -324,7 +324,7 @@ class RequestPathPurityTests(TestCase):
         response = self.client.get(reverse("active_playback_fragment"))
 
         self.assertEqual(response.status_code, 200)
-        mock_fill.assert_called_once_with(self.user.id)
+        mock_fill.assert_called_once_with(self.user.id, None)
 
     @patch("app.tasks.resolve_playback_image.delay")
     @patch(
@@ -354,7 +354,7 @@ class RequestPathPurityTests(TestCase):
         live_playback.build_home_playback_card(self.user)
         live_playback.build_home_playback_card(self.user)
 
-        mock_fill.assert_called_once_with(self.user.id)
+        mock_fill.assert_called_once_with(self.user.id, None)
 
 
 class MalCourCardTests(TestCase):

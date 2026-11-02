@@ -133,15 +133,119 @@ It cannot reach lists, music, podcasts, imports, exports, user settings, or
 metadata writes. Request only the additional permissions your client actually
 needs.
 
-Then call `GET /api/v1/sync/connections/` and keep each `origin_key`. You need
-it in step 5, and without it your position can never be recorded.
+For reliable incremental reads, use the bootstrap workflow below. Provider
+connections are separate permissions to exchange state with a remote service;
+an API client does not need to create one. Existing clients using legacy feeds
+can still name a connection to record acknowledgements.
+
+## Reliable synchronization (`contract=2`)
+
+Both manual API keys and OAuth access tokens use this contract. Scoped tokens
+need `sync:read`. Authorization alone does not enable recording.
+
+1. Call `POST /api/v1/sync/bootstrap/` with no request body. If it returns
+   `409 sync_initializing`, canonical repair is running on the existing default
+   worker queue; retry bootstrap after that work completes. This is also how a
+   newly created account obtains its first repaired baseline.
+2. Save the returned opaque `context`, `generation`, `cursors`, `snapshots`, and
+   `feeds`. Use returned URLs rather than assembling or interpreting signed
+   contexts. They are relative to the Floppy origin. Continue authenticating
+   every request; context is not an authentication token.
+3. Read both snapshot URLs into staging. Each response contains `results`,
+   `resource`, `cursor`, `has_more`, and `after`. When `has_more` is true, pass
+   the opaque `after` value on the next request with the same context and
+   resource. `limit` is 1–500, default 100. Pagination follows item IDs, not
+   mutable timestamps or offsets. A continuation from one resource or bootstrap
+   cannot be used with another.
+4. Reconcile the completed snapshots with the client's mirror, including
+   removing stale mirror entries absent from the baseline. Then replay each
+   returned feed URL from its corresponding bootstrap cursor. Bootstrap captures
+   the cursor **before** snapshot traversal. Updates during traversal are
+   recovered by replay, including updates to rows already read and new items
+   outside the snapshot's item-ID ceiling.
+5. Apply each feed page fully before durably saving `next_cursor`. Continue
+   while `has_more` is true. Publish the reconciled mirror after catch-up.
+   Repeated pages are safe when applied as absolute state assertions; a row
+   appearing in both snapshot and replay is not a new play.
+
+Bootstrap returns this shape:
+
+```json
+{
+  "contract": 2,
+  "context": "opaque-signed-context",
+  "generation": "per-user-generation-uuid",
+  "cursors": {"watched": 42, "progress": 42},
+  "feeds": {
+    "watched": "/api/v1/sync/changes/?contract=2&context=...&cursor=42",
+    "progress": "/api/v1/sync/progress-changes/?contract=2&context=...&cursor=42"
+  },
+  "snapshots": {
+    "watched": "/api/v1/sync/snapshot/?context=...&resource=watched",
+    "progress": "/api/v1/sync/snapshot/?context=...&resource=progress"
+  }
+}
+```
+
+Each strict feed retains `results`, `next_cursor`, `has_more`,
+`oldest_sequence`, and `newest_sequence`. It adds `high_water`,
+`minimum_valid_cursor`, `recording_enabled`, `complete`, and `generation`.
+`complete: true` means the event interval through `next_cursor` is complete;
+it does not mean the backlog is exhausted when `has_more` is true. An exhausted
+page advances to its captured high-water mark, including when empty. Keep
+separate cursors for watched and progress even though the allocator is shared.
+Gaps between a resource's sequence numbers are normal.
+
+Rows include `item_id`, provider identity, episode coordinates, and absolute
+watched or progress values. `item_id` is useful within this Floppy instance;
+provider IDs and episode coordinates match against the client's library.
+Progress `kind: "delete"` clears a resume position. An unwatched assertion
+does not erase play history. All origins are returned: do not assume the
+server filters out your own writes. Collection membership and podcast resume
+state are not covered by these two reliable feeds.
+
+| Response | Required client action |
+|---|---|
+| `409 sync_initializing` | Retry bootstrap after canonical repair completes |
+| `409 sync_not_initialized` | Bootstrap and obtain context |
+| `409 cursor_expired` | Discard staging/cursors and bootstrap again |
+| `409 sync_reset_required` | Discard old context and bootstrap again |
+| `409 cursor_invalid` | Discard invalid cursor and bootstrap again |
+| `400 invalid_context` / `invalid_page` | Correct mixed, damaged, or cross-user context |
+| `400 invalid_parameter` / `unsupported_contract` | Correct the request |
+| Authentication or scope failure | Reauthorize or obtain `sync:read` |
+
+Ordinary application restarts preserve context and snapshot continuation when
+the signing secret remains unchanged. Re-requesting a page, another client's
+bootstrap, and credential revocation do not disable durable recording or reset
+other clients. A retry may include newly committed events; persist only the
+cursor of a page completely applied. No server-side snapshot session is needed.
+
+The strict history window is `WATCH_STATE_CHANGE_RETENTION_DAYS`, default 30
+days. A client whose required history has expired must bootstrap again; it
+cannot pin history indefinitely. Native provider deliveries retain their
+existing permission and delivery rules. Recording stays enabled for the user
+after clients disconnect.
+
+After restoring a database backup, administrators must run
+`python src/manage.py invalidate_sync_contexts --all-users` before reopening
+access. This rotates generations without altering media, credentials, provider
+bindings, or recording enablement. A generation stored in a restored backup
+cannot detect rollback automatically. See the deployment restore instructions.
+
+Existing feeds without `contract=2` remain legacy interfaces. Their
+`recording_enabled` metadata reports the current switch only, and
+`complete: false` explicitly provides no completeness guarantee. An empty legacy
+HTTP 200 is not proof that a full synchronization is current. Existing provider
+connections and clients continue to work; new consumers should use bootstrap.
+Umbrella must implement this client workflow separately to benefit from it.
 
 ## 2. Initial merge
 
 Floppy merges non-conflicting state and preserves conflicting local values for
 review. It never silently overwrites a user's existing library.
 
-Start from `cursor=0`, which is always valid. Read `oldest_sequence` and
+For legacy feeds only, start from `cursor=0`. Read `oldest_sequence` and
 `newest_sequence` from any feed response to know what the server still holds.
 
 ## 3. Playback updates
@@ -209,7 +313,7 @@ that window is treated as a new operation, so back off within it.
 `updated_at` is re-encoded to millisecond precision where the original had
 microseconds. Compare semantic fields, not bytes.
 
-## 5. Incremental pulls
+## 5. Legacy incremental pulls
 
 | Feed | Path |
 |---|---|
@@ -275,8 +379,9 @@ with status `409`. Read the current snapshot and resume from there. Floppy
 returns this rather than serving the remaining tail, which would look like a
 successful catch-up while silently dropping everything in between.
 
-Change-log retention is `WATCH_STATE_CHANGE_RETENTION_DAYS` (default 30), and
-compaction never crosses a live connection's checkpoint.
+Change-log retention is `WATCH_STATE_CHANGE_RETENTION_DAYS` (default 30).
+Native provider checkpoints can retain required watched events physically;
+they do not extend the reliable API's advertised retention window.
 
 ## 7. Reconciliation and diagnostics
 

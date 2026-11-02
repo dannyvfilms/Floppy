@@ -30,7 +30,6 @@ from app import fork_services_episode
 from app import fork_services_play_dedupe as play_dedupe
 from app.models import Item, Movie, PlaybackProgress
 from app.models.choices import MediaTypes, Sources
-from app.services.progress_changes import record_progress_deletion
 
 from .stremio_events import parse_episode_id, parse_library_extra, parse_player_extra
 
@@ -550,14 +549,10 @@ def persist_merge_result(
     # of clearing it.
     with transaction.atomic():
         if result.clear_progress:
-            removed, _detail = PlaybackProgress.objects.filter(
+            PlaybackProgress.objects.filter(
                 user=user,
                 item=item,
             ).delete()
-            if removed:
-                # Explicit tombstone: a cleared row is simply absent from a
-                # timestamp query, and absence is never a delete.
-                record_progress_deletion(user, item)
         elif result.position_seconds is not None and not unchanged:
             upsert_playback_progress(
                 user,

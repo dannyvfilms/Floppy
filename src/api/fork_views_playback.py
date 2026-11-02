@@ -27,10 +27,8 @@ from app.models import (
     Status,
 )
 from app.models.episode_runtimes import usable_runtime_minutes
-from app.services.progress_changes import (
-    record_progress_change,
-    record_progress_deletion,
-)
+from app.services.progress_changes import record_progress_change
+from app.services.sync_lock import state_transaction
 from app.services.tracking_hydration import ensure_item_metadata
 from app.templatetags.app_tags import media_url
 from integrations.delivery import get_or_record_receipt
@@ -213,7 +211,7 @@ def upsert_playback_progress(
     the newer row, so the stale write is dropped.
     """
     position = 0 if position_seconds is None else position_seconds
-    with transaction.atomic():
+    with state_transaction(user.pk):
         progress, created = PlaybackProgress.objects.select_for_update().get_or_create(
             user=user,
             item=item,
@@ -224,13 +222,6 @@ def upsert_playback_progress(
             },
         )
         if created:
-            record_progress_change(
-                user,
-                item,
-                position_seconds=progress.position_seconds,
-                duration_seconds=progress.duration_seconds,
-                completed=progress.completed,
-            )
             return progress
 
         if event_at is not None and progress.updated_at > datetime.fromtimestamp(
@@ -263,17 +254,10 @@ def upsert_playback_progress(
 
         if update_fields:
             progress.save(update_fields=[*update_fields, "updated_at"])
-            record_progress_change(
-                user,
-                item,
-                position_seconds=progress.position_seconds,
-                duration_seconds=progress.duration_seconds,
-                completed=progress.completed,
-            )
     return progress
 
 
-def show_item_map(items):
+def show_item_map(items, *, minimal=False):
     """Return {(source, media_id): Item} of the shows backing episode items."""
     episode_media_ids = {
         (item.source, item.media_id)
@@ -287,6 +271,8 @@ def show_item_map(items):
         media_type__in=(MediaTypes.TV.value, MediaTypes.ANIME.value),
         media_id__in=[media_id for _, media_id in episode_media_ids],
     ).order_by("id")
+    if minimal:
+        shows = shows.only("source", "media_id", "provider_external_ids")
     return {(show.source, show.media_id): show for show in shows}
 
 
@@ -817,15 +803,11 @@ class PlaybackProgressView(drf_views.APIView):
                 status=HTTP.NOT_FOUND,
             )
 
-        with transaction.atomic():
-            removed, _detail = PlaybackProgress.objects.filter(
+        with state_transaction(request.user.pk):
+            PlaybackProgress.objects.filter(
                 user=request.user,
                 item=item,
             ).delete()
-            if removed:
-                # Explicit tombstone: a cleared row is simply absent from a
-                # timestamp query, and absence is never a delete.
-                record_progress_deletion(request.user, item)
         return Response(status=HTTP.NO_CONTENT)
 
 
@@ -866,11 +848,17 @@ def build_now_playing_payload(user):
     Shared by the read route and the outgoing playback webhook so both speak
     exactly one shape; a client that parses one parses the other.
     """
-    state = live_playback.get_user_playback_state(user.id)
+    # The read route and webhook speak of one session: real playback first,
+    # else the check-in that started first.
+    slots = live_playback.active_slots(user.id)
+    if not slots:
+        return None
+    slot = slots[0]
+    state = live_playback.get_user_playback_state(user.id, slot=slot)
     if not state:
         return None
 
-    card = live_playback.build_home_playback_card(user)
+    card = live_playback.build_home_playback_card(user, slot=slot)
     if not card:
         # `build_home_playback_card` re-reads the cache and can find it gone —
         # the state expires lazily, on read. Treat a vanished session as

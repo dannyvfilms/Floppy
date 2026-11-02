@@ -21,6 +21,7 @@ would create a second source of truth for the thing ``Item`` already guarantees.
 
 import hashlib
 import json
+import uuid
 
 from django.conf import settings
 from django.db import models
@@ -254,6 +255,12 @@ class WatchStateSequence(models.Model):
     # syncing pays nothing for the log, and an upgrade's backfill cannot emit a
     # change for every item the user has ever tracked.
     emit_changes = models.BooleanField(default=False)
+    api_feed_enabled = models.BooleanField(default=False)
+    watched_cursor_floor = models.BigIntegerField(default=0)
+    progress_cursor_floor = models.BigIntegerField(default=0)
+    watched_pruned_through = models.BigIntegerField(default=0)
+    progress_pruned_through = models.BigIntegerField(default=0)
+    sync_generation = models.UUIDField(default=uuid.uuid4, editable=False)
 
     class Meta:
         """Meta options for the model."""

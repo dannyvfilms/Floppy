@@ -294,7 +294,8 @@ class SharedProviderPageTests(TestCase):
 
     def test_proxy_settings_expose_only_configuration_status(self):
         self.user.tmdb_proxy_url = "private-proxy-value"
-        self.user.save(update_fields=["tmdb_proxy_url"])
+        self.user.is_superuser = True
+        self.user.save(update_fields=["tmdb_proxy_url", "is_superuser"])
         page = self.client.get(reverse("provider_detail", args=["tmdb"]), {"tab": "metadata"}).context["provider_page"]
         self.assertTrue(page["metadata"]["proxy"]["configured"])
         self.assertNotIn("private-proxy-value", json.dumps(page))

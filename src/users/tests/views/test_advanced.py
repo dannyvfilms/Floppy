@@ -31,6 +31,7 @@ from app.models import (
     Sources,
     Status,
 )
+from app.providers.services import TMDB_PROXY_CACHE_KEY
 from app.statistics_cache import STATISTICS_CACHE_PREFIX, STATISTICS_DAY_PREFIX
 from integrations.imports.helpers import decrypt
 
@@ -39,19 +40,58 @@ class TmdbProxyUpdateTests(TestCase):
     """Tests for the Advanced settings TMDB proxy field."""
 
     def setUp(self):
-        """Create user for the tests."""
+        """Create a superuser for the tests; the proxy is instance-wide."""
         self.credentials = {"username": "test", "password": "12345"}
-        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.user = get_user_model().objects.create_superuser(**self.credentials)
         self.client.login(**self.credentials)
 
     def tearDown(self):
-        """Avoid leaking the tmdb proxy cache key between tests."""
+        """Avoid leaking the tmdb proxy cache keys between tests."""
         cache.delete("tmdb_proxy_url")
+        cache.delete(TMDB_PROXY_CACHE_KEY)
         super().tearDown()
+
+    def test_update_tmdb_proxy_rejects_non_superuser(self):
+        """A regular user must not be able to set the instance-wide proxy."""
+        from app.providers import services
+
+        member = {"username": "member", "password": "12345"}
+        get_user_model().objects.create_user(**member)
+        self.client.login(**member)
+
+        response = self.client.post(
+            reverse("update_tmdb_proxy"),
+            {"tmdb_proxy_url": "socks5://attacker:1080"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(
+            get_user_model().objects.exclude(tmdb_proxy_url="").exists(),
+        )
+        self.assertIsNone(services._get_tmdb_proxy_url())
+
+    def test_provider_page_hides_proxy_form_from_non_superuser(self):
+        """Only superusers get the TMDB proxy form on the TMDB metadata tab."""
+        url = reverse("provider_detail", args=["tmdb"])
+        page = self.client.get(url, {"tab": "metadata"}).context["provider_page"]
+        self.assertEqual(
+            page["metadata"]["proxy"]["action"],
+            reverse("update_tmdb_proxy"),
+        )
+
+        member = {"username": "member", "password": "12345"}
+        get_user_model().objects.create_user(**member)
+        self.client.login(**member)
+
+        page = self.client.get(url, {"tab": "metadata"}).context["provider_page"]
+        self.assertIsNone(page["metadata"]["proxy"])
 
     def test_update_tmdb_proxy_saves_encrypted_value(self):
         """Posting a proxy URL should save it encrypted and invalidate the cache."""
-        cache.set("tmdb_proxy_url", "stale-value", 60)
+        from app.providers import services
+
+        self.assertIsNone(services._get_tmdb_proxy_url())  # warms the cache
+        self.assertEqual(cache.get(TMDB_PROXY_CACHE_KEY), "")
 
         response = self.client.post(
             reverse("update_tmdb_proxy"),
@@ -66,7 +106,11 @@ class TmdbProxyUpdateTests(TestCase):
             decrypt(self.user.tmdb_proxy_url),
             "socks5://user:pass@host:1080",
         )
-        self.assertIsNone(cache.get("tmdb_proxy_url"))
+        self.assertIsNone(cache.get(TMDB_PROXY_CACHE_KEY))
+        self.assertEqual(
+            services._get_tmdb_proxy_url(),
+            "socks5://user:pass@host:1080",
+        )
 
         messages = list(get_messages(response.wsgi_request))
         self.assertEqual(len(messages), 1)

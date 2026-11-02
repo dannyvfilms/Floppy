@@ -22,6 +22,7 @@ from django.utils.translation import gettext as _
 from unidecode import unidecode
 
 from app import card_surfaces, checkin, config, helpers, image_cache, track_actions
+from app import entry_sources as entry_sources_module
 from app.models import Item, MediaTypes, Sources, Status
 from app.providers import tmdb
 from app.services import metadata_resolution
@@ -167,12 +168,22 @@ def country_code(value):
 # capitalized, and text a user typed ("Theatre") is shown as typed.
 ENTRY_SOURCE_LABELS = {
     "anilist": "AniList",
+    "audiobookshelf": "Audiobookshelf",
+    "gpodder": "gPodder",
     "imdb": "IMDb",
+    "koreader": "KOReader",
     "lastfm": "Last.fm",
     "listenbrainz": "ListenBrainz",
     "myanimelist": "MyAnimeList",
     "simkl": "SIMKL",
+    "youtube": "YouTube",
 }
+
+
+@register.simple_tag
+def entry_source_suggestions(user):
+    """Return the sources this user has used, for the Source field."""
+    return entry_sources_module.entry_source_suggestions(user)
 
 
 @register.filter

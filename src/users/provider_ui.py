@@ -411,7 +411,7 @@ def metadata_page(user, provider, context):
         "editable": any(entry["editable"] for entry in entries),
         "supplemental": provider.get("metadata_role") == "supplemental",
         "imported": provider.get("metadata_role") == "imported",
-        "proxy": {"configured": context["tmdb_proxy_configured"], "action": reverse("update_tmdb_proxy")} if provider["slug"] == "tmdb" else None,
+        "proxy": {"configured": context["tmdb_proxy_configured"], "action": reverse("update_tmdb_proxy")} if provider["slug"] == "tmdb" and user.is_superuser else None,
     }
 
 

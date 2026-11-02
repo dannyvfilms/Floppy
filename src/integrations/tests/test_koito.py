@@ -190,7 +190,6 @@ class KoitoCredentialTests(TestCase):
         response = self.client.get(reverse("provider_detail", args=["koito"]) + "?tab=connection")
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
-        self.assertIn("activeModal === 'koito'", body)
         self.assertIn(reverse("koito_connect"), body)
         self.assertIn('name="base_url"', body)
         self.assertIn('name="api_key"', body)

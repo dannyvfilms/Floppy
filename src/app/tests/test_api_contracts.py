@@ -719,6 +719,20 @@ class OpenAPIArtifactTests(SimpleTestCase):
                 "validateListenBrainzToken",
                 {"200", "401"},
             ),
+            *(
+                (
+                    f"/apis/listenbrainz/1/stats/user/{{username}}/{entity}/",
+                    "get",
+                    operation_id,
+                    {"200", "400", "401", "404"},
+                )
+                for entity, operation_id in (
+                    ("artists", "getListenBrainzUserArtists"),
+                    ("release-groups", "getListenBrainzUserReleaseGroups"),
+                    ("recordings", "getListenBrainzUserRecordings"),
+                    ("genre-activity", "getListenBrainzUserGenreActivity"),
+                )
+            ),
         ):
             operation = paths[path][method]
             self.assertEqual(operation["operationId"], operation_id)
@@ -999,7 +1013,7 @@ class SchemaFindingContractTests(SimpleTestCase):
         self.assertIn(SCHEMA_REGENERATION_COMMAND, message)
 
     def test_reviewed_baseline_has_expected_unique_counts(self):
-        self.assertEqual(len(EXPECTED_SCHEMA_ERRORS), 85)
+        self.assertEqual(len(EXPECTED_SCHEMA_ERRORS), 83)
         self.assertEqual(len(EXPECTED_SCHEMA_WARNINGS), 18)
 
     def test_generated_schema_findings_match_reviewed_baseline(self):
@@ -1068,7 +1082,7 @@ class MCPHTTPManifestTests(SimpleTestCase):
                 if not (
                     isinstance(call, ast.Call)
                     and isinstance(call.func, ast.Name)
-                    and call.func.id == "_call"
+                    and call.func.id in {"_call", "_write"}
                 ):
                     continue
                 if len(call.args) < 2:
@@ -1152,7 +1166,7 @@ async def exact_template():
     def test_manifest_covers_all_current_http_branches(self):
         routes = self._routes_from_source(inspect.getsource(mcp_server))
 
-        self.assertEqual(len(MCP_HTTP_MANIFEST), 43)
+        self.assertEqual(len(MCP_HTTP_MANIFEST), 44)
         self.assertEqual(len(MCP_HTTP_MANIFEST), len(set(MCP_HTTP_MANIFEST)))
         self.assertEqual(set(routes), set(MCP_HTTP_MANIFEST))
         self.assertTrue(

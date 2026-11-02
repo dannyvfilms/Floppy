@@ -19,6 +19,7 @@ from app import providers
 from app.models.choices import MediaTypes, Sources, Status
 from app.models.item import Item
 from app.models.manager import MediaManager
+from app.services.sync_lock import serialized_state_write
 from integrations.import_scope import ImportScopedManager, ImportScopedQuerySet
 
 logger = logging.getLogger(__name__)
@@ -178,6 +179,7 @@ class Media(models.Model):
         """Return the title of the media."""
         return self.item.__str__()
 
+    @serialized_state_write
     def save(self, *args, **kwargs):
         """Save the media instance."""
         from app.services.completion import (
@@ -853,6 +855,7 @@ class Manga(Media):
         help_text="Minutes spent reading, added up from check-ins or entered by hand.",
     )
 
+    @serialized_state_write
     def save(self, *args, **kwargs):
         """Save the manga instance, then queue a MyAnimeList sync if relevant."""
         should_sync = self._sync_relevant_fields_changed()
@@ -917,6 +920,7 @@ class Anime(Media):
     objects = ActiveAnimeManager()
     all_objects = ImportScopedManager()  # manager order is significant; objects must stay the default
 
+    @serialized_state_write
     def save(self, *args, **kwargs):
         """Save, then auto-migrate a completed flat MAL anime to episode tracking.
 
@@ -1111,6 +1115,11 @@ class MoviePlay(models.Model):
     def __str__(self):
         """Return a description of the play."""
         return f"{self.movie} play ({self.end_date})"
+
+    @serialized_state_write
+    def save(self, *args, **kwargs):
+        """Commit the play and its watched projection together."""
+        return super().save(*args, **kwargs)
 
 
 class Game(Media):

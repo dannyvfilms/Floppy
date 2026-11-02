@@ -164,10 +164,11 @@ async def resolve_game(
     concluding the game does not exist.
     """
     results: list[dict[str, Any]] = []
+    media_type = "game"
     for name in dict.fromkeys([title, *(aliases or [])]):
         found = await _call(
             "get",
-            "search/game",
+            f"search/{media_type}",
             params={"search": name, "limit": 50},
         )
         if isinstance(found, dict) and found.get("error"):
