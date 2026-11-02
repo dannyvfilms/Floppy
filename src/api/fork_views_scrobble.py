@@ -321,7 +321,9 @@ class ScrobbleView(drf_views.APIView):
             media_type = request.data.get("media_type")
             ids = request.data.get("ids") or {}
 
-            self._update_live_playback(request.user, action, media_type, ids, request.data)
+            self._update_live_playback(
+                request.user, action, media_type, ids, request.data
+            )
 
             if action != "stop":
                 return Response({"detail": "accepted"}, status=HTTP.OK)
@@ -391,7 +393,6 @@ class ScrobbleView(drf_views.APIView):
 
         return _execute()
 
-
     def _apply_episode_score(self, user, payload, raw_score):
         """Set the episode's rating; failures are logged, never raised.
 
@@ -410,7 +411,9 @@ class ScrobbleView(drf_views.APIView):
             )
             if item is None:
                 return
-            season = get_tracked_season(user, item.media_id, item.source, item.season_number)
+            season = get_tracked_season(
+                user, item.media_id, item.source, item.season_number
+            )
             if season is None:
                 return
             apply_episode_score(season, item.episode_number, score)
