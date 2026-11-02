@@ -767,11 +767,17 @@ LOG_DIR = config("LOG_DIR", default=str(FLOPPY_DATA_DIR / "logs"))
 Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
 LOG_FILE = str(Path(LOG_DIR) / "floppy.log")
 
+# With DEBUG off the console hides routine chatter (see ConsoleNoiseFilter). The
+# log file always keeps the full record at INFO (DEBUG when DEBUG is on), so the
+# download in Settings > Advanced is complete without asking anyone to change a
+# setting before reporting a problem (#1831).
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "filters": {
         "cache_cooldown": {"()": "app.cache_safety.CacheCooldownLogFilter"},
+        "console_noise": {"()": "app.log_safety.ConsoleNoiseFilter"},
     },
     "loggers": {
         "django_redis.cache": {
@@ -800,6 +806,7 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "verbose",
             "level": "DEBUG" if DEBUG else "INFO",
+            "filters": [] if DEBUG else ["console_noise"],
         },
         "file": {
             "class": "logging.handlers.RotatingFileHandler",
