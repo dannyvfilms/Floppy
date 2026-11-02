@@ -1900,6 +1900,68 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
           description: ''
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/{episode_number}/state/:
+    get:
+      operationId: retrieveMediaEpisodeState
+      description: Return resolved/tracked flags and consumptions of one episode.
+      parameters:
+      - in: path
+        name: episode_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - tv
+        description: Episode-level operations are only supported for `tv` media.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+      x-required-scope: watchlist:read
   /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/episodes/{episode_number}/watch/:
     post:
       operationId: api_v1_media_episodes_watch_create
@@ -2013,6 +2075,62 @@ paths:
               schema:
                 $ref: '#/components/schemas/TrackedMediaResponse'
           description: ''
+  /api/v1/media/{media_type}/{source}/{media_id}/{season_number}/state/:
+    get:
+      operationId: retrieveMediaSeasonState
+      description: Return resolved/tracked flags and consumptions of one season.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - tv
+        description: Episode-level operations are only supported for `tv` media.
+        required: true
+      - in: path
+        name: season_number
+        schema:
+          type: string
+          pattern: ^\d+$
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+      x-required-scope: watchlist:read
   /api/v1/media/{media_type}/{source}/{media_id}/history/{consumption_id}/:
     patch:
       operationId: updateMediaConsumption
@@ -2279,6 +2397,68 @@ paths:
               schema:
                 $ref: '#/components/schemas/TrackedMediaResponse'
           description: ''
+  /api/v1/media/{media_type}/{source}/{media_id}/state/:
+    get:
+      operationId: retrieveMediaState
+      description: Return resolved/tracked flags and every consumption of one item.
+      parameters:
+      - in: path
+        name: media_id
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      - in: path
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - tv
+          - video
+        description: Media type. Does not include `season`/`episode` — those are addressed
+          via separate path segments under `tv`.
+        required: true
+      - in: path
+        name: source
+        schema:
+          type: string
+          pattern: ^[^/]+$
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+      x-required-scope: watchlist:read
   /api/v1/media/{media_type}/{source}/{media_id}/tags/:
     get:
       operationId: api_v1_media_tags_retrieve
@@ -4788,12 +4968,16 @@ components:
         url:
           type: string
           nullable: true
+        is_rewatch:
+          type: boolean
+          description: True when this episode belongs to an open rewatch pass.
       required:
       - air_date
       - episode_code
       - episode_number
       - ids
       - image
+      - is_rewatch
       - season_number
       - title
       - url

@@ -1,0 +1,33 @@
+{% load i18n %}
+<section class="space-y-3">
+  <h2 class="text-lg font-semibold">{% translate "MyAnimeList account" %}</h2>
+  {% if mal_account %}
+    <p class="text-sm text-[var(--color-text-muted)]">
+      {% if mal_account.connection_broken %}
+        {% translate "MyAnimeList authorization needs attention." %}
+      {% else %}
+        {% blocktranslate with mal_username=mal_account.mal_username|default:"MyAnimeList user" %}Connected as {{ mal_username }}.{% endblocktranslate %}
+      {% endif %}
+    </p>
+    {% if mal_account.connection_broken and mal_account.last_error_message %}
+      <div class="text-sm text-[var(--color-warning-text)]">{{ mal_account.last_error_message }}</div>
+    {% endif %}
+    <form method="post" action="{% url 'mal_disconnect' %}">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.path }}?tab=connection">
+      <button type="submit" class="px-4 py-2 text-sm rounded-md bg-red-600 text-white hover:bg-red-700 cursor-pointer">{% translate "Disconnect" %}</button>
+    </form>
+  {% endif %}
+  {% if not mal_account or not mal_account.is_connected %}
+  {% if mal_sync_configured %}
+    <p class="text-sm text-[var(--color-text-muted)]">{% translate "This authorizes outgoing writes and enables automatic status, progress and score updates. Adding API credentials alone does not enable sync." %}</p>
+    <form method="post" action="{% url 'mal_oauth' %}">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.path }}?tab=connection">
+      <button type="submit" class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer">{% translate "Authorize and enable MyAnimeList sync" %}</button>
+    </form>
+  {% else %}
+    <p class="text-sm text-[var(--color-text-muted)]">{% translate "Add a MyAnimeList Client ID and Client secret to enable account authorization." %}</p>
+  {% endif %}
+  {% endif %}
+</section>

@@ -111,18 +111,29 @@ class CatalogStatusLoadingTests(TestCase):
             "integrations.stremio_catalog.catalog_readiness",
             side_effect=AssertionError("scanned during page render"),
         ):
-            response = self.client.get(reverse("integrations"))
+            response = self.client.get(
+                reverse("provider_detail", args=["stremio"]) + "?tab=connection"
+            )
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, reverse("stremio_catalog_status"))
 
     def test_settings_page_queries_do_not_grow_with_the_library(self):
+        # Provider settings resolve shared credentials on first use. Compare
+        # equally warm requests so initialization does not skew library cost.
+        self.client.get(
+            reverse("provider_detail", args=["stremio"]) + "?tab=connection"
+        )
         with CaptureQueriesContext(connection) as small:
-            self.client.get(reverse("integrations"))
+            self.client.get(
+                reverse("provider_detail", args=["stremio"]) + "?tab=connection"
+            )
         for media_id in range(60):
             self.add_movie(media_id, {"imdb_id": f"tt{1000000 + media_id}"})
         with CaptureQueriesContext(connection) as large:
-            self.client.get(reverse("integrations"))
+            self.client.get(
+                reverse("provider_detail", args=["stremio"]) + "?tab=connection"
+            )
 
         self.assertEqual(len(large), len(small))
 

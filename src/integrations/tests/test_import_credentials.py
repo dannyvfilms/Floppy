@@ -73,7 +73,7 @@ class PersonalCredentialsInBackgroundJobsTests(TestCase):
 
             import_steam.run("76561198000000000", self.user.id, "new")
 
-        steam_request, token_request, igdb_request = request.call_args_list
+        steam_request, token_request, igdb_request, *_ = request.call_args_list
         self.assertEqual(steam_request.kwargs["params"]["key"], "personal-steam")
         self.assertEqual(
             token_request.kwargs["params"],

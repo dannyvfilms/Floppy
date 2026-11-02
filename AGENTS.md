@@ -1,5 +1,29 @@
 # Coding Agent Instructions
 
+## Standing UI migration rule
+
+Whenever an agent creates, edits, or updates a UI component—including copy or
+styling—it must migrate that component to the shared React pattern in the same
+change. This incrementally prepares reusable presentation for eventual native iOS
+and Android apps and reduces future bulk migration work.
+
+Reuse or extend shared UI components before creating new ones. Keep domain logic,
+permissions and transport in feature adapters. Preserve appearance, behavior,
+accessibility, responsive states and performance: users should not notice the
+framework migration. Migration does not authorize redesign or feature removal.
+The unit is the reusable component, not every sibling in its template file.
+
+Every UI change must update `docs/ui/component-register.md` and
+`docs/ui/source-map.md`: identify each changed component and its consumers/surfaces,
+record legacy, partial/coexisting or fully React-owned status, remaining consumers
+and retirement conditions. Record browser verification separately from actual iOS
+and Android verification. UI plans and completion summaries must name migrated
+components, ledger updates and blockers.
+
+Deferral requires a concrete compatibility blocker, evidence, a reopening condition
+in the component register, and explicit reporting to the user. Task size, trivial
+copy/styling, or pending native verification are not deferral reasons.
+
 ## Operating Principles
 
 Keep it simple. Simple is better than complex.
@@ -315,6 +339,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - `docs/architecture/webhook-delivery.md`: the sync/async boundary, expected webhook queue latency, the structured `event_id`/`queue_delay_ms`/`outcome` log contract, time limits, and the ordering guard that stops a late play erasing a scrobble (#1708).
 - `docs/architecture/connection-health.md`: when an integration account may be marked `connection_broken` (rejected credentials only), how scheduled work re-probes it, and the test that catches a direct write.
 - `docs/architecture/api-scopes.md`: the integration-token scope contract — the vocabulary, the enforced view map, and what adding an endpoint requires.
+- `docs/architecture/build-inputs.md`: inventory, digests and update process for vendored browser libraries and installer downloads (`src/static/vendor-manifest.json`).
 - `docs/architecture/outbound-fetch.md`: the outbound boundary for user-configured URLs — the SSRF controls, the residual DNS-rebinding gap, and why artwork uses a different path.
 - `docs/architecture/library-query.md`: the shared engine for list-shaped surfaces (media list, API, smart lists, Home shelves) — how a page stays bounded, and how to add a filter or sort.
 - `docs/architecture/statistics-sync.md`: how Statistics stay warm — dirty days and snapshots in the database, one budgeted per-user sync, the reconciler that makes a lost Celery message harmless, and which write paths must mark changes.
@@ -346,6 +371,60 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
   **Queue rule:** `interactive` is only for work a page needs *before it can load* (webhook handling, live playback artwork, Statistics sync the viewer is waiting on). Anything the page does not wait on — feed/RSS refreshes, backfills, follow-ups after a render — goes on the default `celery` queue, with no `queue` route in `CELERY_TASK_ROUTES`.
 - Run Tailwind: `cd src && tailwindcss -i ./static/css/input.css -o ./static/css/main.css --watch`
 - For local setup, see `README.md` for the required `.env` values and Redis startup details.
+
+## Incremental UI Modernization
+
+- For every UI change, consult `docs/ui/component-register.md` and its source map;
+  follow `docs/architecture/ui-modernization.md`. Update affected records when
+  components change, move, consolidate or retire; record blockers and verification.
+- **If you touch a UI component, upgrade it.** Every component creation or edit,
+  including copy and styling, must implement/reuse the shared React pattern in the
+  same change. The Connection/Import settings-card pilot is the first authorized browser
+  implementation; follow `docs/ui/settings-cards.md` for the working island boundary,
+  build, fallback and lifecycle pattern. Prefer React Native primitives for shared
+  presentation and explicit web adapters for Django/DOM behavior.
+- AniList's complete provider region is the reference for a full component port:
+  see `docs/ui/provider-pages.md`. When a task calls for the complete component,
+  migrate its content and interactions too; do not stop at a React heading around
+  legacy controls. Keep one framework owner per subtree. Other providers' partial
+  card shells and Django form slots remain explicit, documented migration consumers.
+- **Provider structure is shared across every provider.** All provider headers,
+  media chips, tabs and Overview cards use `frontend/providers/ProviderPage.jsx`
+  and `users.provider_ui.provider_page`. Add capability/state data to that shared
+  model; do not add provider-specific Overview layouts or parallel page shells.
+  When a shared component changes, update its consumers together. Provider-specific
+  behavior belongs in data/action adapters. Unported tab bodies remain separate
+  server-owned siblings until their components are migrated.
+  Metadata is now a shared React tab for every metadata provider, using
+  `frontend/providers/Metadata.jsx`; extend its data contract for provider settings
+  rather than adding provider-specific layouts or credential/source modals.
+- **The migration unit is a reusable component, not a provider or page.** Created or
+  edited fields, buttons, chips, tabs, dialogs and card layouts must reuse or
+  extend `frontend/ui/controls.jsx`; see `docs/ui/react-components.md`. Keep domain
+  data, permissions and transport in the consuming feature. Adopt these components
+  as other UI is reworked without requiring a whole-page port or duplicating an
+  AniList layout. Register bounded islands with the existing loader and runtime.
+- **Layout and responsive redesigns count as component work.** When adjusting a
+  legacy page's grid, cards or filter layout, port those affected components to
+  shared React in the same change. Do not treat a breakpoint/layout request as a
+  CSS-only exemption. Preserve useful server fallbacks and migrate only the owned
+  region; unrelated components can remain legacy.
+- This is authorization for incremental browser components, not a whole-app rewrite,
+  a SPA, a second frontend runtime or native applications. Preserve Django routes,
+  server permissions and existing action contracts. Never serialize stored credentials or raw
+  server HTML as React presentation props. User-entered credentials belong only
+  in current-page form state and its POST body. Native acceptance still requires actual
+  iOS and Android verification; browser adoption does not imply that gate passed.
+- Preserve behavior, appearance, responsive states, accessibility, permissions and
+  performance unless the issue explicitly approves a redesign. Migration alone does
+  not authorize simplification or removal of functionality.
+- Defer modernization only for a concrete compatibility blocker; record evidence
+  and the reopening condition in the component register and report it to the user.
+  Copy/styling changes and task size are not exemptions. Pending native proof is
+  not a blocker for browser adoption.
+- Replace legacy consumers where practical. Document necessary coexistence and its
+  retirement condition. Record web implementation and native verification separately;
+  never claim native compatibility from React syntax or a web build alone.
 
 ## Frontend Tooling
 - Tailwind CLI install (supported): `brew install tailwindcss`.

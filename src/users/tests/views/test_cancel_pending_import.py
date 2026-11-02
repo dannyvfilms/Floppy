@@ -62,7 +62,7 @@ class CancelPendingImportTests(TestCase):
 
         response = self._post("queued-1")
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         mock_revoke.assert_called_once_with("queued-1", terminate=False)
         row.refresh_from_db()
         self.assertEqual(row.status, "REVOKED")
@@ -78,7 +78,7 @@ class CancelPendingImportTests(TestCase):
 
         response = self._post("queued-1")
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         mock_revoke.assert_not_called()
         row.refresh_from_db()
         self.assertEqual(row.status, "PENDING")

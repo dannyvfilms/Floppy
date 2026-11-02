@@ -1,0 +1,17 @@
+<section class="settings-card" data-tone="{{ card.tone }}">
+  {{ card|json_script:props_id }}
+  <div data-settings-card-root data-props-id="{{ props_id }}" x-ignore>
+    <div class="settings-card-heading">
+      <h4>{{ card.title }}</h4>
+      {% if card.info_label %}
+        <button type="button" class="settings-card-badge settings-card-info"
+                aria-label="{{ card.info_label }}" aria-haspopup="dialog"
+                title="{{ card.info_title }}"
+                onclick="this.dispatchEvent(new CustomEvent('settings-card:info', {bubbles: true, detail: {trigger: this}}))">{{ card.badge }}</button>
+      {% elif card.badge %}
+        <span class="settings-card-badge">{{ card.badge }}</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="settings-card-body">{{ body }}</div>
+</section>

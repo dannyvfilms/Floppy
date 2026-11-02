@@ -229,9 +229,7 @@ class WatchedForGameTests(TestCase):
         from app.services import youtube_game_watch as watch
 
         video = self._video(self.user, "v1", "", "", 600, 1000, "not_found")
-        VideoGameLink.objects.create(
-            user=self.user, video_item=video.item, game_item=self.game
-        )
+        VideoGameLink.objects.create(video=video, game_item=self.game)
         result = watch.watched_for_game(self.user, self.game)
         self.assertEqual(result["videos"], 1)
         self.assertEqual(result["items"][0]["how"], "linked")
@@ -247,9 +245,7 @@ class WatchedForGameTests(TestCase):
             title="Minecraft",
         )
         video = self._video(self.user, "v1", self.game.title, "2023", 600, 1000)
-        VideoGameLink.objects.create(
-            user=self.user, video_item=video.item, game_item=other_game
-        )
+        VideoGameLink.objects.create(video=video, game_item=other_game)
         self.assertIsNone(watch.watched_for_game(self.user, self.game))
         self.assertEqual(watch.watched_for_game(self.user, other_game)["videos"], 1)
 
@@ -258,7 +254,7 @@ class WatchedForGameTests(TestCase):
         from app.services import youtube_game_watch as watch
 
         video = self._video(self.user, "v1", self.game.title, "2023", 600, 1000)
-        VideoGameLink.objects.create(user=self.user, video_item=video.item)
+        VideoGameLink.objects.create(video=video, game_item=None)
         self.assertIsNone(watch.watched_for_game(self.user, self.game))
 
     def test_another_users_link_changes_nothing(self):
@@ -266,7 +262,8 @@ class WatchedForGameTests(TestCase):
         from app.services import youtube_game_watch as watch
 
         video = self._video(self.user, "v1", self.game.title, "2023", 600, 1000)
-        VideoGameLink.objects.create(user=self.other, video_item=video.item)
+        theirs = self._video(self.other, "v1", self.game.title, "2023", 600, 1000)
+        VideoGameLink.objects.create(video=theirs, game_item=None)
         self.assertEqual(watch.watched_for_game(self.user, self.game)["videos"], 1)
 
     def test_game_for_video_reports_how_it_matched(self):
@@ -276,13 +273,11 @@ class WatchedForGameTests(TestCase):
         video = self._video(self.user, "v1", self.game.title, "2023", 600, 1000)
         found = watch.game_for_video(self.user, video.item)
         self.assertEqual((found["game"], found["how"]), (self.game, "tagged"))
-        VideoGameLink.objects.create(user=self.user, video_item=video.item)
+        VideoGameLink.objects.create(video=video, game_item=None)
         found = watch.game_for_video(self.user, video.item)
         self.assertEqual((found["game"], found["how"]), (None, "none"))
         VideoGameLink.objects.all().delete()
-        VideoGameLink.objects.create(
-            user=self.user, video_item=video.item, game_item=self.game
-        )
+        VideoGameLink.objects.create(video=video, game_item=self.game)
         self.assertEqual(watch.game_for_video(self.user, video.item)["how"], "linked")
 
     def test_wrong_year_and_missing_tags_do_not_match(self):
@@ -315,3 +310,66 @@ class BackfillTests(TestCase):
             self.assertEqual(youtube_game.backfill_due_items(limit=2), 2)
             self.assertEqual(youtube_game.backfill_due_items(limit=2), 1)
             self.assertEqual(youtube_game.backfill_due_items(limit=2), 0)
+
+
+class ManualLinkWatchTests(TestCase):
+    """A viewer's link overrides YouTube's tag in their own watch time only."""
+
+    def setUp(self):
+        """One tagged video watched by two users; one game."""
+        from django.contrib.auth import get_user_model
+
+        from app.models import Video, VideoGameLink
+        from app.services.youtube_game_watch import watched_for_game
+
+        self.watched = watched_for_game
+        self.link_model = VideoGameLink
+        users = get_user_model()
+        self.me = users.objects.create_user(username="me", password="x")
+        self.other = users.objects.create_user(username="other", password="x")
+        self.game = Item.objects.create(
+            media_id="1", source="igdb", media_type="game", title="Minecraft"
+        )
+        self.elsewhere = Item.objects.create(
+            media_id="2", source="igdb", media_type="game", title="Pong"
+        )
+        item = Item.objects.create(
+            media_id="aaaaaaaaaaa",
+            source="youtube",
+            media_type="video",
+            library_media_type="video",
+            title="Let's Play",
+        )
+        VideoGameTag.objects.create(
+            item=item,
+            status=VideoGameTag.Status.FOUND,
+            game_title="Minecraft",
+            checked_at=timezone.now(),
+        )
+        self.mine = Video.objects.create(
+            item=item,
+            user=self.me,
+            status="In progress",
+            progress=600,
+            length_seconds=1000,
+        )
+        Video.objects.create(
+            item=item,
+            user=self.other,
+            status="In progress",
+            progress=100,
+            length_seconds=1000,
+        )
+
+    def test_tag_counts_until_unlinked(self):
+        """The tag matches by title; unlinking removes it for that user only."""
+        self.assertEqual(self.watched(self.me, self.game)["seconds"], 600)
+        self.link_model.objects.create(video=self.mine, game_item=None)
+        self.assertIsNone(self.watched(self.me, self.game))
+        self.assertEqual(self.watched(self.other, self.game)["seconds"], 100)
+
+    def test_relink_moves_the_time_to_the_other_game(self):
+        """A manual link counts for its game and the tag stops counting."""
+        self.link_model.objects.create(video=self.mine, game_item=self.elsewhere)
+        self.assertIsNone(self.watched(self.me, self.game))
+        self.assertEqual(self.watched(self.me, self.elsewhere)["seconds"], 600)

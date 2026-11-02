@@ -12,7 +12,15 @@ from rest_framework.views import APIView
 
 from app import history_cache
 from app.helpers import has_real_image
-from app.models import Item, MediaTypes, Status, Video, VideoPlay
+from app.models import (
+    Item,
+    MediaTypes,
+    Status,
+    Video,
+    VideoGameLink,
+    VideoGameTag,
+    VideoPlay,
+)
 from app.services import youtube_game
 from app.tasks_youtube_game import lookup_youtube_game_tag
 from app.video_helpers import approved_thumbnail_url, set_channel_as_author
@@ -256,3 +264,74 @@ class VideoPlayDetailView(APIView):
             video.end_date = latest
             video.save(update_fields=["end_date"])
         return Response(status=HTTP.NO_CONTENT)
+
+
+def _game_payload(video):
+    """Return the YouTube tag and the viewer's link for one video."""
+    tag = VideoGameTag.objects.filter(item_id=video.item_id).first()
+    link = VideoGameLink.objects.filter(video=video).select_related("game_item").first()
+    game = link.game_item if link else None
+    if link is None:
+        state = "tag" if tag and tag.status == VideoGameTag.Status.FOUND else "none"
+    else:
+        state = "linked" if game else "unlinked"
+    return {
+        "state": state,
+        "youtube_tag": (
+            {"title": tag.game_title, "game_id": tag.game_id, "year": tag.release_year}
+            if tag and tag.status == VideoGameTag.Status.FOUND
+            else None
+        ),
+        "game": (
+            {"source": game.source, "media_id": game.media_id, "title": game.title}
+            if game
+            else None
+        ),
+    }
+
+
+class VideoGameView(APIView):
+    """GET, PUT and DELETE /api/v1/videos/<source>/<media_id>/game/.
+
+    The link is the caller's own and never changes the game's playtime, status
+    or progress; it only moves the video's watch time to that game's page.
+    """
+
+    @extend_schema(responses=OpenApiTypes.OBJECT)
+    def get(self, request, source, media_id):
+        """Return YouTube's game tag and the caller's link for this video."""
+        video = _tracked_video(request, source, media_id)
+        if video is None:
+            return Response({"detail": "Video not found"}, status=HTTP.NOT_FOUND)
+        return Response(_game_payload(video))
+
+    @extend_schema(request=OpenApiTypes.OBJECT, responses=OpenApiTypes.OBJECT)
+    def put(self, request, source, media_id):
+        """Link (or relink) the video to a game Floppy already knows."""
+        video = _tracked_video(request, source, media_id)
+        if video is None:
+            return Response({"detail": "Video not found"}, status=HTTP.NOT_FOUND)
+        game_source = str(request.data.get("source") or "").strip()
+        game_id = str(request.data.get("mediaId") or request.data.get("media_id") or "")
+        game = Item.objects.filter(
+            media_type=MediaTypes.GAME.value,
+            source=game_source,
+            media_id=game_id.strip(),
+        ).first()
+        if game is None:
+            return Response({"detail": "Game not found"}, status=HTTP.NOT_FOUND)
+        VideoGameLink.objects.update_or_create(
+            video=video, defaults={"game_item": game}
+        )
+        return Response(_game_payload(video))
+
+    @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
+    def delete(self, request, source, media_id):
+        """Unlink the video, so YouTube's tag no longer counts for the caller."""
+        video = _tracked_video(request, source, media_id)
+        if video is None:
+            return Response({"detail": "Video not found"}, status=HTTP.NOT_FOUND)
+        VideoGameLink.objects.update_or_create(
+            video=video, defaults={"game_item": None}
+        )
+        return Response(_game_payload(video))

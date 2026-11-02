@@ -60,7 +60,8 @@ class OAuthStateViewTests(TestCase):
         response = self.client.get(reverse(view_name), follow=True)
 
         self.assertContains(response, message)
-        self.assertEqual(response.redirect_chain[-1][0], callback_path)
+        expected = reverse("providers") + "?capability=import" if callback_path == reverse("import_data") else callback_path
+        self.assertEqual(response.redirect_chain[-1][0], expected)
         self.assertEqual(
             self.client.session.get("_auth_user_id"),
             str(self.user.pk),
@@ -98,11 +99,11 @@ class OAuthStateViewTests(TestCase):
         # approved on SIMKL and only then hit a 403 at token exchange (#1318).
         response = self.client.post(
             reverse("simkl_oauth"),
-            data={"mode": "new", "frequency": "once", "time": "00:00"},
+            data={"mode": "new", "frequency": "once", "time": "00:00", "next": reverse("provider_detail", args=["simkl"]) + "?tab=import"},
             follow=True,
         )
 
-        self.assertEqual(response.redirect_chain, [(reverse("import_data"), 302)])
+        self.assertEqual(response.redirect_chain, [(reverse("provider_detail", args=["simkl"]) + "?tab=import", 302)])
         self.assertContains(response, "SIMKL needs your own Client ID and Client secret.")
         self.assertContains(response, "SIMKL needs your own API app")
 

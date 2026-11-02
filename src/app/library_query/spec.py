@@ -43,6 +43,7 @@ class FilterValues:
     include_no_status: bool = False
     status_match: str = STATUS_MATCH_LATEST
     search: str = ""
+    initial: str = ""
     rating: str = "all"
     rating_min: str = ""
     rating_max: str = ""

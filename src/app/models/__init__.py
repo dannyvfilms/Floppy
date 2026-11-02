@@ -9,6 +9,7 @@ from app.models.choices import (
     Sources,
     Status,
 )
+from app.models.consumption_batch import ConsumptionBatchItem
 from app.models.credits import (
     CREDITS_BACKFILL_VERSION,
     DISCOVER_MOVIE_METADATA_BACKFILL_VERSION,
@@ -105,8 +106,7 @@ from app.models.tv import (
     Season,
 )
 from app.models.video import Video, VideoPlay
-from app.models.video_game_link import VideoGameLink
-from app.models.video_game_tag import VideoGameTag
+from app.models.video_game_tag import VideoGameLink, VideoGameTag
 from app.models.watch_state import (
     WatchState,
     WatchStateChange,
@@ -145,6 +145,7 @@ __all__ = [
     "CollectionFieldType",
     "Comic",
     "ComicIssue",
+    "ConsumptionBatchItem",
     "CreditRoleType",
     "DeletedMedia",
     "DiscoverApiCache",

@@ -652,14 +652,20 @@ def raise_not_found_error(provider, media_id, media_type="item", *, confirmed_ab
     raise error
 
 
+# Versioned with the selection policy: the pre-superuser key may still hold an
+# ordinary user's proxy in a warm cache after upgrade, so it is never read.
+TMDB_PROXY_CACHE_KEY = "tmdb_proxy_url:superuser"
+
+
 def _get_tmdb_proxy_url():
     """Return the configured TMDB outbound proxy URL, if any.
 
-    The setting is stored per-user (Settings > Advanced UI), but applied
-    instance-wide: the first user with one configured wins. Cached briefly
-    since api_request is on the hot path for search and metadata backfill.
+    The setting is stored on a user (Settings > Advanced UI), but applied
+    instance-wide, so only superusers' values count: the lowest-pk superuser
+    with one configured wins. Cached briefly since api_request is on the hot
+    path for search and metadata backfill.
     """
-    cached = cache.get("tmdb_proxy_url")
+    cached = cache.get(TMDB_PROXY_CACHE_KEY)
     if cached is not None:
         return cached or None
 
@@ -667,12 +673,14 @@ def _get_tmdb_proxy_url():
     from users.models import User
 
     encrypted = (
-        User.objects.exclude(tmdb_proxy_url="")
+        User.objects.filter(is_superuser=True)
+        .exclude(tmdb_proxy_url="")
+        .order_by("pk")
         .values_list("tmdb_proxy_url", flat=True)
         .first()
     )
     proxy_url = decrypt(encrypted) if encrypted else ""
-    cache.set("tmdb_proxy_url", proxy_url, 60)
+    cache.set(TMDB_PROXY_CACHE_KEY, proxy_url, 60)
     return proxy_url or None
 
 

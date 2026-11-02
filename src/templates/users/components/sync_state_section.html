@@ -69,6 +69,7 @@ Two things this section is careful about:
     </div>
   {% endif %}
 
+  {% if not activity_conflicts_only %}
   {% if not sync_bindings %}
     <p class="text-sm text-[var(--color-text-muted)]">
       {% translate "No connections yet. Connect a media server above and it will appear here." %}
@@ -185,4 +186,5 @@ Two things this section is careful about:
       {% endfor %}
     </div>
   {% endif %}
+{% endif %}
 </div>

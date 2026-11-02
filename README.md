@@ -151,7 +151,7 @@ after creating your account. Details:
 ## Coming from Yamtrack?
 
 Floppy started as a fork of [Yamtrack](https://github.com/FuzzyGrim/Yamtrack).
-Yamtrack CSV exports import directly under **Settings → Import**, and existing
+Yamtrack CSV exports import directly under **Settings → Providers → Yamtrack CSV → Import**, and existing
 containers of this project keep working after the rename — just move to the
 `ghcr.io/dannyvfilms/floppy` image. [Migration notes](https://github.com/dannyvfilms/Floppy/wiki#coming-from-yamtrack).
 

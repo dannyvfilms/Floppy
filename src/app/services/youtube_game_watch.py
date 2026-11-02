@@ -47,46 +47,36 @@ def _hours_label(seconds):
 def watched_for_game(user, game_item):
     """Estimate how long `user` watched videos about this game.
 
-    A video counts when the user linked it to the game, or when YouTube's tag
-    names it and the user has not linked it elsewhere or said it is not about a
-    game. Takeout imports carry no position, so those videos add to the count
-    but not to the time.
+    A video counts when the user linked it to this game, or when YouTube's tag
+    matches it and the user has not unlinked or relinked it elsewhere. Takeout
+    imports carry no position, so those videos add to the count but not to the time.
 
-    @returns `{"videos", "seconds", "hours_label", "estimated", "items"}`, or
-    None when nothing matches. `items` lists each video, newest first.
+    @returns `{"videos", "seconds", "hours_label", "estimated", "items"}`, or None
+    when nothing matches. `items` lists each video, newest first.
     """
     if game_item.media_type != MediaTypes.GAME.value:
         return None
-    overrides = {
-        link.video_item_id: link.game_item_id
-        for link in VideoGameLink.objects.filter(user=user)
-    }
-    rows = (
-        Video.objects.filter(user=user)
-        .filter(
-            Q(item__video_game_tag__status=VideoGameTag.Status.FOUND)
-            | Q(item__video_game_links__user=user, item__video_game_links__game_item=game_item)
+    manual = Video.objects.filter(user=user, game_link__game_item=game_item)
+    tagged = Video.objects.filter(
+        user=user,
+        game_link__isnull=True,
+        item__video_game_tag__status=VideoGameTag.Status.FOUND,
+    ).filter(~Q(pk__in=manual.values("pk")))
+    matched = [(video, "linked") for video in manual.select_related("item")]
+    matched += [
+        (video, "tagged")
+        for video in tagged.select_related("item", "item__video_game_tag")
+        if tag_matches_game(
+            video.item.video_game_tag.game_title,
+            video.item.video_game_tag.release_year,
+            game_item,
         )
-        .select_related("item", "item__video_game_tag")
-        .distinct()
-    )
+    ]
+    if not matched:
+        return None
     items = []
     seconds = 0
-    for video in rows:
-        override = overrides.get(video.item_id, "none")
-        if override != "none":
-            matched = override == game_item.pk
-            how = "linked"
-        else:
-            tag = getattr(video.item, "video_game_tag", None)
-            matched = bool(
-                tag
-                and tag.status == VideoGameTag.Status.FOUND
-                and tag_matches_game(tag.game_title, tag.release_year, game_item)
-            )
-            how = "tagged"
-        if not matched:
-            continue
+    for video, how in matched:
         watched = _seconds_watched(video.progress, video.length_seconds)
         seconds += watched
         items.append(
@@ -99,8 +89,6 @@ def watched_for_game(user, game_item):
                 "when": video.end_date,
             }
         )
-    if not items:
-        return None
     items.sort(
         key=lambda row: (row["when"] is not None, row["when"] or row["video"].pk),
         reverse=True,
@@ -124,9 +112,11 @@ def game_for_video(user, video_item):
     tag = VideoGameTag.objects.filter(
         item=video_item, status=VideoGameTag.Status.FOUND
     ).first()
-    link = VideoGameLink.objects.filter(user=user, video_item=video_item).select_related(
-        "game_item"
-    ).first()
+    link = (
+        VideoGameLink.objects.filter(video__user=user, video__item=video_item)
+        .select_related("game_item")
+        .first()
+    )
     if link:
         return {
             "game": link.game_item,

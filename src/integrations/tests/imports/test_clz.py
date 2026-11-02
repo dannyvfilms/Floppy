@@ -545,7 +545,7 @@ class CLZMediaTypeTests(TestCase):
         """The CLZ window lets the user choose what the export contains."""
         self.client.force_login(self.user)
 
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["clz"]) + "?tab=import")
 
         self.assertContains(response, 'name="clz_media_type"')
 
@@ -905,7 +905,7 @@ class CLZNativeExportTests(TestCase):
         """The CLZ window has the wishlist status and tag controls."""
         self.client.force_login(self.user)
 
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["clz"]) + "?tab=import")
 
         self.assertContains(response, 'name="clz_wishlist_status"')
         self.assertContains(response, 'name="clz_wishlist_tag"')

@@ -505,6 +505,14 @@ class CollectedItemSearchTests(TestCase):
             title="Breaking Bad",
             image="http://example.com/i.jpg",
         )
+        Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            library_media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+            season_number=1,
+        )
         self._collect(
             media_id="1396",
             source=Sources.TMDB.value,
@@ -520,6 +528,7 @@ class CollectedItemSearchTests(TestCase):
             [result["item"] for result in response.context["local_results"]],
             [show],
         )
+        self.assertEqual(response.context["local_results_total"], 1)
 
     @patch("app.providers.services.search")
     def test_tracked_and_collected_item_is_listed_once(self, mock_search):
@@ -814,6 +823,7 @@ class AllTypeSearchTests(TestCase):
         item.library_media_type = MediaTypes.ANIME.value
         item.save()
         TV.objects.create(user=self.user, item=item, status=Status.COMPLETED.value)
+        CollectionEntry.objects.create(user=self.user, item=item)
 
         groups = {
             g["media_type"]: g
@@ -823,6 +833,7 @@ class AllTypeSearchTests(TestCase):
         }
 
         self.assertNotIn(MediaTypes.TV.value, groups)
+        self.assertEqual(get_saved_suggestions(self.user, "tv", "dune"), [])
         anime = groups[MediaTypes.ANIME.value]["results"][0]
         self.assertEqual(anime["item"], item)
         self.assertEqual(anime["media"].route_media_type, MediaTypes.ANIME.value)

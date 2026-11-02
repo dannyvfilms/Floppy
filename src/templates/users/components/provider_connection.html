@@ -1,0 +1,114 @@
+{% load i18n ui_tags %}
+{% if metadata_provider %}
+  {% with provider=metadata_provider %}
+    {% if credentials_model %}{{ credentials_model|json_script:"provider-credentials-props" }}<div data-provider-credentials-root data-props-id="provider-credentials-props" x-ignore hx-disable>{% endif %}
+    <div class="space-y-5" x-data="{ credentialInfoOpen: false, credentialInfoTrigger: null, setupInfoOpen: false }"
+         @settings-card:info="credentialInfoTrigger = $event.detail.trigger; credentialInfoOpen = true; $nextTick(() => $refs.credentialInfoClose.focus())">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h3 class="text-lg font-semibold">{% translate "Provider credentials" %}</h3>
+        {% if provider.setup_hint %}
+          <button type="button" x-ref="setupInfoTrigger"
+                  @click="setupInfoOpen = true; $nextTick(() => $refs.setupInfoClose.focus())"
+                  aria-haspopup="dialog" :aria-expanded="setupInfoOpen"
+                  class="inline-flex items-center px-2.5 py-1 text-xs rounded border border-indigo-500/30 bg-indigo-500/10 text-[var(--color-info-text)] hover:bg-indigo-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] cursor-pointer">
+            {% blocktranslate with name=provider.label %}Get a key from {{ name }}{% endblocktranslate %}
+          </button>
+        {% else %}
+          {% blocktranslate with name=provider.label asvar key_label %}Get a key from {{ name }}{% endblocktranslate %}
+          {% settings_link_chip key_label provider.docs_url %}
+        {% endif %}
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {% translate "Instance credentials" as instance_title %}
+        {% if can_edit_instance and not provider.locked %}
+          {% firstof "info" as credential_tone %}
+          {% translate "Editable" as credential_badge %}
+        {% else %}
+          {% firstof "warning" as credential_tone %}
+          {% translate "Read-only" as credential_badge %}
+          {% translate "Read-only: explain instance credential access" as credential_info_label %}
+          {% translate "Why are these credentials read-only?" as credential_info_title %}
+        {% endif %}
+        {% if public_access %}
+          {% firstof "success" as credential_tone %}
+          {% translate "Public API" as credential_badge %}
+        {% endif %}
+        {% settings_card title=instance_title tone=credential_tone badge=credential_badge info_label=credential_info_label info_title=credential_info_title %}
+          <p class="text-sm text-[var(--color-text-muted)]">{% translate "These credentials are shared across the instance." %}</p>
+          {% if provider.locked %}
+            <p class="text-xs text-[var(--color-text-muted)]">
+              {% translate "Set in the environment:" %}
+              {% for field in provider.fields %}<code>{{ field.setting }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}
+            </p>
+          {% endif %}
+          {% include "users/components/provider_instance_credentials.html" with provider_inline=True %}
+          {% if can_edit_instance and not provider.locked %}
+            <p class="text-xs text-[var(--color-text-muted)]">{% translate "Leave a field blank to keep the current fallback." %}</p>
+          {% endif %}
+        {% endsettings_card %}
+        {% if provider.user_scope %}
+          {% translate "Personal credentials" as personal_title %}
+          {% settings_card title=personal_title %}
+            {% include "users/components/provider_personal_credentials.html" with provider_inline=True %}
+          {% endsettings_card %}
+        {% endif %}
+      </div>
+      {% include "users/components/provider_default_shortcuts.html" %}
+      {% if not can_edit_instance or provider.locked %}
+      <template x-teleport="body">
+        <div x-show="credentialInfoOpen" x-cloak
+             @keydown.escape.window="if (credentialInfoOpen) { credentialInfoOpen = false; credentialInfoTrigger?.focus() }"
+             @mousedown.self="credentialInfoOpen = false; credentialInfoTrigger?.focus()"
+             class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="credential-info-title"
+               @keydown.tab.prevent="$refs.credentialInfoClose.focus()"
+               class="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-lg bg-[var(--color-surface-strong)] p-5 space-y-4">
+            <div class="flex items-center justify-between gap-3">
+              <h2 id="credential-info-title" class="text-lg font-semibold">{% translate "Instance credential access" %}</h2>
+              <button type="button" x-ref="credentialInfoClose"
+                      @click="credentialInfoOpen = false; credentialInfoTrigger?.focus()"
+                      aria-label="{% translate 'Close' %}"
+                      class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
+                {% include "app/icons/x.svg" with classes="w-5 h-5" %}
+              </button>
+            </div>
+            {% if can_edit_instance %}
+              <p class="text-sm text-[var(--color-text-muted)]">{% translate "Only superusers can change instance-wide credentials. Values set in the environment are read-only here and take precedence over stored credentials." %}</p>
+            {% else %}
+              {% include "users/components/metadata_admin_notice.html" %}
+            {% endif %}
+          </div>
+        </div>
+      </template>
+      {% endif %}
+      {% if provider.setup_hint %}
+      <template x-teleport="body">
+        <div x-show="setupInfoOpen" x-cloak
+             @keydown.escape.window="if (setupInfoOpen) { setupInfoOpen = false; $refs.setupInfoTrigger.focus() }"
+             @mousedown.self="setupInfoOpen = false; $refs.setupInfoTrigger.focus()"
+             class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="setup-info-title"
+               @keydown.tab="if ($event.shiftKey &amp;&amp; document.activeElement === $refs.setupInfoClose) { $event.preventDefault(); $refs.setupInfoLink.focus() } else if (!$event.shiftKey &amp;&amp; document.activeElement === $refs.setupInfoLink) { $event.preventDefault(); $refs.setupInfoClose.focus() }"
+               class="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-lg bg-[var(--color-surface-strong)] p-5 space-y-4">
+            <div class="flex items-center justify-between gap-3">
+              <h2 id="setup-info-title" class="text-lg font-semibold">{% translate "Get a key" %}</h2>
+              <button type="button" x-ref="setupInfoClose"
+                      @click="setupInfoOpen = false; $refs.setupInfoTrigger.focus()"
+                      aria-label="{% translate 'Close' %}"
+                      class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
+                {% include "app/icons/x.svg" with classes="w-5 h-5" %}
+              </button>
+            </div>
+            <p class="text-sm text-[var(--color-text-secondary)]">{{ provider.setup_hint }}</p>
+            <a href="{{ provider.docs_url }}" target="_blank" rel="noopener" x-ref="setupInfoLink"
+               class="inline-flex text-sm text-[var(--color-link)] underline hover:text-[var(--color-text)]">
+              {% blocktranslate with name=provider.label %}Get a key from {{ name }}{% endblocktranslate %}
+            </a>
+          </div>
+        </div>
+      </template>
+      {% endif %}
+    </div>
+      {% if credentials_model %}</div>{% endif %}
+  {% endwith %}
+{% endif %}

@@ -97,7 +97,7 @@ class GPodderViewAndTaskTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         account = GPodderAccount.objects.get(user=self.user)
         self.assertEqual(
             helpers.decrypt(account.server_url), "https://demo.example.com"
@@ -142,7 +142,7 @@ class GPodderViewAndTaskTests(TestCase):
 
         response = self.client.post(reverse("import_gpodder"))
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         self.assertTrue(
             PeriodicTask.objects.filter(
                 task="Import from GPodder (Recurring)"
@@ -175,7 +175,7 @@ class GPodderViewAndTaskTests(TestCase):
 
         response = self.client.post(reverse("gpodder_disconnect"))
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         self.assertFalse(GPodderAccount.objects.exists())
         self.assertFalse(
             PeriodicTask.objects.filter(task="Import from GPodder (Recurring)").exists()

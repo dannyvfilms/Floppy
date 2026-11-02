@@ -1151,7 +1151,7 @@ class PSNViewTests(TestCase):
             {"npsso": "npsso-token"},
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         mock_get_account.assert_called_once_with("npsso-token")
         mock_delay.assert_called_once_with(user_id=self.user.id, mode="new")
 
@@ -1171,7 +1171,7 @@ class PSNViewTests(TestCase):
         """Submitting an empty token is rejected before calling PSN."""
         response = self.client.post(reverse("psn_connect"), {})
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         mock_get_account.assert_not_called()
         self.assertFalse(PSNAccount.objects.filter(user=self.user).exists())
 
@@ -1224,7 +1224,7 @@ class PSNViewTests(TestCase):
 
         response = self.client.post(reverse("psn_disconnect"))
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         self.assertFalse(PSNAccount.objects.filter(user=self.user).exists())
         self.assertFalse(
             PeriodicTask.objects.filter(
@@ -1334,7 +1334,7 @@ class PSNViewTests(TestCase):
         account.import_existing_playtime = False
         account.save()
 
-        html = self.client.get(reverse("import_data")).content.decode()
+        html = self.client.get(reverse("provider_detail", args=["psn"]) + "?tab=import").content.decode()
 
         self.assertIn("Import Backlog and Scrobble New Data", html)
         self.assertRegex(
@@ -1356,7 +1356,7 @@ class PSNViewTests(TestCase):
 
         self.user.game_logging_style = "sessions"
         self.user.save()
-        html = self.client.get(reverse("import_data")).content.decode()
+        html = self.client.get(reverse("provider_detail", args=["psn"]) + "?tab=import").content.decode()
         self.assertIn("Sessions shows each entry", html)
 
     @patch("integrations.views.tasks.import_psn.delay")

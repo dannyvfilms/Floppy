@@ -1846,6 +1846,49 @@ class Metadata(TestCase):
         self.assertEqual(response["games"][0]["role"], "Publisher")
         self.assertEqual(response["games"][1]["role"], "Developer, Publisher")
 
+    @patch("app.providers.igdb.requests.get")
+    def test_get_steam_dlcs(self, mock_get):
+        """Steam DLC ids are resolved to names, links and images, then cached."""
+        cache.delete("steam_dlcs_v1_100")
+
+        def fake_get(_url, params, timeout):
+            app_id = str(params["appids"])
+            data = {
+                "100": {"dlc": [101, 102]},
+                "101": {"name": "Map Pack", "header_image": "https://img/101.jpg"},
+                "102": {},
+            }[app_id]
+            response = MagicMock()
+            response.json.return_value = {app_id: {"success": True, "data": data}}
+            return response
+
+        mock_get.side_effect = fake_get
+
+        dlcs = igdb.get_steam_dlcs("100")
+
+        self.assertEqual(
+            dlcs,
+            [
+                {
+                    "title": "Map Pack",
+                    "image": "https://img/101.jpg",
+                    "url": "https://store.steampowered.com/app/101/",
+                },
+            ],
+        )
+        calls = mock_get.call_count
+        igdb.get_steam_dlcs("100")
+        self.assertEqual(mock_get.call_count, calls)
+
+    @patch("app.providers.igdb.requests.get")
+    def test_get_steam_dlcs_failure_is_not_cached(self, mock_get):
+        """A Steam outage returns nothing and is retried on the next call."""
+        cache.delete("steam_dlcs_v1_200")
+        mock_get.side_effect = requests.exceptions.ConnectionError()
+
+        self.assertEqual(igdb.get_steam_dlcs("200"), [])
+        self.assertIsNone(cache.get("steam_dlcs_v1_200"))
+
     def test_game_non_numeric_id_raises_value_error(self):
         """Non-numeric IGDB IDs should raise ValueError before any API call."""
         with self.assertRaises(ValueError, msg="IGDB game IDs must be numeric"):

@@ -15,6 +15,7 @@ from django.utils import formats, timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from app import backdrops
 from app.models import Item, MediaTypes, PodcastEpisode, Status
 from events import tasks
 from events.history_feed import (
@@ -207,9 +208,39 @@ def calendar(request):
         if media_type not in {MediaTypes.TV.value, MediaTypes.EPISODE.value}
     }
 
+    season_identities = {
+        (release.item.source, release.item.media_id)
+        for release in releases
+        if release.item.media_type == MediaTypes.SEASON.value
+    }
+    show_titles = {}
+    if season_identities:
+        show_titles = {
+            (source, media_id): title
+            for source, media_id, title in Item.objects.filter(
+                tv__user=request.user,
+                media_type=MediaTypes.TV.value,
+                source__in={source for source, _ in season_identities},
+                media_id__in={media_id for _, media_id in season_identities},
+            ).values_list("source", "media_id", "title")
+        }
+
     release_dict = {}
+    backdrop_by_item = {}
+    backdrop_misses = []
     for release in releases:
         release.status = status_by_item_id.get(release.item_id)
+        release.calendar_title = (
+            show_titles.get((release.item.source, release.item.media_id))
+            or release.item.title
+            if release.item.media_type == MediaTypes.SEASON.value
+            else str(release.item)
+        )
+        if release.item_id not in backdrop_by_item:
+            backdrop_by_item[release.item_id] = backdrops.cached_backdrop(release.item)
+            if not backdrop_by_item[release.item_id]:
+                backdrop_misses.append(release.item)
+        release.calendar_backdrop = backdrop_by_item[release.item_id]
 
         if (
             release.item.media_type == MediaTypes.PODCAST.value
@@ -226,6 +257,9 @@ def calendar(request):
         if day not in release_dict:
             release_dict[day] = []
         release_dict[day].append(release)
+
+    if backdrop_misses:
+        backdrops.schedule_backdrop_warm(backdrop_misses)
 
     # Get today's date for highlighting
     today = timezone.localdate()

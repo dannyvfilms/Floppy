@@ -5,7 +5,7 @@ from django.templatetags.static import static
 from django.utils.text import slugify
 
 from app import helpers
-from app.models import MediaTypes, Sources
+from app.models import Item, MediaTypes, Sources
 from app.services import game_lengths as game_length_services
 from app.services import trakt_popularity as trakt_popularity_service
 from app.templatetags import app_tags
@@ -1211,3 +1211,72 @@ def _build_detail_person_rows(media_metadata, item=None):
             card_width_class="w-36",
         ),
     }
+
+
+_BOOK_FORMAT_LABELS = {
+    "audiobook": "Audiobook",
+    "ebook": "eBook",
+    "hardcover": "Hardcover",
+    "paperback": "Paperback",
+}
+
+
+def _book_isbns(item):
+    return {
+        "".join(ch for ch in str(value) if ch.isalnum()).upper()
+        for value in item.isbn or []
+        if value
+    } - {""}
+
+
+def _book_author_keys(item):
+    return {
+        key
+        for key in (Item._title_comparison_key(a) for a in item.authors or [])
+        if key
+    }
+
+
+def build_other_book_formats(user, item):
+    """Return links to the user's other tracked formats of the same book.
+
+    An audiobook and an ebook are separate Items on purpose (their progress
+    units differ), so this only links them. Two Items match when they share an
+    ISBN, or share a title and at least one author. Only the viewer's own
+    tracked books are considered.
+    """
+    if (
+        item is None
+        or item.media_type != MediaTypes.BOOK.value
+        or not getattr(user, "is_authenticated", False)
+    ):
+        return []
+
+    title_key = Item._title_comparison_key(item.title)
+    isbns = _book_isbns(item)
+    authors = _book_author_keys(item)
+    if not title_key and not isbns:
+        return []
+
+    candidates = Item.objects.filter(
+        media_type=MediaTypes.BOOK.value,
+        book__user=user,
+    ).exclude(pk=item.pk)
+    chips = []
+    for other in candidates.distinct():
+        same_isbn = bool(isbns & _book_isbns(other))
+        same_work = (
+            bool(title_key)
+            and title_key == Item._title_comparison_key(other.title)
+            and bool(authors & _book_author_keys(other))
+        )
+        if not (same_isbn or same_work):
+            continue
+        label = _BOOK_FORMAT_LABELS.get((other.format or "").lower(), "Book")
+        chips.append(
+            {
+                "label": label,
+                "href": app_tags.media_url(other),
+            },
+        )
+    return chips

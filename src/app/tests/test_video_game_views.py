@@ -54,7 +54,7 @@ class VideoGameViewTests(TestCase):
         self.assertContains(response, "Hades II")
         self.assertContains(response, "Linked by you")
         link = VideoGameLink.objects.get()
-        self.assertEqual((link.user, link.game_item), (self.user, self.game))
+        self.assertEqual((link.video.user, link.game_item), (self.user, self.game))
 
     def test_relinking_replaces_the_choice(self):
         other_game = Item.objects.create(

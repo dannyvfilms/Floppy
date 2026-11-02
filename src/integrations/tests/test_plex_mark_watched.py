@@ -248,7 +248,7 @@ class PlexMarkWatchedScheduleTests(TestCase):
         )
 
         self.assertRedirects(
-            response, reverse("integrations"), fetch_redirect_response=False
+            response, reverse("provider_detail", args=["plex"]) + "?tab=import", fetch_redirect_response=False
         )
         account.refresh_from_db()
         self.assertTrue(account.mark_watched_sync_enabled)
@@ -303,7 +303,7 @@ class PlexMarkWatchedScheduleTests(TestCase):
         )
 
         self.assertRedirects(
-            response, reverse("integrations"), fetch_redirect_response=False
+            response, reverse("provider_detail", args=["plex"]) + "?tab=import", fetch_redirect_response=False
         )
         self.assertFalse(self._tasks().exists())
         messages = [str(m) for m in get_messages(response.wsgi_request)]

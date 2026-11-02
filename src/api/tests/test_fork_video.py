@@ -678,3 +678,75 @@ class VideoChannelTests(FloppyApiTestCase):
         migration.copy_channel_to_authors(django_apps, None)
         item.refresh_from_db()
         self.assertEqual(item.authors, ["Beyond Babish"])
+
+
+class VideoGameLinkApiTests(FloppyApiTestCase):
+    """A viewer's own game link over YouTube's tag; playtime is never touched."""
+
+    def setUp(self):
+        """Track one video and know one game."""
+        super().setUp()
+        self.video_url = reverse(
+            "api_video_game", kwargs={"source": "youtube", "media_id": "dQw4w9WgXcQ"}
+        )
+        self.client.post(
+            reverse(
+                "api_video_play",
+                kwargs={"source": "youtube", "media_id": "dQw4w9WgXcQ"},
+            ),
+            {
+                "title": "Let's Play",
+                "lengthSeconds": 1000,
+                "progressSeconds": 600,
+                "externalId": "youtube:dQw4w9WgXcQ:2026-10-02",
+            },
+            format="json",
+            **self.auth_headers,
+        )
+        self.game = Item.objects.create(
+            media_id="1",
+            source="igdb",
+            media_type=MediaTypes.GAME.value,
+            title="Minecraft",
+        )
+
+    def test_link_relink_and_unlink(self):
+        """PUT links, PUT again moves it, DELETE unlinks; no game row is created."""
+        other = Item.objects.create(
+            media_id="2", source="igdb", media_type=MediaTypes.GAME.value, title="Pong"
+        )
+        games = Item.objects.filter(media_type="game").count()
+        self.assertEqual(
+            self.client.get(self.video_url, **self.auth_headers).data["state"], "none"
+        )
+        for game, state in ((self.game, "linked"), (other, "linked")):
+            response = self.client.put(
+                self.video_url,
+                {"source": game.source, "mediaId": game.media_id},
+                format="json",
+                **self.auth_headers,
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.data["state"], state)
+            self.assertEqual(response.data["game"]["media_id"], game.media_id)
+        response = self.client.delete(self.video_url, **self.auth_headers)
+        self.assertEqual(response.data["state"], "unlinked")
+        self.assertIsNone(response.data["game"])
+        self.assertEqual(Item.objects.filter(media_type="game").count(), games)
+
+    def test_unknown_game_is_not_created(self):
+        """A game Floppy has no row for is a 404, not a fabricated item."""
+        games = Item.objects.filter(media_type="game").count()
+        response = self.client.put(
+            self.video_url,
+            {"source": "igdb", "mediaId": "999"},
+            format="json",
+            **self.auth_headers,
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(Item.objects.filter(media_type="game").count(), games)
+
+    def test_untracked_video_is_404(self):
+        """Another viewer's video is not reachable."""
+        url = reverse("api_video_game", kwargs={"source": "youtube", "media_id": "x"})
+        self.assertEqual(self.client.get(url, **self.auth_headers).status_code, 404)

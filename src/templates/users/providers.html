@@ -1,0 +1,41 @@
+{% extends "users/base.html" %}
+{% load i18n %}
+{% block title %}{% translate "Providers - Floppy" %}{% endblock title %}
+{% block settings_content %}
+  {{ provider_directory|json_script:"provider-directory-model" }}
+  <div data-provider-directory-root data-props-id="provider-directory-model" x-ignore hx-disable>
+  <div class="bg-[var(--color-surface)] rounded-lg p-6 space-y-6">
+    <div>
+      <div class="flex items-center justify-between gap-3 flex-wrap mb-4">
+        <div class="flex items-center">
+          {% include "app/icons/database.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
+          <h2 class="text-xl font-semibold">{% translate "Providers" %}</h2>
+        </div>
+        <a href="{% url 'onboarding_restart' %}" class="text-xs text-[var(--color-link)] underline">{% translate "Run guided setup" %}</a>
+      </div>
+      <p class="text-sm text-[var(--color-text-muted)]">{% translate "Find services and their available settings." %}</p>
+    </div>
+    <form id="provider-filter-form" method="get" class="flex flex-col md:flex-row gap-4">
+      <div class="relative flex-1 min-w-0">
+        <label for="provider-search" class="sr-only">{% translate "Search providers" %}</label>
+        <input id="provider-search" name="q" type="search" value="{{ query }}" autocomplete="off"
+               placeholder="{% translate 'Search providers...' %}"
+               class="w-full py-2 pl-10 pr-4 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none">
+        {% include "app/icons/magnifying-glass.svg" with classes="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] w-5 h-5" %}
+      </div>
+      <div class="flex gap-4 md:gap-2 flex-wrap filter-toolbar lists-filter-toolbar">
+        <label class="sr-only" for="fallback-capability">{% translate "Filter by capability" %}</label>
+        <select id="fallback-capability" name="capability">
+          {% for option in capability_options %}<option value="{{ option.key }}" {% if option.key == capability %}selected{% endif %}>{% translate option.label %}</option>{% endfor %}
+        </select>
+        <label class="sr-only" for="fallback-media">{% translate "Filter by media type" %}</label>
+        <select id="fallback-media" name="media">
+          {% for option in media_options %}<option value="{{ option.key }}" {% if option.key == media %}selected{% endif %}>{% translate option.label %}</option>{% endfor %}
+        </select>
+        <button type="submit">{% translate "Search providers" %}</button>
+      </div>
+    </form>
+    <div class="ui-catalog">{% include "users/components/provider_results.html" %}</div>
+  </div>
+  </div>
+{% endblock settings_content %}

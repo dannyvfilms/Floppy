@@ -1,0 +1,21 @@
+{% load i18n user_tags %}
+    {# Same classes and geometry as frontend/providers/ProviderPage.jsx so the React mount is not a visible reflow. #}
+    <div class="provider-identity">
+      <div class="provider-title-row">
+        <div class="provider-name">{% if provider_page.provider.logo %}<img src="{{ provider_page.provider.logo }}" alt="">{% endif %}<h2>{{ provider.label }}</h2></div>
+        <div class="provider-media" aria-label="{% translate 'Media types' %}">
+          {% for label in provider.media_labels %}
+            <div class="settings-chip" data-tone="neutral"><span class="provider-media-chip">{% translate label %}</span></div>
+          {% endfor %}
+        </div>
+      </div>
+      <p>{{ provider.description }}</p>
+    </div>
+    <nav aria-label="{% translate 'Provider sections' %}" class="ui-tabs">
+      {% for tab in provider.tabs %}
+        <a href="{% url 'provider_detail' provider.slug %}?tab={{ tab }}"{% if provider_tab == tab %} aria-current="page"{% endif %}>{% translate tab|capfirst %}</a>
+      {% endfor %}
+    </nav>
+    {% if request.GET.onboarding %}
+      <a href="{% if request.GET.setup_flow == 'import' %}{% url 'onboarding_service_setup' %}{% else %}{% url 'onboarding_integration_setup' %}{% endif %}" class="text-sm text-[var(--color-link)]">{% translate "Continue Guided Setup" %}</a>
+    {% endif %}

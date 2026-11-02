@@ -206,6 +206,16 @@
               {% endif %}
             {% endif %}
           {% endfor %}
+          {% if other_book_formats %}
+            <div class="detail-sidebar-fact mb-4">
+              <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">{% translate "Other Formats" %}</h3>
+              <div class="flex flex-col gap-1">
+                {% for other in other_book_formats %}
+                  <a href="{{ other.href }}" class="text-sm text-[var(--color-text-secondary)] hover:text-indigo-500 transition-colors duration-200">{{ other.label }}</a>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
           {% if authors_linked %}
             <div class="detail-sidebar-fact mb-4">
               <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% blocktranslate trimmed count count=authors_linked|length %}AUTHOR{% plural %}AUTHORs{% endblocktranslate %}</h3>
@@ -372,7 +382,7 @@
                        x-data="{ detailGridExpanded: false, detailGridVisibleCount: 0, syncDetailGrid() { this.$nextTick(() => { const grid = this.$refs.detailGrid; if (!grid) return; const templateColumns = window.getComputedStyle(grid).gridTemplateColumns || ''; const columnCount = templateColumns.split(' ').filter(Boolean).length || 1; this.detailGridVisibleCount = Math.max(columnCount, 1) * 2; }); }, shouldShowDetailCard(index) { return this.detailGridExpanded || index < this.detailGridVisibleCount; }, canToggleDetailGrid(total) { return this.detailGridVisibleCount > 0 && total > this.detailGridVisibleCount; } }"
                        x-init="syncDetailGrid()"
                        @resize.window.debounce.100ms="syncDetailGrid()">
-                {% with related_label=name|no_underscore|title %}
+                {% with related_label=name|related_section_label %}
                   <h2 class="text-xl font-bold mb-4">{% translate related_label %}</h2>
                 {% endwith %}
                 <div x-ref="detailGrid" class="detail-media-grid">
@@ -390,6 +400,22 @@
               </section>
             {% endif %}
           {% endfor %}
+          {% if media.steam_dlcs %}
+            <section class="mb-8">
+              <h2 class="text-xl font-bold mb-4">{% translate "DLCs" %}</h2>
+              <div class="detail-media-grid">
+                {% for dlc in media.steam_dlcs %}
+                  <a href="{{ dlc.url }}"
+                     target="_blank"
+                     rel="noopener noreferrer"
+                     class="block">
+                    {% if dlc.image %}<img src="{{ dlc.image }}" alt="" loading="lazy" class="w-full rounded-lg aspect-[460/215] object-cover">{% endif %}
+                    <p class="mt-2 text-sm font-medium">{{ dlc.title }}</p>
+                  </a>
+                {% endfor %}
+              </div>
+            </section>
+          {% endif %}
           </div>
         {% endif %}
 

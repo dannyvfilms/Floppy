@@ -51,6 +51,7 @@ from app.detail_builders import (
     _build_series_graph_data,
     _build_stored_season_scores_graph,
     _build_trakt_popularity_context,
+    build_other_book_formats,
 )
 from app.detail_related import (
     drop_recommendations_if_hidden,
@@ -2097,6 +2098,9 @@ def media_details(
         "media": media_metadata,
         "media_type": media_type,
         "match_item": detail_item,
+        "other_book_formats": (
+            [] if public_view else build_other_book_formats(request.user, detail_item)
+        ),
         "authors_linked": authors_linked,
         "issue_extra_details": (
             _issue_extra_details(media_metadata, authors_linked)

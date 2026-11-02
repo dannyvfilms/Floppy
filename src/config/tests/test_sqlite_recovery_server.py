@@ -31,7 +31,14 @@ class RecoveryPageTests(SimpleTestCase):
             },
         )
         self.assertIn("sqlite_startup --prepare-migrations &lt;offline&gt;", page)
-        self.assertIn("Stop all application containers", page)
+        self.assertIn("Your data was not changed", page)
+        self.assertIn(
+            "docker compose run --rm --no-deps --entrypoint python floppy "
+            "manage.py sqlite_startup --prepare-migrations",
+            page,
+        )
+        self.assertIn("docker exec -it floppy python manage.py", page)
+        self.assertIn("docs/sqlite-startup-recovery.md", page)
         self.assertNotIn("<form", page)
 
     def setUp(self):

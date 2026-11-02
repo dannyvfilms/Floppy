@@ -253,3 +253,84 @@ class DetailLinkSectionsMalTests(TestCase):
 
         self.assertEqual(len(sections), 1)
         self.assertEqual(sections[0]["title"], "Source")
+
+
+class OtherBookFormatsTests(TestCase):
+    """Cross-format links between a user's ebook and audiobook of one work."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+
+        cls.user = get_user_model().objects.create_user(username="reader", password="x")
+        cls.other_user = get_user_model().objects.create_user(
+            username="other", password="x",
+        )
+
+    def _book(self, media_id, source, fmt, user=None, **fields):
+        from app.models import Book
+
+        item = Item.objects.create(
+            media_id=media_id,
+            source=source,
+            media_type=MediaTypes.BOOK.value,
+            title=fields.pop("title", "Dune"),
+            authors=fields.pop("authors", ["Frank Herbert"]),
+            format=fmt,
+            **fields,
+        )
+        Book.objects.create(user=user or self.user, item=item, status="Planning")
+        return item
+
+    def test_links_ebook_and_audiobook_of_same_work(self):
+        from app.detail_builders import build_other_book_formats
+
+        ebook = self._book("OL1", Sources.OPENLIBRARY.value, "ebook")
+        audio = self._book("abs1", Sources.AUDIOBOOKSHELF.value, "audiobook")
+
+        chips = build_other_book_formats(self.user, ebook)
+
+        self.assertEqual([c["label"] for c in chips], ["Audiobook"])
+        self.assertIn("abs1", chips[0]["href"])
+        self.assertEqual(
+            [c["label"] for c in build_other_book_formats(self.user, audio)],
+            ["eBook"],
+        )
+
+    def test_matches_on_isbn_despite_title_difference(self):
+        from app.detail_builders import build_other_book_formats
+
+        ebook = self._book(
+            "OL2", Sources.OPENLIBRARY.value, "ebook", isbn=["978-0-441-17271-9"],
+        )
+        self._book(
+            "abs2",
+            Sources.AUDIOBOOKSHELF.value,
+            "audiobook",
+            title="Dune (Unabridged)",
+            authors=[],
+            isbn=["9780441172719"],
+        )
+
+        self.assertEqual(len(build_other_book_formats(self.user, ebook)), 1)
+
+    def test_same_title_different_author_is_not_linked(self):
+        from app.detail_builders import build_other_book_formats
+
+        ebook = self._book("OL3", Sources.OPENLIBRARY.value, "ebook")
+        self._book(
+            "abs3", Sources.AUDIOBOOKSHELF.value, "audiobook", authors=["Someone Else"],
+        )
+
+        self.assertEqual(build_other_book_formats(self.user, ebook), [])
+
+    def test_ignores_other_users_books_and_never_merges_items(self):
+        from app.detail_builders import build_other_book_formats
+
+        ebook = self._book("OL4", Sources.OPENLIBRARY.value, "ebook")
+        self._book(
+            "abs4", Sources.AUDIOBOOKSHELF.value, "audiobook", user=self.other_user,
+        )
+
+        self.assertEqual(build_other_book_formats(self.user, ebook), [])
+        self.assertEqual(Item.objects.filter(title="Dune").count(), 2)

@@ -299,6 +299,15 @@ def add_list_item_submit(request, list_id):
     season_number = int(season_number) if season_number else None
     episode_number = int(episode_number) if episode_number else None
 
+    if media_type == MediaTypes.PODCAST.value and episode_number is None:
+        # Search results carry the provider id (iTunes id / feed URL); tracked
+        # shows are stored under their podcast_uuid, as lists_modal resolves.
+        from app.services.podcast_import import resolve_show_for_media_id
+
+        show = resolve_show_for_media_id(media_id, source=source)
+        if show is not None:
+            media_id = show.podcast_uuid
+
     item = find_item_across_buckets(
         user=request.user,
         media_id=media_id,

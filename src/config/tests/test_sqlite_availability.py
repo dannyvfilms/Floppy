@@ -295,12 +295,30 @@ class SQLiteAvailabilityTests(SimpleTestCase):
             writer.execute("INSERT INTO parent VALUES (12)")
             self.assertFalse(self.gate())
 
+    def test_failed_status_names_runnable_fix_and_prepare_clears_it(self):
+        integrity.write_startup_status(
+            self.database,
+            status="failed",
+            phase="admission",
+            started_at="2026-01-01T00:00:00+00:00",
+            elapsed_seconds=1,
+        )
+        with self.assertRaises(admission.StartupBlockedError) as raised:
+            self.gate()
+        message = str(raised.exception)
+        self.assertIn("python manage.py sqlite_startup --prepare-migrations", message)
+        self.assertIn("sqlite-startup-recovery.md", message)
+        self.verify(prepare=True)
+        self.assertFalse(self.gate())
+
     def test_pending_requires_offline_preparation(self):
         self.pending()
         with self.assertRaisesRegex(
             admission.StartupBlockedError, "prepare-migrations"
-        ):
+        ) as raised:
             self.gate()
+        self.assertIn("python manage.py sqlite_startup", str(raised.exception))
+        self.assertIn("sqlite-startup-recovery.md", str(raised.exception))
         self.verify()
         self.assertFalse(admission._permit_path(self.database).exists())
         with self.assertRaises(admission.StartupBlockedError):

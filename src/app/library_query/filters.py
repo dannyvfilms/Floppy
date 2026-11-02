@@ -35,6 +35,7 @@ from django.db.models.lookups import (
     LessThanOrEqual,
 )
 
+from app.library_query.alphabet import initial_condition, normalize_initial
 from app.library_query.spec import STATUS_MATCH_ANY, STATUS_MATCH_LATEST, FilterValues
 from app.models.choices import MediaTypes, Status
 from app.models.discovery import CollectionEntry, ItemTag
@@ -374,9 +375,13 @@ def shows_with_collected_episodes(user):
     the collected episodes' ids before the exact (media id, source) pair is
     checked, so no other user's items are visited.
     """
-    collected_episodes = CollectionEntry.objects.filter(
-        user=user,
-        item__media_type=MediaTypes.EPISODE.value,
+    # Keep SQLite on the owner's collection index. A bare item media_type
+    # predicate picks the catalogue type index and probes the collection once
+    # per episode in the entire database (even for a small collection).
+    collected_episodes = (
+        CollectionEntry.objects.filter(user=user)
+        .alias(_collection_media_type=Concat("item__media_type", Value("")))
+        .filter(_collection_media_type=MediaTypes.EPISODE.value)
     )
     # One non-correlated pair set: SQLite evaluates it once. A correlated
     # Exists here re-walks the collected episodes per candidate (143 s on a
@@ -574,6 +579,11 @@ FILTERS: tuple[FilterDef, ...] = (
         | Q(original_title__icontains=v.search.strip())
         | Q(localized_title__icontains=v.search.strip())
         | Q(media_id__icontains=v.search.strip()),
+    ),
+    FilterDef(
+        "initial",
+        lambda v: bool(normalize_initial(v.initial)),
+        sql=lambda v, ctx: initial_condition(v.initial, ctx.user),
     ),
     FilterDef("rating", _rating_active, sql=_rating_sql),
     FilterDef(

@@ -102,6 +102,43 @@ The examples above set `DEMO_ACCOUNT_ENABLED=False` for clarity; it is also the 
 That's the whole install. `SECRET` is the only variable you truly must set; `TMDB_API` is what makes movie and TV metadata work, and every other API key is optional until you want that media type. Everything else — Postgres, reverse proxies, the full environment variable list, Docker Run, Portainer specifics — follows below.
 
 
+## Backups and restore rehearsal
+
+This is the canonical backup guide; other pages link here.
+
+| Artifact | Where | What it is |
+| --- | --- | --- |
+| Raw SQLite snapshot | `BACKUP_DIR/database/*.sqlite3`, mode 0600 | Verified, atomically published copy of the live database. A same-host recovery point only. SQLite only. |
+| CSV export | `BACKUP_DIR/<username>/floppy_*.csv` | Portable media, ratings and lists. Not accounts, credentials or settings. |
+| PostgreSQL | operator-managed | Floppy does not back up PostgreSQL. Use `pg_dump` or your platform's backup. |
+
+**Freshness is not liveness.** A running web process, or a dispatched beat
+task, does not mean a backup was published. Floppy records the last
+successful run, last failure and their ages for the raw snapshot and for
+scheduled CSV exports (hidden `.status-*.json` files in `BACKUP_DIR`), and
+Settings → Export reports them with whether `BACKUP_DIR` is writable and how
+much space is free. That check says a write could succeed now; it does not
+certify that any backup is current. A disabled snapshot schedule and a
+PostgreSQL deployment are reported as such rather than as healthy. CSVs are
+written to a hidden staging file and renamed only when complete, so an
+interrupted export never leaves a partial `floppy_*.csv`; stale staging files
+are removed on the next export.
+
+**Off-host and encrypted copies.** Copy `BACKUP_DIR` off the machine on your
+own schedule (restic, borg, rclone to storage you control) with encryption
+you hold the key for. Floppy adds no cloud service or automatic restore.
+
+**Rehearse a restore** on a scratch instance, never over production:
+
+1. Restore the database: copy a snapshot to a new `FLOPPY_DB_PATH` (SQLite),
+   or `pg_restore` into a new database (PostgreSQL).
+2. Restore the stable signing key (`SECRET`, `SECRET_FILE` or the generated
+   `secret_key` in `FLOPPY_DATA_DIR`) and your environment configuration.
+   Without the original key, sessions and encrypted integration credentials
+   do not carry over.
+3. Start Floppy, run `python src/manage.py floppy_preflight`, sign in, and
+   confirm a known title, rating and list are present.
+
 ## SQLite data paths
 
 Floppy uses these rules when `DB_HOST` is not set:

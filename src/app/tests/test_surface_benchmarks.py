@@ -274,7 +274,7 @@ class SurfaceBenchmarkTests(TestCase):
             ),
             ("collection", reverse("collection_list"), {}),
             ("tags", reverse("tag_index"), {}),
-            ("integrations", reverse("integrations"), {}),
+            ("providers", reverse("providers"), {}),
             ("jsi18n", reverse("javascript-catalog"), {}),
             ("serviceworker", reverse("service_worker"), {}),
         ]

@@ -15,12 +15,14 @@ from app import fork_services_history, history_cache_reader
 from app.fork_services_episode import drop_episode, resolve_or_create_season
 from app.fork_services_movie import resolve_or_create_movie
 from app.history_cache_utils import normalize_history_media_type_tokens
-from app.models import Episode, ItemTag, MediaTypes, Movie, Tag
+from app.models import BasicMedia, Episode, ItemTag, MediaTypes, Movie, Sources, Tag
+from app.providers import services
 from app.services import metadata_resolution
 from app.tasks_bulk_plays import bulk_episode_plays_task
 from app.templatetags.app_tags import media_url
 from integrations.state.ratings import rating_edit
 
+from . import fork_helpers
 from .contract_serializers import DetailErrorSerializer
 from .helpers import (
     MEDIA_TYPE_MODEL_MAP,
@@ -791,3 +793,213 @@ class MediaEpisodeBulkView(drf_views.APIView):
             media_id,
         )
         return Response({"task_id": task.id}, status=HTTP.ACCEPTED)
+
+
+def _state_error(detail, code, status, **extra):
+    return Response({"detail": detail, "code": code, **extra}, status=status)
+
+
+# /api/v1/media/[media_type]/[source]/[media_id]/state/
+# /api/v1/media/tv/[source]/[media_id]/[season_number]/state/
+# /api/v1/media/tv/[source]/[media_id]/[season_number]/[episode_number]/state/
+class MediaStateView(drf_views.APIView):
+    """One read that separates unresolved, untracked and tracked media (#1612).
+
+    ``history/`` answers 404 for both an unknown id and an untracked item, so a
+    client cannot tell them apart. This route answers 200 for every valid
+    media item and reserves 404/503 for a catalog that does not know the id or
+    cannot be reached. Season and episode routes use the parent show's
+    identifiers, like the rest of the media API.
+    """
+
+    @extend_schema(
+        parameters=[MEDIA_TYPE_PARAM],
+        operation_id="retrieveMediaState",
+        responses={
+            400: DetailErrorSerializer,
+            404: DetailErrorSerializer,
+            503: DetailErrorSerializer,
+        },
+    )
+    def get(
+        self,
+        request,
+        media_type,
+        source,
+        media_id,
+        season_number=None,
+        episode_number=None,
+    ):
+        """Return resolved/tracked flags and every consumption of one item."""
+        if not check_valid_type(media_type):
+            return Response(
+                {"detail": "Unsupported media type."},
+                status=HTTP.BAD_REQUEST,
+            )
+        if season_number is not None and media_type != MediaTypes.TV.value:
+            return Response(
+                {"detail": "Seasons and episodes are supported only for 'tv'."},
+                status=HTTP.BAD_REQUEST,
+            )
+        if not check_source_type(media_type, source):
+            return Response(
+                {"detail": f"Cannot query `{source}` for `{media_type}` media type"},
+                status=HTTP.BAD_REQUEST,
+            )
+
+        if episode_number is not None:
+            tracked_type = MediaTypes.EPISODE.value
+        elif season_number is not None:
+            tracked_type = MediaTypes.SEASON.value
+        else:
+            tracked_type = media_type
+        user_medias = BasicMedia.objects.filter_media(
+            request.user,
+            media_id,
+            tracked_type,
+            source,
+            season_number=season_number,
+            episode_number=episode_number,
+            library_media_type=request.query_params.get("library_media_type"),
+        )
+        first = user_medias.first()
+        tracked = first is not None
+
+        if tracked:
+            title = first.item.title
+        elif source == Sources.MANUAL.value:
+            # Manual items have no catalog; metadata lookup 500s for them.
+            return _state_error("Media not found.", "MEDIA_NOT_FOUND", HTTP.NOT_FOUND)
+        else:
+            try:
+                metadata = self._lookup(
+                    request,
+                    media_type,
+                    source,
+                    media_id,
+                    season_number,
+                    episode_number,
+                )
+            except services.ProviderAPIError as error:
+                if error.status_code == HTTP.NOT_FOUND:
+                    return _state_error(
+                        "Media not found.",
+                        "MEDIA_NOT_FOUND",
+                        HTTP.NOT_FOUND,
+                    )
+                return _state_error(
+                    "Provider unavailable.",
+                    "PROVIDER_UNAVAILABLE",
+                    HTTP.SERVICE_UNAVAILABLE,
+                    retryable=True,
+                )
+            if metadata is None:
+                return _state_error(
+                    "Media not found.",
+                    "MEDIA_NOT_FOUND",
+                    HTTP.NOT_FOUND,
+                )
+            title = metadata.get("title")
+
+        rows = []
+        if tracked:
+            plays = fork_helpers.movie_plays_for_history(user_medias, media_type)
+            rows = plays if plays is not None else list(user_medias)
+
+        media = {
+            "media_type": media_type,
+            "source": source,
+            "media_id": str(media_id),
+            "title": title,
+        }
+        if season_number is not None:
+            media["season_number"] = int(season_number)
+        if episode_number is not None:
+            media["episode_number"] = int(episode_number)
+        return Response(
+            {
+                "media": media,
+                "resolved": True,
+                "tracked": tracked,
+                "consumptions": serialize_data(
+                    rows,
+                    serializer_class=HistorySerializer,
+                    many=True,
+                ),
+            },
+            status=HTTP.OK,
+        )
+
+    @staticmethod
+    def _lookup(request, media_type, source, media_id, season_number, episode_number):
+        """Return catalog metadata for the item, or None for a missing episode."""
+        language = metadata_resolution.metadata_language_default(request.user)
+        if season_number is None:
+            return services.get_media_metadata(
+                media_type,
+                media_id,
+                source,
+                language=language,
+                user=request.user,
+            )
+        season = services.get_media_metadata(
+            "season",
+            media_id,
+            source,
+            [season_number],
+            language=language,
+        )
+        if episode_number is None:
+            return season
+        for episode in season.get("episodes") or []:
+            if str(episode.get("episode_number")) == str(episode_number):
+                return {"title": episode.get("title") or episode.get("name")}
+        return None
+
+
+_STATE_ERRORS = {
+    400: DetailErrorSerializer,
+    404: DetailErrorSerializer,
+    503: DetailErrorSerializer,
+}
+
+
+class MediaSeasonStateView(MediaStateView):
+    """Season variant of MediaStateView."""
+
+    @extend_schema(
+        parameters=[MEDIA_TYPE_TV_ONLY_PARAM],
+        operation_id="retrieveMediaSeasonState",
+        responses=_STATE_ERRORS,
+    )
+    def get(self, request, media_type, source, media_id, season_number):
+        """Return resolved/tracked flags and consumptions of one season."""
+        return super().get(request, media_type, source, media_id, season_number)
+
+
+class MediaEpisodeStateView(MediaStateView):
+    """Episode variant of MediaStateView."""
+
+    @extend_schema(
+        parameters=[MEDIA_TYPE_TV_ONLY_PARAM],
+        operation_id="retrieveMediaEpisodeState",
+        responses=_STATE_ERRORS,
+    )
+    def get(
+        self,
+        request,
+        media_type,
+        source,
+        media_id,
+        season_number,
+        episode_number,
+    ):
+        """Return resolved/tracked flags and consumptions of one episode."""
+        return super().get(
+            request,
+            media_type,
+            source,
+            media_id,
+            season_number,
+            episode_number,
+        )

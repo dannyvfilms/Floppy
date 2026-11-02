@@ -456,6 +456,12 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         if not filters:
             return queryset
 
+        from app.library_query.alphabet import initial_condition
+
+        queryset = queryset.filter(
+            initial_condition(filters.get("initial"), user, prefix="item__")
+        )
+
         genre = str(filters.get("genre") or "").strip()
         if genre:
             queryset = _filter_queryset_by_item_json_array_ci(
@@ -1195,7 +1201,9 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
             return queryset.prefetch_related(
                 Prefetch(
                     "seasons",
-                    queryset=Season.objects.select_related("item"),
+                    queryset=Season.objects.select_related("item").defer(
+                        *(("item__watch_providers",) if list_mode else ()),
+                    ),
                 ),
                 Prefetch(
                     "seasons__item__event_set",

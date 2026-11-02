@@ -1,0 +1,55 @@
+{% load i18n app_tags ui_tags %}
+<h3>{% translate "Metadata settings" %}</h3>
+<div class="ui-card-grid ui-card-grid-start">
+  {% translate "Metadata sources" as source_title %}
+  {% if provider_page.metadata.status.active %}{% translate "Active" as source_badge %}{% firstof 'info' as source_tone %}{% else %}{% translate "Inactive" as source_badge %}{% firstof 'neutral' as source_tone %}{% endif %}
+  {% settings_card title=source_title badge=source_badge tone=source_tone %}
+    <p>{{ provider_page.metadata.status.summary }}</p>
+    {% for entry in provider_summary %}
+      {% if entry.configurable or entry.existing_count %}<section class="ui-section">
+        <h4>{{ entry.media_type|media_type_readable_plural }}</h4>
+        {% if entry.configurable %}
+          <p>{% translate "Used for new titles. Existing entries keep their provider until you move them." %}</p>
+          <form action="{% url 'set_media_type_provider' entry.media_type %}" method="post" class="ui-form">
+            {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <div class="ui-field">
+              <label for="fallback-source-{{ entry.media_type }}">{% translate "Provider for new titles" %}</label>
+              <select id="fallback-source-{{ entry.media_type }}" name="source" {% if user.is_demo %}disabled{% endif %}>
+                {% for choice in entry.choices %}<option value="{{ choice.value }}" {% if choice.value == entry.current_provider %}selected{% endif %} {% if not choice.configured %}disabled{% endif %}>{{ choice.label }}</option>{% endfor %}
+              </select>
+            </div>
+            {% if entry.media_type == 'anime' %}
+              <div class="ui-field"><label for="fallback-anime-mode">{% translate "Anime Library" %}</label>
+                <select id="fallback-anime-mode" name="anime_library_mode" {% if user.is_demo %}disabled{% endif %}>
+                  {% for value, label in anime_library_mode_choices %}<option value="{{ value }}" {% if value == user.anime_library_mode %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+              </div>
+            {% endif %}
+            {% if not user.is_demo %}<button class="ui-button" type="submit">{% translate "Save" %}</button>{% endif %}
+          </form>
+        {% else %}<p>{% translate "This library uses its supported source directly; the default cannot be changed." %}</p>{% endif %}
+        <div class="ui-option-list">
+          {% for choice in entry.choices %}<div class="ui-option-row"><span>{{ choice.label }}</span><span>{% if not choice.configured %}{% translate "Not configured" %}{% elif choice.value == entry.current_provider %}{% translate "Active" %}{% else %}{% translate "Ready" %}{% endif %}</span></div>{% endfor %}
+        </div>
+        {% if entry.existing_count %}
+          <p>{% translate "Existing entries on another provider or format" %}: {{ entry.existing_count }}</p>
+          {% if entry.media_type == 'tv' %}
+            <p>{% translate "Moving preserves history when supported; entries that cannot be moved safely are left unchanged." %}</p>
+            <form method="post" action="{% url 'convert_tv_library' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="ui-button ui-button-secondary" type="submit">{% translate "Move existing shows" %}</button></form>
+          {% elif entry.media_type == 'anime' %}
+            <p>{% translate "Converting rebuilds entries. Moving to MyAnimeList drops per-episode history; unsafe conversions are left unchanged." %}</p>
+            <form method="post" action="{% url 'convert_anime_library' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="ui-button ui-button-secondary" type="submit">{% translate "Convert existing anime" %}</button></form>
+          {% endif %}
+        {% endif %}
+      </section>{% endif %}
+    {% endfor %}
+    <ul class="ui-feature-list">
+      {% for feature in provider_page.metadata.contributions %}<li><span class="ui-status-icon ui-status-{{ feature.tone }}" role="img" aria-label="{{ feature.label }}: {{ feature.status }}" title="{{ feature.label }}: {{ feature.status }}">{% if feature.tone == 'success' %}{% include "app/icons/circle-check.svg" with classes="w-5 h-5" %}{% elif feature.tone == 'warning' %}{% include "app/icons/warning.svg" with classes="w-5 h-5" %}{% else %}<span aria-hidden="true">⊖</span>{% endif %}</span><div><span>{{ feature.label }}</span>{% if feature.note %}<p>{{ feature.note }}</p>{% endif %}</div>{% if feature.tone != 'success' %}<span class="ui-feature-state">{{ feature.status }}</span>{% endif %}</li>{% endfor %}
+    </ul>
+  {% endsettings_card %}
+  {% translate "Provider settings" as settings_title %}
+  {% settings_card title=settings_title %}
+    {% if provider.slug == 'tmdb' %}{% include "users/components/tmdb_proxy.html" %}
+    {% else %}<p>{% translate "This provider has no additional settings." %}</p>{% endif %}
+  {% endsettings_card %}
+</div>

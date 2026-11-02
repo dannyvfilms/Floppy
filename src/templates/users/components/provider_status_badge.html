@@ -1,0 +1,5 @@
+{% load i18n %}
+<span class="inline-flex items-center gap-1 px-2 py-1 text-xs rounded border {% if tone == 'success' %}bg-emerald-500/10 text-[var(--color-success-text)] border-emerald-500/30{% elif tone == 'warning' %}bg-amber-500/10 text-[var(--color-warning-text)] border-amber-500/30{% elif tone == 'info' %}bg-indigo-500/10 text-[var(--color-info-text)] border-indigo-500/30{% else %}bg-gray-500/20 text-[var(--color-text-secondary)] border-gray-600/50{% endif %}">
+  {% if locked %}{% include "app/icons/padlock.svg" with classes="w-3 h-3" %}{% endif %}
+  {% translate label %}
+</span>

@@ -12,15 +12,14 @@ SEARCH_LIMIT = 8
 MIN_QUERY_LENGTH = 2
 
 
-def _owned_video_item(request, item_id):
-    """Return the video Item the user tracks, or 404."""
-    video = get_object_or_404(
+def _owned_video(request, item_id):
+    """Return the user's Video of this item, or 404."""
+    return get_object_or_404(
         Video.objects.select_related("item"),
         user=request.user,
         item_id=item_id,
         item__media_type=MediaTypes.VIDEO.value,
     )
-    return video.item
 
 
 def _panel(request, item):
@@ -38,7 +37,7 @@ def _panel(request, item):
 @require_GET
 def video_game_panel(request, item_id):
     """Show the game a video is about."""
-    return _panel(request, _owned_video_item(request, item_id))
+    return _panel(request, _owned_video(request, item_id).item)
 
 
 @login_required
@@ -49,14 +48,13 @@ def video_game_set(request, item_id):
     @param request.POST["mode"] - `game`, `none` or `auto`.
     @param request.POST["game_item_id"] - Required for `game`.
     """
-    item = _owned_video_item(request, item_id)
+    video = _owned_video(request, item_id)
+    item = video.item
     mode = request.POST.get("mode", "")
     if mode == "auto":
-        VideoGameLink.objects.filter(user=request.user, video_item=item).delete()
+        VideoGameLink.objects.filter(video=video).delete()
     elif mode == "none":
-        VideoGameLink.objects.update_or_create(
-            user=request.user, video_item=item, defaults={"game_item": None}
-        )
+        VideoGameLink.objects.update_or_create(video=video, defaults={"game_item": None})
     elif mode == "game":
         game = Item.objects.filter(
             pk=request.POST.get("game_item_id") or 0,
@@ -64,9 +62,7 @@ def video_game_set(request, item_id):
         ).first()
         if game is None:
             return HttpResponseBadRequest("Choose a game from the list.")
-        VideoGameLink.objects.update_or_create(
-            user=request.user, video_item=item, defaults={"game_item": game}
-        )
+        VideoGameLink.objects.update_or_create(video=video, defaults={"game_item": game})
     else:
         return HttpResponseBadRequest("Unknown choice.")
     return _panel(request, item)
@@ -76,7 +72,7 @@ def video_game_set(request, item_id):
 @require_GET
 def video_game_search(request, item_id):
     """List known games whose title contains the search text."""
-    item = _owned_video_item(request, item_id)
+    item = _owned_video(request, item_id).item
     query = request.GET.get("q", "").strip()
     games = []
     if len(query) >= MIN_QUERY_LENGTH:

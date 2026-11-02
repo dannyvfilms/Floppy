@@ -1,0 +1,17 @@
+{% load i18n user_tags %}
+<div class="bg-[var(--color-surface-strong)] rounded-lg">
+  <div class="flex flex-wrap items-center gap-y-2 gap-x-3 p-3">
+    <div class="flex items-center gap-4 min-w-0 w-full sm:w-auto sm:flex-1">
+      <div class="shrink-0">
+        {% source_display provider.logo_slug|default:provider.slug label=provider.label %}
+      </div>
+      <p class="hidden sm:block text-sm text-[var(--color-text-muted)] min-w-0 truncate">{{ provider.description }}</p>
+    </div>
+    <div class="flex items-center gap-2 shrink-0 ml-auto">
+      {% if outbound_entry %}{% include "users/components/outbound_service_status.html" %}{% else %}{% include "users/components/provider_credential_status.html" %}{% endif %}
+      <button type="button"
+              {% if outbound_entry %}@click="activeModal = 'send-{{ provider.slug }}'"{% else %}@click="openModal('{{ provider.slug }}')"{% endif %}
+              class="px-3 py-1.5 text-sm rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer">{% translate "Configure" %}</button>
+    </div>
+  </div>
+</div>

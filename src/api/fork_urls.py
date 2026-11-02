@@ -4,6 +4,7 @@ from django.urls import re_path
 
 from . import (
     fork_views,
+    fork_views_consumption_batch,
     fork_views_discover,
     fork_views_integrations,
     fork_views_lists,
@@ -120,6 +121,16 @@ urlpatterns = [
         name="api_collection_entry",
     ),
     re_path(
+        r"^consumptions/batch/?$",
+        fork_views_consumption_batch.ConsumptionBatchView.as_view(),
+        name="api_consumption_batch",
+    ),
+    re_path(
+        r"^consumptions/batch/(?P<operation_id>[^/]+)/?$",
+        fork_views_consumption_batch.ConsumptionBatchDetailView.as_view(),
+        name="api_consumption_batch_detail",
+    ),
+    re_path(
         r"^tasks/(?P<task_id>[\w-]+)/?$",
         fork_views.TaskStatusView.as_view(),
         name="api_task_status",
@@ -208,6 +219,11 @@ urlpatterns = [
         r"^videos/(?P<source>[^/]+)/(?P<media_id>[^/]+)/plays/?$",
         fork_views_video.VideoPlayView.as_view(),
         name="api_video_play",
+    ),
+    re_path(
+        r"^videos/(?P<source>[^/]+)/(?P<media_id>[^/]+)/game/?$",
+        fork_views_video.VideoGameView.as_view(),
+        name="api_video_game",
     ),
     re_path(
         r"^videos/(?P<source>[^/]+)/(?P<media_id>[^/]+)/plays/(?P<external_id>.+?)/?$",
@@ -404,5 +420,20 @@ urlpatterns = [
         r"^sync/conflicts/(?P<conflict_id>\d+)/resolve/?$",
         fork_views_watched_state.SyncConflictResolveView.as_view(),
         name="api_sync_conflict_resolve",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/state/?$",
+        fork_views_tracking.MediaStateView.as_view(),
+        name="api_media_state",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/state/?$",
+        fork_views_tracking.MediaSeasonStateView.as_view(),
+        name="api_media_season_state",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/(?P<episode_number>\d+)/state/?$",
+        fork_views_tracking.MediaEpisodeStateView.as_view(),
+        name="api_media_episode_state",
     ),
 ]
