@@ -148,11 +148,14 @@ HTTP port 80 to HTTPS port 443 is permitted.
 An elapsed-time deadline (60 seconds by default, configurable with
 `total_timeout`) applies across redirects and connected-socket reads. A
 separate decoded-body limit (32 MiB by default, configurable with `max_bytes`)
-also applies to streamed Responses when read through Requests' normal
-`.iter_content()`/`.content` interfaces or raw reads. Callers handling larger
-legitimate payloads must explicitly set a suitable cap; streaming callers
-must close responses when finished. OS DNS resolver timeouts remain outside
-the application's connected-socket deadline.
+also applies to streamed Responses consumed through Requests'
+`.iter_content()` and `.content`. Direct `.raw.read()` is capped by
+bytes returned, which may be compressed; direct raw reader methods are not
+part of the decoded-body-limit guarantee. Callers handling larger legitimate
+payloads must explicitly set a suitable cap, consume untrusted bodies
+through the bounded Requests interfaces, and close streaming responses
+when finished. OS DNS resolver timeouts remain outside the application's
+connected-socket deadline.
 
 ```python
 from integrations.safe_fetch import send_to_self_hosted_pinned
