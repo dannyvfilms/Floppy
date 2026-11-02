@@ -447,6 +447,7 @@ class OpenAPIArtifactTests(SimpleTestCase):
                 "image",
                 "ids",
                 "url",
+                "is_rewatch",
             },
         )
         self.assertEqual(

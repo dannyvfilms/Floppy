@@ -762,6 +762,7 @@ def _next_episode_for_media(media):
                         "air_date": _episode_air_date(season, episode_number),
                     },
                     item,
+                        "is_rewatch": season.is_rewatching,
                     media,
                 )
         from events.models import Event, released_q
@@ -787,6 +788,7 @@ def _next_episode_for_media(media):
                     "air_date": event.datetime,
                 },
                 item,
+                    "is_rewatch": False,
                 media,
             )
         return None
@@ -801,6 +803,7 @@ def _next_episode_for_media(media):
                 "air_date": _episode_air_date(media, episode_number),
             },
             item,
+                "is_rewatch": media.is_rewatching,
             media,
         )
     if media_type == MediaTypes.ANIME.value:
@@ -825,6 +828,7 @@ def _next_episode_for_media(media):
                     "air_date": event.datetime,
                 },
                 item,
+                    "is_rewatch": False,
                 media,
             )
     return None

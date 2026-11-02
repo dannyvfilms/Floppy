@@ -3742,12 +3742,16 @@ components:
         url:
           type: string
           nullable: true
+        is_rewatch:
+          type: boolean
+          description: True when this episode belongs to an open rewatch pass.
       required:
       - air_date
       - episode_code
       - episode_number
       - ids
       - image
+      - is_rewatch
       - season_number
       - title
       - url
