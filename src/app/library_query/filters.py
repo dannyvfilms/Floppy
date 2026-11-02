@@ -35,6 +35,7 @@ from django.db.models.lookups import (
     LessThanOrEqual,
 )
 
+from app.library_query.alphabet import initial_condition, normalize_initial
 from app.library_query.spec import STATUS_MATCH_ANY, STATUS_MATCH_LATEST, FilterValues
 from app.models.choices import MediaTypes, Status
 from app.models.discovery import CollectionEntry, ItemTag
@@ -578,6 +579,11 @@ FILTERS: tuple[FilterDef, ...] = (
         | Q(original_title__icontains=v.search.strip())
         | Q(localized_title__icontains=v.search.strip())
         | Q(media_id__icontains=v.search.strip()),
+    ),
+    FilterDef(
+        "initial",
+        lambda v: bool(normalize_initial(v.initial)),
+        sql=lambda v, ctx: initial_condition(v.initial, ctx.user),
     ),
     FilterDef("rating", _rating_active, sql=_rating_sql),
     FilterDef(

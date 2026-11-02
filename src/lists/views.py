@@ -20,6 +20,7 @@ from app.columns import (
     resolve_default_column_config,
 )
 from app.library_query.adapters import filter_values_from_media_list_filters
+from app.library_query.alphabet import normalize_initial
 from app.library_query.spec import STATUS_MATCH_ANY
 from app.media_list_filters import parse_media_list_filters
 from app.media_list_views import MEDIA_LIST_NO_STATUS, MEDIA_LIST_NO_STATUS_LABEL
@@ -287,6 +288,9 @@ def list_detail(request, list_reference):
         custom_list=custom_list,
         media_user=media_user,
         candidates=items.values("pk"),
+        initial=request.GET.get("initial"),
+        title_user=request.user,
+        include_alphabet=not helpers.is_htmx_fragment(request),
         media_types=filtered_media_types,
         filters=list_filters,
         # The Tiers view lists every tier on one board, in tier order.
@@ -333,6 +337,7 @@ def list_detail(request, list_reference):
         "user": request.user,
         "custom_list": custom_list,
         "items": items_page,
+        "alphabet_other_initial": items_page.alphabet_other_initial,
         "has_next": items_page.has_next(),
         "next_page_number": items_page.next_page_number()
         if items_page.has_next()
@@ -490,6 +495,8 @@ def list_detail(request, list_reference):
     else:
         template_name = "lists/components/media_grid.html"
 
+    if normalize_initial(request.GET.get("initial")) and not items_page and not is_pagination:
+        template_name = "app/components/alphabet_results_empty.html"
     response = render(request, template_name, context)
     response["HX-Trigger"] = json.dumps(
         _build_list_count_trigger(total_items_count),

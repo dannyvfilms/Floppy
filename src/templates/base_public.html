@@ -32,6 +32,8 @@
     {% endblock extra_head %}
 
     <link rel="stylesheet" type="text/css" href="{% static 'css/main.css' %}{% get_static_file_mtime 'css/main.css' %}">
+    <link rel="stylesheet" href="{% static 'ui/settings-islands.css' %}{% get_static_file_mtime 'ui/settings-islands.css' %}">
+    <script type="module" src="{% static 'ui/settings-islands.js' %}{% get_static_file_mtime 'ui/settings-islands.js' %}"></script>
 
     <script src="{% javascript_catalog_url %}"></script>
     <script src="{% static 'js/libraries/htmx-2.0.4.min.js' %}"></script>
@@ -60,6 +62,8 @@
   </head>
 
   <body>
+    {% block alphabet_filter %}{% endblock alphabet_filter %}
+    {% include "app/components/ui_asset_refresh.html" %}
     {% block body %}
       <div class="min-h-screen bg-[var(--color-page-bg)] text-[var(--color-text)] flex flex-col">
         {# Simple header for public pages #}

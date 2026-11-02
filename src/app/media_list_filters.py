@@ -99,6 +99,8 @@ class MediaListFilters:
     statuses: tuple[str, ...] = ()
     include_no_status: bool = False
     search: str = ""
+    # Web-only view state; not parsed from API requests or saved as smart rules.
+    initial: str = ""
     rating: str = "all"
     rating_min: str = ""
     rating_max: str = ""
@@ -760,9 +762,9 @@ def _next_episode_for_media(media):
                         "season_number": season_number,
                         "episode_number": episode_number,
                         "air_date": _episode_air_date(season, episode_number),
+                        "is_rewatch": season.is_rewatching,
                     },
                     item,
-                        "is_rewatch": season.is_rewatching,
                     media,
                 )
         from events.models import Event, released_q
@@ -786,9 +788,9 @@ def _next_episode_for_media(media):
                     "season_number": event.item.season_number,
                     "episode_number": event.content_number,
                     "air_date": event.datetime,
+                    "is_rewatch": False,
                 },
                 item,
-                    "is_rewatch": False,
                 media,
             )
         return None
@@ -801,9 +803,9 @@ def _next_episode_for_media(media):
                 "season_number": getattr(item, "season_number", None),
                 "episode_number": episode_number,
                 "air_date": _episode_air_date(media, episode_number),
+                "is_rewatch": media.is_rewatching,
             },
             item,
-                "is_rewatch": media.is_rewatching,
             media,
         )
     if media_type == MediaTypes.ANIME.value:
@@ -826,9 +828,9 @@ def _next_episode_for_media(media):
                     "season_number": None,
                     "episode_number": event.content_number,
                     "air_date": event.datetime,
+                    "is_rewatch": False,
                 },
                 item,
-                    "is_rewatch": False,
                 media,
             )
     return None

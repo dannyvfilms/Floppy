@@ -803,6 +803,9 @@
   .aspect-\[41\/64\] {
     aspect-ratio: 41/64;
   }
+  .aspect-\[460\/215\] {
+    aspect-ratio: 460/215;
+  }
   .aspect-square {
     aspect-ratio: 1 / 1;
   }

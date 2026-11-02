@@ -2,14 +2,17 @@
 {% load i18n %}
 
 {% load static %}
-{% load app_tags %}
+{% load app_tags alphabet_tags %}
 
 {% block title %}
   {{ custom_list }} - Floppy
 {% endblock title %}
 
 {# djlint:off #}
+{% block alphabet_filter %}{% alphabet_filter "filter-form" %}{% endblock alphabet_filter %}
+
 {% block content %}
+  <div class="alphabet-surface">
   {% include "app/components/filter_toolbar_scripts.html" %}
   {% url 'list_detail' custom_list.public_reference as list_filter_endpoint %}
   {# Form CSS lives in the content block so boosted navigation keeps it #}
@@ -654,6 +657,8 @@
         {% else %}
           {% include "lists/components/media_grid.html" %}
         {% endif %}
+      {% elif request.GET.initial|alphabet_initial %}
+        {% alphabet_filter "filter-form" "empty" %}
       {% else %}
       {% if items_count %}
         {% if request.GET.q or has_media_type_filter %}
@@ -734,6 +739,7 @@
     </div>
     </div>
   {% if can_edit %}</div>{% endif %}
+  </div>
 {% endblock content %}
 {# djlint:on #}
 
