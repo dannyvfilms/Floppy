@@ -5,6 +5,7 @@ import sqlite3
 from collections import defaultdict
 from contextlib import closing
 from csv import DictReader
+from decimal import Decimal
 from io import TextIOWrapper
 from pathlib import Path
 from tempfile import TemporaryDirectory, TemporaryFile
@@ -68,9 +69,6 @@ class IMDBImporter:
         self.mode = mode
         self.warnings = []
 
-        # Track media IDs to delete in overwrite mode
-        self.to_delete = defaultdict(lambda: defaultdict(set))
-
         # Track bulk creation lists for each media type
         self.bulk_media = defaultdict(list)
 
@@ -111,7 +109,7 @@ class IMDBImporter:
                 finally:
                     wrapper.detach()
                 total = staging.execute("SELECT COUNT(*) FROM rows").fetchone()[0]
-                # Stage validated instances before deleting any user's existing rows.
+                # Validate every input row before updating any existing ratings.
                 with TemporaryFile() as instances:
                     for index, (raw, data, count) in enumerate(
                         staging.execute(
@@ -156,10 +154,6 @@ class IMDBImporter:
                                 media_type, instance = pickle.load(instances)  # noqa: S301
                             except EOFError:
                                 break
-                            if self.mode == "overwrite":
-                                self.to_delete[media_type][Sources.TMDB.value].add(
-                                    str(instance.item.media_id)
-                                )
                             self.bulk_media[media_type].append(instance)
                             counts[media_type] += 1
                             if sum(map(len, self.bulk_media.values())) >= 250:  # noqa: PLR2004
@@ -169,11 +163,52 @@ class IMDBImporter:
         return dict(counts), messages if self.warnings else None
 
     def _flush(self):
-        """Persist one bounded batch after the entire input validated."""
-        helpers.cleanup_existing_media(self.to_delete, self.user)
+        """Persist one bounded batch without replacing existing watch history."""
+        if self.mode == "overwrite":
+            self._update_existing_ratings()
         helpers.bulk_create_media(self.bulk_media, self.user)
-        self.to_delete.clear()
         self.bulk_media.clear()
+
+    def _update_existing_ratings(self):
+        """Update only scores on existing titles, keeping all tracking rows.
+
+        A film can have several watch rows. Prefer its existing statusless
+        rating row when available, otherwise the newest tracking row.
+        Unrated IMDb rows do not remove a previously recorded score or status.
+        """
+        for media_type, batch in self.bulk_media.items():
+            if not batch:
+                continue
+
+            model = apps.get_model(app_label="app", model_name=media_type)
+            existing_by_item = {}
+            existing_rows = model.objects.filter(
+                user=self.user,
+                item_id__in={instance.item_id for instance in batch},
+            ).order_by("-created_at", "-pk")
+            for current in existing_rows:
+                previous = existing_by_item.get(current.item_id)
+                if previous is None or (
+                    current.status is None and previous.status is not None
+                ):
+                    existing_by_item[current.item_id] = current
+
+            to_create = []
+            for instance in batch:
+                current = existing_by_item.get(instance.item_id)
+                if current is None:
+                    to_create.append(instance)
+                    continue
+                if instance.score is None:
+                    continue
+                score = Decimal(str(instance.score))
+                if current.score != score:
+                    current.score = score
+                    current._history_date = instance._history_date
+                    current._change_reason = "IMDb rating import"
+                    current.save(update_fields=["score", "scored_at"])
+
+            self.bulk_media[media_type] = to_create
 
     def _process_first_pass(self, row):
         """First pass to identify duplicate entries and validate data."""
@@ -310,8 +345,9 @@ class IMDBImporter:
         # Parse user rating (0-10 scale)
         rating = self._parse_rating(row.get("Your Rating", ""))
 
-        # Determine status - if user rated it, they completed it
-        status = Status.COMPLETED.value if rating is not None else Status.PLANNING.value
+        # A rating never establishes a watch or completion date.
+        # Preserve the existing watchlist behaviour for unrated entries.
+        status = None if rating is not None else Status.PLANNING.value
 
         params = {
             "item": item,
@@ -327,13 +363,7 @@ class IMDBImporter:
 
         # filter out None dates
         dates = [date_created, date_modified, date_rated]
-        most_recent_date = max(date for date in dates if date)
-
-        # Movies can have progress and end_date set directly.
-        # TV shows manage their own progress and dates through episodes.
-        if media_type == MediaTypes.MOVIE.value and status == Status.COMPLETED.value:
-            params["progress"] = 1
-            params["end_date"] = most_recent_date
+        most_recent_date = max((date for date in dates if date), default=None)
 
         instance = model(**params)
         instance._history_date = most_recent_date or timezone.now()
