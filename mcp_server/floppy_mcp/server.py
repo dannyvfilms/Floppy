@@ -21,6 +21,7 @@ from .client import (
     fetch_public_contract,
     get_client,
 )
+from .resolve import resolve_candidates
 
 mcp = FastMCP(
     name="floppy",
@@ -112,6 +113,67 @@ async def search_media(media_type: str, query: str, page: int = 1) -> Any:
         f"search/{media_type}",
         params={"search": query, "page": page},
     )
+
+
+def _search_failure(error: dict[str, Any]) -> dict[str, Any]:
+    """Tag a failed provider search so an outage never reads as "no such game"."""
+    code = error.get("status_code")
+    detail = str(error.get("detail", "")).lower()
+    if code is None:
+        kind = "unreachable"
+    elif code == httpx.codes.INTERNAL_SERVER_ERROR and "lookup failed" in detail:
+        kind = "provider_unavailable"
+    elif code in {httpx.codes.BAD_REQUEST, httpx.codes.FORBIDDEN}:
+        kind = "invalid_input" if code == httpx.codes.BAD_REQUEST else "forbidden"
+    else:
+        kind = "backend_error"
+    return {**error, "error_kind": kind}
+
+
+@mcp.tool()
+async def resolve_game(
+    title: str,
+    platform: str | None = None,
+    year: int | None = None,
+    year_to: int | None = None,
+    aliases: list[str] | None = None,
+) -> Any:
+    """Resolve a game title + optional platform/year to an exact source/media_id.
+
+    The source and media_id are what track_media, get_media and get_history
+    take. Optional helper over search_media (which is unchanged): use it when you
+    have a title and constraints instead of an ID. year_to makes year a range
+    (an era); aliases are alternate titles to search too. Platform accepts
+    provider names or common short forms (N64, GC, DS, 3DS, PS2, PC, ...).
+
+    Returns {"status", "selected", "likely", "candidates"}:
+    - "exact": one candidate fits every constraint you gave, backed by
+      provider data. "selected" is {source, media_id}; pass them on directly.
+    - "likely": one candidate fits but a constraint is unknown in the
+      catalog or the title only partly matches. "likely" holds it; confirm.
+    - "ambiguous": several fit. Show "candidates" to the user, do not guess.
+    - "no_match": nothing fits; "candidates" holds near misses. This means
+      the search found no such release, not that the game is untracked.
+    Each candidate carries source, media_id, title, year, platforms,
+    "evidence" (title exact/partial; platform and year true/false/null where
+    null means the catalog has no data; edition_words found in the title)
+    and the "original" search result. The catalog does not say whether a
+    release is a port, remaster or remake: edition_words is a hint, not a
+    verdict. A provider outage returns {"error": true, "error_kind":
+    "provider_unavailable"} instead of a result, so retry rather than
+    concluding the game does not exist.
+    """
+    results: list[dict[str, Any]] = []
+    for name in dict.fromkeys([title, *(aliases or [])]):
+        found = await _call(
+            "get",
+            "search/game",
+            params={"search": name, "limit": 50},
+        )
+        if isinstance(found, dict) and found.get("error"):
+            return _search_failure(found)
+        results.extend((found or {}).get("results") or [])
+    return resolve_candidates(results, title, aliases, platform, year, year_to)
 
 
 @mcp.tool()

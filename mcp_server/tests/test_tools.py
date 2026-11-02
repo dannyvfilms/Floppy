@@ -659,6 +659,7 @@ async def test_every_public_tool_is_registered_on_the_dispatcher():
     tools = {tool.name for tool in await server.mcp.list_tools()}
     assert tools == {
         "search_media",
+        "resolve_game",
         "search_tracked_media",
         "get_discover",
         "get_home",
@@ -686,3 +687,106 @@ async def test_every_public_tool_is_registered_on_the_dispatcher():
         assert tool.name
         assert tool.inputSchema, tool.name
 
+
+def _game(media_id, title, year, platforms):
+    return {
+        "media_id": str(media_id),
+        "source": "igdb",
+        "media_type": "game",
+        "title": title,
+        "year": year,
+        "platforms": platforms,
+    }
+
+
+MARIO_64 = [
+    _game(1, "Super Mario 64", 1996, ["Nintendo 64"]),
+    _game(2, "Super Mario 64 DS", 2004, ["Nintendo DS"]),
+    _game(3, "Super Mario 64", 2006, ["Wii"]),
+    _game(4, "Super Mario 3D All-Stars", 2020, ["Nintendo Switch"]),
+]
+
+
+async def _resolve(api_base_url, results, **kwargs):
+    with respx.mock:
+        respx.get(f"{api_base_url}/search/game").mock(
+            return_value=ok({"results": results}),
+        )
+        return await server.resolve_game(**kwargs)
+
+
+async def test_resolve_game_platform_disambiguates(api_base_url):
+    out = await _resolve(
+        api_base_url, MARIO_64, title="Super Mario 64", platform="N64", year=1996
+    )
+    assert out["status"] == "exact"
+    assert out["selected"] == {"source": "igdb", "media_id": "1"}
+    assert out["candidates"][0]["original"] == MARIO_64[0]
+
+
+async def test_resolve_game_same_title_is_ambiguous_not_guessed(api_base_url):
+    out = await _resolve(api_base_url, MARIO_64, title="Super Mario 64")
+    assert out["status"] == "ambiguous"
+    assert out["selected"] is None
+    assert {c["media_id"] for c in out["candidates"][:2]} == {"1", "3"}
+
+
+async def test_resolve_game_port_vs_remake_kept_distinct(api_base_url):
+    results = [
+        _game(10, "Resident Evil", 1996, ["PlayStation"]),
+        _game(11, "Resident Evil", 2002, ["Nintendo GameCube"]),
+        _game(12, "Resident Evil Remake HD Remaster", 2015, ["PC (Microsoft Windows)"]),
+    ]
+    out = await _resolve(
+        api_base_url, results, title="Resident Evil", platform="GameCube"
+    )
+    assert out["status"] == "exact"
+    assert out["selected"]["media_id"] == "11"
+    remaster = next(c for c in out["candidates"] if c["media_id"] == "12")
+    assert remaster["evidence"]["title"] == "partial"
+    assert {"remake", "remaster", "hd"} <= set(remaster["evidence"]["edition_words"])
+
+
+async def test_resolve_game_alias_and_year_range(api_base_url):
+    results = [_game(20, "Mario Kart 64", 1996, ["Nintendo 64"])]
+    out = await _resolve(
+        api_base_url,
+        results,
+        title="MK64",
+        aliases=["Mario Kart 64"],
+        year=1995,
+        year_to=1997,
+    )
+    assert out["status"] == "exact"
+    assert out["candidates"][0]["evidence"]["year"] is True
+
+
+async def test_resolve_game_missing_data_is_likely_not_exact(api_base_url):
+    results = [_game(30, "Obscure Game", None, [])]
+    out = await _resolve(
+        api_base_url, results, title="Obscure Game", platform="PC", year=1999
+    )
+    assert out["status"] == "likely"
+    assert out["selected"] is None
+    assert out["likely"]["media_id"] == "30"
+    assert out["candidates"][0]["evidence"]["platform"] is None
+
+
+async def test_resolve_game_no_exact_match(api_base_url):
+    out = await _resolve(
+        api_base_url, MARIO_64, title="Super Mario 64", platform="Xbox 360"
+    )
+    assert out["status"] == "no_match"
+    assert out["selected"] is None
+    assert len(out["candidates"]) == 3  # near misses are preserved
+
+
+async def test_resolve_game_provider_outage_is_an_error_not_no_match(api_base_url):
+    with respx.mock:
+        respx.get(f"{api_base_url}/search/game").mock(
+            return_value=Response(500, json={"detail": "IGDB lookup failed."}),
+        )
+        out = await server.resolve_game(title="Super Mario 64")
+    assert out["error"] is True
+    assert out["error_kind"] == "provider_unavailable"
+    assert "status" not in out

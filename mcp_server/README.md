@@ -93,6 +93,7 @@ docs) or run `uvicorn floppy_mcp.server:mcp.streamable_http_app`.
 | Tool | Purpose |
 |---|---|
 | `search_media` | Provider search for new media to track |
+| `resolve_game` | Title + optional platform/year to an exact `source`/`media_id`, or explicit candidates |
 | `search_tracked_media` | Search the user's own library by title |
 | `get_discover` | Personalized Discover recommendation rows |
 | `get_home` | Home-page rows (continue watching, etc.) |
