@@ -1,9 +1,11 @@
 # Shared settings cards
 
 Provider Connection and Import use the first authorized React browser pilot.
-This is the pattern for incremental UI work: when a component is meaningfully
-created, redesigned or consolidated, include its React port in that task where
-bounded. Reuse accepted pieces and record concrete deferrals in the register.
+This is the pattern for incremental UI work: every component creation or edit,
+including copy or styling, includes its React port in the same task. Reuse shared
+pieces, preserve appearance and behavior, and update migration state per surface
+in the register. Deferral requires an evidenced compatibility blocker, a reopening
+condition and explicit reporting; task size is not an exemption.
 Preserve the [architecture boundaries](../architecture/ui-modernization.md).
 
 ## Ownership and usage
@@ -87,6 +89,10 @@ the fallback before ordinary removal; persisted bfcache documents keep their liv
 the server heading, help trigger and working body and can retry on a later insertion.
 
 Rebuilding assets requires reloading the browser; there is no hot-reload pipeline.
+Both shells render a body-level asset-version guard. Boosted navigation retains
+the head, so a response with a newer loader/CSS version triggers a full navigation
+to that response's URL instead of showing new islands against an older build.
+This also covers a previously opened page whose loader cannot recognize a new island.
 After a component changes, run the build and update its register/source-map entries.
 
 ## Verification and limits

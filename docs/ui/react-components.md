@@ -1,7 +1,9 @@
 # Shared React web components
 
-Modernize by reusable component as UI is redesigned, rather than duplicating a
-page and porting providers one at a time. Reuse or extend
+Every component created or edited by an agent, including copy or styling edits,
+must migrate with visual and behavioral parity. This incrementally prepares shared
+presentation for eventual native iOS and Android apps and reduces bulk work later.
+Modernize by reusable component, keeping untouched siblings in place. Reuse or extend
 `frontend/ui/controls.jsx` for the same element on another screen. These controls
 have no provider model, context, URLs or credentials. Feature code supplies those
 values and owns requests, validation, permissions and state.
@@ -12,6 +14,7 @@ values and owns requests, validation, permissions and state.
 | `CatalogCard`, `CatalogGrid` | Linked service/resource cards with optional logo and attention state; container-width columns with a maximum of four, retaining two columns at intermediate widths |
 | `FilterToolbar` | Search/filter form layout; uses `Field` and `SelectField` with optional visually hidden labels, retaining accessible names |
 | `Chip` | Passive, button or link badge with consistent highlight and no underline |
+| `AlphabetBar`, `AlphabetEmpty` | Shared RNW Pressable/Text alphabet navigation and filtered empty state in `frontend/ui/AlphabetBar.jsx`; surface adapters supply translated options, active state, URLs and navigation. The slim rail starts at the first poster, fits every entry without scrolling, puts # before A, and displays an actual other-bucket glyph. The web adapter centers glyph ink using font metrics; the empty state reuses Chip |
 | `ToggleChip` | Controlled two-state chip; `value`, `onChange`, `offLabel`, `onLabel`; stable accessible label and `aria-pressed` |
 | `Field`, `SelectField` | Labeled input and preference dropdown; semantic panel/border/focus styling, inset arrow and custom option menu matching Preferences; caller supplies IDs, values/options and handlers |
 | `FilterDropdown` | Same dropdown interaction with Lists hub styling: funnel icon, filled trigger/menu, purple selected option; visually hidden accessible label; use in filter toolbars rather than preference forms |

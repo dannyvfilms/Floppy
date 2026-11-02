@@ -77,6 +77,7 @@ PY
 - `frontend/settings/root.jsx`
 - `frontend/settings/webPalette.js`
 - `frontend/settings/settings-card.css`
+- `src/templates/app/components/ui_asset_refresh.html`
 - `scripts/build_ui.mjs`
 - `src/static/ui/*.js`
 - `src/static/ui/*.css`
@@ -164,6 +165,14 @@ build artifacts. The Python composition tag is documented in the register.
 - `src/templates/app/components/media_grid_items.html`
 - `src/templates/app/components/media_settings_menu.html`
 - `src/templates/app/media_list.html`
+
+## ALPHABET
+
+- `frontend/ui/AlphabetBar.jsx`
+- `frontend/ui/mountAlphabet.jsx`
+- `frontend/ui/alphabet.css`
+- `src/templates/app/components/alphabet_filter.html`
+- `src/templates/app/components/alphabet_results_empty.html`
 
 ## FILTERS
 
@@ -583,6 +592,8 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## SET-IMPORT
 
+- `frontend/providers/FileImport.jsx`
+- `src/templates/users/components/clz_import_fallback.html`
 - `src/templates/users/_reading_server_card.html`
 - `src/templates/users/_reading_server_modal.html`
 - `src/templates/users/components/game_sync_fields.html`

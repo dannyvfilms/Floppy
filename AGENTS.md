@@ -1,5 +1,29 @@
 # Coding Agent Instructions
 
+## Standing UI migration rule
+
+Whenever an agent creates, edits, or updates a UI component—including copy or
+styling—it must migrate that component to the shared React pattern in the same
+change. This incrementally prepares reusable presentation for eventual native iOS
+and Android apps and reduces future bulk migration work.
+
+Reuse or extend shared UI components before creating new ones. Keep domain logic,
+permissions and transport in feature adapters. Preserve appearance, behavior,
+accessibility, responsive states and performance: users should not notice the
+framework migration. Migration does not authorize redesign or feature removal.
+The unit is the reusable component, not every sibling in its template file.
+
+Every UI change must update `docs/ui/component-register.md` and
+`docs/ui/source-map.md`: identify each changed component and its consumers/surfaces,
+record legacy, partial/coexisting or fully React-owned status, remaining consumers
+and retirement conditions. Record browser verification separately from actual iOS
+and Android verification. UI plans and completion summaries must name migrated
+components, ledger updates and blockers.
+
+Deferral requires a concrete compatibility blocker, evidence, a reopening condition
+in the component register, and explicit reporting to the user. Task size, trivial
+copy/styling, or pending native verification are not deferral reasons.
+
 ## Operating Principles
 
 Keep it simple. Simple is better than complex.
@@ -349,13 +373,12 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 
 ## Incremental UI Modernization
 
-- For meaningful UI work, consult `docs/ui/component-register.md` and its source map;
+- For every UI change, consult `docs/ui/component-register.md` and its source map;
   follow `docs/architecture/ui-modernization.md`. Update affected records when
   components change, move, consolidate or retire; record blockers and verification.
-- **Modernize as components are redesigned.** Meaningful UI component creation,
-  redesign or consolidation should implement/reuse the shared React pattern as part
-  of that work, rather than adding another legacy-only component and deferring the
-  port. The Connection/Import settings-card pilot is the first authorized browser
+- **If you touch a UI component, upgrade it.** Every component creation or edit,
+  including copy and styling, must implement/reuse the shared React pattern in the
+  same change. The Connection/Import settings-card pilot is the first authorized browser
   implementation; follow `docs/ui/settings-cards.md` for the working island boundary,
   build, fallback and lifecycle pattern. Prefer React Native primitives for shared
   presentation and explicit web adapters for Django/DOM behavior.
@@ -374,8 +397,8 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
   Metadata is now a shared React tab for every metadata provider, using
   `frontend/providers/Metadata.jsx`; extend its data contract for provider settings
   rather than adding provider-specific layouts or credential/source modals.
-- **The migration unit is a reusable component, not a provider or page.** New or
-  redesigned fields, buttons, chips, tabs, dialogs and card layouts must reuse or
+- **The migration unit is a reusable component, not a provider or page.** Created or
+  edited fields, buttons, chips, tabs, dialogs and card layouts must reuse or
   extend `frontend/ui/controls.jsx`; see `docs/ui/react-components.md`. Keep domain
   data, permissions and transport in the consuming feature. Adopt these components
   as other UI is reworked without requiring a whole-page port or duplicating an
@@ -394,11 +417,10 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - Preserve behavior, appearance, responsive states, accessibility, permissions and
   performance unless the issue explicitly approves a redesign. Migration alone does
   not authorize simplification or removal of functionality.
-- Defer modernization only when it disproportionately expands a narrow fix or a
-  concrete compatibility blocker prevents a safe port; record the reason and
-  reopening condition in the component register. Trivial copy or styling edits need
-  no migration or full audit. Do not use the pending native proof as a blanket reason
-  to skip an otherwise bounded browser component port.
+- Defer modernization only for a concrete compatibility blocker; record evidence
+  and the reopening condition in the component register and report it to the user.
+  Copy/styling changes and task size are not exemptions. Pending native proof is
+  not a blocker for browser adoption.
 - Replace legacy consumers where practical. Document necessary coexistence and its
   retirement condition. Record web implementation and native verification separately;
   never claim native compatibility from React syntax or a web build alone.

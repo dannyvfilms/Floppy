@@ -11,8 +11,18 @@ region](../ui/provider-pages.md): Overview, Connection, Import and Activity. The
 global Django shell remains server-owned. Every provider now uses the same React
 header, tabs and data-driven Overview cards; unported tab bodies remain separate
 server-owned siblings under that shared shell.
-Meaningful component redesigns now include incremental React modernization where
-bounded and safe; do not automatically defer the port to a future task. No component
+Every component created or edited by an agent, including copy or styling changes,
+must migrate to the shared React pattern in the same change. Incremental migration
+prepares reusable presentation for eventual native iOS and Android apps and reduces
+a future bulk migration. Users should not notice the framework change: preserve
+appearance, interactions, responsive behavior, accessibility and performance.
+Reuse or extend existing shared components before introducing a new one; keep
+domain logic, permissions and transport in feature adapters. Only a concrete
+compatibility blocker permits deferral, with evidence, a reopening condition and
+explicit reporting to the user. Task size and trivial edits are not exemptions.
+Every change updates the component register and source map for each affected
+surface, including ownership state, remaining legacy consumers and retirement
+conditions. Browser and actual iOS/Android verification remain separate. No component
 has been verified on iOS or Android, and native products remain separately scoped.
 The migration unit is the reusable component, not a provider or page. Use the
 [shared controls](../ui/react-components.md) for fields, selects, buttons, chips,
@@ -203,17 +213,18 @@ working component, record the blocker and reassess the architecture. Do not set
   deployment before extending the pattern. Native parity remains unverified;
   verify the same source on iOS and Android before native acceptance. If runtime
   cost is disproportionate, record it and reassess rather than force adoption.
-- **C — Opportunistic modernization:** component redesigns and consolidations
-  should include the shared React implementation in the same task where bounded.
+- **C — Incremental modernization:** every component creation or edit, including
+  copy and spacing, includes the shared React implementation in the same task.
   Reuse the card pilot's web boundary; do not create a parallel app or bundle/runtime
-  per component. Native proof is not a blanket blocker for browser ports. Narrow
-  fixes and copy or spacing edits may defer migration with concrete reasons.
+  per component. Native proof is not a blocker for browser ports. Deferral requires
+  an evidenced compatibility blocker, a reopening condition in the register and
+  explicit reporting to the user; task size is not an exemption.
 - **D — Completion passes:** use register status, affected surfaces and dependencies
   to plan focused consolidation and retire duplicate implementations.
 - **E — Native products:** separately approve server-connected native applications;
   evaluate local persistence, offline tracking and synchronization independently.
 
-For meaningful UI work, find the stable component ID, read its contract, assess
+For every UI change, find the stable component ID, read its contract, assess
 scope, preserve behavior, validate the risky changes and update only affected
 records/source mappings. Record issue/PR links when known; do not invent owners or
 verification. Use Git history when assessing frequently changed components; record

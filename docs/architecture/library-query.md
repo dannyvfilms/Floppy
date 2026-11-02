@@ -26,6 +26,19 @@ Surfaces whose unit is not one item keep their own pipeline:
 
 ## Contract
 
+- **Alphabet selection is web view state.** The optional `initial` URL parameter
+  selects an ASCII letter, `0-9`, or `other`; empty/invalid values mean All. SQL
+  reads the viewer's preferred displayed title with its existing fallback order,
+  before counting and pagination. Separate-entry/time-left orders and named
+  artist/album/podcast trackers apply the same buckets before their own paging;
+  cached variants include the initial and title preference. List pages narrow
+  their authorized, resolved membership (including smart-list unions) without
+  changing saved rules. It is not an API parameter or a persisted smart rule.
+  The numeric control displays `#` before A, while submitting the existing `0-9`
+  value. The other control displays the first actual glyph from its authorized
+  title scope while submitting `other`; its representative title is read as one
+  narrow value, with no library-wide model hydration. List scopes retain viewer
+  title preferences independently of the owner's tracking data.
 - **Candidates are `Item` rows.** Tracker state (status, score, dates) is read
   through subqueries, so an item is one candidate however many tracker rows
   (repeat viewings) it has.
