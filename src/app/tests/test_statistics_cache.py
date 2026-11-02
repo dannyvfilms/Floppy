@@ -26,6 +26,9 @@ from app.models import (
     MediaTypes,
     Movie,
     Music,
+    Podcast,
+    PodcastEpisode,
+    PodcastShow,
     Sources,
     Status,
     Track,
@@ -561,6 +564,95 @@ class StatisticsMusicDayTests(TestCase):
         self.assertEqual(stats["totals"]["plays_by_type"][key], 1)
         self.assertEqual(stats["totals"]["minutes_by_type"].get(key, 0), 0)
         self.assertEqual(stats["top_played"].get(key, {}), {})
+
+
+class StatisticsPodcastDayTests(TestCase):
+    """Podcast plays count once, with runtime from the episode and show rollups."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(
+            username="stats-podcast-user",
+            password="secret123",
+        )
+        self.day = timezone.make_aware(datetime(2025, 1, 15, 12))
+        self.show = PodcastShow.objects.create(
+            podcast_uuid="show-uuid-1", title="Day Show", slug="day-show"
+        )
+
+    def tearDown(self):
+        cache.clear()
+
+    def _podcast(self, key, duration_seconds, *, with_episode=True, progress=0):
+        item = Item.objects.create(
+            media_id=key,
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.PODCAST.value,
+            title=key,
+        )
+        episode = (
+            PodcastEpisode.objects.create(
+                show=self.show,
+                episode_uuid=f"ep-{key}",
+                title=f"Episode {key}",
+                duration=duration_seconds,
+            )
+            if with_episode
+            else None
+        )
+        return Podcast.objects.create(
+            item=item,
+            user=self.user,
+            show=self.show if with_episode else None,
+            episode=episode,
+            status=Status.COMPLETED.value,
+            progress=progress,
+            start_date=self.day,
+            end_date=self.day,
+        )
+
+    def _day_stats(self):
+        return statistics_cache.build_stats_for_day(self.user.id, self.day.date())
+
+    def test_play_adds_runtime_play_hour_and_rollups(self):
+        podcast = self._podcast("pod", 1800)
+
+        stats = self._day_stats()
+
+        key = MediaTypes.PODCAST.value
+        self.assertEqual(stats["totals"]["minutes_by_type"][key], 30)
+        self.assertEqual(stats["totals"]["plays_by_type"][key], 1)
+        self.assertEqual(stats["daily_minutes_by_type"][key], 30)
+        self.assertEqual(stats["hour_counts"][key], {"12": 1})
+        self.assertIn(str(podcast.item_id), stats["items"][key])
+        rollups = stats["podcast"]
+        self.assertEqual(rollups["shows"][str(self.show.id)]["plays"], 1)
+        self.assertEqual(rollups["shows"][str(self.show.id)]["title"], "Day Show")
+        episode_stats = rollups["episodes"][str(podcast.episode_id)]
+        self.assertEqual(episode_stats["title"], f"Episode {podcast.item.title}")
+        self.assertEqual(episode_stats["duration_seconds"], 1800)
+
+    def test_play_without_runtime_is_skipped(self):
+        self._podcast("silent", 0, with_episode=False)
+
+        stats = self._day_stats()
+
+        key = MediaTypes.PODCAST.value
+        self.assertEqual(stats["totals"]["plays_by_type"].get(key, 0), 0)
+        self.assertEqual(stats["totals"]["minutes_by_type"].get(key, 0), 0)
+
+    def test_progress_stands_in_when_episode_runtime_is_unknown(self):
+        podcast = self._podcast("progress", 0, with_episode=False, progress=12)
+
+        stats = self._day_stats()
+
+        key = MediaTypes.PODCAST.value
+        self.assertEqual(stats["totals"]["minutes_by_type"][key], 12)
+        self.assertEqual(stats["totals"]["plays_by_type"][key], 1)
+        # Without a show, the rollup is keyed by the entry and titled from the item.
+        self.assertEqual(
+            stats["podcast"]["shows"][str(podcast.id)]["title"], podcast.item.title
+        )
 
 
 # ---------------------------------------------------------------------------

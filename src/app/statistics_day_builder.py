@@ -725,6 +725,166 @@ def _add_music_plays(
     return plays, missing_runtime, missing_genres
 
 
+def _add_podcast_plays(
+    user,
+    day,
+    day_start,
+    day_end,
+    prefetch,
+    *,
+    plays_by_type,
+    minutes_by_type,
+    daily_minutes_by_type,
+    podcast_rollups,
+    add_hour,
+    update_item_meta,
+):
+    """Add one day's podcast plays to the day builder's accumulators.
+
+    A play is one (podcast id, end date) pair, deduplicated across history rows.
+    The episode runtime counts; the history row's progress stands in when it is
+    unknown, and a play with neither is skipped. Returns how many plays were
+    added and how many lacked a runtime.
+    """
+    missing_runtime = 0
+    plays = 0
+    if prefetch is not None:
+        podcast_history = prefetch.get("podcast_history", {}).get(day, [])
+    else:
+        HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
+        podcast_history = (
+            HistoricalPodcast.objects.filter(
+                Q(history_user=user) | Q(history_user__isnull=True),
+                end_date__gte=day_start,
+                end_date__lt=day_end,
+            )
+            .values("id", "end_date", "history_date", "progress")
+            .iterator(chunk_size=1000)
+        )
+    podcast_plays = defaultdict(dict)
+    for record in podcast_history:
+        podcast_id = record.get("id")
+        play_end = record.get("end_date")
+        hist_date = record.get("history_date")
+        progress = record.get("progress")
+        if not podcast_id or not play_end or not hist_date:
+            continue
+        plays_for_podcast = podcast_plays[podcast_id]
+        existing = plays_for_podcast.get(play_end)
+        if not existing:
+            plays_for_podcast[play_end] = (hist_date, progress)
+        else:
+            existing_diff = abs((existing[0] - play_end).total_seconds())
+            current_diff = abs((hist_date - play_end).total_seconds())
+            if current_diff < existing_diff and current_diff < SECONDS_PER_DAY:
+                plays_for_podcast[play_end] = (hist_date, progress)
+
+    if prefetch is not None:
+        podcast_map = prefetch.get("podcast_map", {})
+    else:
+        podcast_ids = set(podcast_plays.keys())
+        if podcast_ids:
+            Podcast = apps.get_model("app", "Podcast")
+            podcast_map = {
+                podcast.id: podcast
+                for podcast in Podcast.objects.filter(
+                    id__in=podcast_ids, user=user
+                ).select_related("item", "show", "episode", "episode__show")
+            }
+        else:
+            podcast_map = {}
+
+    for podcast_id, plays_for_podcast in podcast_plays.items():
+        podcast = podcast_map.get(podcast_id)
+        if not podcast:
+            continue
+        for play_end, (_, history_progress) in plays_for_podcast.items():
+            runtime_minutes = _get_podcast_runtime_minutes(podcast)
+            if runtime_minutes <= 0 and history_progress and history_progress > 0:
+                runtime_minutes = history_progress
+            if runtime_minutes <= 0:
+                missing_runtime += 1
+                continue
+            localized = _localize_datetime(play_end)
+            plays_by_type[MediaTypes.PODCAST.value] += 1
+            plays += 1
+            add_hour(MediaTypes.PODCAST.value, localized, runtime_minutes)
+            minutes_by_type[MediaTypes.PODCAST.value] += runtime_minutes
+            daily_minutes_by_type[MediaTypes.PODCAST.value] += runtime_minutes
+
+            update_item_meta(
+                MediaTypes.PODCAST.value,
+                podcast.item_id
+                if getattr(podcast, "item_id", None)
+                else podcast.id,
+                podcast.id,
+                getattr(podcast, "status", None),
+                getattr(podcast, "score", None),
+                play_end,
+            )
+
+            show = getattr(podcast, "show", None)
+            if show:
+                show_stats = podcast_rollups["shows"][show.id]
+                show_stats["minutes"] += runtime_minutes
+                show_stats["plays"] += 1
+                show_stats["title"] = show.title
+                show_stats["show"] = show.title
+                show_stats["show_id"] = show.id
+                show_stats["podcast_uuid"] = show.podcast_uuid or show_stats.get(
+                    "podcast_uuid"
+                )
+                show_stats["slug"] = show.slug or ""
+                show_stats["image"] = show.image or ""
+            else:
+                show_stats = podcast_rollups["shows"][podcast.id]
+                show_stats["minutes"] += runtime_minutes
+                show_stats["plays"] += 1
+                show_stats["title"] = (
+                    podcast.item.title if podcast.item else "Unknown Show"
+                )
+                show_stats["show"] = show_stats["title"]
+                show_stats["image"] = podcast.item.image if podcast.item else ""
+
+            episode = getattr(podcast, "episode", None)
+            episode_key = episode.id if episode else podcast.id
+            episode_stats = podcast_rollups["episodes"][episode_key]
+            if episode:
+                episode_stats["title"] = episode.title
+                episode_stats["episode_id"] = episode.id
+                episode_stats["duration_seconds"] = (
+                    episode.duration or episode_stats.get("duration_seconds") or 0
+                )
+                episode_stats["show"] = (
+                    episode.show.title
+                    if getattr(episode, "show", None)
+                    else episode_stats.get("show")
+                )
+                episode_stats["show_id"] = (
+                    episode.show.id
+                    if getattr(episode, "show", None)
+                    else episode_stats.get("show_id")
+                )
+            else:
+                episode_stats["title"] = (
+                    podcast.item.title if podcast.item else "Unknown Episode"
+                )
+                episode_stats["episode_id"] = episode_key
+                if podcast.item and podcast.item.runtime_minutes:
+                    episode_stats["duration_seconds"] = (
+                        podcast.item.runtime_minutes * 60
+                    )
+            if show:
+                episode_stats["podcast_uuid"] = (
+                    show.podcast_uuid or episode_stats.get("podcast_uuid")
+                )
+                episode_stats["slug"] = show.slug or ""
+                episode_stats["image"] = show.image or ""
+            elif podcast.item:
+                episode_stats["image"] = podcast.item.image or ""
+    return plays, missing_runtime
+
+
 def build_stats_for_day(
     user_id: int,
     day_value,
@@ -1519,140 +1679,21 @@ def build_stats_for_day(
         missing_genres += music_missing_genres
 
     if MediaTypes.PODCAST.value in active_media_types:
-        if prefetch is not None:
-            podcast_history = prefetch.get("podcast_history", {}).get(day, [])
-        else:
-            HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
-            podcast_history = (
-                HistoricalPodcast.objects.filter(
-                    Q(history_user=user) | Q(history_user__isnull=True),
-                    end_date__gte=day_start,
-                    end_date__lt=day_end,
-                )
-                .values("id", "end_date", "history_date", "progress")
-                .iterator(chunk_size=1000)
-            )
-        podcast_plays = defaultdict(dict)
-        for record in podcast_history:
-            podcast_id = record.get("id")
-            play_end = record.get("end_date")
-            hist_date = record.get("history_date")
-            progress = record.get("progress")
-            if not podcast_id or not play_end or not hist_date:
-                continue
-            plays_for_podcast = podcast_plays[podcast_id]
-            existing = plays_for_podcast.get(play_end)
-            if not existing:
-                plays_for_podcast[play_end] = (hist_date, progress)
-            else:
-                existing_diff = abs((existing[0] - play_end).total_seconds())
-                current_diff = abs((hist_date - play_end).total_seconds())
-                if current_diff < existing_diff and current_diff < SECONDS_PER_DAY:
-                    plays_for_podcast[play_end] = (hist_date, progress)
-
-        if prefetch is not None:
-            podcast_map = prefetch.get("podcast_map", {})
-        else:
-            podcast_ids = set(podcast_plays.keys())
-            if podcast_ids:
-                Podcast = apps.get_model("app", "Podcast")
-                podcast_map = {
-                    podcast.id: podcast
-                    for podcast in Podcast.objects.filter(
-                        id__in=podcast_ids, user=user
-                    ).select_related("item", "show", "episode", "episode__show")
-                }
-            else:
-                podcast_map = {}
-
-        for podcast_id, plays_for_podcast in podcast_plays.items():
-            podcast = podcast_map.get(podcast_id)
-            if not podcast:
-                continue
-            for play_end, (_, history_progress) in plays_for_podcast.items():
-                runtime_minutes = _get_podcast_runtime_minutes(podcast)
-                if runtime_minutes <= 0 and history_progress and history_progress > 0:
-                    runtime_minutes = history_progress
-                if runtime_minutes <= 0:
-                    missing_runtime += 1
-                    continue
-                localized = _localize_datetime(play_end)
-                plays_by_type[MediaTypes.PODCAST.value] += 1
-                play_count += 1
-                _add_hour(MediaTypes.PODCAST.value, localized, runtime_minutes)
-                minutes_by_type[MediaTypes.PODCAST.value] += runtime_minutes
-                daily_minutes_by_type[MediaTypes.PODCAST.value] += runtime_minutes
-
-                _update_item_meta(
-                    MediaTypes.PODCAST.value,
-                    podcast.item_id
-                    if getattr(podcast, "item_id", None)
-                    else podcast.id,
-                    podcast.id,
-                    getattr(podcast, "status", None),
-                    getattr(podcast, "score", None),
-                    play_end,
-                )
-
-                show = getattr(podcast, "show", None)
-                if show:
-                    show_stats = podcast_rollups["shows"][show.id]
-                    show_stats["minutes"] += runtime_minutes
-                    show_stats["plays"] += 1
-                    show_stats["title"] = show.title
-                    show_stats["show"] = show.title
-                    show_stats["show_id"] = show.id
-                    show_stats["podcast_uuid"] = show.podcast_uuid or show_stats.get(
-                        "podcast_uuid"
-                    )
-                    show_stats["slug"] = show.slug or ""
-                    show_stats["image"] = show.image or ""
-                else:
-                    show_stats = podcast_rollups["shows"][podcast.id]
-                    show_stats["minutes"] += runtime_minutes
-                    show_stats["plays"] += 1
-                    show_stats["title"] = (
-                        podcast.item.title if podcast.item else "Unknown Show"
-                    )
-                    show_stats["show"] = show_stats["title"]
-                    show_stats["image"] = podcast.item.image if podcast.item else ""
-
-                episode = getattr(podcast, "episode", None)
-                episode_key = episode.id if episode else podcast.id
-                episode_stats = podcast_rollups["episodes"][episode_key]
-                if episode:
-                    episode_stats["title"] = episode.title
-                    episode_stats["episode_id"] = episode.id
-                    episode_stats["duration_seconds"] = (
-                        episode.duration or episode_stats.get("duration_seconds") or 0
-                    )
-                    episode_stats["show"] = (
-                        episode.show.title
-                        if getattr(episode, "show", None)
-                        else episode_stats.get("show")
-                    )
-                    episode_stats["show_id"] = (
-                        episode.show.id
-                        if getattr(episode, "show", None)
-                        else episode_stats.get("show_id")
-                    )
-                else:
-                    episode_stats["title"] = (
-                        podcast.item.title if podcast.item else "Unknown Episode"
-                    )
-                    episode_stats["episode_id"] = episode_key
-                    if podcast.item and podcast.item.runtime_minutes:
-                        episode_stats["duration_seconds"] = (
-                            podcast.item.runtime_minutes * 60
-                        )
-                if show:
-                    episode_stats["podcast_uuid"] = (
-                        show.podcast_uuid or episode_stats.get("podcast_uuid")
-                    )
-                    episode_stats["slug"] = show.slug or ""
-                    episode_stats["image"] = show.image or ""
-                elif podcast.item:
-                    episode_stats["image"] = podcast.item.image or ""
+        podcast_plays, podcast_missing_runtime = _add_podcast_plays(
+            user,
+            day,
+            day_start,
+            day_end,
+            prefetch,
+            plays_by_type=plays_by_type,
+            minutes_by_type=minutes_by_type,
+            daily_minutes_by_type=daily_minutes_by_type,
+            podcast_rollups=podcast_rollups,
+            add_hour=_add_hour,
+            update_item_meta=_update_item_meta,
+        )
+        play_count += podcast_plays
+        missing_runtime += podcast_missing_runtime
 
     if MediaTypes.VIDEO.value in active_media_types:
         # One play per watched day. Like History, a play counts the video's
