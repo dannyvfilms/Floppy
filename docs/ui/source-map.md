@@ -643,7 +643,7 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## SET-DATA
 
-- `src/templates/users/components/export_controls.html`
+- `src/templates/users/components/export_controls.html` (backup status region mounts `frontend/settings/BackupStatus.jsx`; fallback kept)
 - `src/templates/users/components/library_danger_zone.html`
 - `src/templates/users/data_management.html`
 - `src/templates/users/export_data.html`

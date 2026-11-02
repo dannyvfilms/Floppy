@@ -45,12 +45,21 @@ FILE_IMPORTS = {
     "wetrakr": ("import_wetrakr", "wetrakr_export", ".zip,.csv",
                 "Upload the .zip from a WeTrakr data export, or its tracklog, ratings, notes and lists .csv files. Importing lists replaces any lists previously imported from WeTrakr.",
                 "Select File", {"fields": ("mode",), "multiple": True}),
+    "hardcover": ("import_hardcover", "hardcover_csv", ".csv", "Import from Hardcover export (Account -> Export Data)", "Select CSV File", {
+        "auto": False, "submit": "Save",
+        "text_fields": (("hardcover_api_key", "Hardcover API Key", "password", "Optional — also settable in Providers > Hardcover > Connection", False),)}),
+    "mdblist": ("import_mdblist", "", "", "Import watched history, watchlist, ratings, dropped shows and collection. Lists sync separately from the Lists page.",
+                "", {"auto": False, "submit": "Import", "files": (),
+                     "text_fields": (("api_key", "MDBList API key", "password", "MDBList API key", True),)}),
+    "tvtime": ("import_tvtime", "", "", "Import from a TV Time GDPR data export (Settings -> Export My Data). Select the shows file, the movies file, or both.",
+               "Select CSV File", {"auto": False, "submit": "Import", "files": (
+                   ("tvtime_shows_csv", "Shows CSV (tracking-prod-records.csv)"), ("tvtime_movies_csv", "Movies CSV (tracking-prod-records-v2.csv)"))}),
     "storygraph": ("import_storygraph", "storygraph_csv", ".csv", "Import from StoryGraph export (Profile -> Manage Account -> Export StoryGraph Library)", "Select CSV File"),
 }
 CSV_FORMAT_DOCS = "https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#csv-import-floppy--yamtrack-format"
 
 
-def file_import(request, slug, preferences):
+def file_import(request, slug, preferences, context=None):
     """Shared single-file import presentation; the file is the only upload."""
     action, field, accept, description, label, *rest = FILE_IMPORTS[slug]
     options = rest[0] if rest else {}
@@ -59,10 +68,21 @@ def file_import(request, slug, preferences):
         "values": preferences["values"], "description": _(description), "selectLabel": _(label),
         "fileField": field, "accept": accept, "mediaTypes": [],
         "postFields": [{"name": name, "key": name} for name in options.get("fields", ("frequency", "time", "mode"))],
-        "multiple": options.get("multiple", False),
+        "multiple": options.get("multiple", False), "autoSubmit": options.get("auto", True),
+        "submitLabel": _(options.get("submit", "Import")),
+        "textFields": [{"name": name, "label": _(label), "type": kind, "placeholder": _(hint), "required": required}
+                      for name, label, kind, hint, required in options.get("text_fields", ())],
+        **({"files": [{"field": name, "label": _(label), "accept": ".csv", "selectLabel": _(label_text)}
+                      for (name, label), label_text in zip(options["files"], ("Select CSV File",) * len(options["files"]), strict=True)]} if "files" in options else {}),
+        "note": "",
         "blockedLabel": _("This import mode is not supported by this provider."),
         "oneTime": {"label": _("One-time"), "title": _("File uploads can't be scheduled. This file imports once, now.")},
     }
+    if slug == "mdblist":
+        account = (context or {}).get("mdblist_account")
+        if account and (account.is_connected() if callable(account.is_connected) else account.is_connected):
+            model["textFields"] = []
+            model["note"] = _("Using your connected MDBList account.")
     if slug in {"yamtrack", "yamtrack_native"}:
         model["docs"] = {"url": CSV_FORMAT_DOCS, "label": _("View CSV format documentation")}
     return model
@@ -121,7 +141,7 @@ def import_preferences(request, slug, context=None):
 
 
 def account_connection(request, *, connected, saved, attention, fields, messages, follow_up, connect_url, disconnect_url,
-                       instances=None, description=""):
+                       instances=None, description="", summary=None):
     """Describe an account form without serializing saved URLs or credentials.
 
     ``instances`` lists connections that can coexist (one row per saved server);
@@ -130,6 +150,7 @@ def account_connection(request, *, connected, saved, attention, fields, messages
     return {
         "connected": connected, "saved": saved, "attention": attention, "fields": fields, "messages": messages, "followUp": follow_up,
         "connectUrl": connect_url, "disconnectUrl": disconnect_url, "instances": instances, "description": description,
+        "summary": summary,
         "csrf": get_token(request), "next": request.get_full_path(),
         "labels": {text: _(text) for text in (
             "Connection settings", "Account connection", "Connected", "Not connected", "Needs attention",

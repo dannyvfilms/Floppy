@@ -171,3 +171,9 @@ a.ui-card-link:focus-visible { outline: 2px solid var(--color-accent); outline-o
 
 .ui-instance-row { display: flex; flex-direction: column; gap: .5rem; padding: .75rem; min-width: 0; border-radius: .5rem; background: var(--color-surface); }
 .ui-account-action { display: flex; flex-direction: column; gap: .75rem; }
+.ui-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .75rem; min-width: 0; border-radius: .5rem; background: var(--color-surface-strong); }
+.ui-toggle-row label { display: flex; flex-direction: column; gap: .25rem; min-width: 0; flex: 1; cursor: pointer; }
+.ui-toggle-row small { font-size: .75rem; color: var(--color-text-muted); }
+.ui-toggle-row[data-tone="warning"] label span { color: var(--color-warning-text); }
+.ui-toggle-row input { width: 1.25rem; height: 1.25rem; flex-shrink: 0; accent-color: var(--color-accent); cursor: pointer; }
+.ui-field-help { font-size: .75rem; color: var(--color-text-muted); }

@@ -12,7 +12,7 @@
 {% if not provider_tab or provider_tab == 'tracking' %}
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4">
         <h4 class="text-sm font-medium mb-3">{% translate "Plex Usernames" %}</h4>
-        <form method="post"
+        {% if provider_forms.plex_usernames %}{{ provider_forms.plex_usernames|json_script:"form-plex_usernames" }}<div data-settings-form-root data-props-id="form-plex_usernames" x-ignore hx-disable>{% endif %}<form method="post"
               action="{% url 'update_plex_usernames' %}"
               class="space-y-2">
           {% csrf_token %}
@@ -34,7 +34,7 @@
               {% translate "Save Changes" %}
             </button>
           </div>
-        </form>
+        </form>{% if provider_forms.plex_usernames %}</div>{% endif %}
       </div>
 
 {% endif %}
@@ -154,7 +154,7 @@
           {% translate "The webhook records what you watch, but Plex sends nothing when you mark an item watched by hand. Enable this to check your Plex history every 15 minutes and add those marks. It uses the webhook libraries selected on this tab. Marking an item unwatched in Plex is not synced." %}
         </p>
         {% if plex_connected %}
-          <form method="post"
+          {% if provider_forms.plex_mark_watched %}{{ provider_forms.plex_mark_watched|json_script:"form-plex_mark_watched" }}<div data-settings-form-root data-props-id="form-plex_mark_watched" x-ignore hx-disable>{% endif %}<form method="post"
                 action="{% url 'update_plex_mark_watched' %}"
                 class="space-y-3">
             {% csrf_token %}
@@ -183,7 +183,7 @@
                 {% translate "Save Changes" %}
               </button>
             </div>
-          </form>
+          </form>{% if provider_forms.plex_mark_watched %}</div>{% endif %}
         {% else %}
           <p class="text-sm text-[var(--color-warning-text)]">{% translate "Connect Plex from its Connection tab to use this." %}</p>
         {% endif %}

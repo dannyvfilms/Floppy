@@ -158,7 +158,7 @@
         <p class="text-[var(--color-text-muted)] mb-4 text-sm">
           {% translate "Stop events always record what you watched; Play and Pause only update Now Playing. Enable these to also sync the watched checkmark you set by hand in Jellyfin. Official plugin: needs the User Data Saved notification type and the current template on the Connection tab. Unofficial plugin: needs the MarkPlayed and MarkUnplayed events." %}
         </p>
-        <form method="post"
+        {% if provider_forms.jellyfin_events %}{{ provider_forms.jellyfin_events|json_script:"form-jellyfin_events" }}<div data-settings-form-root data-props-id="form-jellyfin_events" x-ignore hx-disable>{% endif %}<form method="post"
               action="{% url 'update_jellyfin_webhook_events' %}"
               class="space-y-3">
           {% csrf_token %}
@@ -206,7 +206,7 @@
               {% translate "Save Changes" %}
             </button>
           </div>
-        </form>
+        </form>{% if provider_forms.jellyfin_events %}</div>{% endif %}
       </div>
     </div>
 

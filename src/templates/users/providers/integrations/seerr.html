@@ -12,7 +12,7 @@
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4">
         <h4 class="text-sm font-medium mb-3">{% translate "Seerr Settings" %}</h4>
         {# kept: jellyseerr_* form fields map to unrenamed User model fields #}
-        <form method="post" action="{% url 'update_jellyseerr_settings' %}" class="space-y-3">
+        {% if provider_forms.seerr_settings %}{{ provider_forms.seerr_settings|json_script:"form-seerr_settings" }}<div data-settings-form-root data-props-id="form-seerr_settings" x-ignore hx-disable>{% endif %}<form method="post" action="{% url 'update_jellyseerr_settings' %}" class="space-y-3">
           {% csrf_token %}
           {% if provider_slug %}<input type="hidden" name="next" value="{{ request.get_full_path }}">{% endif %}
 
@@ -217,7 +217,7 @@
               {% translate "Save Changes" %}
             </button>
           </div>
-        </form>
+        </form>{% if provider_forms.seerr_settings %}</div>{% endif %}
       </div>
 
 {% if not provider_tab or provider_tab == 'connection' %}

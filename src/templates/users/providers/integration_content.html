@@ -3,10 +3,11 @@
 {% if provider_tab == 'sync' %}{% include "users/components/sync_state_section.html" %}{% endif %}
 {% if provider_slug == 'jellyfin' %}{% include "users/providers/integrations/jellyfin.html" %}{% endif %}
 {% if provider_slug == 'plex' %}{% include "users/providers/integrations/plex.html" %}{% endif %}
-{% if provider_slug == 'emby' %}{% include "users/providers/integrations/emby.html" %}{% endif %}
-{% if provider_slug == 'kodi' %}{% include "users/providers/integrations/kodi.html" %}{% endif %}
+
+
 {% if provider_slug == 'stremio' %}{% include "users/providers/integrations/stremio.html" %}{% endif %}
 {% if provider_slug == 'seerr' %}{% include "users/providers/integrations/seerr.html" %}{% endif %}
-{% if provider_slug == 'nuvio' %}{% include "users/providers/integrations/nuvio.html" %}{% endif %}
-{% if provider_slug == 'navidrome' %}{% include "users/providers/integrations/navidrome.html" %}{% endif %}
+
+
+{% include "users/providers/setup_guide.html" %}
 </div>

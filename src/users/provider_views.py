@@ -12,7 +12,7 @@ from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
 
 from app.log_safety import redact_secrets
-from users import metadata_views, provider_ui, views
+from users import metadata_views, provider_forms, provider_guides, provider_ui, views
 from users.provider_catalog import (
     ACCOUNT_IMPORTS,
     CAPABILITIES,
@@ -20,6 +20,7 @@ from users.provider_catalog import (
     catalog,
     provider_state,
 )
+from users.templatetags.user_tags import user_datetime_format
 
 
 @require_GET
@@ -118,7 +119,9 @@ INSTANCE_CONNECTIONS = {
 }
 
 
-# slug: (button label, fields as (name, label, input type, placeholder, required)).
+SYNC_INTERVALS = (("5", "5 minutes"), ("15", "15 minutes"), ("30", "30 minutes"), ("60", "60 minutes"))
+
+# slug: (button label, fields as (name, label, input type, placeholder, required[, select options])).
 ACCOUNT_CONNECTIONS = {
     "pocketcasts": ("Connect Pocket Casts", (("email", "Email", "email", "Your Pocket Casts email", True),
                                               ("password", "Password", "password", "Your Pocket Casts password", True))),
@@ -127,6 +130,16 @@ ACCOUNT_CONNECTIONS = {
     "lastfm": ("Connect Last.fm", (("lastfm_username", "Last.fm Username", "text", "Your Last.fm username", True),)),
     "psn": ("Connect PlayStation", (("npsso", "NPSSO token", "password", "NPSSO token", False),)),
     "storyteller": ("Connect Storyteller", (("server_url", "Server URL", "url", "https://storyteller.example.com", True),)),
+    "kavita": ("Connect Kavita", (("base_url", "Server URL", "url", "https://kavita.example.com", True),
+                                  ("api_key", "API Key", "password", "Kavita API key", True),
+                                  ("sync_interval_minutes", "Sync every", "select", "", True, SYNC_INTERVALS))),
+    "komga": ("Connect Komga", (("base_url", "Server URL", "url", "https://komga.example.com", True),
+                                ("api_key", "API Key", "password", "Komga API key", True),
+                                ("sync_interval_minutes", "Sync every", "select", "", True, SYNC_INTERVALS))),
+    "xbox": ("Connect Xbox", (("api_key", "OpenXBL API key", "password", "OpenXBL API key", False),)),
+    "stremio": ("Connect Stremio", (("email", "Email", "email", "Stremio email", False),
+                                    ("password", "Password", "password", "Stremio password", False),
+                                    ("auth_key", "Auth key (optional)", "password", "Stremio auth key", False))),
 }
 
 
@@ -234,8 +247,12 @@ def provider_detail(request, slug):
         context["account_connection"] = provider_ui.account_connection(
             request, connected=bool(account and _flag(account.is_connected)), saved=bool(account),
             attention=bool(account and getattr(account, "connection_broken", False)),
-            fields=[{"name": name, "label": _(label), "type": kind, "placeholder": _(hint), "required": required}
-                    for name, label, kind, hint, required in rows],
+            fields=[{"name": row[0], "label": _(row[1]), "type": row[2], "placeholder": _(row[3]) if row[3] else "", "required": row[4],
+                     **({"options": [{"value": value, "label": _(text)} for value, text in row[5:][0]], "value": "15"} if row[5:] else {})}
+                    for row in rows],
+            summary={"url": getattr(account, "base_url", "") or getattr(account, "server_url", ""),
+                     "lastSync": user_datetime_format(account.last_sync_at, request.user) if getattr(account, "last_sync_at", None) else "",
+                     "error": redact_secrets(getattr(account, "last_error_message", "") or "")} if account else None,
             messages={"disconnected": _("Connect your account to enable imports."),
                       "connected": _("Your account is connected and imports run automatically."),
                       "attention": _("Reconnect to restore automatic imports.")},
@@ -261,10 +278,14 @@ def provider_detail(request, slug):
             connect_url=reverse("gpodder_connect"), disconnect_url=reverse("gpodder_disconnect"),
         )
         context["account_connection"]["submitLabel"] = _("Connect GPodder")
+    if tab in {"connection", "tracking"} and slug in {"emby", "kodi", "navidrome", "nuvio"}:
+        context["setup_guide"], context["guide_copy"] = provider_guides.setup_guide(request, slug)
+    if slug in {"plex", "jellyfin", "seerr", "koreader"}:
+        context["provider_forms"] = provider_forms.build(request, slug, tab, context)
     if tab == "import" and slug != "anilist":
         context["import_preferences"] = provider_ui.import_preferences(request, slug, context)
         if slug in provider_ui.FILE_IMPORTS:
-            context["file_import"] = provider_ui.file_import(request, slug, context["import_preferences"])
+            context["file_import"] = provider_ui.file_import(request, slug, context["import_preferences"], context)
         if slug == "clz":
             preferences = context["import_preferences"]
             context["clz_import"] = {
@@ -300,6 +321,23 @@ def provider_detail(request, slug):
             }
     if slug in {"mal", "tmdb", "wetrakr"} and tab in {"connection", "sync", "activity"}:
         context.update(views.mal_export_context(request, slug))
+    if slug == "mal" and tab == "connection":
+        account = context.get("mal_account")
+        connected = bool(account and _flag(account.is_connected))
+        messages = {
+            "connected": _("Connected as %(name)s.") % {"name": (account.mal_username if account else "") or _("MyAnimeList user")},
+            "attention": _("MyAnimeList authorization needs attention."),
+            "disconnected": _("This authorizes outgoing writes and enables automatic status, progress and score updates. Adding API credentials alone does not enable sync.")
+            if context.get("mal_sync_configured") else _("Add a MyAnimeList Client ID and Client secret to enable account authorization."),
+        }
+        context["account_connection"] = provider_ui.account_connection(
+            request, connected=connected, saved=bool(account), attention=bool(account and account.connection_broken),
+            fields=[], messages=messages, follow_up=None,
+            connect_url=reverse("mal_oauth") if context.get("mal_sync_configured") else "", disconnect_url=reverse("mal_disconnect"),
+            summary={"url": "", "lastSync": "", "error": redact_secrets(account.last_error_message or "")} if account and account.connection_broken else None,
+        )
+        context["account_connection"]["title"] = _("MyAnimeList account")
+        context["account_connection"]["submitLabel"] = _("Authorize and enable MyAnimeList sync")
     context["provider_page"] = provider_ui.provider_page(request, provider, tab, credential_context=context)
     return render(request, "users/provider_detail.html", context)
 

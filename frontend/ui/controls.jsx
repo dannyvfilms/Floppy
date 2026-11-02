@@ -274,3 +274,11 @@ export function CatalogCard({ title, description, logo, href, label, attention, 
     </svg>
   </button>}</div>;
 }
+
+// A labelled on/off setting that posts like a native checkbox.
+export function ToggleRow({ id, name, label, help, defaultChecked, tone, disabled }) {
+  return <div className="ui-toggle-row" data-tone={tone}>
+    <label htmlFor={id}><span>{label}</span>{help && <small>{help}</small>}</label>
+    <input id={id} type="checkbox" name={name} defaultChecked={defaultChecked} disabled={disabled} />
+  </div>;
+}

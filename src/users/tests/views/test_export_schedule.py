@@ -259,3 +259,46 @@ class DatabaseSnapshotStatusTests(SimpleTestCase):
         self.assertNotIn(
             "Floppy separately writes a verified database snapshot", rendered
         )
+
+
+class BackupPanelPropsTests(SimpleTestCase):
+    def _backup(self, freshness):
+        return {
+            "path": "/b/alice",
+            "freshness": freshness,
+            "destination": {"writable": True, "free_bytes": 2048},
+        }
+
+    def test_failure_newer_than_success_is_a_warning(self):
+        from users.views import backup_panel_props
+
+        fresh = {
+            "last_success_age_seconds": 7200,
+            "last_success_name": "a.csv",
+            "last_failure_age_seconds": 60,
+            "last_failure": "disk full",
+            "failing": True,
+        }
+        sections = backup_panel_props(self._backup(fresh), {"supported": False})
+        tones = [line["tone"] for line in sections[0]["lines"]]
+        self.assertIn("warning", tones)
+        self.assertIn("PostgreSQL", sections[1]["intro"])
+
+    def test_no_history_says_so_and_disabled_snapshot_is_flagged(self):
+        from users.views import backup_panel_props
+
+        empty = {
+            "last_success_age_seconds": None,
+            "last_failure_age_seconds": None,
+            "failing": False,
+        }
+        snapshot = {
+            "supported": True,
+            "enabled": False,
+            "path": "/b/database",
+            "freshness": empty,
+            "destination": {"writable": True, "free_bytes": None},
+        }
+        sections = backup_panel_props(self._backup(empty), snapshot)
+        self.assertEqual(sections[0]["lines"][0]["tone"], "warning")
+        self.assertIn("Disabled", sections[1]["lines"][0]["text"])

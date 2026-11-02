@@ -24,18 +24,26 @@ from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.http import Http404, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.template.defaultfilters import pluralize
+from django.template.defaultfilters import filesizeformat, pluralize
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.timesince import timesince
 from django.utils.translation import gettext
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from django_celery_beat.models import PeriodicTask
 from django_celery_results.models import TaskResult
 
 from api import scopes as api_scopes
-from app import cache_utils, history_cache, image_cache, signals, statistics_cache
+from app import (
+    backup_status,
+    cache_utils,
+    history_cache,
+    image_cache,
+    signals,
+    statistics_cache,
+)
 from app import helpers as app_helpers
 from app.discover.feeds import get_external_row_definitions
 from app.discover.registry import DISCOVER_MEDIA_TYPES
@@ -1589,7 +1597,8 @@ def preferences(request):
         currency = request.POST.get("currency")
         if (
             currency
-            and currency in [choice[0] for choice in User._meta.get_field("currency").choices]
+            and currency
+            in [choice[0] for choice in User._meta.get_field("currency").choices]
             and request.user.currency != currency
         ):
             request.user.currency = currency
@@ -1820,7 +1829,11 @@ def convert_anime_library(request):
         "Converting your existing anime. This runs in the background; titles "
         "that cannot be converted safely are left as they are.",
     )
-    return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("metadata_settings")))
+    return redirect(
+        app_helpers.safe_return_url(
+            request, request.POST.get("next"), reverse("metadata_settings")
+        )
+    )
 
 
 @login_required
@@ -1835,7 +1848,11 @@ def convert_tv_library(request):
         "Moving your tracked TV shows. This runs in the background; shows that "
         "cannot be moved safely are left as they are.",
     )
-    return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("metadata_settings")))
+    return redirect(
+        app_helpers.safe_return_url(
+            request, request.POST.get("next"), reverse("metadata_settings")
+        )
+    )
 
 
 @login_required
@@ -1850,13 +1867,21 @@ def repair_duplicate_anime_libraries(request):
         "Repairing duplicated anime libraries. This runs in the background; "
         "shows that cannot be merged safely are left untouched.",
     )
-    return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("metadata_settings")))
+    return redirect(
+        app_helpers.safe_return_url(
+            request, request.POST.get("next"), reverse("metadata_settings")
+        )
+    )
 
 
 @require_GET
 def integrations(request):
     """Render the integrations settings page."""
-    return render(request, "users/integrations.html", integrations_context(request, include_tokens=True))
+    return render(
+        request,
+        "users/integrations.html",
+        integrations_context(request, include_tokens=True),
+    )
 
 
 def integrations_context(
@@ -2007,6 +2032,7 @@ def integrations_context(
             if reference.integration == slug
         ]
     return context
+
 
 STREMIO_CATALOG_STATUS_CACHE_SECONDS = 120
 
@@ -2194,7 +2220,9 @@ def import_data_context(request):
         "plex_sections_json": json.dumps(plex_sections),
         "steam_import_tooltip": {
             "label": gettext("Steam ID help"),
-            "text": gettext("Find your Steam ID on your account details page. Your profile must be public if the API key is not linked to that Steam ID."),
+            "text": gettext(
+                "Find your Steam ID on your account details page. Your profile must be public if the API key is not linked to that Steam ID."
+            ),
         },
         "audiobookshelf_account": audiobookshelf_account,
         "komga_account": komga_account,
@@ -2266,11 +2294,18 @@ def save_import_settings(request):
     clz_tag = request.POST.get("clz_wishlist_tag")
     if clz_status is not None and clz_status and clz_status not in Status.values:
         return HttpResponse(status=400)
-    if clz_tag is not None and len(clz_tag.strip()) > request.user._meta.get_field("clz_wishlist_tag").max_length:
+    if (
+        clz_tag is not None
+        and len(clz_tag.strip())
+        > request.user._meta.get_field("clz_wishlist_tag").max_length
+    ):
         return HttpResponse(status=400)
     if watchlist_status is not None and watchlist_status not in Status.values:
         return HttpResponse(status=400)
-    if watchlist_tag and (not watchlist_tag.isdecimal() or not Tag.objects.filter(user=request.user, pk=watchlist_tag).exists()):
+    if watchlist_tag and (
+        not watchlist_tag.isdecimal()
+        or not Tag.objects.filter(user=request.user, pk=watchlist_tag).exists()
+    ):
         return HttpResponse(status=400)
 
     fields = []
@@ -2287,7 +2322,9 @@ def save_import_settings(request):
         request.user.watchlist_import_status = watchlist_status
         fields.append("watchlist_import_status")
     if watchlist_tag is not None:
-        request.user.watchlist_import_tag_id = int(watchlist_tag) if watchlist_tag else None
+        request.user.watchlist_import_tag_id = (
+            int(watchlist_tag) if watchlist_tag else None
+        )
         fields.append("watchlist_import_tag")
 
     if clz_status is not None:
@@ -2425,6 +2462,8 @@ def _backup_dir_status(user):
         "path": str(backup_dir),
         "file_count": file_count,
         "host_reachable": _mount_is_host_reachable(backup_dir),
+        "destination": backup_status.destination_check(backup_dir),
+        "freshness": backup_status.freshness(backup_status.CSV_EXPORT),
     }
 
 
@@ -2449,6 +2488,7 @@ def _db_snapshot_status():
     that explains CSV export can show whether a real database backup exists.
     """
     if not settings.USING_SQLITE_DATABASE:
+        # PostgreSQL backups are operator-managed; Floppy cannot vouch for them.
         return {"supported": False}
     snapshot_dir = Path(settings.BACKUP_DIR) / "database"
     snapshot_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -2463,7 +2503,109 @@ def _db_snapshot_status():
         "file_count": file_count,
         "host_reachable": _mount_is_host_reachable(snapshot_dir),
         "enabled": settings.DB_SNAPSHOT_ENABLED,
+        "destination": backup_status.destination_check(snapshot_dir),
+        "freshness": backup_status.freshness(backup_status.SNAPSHOT),
     }
+
+
+def _age_text(seconds):
+    return (
+        timesince(timezone.now() - timedelta(seconds=seconds))
+        if seconds is not None
+        else ""
+    )
+
+
+def _freshness_lines(freshness, destination):
+    """Server-translated freshness lines; liveness is never reported as freshness."""
+    lines = []
+    if freshness["last_success_age_seconds"] is not None:
+        lines.append(
+            {
+                "tone": "muted",
+                "text": gettext("Last successful backup: %(name)s, %(age)s ago.")
+                % {
+                    "name": freshness["last_success_name"] or "",
+                    "age": _age_text(freshness["last_success_age_seconds"]),
+                },
+            },
+        )
+    else:
+        lines.append(
+            {"tone": "warning", "text": gettext("No successful backup recorded yet.")}
+        )
+    if freshness["last_failure_age_seconds"] is not None:
+        lines.append(
+            {
+                "tone": "warning" if freshness["failing"] else "muted",
+                "text": gettext("Last failure: %(age)s ago. %(error)s")
+                % {
+                    "age": _age_text(freshness["last_failure_age_seconds"]),
+                    "error": freshness["last_failure"] or "",
+                },
+            },
+        )
+    if not destination["writable"]:
+        lines.append(
+            {"tone": "warning", "text": gettext("The backup folder is not writable.")}
+        )
+    elif destination["free_bytes"] is not None:
+        lines.append(
+            {
+                "tone": "muted",
+                "text": gettext("%(free)s free in the backup folder.")
+                % {"free": filesizeformat(destination["free_bytes"])},
+            },
+        )
+    return lines
+
+
+def backup_panel_props(backup, snapshot):
+    """Sections for the shared BackupStatus component."""
+    sections = [
+        {
+            "id": "csv",
+            "intro": gettext("Scheduled exports save to:"),
+            "path": backup["path"],
+            "lines": _freshness_lines(backup["freshness"], backup["destination"]),
+        },
+    ]
+    if not snapshot["supported"]:
+        sections.append(
+            {
+                "id": "snapshot",
+                "intro": gettext(
+                    "PostgreSQL database backups are not managed by Floppy. "
+                    "Configure and test pg_dump/pg_restore separately.",
+                ),
+                "path": "",
+                "lines": [],
+            },
+        )
+    else:
+        lines = (
+            _freshness_lines(snapshot["freshness"], snapshot["destination"])
+            if snapshot["enabled"]
+            else [
+                {
+                    "tone": "warning",
+                    "text": gettext(
+                        "Disabled: set DB_SNAPSHOT_ENABLED=true to enable."
+                    ),
+                }
+            ]
+        )
+        sections.append(
+            {
+                "id": "snapshot",
+                "intro": gettext(
+                    "Database snapshot (same-host recovery point) saved to:"
+                ),
+                "path": snapshot["path"],
+                "lines": lines,
+            },
+        )
+    return sections
 
 
 def export_data_context(request):
@@ -2474,12 +2616,15 @@ def export_data_context(request):
         if mt.value not in (MediaTypes.EPISODE.value, MediaTypes.SEASON.value)
     ]
     export_tasks = request.user.get_export_tasks()
+    backup = _backup_dir_status(request.user)
+    db_snapshot_status = _db_snapshot_status()
     return {
         "user": request.user,
         "media_types": media_types,
         "export_tasks": export_tasks,
-        "backup_status": _backup_dir_status(request.user),
-        "db_snapshot_status": _db_snapshot_status(),
+        "backup_status": backup,
+        "db_snapshot_status": db_snapshot_status,
+        "backup_panel": backup_panel_props(backup, db_snapshot_status),
     }
 
 
@@ -2669,7 +2814,10 @@ def export_logs(request):
 
     log_name = Path(settings.LOG_FILE).name
     sections = [(log_name, _log_files(log_name))]
-    sections += [(n, _log_files(n)) for n in ("restart-history.log", "supervisord.log", "faulthandler.log")]
+    sections += [
+        (n, _log_files(n))
+        for n in ("restart-history.log", "supervisord.log", "faulthandler.log")
+    ]
 
     def lines():
         for title, found in sections:
@@ -2759,11 +2907,19 @@ def bulk_delete_by_import_source(request, media_type, source):
     """
     if media_type == MediaTypes.EPISODE.value or media_type not in MediaTypes.values:
         messages.error(request, "Unknown media type.")
-        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
+        return redirect(
+            app_helpers.safe_return_url(
+                request, request.POST.get("next"), reverse("import_data")
+            )
+        )
 
     if not ImportRun.objects.filter(user=request.user, source=source).exists():
         messages.error(request, "Unknown import source.")
-        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
+        return redirect(
+            app_helpers.safe_return_url(
+                request, request.POST.get("next"), reverse("import_data")
+            )
+        )
 
     # A running import writes Music rows and re-creates trackers as it goes, so
     # deleting underneath it leaves rows the sweep has already walked past.
@@ -2777,7 +2933,11 @@ def bulk_delete_by_import_source(request, media_type, source):
             request,
             "Cancel the running import from this source before deleting it.",
         )
-        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
+        return redirect(
+            app_helpers.safe_return_url(
+                request, request.POST.get("next"), reverse("import_data")
+            )
+        )
 
     model = apps.get_model(app_label="app", model_name=media_type)
     doomed = model.objects.filter(user=request.user, import_run__source=source)
@@ -2800,7 +2960,11 @@ def bulk_delete_by_import_source(request, media_type, source):
         messages.success(request, f"Permanently deleted {deleted_count} item(s).")
     else:
         messages.info(request, "Nothing to delete.")
-    return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
+    return redirect(
+        app_helpers.safe_return_url(
+            request, request.POST.get("next"), reverse("import_data")
+        )
+    )
 
 
 # Cap on ids per `__in` lookup. A >100k-scrobble library can reference more
@@ -3106,7 +3270,11 @@ def cancel_import_run(request, run_id):
 
     if run.status != ImportRun.Status.RUNNING:
         messages.error(request, "This import is not running.")
-        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
+        return redirect(
+            app_helpers.safe_return_url(
+                request, request.POST.get("next"), reverse("import_data")
+            )
+        )
 
     if run.task_id:
         celery_app.control.revoke(run.task_id, terminate=True)
@@ -3118,7 +3286,11 @@ def cancel_import_run(request, run_id):
     )
     _reset_history_import_status(request.user, run.source)
     messages.success(request, "Import cancelled.")
-    return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
+    return redirect(
+        app_helpers.safe_return_url(
+            request, request.POST.get("next"), reverse("import_data")
+        )
+    )
 
 
 def _reset_history_import_status(user, source):
@@ -3195,7 +3367,11 @@ def cancel_pending_import(request, task_id):
             "This import is no longer queued. A running import can be cancelled "
             "from Recent Import Runs.",
         )
-        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
+        return redirect(
+            app_helpers.safe_return_url(
+                request, request.POST.get("next"), reverse("import_data")
+            )
+        )
 
     already_started = AsyncResult(task_id).status == states.STARTED
     celery_app.control.revoke(task_id, terminate=already_started)
@@ -3211,7 +3387,11 @@ def cancel_pending_import(request, task_id):
         )
     _reset_history_import_status(request.user, pending["source"])
     messages.success(request, "Import cancelled.")
-    return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
+    return redirect(
+        app_helpers.safe_return_url(
+            request, request.POST.get("next"), reverse("import_data")
+        )
+    )
 
 
 @require_POST
@@ -3230,7 +3410,11 @@ def rollback_import_run(request, run_id):
 
     if run.status == ImportRun.Status.RUNNING:
         messages.error(request, "Cancel the import before rolling it back.")
-        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
+        return redirect(
+            app_helpers.safe_return_url(
+                request, request.POST.get("next"), reverse("import_data")
+            )
+        )
 
     rollback_media_types = [
         media_type
@@ -3259,7 +3443,11 @@ def rollback_import_run(request, run_id):
         messages.success(request, f"Undo complete: {' and '.join(parts)}.")
     else:
         messages.info(request, "Nothing to remove for this import.")
-    return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
+    return redirect(
+        app_helpers.safe_return_url(
+            request, request.POST.get("next"), reverse("import_data")
+        )
+    )
 
 
 def _task_belongs_to_user(task, user):
@@ -3275,7 +3463,11 @@ def delete_import_schedule(request):
         task = PeriodicTask.objects.get(name=task_name)
     except PeriodicTask.DoesNotExist:
         messages.error(request, "Import schedule not found.")
-        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
+        return redirect(
+            app_helpers.safe_return_url(
+                request, request.POST.get("next"), reverse("import_data")
+            )
+        )
 
     # Last.fm polling is a single shared task covering every connected
     # user (it has no per-user kwargs), so it can never match the
@@ -3284,11 +3476,19 @@ def delete_import_schedule(request):
     if task.task == "Poll Last.fm for all users":
         LastFMAccount.objects.filter(user=request.user).delete()
         messages.info(request, "Disconnected Last.fm.")
-        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
+        return redirect(
+            app_helpers.safe_return_url(
+                request, request.POST.get("next"), reverse("import_data")
+            )
+        )
 
     if not _task_belongs_to_user(task, request.user):
         messages.error(request, "Import schedule not found.")
-        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
+        return redirect(
+            app_helpers.safe_return_url(
+                request, request.POST.get("next"), reverse("import_data")
+            )
+        )
 
     if task.task == WATCHLIST_TASK_NAME:
         PlexAccount.objects.filter(user=request.user).update(
@@ -3300,7 +3500,11 @@ def delete_import_schedule(request):
         )
     task.delete()
     messages.success(request, "Import schedule deleted.")
-    return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
+    return redirect(
+        app_helpers.safe_return_url(
+            request, request.POST.get("next"), reverse("import_data")
+        )
+    )
 
 
 @require_POST
@@ -3471,7 +3675,9 @@ def create_catalog_grant(request):
     name = (request.POST.get("name") or "").strip()[:MAX_TOKEN_NAME_LENGTH]
     if not name:
         messages.error(request, "Give the install a name so you can recognise it.")
-        return redirect(reverse("provider_detail", args=["stremio"]) + "?tab=connection")
+        return redirect(
+            reverse("provider_detail", args=["stremio"]) + "?tab=connection"
+        )
 
     allow_playback_start = request.POST.get("allow_playback_start") == "on"
     grant, _token = CatalogGrant.generate(
@@ -3647,7 +3853,11 @@ def update_group_scrobbled_anime(request):
     """Toggle converting flat MAL anime to per-episode tracking on scrobble."""
     request.user.group_scrobbled_anime = request.POST.get("enabled") == "true"
     request.user.save(update_fields=["group_scrobbled_anime"])
-    return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("provider_activity")))
+    return redirect(
+        app_helpers.safe_return_url(
+            request, request.POST.get("next"), reverse("provider_activity")
+        )
+    )
 
 
 def _plex_library_values(account):
@@ -4113,7 +4323,11 @@ def update_tmdb_proxy(request):
         "TMDB proxy updated successfully" if proxy_url else "TMDB proxy removed",
     )
 
-    return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("advanced")))
+    return redirect(
+        app_helpers.safe_return_url(
+            request, request.POST.get("next"), reverse("advanced")
+        )
+    )
 
 
 # Form fields that describe the save request itself, not the media list view.

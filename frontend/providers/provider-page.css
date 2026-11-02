@@ -34,6 +34,8 @@
   background: var(--settings-card-badge-background); color: var(--settings-card-badge-text); font-size: 12px; line-height: 16px; }
 .provider-fallback-pending,
 [data-provider-credentials-root]:not([data-react-mounted]),
+[data-setup-guide-root]:not([data-react-mounted]),
+[data-settings-form-root]:not([data-react-mounted]),
 [data-import-preferences-root]:not([data-react-mounted]),
 [data-file-import-root]:not([data-react-mounted]),
 [data-account-connection-root]:not([data-react-mounted]),
@@ -54,3 +56,13 @@
 .provider-directory header h2 svg { width: 1.5rem; height: 1.5rem; color: var(--color-link); }
 .provider-directory header p { margin-top: 1rem; font-size: .875rem; color: var(--color-text-muted); }
 .provider-directory header a { font-size: .75rem; color: var(--color-link); text-decoration: underline; }
+
+.ui-guide-steps { display: flex; flex-direction: column; gap: .5rem; padding-left: 1.25rem; margin: 0; }
+.ui-guide-steps ul { margin: .5rem 0 0; padding-left: 1.25rem; list-style: disc; }
+.ui-copy-value { display: flex; align-items: center; gap: .5rem; margin-top: .5rem; min-width: 0; }
+.ui-copy-value code { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+.ui-backup-status { font-size: .875rem; margin-bottom: 1.25rem; overflow-wrap: anywhere; }
+.ui-backup-status code { color: var(--color-text-secondary); background: var(--color-surface-strong); padding: .125rem .375rem; border-radius: .25rem; font-size: .75rem; }
+.ui-backup-line { font-size: .75rem; margin-top: .25rem; color: var(--color-text-muted); }
+.ui-backup-line.ui-backup-warning { color: var(--color-warning-text); }

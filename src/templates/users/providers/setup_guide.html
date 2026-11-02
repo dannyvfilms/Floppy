@@ -1,0 +1,16 @@
+{% load i18n %}
+{% if setup_guide %}
+  {{ setup_guide|json_script:"setup-guide-props" }}
+  <div data-setup-guide-root data-props-id="setup-guide-props" x-ignore hx-disable>
+    <section class="settings-card">
+      <h4>{{ setup_guide.title }}</h4>
+      <p>{{ setup_guide.description }}</p>
+      <h4>{{ setup_guide.heading }}</h4>
+      <ol class="ui-guide-steps">
+        {% for step in setup_guide.steps %}<li>{% include "users/providers/setup_guide_parts.html" with parts=step.parts|default:step %}
+          {% if step.items %}<ul>{% for item in step.items %}<li>{% include "users/providers/setup_guide_parts.html" with parts=item %}</li>{% endfor %}</ul>{% endif %}</li>{% endfor %}
+      </ol>
+      {% for key, value in guide_copy.items %}<input type="hidden" data-copy-id="{{ key }}" value="{{ value }}" readonly>{% endfor %}
+    </section>
+  </div>
+{% endif %}

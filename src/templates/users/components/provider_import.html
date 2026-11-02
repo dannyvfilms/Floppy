@@ -1395,7 +1395,7 @@
               </div>
             {% endif %}
             <div class="space-y-3">
-              <form method="post" action="{% url 'koreader_settings' %}" class="space-y-3 border border-gray-600 rounded-md p-3">
+              {% if provider_forms.koreader %}{{ provider_forms.koreader|json_script:"form-koreader" }}<div data-settings-form-root data-props-id="form-koreader" x-ignore hx-disable>{% endif %}<form method="post" action="{% url 'koreader_settings' %}" class="space-y-3 border border-gray-600 rounded-md p-3">
                 {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
                 <p class="text-sm font-medium text-[var(--color-text-secondary)]">{% translate "Settings" %}</p>
@@ -1445,7 +1445,7 @@
                 <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-[var(--color-surface-strong)] text-[var(--color-text)] border border-gray-600 hover:bg-[var(--color-surface-hover)]">
                   {% translate "Save settings" %}
                 </button>
-              </form>
+              </form>{% if provider_forms.koreader %}</div>{% endif %}
               {% if provider_tab != 'connection' %}
 <form method="post" action="{% url 'import_koreader' %}">
                 {% csrf_token %}
@@ -1473,7 +1473,7 @@
             <p class="text-sm text-[var(--color-text-muted)]">
               {% translate "Connect your self-hosted KOReader sync server. Enable" %} <strong>{% translate "Send document metadata" %}</strong> {% translate "in KOReader for automatic matching on supported servers." %}
             </p>
-            <form method="post" action="{% url 'koreader_connect' %}" class="space-y-3">
+            {% if provider_forms.koreader %}{{ provider_forms.koreader|json_script:"form-koreader" }}<div data-settings-form-root data-props-id="form-koreader" x-ignore hx-disable>{% endif %}<form method="post" action="{% url 'koreader_connect' %}" class="space-y-3">
               {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
               <input type="hidden" name="frequency" x-model="importFrequency">
@@ -1523,7 +1523,7 @@
                       :class="standardImportsDisabled() ? 'opacity-50 cursor-not-allowed' : ''">
                 {% translate "Connect & Import" %}
               </button>
-            </form>
+            </form>{% if provider_forms.koreader %}</div>{% endif %}
           {% endif %}
         </div>
 {% if provider_tab != 'import' %}</div></div>{% endif %}
@@ -2222,7 +2222,13 @@
 {% endif %}
         <div class="{% if provider_tab != 'import' %}bg-[var(--color-surface-strong)] p-4 rounded-lg{% endif %}">
           {% if provider_tab != 'import' %}<div class="flex items-center mb-3">{% source_display "mdblist" %}</div>{% endif %}
-          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import watched history, watchlist, ratings, dropped shows and collection. Lists sync separately from the Lists page." %}</p>
+          {% if provider_tab == 'import' and file_import %}
+      {{ file_import|json_script:"file-import-props" }}
+      <div data-file-import-root data-props-id="file-import-props" x-ignore hx-disable>
+        {% include "users/components/file_import_fallback.html" %}
+      </div>
+{% else %}
+<p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import watched history, watchlist, ratings, dropped shows and collection. Lists sync separately from the Lists page." %}</p>
 
           <form method="post" action="{% url 'import_mdblist' %}">
             {% csrf_token %}
@@ -2261,6 +2267,7 @@
               </p>
             {% endif %}
           </form>
+{% endif %}
         </div>
 {% if provider_tab != 'import' %}</div></div>{% endif %}
 
@@ -3341,6 +3348,12 @@
             </button>
 {% endif %}
         <div class="{% if provider_tab != 'import' %}bg-[var(--color-surface-strong)] p-4 rounded-lg{% endif %}">
+{% if provider_tab == 'import' and file_import %}
+      {{ file_import|json_script:"file-import-props" }}
+      <div data-file-import-root data-props-id="file-import-props" x-ignore hx-disable>
+        {% include "users/components/file_import_fallback.html" %}
+      </div>
+{% else %}
           <div class="flex items-center mb-3">{% if provider_tab != 'import' %}{% source_display "hardcover" %}{% endif %}{% include "users/components/import_upload_badge.html" %}</div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import from Hardcover export (Account -> Export Data)" %}</p>
           <form method="post"
@@ -3374,6 +3387,7 @@
               {% translate "Save" %}
             </button>
           </form>
+{% endif %}
           <div class="mt-4 pt-4 border-t border-gray-600">
             <p class="text-sm font-medium text-[var(--color-text)] mb-1">{% translate "Sync from your account" %}</p>
             <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Pull your shelves, ratings and progress using your API key." %}</p>
@@ -3569,6 +3583,12 @@
             </button>
 {% endif %}
         <div class="{% if provider_tab != 'import' %}bg-[var(--color-surface-strong)] p-4 rounded-lg{% endif %}">
+{% if provider_tab == 'import' and file_import %}
+      {{ file_import|json_script:"file-import-props" }}
+      <div data-file-import-root data-props-id="file-import-props" x-ignore hx-disable>
+        {% include "users/components/file_import_fallback.html" %}
+      </div>
+{% else %}
           <div class="flex items-center mb-3">{% if provider_tab != 'import' %}{% source_display "tvtime" %}{% endif %}{% include "users/components/import_upload_badge.html" %}</div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import from a TV Time GDPR data export (Settings -> Export My Data). Select the shows file, the movies file, or both." %}</p>
           <form method="post"
@@ -3608,6 +3628,7 @@
               {% translate "Import" %}
             </button>
           </form>
+{% endif %}
         </div>
 {% if provider_tab != 'import' %}</div></div>{% endif %}
 

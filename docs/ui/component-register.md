@@ -584,18 +584,24 @@ templates are compatibility/composition sources, not equally active parallel pag
 - Source inventory: shared file import is `frontend/providers/FileImport.jsx`;
   `clz_import_fallback.html` is its retained server fallback. Their ownership is
   recorded here; this alphabet change does not alter their migration state.
-- Migration status (browser-verified only; iOS/Android unverified): single-file imports for
-  Yamtrack/Floppy, HLTB, Playnite, Grouvee, IMDb, Goodreads, StoryGraph, YouTube and WeTrakr use `FileImport.jsx`
-  through `provider_ui.FILE_IMPORTS` with `file_import_fallback.html` as the hidden-until-mount
-  fallback. Credentials on every provider Connection tab use `Credentials.jsx`
-  (`provider_ui.provider_credentials`, island `data-provider-credentials-root`, fallback is the legacy
-  `provider_connection.html`). Kapowarr, Mylar, Radarr, Sonarr and GPodder Connection use
-  `AccountConnection.jsx` (instances list for the arr family), as do Pocket Casts, Koito, Last.fm, PSN and
-  Storyteller. Remaining legacy (blocker: extra non-credential controls such as OAuth, webhooks, library
-  pickers, SSL/threshold options or a second upload): Hardcover and TV Time uploads,
-  Plex/Jellyfin/Emby/Kodi/Stremio/Kavita/Komga/Xbox/KOReader/MDBList/Seerr/Nuvio/Navidrome/MAL bodies;
-  retire each when its connection model moves to `account_connection` or a dedicated island. Masked
-  credential previews are not serialized to React; the fallback still shows them.
+- Migration status (Playwright and server-render checked; iOS/Android unverified): single-file and
+  small upload forms use `FileImport.jsx` through `provider_ui.FILE_IMPORTS` (Yamtrack/Floppy, HLTB,
+  Playnite, Grouvee, IMDb, Goodreads, StoryGraph, YouTube, WeTrakr, Hardcover, TV Time, MDBList), with
+  `file_import_fallback.html` as the hidden-until-mount fallback. Credentials on every provider
+  Connection tab use `Credentials.jsx` (`provider_ui.provider_credentials`). Account-style connections use
+  `AccountConnection.jsx` via `provider_views.ACCOUNT_CONNECTIONS` / `INSTANCE_CONNECTIONS` (Kapowarr,
+  Mylar, Radarr, Sonarr, GPodder, Pocket Casts, Koito, Last.fm, PSN, Storyteller, Kavita, Komga, Xbox,
+  Stremio sign-in, MAL authorize). Webhook setup instructions use `SetupGuide.jsx`
+  (`provider_guides.py`: Emby, Kodi, Navidrome, Nuvio; copy values are read from the server fallback,
+  never serialized). Small integration settings forms use `SettingsForm.jsx` (`provider_forms.py`:
+  Plex usernames and mark-watched, Jellyfin webhook events, Seerr automation and connection, KOReader
+  connect and settings). Remaining legacy, each with a concrete blocker: Plex libraries picker and webhook
+  sharing (live library fetch, per-share Alpine state); Jellyfin account/push controls and its two setup
+  guides, Seerr setup guide and global webhook (conditional per-tab states); Stremio addon catalog grants
+  (htmx status); MDBList/KOReader Connection-tab modals and connected-state summaries; Hardcover
+  "Sync from your account" card (schedule fields). Retire each by moving it to a `provider_forms` or
+  `provider_guides` entry. Masked credential previews are not serialized to React; the fallback still
+  shows them.
 - Implementation: provider-import/schedule/game-sync/Plex-selector/upload-badge components, `users/_reading_server_card.html`, `_reading_server_modal.html`; retained import page.
 - Contract: connect/disconnect/import/upload/schedule, provider-specific fields/library/content kinds, errors/busy state.
 - Data: import context/settings in `src/users/views.py`, `src/integrations/views.py`, account/task records.
@@ -637,6 +643,7 @@ templates are compatibility/composition sources, not equally active parallel pag
 - Data: provider data-management and export/delete/RSS handlers in `src/users/views.py`.
 - Reuse/blockers: selection/warning/status shared; download/clipboard/feed/restore are platform/server boundaries.
 - Validation targets: `src/users/tests/views/test_export_schedule.py`, `test_bulk_delete_by_import_source.py`, `test_rss.py`.
+- Backup status (#1627): the destination/freshness paragraphs of `export_controls.html` are React-owned (`frontend/settings/BackupStatus.jsx`, partial/coexisting — the schedule form and the rest of the page stay legacy). Server fallback retained inside `data-backup-status-root`; sections are built and translated by `users.views.backup_panel_props`. Retirement: when the export form itself is ported. Browser verification: Chromium via the isolated bench server, empty-history state mounted and rendered both sections; failure and PostgreSQL states covered by unit tests only. iOS/Android: not tested.
 
 ### SET-ACCESS — Tokens, grants and OAuth approval
 
