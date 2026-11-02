@@ -694,10 +694,7 @@ class _SelfHostedBoundedRaw:
         # A raw.read() without an amount must never buffer an unlimited body.
         remaining = self._max_bytes - self._read_bytes
         limit = max(1, remaining + 1)
-        if amt is None or amt < 0:
-            amt = limit
-        else:
-            amt = min(amt, limit)
+        amt = limit if amt is None or amt < 0 else min(amt, limit)
         try:
             return self._account(self._raw.read(amt, *args, **kwargs))
         except Exception:
@@ -729,7 +726,7 @@ def _self_hosted_timeouts(requested, deadline):
         )
     if requested is None:
         requested = (CONNECT_TIMEOUT, READ_TIMEOUT)
-    if isinstance(requested, tuple) and len(requested) == 2:
+    if isinstance(requested, tuple) and len(requested) == len((CONNECT_TIMEOUT, READ_TIMEOUT)):
         connect, read = requested
     else:
         connect = read = requested
@@ -740,12 +737,31 @@ def _self_hosted_timeouts(requested, deadline):
         try:
             value = float(value)
         except (TypeError, ValueError, OverflowError) as error:
-            raise ValueError("Invalid self-hosted timeout.") from error
+            msg = "Invalid self-hosted timeout."
+            raise ValueError(msg) from error
         if not math.isfinite(value) or value <= 0:
-            raise ValueError("Invalid self-hosted timeout.")
+            msg = "Invalid self-hosted timeout."
+            raise ValueError(msg)
         return min(value, remaining)
 
     return clamp(connect, CONNECT_TIMEOUT), clamp(read, READ_TIMEOUT)
+
+
+def _require_self_hosted_time_remaining(deadline):
+    """Reject an expired request budget outside the session's exception handler."""
+    if time.monotonic() >= deadline:
+        raise SelfHostedUrlError(
+            REASON_DEADLINE_EXCEEDED, "This server took too long to respond."
+        )
+
+
+def _check_self_hosted_declared_length(response, max_bytes):
+    """Reject a declared oversized body before consuming its bytes."""
+    declared = response.headers.get("Content-Length", "")
+    if declared.isdigit() and int(declared) > max_bytes:
+        raise SelfHostedUrlError(
+            REASON_RESPONSE_TOO_LARGE, "This server response is too large."
+        )
 
 
 def _send_pinned_self_hosted(method, parsed, address, *, deadline, max_bytes, **kwargs):
@@ -780,18 +796,11 @@ def _send_pinned_self_hosted(method, parsed, address, *, deadline, max_bytes, **
             **request_kwargs,
         )
 
-        if time.monotonic() >= deadline:
-            raise SelfHostedUrlError(
-                REASON_DEADLINE_EXCEEDED, "This server took too long to respond."
-            )
+        _require_self_hosted_time_remaining(deadline)
 
         # Avoid an unlimited body read, including gzip decompression.
         if response.status_code not in SELF_HOSTED_REDIRECT_STATUSES:
-            declared = response.headers.get("Content-Length", "")
-            if declared.isdigit() and int(declared) > max_bytes:
-                raise SelfHostedUrlError(
-                    REASON_RESPONSE_TOO_LARGE, "This server response is too large."
-                )
+            _check_self_hosted_declared_length(response, max_bytes)
             response.raw = _SelfHostedBoundedRaw(
                 response.raw, max_bytes, deadline, session.close
             )
@@ -819,7 +828,6 @@ def _send_pinned_self_hosted(method, parsed, address, *, deadline, max_bytes, **
         response._content_consumed = True
         response.close()
         session.close()
-        return response
     except Exception as error:
         if response is not None:
             response.close()
@@ -832,6 +840,8 @@ def _send_pinned_self_hosted(method, parsed, address, *, deadline, max_bytes, **
                 REASON_DEADLINE_EXCEEDED, "This server took too long to respond."
             ) from error
         raise
+    else:
+        return response
 
 
 def _checked_self_hosted_redirect(current_url, location):
@@ -922,9 +932,11 @@ def send_to_self_hosted_pinned(
         or not math.isfinite(total_timeout)
         or total_timeout <= 0
     ):
-        raise ValueError("total_timeout must be a positive finite number")
+        msg = "total_timeout must be a positive finite number"
+        raise ValueError(msg)
     if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes <= 0:
-        raise ValueError("max_bytes must be a positive integer")
+        msg = "max_bytes must be a positive integer"
+        raise ValueError(msg)
 
     deadline = time.monotonic() + total_timeout
     parsed, addresses = _validated_self_hosted_target(url, require_resolution=True)
