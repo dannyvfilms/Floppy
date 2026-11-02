@@ -594,3 +594,28 @@ class GameGalleryTests(TestCase):
         sgdb.return_value = [{"url": f"https://x/{i}.jpg"} for i in range(60)]
         with patch("app.game_artwork.provider_order", return_value=[steamgriddb]):
             self.assertEqual(len(game_artwork.gallery("123")), game_artwork.MAX_GALLERY_PHOTOS)
+
+
+class GameArtworkWarmTests(SimpleTestCase):
+    @patch("app.tasks_backdrops.warm_game_artwork_task.delay")
+    @patch("app.carousel.credentials.is_configured", return_value=True)
+    def test_chunks_unique_ids(self, _configured, delay):
+        count = carousel.schedule_game_artwork_warm(["1", 1, "2", "3"])
+
+        self.assertEqual(count, 3)
+        delay.assert_called_once_with(["1", "2", "3"])
+
+    @patch("app.tasks_backdrops.warm_game_artwork_task.delay")
+    @patch("app.carousel.credentials.is_configured", return_value=False)
+    def test_skipped_without_igdb(self, _configured, delay):
+        self.assertEqual(carousel.schedule_game_artwork_warm(["1"]), 0)
+        delay.assert_not_called()
+
+    @patch("app.carousel.resolve_carousel_media")
+    def test_task_resolves_each_game_and_survives_errors(self, resolve):
+        from app.tasks_backdrops import warm_game_artwork_task
+
+        resolve.side_effect = [RuntimeError("boom"), None]
+        warm_game_artwork_task(["1", "2"])
+
+        self.assertEqual(resolve.call_count, 2)

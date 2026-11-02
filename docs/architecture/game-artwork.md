@@ -93,3 +93,7 @@ The additional gallery is capped at 24 unique images and cached for six hours.
 Provider errors use a five-minute retry cache. Saving artwork credentials or
 refreshing the game reopens the gallery. Fetching stays in the deferred carousel
 request; repeat visits read the cached images without calling providers.
+
+## Warming after an import
+
+A game's detail page loads its carousel lazily, and the page reflows when it arrives, so a cold first visit costs several provider round trips. `helpers.bulk_create_media` therefore calls `carousel.schedule_game_artwork_warm` for the IGDB games it wrote. `Warm game artwork` (default `celery` queue, 25 games per task, one after another to respect provider limits) runs the same resolution the fragment does, so the first visit renders from cache. Only URLs and the artwork row are stored; image files appear on disk only when image caching is enabled and an image is viewed.
