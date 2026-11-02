@@ -296,11 +296,16 @@ class ScrobbleView(drf_views.APIView):
                 "properties": {
                     "detail": {"type": "string"},
                     "errors": {"type": "string"},
+                    "code": {"type": "string"},
                 },
             },
             503: {
                 "type": "object",
-                "properties": {"detail": {"type": "string"}},
+                "properties": {
+                    "detail": {"type": "string"},
+                    "code": {"type": "string"},
+                    "retryable": {"type": "boolean"},
+                },
             },
         },
     )
@@ -354,14 +359,21 @@ class ScrobbleView(drf_views.APIView):
                     exc.status_code,
                     exc_info=True,
                 )
-                status = (
-                    HTTP.NOT_FOUND
-                    if exc.status_code == HTTP.NOT_FOUND
-                    else HTTP.SERVICE_UNAVAILABLE
-                )
+                if exc.status_code == HTTP.NOT_FOUND:
+                    return Response(
+                        {
+                            "detail": "Could not resolve media.",
+                            "code": "MEDIA_NOT_FOUND",
+                        },
+                        status=HTTP.NOT_FOUND,
+                    )
                 return Response(
-                    {"detail": "Could not resolve media."},
-                    status=status,
+                    {
+                        "detail": "Could not resolve media.",
+                        "code": "PROVIDER_UNAVAILABLE",
+                        "retryable": True,
+                    },
+                    status=HTTP.SERVICE_UNAVAILABLE,
                 )
             except Exception:
                 logger.exception("Failed to process generic scrobble payload.")

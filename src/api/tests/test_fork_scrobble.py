@@ -203,6 +203,8 @@ class ScrobbleStopTests(FloppyApiTestCase):
 
         self.assertEqual(first.status_code, HTTP.SERVICE_UNAVAILABLE)
         self.assertEqual(second.status_code, HTTP.SERVICE_UNAVAILABLE)
+        self.assertEqual(first.json()["code"], "PROVIDER_UNAVAILABLE")
+        self.assertTrue(first.json()["retryable"])
         self.assertEqual(mock_process.call_count, 2)
 
     @patch("api.fork_views_scrobble.GenericScrobbleProcessor.process_payload")
@@ -228,6 +230,7 @@ class ScrobbleStopTests(FloppyApiTestCase):
 
         self.assertEqual(first.status_code, HTTP.NOT_FOUND)
         self.assertEqual(second.status_code, HTTP.NOT_FOUND)
+        self.assertEqual(first.json()["code"], "MEDIA_NOT_FOUND")
         mock_process.assert_called_once()
 
     @tag("network")
