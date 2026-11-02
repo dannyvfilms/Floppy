@@ -81,7 +81,7 @@ from .contract_serializers import (
     TrackedMediaUpdateRequestSerializer,
     TrackMediaRequestSerializer,
 )
-from .errors import database_busy_response
+from .errors import database_busy_response, validation_error_code
 from .helpers import (
     apply_image_url,
     apply_list_sort,
@@ -1082,7 +1082,7 @@ class MediaDetailView(drf_views.APIView):
 
         if not user_medias:
             return Response(
-                {"detail": "Media not found or not tracked."},
+                {"detail": "Media not found or not tracked.", "code": "MEDIA_NOT_TRACKED"},
                 status=HTTP.NOT_FOUND,
             )
 
@@ -1140,7 +1140,7 @@ class MediaDetailView(drf_views.APIView):
         except services.ProviderAPIError as error:
             if error.status_code == HTTP.NOT_FOUND:
                 return Response(
-                    {"detail": "Media not found."},
+                    {"detail": "Media not found.", "code": "MEDIA_NOT_FOUND"},
                     status=HTTP.NOT_FOUND,
                 )
             return Response(
@@ -1382,7 +1382,7 @@ class MediaDetailView(drf_views.APIView):
 
         if not user_medias:
             return Response(
-                {"detail": "Media not found or not tracked."},
+                {"detail": "Media not found or not tracked.", "code": "MEDIA_NOT_TRACKED"},
                 status=HTTP.NOT_FOUND,
             )
 
@@ -1393,7 +1393,7 @@ class MediaDetailView(drf_views.APIView):
 
             if error:
                 return Response(
-                    {"detail": f"{error}"},
+                    {"detail": f"{error}", **validation_error_code(error)},
                     status=HTTP.BAD_REQUEST,
                 )
         else:
@@ -1499,7 +1499,7 @@ class MediaChangesHistoryView(drf_views.APIView):
 
         if not user_medias:
             return Response(
-                {"detail": "Media not found or not tracked."},
+                {"detail": "Media not found or not tracked.", "code": "MEDIA_NOT_TRACKED"},
                 status=HTTP.NOT_FOUND,
             )
 
@@ -1566,7 +1566,7 @@ class MediaConsumptionHistoryView(drf_views.APIView):
 
         if not user_medias:
             return Response(
-                {"detail": "Media not found or not tracked."},
+                {"detail": "Media not found or not tracked.", "code": "MEDIA_NOT_TRACKED"},
                 status=HTTP.NOT_FOUND,
             )
 
@@ -1648,7 +1648,10 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
         )
         if not consumption:
             return Response(
-                {"detail": "Consumption entry not found."},
+                {
+                    "detail": "Consumption entry not found.",
+                    "code": "CONSUMPTION_NOT_FOUND",
+                },
                 status=HTTP.NOT_FOUND,
             )
 
@@ -1700,7 +1703,10 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
         )
         if not consumption:
             return Response(
-                {"detail": " Consumption entry not found."},
+                {
+                    "detail": " Consumption entry not found.",
+                    "code": "CONSUMPTION_NOT_FOUND",
+                },
                 status=HTTP.NOT_FOUND,
             )
 
@@ -1766,7 +1772,10 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
         )
         if not consumption:
             return Response(
-                {"detail": "Consumption entry not found."},
+                {
+                    "detail": "Consumption entry not found.",
+                    "code": "CONSUMPTION_NOT_FOUND",
+                },
                 status=HTTP.NOT_FOUND,
             )
 
@@ -1776,7 +1785,11 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
 
         if error:
             return Response(
-                {"detail": HTTP.BAD_REQUEST.phrase, "errors": str(error)},
+                {
+                    "detail": HTTP.BAD_REQUEST.phrase,
+                    "errors": str(error),
+                    **validation_error_code(error),
+                },
                 status=HTTP.BAD_REQUEST,
             )
 
@@ -2397,7 +2410,7 @@ class MediaSeasonDetailView(drf_views.APIView):
 
         if not user_medias:
             return Response(
-                {"detail": "Season not found or not tracked."},
+                {"detail": "Season not found or not tracked.", "code": "MEDIA_NOT_TRACKED"},
                 status=HTTP.NOT_FOUND,
             )
 
@@ -2464,7 +2477,7 @@ class MediaSeasonDetailView(drf_views.APIView):
 
         if not media_metadata:
             return Response(
-                {"detail": "Season not found."},
+                {"detail": "Season not found.", "code": "MEDIA_NOT_FOUND"},
                 status=HTTP.NOT_FOUND,
             )
 
@@ -2609,7 +2622,7 @@ class MediaSeasonDetailView(drf_views.APIView):
 
         if not user_medias:
             return Response(
-                {"detail": "Season not found or not tracked."},
+                {"detail": "Season not found or not tracked.", "code": "MEDIA_NOT_TRACKED"},
                 status=HTTP.NOT_FOUND,
             )
 
@@ -2619,7 +2632,7 @@ class MediaSeasonDetailView(drf_views.APIView):
 
         if error:
             return Response(
-                {"detail": f"{error}"},
+                {"detail": f"{error}", **validation_error_code(error)},
                 status=HTTP.BAD_REQUEST,
             )
 
@@ -2726,7 +2739,7 @@ class MediaSeasonChangesHistoryView(drf_views.APIView):
 
         if not user_medias:
             return Response(
-                {"detail": "Season not found or not tracked."},
+                {"detail": "Season not found or not tracked.", "code": "MEDIA_NOT_TRACKED"},
                 status=HTTP.NOT_FOUND,
             )
 
@@ -2799,7 +2812,7 @@ class MediaSeasonEpisodesView(drf_views.APIView):
         except services.ProviderAPIError as error:
             if error.status_code == HTTP.NOT_FOUND:
                 return Response(
-                    {"detail": "Season not found."},
+                    {"detail": "Season not found.", "code": "MEDIA_NOT_FOUND"},
                     status=HTTP.NOT_FOUND,
                 )
             logger.exception("Failed to retrieve season episodes.")
@@ -3019,7 +3032,10 @@ class MediaSeasonConsumptionEntryDetailView(drf_views.APIView):
         consumption = user_medias.filter(id=consumption_id).first()
         if not consumption:
             return Response(
-                {"detail": "Consumption entry not found."},
+                {
+                    "detail": "Consumption entry not found.",
+                    "code": "CONSUMPTION_NOT_FOUND",
+                },
                 status=HTTP.NOT_FOUND,
             )
 
@@ -3073,7 +3089,10 @@ class MediaSeasonConsumptionEntryDetailView(drf_views.APIView):
         consumption = user_medias.filter(id=consumption_id).first()
         if not consumption:
             return Response(
-                {"detail": "Consumption entry not found."},
+                {
+                    "detail": "Consumption entry not found.",
+                    "code": "CONSUMPTION_NOT_FOUND",
+                },
                 status=HTTP.NOT_FOUND,
             )
 
@@ -3137,7 +3156,10 @@ class MediaSeasonConsumptionEntryDetailView(drf_views.APIView):
         consumption = user_medias.filter(id=consumption_id).first()
         if not consumption:
             return Response(
-                {"detail": "Consumption entry not found."},
+                {
+                    "detail": "Consumption entry not found.",
+                    "code": "CONSUMPTION_NOT_FOUND",
+                },
                 status=HTTP.NOT_FOUND,
             )
 
@@ -3147,7 +3169,11 @@ class MediaSeasonConsumptionEntryDetailView(drf_views.APIView):
 
         if error:
             return Response(
-                {"detail": HTTP.BAD_REQUEST.phrase, "errors": str(error)},
+                {
+                    "detail": HTTP.BAD_REQUEST.phrase,
+                    "errors": str(error),
+                    **validation_error_code(error),
+                },
                 status=HTTP.BAD_REQUEST,
             )
 
@@ -3343,7 +3369,7 @@ class MediaSeasonListDetailView(drf_views.APIView):
         ).first()
         if item is None:
             return Response(
-                {"detail": "Media not found."},
+                {"detail": "Media not found.", "code": "MEDIA_NOT_FOUND"},
                 status=HTTP.NOT_FOUND,
             )
 
@@ -3654,6 +3680,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
             return Response(
                 {
                     "detail": "Episode not found or not tracked.",
+                    "code": "MEDIA_NOT_TRACKED",
                 },
                 status=HTTP.NOT_FOUND,
             )
@@ -3857,6 +3884,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
             return Response(
                 {
                     "detail": "Episode not found or not tracked.",
+                    "code": "MEDIA_NOT_TRACKED",
                 },
                 status=HTTP.NOT_FOUND,
             )
@@ -3867,7 +3895,11 @@ class MediaEpisodeDetailView(drf_views.APIView):
 
         if error:
             return Response(
-                {"detail": HTTP.BAD_REQUEST.phrase, "errors": str(error)},
+                {
+                    "detail": HTTP.BAD_REQUEST.phrase,
+                    "errors": str(error),
+                    **validation_error_code(error),
+                },
                 status=HTTP.BAD_REQUEST,
             )
 
@@ -3905,7 +3937,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
 
         if not media_metadata:
             return Response(
-                {"detail": "Episode not found."},
+                {"detail": "Episode not found.", "code": "MEDIA_NOT_FOUND"},
                 status=HTTP.NOT_FOUND,
             )
 
@@ -3921,7 +3953,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
 
             if not episode:
                 return Response(
-                    {"detail": "Episode not found."},
+                    {"detail": "Episode not found.", "code": "MEDIA_NOT_FOUND"},
                     status=HTTP.NOT_FOUND,
                 )
 
@@ -4011,7 +4043,7 @@ class MediaEpisodeChangesHistoryView(drf_views.APIView):
 
         if not user_medias:
             return Response(
-                {"detail": "Episode not found or not tracked."},
+                {"detail": "Episode not found or not tracked.", "code": "MEDIA_NOT_TRACKED"},
                 status=HTTP.NOT_FOUND,
             )
 
@@ -4195,7 +4227,10 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
         consumption = user_medias.filter(id=consumption_id).first()
         if not consumption:
             return Response(
-                {"detail": "Consumption entry not found."},
+                {
+                    "detail": "Consumption entry not found.",
+                    "code": "CONSUMPTION_NOT_FOUND",
+                },
                 status=HTTP.NOT_FOUND,
             )
 
@@ -4270,7 +4305,10 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
         consumption = user_medias.filter(id=consumption_id).first()
         if not consumption:
             return Response(
-                {"detail": "Consumption entry not found."},
+                {
+                    "detail": "Consumption entry not found.",
+                    "code": "CONSUMPTION_NOT_FOUND",
+                },
                 status=HTTP.NOT_FOUND,
             )
 
@@ -4348,7 +4386,10 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
         consumption = user_medias.filter(id=consumption_id).first()
         if not consumption:
             return Response(
-                {"detail": "Consumption entry not found."},
+                {
+                    "detail": "Consumption entry not found.",
+                    "code": "CONSUMPTION_NOT_FOUND",
+                },
                 status=HTTP.NOT_FOUND,
             )
 
@@ -4358,7 +4399,7 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
 
         if error:
             return Response(
-                {"detail": f"{error}"},
+                {"detail": f"{error}", **validation_error_code(error)},
                 status=HTTP.BAD_REQUEST,
             )
 
@@ -4575,7 +4616,7 @@ class MediaEpisodeListDetailView(drf_views.APIView):
         ).first()
         if item is None:
             return Response(
-                {"detail": "Media not found."},
+                {"detail": "Media not found.", "code": "MEDIA_NOT_FOUND"},
                 status=HTTP.NOT_FOUND,
             )
 
