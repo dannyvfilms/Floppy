@@ -366,7 +366,9 @@ class KomgaViewTests(TestCase):
         response = self.client.get(reverse("provider_detail", args=["komga"]) + "?tab=import")
 
         self.assertContains(response, "Sync book and comic reading progress from Komga.")
-        self.assertContains(response, reverse("komga_connect"))
+        connection_url = reverse("provider_detail", args=["komga"]) + "?tab=connection"
+        self.assertContains(response, connection_url)
+        self.assertContains(self.client.get(connection_url), reverse("komga_connect"))
 
 
 class PeriodicTaskUserMatchTests(TestCase):

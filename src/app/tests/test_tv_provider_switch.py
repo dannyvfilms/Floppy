@@ -258,8 +258,13 @@ class TvProviderReviewTests(TestCase):
 
         response = self._switch_default(Sources.TVDB.value)
 
-        self.assertContains(response, "still tracked on the other TV provider")
-        self.assertContains(response, "Move them to TheTVDB")
+        tv_source = next(
+            source for source in response.context["provider_page"]["metadata"]["sources"]
+            if source["key"] == "tv"
+        )
+        self.assertEqual(tv_source["existingCount"], 1)
+        self.assertEqual(tv_source["current"], Sources.TVDB.value)
+        self.assertEqual(tv_source["moveAction"], reverse("convert_tv_library"))
         self.assertContains(response, reverse("convert_tv_library"))
         # The preference change alone never touches the existing item or
         # turns on an automatic migration.
@@ -272,14 +277,24 @@ class TvProviderReviewTests(TestCase):
         again = self.client.get(
             reverse("provider_detail", args=["tmdb"]) + "?tab=metadata",
         )
-        self.assertContains(again, "still tracked on the other TV provider")
+        tv_source = next(
+            source for source in again.context["provider_page"]["metadata"]["sources"]
+            if source["key"] == "tv"
+        )
+        self.assertEqual(tv_source["existingCount"], 1)
+        self.assertEqual(tv_source["moveAction"], reverse("convert_tv_library"))
 
     def test_no_move_notice_when_nothing_is_on_the_other_provider(self):
         self._track(Sources.TVDB.value, "81189")
 
         response = self._switch_default(Sources.TVDB.value)
 
-        self.assertNotContains(response, "still tracked on the other TV provider")
+        tv_source = next(
+            source for source in response.context["provider_page"]["metadata"]["sources"]
+            if source["key"] == "tv"
+        )
+        self.assertEqual(tv_source["existingCount"], 0)
+        self.assertEqual(tv_source["moveAction"], "")
         self.assertNotContains(response, reverse("convert_tv_library"))
 
     def test_move_endpoint_queues_the_task(self):

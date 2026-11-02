@@ -330,4 +330,6 @@ class MylarViewTests(TestCase):
         response = self.client.get(reverse("provider_detail", args=["mylar"]) + "?tab=import")
 
         self.assertContains(response, "Import owned comics from Mylar3.")
-        self.assertContains(response, reverse("mylar_connect"))
+        connection_url = reverse("provider_detail", args=["mylar"]) + "?tab=connection"
+        self.assertContains(response, connection_url)
+        self.assertContains(self.client.get(connection_url), reverse("mylar_connect"))

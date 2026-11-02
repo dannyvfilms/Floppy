@@ -186,8 +186,8 @@ class KoitoCredentialTests(TestCase):
         self.assertIn(BASE_URL, body)
 
     def test_connect_form_renders_when_disconnected(self):
-        """The Koito modal offers URL + API key inputs before connecting."""
-        response = self.client.get(reverse("provider_detail", args=["koito"]) + "?tab=import")
+        """The Connection tab offers URL and API key inputs before connecting."""
+        response = self.client.get(reverse("provider_detail", args=["koito"]) + "?tab=connection")
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
         self.assertIn("activeModal === 'koito'", body)

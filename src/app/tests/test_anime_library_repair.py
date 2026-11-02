@@ -436,14 +436,24 @@ class AnimeShapeConversionPromptTests(TestCase):
             follow=True,
         )
 
-        self.assertContains(response, "still in the other format")
+        anime_source = next(
+            source for source in response.context["provider_page"]["metadata"]["sources"]
+            if source["key"] == "anime"
+        )
+        self.assertEqual(anime_source["existingCount"], 1)
+        self.assertEqual(anime_source["moveAction"], reverse("convert_anime_library"))
         self.assertContains(response, "Convert existing anime")
         self.assertContains(response, reverse("convert_anime_library"))
 
         again = self.client.get(
             reverse("provider_detail", args=["tmdb"]) + "?tab=metadata",
         )
-        self.assertContains(again, "still in the other format")
+        anime_source = next(
+            source for source in again.context["provider_page"]["metadata"]["sources"]
+            if source["key"] == "anime"
+        )
+        self.assertEqual(anime_source["existingCount"], 1)
+        self.assertEqual(anime_source["moveAction"], reverse("convert_anime_library"))
 
     def test_no_conversion_notice_when_the_library_matches_the_provider(self):
         """A library already in the preferred shape needs no action."""

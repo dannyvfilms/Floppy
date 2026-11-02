@@ -907,10 +907,14 @@ class KavitaViewTests(TestCase):
             response,
             "Sync book, comic and manga reading progress from Kavita.",
         )
-        self.assertContains(response, reverse("kavita_connect"))
+        connection_url = reverse("provider_detail", args=["kavita"]) + "?tab=connection"
+        self.assertContains(response, connection_url)
+        self.assertContains(self.client.get(connection_url), reverse("kavita_connect"))
         self.assertNotContains(response, reverse("komga_connect"))
         komga_response = self.client.get(reverse("provider_detail", args=["komga"]) + "?tab=import")
-        self.assertContains(komga_response, reverse("komga_connect"))
+        komga_connection_url = reverse("provider_detail", args=["komga"]) + "?tab=connection"
+        self.assertContains(komga_response, komga_connection_url)
+        self.assertContains(self.client.get(komga_connection_url), reverse("komga_connect"))
 
 
 class ProviderItemRaceTests(TestCase):
