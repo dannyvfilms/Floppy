@@ -13,6 +13,7 @@ import app.providers.tmdb
 from app import live_playback
 from app.models import MediaTypes, Sources
 from app.providers import services
+from app.providers.services import ProviderAPIError
 from app.stats_utils import parse_runtime_to_minutes
 from integrations.delivery import get_or_record_receipt
 from integrations.models import IntegrationToken
@@ -297,6 +298,10 @@ class ScrobbleView(drf_views.APIView):
                     "errors": {"type": "string"},
                 },
             },
+            503: {
+                "type": "object",
+                "properties": {"detail": {"type": "string"}},
+            },
         },
     )
     def post(self, request):
@@ -340,6 +345,22 @@ class ScrobbleView(drf_views.APIView):
             }
             try:
                 GenericScrobbleProcessor().process_payload(payload, request.user)
+            except ProviderAPIError as exc:
+                logger.warning(
+                    "Scrobble stop media resolution failed: provider=%s status=%s",
+                    exc.provider,
+                    exc.status_code,
+                    exc_info=True,
+                )
+                status = (
+                    HTTP.NOT_FOUND
+                    if exc.status_code == HTTP.NOT_FOUND
+                    else HTTP.SERVICE_UNAVAILABLE
+                )
+                return Response(
+                    {"detail": "Could not resolve media."},
+                    status=status,
+                )
             except Exception:
                 logger.exception("Failed to process generic scrobble payload.")
                 return Response(
