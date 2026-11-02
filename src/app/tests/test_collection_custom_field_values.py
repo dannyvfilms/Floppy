@@ -19,6 +19,8 @@ class CustomFieldValueExtractionTest(TestCase):
             {"2": ""},
             {"3": "other"},
             {},
+            {"2": None},
+            {"2": False},
         ]
         self.ids = []
         for n, values in enumerate(self.values):
@@ -40,9 +42,12 @@ class CustomFieldValueExtractionTest(TestCase):
         got = dict(_custom_field_values(self.collection, 2))
         self.assertEqual(
             [got[pk] for pk in self.ids],
-            ["Beta", 10, True, 2.5, "", None, None],
+            ["Beta", 10, True, 2.5, "", None, None, None, False],
         )
         self.assertIs(got[self.ids[2]], True)
+        self.assertIs(got[self.ids[8]], False)
+        # An explicit JSON null decodes to None, the same as a missing key.
+        self.assertIsNone(got[self.ids[7]])
 
     def test_sort_puts_numbers_then_checkboxes_then_text_blanks_last(self):
         class Field:
@@ -50,4 +55,7 @@ class CustomFieldValueExtractionTest(TestCase):
 
         ordered = _ids_ordered_by_custom_field(self.collection, Field, "asc")
         i = self.ids
-        self.assertEqual(ordered, [i[3], i[1], i[2], i[0], i[6], i[5], i[4]])
+        self.assertEqual(
+            ordered,
+            [i[3], i[1], i[8], i[2], i[0], i[7], i[6], i[5], i[4]],
+        )
