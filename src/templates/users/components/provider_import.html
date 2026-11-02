@@ -3392,7 +3392,7 @@
             <p class="text-sm font-medium text-[var(--color-text)] mb-1">{% translate "Sync from your account" %}</p>
             <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Pull your shelves, ratings and progress using your API key." %}</p>
             {% if hardcover_personal_key %}
-              <form method="post"
+              {% if provider_forms.hardcover_sync %}{{ provider_forms.hardcover_sync|json_script:"form-hardcover_sync" }}<div data-settings-form-root data-props-id="form-hardcover_sync" x-ignore hx-disable>{% endif %}<form method="post"
                     action="{% url 'hardcover_sync' %}"
                     class="space-y-3"
                     x-data="{ scheduleFrequency: 'once', scheduleTime: importTime }">
@@ -3406,7 +3406,7 @@
                         :disabled="standardImportsDisabled()">
                   {% translate "Sync now" %}
                 </button>
-              </form>
+              </form>{% if provider_forms.hardcover_sync %}</div>{% endif %}
             {% else %}
               <p class="text-sm text-[var(--color-text-muted)]">{% translate "Save a Hardcover API key above to turn this on." %}</p>
             {% endif %}

@@ -596,10 +596,10 @@ templates are compatibility/composition sources, not equally active parallel pag
   guides, the Stremio addon steps; token-bearing URLs and links are read from the server fallback, never
   serialized). Small integration settings forms use `SettingsForm.jsx` (`provider_forms.py`:
   Plex usernames and mark-watched, Jellyfin webhook events, Seerr automation and connection, KOReader
-  connect and settings). Remaining legacy, each with a concrete blocker: Plex libraries picker and webhook
-  sharing (live library fetch, per-share Alpine state); Jellyfin account/push controls (conditional per-tab
-  states); Stremio addon catalog grants (htmx status); MDBList/KOReader Connection-tab modals and connected-state summaries; Hardcover
-  "Sync from your account" card (schedule fields). Retire each by moving it to a `provider_forms` or
+  connect and settings). Hardcover sync, KOReader (Connection tab) and MDBList (Connection tab) now use `SettingsForm.jsx`/
+  `FileImport.jsx` inline instead of a modal. Remaining legacy, each with a concrete blocker: Plex
+  libraries picker and webhook sharing (live library fetch, per-share Alpine state); Jellyfin account/push controls (conditional per-tab
+  states); Stremio addon catalog grants (htmx status); the same-tab modal copies of upload and connection forms used outside provider pages. Retire each by moving it to a `provider_forms` or
   `provider_guides` entry. Masked credential previews are not serialized to React; the fallback still
   shows them.
 - Implementation: provider-import/schedule/game-sync/Plex-selector/upload-badge components, `users/_reading_server_card.html`, `_reading_server_modal.html`; retained import page.
