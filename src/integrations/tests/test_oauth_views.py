@@ -14,6 +14,7 @@ from django.utils import timezone
 from django_celery_beat.models import PeriodicTask
 from requests import Response
 
+from app.providers import credentials
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError
 from integrations.models import PlexAccount
@@ -29,6 +30,14 @@ class OAuthStateViewTests(TestCase):
             username="oauth-user",
             password="oauth-password",
         )
+
+        # Django TestCase rolls back database writes, but credential
+        # caches can outlive a test and retain values for reused user IDs.
+        credentials.invalidate_cache()
+        credentials.invalidate_user_cache(self.user)
+        self.addCleanup(credentials.invalidate_cache)
+        self.addCleanup(credentials.invalidate_user_cache, self.user)
+
         self.client.force_login(self.user)
 
     def _start_oauth(self, view_name):
