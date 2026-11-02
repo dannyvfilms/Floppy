@@ -231,12 +231,24 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             image=PERFECT_BLUE_SEARCH_RESULT["image"],
         )
 
-        for index, viewport in enumerate(
-            (
-                {"width": 1280, "height": 800},
-                {"width": 390, "height": 844},
-            ),
-        ):
+        viewports = (
+            {"width": 1280, "height": 800},
+            {"width": 390, "height": 844},
+        )
+        # The live server shares the test's one in-memory SQLite connection, so
+        # every write happens before any page opens; a write from this thread
+        # while a page is requesting raised "database table is locked".
+        custom_lists = []
+        for index in range(len(viewports)):
+            custom_list = CustomList.objects.create(
+                name=f"count-test-{index}",
+                owner=self.user,
+            )
+            CustomListItem.objects.create(custom_list=custom_list, item=item)
+            custom_lists.append(custom_list)
+
+        for index, viewport in enumerate(viewports):
+            custom_list = custom_lists[index]
             page = self.context.new_page()
             self.addCleanup(page.close)
             refresh_requests = []
@@ -268,11 +280,6 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             page.on("response", record_toggle_response)
             self.addCleanup(page.remove_listener, "response", record_toggle_response)
 
-            custom_list = CustomList.objects.create(
-                name=f"count-test-{index}",
-                owner=self.user,
-            )
-            CustomListItem.objects.create(custom_list=custom_list, item=item)
             list_url = (
                 f"{self.live_server_url}"
                 f"{reverse('list_detail', args=[custom_list.public_reference])}"
