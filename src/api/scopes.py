@@ -164,6 +164,7 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_tracking.MediaMovieWatchView": {"POST": _W, "DELETE": _W},
     "api.fork_views_video.VideoPlayView": {"GET": _R, "POST": _W},
     "api.fork_views_video.VideoPlayDetailView": {"DELETE": _W},
+    "api.fork_views_video.VideoGameView": {"GET": _R, "PUT": _W, "DELETE": _W},
     "api.fork_views_tracking.MediaEpisodeDropView": {"POST": _W},
     "api.fork_views_tracking.MediaEpisodeBulkView": {"POST": _W},
     "api.fork_views_tracking.TagsView": {"GET": _R, "POST": _W},

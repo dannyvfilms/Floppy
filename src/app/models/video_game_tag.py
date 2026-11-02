@@ -3,6 +3,7 @@
 from django.db import models
 
 from app.models.item import Item
+from app.models.video import Video
 
 
 class VideoGameTag(models.Model):
@@ -33,3 +34,24 @@ class VideoGameTag(models.Model):
     def __str__(self):
         """Return the lookup outcome."""
         return f"{self.item_id}: {self.status} {self.game_title}"
+
+
+class VideoGameLink(models.Model):
+    """A viewer's own choice of game for a video, over what YouTube's tag suggests.
+
+    Per user, because the shared video item carries only the tag. A null game
+    means the viewer unlinked the video, so the tag no longer counts for them.
+    """
+
+    video = models.OneToOneField(
+        Video, on_delete=models.CASCADE, related_name="game_link"
+    )
+    game_item = models.ForeignKey(
+        Item, null=True, blank=True, on_delete=models.CASCADE, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        """Return the link."""
+        return f"{self.video_id} -> {self.game_item_id}"

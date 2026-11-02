@@ -207,6 +207,11 @@ urlpatterns = [
         name="api_video_play",
     ),
     re_path(
+        r"^videos/(?P<source>[^/]+)/(?P<media_id>[^/]+)/game/?$",
+        fork_views_video.VideoGameView.as_view(),
+        name="api_video_game",
+    ),
+    re_path(
         r"^videos/(?P<source>[^/]+)/(?P<media_id>[^/]+)/plays/(?P<external_id>.+?)/?$",
         fork_views_video.VideoPlayDetailView.as_view(),
         name="api_video_play_detail",
