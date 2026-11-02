@@ -925,10 +925,11 @@ def send_to_self_hosted_pinned(
 
     The elapsed-time budget includes all hops and buffered body reads,
     with socket cancellation after DNS resolution. OS DNS resolver calls
-    remain subject to OS timeouts. All bodies, including streamed bodies
-    read through Requests' iter_content()/content or raw read/stream, have
-    a decoded-byte budget by default. Use max_bytes for larger legitimate
-    payloads; streaming callers must still close responses.
+    remain subject to OS timeouts. Requests' iter_content()/content
+    enforce a decoded-byte budget. Direct raw.read() counts returned bytes,
+    which may still be compressed; other raw readers are not guaranteed
+    to enforce this budget. Callers should use the Requests body APIs for
+    untrusted payloads, and close any streaming responses.
     """
     if (
         not isinstance(total_timeout, (int, float))
