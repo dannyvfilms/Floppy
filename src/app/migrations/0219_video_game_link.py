@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("app", "0217_podcastindex_source"),
+        ("app", "0218_backfill_entry_source_from_import_run"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
