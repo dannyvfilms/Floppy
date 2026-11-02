@@ -47,6 +47,7 @@ MAX_BYTES = 1024 * 1024
 # Larger self-hosted library pages require a separate bounded budget.
 SELF_HOSTED_MAX_BYTES = 32 * 1024 * 1024
 SELF_HOSTED_TOTAL_TIMEOUT = 60
+TIMEOUT_PAIR_LENGTH = 2
 CONNECT_TIMEOUT = 5
 READ_TIMEOUT = 10
 # Shared elapsed-time budget. Socket inactivity timeouts alone cannot stop
@@ -726,7 +727,7 @@ def _self_hosted_timeouts(requested, deadline):
         )
     if requested is None:
         requested = (CONNECT_TIMEOUT, READ_TIMEOUT)
-    if isinstance(requested, tuple) and len(requested) == len((CONNECT_TIMEOUT, READ_TIMEOUT)):
+    if isinstance(requested, tuple) and len(requested) == TIMEOUT_PAIR_LENGTH:
         connect, read = requested
     else:
         connect = read = requested
