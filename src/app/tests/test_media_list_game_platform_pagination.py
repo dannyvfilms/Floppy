@@ -32,7 +32,7 @@ class GamePlatformSqlPaginationTests(TestCase):
                 source=Sources.IGDB.value,
                 media_type=MediaTypes.GAME.value,
                 title=f"Game {index:02d}",
-                platforms=["PC"] if index < 20 else ["PlayStation 5"],
+                platforms=["PC"] if index % 2 == 0 else ["PlayStation 5"],
             )
             for index in range(40)
         ]
@@ -80,6 +80,10 @@ class GamePlatformSqlPaginationTests(TestCase):
         self.assertEqual(len(items), 20)
         self.assertEqual(len({item.pk for item in items}), 20)
         self.assertTrue(all("PC" in item.platforms for item in items))
+        self.assertEqual(
+            [item.title for item in items],
+            [f"Game {index:02d}" for index in range(0, 40, 2)],
+        )
 
     def test_smart_rule_platform_forms_use_same_engine(self):
         """Legacy singular and current plural platform rules resolve identically."""
