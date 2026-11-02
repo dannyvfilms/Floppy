@@ -196,9 +196,7 @@ class IMDBStreamingTests(TestCase):
 
     def test_overwrite_updates_rating_without_deleting_watches(self):
         """Re-importing a rating must preserve an existing play and its date."""
-        imdb.importer(
-            self.upload("tt1,Film,Movie,2025-01-01,\n"), self.user, "new"
-        )
+        imdb.importer(self.upload("tt1,Film,Movie,2025-01-01,\n"), self.user, "new")
         film = Movie.objects.get(item__media_id="1")
         watched_at = datetime(2024, 5, 12, 20, 0, tzinfo=UTC)
         Movie.objects.filter(pk=film.pk).update(
@@ -221,9 +219,7 @@ class IMDBStreamingTests(TestCase):
 
     def test_overwrite_prefers_existing_rating_only_row(self):
         """Scores must not be pushed onto a different, legitimately watched row."""
-        imdb.importer(
-            self.upload("tt1,Film,Movie,2025-01-01,8\n"), self.user, "new"
-        )
+        imdb.importer(self.upload("tt1,Film,Movie,2025-01-01,8\n"), self.user, "new")
         rating = Movie.objects.get(item__media_id="1")
         watched_at = datetime(2026, 1, 10, 19, 0, tzinfo=UTC)
         watch = Movie.objects.create(
@@ -269,9 +265,7 @@ class IMDBStreamingTests(TestCase):
 
     def test_unrated_overwrite_keeps_existing_rating_and_status(self):
         """An unrated IMDb list row is not a request to erase a saved rating."""
-        imdb.importer(
-            self.upload("tt1,Film,Movie,2025-01-01,8\n"), self.user, "new"
-        )
+        imdb.importer(self.upload("tt1,Film,Movie,2025-01-01,8\n"), self.user, "new")
         imdb.importer(
             self.upload("tt1,Film,Movie,2025-02-01,\n"),
             self.user,
@@ -284,9 +278,7 @@ class IMDBStreamingTests(TestCase):
 
     def test_rated_entry_without_dates_does_not_fabricate_completion(self):
         """A missing IMDb date is valid; it must not become a watch today."""
-        imdb.importer(
-            self.upload("tt1,Film,Movie,,8\n"), self.user, "new"
-        )
+        imdb.importer(self.upload("tt1,Film,Movie,,8\n"), self.user, "new")
         film = Movie.objects.get(item__media_id="1")
         self.assertEqual(film.score, 8)
         self.assertIsNone(film.status)
