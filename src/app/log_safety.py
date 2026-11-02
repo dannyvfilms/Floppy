@@ -312,3 +312,22 @@ def stable_hmac(value: str, *, namespace: str, length: int | None = None) -> str
     if length is not None:
         return digest[:length]
     return digest
+
+
+# Routine chatter: Celery's per-task lines and the scheduler's wake-ups, plus
+# any line about the health/ping endpoints. Hidden from the console; the log
+# file always keeps them (#1831).
+_NOISY_LOGGER_PREFIXES = ("celery.app.trace", "celery.worker", "celery.beat")
+_NOISY_PATH_PATTERN = re.compile(r"/(?:health|ping)(?:/|\b)")
+
+
+class ConsoleNoiseFilter(logging.Filter):
+    """Drop routine below-WARNING records from the console handler only."""
+
+    def filter(self, record):
+        """Keep warnings and errors, and anything not routine."""
+        if record.levelno >= logging.WARNING:
+            return True
+        if record.name.startswith(_NOISY_LOGGER_PREFIXES):
+            return False
+        return not _NOISY_PATH_PATTERN.search(record.getMessage())

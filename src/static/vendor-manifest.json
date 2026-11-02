@@ -1,0 +1,137 @@
+{
+  "comment": "Reviewed identities of vendored browser files. Edit only together with the file, via the update process.",
+  "libraries": [
+    {
+      "name": "Alpine.js",
+      "version": "3.14.9",
+      "license": "MIT",
+      "upstream": "https://github.com/alpinejs/alpine",
+      "file": "js/libraries/alpinejs-3.14.9.min.js",
+      "sha256": "3ed1eed252488921df65e363d6715deb04d7f92aaedb9e52199fdf73cb1e0ad3",
+      "size": 44758,
+      "source_artifact": "npm alpinejs@3.14.9 dist/cdn.min.js",
+      "update_process": "docs/architecture/build-inputs.md#updating-a-vendored-library"
+    },
+    {
+      "name": "Chart.js",
+      "version": "4.4.9",
+      "license": "MIT",
+      "upstream": "https://github.com/chartjs/Chart.js",
+      "file": "js/libraries/chartjs-4.4.9.min.js",
+      "sha256": "de315773454b6076b63990bfa05ce5155a37f71992c87d7bb5f9a2ea698697ef",
+      "size": 206670,
+      "source_artifact": "npm chart.js@4.4.9 dist/chart.umd.js",
+      "update_process": "docs/architecture/build-inputs.md#updating-a-vendored-library"
+    },
+    {
+      "name": "chartjs-plugin-datalabels",
+      "version": "2.0.0",
+      "license": "MIT",
+      "upstream": "https://github.com/chartjs/chartjs-plugin-datalabels",
+      "file": "js/libraries/chartjs-datalabels-2.0.0.min.js",
+      "sha256": "4605ba20245c1e0cf5bda1a42f97a0400aa6916c466f06b6137068cffdc26a93",
+      "size": 12893,
+      "source_artifact": "npm chartjs-plugin-datalabels@2.0.0 dist/chartjs-plugin-datalabels.min.js",
+      "update_process": "docs/architecture/build-inputs.md#updating-a-vendored-library"
+    },
+    {
+      "name": "htmx",
+      "version": "2.0.4",
+      "license": "0BSD",
+      "upstream": "https://github.com/bigskysoftware/htmx",
+      "file": "js/libraries/htmx-2.0.4.min.js",
+      "sha256": "e209dda5c8235479f3166defc7750e1dbcd5a5c1808b7792fc2e6733768fb447",
+      "size": 50917,
+      "source_artifact": "npm htmx.org@2.0.4 dist/htmx.min.js",
+      "update_process": "docs/architecture/build-inputs.md#updating-a-vendored-library"
+    },
+    {
+      "name": "jQuery",
+      "version": "3.7.1",
+      "license": "MIT",
+      "upstream": "https://github.com/jquery/jquery",
+      "file": "js/libraries/jquery-3.7.1.min.js",
+      "sha256": "fc9a93dd241f6b045cbff0481cf4e1901becd0e12fb45166a8f17f95823f0b1a",
+      "size": 87533,
+      "source_artifact": "npm jquery@3.7.1 dist/jquery.min.js",
+      "update_process": "docs/architecture/build-inputs.md#updating-a-vendored-library"
+    },
+    {
+      "name": "lazysizes",
+      "version": "5.3.2",
+      "license": "MIT",
+      "upstream": "https://github.com/aFarkas/lazysizes",
+      "file": "js/libraries/lazysizes-5.3.2.min.js",
+      "sha256": "3d9120fa621da6d613c1698b7014ec6bdf4620366e8f2b7b547059f4b6f6272b",
+      "size": 7889,
+      "source_artifact": "npm lazysizes@5.3.2 lazysizes.min.js",
+      "update_process": "docs/architecture/build-inputs.md#updating-a-vendored-library"
+    },
+    {
+      "name": "marked",
+      "version": "12.0.2",
+      "license": "MIT",
+      "upstream": "https://github.com/markedjs/marked",
+      "file": "js/libraries/marked-12.0.2.min.js",
+      "sha256": "15fabce5b65898b32b03f5ed25e9f891a729ad4c0d6d877110a7744aa847a894",
+      "size": 35479,
+      "source_artifact": "npm marked@12.0.2 marked.min.js",
+      "update_process": "docs/architecture/build-inputs.md#updating-a-vendored-library"
+    },
+    {
+      "name": "Select2 (JS)",
+      "version": "4.1.0-rc.0",
+      "license": "MIT",
+      "upstream": "https://github.com/select2/select2",
+      "file": "js/libraries/select2-4.1.0.min.js",
+      "sha256": "f7244fff610595b944f76bf3080d74e3af42b5dd234f8f079e698cc39ac966b0",
+      "size": 73163,
+      "source_artifact": "npm select2@4.1.0-rc.0 dist/js/select2.min.js",
+      "update_process": "docs/architecture/build-inputs.md#updating-a-vendored-library"
+    },
+    {
+      "name": "Select2 (CSS)",
+      "version": "4.1.0-rc.0",
+      "license": "MIT",
+      "upstream": "https://github.com/select2/select2",
+      "file": "css/libraries/select2-4.1.0.min.css",
+      "sha256": "cda4a81c187015d95ed2c71f1841540b08203cdec5fa2a7d5d1825a3c2166f8c",
+      "size": 16264,
+      "source_artifact": "npm select2@4.1.0-rc.0 dist/css/select2.min.css",
+      "update_process": "docs/architecture/build-inputs.md#updating-a-vendored-library"
+    },
+    {
+      "name": "SortableJS",
+      "version": "1.15.3",
+      "license": "MIT",
+      "upstream": "https://github.com/SortableJS/Sortable",
+      "file": "js/libraries/sortablejs-1.15.3.min.js",
+      "sha256": "72aa2c4f9f7cb2b8b3268052d6d2daa9d952f209b7fc5cc247ff9e1153db1f16",
+      "size": 44605,
+      "source_artifact": "npm sortablejs@1.15.3 Sortable.min.js",
+      "update_process": "docs/architecture/build-inputs.md#updating-a-vendored-library"
+    },
+    {
+      "name": "@zxing/library",
+      "version": "0.21.3",
+      "license": "Apache-2.0",
+      "upstream": "https://github.com/zxing-js/library",
+      "file": "js/libraries/zxing-library-0.21.3.min.js",
+      "sha256": "7b1b6776f9dedf2e8453fee12fbf0fd86e0e56a8b4b8ac0c65fcacf86affbde7",
+      "size": 336097,
+      "source_artifact": "See zxing-library-0.21.3.PROVENANCE.txt",
+      "update_process": "docs/architecture/build-inputs.md#updating-a-vendored-library"
+    },
+    {
+      "name": "Roboto Flex (variable font)",
+      "version": "unrecorded",
+      "license": "OFL-1.1",
+      "upstream": "https://github.com/googlefonts/roboto-flex",
+      "file": "fonts/roboto-flex.woff2",
+      "sha256": "10e8c746c710eea51ea089278fe39fa954b4461384c6d1cb4e5b47e7868e48a5",
+      "size": 747328,
+      "source_artifact": "Google Fonts; upstream release not recorded when vendored",
+      "update_process": "docs/architecture/build-inputs.md#updating-a-vendored-library"
+    }
+  ]
+}

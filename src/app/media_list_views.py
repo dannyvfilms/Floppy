@@ -34,6 +34,12 @@ from app.library_query.adapters import (
     from_media_list_filters,
     last_watched_sort_key,
 )
+from app.library_query.alphabet import (
+    first_other_initial,
+    initial_condition,
+    normalize_initial,
+    query_other_initial,
+)
 from app.media_list_entry_grouping import entry_grouping_is_separate
 from app.media_list_filters import (
     apply_media_list_collection_filter,
@@ -1318,6 +1324,7 @@ def _build_artist_list_context(
     *,
     tracked_status_filter,
     search_query,
+    initial="",
     rating_filter,
     release_filter,
     genre_filter,
@@ -1350,6 +1357,9 @@ def _build_artist_list_context(
     # Apply search filter to artists
     if search_query:
         artist_trackers = artist_trackers.filter(artist__name__icontains=search_query)
+    artist_trackers = artist_trackers.filter(
+        initial_condition(initial, name_field="artist__name")
+    )
 
     # Apply rating filter to artists
     if rating_filter == "rated":
@@ -1560,6 +1570,9 @@ def _build_artist_list_context(
         "media_list": artist_page,
         "is_artist_list": True,
         "filter_data": filter_data,
+        "alphabet_other_initial": first_other_initial(
+            ArtistTracker.objects.filter(user=user), name_field="artist__name"
+        ),
     }
 
 
@@ -1620,7 +1633,10 @@ def media_list(request, media_type):
         status_choices.insert(1, (MEDIA_LIST_NO_STATUS, MEDIA_LIST_NO_STATUS_LABEL))
 
     # One parser for the web list and the API, so a filter reaches both.
-    parsed_filters = parse_media_list_filters(request, strict=False)
+    initial = normalize_initial(request.GET.get("initial"))
+    parsed_filters = replace(
+        parse_media_list_filters(request, strict=False), initial=initial
+    )
     rating_filter = parsed_filters.rating
     collection_filter = parsed_filters.collection
     progress_filter = (
@@ -1833,6 +1849,7 @@ def media_list(request, media_type):
     )
 
     list_sql_filters = {
+        "initial": initial,
         "genre": genre_filter,
         "implied_genre": implied_genre_filter,
         "year": year_filter,
@@ -2031,7 +2048,9 @@ def media_list(request, media_type):
         today = timezone.localdate()
         filtered_items = []
         candidate_items = list(
-            Item.objects.filter(id__in=candidate_item_ids).order_by("title", "id"),
+            Item.objects.filter(id__in=candidate_item_ids)
+            .filter(initial_condition(initial, request.user))
+            .order_by("title", "id"),
         )
         for item in candidate_items:
             if not _item_matches_requested_media_type(item):
@@ -2227,6 +2246,13 @@ def media_list(request, media_type):
         if (_use_media_list_cache or _time_left_active)
         else None
     )
+    # The alphabet follows the viewer's displayed title, including on warm caches.
+    if initial:
+        alphabet_variant = f":initial={initial}:title={request.user.title_display_preference}"
+        if _media_list_cache_key:
+            _media_list_cache_key += alphabet_variant
+        if _media_list_filter_cache_key:
+            _media_list_filter_cache_key += alphabet_variant
     _media_list_cached = (
         cache.get(_media_list_cache_key) if _media_list_cache_key else None
     )
@@ -2294,6 +2320,8 @@ def media_list(request, media_type):
             completed_date_to=completed_date_to,
             range_filters=range_cache_key,
         )
+        if initial:
+            _time_left_cache_key += alphabet_variant
         _time_left_cached_order = cache.get(_time_left_cache_key)
         if _time_left_cached_order is not None and filter_data is not None:
             # Sentinel: skips the list build below; the page is hydrated
@@ -3303,6 +3331,9 @@ def media_list(request, media_type):
         # Apply search filter to shows
         if search_query:
             show_trackers = show_trackers.filter(show__title__icontains=search_query)
+        show_trackers = show_trackers.filter(
+            initial_condition(initial, name_field="show__title")
+        )
 
         # A tag sits on the show's item (the show's uuid) or on one of its
         # episodes (the episode's uuid); either tags the show.
@@ -3528,6 +3559,9 @@ def media_list(request, media_type):
             "supports_critic_rating_sort": False,
         }
         context["enable_bulk_select"] = False
+        context["alphabet_other_initial"] = first_other_initial(
+            PodcastShowTracker.objects.filter(user=request.user), name_field="show__title"
+        )
 
     if media_type == MediaTypes.MUSIC.value:
         from app.models import AlbumTracker
@@ -3560,6 +3594,10 @@ def media_list(request, media_type):
                 album_trackers = album_trackers.filter(score__isnull=False)
             elif rating_filter == "not_rated":
                 album_trackers = album_trackers.filter(score__isnull=True)
+
+            album_trackers = album_trackers.filter(
+                initial_condition(initial, name_field="album__title")
+            )
 
             should_annotate_release_date = (
                 release_filter != "all"
@@ -3651,6 +3689,9 @@ def media_list(request, media_type):
             context["is_album_list"] = True
             context["filter_data"] = filter_data
             context["media_type_plural"] = "albums"
+            context["alphabet_other_initial"] = first_other_initial(
+                AlbumTracker.objects.filter(user=request.user), name_field="album__title"
+            )
 
         elif music_subview == "tracks":
             context["is_artist_list"] = False
@@ -3663,6 +3704,7 @@ def media_list(request, media_type):
                     request.user,
                     tracked_status_filter=tracked_status_filter,
                     search_query=search_query,
+                    initial=initial,
                     rating_filter=rating_filter,
                     release_filter=release_filter,
                     genre_filter=genre_filter,
@@ -3676,6 +3718,28 @@ def media_list(request, media_type):
             )
 
         context["enable_bulk_select"] = music_subview == "tracks"
+
+    if not _skip_generic_media_list and not helpers.is_htmx_fragment(request):
+        if use_sql_media_pagination and initial in {"", "other"}:
+            # Reuse the already evaluated engine, including provider deduplication
+            # and Python predicates; only the representative title is read again.
+            matches = engine.matches() if engine.uses_sql else engine.ranked_ids()
+            context["alphabet_other_initial"] = first_other_initial(
+                Item.objects.filter(pk__in=matches), request.user
+            )
+        else:
+            context["alphabet_other_initial"] = query_other_initial(
+                request.user, from_media_list_filters(sql_media_filters, (media_type,))
+            )
+
+    if _skip_generic_media_list:
+        # Container trackers replace the item page above; expose their own count
+        # and empty target rather than the skipped generic library's values.
+        container_page = context["media_list"]
+        context["result_count"] = container_page.paginator.count
+        context["filter_hx_target"] = (
+            ".media-grid" if layout == "grid" else ".media-table"
+        ) if container_page else "#empty_list"
 
     if context.get("enable_bulk_select"):
         context["bulk_action_data"] = build_bulk_action_data(
@@ -3759,7 +3823,10 @@ def media_list(request, media_type):
             if media_page is not None and not media_page.object_list:
                 return HttpResponse(status=204)
             response = HttpResponse()
-            response["HX-Redirect"] = reverse("medialist", args=[media_type])
+            redirect_url = reverse("medialist", args=[media_type])
+            if initial:
+                redirect_url += "?" + request.GET.urlencode()
+            response["HX-Redirect"] = redirect_url
             return response
 
         # Check if this is a pagination request (has page parameter and is not the first page)
@@ -3778,6 +3845,9 @@ def media_list(request, media_type):
 
         from django.template.loader import render_to_string
 
+        if initial and not context.get("media_list") and not is_pagination:
+            template_name = "app/components/alphabet_results_empty.html"
+            context["alphabet_table_fragment"] = layout == "table"
         html = render_to_string(template_name, context, request=request)
 
         media_page = context.get("media_list")

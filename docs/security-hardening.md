@@ -1,5 +1,14 @@
 # Security hardening and upgrade notes
 
+## TMDB proxy is superuser-only
+
+The TMDB proxy in Settings > Advanced applies to every user's TMDB requests, so
+only superusers can set it now, and only superusers' values are used. If
+several superusers set one, the earliest-created superuser's proxy wins. A
+proxy saved earlier by an ordinary user stays in the database but is ignored:
+after upgrading, TMDB requests go direct unless a superuser already has a
+configured proxy, or until a superuser sets one.
+
 ## Celery JSON transition
 
 Celery task and result serializers and accepted content are JSON only. Workers

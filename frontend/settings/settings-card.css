@@ -1,0 +1,60 @@
+.settings-card, .settings-chip {
+  --settings-card-text: var(--color-text);
+  --settings-card-border: var(--color-surface-border);
+  --settings-card-background: var(--color-surface-strong);
+  --settings-card-badge-border: var(--settings-card-border);
+  --settings-card-badge-background: var(--color-surface);
+  --settings-card-badge-text: var(--color-text-secondary);
+  --settings-card-badge-hover: var(--color-surface-hover);
+  --settings-card-focus: var(--color-accent);
+}
+.settings-chip { display: inline-flex; min-width: 0; max-width: 100%; }
+[data-ui-chip] { outline: none; }
+[data-ui-chip]:focus-visible { outline: 2px solid var(--settings-card-focus); outline-offset: 2px; }
+.settings-card {
+  border: 1px solid var(--settings-card-border);
+  border-radius: var(--theme-radius, .5rem);
+  background: var(--settings-card-background);
+  padding: 1rem;
+  min-width: 0;
+  color: var(--settings-card-text);
+}
+:is(.settings-card, .settings-chip)[data-tone="info"] {
+  --settings-card-border: rgb(99 102 241 / .3);
+  --settings-card-background: rgb(99 102 241 / .1);
+  --settings-card-badge-border: rgb(99 102 241 / .3);
+  --settings-card-badge-background: rgb(99 102 241 / .1);
+  --settings-card-badge-text: var(--color-info-text);
+  --settings-card-badge-hover: rgb(99 102 241 / .2);
+}
+:is(.settings-card, .settings-chip)[data-tone="warning"] {
+  --settings-card-border: rgb(245 158 11 / .3);
+  --settings-card-background: rgb(245 158 11 / .1);
+  --settings-card-badge-border: rgb(245 158 11 / .4);
+  --settings-card-badge-background: rgb(245 158 11 / .2);
+  --settings-card-badge-text: var(--color-warning-text);
+  --settings-card-badge-hover: rgb(245 158 11 / .3);
+}
+.settings-card-heading { display: flex; flex-wrap: nowrap; align-items: flex-start; justify-content: space-between; gap: .75rem; min-width: 0; }
+.settings-card-heading h4 { font-size: 1rem; font-weight: 500; line-height: 1.5; margin: 0; flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+.settings-card [data-testid="settings-card-heading"] [role="heading"] { overflow-wrap: anywhere; }
+.settings-card [data-testid="settings-card-heading"] > .settings-chip { flex-shrink: 0; }
+.settings-card-badge { border: 1px solid var(--settings-card-badge-border); border-radius: .25rem;
+  background: var(--settings-card-badge-background); color: var(--settings-card-badge-text);
+  font-size: .75rem; line-height: 1rem; padding: .25rem .5rem; flex-shrink: 0; }
+.settings-card-info { cursor: pointer; transition-property: background-color, border-color, color, box-shadow; }
+.settings-card-info:hover { background: var(--settings-card-badge-hover); }
+.settings-card-info:focus-visible { outline: 2px solid var(--settings-card-focus); outline-offset: 2px; }
+.settings-card-body { margin-top: .75rem; }
+.settings-card-body > * + * { margin-top: .75rem; }
+.ui-personal-credentials { display: flex; flex-direction: column; gap: .75rem; }
+
+:is(.settings-card, .settings-chip)[data-tone="success"] {
+  --settings-card-border: rgb(16 185 129 / .35);
+  --settings-card-background: rgb(16 185 129 / .08);
+  --settings-card-badge-border: rgb(16 185 129 / .4);
+  --settings-card-badge-background: rgb(16 185 129 / .16);
+  --settings-card-badge-text: var(--color-success-text);
+  --settings-card-badge-hover: rgb(16 185 129 / .24);
+}
+.settings-chip [data-ui-chip]:hover, .ui-chip-link:hover { text-decoration: none; }

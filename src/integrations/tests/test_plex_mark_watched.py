@@ -10,7 +10,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django_celery_beat.models import PeriodicTask
 
-from app.models import Movie
+from app.models import Item, Movie, Status
 from integrations import tasks
 from integrations.imports import plex
 from integrations.imports.helpers import MediaImportError
@@ -220,6 +220,26 @@ class PlexMarkWatchedImporterTests(TestCase):
 
         self.assertEqual(Movie.objects.filter(user=self.user).count(), 1)
 
+    def test_mark_completes_a_movie_already_tracked_as_planning(
+        self, _res, mock_fetch, *_
+    ):
+        """Marking a tracked, unwatched movie watched in Plex completes it."""
+        item = Item.objects.create(
+            media_id="200",
+            source="tmdb",
+            media_type="movie",
+            title="Movie 200",
+            image="/p.jpg",
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.PLANNING.value)
+        mock_fetch.return_value = ([_movie_entry("200", self.checkpoint_ts + 60)], 1)
+
+        self._poll()
+
+        movie = Movie.objects.get(user=self.user, item=item)
+        self.assertEqual(movie.status, Status.COMPLETED.value)
+        self.assertIsNotNone(movie.end_date)
+
 
 class PlexMarkWatchedScheduleTests(TestCase):
     """Turning the sync on and off manages one periodic task."""
@@ -248,7 +268,7 @@ class PlexMarkWatchedScheduleTests(TestCase):
         )
 
         self.assertRedirects(
-            response, reverse("integrations"), fetch_redirect_response=False
+            response, reverse("provider_detail", args=["plex"]) + "?tab=import", fetch_redirect_response=False
         )
         account.refresh_from_db()
         self.assertTrue(account.mark_watched_sync_enabled)
@@ -303,7 +323,7 @@ class PlexMarkWatchedScheduleTests(TestCase):
         )
 
         self.assertRedirects(
-            response, reverse("integrations"), fetch_redirect_response=False
+            response, reverse("provider_detail", args=["plex"]) + "?tab=import", fetch_redirect_response=False
         )
         self.assertFalse(self._tasks().exists())
         messages = [str(m) for m in get_messages(response.wsgi_request)]

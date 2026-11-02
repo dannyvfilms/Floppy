@@ -1,0 +1,42 @@
+{% load i18n static app_tags user_tags %}
+    {# Kodi #}
+    <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
+         x-show="activeIntegration === 'all' || activeIntegration === 'kodi'"
+         x-transition.opacity.duration.150ms>
+      <div class="flex items-center mb-3">
+        {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
+        <h3 class="text-base font-medium">{% translate "Kodi Integration" %}</h3>
+      </div>
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">{% translate "Connect Kodi to automatically track your watching progress." %}</p>
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
+        <h4 class="text-sm font-medium mb-3">{% translate "Setup Instructions" %}</h4>
+        <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
+          <li>{% translate "You will need TMDB and/or TVDB metadata sources enabled in Kodi so that external IDs are included in webhook payloads." %}</li>
+          <li>{% translate "Download and install the" %} <a href="https://github.com/sboddy/KodiAddon-HttpScrobbler" class="text-[var(--color-link)] hover:underline" target="_blank" rel="noopener">{% translate "HTTP Scrobbler add-on" %}</a>.</li>
+          <li>{% translate "In Kodi, go to" %} <strong>{% translate "Settings > Services > Control" %}</strong> {% translate "and enable" %} <strong>{% translate "Allow remote control via HTTP" %}</strong>.</li>
+          <li>
+            {% translate "In the HTTP Scrobbler add-on settings, set the webhook URL to:" %}
+            <em class="text-[var(--color-text-muted)] not-italic text-xs block mt-1 mb-2">{% translate "Tip: open the Kodi web interface at" %} <code>http://&lt;kodi-ip&gt;:8080</code> {% translate "to configure the add-on — easier than using the remote." %}</em>
+            {# djlint:off #}
+            <div class="inline-flex items-center gap-2 w-full">
+              <input readonly
+                     id="kodi-webhook-url"
+                     class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono px-2 py-1"
+                     type="text"
+                     value="{% url 'kodi_webhook' request.user.token as kodi_webhook_path %}{% absolute_app_url kodi_webhook_path %}">
+              <span class="flex items-center cursor-pointer group"
+                    title="{% translate "Copy" %}"
+                    data-copy-target="#kodi-webhook-url">
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
+              </span>
+            </div>
+            {# djlint:on #}
+          </li>
+          <li>{% translate "Leave the username and password fields blank." %}</li>
+          <li>{% blocktranslate %}In the add-on's "Scrobble at specific events" settings, make sure{% endblocktranslate %} <strong>{% translate "Start playback" %}</strong>, <strong>{% translate "Playback stopped (not finished)" %}</strong>{% translate ", and" %} <strong>{% translate "Playback finished (not stopped before reaching the end)" %}</strong> {% translate "are all enabled (they're on by default)." %}</li>
+          <li>{% translate "If you use the add-on's" %} <strong>{% translate "Skip all events after sending stop/end" %}</strong> {% translate "option, turn it off — it can suppress the events Floppy needs to mark an episode watched." %}</li>
+          <li>{% translate "An item is marked watched when playback reaches 80% or Kodi reports" %} <em>{% translate "Playback finished" %}</em>.</li>
+        </ol>
+      </div>
+    </div>
+

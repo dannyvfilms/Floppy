@@ -45,6 +45,10 @@
     </div>
   </div>
 
+  {% if media_type == "podcast" %}
+    <p class="mb-6 text-sm text-[var(--color-text-muted)]">{% translate "Search by name, or paste an Apple Podcasts link or an RSS feed address to add a show directly." %}</p>
+  {% endif %}
+
   {% if media_type == "all" %}
     <p class="mb-6 text-sm text-[var(--color-text-muted)]">{% translate "Searching your library only: items you track, collect or tag. Pick a media type to search online." %}</p>
 
@@ -298,7 +302,18 @@
 
     {% if data.results %}
       <div {% if local_results %}class="mt-8"{% endif %}>
-        <h3 class="text-lg font-semibold mb-4 text-[var(--color-text-secondary)]">{% translate "Online Results" %}</h3>
+        {% if media_type == "podcast" %}
+          {% translate "About these results" as results_tip_label %}
+          {% if fallback_source_label %}
+            {% blocktranslate trimmed asvar results_tip with value_1=source_label value_2=fallback_source_label %}{{ value_1 }} had no match for this search, so these results come from {{ value_2 }}. Paste an Apple Podcasts link or an RSS feed address to add a show directly.{% endblocktranslate %}
+            {% include "app/components/results_heading.html" with title=fallback_source_label tip=results_tip label=results_tip_label %}
+          {% else %}
+            {% blocktranslate trimmed asvar results_tip with value_1=source_label %}These results come from {{ value_1 }}. Paste an Apple Podcasts link or an RSS feed address to add a show directly.{% endblocktranslate %}
+            {% include "app/components/results_heading.html" with title=source_label tip=results_tip label=results_tip_label %}
+          {% endif %}
+        {% else %}
+          <h3 class="text-lg font-semibold mb-4 text-[var(--color-text-secondary)]">{% translate "Online Results" %}</h3>
+        {% endif %}
         <div {% if layout == 'grid' %}
           class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
           {% for result in data.results %}
@@ -370,6 +385,9 @@
         <p class="text-[var(--color-text-muted)] text-center max-w-md mb-8">
           {% blocktranslate trimmed with value_1=request.GET.q %}We couldn't find any matches for "{{ value_1 }}". Try checking your spelling or using different keywords.{% endblocktranslate %}
         </p>
+        {% if media_type == "podcast" %}
+          <p class="text-[var(--color-text-muted)] text-center max-w-md mb-8">{% translate "Can't find it? Paste the show's RSS feed address into the search box to add it directly." %}</p>
+        {% endif %}
       </div>
     {% endif %}
   {% endif %}

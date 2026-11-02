@@ -216,6 +216,7 @@ class TestForcedAudiobookLibrary(PlexAudiobookImportTestCase):
         book = Book.objects.get(user=self.user, item=item)
         self.assertEqual(book.progress, 60)
         self.assertEqual(book.status, Status.IN_PROGRESS.value)
+        self.assertEqual(book.entry_source, "plex")
         self.assertFalse(Music.objects.filter(user=self.user).exists())
 
     def test_finished_book_completes_at_full_runtime(self):

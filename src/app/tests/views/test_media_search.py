@@ -160,6 +160,48 @@ class MediaSearchViewTests(TestCase):
         self.assertEqual(local_results[0]["item"].source, Sources.GPODDER.value)
 
     @patch("app.providers.services.search")
+    def test_podcast_online_results_name_the_source_that_answered(self, mock_search):
+        """The heading names the source the results came from, with an info tip."""
+        result = {
+            "media_id": "https://example.com/feed.xml",
+            "source": Sources.GPODDER.value,
+            "media_type": MediaTypes.PODCAST.value,
+            "title": "Das Portal",
+            "image": "https://example.com/portal.jpg",
+        }
+        mock_search.return_value = {
+            "page": 1,
+            "total_results": 1,
+            "total_pages": 1,
+            "results": [dict(result)],
+            "fallback_source": Sources.PODCASTINDEX.value,
+        }
+
+        response = self.client.get(
+            reverse("search")
+            + f"?media_type=podcast&q=portal&source={Sources.POCKETCASTS.value}",
+        )
+
+        content = response.content.decode()
+        self.assertContains(response, "Online Results (Podcast Index)")
+        self.assertContains(response, "Pocket Casts had no match for this search")
+        self.assertNotIn("Online Results (Pocket Casts)", content)
+
+        # The view rewrites result dicts in place, so give the second search its own.
+        mock_search.return_value = {
+            "page": 1,
+            "total_results": 1,
+            "total_pages": 1,
+            "results": [dict(result)],
+        }
+        response = self.client.get(
+            reverse("search")
+            + f"?media_type=podcast&q=portal&source={Sources.POCKETCASTS.value}",
+        )
+        self.assertContains(response, "Online Results (Pocket Casts)")
+        self.assertContains(response, "These results come from Pocket Casts")
+
+    @patch("app.providers.services.search")
     def test_music_search_view_uses_shared_template(
         self,
         mock_search,
@@ -463,6 +505,14 @@ class CollectedItemSearchTests(TestCase):
             title="Breaking Bad",
             image="http://example.com/i.jpg",
         )
+        Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            library_media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+            season_number=1,
+        )
         self._collect(
             media_id="1396",
             source=Sources.TMDB.value,
@@ -478,6 +528,7 @@ class CollectedItemSearchTests(TestCase):
             [result["item"] for result in response.context["local_results"]],
             [show],
         )
+        self.assertEqual(response.context["local_results_total"], 1)
 
     @patch("app.providers.services.search")
     def test_tracked_and_collected_item_is_listed_once(self, mock_search):
@@ -772,6 +823,7 @@ class AllTypeSearchTests(TestCase):
         item.library_media_type = MediaTypes.ANIME.value
         item.save()
         TV.objects.create(user=self.user, item=item, status=Status.COMPLETED.value)
+        CollectionEntry.objects.create(user=self.user, item=item)
 
         groups = {
             g["media_type"]: g
@@ -781,6 +833,7 @@ class AllTypeSearchTests(TestCase):
         }
 
         self.assertNotIn(MediaTypes.TV.value, groups)
+        self.assertEqual(get_saved_suggestions(self.user, "tv", "dune"), [])
         anime = groups[MediaTypes.ANIME.value]["results"][0]
         self.assertEqual(anime["item"], item)
         self.assertEqual(anime["media"].route_media_type, MediaTypes.ANIME.value)

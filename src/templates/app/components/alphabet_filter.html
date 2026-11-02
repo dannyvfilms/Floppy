@@ -1,0 +1,19 @@
+{% if show %}
+  {{ alphabet|json_script:props_id }}
+  {% if alphabet.mode == 'rail' %}
+    <input type="hidden" name="initial" value="{{ initial }}" form="{{ alphabet.formId }}">
+  {% endif %}
+  <div data-alphabet-root data-props-id="{{ props_id }}" x-ignore hx-boost="false"
+       class="alphabet-{{ alphabet.mode }}">
+    {% if alphabet.mode == 'rail' %}
+      <nav aria-label="{{ alphabet.label }}">
+        {% for option in alphabet.options %}
+          <a href="{{ option.href }}" data-alphabet-initial="{{ option.value }}" aria-label="{{ option.accessibilityLabel }}"{% if option.caption %} data-alphabet-caption{% endif %}{% if option.selected %} aria-current="true"{% endif %}><span>{{ option.label }}</span></a>
+        {% endfor %}
+      </nav>
+    {% else %}
+      <h3>{{ alphabet.emptyTitle }}</h3>
+      <a href="{{ alphabet.options.0.href }}">{{ alphabet.clearLabel }}</a>
+    {% endif %}
+  </div>
+{% endif %}

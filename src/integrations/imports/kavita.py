@@ -21,6 +21,7 @@ from app.models import Item, MediaTypes, Sources
 from app.providers import comicvine, services
 from app.services import metadata_resolution
 from app.services.item_merge import merge_item
+from integrations import import_progress
 from integrations.imports.helpers import (
     ConnectionAuthError,
     find_item_across_buckets,
@@ -405,7 +406,10 @@ class KavitaImporter(ReadingServerImporter):
 
     def sync(self, cutoff, counts, links):
         """Import every started series read after the cutoff."""
-        for series in self.client.series_with_progress():
+        all_series = list(self.client.series_with_progress())
+        total = len(all_series)
+        for index, series in enumerate(all_series, start=1):
+            import_progress.report(index, total, "Kavita")
             read_at = parse_datetime(series.get("latestReadDate"))
             if cutoff and read_at and read_at < cutoff:
                 continue

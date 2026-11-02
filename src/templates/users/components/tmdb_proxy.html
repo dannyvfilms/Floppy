@@ -1,0 +1,33 @@
+{% load i18n %}
+      <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center">
+            {% include "app/icons/vertical-sliders.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
+            <h3 class="text-base font-medium">{% translate "TMDB Proxy" %}</h3>
+          </div>
+          {% if tmdb_proxy_configured %}
+            <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 border border-emerald-500/30" style="color: var(--color-status-clean)">{% translate "Configured" %}</span>
+          {% else %}
+            <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">{% translate "Not configured" %}</span>
+          {% endif %}
+        </div>
+        <p class="text-[var(--color-text-muted)] mb-4 text-sm">
+          {% translate "If TMDB is blocked from this server, route TMDB requests through a proxy (HTTP or SOCKS5)." %}
+          <br>
+          {% translate "Leave blank and save to remove it." %}
+        </p>
+        <form method="post"
+              action="{% url 'update_tmdb_proxy' %}"
+              class="space-y-3">
+          {% csrf_token %}
+          {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.get_full_path }}">{% endif %}
+          <input type="text"
+                 name="tmdb_proxy_url"
+                 class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                 placeholder="{% translate "socks5://user:pass@host:port" %}">
+          <button type="submit"
+                  class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
+            {% translate "Save" %}
+          </button>
+        </form>
+      </div>

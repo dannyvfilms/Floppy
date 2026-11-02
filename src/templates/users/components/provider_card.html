@@ -1,0 +1,30 @@
+{% load i18n user_tags %}
+<div class="ui-catalog-item">
+<a href="{% url 'provider_detail' provider.slug %}{% if selected_capability %}?tab={{ selected_capability }}{% endif %}"
+   aria-label="{% blocktranslate with name=provider.label %}Open {{ name }}{% endblocktranslate %}"
+   class="ui-catalog-card bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left flex flex-col gap-2">
+  <div class="flex items-start justify-between gap-2 min-w-0">
+    {% source_display provider.logo_slug|default:provider.slug label=provider.label %}
+    {% if selected_capability == "connection" %}
+      <span role="img" aria-label="{% translate provider.state.connection %}" title="{% translate provider.state.connection %}"
+            class="shrink-0 {% if provider.state.connection_tone == 'warning' %}text-[var(--color-warning-text)]{% elif provider.state.connection_tone == 'success' %}text-[var(--color-success-text)]{% else %}text-[var(--color-text-muted)]{% endif %}">
+        {% if provider.state.connection_tone == 'warning' %}{% include "app/icons/warning.svg" with classes="w-5 h-5" %}{% elif provider.state.connection_tone == 'success' %}{% include "app/icons/circle-check.svg" with classes="w-5 h-5" %}{% else %}<span aria-hidden="true">○</span>{% endif %}
+      </span>
+    {% elif provider.state.attention %}
+      <span class="shrink-0 text-[var(--color-warning-text)]" title="{% translate provider.state.summary %}">{% include "app/icons/warning.svg" with classes="w-4 h-4" %}</span>
+    {% endif %}
+  </div>
+  <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{{ provider.card_description }}</p>
+</a>
+{% if not user.is_demo %}
+<form action="{% url 'pin_settings_provider' %}" method="post">
+  {% csrf_token %}<input type="hidden" name="provider" value="{{ provider.slug }}">
+  <input type="hidden" name="pinned" value="{% if provider.pinned %}0{% else %}1{% endif %}">
+  <input type="hidden" name="next" value="{{ request.get_full_path }}">
+  <button class="ui-catalog-pin" type="submit" aria-pressed="{% if provider.pinned %}true{% else %}false{% endif %}"
+          aria-label="{% if provider.pinned %}{% blocktranslate with name=provider.label %}Unpin {{ name }}{% endblocktranslate %}{% else %}{% blocktranslate with name=provider.label %}Pin {{ name }}{% endblocktranslate %}{% endif %}">
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="{% if provider.pinned %}currentColor{% else %}none{% endif %}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.8 5.7L21 9.6l-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3z" /></svg>
+  </button>
+</form>
+{% endif %}
+</div>

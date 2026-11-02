@@ -1,0 +1,12 @@
+{% load i18n ui_tags %}
+<div class="ui-catalog"><div class="provider-overview ui-catalog-grid">
+  {% for card in provider_page.overviewCards %}
+    <a class="ui-card-link" href="{{ card.url }}"{% if card.tooltip %} title="{{ card.tooltip }}"{% endif %}>
+      {% settings_card title=card.title tone=card.tone badge=card.badge %}
+        <p>{{ card.subtitle }}</p>
+        {% if card.detail %}<p>{{ card.detail }}</p>{% endif %}
+      {% endsettings_card %}
+    </a>
+  {% endfor %}
+</div>
+</div>

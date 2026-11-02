@@ -2,13 +2,16 @@
 {% load i18n %}
 
 {% load static %}
-{% load app_tags %}
+{% load app_tags alphabet_tags %}
 
 {% block title %}
   {{ media_type|media_type_readable_plural }} - Floppy
 {% endblock title %}
 
+{% block alphabet_filter %}{% alphabet_filter "filter-form" %}{% endblock alphabet_filter %}
+
 {% block content %}
+  <div class="alphabet-surface">
   {% include "app/components/filter_toolbar_scripts.html" %}
 
   {% translate "Name this view" as save_view_prompt %}{% translate "All" as media_i18n_2 %}{% translate "Rated" as media_i18n_3 %}{% translate "Not Rated" as media_i18n_4 %}{% translate "Collected" as media_i18n_5 %}{% translate "Not Collected" as media_i18n_6 %}{% translate "Any" as media_i18n_7 %}{% translate "Not Caught Up" as media_i18n_8 %}{% translate "Caught Up" as media_i18n_9 %}{% translate "Released" as media_i18n_10 %}{% translate "Not Released" as media_i18n_11 %}{% translate "Rated" as media_i18n_3 %}{% translate "Collected" as media_i18n_5 %}{% translate "Any Progress" as media_i18n_93 %}{% translate "Implied: " as media_i18n_82 %}{% translate "Unknown Year" as media_i18n_83 %}{% translate "Completed: " as media_i18n_94 %}{% translate "Released" as media_i18n_10 %}{% translate "All" as media_i18n_2 %}{{ media_list_filter_state|json_script:"media-list-filter-state" }}<div x-data="{ ...libraryFilterState(JSON.parse(document.getElementById('media-list-filter-state').textContent), JSON.parse(document.getElementById('media-filter-data')?.textContent || '{}')), mediaListUrl: '{% url 'medialist' media_type %}', sort: '{{ current_sort|escapejs }}', direction: '{{ current_direction|escapejs }}', layout: '{{ current_layout|escapejs }}', search: '{{ request.GET.search|default:''|escapejs }}', group_by: '{{ current_group_by|escapejs }}', statusLabels: {
@@ -66,7 +69,9 @@
       </div>
     {% endif %}
 
-    {% if not media_list %}
+    {% if not media_list and request.GET.initial|alphabet_initial %}
+      <div id="empty_list">{% alphabet_filter "filter-form" "empty" %}</div>
+    {% elif not media_list %}
       <div id="empty_list"
            class="flex flex-col items-center justify-center py-16 bg-[var(--color-surface)] rounded-lg">
         <div class="text-center max-w-md mx-auto p-6">
@@ -249,4 +254,5 @@
     });
     }
   </script>
+  </div>
 {% endblock content %}

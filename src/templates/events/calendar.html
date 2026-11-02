@@ -11,53 +11,30 @@
 {% endblock title %}
 
 {% block content %}
-  <div class="mb-8">
-    <h1 class="text-3xl font-bold mb-2">{% translate "Calendar" %}</h1>
-    <p class="text-[var(--color-text-muted)]">
-      {% url 'history' as history_url %}
-      {% blocktranslate trimmed %}Upcoming episodes and releases for everything you're tracking, unless it's paused or dropped. What you've already watched, read or played is in <a href="{{ history_url }}" class="underline hover:text-[var(--color-link)]">History</a>.{% endblocktranslate %}
-    </p>
+  <div class="mb-3">
+    <h1 class="text-2xl font-bold">{% translate "Calendar" %}</h1>
     {% if not release_dict %}
       <p class="mt-1 text-sm text-[var(--color-text-muted)]">{% translate "Nothing this month. Add a show, movie, book or game to your library and its upcoming dates appear here." %}</p>
     {% endif %}
   </div>
 
-  <div class="bg-[var(--color-surface)] rounded-lg p-6 mb-6" x-data="calendarFilters()">
-    <div class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
-      <div class="flex items-center gap-4">
+  <div class="mb-6" x-data="calendarFilters()">
+    <div class="flex justify-between items-center mb-4 gap-2">
+      <div class="flex items-center min-w-0">
         <div class="flex items-center bg-[var(--color-surface-strong)] rounded-md p-1">
-          <a class="p-2 hover:bg-[var(--color-surface-hover)] rounded-md transition-colors"
-             href="{% url 'calendar' %}?month={{ prev_month }}&year={{ prev_year }}&view={{ view_type }}">
+          <a class="p-1 sm:p-2 hover:bg-[var(--color-surface-hover)] rounded-md transition-colors"
+             href="{% url 'calendar' %}?month={{ prev_month }}&year={{ prev_year }}">
             {% include "app/icons/chevron-left.svg" with classes="w-5 h-5" %}
           </a>
-          <h2 class="px-4 text-lg font-semibold min-w-40 text-center">{{ month_name }} {{ year }}</h2>
-          <a class="p-2 hover:bg-[var(--color-surface-hover)] rounded-md transition-colors"
-             href="{% url 'calendar' %}?month={{ next_month }}&year={{ next_year }}&view={{ view_type }}">
+          <h2 class="px-1 sm:px-4 text-sm sm:text-lg font-semibold sm:min-w-40 text-center whitespace-nowrap">{{ month_name }} {{ year }}</h2>
+          <a class="p-1 sm:p-2 hover:bg-[var(--color-surface-hover)] rounded-md transition-colors"
+             href="{% url 'calendar' %}?month={{ next_month }}&year={{ next_year }}">
             {% include "app/icons/chevron-right.svg" with classes="w-5 h-5" %}
           </a>
         </div>
-        <a class="hidden sm:flex w-10 h-10 bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex-col items-center justify-center leading-none"
-           href="{% url 'calendar' %}?month={{ today.month }}&year={{ today.year }}&view={{ view_type }}"
-           aria-label="{% translate "Go to Today" %}">
-          <span class="text-xl font-bold leading-none">{{ today|date:"j" }}</span>
-          <span class="uppercase text-[var(--color-text-secondary)]/90 mt-0.5"
-                style="font-size: 9px; font-weight: 400; letter-spacing: 0.04em; line-height: 1;">
-            {{ today|date:"M" }}
-          </span>
-        </a>
       </div>
 
-      <div class="flex items-center gap-2 flex-wrap justify-end">
-        <a class="sm:hidden w-10 h-10 bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex flex-col items-center justify-center leading-none shrink-0"
-           href="{% url 'calendar' %}?month={{ today.month }}&year={{ today.year }}&view={{ view_type }}"
-           aria-label="{% translate "Go to Today" %}">
-          <span class="text-xl font-bold leading-none">{{ today|date:"j" }}</span>
-          <span class="uppercase text-[var(--color-text-secondary)]/90 mt-0.5"
-                style="font-size: 9px; font-weight: 400; letter-spacing: 0.04em; line-height: 1;">
-            {{ today|date:"M" }}
-          </span>
-        </a>
-
+      <div class="flex items-center gap-2 shrink-0">
         <div class="h-10 flex items-center bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md px-1 transition-colors"
              @click="actionsOpen = false">
           {% include "app/components/filter_menu.html" with filter_data_id="calendar-filter-data" filter_show_media_types=True filter_media_types_only=True filter_type_statuses=True filter_release_types=True %}
@@ -82,6 +59,9 @@
                x-transition:leave-start="transform opacity-100 scale-100"
                x-transition:leave-end="transform opacity-0 scale-95"
                class="absolute right-0 mt-2 w-60 rounded-md bg-[var(--color-surface-strong)] border border-[var(--color-border)] shadow-lg overflow-hidden z-40">
+            <a href="{% url 'calendar' %}?month={{ today.month }}&year={{ today.year }}"
+               class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+               @click="actionsOpen = false">{% translate "Go to Today" %}</a>
             <form method="post" action="{% url 'reload_calendar' %}">
               {% csrf_token %}
               <button type="submit"
@@ -100,31 +80,13 @@
           </div>
         </div>
 
-        <div class="bg-[var(--color-surface-strong)] rounded-md p-1 space-x-0.5 flex">
-          <a class="p-2 rounded-md transition-colors cursor-pointer {% if view_type == 'grid' %}bg-indigo-600 text-white{% else %}hover:bg-[var(--color-surface-hover)]{% endif %}"
-             href="{% url 'calendar' %}?month={{ month }}&year={{ year }}&view=grid">
-            {% include "app/icons/grid.svg" with classes="w-4 h-4" %}
-          </a>
-          <a class="p-2 rounded-md transition-colors cursor-pointer {% if view_type == 'list' %}bg-indigo-600 text-white{% else %}hover:bg-[var(--color-surface-hover)]{% endif %}"
-             href="{% url 'calendar' %}?month={{ month }}&year={{ year }}&view=list">
-            {% include "app/icons/list.svg" with classes="w-4 h-4" %}
-          </a>
-        </div>
-
       </div>
     </div>
 
-    {% if view_type == 'grid' %}
-      <div x-html="filteredGridHtml"></div>
-      <template x-ref="gridTemplate">
-        {% include "events/components/calendar_grid.html" %}
-      </template>
-    {% else %}
-      <div x-html="filteredListHtml"></div>
-      <template x-ref="listTemplate">
-        {% include "events/components/calendar_list.html" %}
-      </template>
-    {% endif %}
+    <div x-html="filteredGridHtml"></div>
+    <template x-ref="gridTemplate">
+      {% include "events/components/calendar_grid.html" %}
+    </template>
   </div>
 
   <div class="bg-[var(--color-surface)] p-5 rounded-lg mb-6"
@@ -401,8 +363,9 @@
           {% endfor %}
         },
         mobileSelectedDay: null,
+        agendaOpen: true,
+        calendarTypeCounts: {},
         filteredGridHtml: '',
-        filteredListHtml: '',
         init() {
           this.loadSavedFilters();
           this.$watch('selectedTypes', () => {
@@ -497,6 +460,39 @@
           });
           this.selectedStatusesByType = allStatuses;
         },
+        selectCalendarType(type) {
+          this.selectedTypes = type === 'all'
+            ? this.availableMediaTypes.map(item => item.value)
+            : this.availableMediaTypes.map(item => item.value).filter(
+              value => value === type || (type === 'tv' && value === 'season'),
+            );
+        },
+        isCalendarTypeSelected(type) {
+          const types = type === 'all'
+            ? this.availableMediaTypes.map(item => item.value)
+            : this.availableMediaTypes.map(item => item.value).filter(
+              value => value === type || (type === 'tv' && value === 'season'),
+            );
+          return types.length > 0 && types.length === this.selectedTypes.length
+            && types.every(value => this.selectedTypes.includes(value));
+        },
+        updateCalendarTypeCounts(day) {
+          const panel = this.$refs.gridTemplate.content.querySelector(`[data-day-panel="${day}"]`);
+          const counts = { all: 0 };
+          if (panel) {
+            panel.querySelectorAll('[data-release-media-type]').forEach((release) => {
+              const type = release.dataset.releaseMediaType;
+              const status = release.dataset.releaseStatus;
+              const releaseType = release.dataset.releaseType;
+              if ((status && !(this.selectedStatusesByType[type] || []).includes(status))
+                  || (releaseType && !this.selectedReleaseTypes.includes(releaseType))) return;
+              const group = type === 'season' ? 'tv' : type;
+              counts[group] = (counts[group] || 0) + 1;
+              counts.all += 1;
+            });
+          }
+          this.calendarTypeCounts = counts;
+        },
         // The button label also flags filters the Media Types pane hides.
         extraFilterLabels() {
           const labels = [];
@@ -590,9 +586,6 @@
           if (this.$refs.gridTemplate) {
             this.filteredGridHtml = this.filterReleaseMarkup(this.$refs.gridTemplate.innerHTML);
           }
-          if (this.$refs.listTemplate) {
-            this.filteredListHtml = this.filterReleaseMarkup(this.$refs.listTemplate.innerHTML);
-          }
           this.$nextTick(() => this.bindMobileCalendar());
         },
         filterReleaseMarkup(html) {
@@ -615,6 +608,40 @@
           });
 
           container.querySelectorAll('[data-calendar-day]').forEach(dayEl => {
+            const artwork = dayEl.querySelector('[data-day-artwork]');
+            if (artwork) {
+              const releases = [...artwork.querySelectorAll('[data-release-media-type]')];
+              dayEl.classList.toggle('p-1', releases.length === 0);
+              dayEl.classList.toggle('aspect-[3/4]', releases.length === 0);
+              dayEl.classList.toggle('overflow-hidden', releases.length > 0);
+              releases.forEach((release, index) => {
+                if (index >= (releases.length > 4 ? 3 : 4)) {
+                  release.remove();
+                } else {
+                  if (index === 0) release.src = release.dataset.poster;
+                  release.classList.add(index === 0 ? 'col-span-3' : 'col-span-1');
+                  release.classList.add(index === 0 && releases.length === 1 ? 'aspect-[3/4]' : 'aspect-square');
+                  if (index === 0) {
+                    release.classList.add('rounded-t-[var(--theme-radius)]');
+                    release.classList.add('max-md:aspect-square', 'max-md:rounded-b-[var(--theme-radius)]');
+                    if (releases.length === 1) release.classList.add('rounded-b-[var(--theme-radius)]');
+                  } else if (index === 1) {
+                    release.classList.add('rounded-bl-[var(--theme-radius)]', 'max-md:hidden');
+                  } else if (index === 3) {
+                    release.classList.add('rounded-br-[var(--theme-radius)]', 'max-md:hidden');
+                  } else {
+                    release.classList.add('max-md:hidden');
+                  }
+                }
+              });
+              if (releases.length > 4) {
+                const more = document.createElement('span');
+                more.className = 'aspect-square min-w-0 rounded-[4px] rounded-br-[var(--theme-radius)] bg-[var(--color-surface-strong)] text-[var(--color-text-muted)] flex max-md:hidden items-center justify-center text-[clamp(0.5rem,1vw,0.75rem)] leading-none font-semibold';
+                more.textContent = `+${releases.length - 3}`;
+                artwork.append(more);
+              }
+              return;
+            }
             const hasReleases = dayEl.querySelector('[data-release-media-type]');
             const emptyState = dayEl.querySelector('[data-empty-state]');
 
@@ -624,12 +651,44 @@
           });
 
           container.querySelectorAll('[data-day-panel]').forEach(panel => {
-            const releaseCount = panel.querySelectorAll('[data-release-media-type]').length;
+            const releases = [...panel.querySelectorAll('[data-release-media-type]')];
+            const releaseCount = releases.length;
             const emptyState = panel.querySelector('[data-mobile-empty-state]');
 
             if (emptyState) {
               emptyState.classList.toggle('hidden', releaseCount > 0);
             }
+
+            const groups = new Map();
+            releases.forEach((release) => {
+              const type = release.dataset.releaseMediaType === 'season'
+                ? 'tv' : release.dataset.releaseMediaType;
+              if (!groups.has(type)) groups.set(type, []);
+              groups.get(type).push(release);
+            });
+            const collator = new Intl.Collator(document.documentElement.lang || undefined, { sensitivity: 'base', numeric: true });
+            [...groups.entries()].sort(([typeA, a], [typeB, b]) => {
+              const labelA = container.querySelector(`template[data-agenda-icon="${typeA}"]`)?.dataset.label || typeA;
+              const labelB = container.querySelector(`template[data-agenda-icon="${typeB}"]`)?.dataset.label || typeB;
+              return b.length - a.length || collator.compare(labelA, labelB);
+            }).forEach(([type, items], index) => {
+              const icon = container.querySelector(`template[data-agenda-icon="${type}"]`);
+              const section = document.createElement('section');
+              section.className = index ? 'border-t border-[var(--color-text-muted)]/40 pt-3' : '';
+              const heading = document.createElement('h3');
+              heading.className = 'flex items-center gap-2 px-2 py-2 text-sm font-semibold text-[var(--color-text-secondary)]';
+              if (icon) heading.append(icon.content.cloneNode(true));
+              heading.append(document.createTextNode(`${icon?.dataset.label || type} (${items.length})`));
+              section.append(heading);
+              items.sort((a, b) => {
+                const unknownA = a.dataset.releaseUnknown === 'true';
+                const unknownB = b.dataset.releaseUnknown === 'true';
+                return Number(unknownA) - Number(unknownB)
+                  || (!unknownA && Number(a.dataset.releaseTime) - Number(b.dataset.releaseTime))
+                  || collator.compare(a.dataset.releaseTitle, b.dataset.releaseTitle);
+              }).forEach(item => section.append(item));
+              panel.insertBefore(section, emptyState);
+            });
           });
 
           return container.innerHTML;
@@ -648,7 +707,16 @@
 
           const agendaTitle = mobileCalendar.querySelector('[data-agenda-title]');
           const agendaCount = mobileCalendar.querySelector('[data-agenda-count]');
+          const agenda = mobileCalendar.querySelector('[data-agenda]');
+          const closeAgenda = mobileCalendar.querySelector('[data-agenda-close]');
           const monthName = mobileCalendar.dataset.monthName || '';
+          const year = mobileCalendar.dataset.year || '';
+
+          const setAgendaOpen = (open) => {
+            this.agendaOpen = open;
+            agenda.classList.toggle('hidden', !open);
+            mobileCalendar.classList.toggle('md:grid-cols-[minmax(0,1fr)_minmax(15rem,min(30%,22rem))]', open);
+          };
 
           const releaseCountByDay = new Map();
           dayPanels.forEach((panel) => {
@@ -658,28 +726,17 @@
             );
           });
 
-          const updateDayIndicators = () => {
-            dayTriggers.forEach((trigger) => {
-              const count = releaseCountByDay.get(trigger.dataset.dayTrigger) || 0;
-              const activeDots = Math.min(count, 3);
-              const dots = [...trigger.querySelectorAll('[data-day-indicator-dot]')];
-
-              dots.forEach((dot, index) => {
-                dot.style.backgroundColor = index < activeDots
-                  ? '#6366f1'
-                  : 'rgba(148, 163, 184, 0.75)';
-              });
-            });
-          };
-
-          const selectDay = (day) => {
+          const selectDay = (day, reopen = true) => {
             this.mobileSelectedDay = day;
+            this.updateCalendarTypeCounts(day);
+            if (reopen) setAgendaOpen(true);
 
             dayTriggers.forEach((trigger) => {
               const isSelected = trigger.dataset.dayTrigger === day;
               trigger.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
-              trigger.classList.toggle('ring-1', isSelected);
-              trigger.classList.toggle('ring-indigo-400', isSelected);
+              const highlight = trigger.closest('[data-day-cell]') || trigger;
+              highlight.classList.toggle('ring-1', isSelected);
+              highlight.classList.toggle('ring-indigo-400', isSelected);
             });
 
             dayPanels.forEach((panel) => {
@@ -688,7 +745,7 @@
 
             const eventCount = releaseCountByDay.get(day) || 0;
             if (agendaTitle) {
-              agendaTitle.textContent = monthName ? `${monthName} ${day}` : `${gettext('Day')} ${day}`;
+              agendaTitle.textContent = monthName ? `${monthName} ${day}, ${year}` : `${gettext('Day')} ${day}, ${year}`;
             }
             if (agendaCount) {
               agendaCount.textContent = `${eventCount} ${gettext(eventCount === 1 ? 'release' : 'releases')}`;
@@ -698,13 +755,16 @@
           dayTriggers.forEach((trigger) => {
             trigger.addEventListener('click', () => selectDay(trigger.dataset.dayTrigger));
           });
-
-          updateDayIndicators();
+          closeAgenda.addEventListener('click', () => {
+            setAgendaOpen(false);
+            dayTriggers.find(trigger => trigger.dataset.dayTrigger === this.mobileSelectedDay && trigger.offsetParent)?.focus();
+          });
 
           const defaultDay = this.mobileSelectedDay
             || mobileCalendar.dataset.selectedDay
             || dayTriggers[0].dataset.dayTrigger;
-          selectDay(defaultDay);
+          setAgendaOpen(this.agendaOpen);
+          selectDay(defaultDay, false);
         }
       };
     }

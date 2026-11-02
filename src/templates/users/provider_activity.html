@@ -1,0 +1,13 @@
+{% extends "users/base.html" %}
+{% load i18n %}
+{% block title %}{% translate "Activity - Floppy" %}{% endblock title %}
+{% block settings_content %}
+  <div class="space-y-6">
+    <h2 class="text-xl font-semibold">{% translate "Activity" %}</h2>
+    {% include "users/providers/integration_activity.html" %}
+    {% include "users/components/import_activity_loader.html" %}
+    <h3 class="text-lg font-semibold">{% translate "MyAnimeList sync and mapping activity" %}</h3>
+    {% include "users/providers/mal_sync.html" with provider_slug="mal" provider_tab="activity" %}
+    {% include "users/providers/outbound_sync.html" with provider_tab="activity" %}
+  </div>
+{% endblock settings_content %}

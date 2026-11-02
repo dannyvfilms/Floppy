@@ -8,6 +8,8 @@ progress is the furthest position reached, not seconds actually watched.
 import re
 import unicodedata
 
+from django.db.models import Q
+
 from app.models import MediaTypes, Video, VideoGameTag
 
 
@@ -33,34 +35,37 @@ def tag_matches_game(tag_title, tag_year, game_item):
 
 
 def watched_for_game(user, game_item):
-    """Estimate how long `user` watched videos YouTube tags with this game.
+    """Estimate how long `user` watched videos about this game.
+
+    A video counts when the user linked it to this game, or when YouTube's tag
+    matches it and the user has not unlinked or relinked it elsewhere.
 
     @returns `{"videos", "seconds", "hours_label", "estimated"}`, or None when nothing matches.
     """
     if game_item.media_type != MediaTypes.GAME.value:
         return None
-    rows = (
-        Video.objects.filter(
-            user=user,
-            item__video_game_tag__status=VideoGameTag.Status.FOUND,
-        )
-        .values_list(
+    manual = Video.objects.filter(user=user, game_link__game_item=game_item)
+    tagged = Video.objects.filter(
+        user=user,
+        game_link__isnull=True,
+        item__video_game_tag__status=VideoGameTag.Status.FOUND,
+    ).filter(~Q(pk__in=manual.values("pk")))
+    rows = [(v.progress, v.length_seconds) for v in manual]
+    rows += [
+        (progress, length)
+        for progress, length, title, year in tagged.values_list(
             "progress",
             "length_seconds",
             "item__video_game_tag__game_title",
             "item__video_game_tag__release_year",
         )
-    )
-    videos = 0
-    seconds = 0
-    for progress, length, title, year in rows:
-        if not tag_matches_game(title, year, game_item):
-            continue
-        videos += 1
-        # Position can pass the runtime after a rewatch or a seek past the end.
-        seconds += min(progress, length) if length else progress
-    if not videos:
+        if tag_matches_game(title, year, game_item)
+    ]
+    if not rows:
         return None
+    videos = len(rows)
+    # Position can pass the runtime after a rewatch or a seek past the end.
+    seconds = sum(min(p, n) if n else p for p, n in rows)
     hours, minutes = divmod(seconds // 60, 60)
     label = f"{hours}h {minutes}m" if hours else f"{minutes}m"
     return {

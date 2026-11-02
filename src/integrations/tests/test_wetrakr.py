@@ -1065,7 +1065,7 @@ class ConnectViewTests(TestCase):
         self.assertEqual(decrypt(account.device_code), "dev-1")
         self.assertEqual(account.user_code, "ABCD-1234")
         self.assertTrue(account.is_pending)
-        self.assertContains(self.client.get(reverse("mal_export")), "ABCD-1234")
+        self.assertContains(self.client.get(reverse("provider_detail", args=["wetrakr"]), {"tab": "connection"}), "ABCD-1234")
 
     def test_polling_while_unapproved_stays_pending(self):
         self._start()
@@ -1233,29 +1233,27 @@ class ConnectViewTests(TestCase):
         self.assertFalse(WeTrakrAccount.objects.exists())
         self.assertContains(response, "could not confirm the logout")
 
-    def test_both_service_cards_are_on_the_sync_page_and_not_on_integrations(self):
-        sync_page = self.client.get(reverse("mal_export"))
-        integrations = self.client.get(reverse("integrations"))
+    def test_directory_links_to_both_outbound_providers(self):
+        directory = self.client.get(reverse("providers"))
+        for slug in ("tmdb", "wetrakr"):
+            self.assertContains(directory, reverse("provider_detail", args=[slug]))
 
-        self.assertContains(sync_page, "Send to Services")
-        self.assertContains(sync_page, "send-tmdb")
-        self.assertContains(sync_page, "send-wetrakr")
-        self.assertNotContains(integrations, "send-tmdb")
-        self.assertNotContains(integrations, "Connect WeTrakr")
-
-    def test_each_service_is_one_row_with_its_own_modal(self):
-        page = self.client.get(reverse("mal_export"))
-
-        slugs = [service["slug"] for service in page.context["outbound_services"]]
-        self.assertEqual(slugs, ["tmdb", "wetrakr"])
-        for slug in slugs:
-            self.assertContains(page, f"activeModal = 'send-{slug}'", count=1)
-            self.assertContains(page, f"activeModal === 'send-{slug}'", count=1)
+    def test_each_service_has_its_own_provider_settings(self):
+        for slug in ("tmdb", "wetrakr"):
+            with self.subTest(slug=slug):
+                page = self.client.get(
+                    reverse("provider_detail", args=[slug]), {"tab": "connection"},
+                )
+                slugs = [service["slug"] for service in page.context["outbound_services"]]
+                self.assertEqual(slugs, [slug])
+                self.assertNotContains(page, 'id="mal-mapping-tab"')
+                other_slug = "wetrakr" if slug == "tmdb" else "tmdb"
+                self.assertNotContains(page, reverse(f"{other_slug}_connect"))
 
     def test_the_row_badge_follows_the_connection(self):
         states = lambda: {  # noqa: E731
             service["slug"]: service["state"]
-            for service in self.client.get(reverse("mal_export")).context[
+            for service in self.client.get(reverse("provider_detail", args=["wetrakr"]), {"tab": "connection"}).context[
                 "outbound_services"
             ]
         }
@@ -1267,23 +1265,26 @@ class ConnectViewTests(TestCase):
         WeTrakrAccount.objects.filter(user=self.user).update(connection_broken=True)
         self.assertEqual(states()["wetrakr"], "attention")
 
-    def test_the_modal_opens_by_itself_while_waiting_for_approval(self):
-        self.assertNotContains(
-            self.client.get(reverse("mal_export")),
-            "x-init=\"activeModal = 'send-wetrakr'\"",
+    def test_the_connection_tab_shows_pending_approval_inline(self):
+        page = self.client.get(
+            reverse("provider_detail", args=["wetrakr"]), {"tab": "connection"},
         )
+        self.assertNotContains(page, "ABCD-1234")
 
         self._start()
 
-        page = self.client.get(reverse("mal_export"))
-        self.assertContains(page, "x-init=\"activeModal = 'send-wetrakr'\"")
+        page = self.client.get(
+            reverse("provider_detail", args=["wetrakr"]), {"tab": "connection"},
+        )
         self.assertContains(page, "ABCD-1234")
+        self.assertContains(page, "Open WeTrakr and enter this code")
+        self.assertNotContains(page, "activeModal === 'send-wetrakr'")
 
     def test_a_connected_card_lists_the_switches(self):
         self._connect()
         self.client.post(reverse("wetrakr_settings"), {"plays": "on"})
 
-        page = self.client.get(reverse("mal_export"))
+        page = self.client.get(reverse("provider_detail", args=["wetrakr"]), {"tab": "sync"})
 
         self.assertContains(page, "Send existing library")
         self.assertContains(page, 'name="plays"')

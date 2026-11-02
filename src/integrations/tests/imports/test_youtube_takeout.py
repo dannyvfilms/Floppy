@@ -139,6 +139,7 @@ class YouTubeTakeoutImportTests(TestCase):
         self.assertEqual(VideoPlay.objects.count(), 3)
         video = Video.objects.get(item__media_id="vidAAAAAAAA")
         self.assertEqual(video.status, Status.COMPLETED.value)
+        self.assertEqual(video.entry_source, "youtube")
         self.assertEqual(video.channel, "A Channel")
         self.assertEqual(video.watch_url, "https://www.youtube.com/watch?v=vidAAAAAAAA")
         self.assertEqual(video.end_date.isoformat()[:10], "2026-03-02")
@@ -223,6 +224,34 @@ class YouTubeTakeoutImportTests(TestCase):
         buffer.seek(0)
         counts, _ = youtube_takeout.importer(buffer, self.user, "new")
         self.assertEqual(counts["created"], 1)
+
+    def test_html_skips_google_ads_by_caption_details_only(self):
+        def card(vid, details):
+            return f"""<div class="outer-cell"><div class="mdl-grid">
+            <div class="header-cell">YouTube<br></div>
+            <div class="content-cell mdl-typography--body-1">Watched&nbsp;
+            <a href="https://www.youtube.com/watch?v={vid}">T {vid}</a><br>
+            Oct 27, 2026, 7:12:45 PM CDT<br></div>
+            <div class="content-cell mdl-typography--caption">
+            <b>Products:</b><br>&emsp;YouTube<br>{details}
+            <b>Why is this here?</b><br>&emsp;Settings were on.</div>
+            </div></div>"""
+
+        html = (
+            "<html><body>"
+            + card("adAAAAAAAAA", "<b>Details:</b><br>&emsp;From&nbsp;Google  Ads<br>")
+            + card("okAAAAAAAAA", "")
+            + card("othAAAAAAAA", "<b>Details:</b><br>&emsp;Something else<br>")
+            + "</body></html>"
+        ).encode()
+        counts, _ = youtube_takeout.importer(BytesIO(html), self.user, "new")
+        self.assertEqual(counts["created"], 2)
+        self.assertFalse(Video.objects.filter(item__media_id="adAAAAAAAAA").exists())
+
+    def test_json_other_details_are_not_ads(self):
+        good = watch("dQw4w9WgXcQ", "2026-03-01T18:00:00.000Z")
+        other = {**good, "details": [{"name": "Something else"}]}
+        self.assertIsNotNone(youtube_takeout.entry_from_record(other))
 
     def test_imports_html_directly_and_from_zip(self):
         html = b"""<html><body><div class="outer-cell"><div>

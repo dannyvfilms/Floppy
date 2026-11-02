@@ -30,6 +30,8 @@ from urllib.parse import parse_qs, urlsplit
 from config.server_port import DEFAULT_SERVER_PORT, resolve_server_port, validate_port
 from config.sqlite_integrity import (
     _RECOVERY_PAGE_NAME,
+    PREPARE_COMMAND,
+    RECOVERY_DOC_URL,
     _decision_path,
     _incident_report_path,
     _log,
@@ -772,10 +774,11 @@ def render_page(
     ):
         return _document(
             "<h1>SQLite startup needs maintenance</h1>"
+            "<p>Floppy paused before starting. Your data was not changed. A "
+            "timeout or crash can cause this; it does not mean the database is "
+            "damaged.</p>"
             f"<p>{html.escape(str(status.get('error_message', 'Inspect the container logs.')))}</p>"
-            "<p>Stop all application containers and database writers before preparing "
-            "migrations or recovery. Run maintenance with the same image and database "
-            "mounts, then restart Floppy. No database rows were changed by admission.</p>"
+            + _maintenance_card()
             + _help_card()
         )
     if status and status.get("status") == "timeout":
@@ -967,6 +970,33 @@ def _retry_waiting_page() -> str:
         "</div>"
     )
     return _document(body)
+
+
+def _maintenance_card() -> str:
+    """Give the one safe fix as copyable commands for the common deployments."""
+    compose = (
+        "docker compose run --rm --no-deps --entrypoint python floppy "
+        "manage.py sqlite_startup --prepare-migrations"
+    )
+    parked = f"docker exec -it floppy {PREPARE_COMMAND}"
+    return (
+        "<div class='card'><h2>Fix it in two steps</h2>"
+        "<p><strong>1.</strong> Make sure nothing else is using the database "
+        "(no second Floppy container, no other tool). This container is idle "
+        "and safe.</p>"
+        "<p><strong>2.</strong> Run one of these, wait for it to finish, then "
+        "restart Floppy. Back up your data folder first if you can.</p>"
+        "<p>Docker Compose:</p>"
+        "<p><button data-copy='fix-compose'>Copy</button></p>"
+        f"<pre id='fix-compose'>{html.escape(compose)}</pre>"
+        "<p>Other Docker setups, with the container name from "
+        "<code>docker ps</code>:</p>"
+        "<p><button data-copy='fix-exec'>Copy</button></p>"
+        f"<pre id='fix-exec'>{html.escape(parked)}</pre>"
+        f"<p><a href='{RECOVERY_DOC_URL}' target='_blank' "
+        "rel='noopener noreferrer'>Full guide, Unraid and when to ask for "
+        "help</a></p></div>"
+    )
 
 
 def _help_card() -> str:

@@ -73,6 +73,13 @@ The developer credentials come only from `SCREENSCRAPER_DEV_ID`,
 They are not in `SHARED_DEFAULT_CREDENTIALS` and must never be committed.
 Until they exist ScreenScraper is inactive.
 
+Provider Metadata pages summarize these consumed outputs through shared feature
+rows. Active means that Floppy can ask the provider for matching games, not that
+the provider has an asset for every title. Steam's public artwork is independent
+of Steam account credentials. ScreenScraper's activity depends on the application
+credentials described above, with the member login optional. The UI does not add
+provider ordering controls or change the runtime fallback order.
+
 ## Adding a provider
 
 Add a module with `PROVIDER` and `find(query, wanted)` returning
@@ -86,3 +93,7 @@ The additional gallery is capped at 24 unique images and cached for six hours.
 Provider errors use a five-minute retry cache. Saving artwork credentials or
 refreshing the game reopens the gallery. Fetching stays in the deferred carousel
 request; repeat visits read the cached images without calling providers.
+
+## Warming after an import
+
+A game's detail page loads its carousel lazily, and the page reflows when it arrives, so a cold first visit costs several provider round trips. `helpers.bulk_create_media` therefore calls `carousel.schedule_game_artwork_warm` for the IGDB games it wrote. `Warm game artwork` (default `celery` queue, 25 games per task, one after another to respect provider limits) runs the same resolution the fragment does, so the first visit renders from cache. Only URLs and the artwork row are stored; image files appear on disk only when image caching is enabled and an image is viewed.

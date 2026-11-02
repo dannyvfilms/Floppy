@@ -31,6 +31,8 @@
     <link rel="stylesheet"
           type="text/css"
           href="{% static 'css/main.css' %}{% get_static_file_mtime 'css/main.css' %}">
+    <link rel="stylesheet" href="{% static 'ui/settings-islands.css' %}{% get_static_file_mtime 'ui/settings-islands.css' %}">
+    <script type="module" src="{% static 'ui/settings-islands.js' %}{% get_static_file_mtime 'ui/settings-islands.js' %}"></script>
     {% djdt_enabled as djdt_is_enabled %}
     {% if djdt_is_enabled %}
       <link rel="stylesheet" href="{% static 'debug_toolbar/css/toolbar.css' %}">
@@ -187,6 +189,8 @@
 
   <body data-mobile-grid="{% if user.is_authenticated %}{{ user.mobile_grid_layout }}{% else %}compact{% endif %}"
         data-quick-season-mobile="{% if user.is_authenticated %}{% if user.quick_season_update_mobile == 'season_update' or user.quick_season_update_mobile == 'both' %}true{% else %}false{% endif %}{% else %}false{% endif %}">
+    {% block alphabet_filter %}{% endblock alphabet_filter %}
+    {% include "app/components/ui_asset_refresh.html" %}
     {% comment %}
       Navigation progress. Boosted links replace the page with a background
       request, so the browser shows no spinner and no stop button. Without

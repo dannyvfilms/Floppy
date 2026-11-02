@@ -229,7 +229,7 @@ SOURCES_CONFIG = {
     },
     "gpodder": {
         "name": "GPodder",
-        "logo": static("favicon/apple-touch-icon.png"),
+        "logo": static("img/gpodder-logo.svg"),
     },
     "lastfm": {
         "name": "Last.fm",
@@ -310,20 +310,19 @@ def source_name(slug):
 
 
 @register.simple_tag
-def source_display(source_name):
-    """Generate HTML display for a media source with logo and name."""
+def source_display(source_name, label=None, heading_level=4):
+    """Render the shared source identity, with a label fallback for catalog entries."""
     info = SOURCES_CONFIG.get(source_name)
+    name = label or (info["name"] if info else source_name)
+    heading = f"h{heading_level}" if heading_level in {2, 3, 4} else "span"
     if not info:
-        return format_html('<h4 class="font-medium">{}</h4>', source_name)
-
-    html = f"""
-        <div class="flex items-center">
-            <img alt="{info["name"]}" class="w-6 h-6 mr-2" src="{info["logo"]}">
-            <h4 class="font-medium">{info["name"]}</h4>
-        </div>
-    """
-
-    return format_html(html)
+        return format_html('<{} class="font-medium min-w-0 break-words">{}</{}>', heading, name, heading)
+    return format_html(
+        '<div class="flex items-center min-w-0">'
+        '<img alt="{}" class="w-6 h-6 mr-2 shrink-0" src="{}">'
+        '<{} class="font-medium min-w-0 break-words">{}</{}></div>',
+        name, info["logo"], heading, name, heading,
+    )
 
 
 @register.filter

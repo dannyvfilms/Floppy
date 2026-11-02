@@ -73,3 +73,6 @@ dump.rdb
 
 # Temporary agent storage (see AGENTS.md Documentation Policy)
 /docs/plans/
+
+# App-generated database backups (BACKUP_DIR default)
+/src/backups/

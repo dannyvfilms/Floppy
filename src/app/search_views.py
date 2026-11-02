@@ -1,5 +1,6 @@
 import logging
 import re
+from dataclasses import replace
 
 from django.conf import settings
 from django.contrib import messages
@@ -11,6 +12,8 @@ from django.views.decorators.http import require_GET
 from app import helpers
 from app.library_query import LibraryQueryExecutor
 from app.library_query.adapters import from_media_list_filters
+from app.library_query.filters import shows_with_collected_episodes
+from app.library_query.trackers import tracker_sources
 from app.log_safety import exception_summary
 from app.media_list_filters import (
     MediaListEntry,
@@ -133,7 +136,7 @@ def _tagged_untracked_items(user, media_type, query, library_ids):
     (a subquery or a set of ids). Kept as one relational query so the caller's
     slice bounds the work.
     """
-    tagged = Exists(ItemTag.objects.filter(tag__user=user, item_id=OuterRef("pk")))
+    tagged = Q(pk__in=ItemTag.objects.filter(tag__user=user).values("item_id"))
     include_anime_in_anime, include_anime_in_tv = (
         metadata_resolution.anime_library_visibility(user)
     )
@@ -161,6 +164,7 @@ def _tagged_untracked_items(user, media_type, query, library_ids):
             | Q(localized_title__icontains=query),
         )
         .exclude(id__in=library_ids)
+        .defer("watch_providers")
         .order_by("title", "id")
     )
 
@@ -361,14 +365,45 @@ def _local_media_results(
         sort="title",
         direction="asc",
     )
+    library_query = from_media_list_filters(filters, (media_type,))
+    # Search starts from the owner's item ids. The general collection-only
+    # predicate uses a correlated EXISTS, which makes SQLite scan the entire
+    # catalogue for an unfiltered title search, even for a tiny saved library.
+    membership = Q(
+        pk__in=CollectionEntry.objects.filter(user=user)
+        .exclude(item__media_type=MediaTypes.EPISODE.value)
+        .values("item_id"),
+    )
+    if media_type in (MediaTypes.TV.value, MediaTypes.ANIME.value):
+        membership |= Q(
+            media_type__in=(MediaTypes.TV.value, MediaTypes.ANIME.value),
+            pk__in=shows_with_collected_episodes(user),
+        )
+    tracked = Q(pk__in=[])
+    for source in tracker_sources(user, media_type, library_query.routing):
+        item_ids = source.item_ids(user)
+        # Collection-only membership must not bypass tracker routing (for
+        # example, grouped anime that the user excludes from the TV library).
+        membership &= ~Q(pk__in=item_ids)
+        tracked |= source.item_q & Q(pk__in=item_ids)
+    # UNION lets SQLite plan each indexed membership branch independently;
+    # joining the branches with OR can revert to a full catalogue scan.
+    scope = (
+        Item.objects.filter(membership).order_by().values("pk")
+        .union(Item.objects.filter(tracked).order_by().values("pk"))
+    )
     executor = LibraryQueryExecutor(
         user,
-        from_media_list_filters(filters, (media_type,)),
+        replace(library_query, within=scope),
     )
     library_total = executor.count() if count_total else 0
-    entries = media_list_entries_for_items(
-        user,
-        executor.page(0, limit, total=library_total).items,
+    items = executor.page(0, limit, total=library_total, defer=("watch_providers",)).items
+    # Typeahead only reads item titles, artwork and URLs. Loading tracker
+    # graphs here also loads every season/episode for each matching show.
+    entries = (
+        media_list_entries_for_items(user, items)
+        if annotate_progress
+        else [MediaListEntry(item=item, media=None) for item in items]
     )
     tagged_only = _tagged_untracked_items(user, media_type, query, executor.matches())
     total = library_total + tagged_only.count() if count_total else 0
@@ -610,11 +645,18 @@ def media_search(request):
                 result.get("item"), query, request.user
             )
 
+    fallback_source = data.get("fallback_source")
     context = {
         "user": request.user,
         "data": data,
         "source": source,
         "source_options": source_options,
+        "source_label": metadata_resolution.metadata_provider_label(source),
+        "fallback_source_label": (
+            metadata_resolution.metadata_provider_label(fallback_source)
+            if fallback_source
+            else ""
+        ),
         "media_type": media_type,
         "layout": layout,
         "local_results": local_results,

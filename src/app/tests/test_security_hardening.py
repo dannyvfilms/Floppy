@@ -143,5 +143,5 @@ class ReturnUrlViewTests(TestCase):
         for route in ["update_plex_usernames", "update_plex_webhook_libraries"]:
             response = self.client.post(reverse(route), {"next": "//outside.example/"})
             self.assertRedirects(
-                response, reverse("integrations"), fetch_redirect_response=False
+                response, reverse("provider_detail", args=["plex"]) + "?tab=tracking", fetch_redirect_response=False
             )

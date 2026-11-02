@@ -412,3 +412,39 @@ class LogSafetyTests(SimpleTestCase):
         )
 
         self.assertEqual(record.getMessage(), "Media item 123 updated")
+
+
+class ConsoleNoiseFilterTests(SimpleTestCase):
+    def _record(self, name, level, message):
+        return logging.LogRecord(name, level, __file__, 1, message, None, None)
+
+    def test_routine_celery_and_health_lines_are_hidden_from_console(self):
+        from app.log_safety import ConsoleNoiseFilter
+
+        noise = ConsoleNoiseFilter()
+        for name, message in (
+            ("celery.app.trace", "Task app.tasks.x succeeded in 0.1s"),
+            ("celery.worker.strategy", "Task app.tasks.x received"),
+            ("django.server", '"GET /health/ HTTP/1.1" 200'),
+            ("django.server", '"GET /ping/ HTTP/1.1" 200'),
+        ):
+            self.assertFalse(noise.filter(self._record(name, logging.INFO, message)))
+
+    def test_warnings_and_ordinary_lines_still_reach_console(self):
+        from app.log_safety import ConsoleNoiseFilter
+
+        noise = ConsoleNoiseFilter()
+        self.assertTrue(
+            noise.filter(self._record("celery.app.trace", logging.ERROR, "failed")),
+        )
+        self.assertTrue(
+            noise.filter(self._record("app.views", logging.INFO, "Imported 3 items")),
+        )
+        self.assertTrue(
+            noise.filter(self._record("app.views", logging.INFO, "GET /pingback/x")),
+        )
+
+    def test_file_handler_never_carries_the_noise_filter(self):
+        from django.conf import settings
+
+        self.assertNotIn("filters", settings.LOGGING["handlers"]["file"])

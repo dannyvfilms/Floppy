@@ -1,0 +1,44 @@
+{% load i18n static app_tags user_tags %}
+    {# API Token #}
+    <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6">
+      <div class="flex items-center mb-3">
+        {% include "app/icons/padlock.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
+        <h3 class="text-base font-medium">{% translate "API Token" %}</h3>
+      </div>
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">
+        {% translate "This token authenticates webhook requests from your media servers. It has full access to your account, so for apps and API clients create an app token below instead — those can be limited and revoked one at a time." %}
+      </p>
+      <div class="bg-[var(--color-surface-dim)] p-3 rounded-md mb-4">
+        <div class="flex items-center gap-2">
+          <input readonly=""
+                 id="token"
+                 class="flex-1 py-2 pr-2 pl-3 bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-secondary)] text-sm border-0 focus:ring-0 outline-none font-mono"
+                 type="text"
+                 value="{{ user.token|default_if_none:"" }}">
+          <span class="flex items-center cursor-pointer group pr-3"
+                title="{% translate "Copy" %}"
+                data-copy-target="#token">
+            {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
+          </span>
+        </div>
+      </div>
+      <div class="flex justify-between items-center">
+        <div class="flex items-center text-[var(--color-warning-text)] text-sm">
+          {% include "app/icons/error.svg" with classes="w-4 h-4 mr-2 shrink-0" %}
+          <p>{% translate "Regenerating will invalidate the previous token" %}</p>
+        </div>
+        <div class="flex space-x-3">
+          <form method="post" action="{% url 'regenerate_token' %}">
+            {% csrf_token %}
+            <button type="submit"
+                    class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
+              {% include "app/icons/circle-spinning-counter-clockwise.svg" with classes="w-4 h-4 mr-2" %}
+              {% translate "Regenerate" %}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    {% include "users/components/integration_tokens.html" %}
+

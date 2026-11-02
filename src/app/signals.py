@@ -54,6 +54,7 @@ from app.models import (
     PodcastShowTracker,
     Season,
     Sources,
+    Status,
     VideoPlay,
 )
 from lists.models import CustomList, CustomListItem
@@ -89,6 +90,7 @@ TRACKED_TASK_NAMES = frozenset(
         "Scheduled backup export",
         "Bulk Episode Plays",
         "Bulk Music Plays",
+        "Bulk Consumption Batch",
     },
 )
 DISCOVER_PRIORITY_HISTORY_DEBOUNCE_SECONDS = 15
@@ -581,6 +583,11 @@ def _handle_media_cache_change(
 
     if clear_runtime_caches:
         _clear_media_runtime_caches(user_id, changed_media_type)
+        # A concurrent reader can re-cache pre-write state before the save
+        # commits, so clear again once it does.
+        transaction.on_commit(
+            lambda: _clear_media_runtime_caches(user_id, changed_media_type),
+        )
 
     active_context = discover_tab_cache.get_active_context(user_id)
     targets = discover_tab_cache.invalidate_for_media_change(
@@ -675,6 +682,23 @@ def clear_discover_feedback_on_media_save(sender, instance, **kwargs):
         item_id=item_id,
         feedback_type=DiscoverFeedbackType.NOT_INTERESTED.value,
     ).delete()
+
+
+@receiver(post_save, sender=Movie)
+@receiver(post_save, sender=Episode)
+def close_resume_point_on_watched(sender, instance, **kwargs):
+    """Close the open resume point of a watched movie or episode (#1809)."""
+    if kwargs.get("raw") or instance.status != Status.COMPLETED.value:
+        return
+    item_id = instance.item_id
+    user_id = (
+        instance.related_season.user_id if sender is Episode else instance.user_id
+    )
+    if not user_id or not item_id:
+        return
+    from api.fork_views_playback import complete_playback_progress
+
+    complete_playback_progress(user_id, item_id)
 
 
 # Same top-level, importer-tracked media types as helpers.get_existing_media()

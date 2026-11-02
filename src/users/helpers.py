@@ -1,3 +1,4 @@
+import ast
 import importlib
 import json
 import zoneinfo
@@ -15,6 +16,19 @@ MIN_CRON_PARTS_FOR_HOUR_PATTERN = 2
 
 IS_FIRST_RUN_CACHE_KEY = "users_is_first_run"
 IS_FIRST_RUN_CACHE_TIMEOUT = 60  # seconds
+
+
+def task_kwargs_belong_to_user(payload, user_id):
+    """Verify the actual owner field, never an id embedded inside a string value."""
+    try:
+        values = json.loads(payload)
+    except (TypeError, ValueError, RecursionError):
+        try:
+            # Celery also records Python repr kwargs, rather than JSON.
+            values = ast.literal_eval(payload)
+        except (TypeError, ValueError, SyntaxError, RecursionError):
+            return False
+    return isinstance(values, dict) and type(values.get("user_id")) is int and values["user_id"] == user_id
 
 
 def is_first_run() -> bool:

@@ -1,0 +1,35 @@
+{% load i18n static app_tags user_tags %}
+    {# Nuvio #}
+    <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
+         x-show="activeIntegration === 'all' || activeIntegration === 'nuvio'"
+         x-transition.opacity.duration.150ms>
+      <div class="flex items-center mb-3">
+        {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
+        <h3 class="text-base font-medium">{% translate "Nuvio Integration" %}</h3>
+      </div>
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">
+        {% translate "Not supported yet. A Floppy tracker for Nuvio TV has been proposed but isn't in any Nuvio release." %}
+      </p>
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
+        <h4 class="text-sm font-medium mb-3">{% translate "Setup Instructions" %}</h4>
+        <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
+          <li>
+            {% translate "Create an" %} <a href="{% url 'access_tokens' %}#app-tokens" class="text-[var(--color-link)] hover:underline">{% translate "app token" %}</a> {% translate "in Access & Tokens, named after the device. The default permissions already cover everything Nuvio needs." %}
+          </li>
+          <li>{% translate "Copy the token secret when it's shown — Floppy only displays it once." %}</li>
+          <li>
+            {% translate "In a Nuvio TV build with the Floppy tracker, enter this Server URL and the token secret you copied:" %}
+            {# djlint:off #}
+            <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
+              <input readonly id="nuvio-server-url" class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{% absolute_app_url '/' %}">
+              <span class="flex items-center cursor-pointer group" title="{% translate "Copy" %}" data-copy-target="#nuvio-server-url">
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
+              </span>
+            </div>
+            {# djlint:on #}
+          </li>
+          <li>{% translate "Revoke the token in" %} <a href="{% url 'access_tokens' %}#app-tokens" class="text-[var(--color-link)] hover:underline">{% translate "App tokens" %}</a> {% translate "to disconnect the device. This never deletes your tracking data." %}</li>
+        </ol>
+      </div>
+    </div>
+

@@ -427,7 +427,7 @@ class OAuthDeviceFlowTests(TestCase):
             token_digest=oauth_token_digest(token_payload["access_token"])
         )
 
-        page = self.client.get(reverse("integrations"))
+        page = self.client.get(reverse("access_tokens"))
 
         self.assertEqual(page.status_code, HTTP.OK)
         self.assertNotContains(page, access_token.token_prefix)

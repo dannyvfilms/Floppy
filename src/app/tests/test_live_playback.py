@@ -324,7 +324,7 @@ class RequestPathPurityTests(TestCase):
         response = self.client.get(reverse("active_playback_fragment"))
 
         self.assertEqual(response.status_code, 200)
-        mock_fill.assert_called_once_with(self.user.id)
+        mock_fill.assert_called_once_with(self.user.id, None)
 
     @patch("app.tasks.resolve_playback_image.delay")
     @patch(
@@ -354,7 +354,7 @@ class RequestPathPurityTests(TestCase):
         live_playback.build_home_playback_card(self.user)
         live_playback.build_home_playback_card(self.user)
 
-        mock_fill.assert_called_once_with(self.user.id)
+        mock_fill.assert_called_once_with(self.user.id, None)
 
 
 class MalCourCardTests(TestCase):
@@ -926,3 +926,29 @@ class UnknownRuntimeCardTests(TestCase):
             )
 
         self.assertEqual(Item.objects.get(media_id="88").runtime_minutes, 100)
+
+
+class ResumePointClosedOnWatchedTests(TestCase):
+    """Marking a title watched closes its open resume point (#1809)."""
+
+    def test_completed_movie_closes_open_resume_point(self):
+        from app.models import Movie, Status
+
+        user = get_user_model().objects.create_user(username="resume", password="pw")
+        item = Item.objects.create(
+            media_id="1809",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Resume",
+            image="none",
+        )
+        PlaybackProgress.objects.create(
+            user=user,
+            item=item,
+            position_seconds=1200,
+            duration_seconds=1320,
+        )
+
+        Movie.objects.create(user=user, item=item, status=Status.COMPLETED.value)
+
+        self.assertTrue(PlaybackProgress.objects.get(user=user, item=item).completed)

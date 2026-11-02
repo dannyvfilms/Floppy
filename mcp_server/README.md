@@ -93,10 +93,12 @@ docs) or run `uvicorn floppy_mcp.server:mcp.streamable_http_app`.
 | Tool | Purpose |
 |---|---|
 | `search_media` | Provider search for new media to track |
+| `resolve_game` | Title + optional platform/year to an exact `source`/`media_id`, or explicit candidates |
 | `search_tracked_media` | Search the user's own library by title |
 | `get_discover` | Personalized Discover recommendation rows |
 | `get_home` | Home-page rows (continue watching, etc.) |
 | `get_media` | Detail for one tracked item / season / episode |
+| `get_media_state` | `resolved` / `tracked` / `consumptions` for one item; untracked is a 200, `MEDIA_NOT_FOUND` / `PROVIDER_UNAVAILABLE` are typed errors |
 | `list_tracked_media` | List the library, filtered by type/status |
 | `track_media` | Start or update tracking (status/score/progress/dates) |
 | `untrack_media` | Remove a tracked item (or season/episode) |
@@ -126,6 +128,24 @@ docs) or run `uvicorn floppy_mcp.server:mcp.streamable_http_app`.
   stale planning row. Set `new_play=true` to append a separate play; an
   untracked title is created with POST. The underlying generic POST remains an
   append operation and defaults an omitted status to `Planning`.
+
+- **`track_media` results are auditable.** Every success keeps the API body and
+  adds `operation`: `outcome` (`created`, `appended`, `updated`, `skipped`),
+  `identity`, `consumption_id`, `applied` (status, progress, `progress_unit`,
+  dates as returned) and `verify` (the per-item history path to read it back).
+  `mode` is `auto` (default), `new_play` (same as `new_play=true`) or `update`
+  (never creates). Dates are ISO 8601, validated before any request, and stored
+  as given, so historical game plays stay historical. For games `progress` is
+  minutes for that one consumption, not the game total.
+  Failures add `error_kind` (`invalid_input`, `not_found`, `conflict`, `busy`,
+  `unreachable`, `backend_error`, `unknown_write_outcome`) and `write_state`
+  (`not_applied` or `uncertain`) beside the original `detail`. A timeout, 499,
+  502 or 504 on a write is `uncertain`: it may have committed, and the tool never
+  retries by itself. To retry a historical play safely, resend it with
+  `skip_if_duplicate=true` and `start_date`/`end_date`; it skips the POST when
+  the item's consumptions already include one with the same dates, progress and
+  status. That is a read-then-write check, not a server lock, so two concurrent
+  identical requests can still both write.
 
 - **`status`** on `track_media` accepts the display names Floppy uses in
   the UI (`"Planning"`, `"In progress"`, `"Paused"`, `"Completed"`,

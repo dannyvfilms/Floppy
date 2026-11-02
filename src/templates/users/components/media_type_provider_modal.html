@@ -36,6 +36,7 @@
       {% if entry.configurable %}
         <form method="post" action="{% url 'set_media_type_provider' entry.media_type %}" class="space-y-3">
           {% csrf_token %}
+          {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.get_full_path }}">{% endif %}
           <div>
             <label class="block text-[var(--color-text-secondary)] text-xs font-medium mb-2">{% translate "Provider for new titles" %}</label>
             <div class="relative" x-data="{ open: false, selectedValue: '{{ entry.current_provider }}', selectedLabel: '', options: [

@@ -1,0 +1,16 @@
+.alphabet-rail { display: none; }
+.alphabet-empty { grid-column: 1 / -1; text-align: center; background: var(--color-surface); border-radius: .5rem; color: var(--color-text); }
+.alphabet-empty:not([data-react-mounted]) { padding: 3rem; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.alphabet-empty > h3 { margin: 0; font-size: 20px; line-height: 24px; font-weight: 600; }
+.alphabet-empty:not([data-react-mounted]) > a { padding: 4px 8px; border: 1px solid var(--color-border); border-radius: 4px; background: var(--color-surface); color: var(--color-text); font-size: 12px; line-height: 16px; text-decoration: none; }
+.alphabet-empty a:focus-visible, .alphabet-rail a:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+@media (min-width: 768px) {
+  .alphabet-surface { padding-right: 2rem; }
+  .alphabet-rail { --alphabet-letter-size: min(13px, max(1px, calc((100svh - var(--alphabet-top, 213px) - 16px) / 36))); --alphabet-caption-size: min(11px, var(--alphabet-letter-size)); display: block; position: fixed; right: 8px; top: var(--alphabet-top, 213px); bottom: 16px; width: 32px; overflow: hidden; z-index: 20; }
+  .alphabet-rail nav { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+  .alphabet-rail a { display: flex; flex: 1; min-height: 0; align-items: center; justify-content: center; text-align: center; font-size: var(--alphabet-letter-size); line-height: 1; background: transparent; color: var(--color-text-muted); text-decoration: none; }
+  .alphabet-rail a[data-alphabet-caption] { font-size: var(--alphabet-caption-size); }
+  .alphabet-rail a[data-alphabet-initial="other"] > * { transform: translateX(var(--alphabet-symbol-offset, 0px)); }
+  .alphabet-rail a:hover { background: var(--color-surface-hover); }
+  .alphabet-rail a[aria-current="true"] { color: var(--color-accent); font-weight: 600; }
+}

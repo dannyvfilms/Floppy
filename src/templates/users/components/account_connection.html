@@ -1,0 +1,55 @@
+{% load i18n ui_tags %}
+{{ account_connection|json_script:"account-connection-props" }}
+<div data-account-connection-root data-props-id="account-connection-props" x-ignore hx-disable>
+  <div class="ui-section-stack">
+    <h3>{% translate "Connection settings" %}</h3>
+    <div class="ui-card-grid ui-card-grid-start">
+      {% if account_connection.title %}{% firstof account_connection.title as title %}{% else %}{% translate "Account connection" as title %}{% endif %}
+      {% if account_connection.connected %}{% translate "Connected" as badge %}{% firstof "success" as tone %}
+      {% elif account_connection.attention %}{% translate "Needs attention" as badge %}{% firstof "warning" as tone %}
+      {% else %}{% translate "Not connected" as badge %}{% firstof "neutral" as tone %}{% endif %}
+      {% settings_card title=title tone=tone badge=badge %}
+        {% if account_connection.description %}<p>{{ account_connection.description }}</p>{% endif %}
+        {% if account_connection.summary %}<div class="ui-account-summary">{% if account_connection.summary.url %}<p class="provider-small">{{ account_connection.summary.url }}{% if account_connection.summary.lastSync %} • {{ account_connection.summary.lastSync }}{% endif %}</p>{% endif %}{% if account_connection.summary.error %}<p class="provider-small" role="alert">{{ account_connection.summary.error }}</p>{% endif %}</div>{% endif %}
+        {% if account_connection.instances %}
+          {% for instance in account_connection.instances %}<div class="ui-instance-row">
+            <div class="ui-heading"><strong>{{ instance.name }}</strong><span class="settings-chip" data-tone="{% if instance.connected %}success{% else %}neutral{% endif %}"><span class="provider-media-chip">{% if instance.connected %}{% translate "Connected" %}{% else %}{% translate "Disconnected" %}{% endif %}</span></span></div>
+            <p class="provider-small">{{ instance.url }}</p>{% if instance.error %}<p class="provider-small">{{ instance.error }}</p>{% endif %}
+            <form class="ui-form" method="post" action="{{ account_connection.disconnectUrl }}">{% csrf_token %}<input type="hidden" name="next" value="{{ account_connection.next }}"><input type="hidden" name="instance_id" value="{{ instance.id }}"><button class="ui-button ui-button-danger" type="submit">{% translate "Disconnect" %}</button></form>
+          </div>{% endfor %}
+          <p>{% if account_connection.instances %}{{ account_connection.messages.connected }}{% else %}{{ account_connection.messages.disconnected }}{% endif %}</p>
+          {% if account_connection.connectUrl %}<form class="ui-form" method="post" action="{{ account_connection.connectUrl }}">
+            {% csrf_token %}<input type="hidden" name="next" value="{{ account_connection.next }}">
+            {% for field in account_connection.fields %}
+              <div class="ui-field"><label for="fallback-{{ field.name }}">{{ field.label }}</label>{% if field.type == 'select' %}<select id="fallback-{{ field.name }}" name="{{ field.name }}">{% for option in field.options %}<option value="{{ option.value }}"{% if option.value == field.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}</select>{% else %}<input id="fallback-{{ field.name }}" name="{{ field.name }}" type="{{ field.type }}" placeholder="{{ field.placeholder }}" {% if field.required != False %}required{% endif %} autocomplete="off">{% endif %}</div>
+            {% endfor %}
+            <button class="ui-button" type="submit">{{ account_connection.submitLabel }}</button>
+          </form>{% endif %}
+        {% elif account_connection.connected %}<p>{{ account_connection.messages.connected }}</p>
+        {% else %}
+          <p>{% if account_connection.attention %}{{ account_connection.messages.attention }}{% else %}{{ account_connection.messages.disconnected }}{% endif %}</p>
+          {% if account_connection.connectUrl %}<form class="ui-form" method="post" action="{{ account_connection.connectUrl }}">
+            {% csrf_token %}<input type="hidden" name="next" value="{{ account_connection.next }}">
+            {% for field in account_connection.fields %}
+              <div class="ui-field"><label for="fallback-{{ field.name }}">{{ field.label }}</label>{% if field.type == 'select' %}<select id="fallback-{{ field.name }}" name="{{ field.name }}">{% for option in field.options %}<option value="{{ option.value }}"{% if option.value == field.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}</select>{% else %}<input id="fallback-{{ field.name }}" name="{{ field.name }}" type="{{ field.type }}" placeholder="{{ field.placeholder }}" {% if field.required != False %}required{% endif %} autocomplete="off">{% endif %}</div>
+            {% endfor %}
+            <button class="ui-button" type="submit">{% if account_connection.submitLabel %}{{ account_connection.submitLabel }}{% elif account_connection.saved %}{% translate "Reconnect" %}{% else %}{% translate "Connect" %}{% endif %}</button>
+          </form>{% endif %}
+        {% endif %}
+        {% if account_connection.saved and not account_connection.instances %}<form class="ui-form" method="post" action="{{ account_connection.disconnectUrl }}">
+          {% csrf_token %}<input type="hidden" name="next" value="{{ account_connection.next }}">
+          <button class="ui-button ui-button-danger" type="submit">{% translate "Disconnect" %}</button>
+        </form>{% endif %}
+      {% endsettings_card %}
+      {% if account_connection.followUp %}
+        {% settings_card title=account_connection.followUp.title %}
+          <p>{{ account_connection.followUp.description }}</p>
+          <a class="ui-button" href="{{ account_connection.followUp.url }}">{{ account_connection.followUp.label }}</a>
+        {% endsettings_card %}
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% if audiobookshelf_account.last_error_message %}
+  <div class="settings-card" role="alert"><p>{{ audiobookshelf_account.last_error_message }}</p></div>
+{% endif %}

@@ -1170,7 +1170,13 @@ def plex_disconnect(request):
 
     _run_with_lock_retry("disconnect Plex", _disconnect)
     messages.info(request, "Disconnected Plex.")
-    return redirect("import_data")
+    return redirect(
+        app_helpers.safe_return_url(
+            request,
+            request.POST.get("next"),
+            reverse("provider_detail", args=["plex"]) + "?tab=connection",
+        ),
+    )
 
 
 def _save_plex_content_kind(plex_account, library_content_kinds):
@@ -2184,7 +2190,7 @@ def import_anilist_public(request):
     username = request.POST.get("user")
     if not username:
         messages.error(request, "AniList username is required.")
-        return redirect("import_data")
+        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
 
     mode = request.POST["mode"]
     frequency = request.POST["frequency"]
@@ -2197,7 +2203,7 @@ def import_anilist_public(request):
             mode=mode,
             username=username,
         ) is False:
-            return redirect("import_data")
+            return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
         messages.info(request, "AniList import queued.")
     else:
         helpers.create_import_schedule(
@@ -2208,7 +2214,7 @@ def import_anilist_public(request):
             import_time=import_time,
             source="AniList",
         )
-    return redirect("import_data")
+    return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
 
 
 @require_POST
@@ -2929,12 +2935,17 @@ def import_sonarr(request):
 @require_POST
 def jellyfin_connect(request):
     """Connect a Jellyfin server using base URL + API key."""
+    redirect_target = app_helpers.safe_return_url(
+        request,
+        request.POST.get("next"),
+        reverse("provider_detail", args=["jellyfin"]) + "?tab=connection",
+    )
     base_url = request.POST.get("base_url", "").strip()
     api_key = request.POST.get("api_key", "").strip()
     username = request.POST.get("username", "").strip()
     if not base_url or not api_key:
         messages.error(request, "Jellyfin base URL and API key are required.")
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     client = JellyfinClient(base_url, api_key)
     try:
@@ -2944,7 +2955,7 @@ def jellyfin_connect(request):
             current_user = client.find_user_by_name(username)
     except (JellyfinAuthError, JellyfinClientError) as exc:
         messages.error(request, f"Failed to connect to Jellyfin: {exc}")
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     if not current_user or not current_user.get("Id"):
         messages.error(
@@ -2953,7 +2964,7 @@ def jellyfin_connect(request):
             "Dashboard API keys are not tied to a user, so enter the exact "
             "Jellyfin username in the username field and try again.",
         )
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     existing_account = getattr(request.user, "jellyfin_account", None)
     identity_changed = existing_account is not None and (
@@ -3001,12 +3012,17 @@ def jellyfin_connect(request):
             request,
             "Connected Jellyfin. Importing your watch history now.",
         )
-    return redirect("integrations")
+    return redirect(redirect_target)
 
 
 @require_POST
 def jellyfin_disconnect(request):
     """Disconnect the Jellyfin integration."""
+    redirect_target = app_helpers.safe_return_url(
+        request,
+        request.POST.get("next"),
+        reverse("provider_detail", args=["jellyfin"]) + "?tab=connection",
+    )
 
     def _disconnect():
         _disable_jellyfin_push_schedule(request.user)
@@ -3015,16 +3031,21 @@ def jellyfin_disconnect(request):
 
     _run_with_lock_retry("disconnect Jellyfin", _disconnect)
     messages.info(request, "Disconnected Jellyfin.")
-    return redirect("integrations")
+    return redirect(redirect_target)
 
 
 @require_POST
 def jellyfin_settings(request):
     """Update Jellyfin push-sync and history-pull toggles."""
+    redirect_target = app_helpers.safe_return_url(
+        request,
+        request.POST.get("next"),
+        reverse("provider_detail", args=["jellyfin"]) + "?tab=sync",
+    )
     account = getattr(request.user, "jellyfin_account", None)
     if not account:
         messages.error(request, "Connect Jellyfin before changing sync settings.")
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     account.push_watched_enabled = "push_watched_enabled" in request.POST
     account.push_unwatched_enabled = "push_unwatched_enabled" in request.POST
@@ -3052,57 +3073,72 @@ def jellyfin_settings(request):
         _disable_jellyfin_pull_schedule(request.user)
 
     messages.success(request, "Jellyfin sync settings updated.")
-    return redirect("integrations")
+    return redirect(redirect_target)
 
 
 @require_POST
 def jellyfin_push_now(request):
     """Queue an immediate Jellyfin watched-state push."""
+    redirect_target = app_helpers.safe_return_url(
+        request,
+        request.POST.get("next"),
+        reverse("provider_detail", args=["jellyfin"]) + "?tab=sync",
+    )
     account = getattr(request.user, "jellyfin_account", None)
     if not account:
         messages.error(request, "Connect Jellyfin before syncing.")
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     if _queue_task_or_message(request, tasks.push_jellyfin_watched, user_id=request.user.id) is not False:
         messages.info(request, "Jellyfin sync queued.")
-    return redirect("integrations")
+    return redirect(redirect_target)
 
 
 @require_POST
 def jellyfin_pull_now(request):
     """Queue an immediate automatic Jellyfin history pull."""
+    redirect_target = app_helpers.safe_return_url(
+        request,
+        request.POST.get("next"),
+        reverse("provider_detail", args=["jellyfin"]) + "?tab=import",
+    )
     account = getattr(request.user, "jellyfin_account", None)
     # A broken account is still queued: the pull re-probes the key and clears
     # the flag when it works again.
     if not account or not account.base_url or not account.api_key:
         messages.error(request, "Connect Jellyfin before importing history.")
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     if _queue_task_or_message(request, tasks.pull_jellyfin_history, user_id=request.user.id) is not False:
         messages.info(request, "Jellyfin history import queued.")
-    return redirect("integrations")
+    return redirect(redirect_target)
 
 
 @require_POST
 def jellyfin_playback_reporting_import(request):
     """Queue a manual Playback Reporting TSV import for the connected user."""
+    redirect_target = app_helpers.safe_return_url(
+        request,
+        request.POST.get("next"),
+        reverse("provider_detail", args=["jellyfin"]) + "?tab=import",
+    )
     account = getattr(request.user, "jellyfin_account", None)
     if not account or not account.is_connected:
         messages.error(request, "Connect Jellyfin before importing Playback Reporting data.")
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     uploaded_file = request.FILES.get("playback_reporting_file")
     if not uploaded_file:
         messages.error(request, "Choose a Playback Reporting TSV export first.")
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     if uploaded_file.size > JELLYFIN_PLAYBACK_REPORTING_MAX_UPLOAD_BYTES:
         messages.error(request, "The Playback Reporting export is larger than 50 MB.")
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     if uploaded_file.size == 0:
         messages.error(request, "The Playback Reporting export is empty.")
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     staged_file = _stage_upload_or_message(
         request,
@@ -3110,7 +3146,7 @@ def jellyfin_playback_reporting_import(request):
         "Jellyfin Playback Reporting export",
     )
     if staged_file is None:
-        return redirect("integrations")
+        return redirect(redirect_target)
 
     if _queue_staged_task_or_message(
         request,
@@ -3120,9 +3156,9 @@ def jellyfin_playback_reporting_import(request):
         "new",
         staged_paths=(staged_file,),
     ) is False:
-        return redirect("integrations")
+        return redirect(redirect_target)
     messages.info(request, "Jellyfin Playback Reporting import queued.")
-    return redirect("integrations")
+    return redirect(redirect_target)
 
 
 def _ensure_recurring_import_schedule(user, label, poll_interval_minutes):
@@ -3234,7 +3270,7 @@ def audiobookshelf_disconnect(request):
 
     _run_with_lock_retry("disconnect Audiobookshelf", _disconnect)
     messages.info(request, "Disconnected Audiobookshelf.")
-    return redirect("import_data")
+    return _integration_redirect(request)
 
 
 @require_POST
@@ -3243,7 +3279,7 @@ def import_audiobookshelf(request):
     account = getattr(request.user, "audiobookshelf_account", None)
     if not account:
         messages.error(request, "Connect Audiobookshelf before importing.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     queued = _queue_task_or_message(request,
         tasks.import_audiobookshelf, user_id=request.user.id, mode="new"
@@ -3252,7 +3288,7 @@ def import_audiobookshelf(request):
 
     if queued is not False:
         messages.info(request, "Audiobookshelf import queued.")
-    return redirect("import_data")
+    return _integration_redirect(request)
 
 
 def _sync_interval(request, account_model, default=15):
