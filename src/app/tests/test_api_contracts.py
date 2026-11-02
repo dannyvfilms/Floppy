@@ -1151,7 +1151,7 @@ async def exact_template():
     def test_manifest_covers_all_current_http_branches(self):
         routes = self._routes_from_source(inspect.getsource(mcp_server))
 
-        self.assertEqual(len(MCP_HTTP_MANIFEST), 40)
+        self.assertEqual(len(MCP_HTTP_MANIFEST), 43)
         self.assertEqual(len(MCP_HTTP_MANIFEST), len(set(MCP_HTTP_MANIFEST)))
         self.assertEqual(set(routes), set(MCP_HTTP_MANIFEST))
         self.assertTrue(

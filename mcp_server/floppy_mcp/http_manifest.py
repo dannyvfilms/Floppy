@@ -38,6 +38,25 @@ MCP_HTTP_MANIFEST = (
             "media/{media_type}/{source}/{media_id}/{season_number}/{episode_number}"
         ),
     ),
+    HTTPRoute(
+        "get_media_state",
+        "get",
+        canonical_openapi_path("media/{media_type}/{source}/{media_id}/state"),
+    ),
+    HTTPRoute(
+        "get_media_state",
+        "get",
+        canonical_openapi_path(
+            "media/{media_type}/{source}/{media_id}/{season_number}/state"
+        ),
+    ),
+    HTTPRoute(
+        "get_media_state",
+        "get",
+        canonical_openapi_path(
+            "media/{media_type}/{source}/{media_id}/{season_number}/{episode_number}/state"
+        ),
+    ),
     HTTPRoute("list_tracked_media", "get", canonical_openapi_path("media")),
     HTTPRoute(
         "list_tracked_media",

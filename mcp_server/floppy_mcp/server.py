@@ -227,6 +227,37 @@ async def get_media(
 
 
 @mcp.tool()
+async def get_media_state(
+    media_type: str,
+    source: str,
+    media_id: str,
+    season_number: int | None = None,
+    episode_number: int | None = None,
+) -> Any:
+    """Say whether an item exists, is tracked, and list every play.
+
+    Returns resolved, tracked and consumptions (each with a stable
+    consumption_id). A valid but untracked item is a normal 200 with
+    tracked=false and consumptions=[]; use this before track_media or
+    before adding a play. An error with code MEDIA_NOT_FOUND means the
+    id is invalid; PROVIDER_UNAVAILABLE means the lookup failed and can
+    be retried. For a season or episode pass season_number (and
+    episode_number) with the parent show's identifiers.
+    """
+    if season_number is None:
+        return await _call("get", f"media/{media_type}/{source}/{media_id}/state")
+    if episode_number is None:
+        return await _call(
+            "get",
+            f"media/{media_type}/{source}/{media_id}/{season_number}/state",
+        )
+    return await _call(
+        "get",
+        f"media/{media_type}/{source}/{media_id}/{season_number}/{episode_number}/state",
+    )
+
+
+@mcp.tool()
 async def list_tracked_media(
     media_type: str | None = None,
     status: str | None = None,

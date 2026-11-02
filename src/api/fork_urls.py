@@ -408,3 +408,18 @@ urlpatterns = [
         name="api_sync_conflict_resolve",
     ),
 ]
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/state/?$",
+        fork_views_tracking.MediaStateView.as_view(),
+        name="api_media_state",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/state/?$",
+        fork_views_tracking.MediaSeasonStateView.as_view(),
+        name="api_media_season_state",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/(?P<episode_number>\d+)/state/?$",
+        fork_views_tracking.MediaEpisodeStateView.as_view(),
+        name="api_media_episode_state",
+    ),

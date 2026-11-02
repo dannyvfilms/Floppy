@@ -660,6 +660,7 @@ async def test_every_public_tool_is_registered_on_the_dispatcher():
     assert tools == {
         "search_media",
         "resolve_game",
+        "get_media_state",
         "search_tracked_media",
         "get_discover",
         "get_home",
@@ -686,6 +687,15 @@ async def test_every_public_tool_is_registered_on_the_dispatcher():
     for tool in await server.mcp.list_tools():
         assert tool.name
         assert tool.inputSchema, tool.name
+
+
+async def test_get_media_state(api_base_url):
+    with respx.mock:
+        route = respx.get(f"{api_base_url}/media/game/igdb/2186/state").mock(
+            return_value=ok()
+        )
+        await server.get_media_state("game", "igdb", "2186")
+        assert route.called
 
 
 def _game(media_id, title, year, platforms):

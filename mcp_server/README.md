@@ -98,6 +98,7 @@ docs) or run `uvicorn floppy_mcp.server:mcp.streamable_http_app`.
 | `get_discover` | Personalized Discover recommendation rows |
 | `get_home` | Home-page rows (continue watching, etc.) |
 | `get_media` | Detail for one tracked item / season / episode |
+| `get_media_state` | `resolved` / `tracked` / `consumptions` for one item; untracked is a 200, `MEDIA_NOT_FOUND` / `PROVIDER_UNAVAILABLE` are typed errors |
 | `list_tracked_media` | List the library, filtered by type/status |
 | `track_media` | Start or update tracking (status/score/progress/dates) |
 | `untrack_media` | Remove a tracked item (or season/episode) |
