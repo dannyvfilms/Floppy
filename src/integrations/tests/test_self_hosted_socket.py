@@ -201,6 +201,8 @@ class SelfHostedTLSNameTests(SimpleTestCase):
 
             server = QuietTLSServer(("127.0.0.1", 0), Handler)
             tls_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            # Explicitly exclude TLS 1.0/1.1, including on older Python builds.
+            tls_context.minimum_version = ssl.TLSVersion.TLSv1_2
             tls_context.load_cert_chain(certfile=str(certificate), keyfile=str(key))
             seen_names = []
             tls_context.set_servername_callback(
