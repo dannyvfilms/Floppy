@@ -34,7 +34,7 @@ class AddFieldIfNotExists(migrations.AddField):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("app", "0216_reliable_sync_contract"),
+        ("app", "0218_backfill_entry_source_from_import_run"),
     ]
 
     operations = [

@@ -13,6 +13,7 @@ from simple_history.models import HistoricalRecords
 
 from app import cache_safety
 from app.log_safety import mapping_keys
+from app.providers import credentials
 from app.providers.services import ProviderAPIError
 from integrations import anime_mapping
 from integrations.models import PlexWebhookShare
@@ -247,7 +248,7 @@ def _process_webhook(
     logger.info("Webhook received provider=%s keys=%s", provider, mapping_keys(payload))
 
     try:
-        with _webhook_history_user(user):
+        with _webhook_history_user(user), credentials.current_user_scope(user):
             if share is None:
                 result = processor.process_payload(payload, user)
             else:

@@ -610,11 +610,18 @@ def media_search(request):
                 result.get("item"), query, request.user
             )
 
+    fallback_source = data.get("fallback_source")
     context = {
         "user": request.user,
         "data": data,
         "source": source,
         "source_options": source_options,
+        "source_label": metadata_resolution.metadata_provider_label(source),
+        "fallback_source_label": (
+            metadata_resolution.metadata_provider_label(fallback_source)
+            if fallback_source
+            else ""
+        ),
         "media_type": media_type,
         "layout": layout,
         "local_results": local_results,

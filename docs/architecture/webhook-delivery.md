@@ -113,7 +113,7 @@ receipt time would leave the clock unset, and a Jellyfin Pause or Emby partial
 Stop received earlier in the same second could then be dropped by the card
 but still reset the row.
 
-Rollout: migration `app.0217` (`last_event_at`) and the worker code must ship
+Rollout: migration `app.0219` (`last_event_at`) and the worker code must ship
 together, so stop and restart every worker before taking webhooks again. An
 older worker still running alongside a new one writes progress without
 touching `last_event_at`, so its writes bypass the clock in both directions.
