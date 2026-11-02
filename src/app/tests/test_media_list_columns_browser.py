@@ -36,7 +36,12 @@ class MediaListColumnsBrowserTests(SerialStaticLiveServerTestCase):
             page.get_by_role("button", name="Sign in").click()
             page.goto(f"{self.live_server_url}/medialist/game?status=In%20Progress")
             page.get_by_role("button", name="In Progress", exact=True).click()
-            page.get_by_role("button", name="All", exact=True).click()
+            # Another filter menu also has an "All" button, so pick the one
+            # inside the status menu (the only menu that lists "No Status").
+            status_menu = page.locator(".filter-control").filter(
+                has=page.get_by_role("button", name="No Status", exact=True)
+            )
+            status_menu.get_by_role("button", name="All", exact=True).click()
             expect(page.get_by_text("Finished", exact=True)).to_be_visible()
             page.get_by_role("button", name="View settings").first.click()
             page.get_by_role("link", name="Table View").first.click()
