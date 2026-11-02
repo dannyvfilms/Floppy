@@ -220,6 +220,7 @@
         </form>{% if provider_forms.seerr_settings %}</div>{% endif %}
       </div>
 
+{% if not setup_guides %}
 {% if not provider_tab or provider_tab == 'connection' %}
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
         <h4 class="text-sm font-medium mb-3">{% translate "Setup Instructions" %}</h4>
@@ -333,6 +334,7 @@
           </ol>
         </div>
       {% endif %}
+{% endif %}
 {% endif %}
     </div>
 

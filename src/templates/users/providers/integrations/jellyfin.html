@@ -1,4 +1,5 @@
 {% load i18n static app_tags user_tags %}
+{% if not setup_guides %}
 {% if not provider_tab or provider_tab == 'connection' %}
     {# Jellyfin Official #}
     <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
@@ -143,6 +144,7 @@
       </div>
     </div>
 
+{% endif %}
 {% endif %}
 {% if not provider_tab or provider_tab == 'tracking' %}
     {# Jellyfin webhook events (both plugins) #}

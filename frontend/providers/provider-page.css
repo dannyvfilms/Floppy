@@ -66,3 +66,6 @@
 .ui-backup-status code { color: var(--color-text-secondary); background: var(--color-surface-strong); padding: .125rem .375rem; border-radius: .25rem; font-size: .75rem; }
 .ui-backup-line { font-size: .75rem; margin-top: .25rem; color: var(--color-text-muted); }
 .ui-backup-line.ui-backup-warning { color: var(--color-warning-text); }
+.ui-copy-block { display: flex; flex-direction: column; align-items: flex-start; gap: .5rem; margin-top: .5rem; min-width: 0; }
+.ui-copy-block pre { align-self: stretch; margin: 0; padding: .75rem; max-height: 18rem; overflow: auto; border-radius: .5rem; background: var(--color-surface); font-size: .75rem; }
+.ui-guide-steps pre { margin: .5rem 0 0; overflow: auto; font-size: .75rem; }

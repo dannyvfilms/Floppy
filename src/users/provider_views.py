@@ -279,7 +279,9 @@ def provider_detail(request, slug):
         )
         context["account_connection"]["submitLabel"] = _("Connect GPodder")
     if tab in {"connection", "tracking"} and slug in {"emby", "kodi", "navidrome", "nuvio"}:
-        context["setup_guide"], context["guide_copy"] = provider_guides.setup_guide(request, slug)
+        context["setup_guides"], context["guide_copy"] = provider_guides.setup_guides(request, slug, context)
+    if (tab == "connection" and slug in {"jellyfin", "seerr"}) or (tab in {"connection", "import", "tracking"} and slug == "stremio"):
+        context["setup_guides"], context["guide_copy"] = provider_guides.setup_guides(request, slug, context)
     if slug in {"plex", "jellyfin", "seerr", "koreader"}:
         context["provider_forms"] = provider_forms.build(request, slug, tab, context)
     if tab == "import" and slug != "anilist":

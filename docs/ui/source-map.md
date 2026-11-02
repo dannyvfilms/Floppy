@@ -595,6 +595,12 @@ build artifacts. The Python composition tag is documented in the register.
 
 - `frontend/providers/FileImport.jsx`
 - `frontend/providers/Credentials.jsx`
+- `frontend/providers/SetupGuide.jsx`
+- `frontend/providers/SettingsForm.jsx`
+- `src/users/provider_guides.py`
+- `src/users/provider_forms.py`
+- `src/templates/users/providers/setup_guide.html`
+- `src/templates/users/providers/setup_guide_parts.html`
 - `src/templates/users/components/file_import_fallback.html`
 - `src/templates/users/components/clz_import_fallback.html`
 - `src/templates/users/_reading_server_card.html`

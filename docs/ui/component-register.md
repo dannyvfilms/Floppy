@@ -592,13 +592,13 @@ templates are compatibility/composition sources, not equally active parallel pag
   `AccountConnection.jsx` via `provider_views.ACCOUNT_CONNECTIONS` / `INSTANCE_CONNECTIONS` (Kapowarr,
   Mylar, Radarr, Sonarr, GPodder, Pocket Casts, Koito, Last.fm, PSN, Storyteller, Kavita, Komga, Xbox,
   Stremio sign-in, MAL authorize). Webhook setup instructions use `SetupGuide.jsx`
-  (`provider_guides.py`: Emby, Kodi, Navidrome, Nuvio; copy values are read from the server fallback,
-  never serialized). Small integration settings forms use `SettingsForm.jsx` (`provider_forms.py`:
+  (`provider_guides.py`: Emby, Kodi, Navidrome, Nuvio, both Jellyfin guides, the Seerr and global Seerr
+  guides, the Stremio addon steps; token-bearing URLs and links are read from the server fallback, never
+  serialized). Small integration settings forms use `SettingsForm.jsx` (`provider_forms.py`:
   Plex usernames and mark-watched, Jellyfin webhook events, Seerr automation and connection, KOReader
   connect and settings). Remaining legacy, each with a concrete blocker: Plex libraries picker and webhook
-  sharing (live library fetch, per-share Alpine state); Jellyfin account/push controls and its two setup
-  guides, Seerr setup guide and global webhook (conditional per-tab states); Stremio addon catalog grants
-  (htmx status); MDBList/KOReader Connection-tab modals and connected-state summaries; Hardcover
+  sharing (live library fetch, per-share Alpine state); Jellyfin account/push controls (conditional per-tab
+  states); Stremio addon catalog grants (htmx status); MDBList/KOReader Connection-tab modals and connected-state summaries; Hardcover
   "Sync from your account" card (schedule fields). Retire each by moving it to a `provider_forms` or
   `provider_guides` entry. Masked credential previews are not serialized to React; the fallback still
   shows them.
