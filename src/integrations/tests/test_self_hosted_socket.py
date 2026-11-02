@@ -136,6 +136,7 @@ class SelfHostedSocketTests(SimpleTestCase):
 
         self.assertFalse(worker.is_alive())
 
+
 # A real TLS handshake verifies more than inspecting the adapter configuration.
 # Generate an ephemeral certificate locally, never contacting an outside server.
 
@@ -174,11 +175,24 @@ class SelfHostedTLSNameTests(SimpleTestCase):
             key = Path(tmp) / "key.pem"
             subprocess.run(  # noqa: S603 - fixed local test fixture, no shell
                 [
-                    openssl, "req", "-x509", "-newkey", "ec",
-                    "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes",
-                    "-keyout", str(key), "-out", str(certificate),
-                    "-days", "1", "-subj", "/CN=other.home",
-                    "-addext", "subjectAltName=DNS:other.home",
+                    openssl,
+                    "req",
+                    "-x509",
+                    "-newkey",
+                    "ec",
+                    "-pkeyopt",
+                    "ec_paramgen_curve:P-256",
+                    "-nodes",
+                    "-keyout",
+                    str(key),
+                    "-out",
+                    str(certificate),
+                    "-days",
+                    "1",
+                    "-subj",
+                    "/CN=other.home",
+                    "-addext",
+                    "subjectAltName=DNS:other.home",
                 ],
                 check=True,
                 capture_output=True,
@@ -203,8 +217,11 @@ class SelfHostedTLSNameTests(SimpleTestCase):
                 if host in ("other.home", "wrong.home"):
                     return [
                         (
-                            socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP,
-                            "", ("127.0.0.1", 0),
+                            socket.AF_INET,
+                            socket.SOCK_STREAM,
+                            socket.IPPROTO_TCP,
+                            "",
+                            ("127.0.0.1", 0),
                         )
                     ]
                 return original_lookup(host, *args, **kwargs)
@@ -212,15 +229,21 @@ class SelfHostedTLSNameTests(SimpleTestCase):
             try:
                 with patch.object(socket, "getaddrinfo", side_effect=service_lookup):
                     good = safe_fetch.send_to_self_hosted_pinned(
-                        "GET", f"https://other.home:{port}/",
-                        verify=str(certificate), timeout=2, total_timeout=5,
+                        "GET",
+                        f"https://other.home:{port}/",
+                        verify=str(certificate),
+                        timeout=2,
+                        total_timeout=5,
                     )
                     self.assertEqual(good.content, b"ok")
 
                     with self.assertRaises(requests.exceptions.SSLError):
                         safe_fetch.send_to_self_hosted_pinned(
-                            "GET", f"https://wrong.home:{port}/",
-                            verify=str(certificate), timeout=2, total_timeout=5,
+                            "GET",
+                            f"https://wrong.home:{port}/",
+                            verify=str(certificate),
+                            timeout=2,
+                            total_timeout=5,
                         )
                 # Exception wording varies across OpenSSL and urllib3 versions.
                 self.assertEqual(seen_names, ["other.home", "wrong.home"])
@@ -261,8 +284,10 @@ class SelfHostedResourceLimitSocketTests(SimpleTestCase):
             started = time.monotonic()
             with self.assertRaises(safe_fetch.SelfHostedUrlError) as caught:
                 safe_fetch.send_to_self_hosted_pinned(
-                    "GET", f"http://127.0.0.1:{server.server_address[1]}/",
-                    timeout=(3, 3), total_timeout=0.2,
+                    "GET",
+                    f"http://127.0.0.1:{server.server_address[1]}/",
+                    timeout=(3, 3),
+                    total_timeout=0.2,
                 )
             self.assertEqual(caught.exception.reason_code, "deadline_exceeded")
             self.assertLess(time.monotonic() - started, 1.5)
@@ -292,8 +317,10 @@ class SelfHostedResourceLimitSocketTests(SimpleTestCase):
         try:
             with self.assertRaises(safe_fetch.SelfHostedUrlError) as caught:
                 safe_fetch.send_to_self_hosted_pinned(
-                    "GET", f"http://127.0.0.1:{server.server_address[1]}/",
-                    total_timeout=5, max_bytes=200,
+                    "GET",
+                    f"http://127.0.0.1:{server.server_address[1]}/",
+                    total_timeout=5,
+                    max_bytes=200,
                 )
             self.assertEqual(caught.exception.reason_code, "response_too_large")
         finally:

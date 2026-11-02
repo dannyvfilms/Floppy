@@ -287,8 +287,6 @@ class PinnedSelfHostedRequestTests(SimpleTestCase):
         redirect.close.assert_called_once()
 
 
-
-
 class _MemoryRaw:
     """Minimal urllib3-like raw source with no external network access."""
 

@@ -577,6 +577,7 @@ def send_to_self_hosted(send, url, **kwargs):
     msg = "The server redirected too many times."
     raise SelfHostedUrlError(REASON_TOO_MANY_REDIRECTS, msg)
 
+
 # --- Pinned self-hosted transport (legacy send_to_self_hosted remains intact) ---
 
 REASON_HTTPS_DOWNGRADE = "https_downgrade"
@@ -585,6 +586,7 @@ HTTP_DEFAULT_PORT = 80
 HTTPS_DEFAULT_PORT = 443
 SELF_HOSTED_SEE_OTHER = 303
 SELF_HOSTED_POST_TO_GET = frozenset({301, 302})
+
 
 def _validated_self_hosted_target(url, *, require_resolution=False):
     """Validate a self-hosted target and retain the resolved addresses.
@@ -659,8 +661,6 @@ def _validated_self_hosted_target(url, *, require_resolution=False):
         raise SelfHostedUrlError(REASON_UNRESOLVABLE_HOST, msg)
 
     return parsed, addresses
-
-
 
 
 class _SelfHostedBoundedRaw:
@@ -913,11 +913,13 @@ def _checked_self_hosted_redirect(current_url, location):
     return target_url
 
 
-
-
 def send_to_self_hosted_pinned(
-    method, url, *, total_timeout=SELF_HOSTED_TOTAL_TIMEOUT,
-    max_bytes=SELF_HOSTED_MAX_BYTES, **kwargs
+    method,
+    url,
+    *,
+    total_timeout=SELF_HOSTED_TOTAL_TIMEOUT,
+    max_bytes=SELF_HOSTED_MAX_BYTES,
+    **kwargs,
 ):
     """Use one validated IP through a same-host redirect chain.
 
@@ -954,8 +956,12 @@ def send_to_self_hosted_pinned(
 
     for _hop in range(MAX_REDIRECTS + 1):
         response = _send_pinned_self_hosted(
-            current_method, parsed, pinned_address,
-            deadline=deadline, max_bytes=max_bytes, **request_kwargs
+            current_method,
+            parsed,
+            pinned_address,
+            deadline=deadline,
+            max_bytes=max_bytes,
+            **request_kwargs,
         )
         if response.status_code not in SELF_HOSTED_REDIRECT_STATUSES:
             return response
