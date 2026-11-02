@@ -264,8 +264,9 @@ class AlphabetBrowserTests(SerialStaticLiveServerTestCase):
                 "window.previousAlphabetHost = document.querySelector('[data-alphabet-root]')"
             )
             page.evaluate(
-                "htmx.ajax('GET', location.href, {target: 'body', swap: 'innerHTML', headers: {'HX-Boosted': 'true'}})"
+                "void htmx.ajax('GET', location.href, {target: 'body', swap: 'innerHTML', headers: {'HX-Boosted': 'true'}})"
             )
+            page.wait_for_function("!previousAlphabetHost.isConnected")
             expect(
                 page.locator('.alphabet-rail[data-react-mounted="true"]')
             ).to_have_count(1)
