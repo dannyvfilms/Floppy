@@ -198,12 +198,8 @@ class ScrobbleStopTests(FloppyApiTestCase):
             "HTTP_IDEMPOTENCY_KEY": "scrobble:provider-unavailable:001",
         }
 
-        first = self.call_api(
-            "post", "api_scrobble", payload=payload, headers=headers
-        )
-        second = self.call_api(
-            "post", "api_scrobble", payload=payload, headers=headers
-        )
+        first = self.call_api("post", "api_scrobble", payload=payload, headers=headers)
+        second = self.call_api("post", "api_scrobble", payload=payload, headers=headers)
 
         self.assertEqual(first.status_code, HTTP.SERVICE_UNAVAILABLE)
         self.assertEqual(second.status_code, HTTP.SERVICE_UNAVAILABLE)
@@ -227,12 +223,8 @@ class ScrobbleStopTests(FloppyApiTestCase):
             "HTTP_IDEMPOTENCY_KEY": "scrobble:provider-not-found:001",
         }
 
-        first = self.call_api(
-            "post", "api_scrobble", payload=payload, headers=headers
-        )
-        second = self.call_api(
-            "post", "api_scrobble", payload=payload, headers=headers
-        )
+        first = self.call_api("post", "api_scrobble", payload=payload, headers=headers)
+        second = self.call_api("post", "api_scrobble", payload=payload, headers=headers)
 
         self.assertEqual(first.status_code, HTTP.NOT_FOUND)
         self.assertEqual(second.status_code, HTTP.NOT_FOUND)
