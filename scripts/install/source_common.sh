@@ -16,6 +16,18 @@ UV="$UV_BIN_DIR/uv"
 # Pinned to the version pyproject.toml requires, so the installer cannot pull a
 # uv that refuses to run in this repository.
 UV_VERSION=${FLOPPY_UV_VERSION:-0.12.3}
+# SHA-256 of https://astral.sh/uv/$UV_VERSION/install.sh for the pinned version.
+# Bump both together (docs/architecture/build-inputs.md). An overridden
+# FLOPPY_UV_VERSION has no recorded digest unless FLOPPY_UV_INSTALLER_SHA256
+# is also set; it then runs unverified, with a warning.
+UV_INSTALLER_SHA256=${FLOPPY_UV_INSTALLER_SHA256:-}
+if [ -z "$UV_INSTALLER_SHA256" ] && [ "$UV_VERSION" = "0.12.3" ]; then
+    UV_INSTALLER_SHA256=a7e3924ea1cd06bf1518c577d635c624ae2e2db030e0fc8ff8cf426224384e17
+fi
+
+_sha256_of() {
+    if have sha256sum; then sha256sum "$1" | awk '{print $1}'; else shasum -a 256 "$1" | awk '{print $1}'; fi
+}
 
 _source_ensure_uv() {
     if [ -x "$UV" ] && [ "$("$UV" --version 2>/dev/null | awk '{print $2}')" = "$UV_VERSION" ]; then
@@ -28,9 +40,19 @@ _source_ensure_uv() {
     step "Installing uv $UV_VERSION"
     note "uv installs the Python version Floppy needs without touching the system Python."
     mkdir -p "$UV_BIN_DIR"
-    curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" \
-        | env UV_INSTALL_DIR="$UV_BIN_DIR" UV_UNMANAGED_INSTALL="$UV_BIN_DIR" INSTALLER_NO_MODIFY_PATH=1 sh \
-        || fail "Could not install uv. Check the network connection and try again."
+    local uv_installer
+    uv_installer=$(mktemp) || fail "Could not create a temporary file."
+    curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" -o "$uv_installer" \
+        || { rm -f "$uv_installer"; fail "Could not download the uv installer. Check the network connection and try again."; }
+    if [ -n "$UV_INSTALLER_SHA256" ]; then
+        [ "$(_sha256_of "$uv_installer")" = "$UV_INSTALLER_SHA256" ] \
+            || { rm -f "$uv_installer"; fail "The uv $UV_VERSION installer does not match its pinned SHA-256; refusing to run it."; }
+    else
+        warn "No pinned digest for uv $UV_VERSION; running its installer unverified."
+    fi
+    env UV_INSTALL_DIR="$UV_BIN_DIR" UV_UNMANAGED_INSTALL="$UV_BIN_DIR" INSTALLER_NO_MODIFY_PATH=1 sh "$uv_installer" \
+        || { rm -f "$uv_installer"; fail "Could not install uv. Check the network connection and try again."; }
+    rm -f "$uv_installer"
     [ -x "$UV" ] || fail "uv was not installed at $UV."
 }
 

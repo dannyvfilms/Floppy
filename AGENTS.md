@@ -339,6 +339,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - `docs/architecture/webhook-delivery.md`: the sync/async boundary, expected webhook queue latency, the structured `event_id`/`queue_delay_ms`/`outcome` log contract, time limits, and the ordering guard that stops a late play erasing a scrobble (#1708).
 - `docs/architecture/connection-health.md`: when an integration account may be marked `connection_broken` (rejected credentials only), how scheduled work re-probes it, and the test that catches a direct write.
 - `docs/architecture/api-scopes.md`: the integration-token scope contract — the vocabulary, the enforced view map, and what adding an endpoint requires.
+- `docs/architecture/build-inputs.md`: inventory, digests and update process for vendored browser libraries and installer downloads (`src/static/vendor-manifest.json`).
 - `docs/architecture/outbound-fetch.md`: the outbound boundary for user-configured URLs — the SSRF controls, the residual DNS-rebinding gap, and why artwork uses a different path.
 - `docs/architecture/library-query.md`: the shared engine for list-shaped surfaces (media list, API, smart lists, Home shelves) — how a page stays bounded, and how to add a filter or sort.
 - `docs/architecture/statistics-sync.md`: how Statistics stay warm — dirty days and snapshots in the database, one budgeted per-user sync, the reconciler that makes a lost Celery message harmless, and which write paths must mark changes.
