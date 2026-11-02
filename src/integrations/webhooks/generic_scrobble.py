@@ -61,16 +61,55 @@ class GenericScrobbleProcessor(BaseWebhookProcessor):
     SOURCE_LABEL = "scrobble"
 
     def process_payload(self, payload, user):
-        """Resolve and persist a stop/completion event from the API."""
+        """Preserve normalized episode identity under the shared write policy."""
         ids = self._extract_external_ids(payload)
         if not any(ids.values()):
-            return
-        if self._should_record(
+            return None
+
+        if not self._should_record(
             "media.scrobble",
             played=self._is_played(payload),
             position_seconds=None,
         ):
-            self._process_media(payload, user, ids)
+            return None
+
+        if self._get_media_type(payload) == MediaTypes.TV.value:
+            return self._process_tv(
+                payload,
+                user,
+                ids,
+                season_number=payload.get("season_number"),
+                episode_number=payload.get("episode_number"),
+            )
+
+        return self._process_media(payload, user, ids)
+
+    def _find_tv_media_id(
+        self,
+        ids,
+        series_title=None,
+        allow_title_fallback=False,
+        year=None,
+        season_number=None,
+        episode_ids=False,
+        user=None,
+        raise_transient=False,
+    ):
+        """Prefer an explicitly normalized TMDB show ID over external mappings."""
+        tmdb_id = ids.get("tmdb_id")
+        if tmdb_id:
+            return str(tmdb_id), None, None
+
+        return super()._find_tv_media_id(
+            ids,
+            series_title=series_title,
+            allow_title_fallback=allow_title_fallback,
+            year=year,
+            season_number=season_number,
+            episode_ids=episode_ids,
+            user=user,
+            raise_transient=raise_transient,
+        )
 
     def _is_supported_event(self, event_type):
         return True
