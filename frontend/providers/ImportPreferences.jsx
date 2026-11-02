@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Card, ComboField, SelectField, Tooltip } from '../ui/controls';
+import { Button, Card, ComboField, Field, SelectField, Tooltip } from '../ui/controls';
 import { mountRoot } from '../settings/root';
 
 export function useImportPreferences(initial, draft, onChange) {
