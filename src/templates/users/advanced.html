@@ -490,6 +490,7 @@
         </template>
       </div>
 
+      {% if user.is_superuser %}
       <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center">
@@ -504,6 +505,8 @@
         </div>
         <p class="text-[var(--color-text-muted)] mb-4 text-sm">
           {% translate "If TMDB is blocked from this server, route TMDB requests through a proxy (HTTP or SOCKS5)." %}
+          <br>
+          {% translate "Applies to every user on this instance. If several superusers set one, the earliest-created superuser's proxy is used." %}
           <br>
           {% translate "Leave blank and save to remove it." %}
         </p>
@@ -521,6 +524,7 @@
           </button>
         </form>
       </div>
+      {% endif %}
     </div>
   </div>
 
