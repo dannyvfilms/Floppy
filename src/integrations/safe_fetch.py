@@ -665,19 +665,28 @@ def _validated_self_hosted_target(url, *, require_resolution=False):
 class _SelfHostedBoundedRaw:
     """Limit raw and decoded streaming reads without buffering the whole body."""
 
-    def __init__(self, raw, max_bytes, deadline):
+    def __init__(self, raw, max_bytes, deadline, close_on_error):
         self._raw = raw
         self._max_bytes = max_bytes
         self._read_bytes = 0
         self._deadline = deadline
+        self._close_on_error = close_on_error
+
+    def _fail(self):
+        try:
+            self._raw.close()
+        finally:
+            self._close_on_error()
 
     def _account(self, chunk):
         self._read_bytes += len(chunk)
         if self._read_bytes > self._max_bytes:
+            self._fail()
             raise SelfHostedUrlError(
                 REASON_RESPONSE_TOO_LARGE, "This server response is too large."
             )
         if time.monotonic() >= self._deadline:
+            self._fail()
             raise SelfHostedUrlError(
                 REASON_DEADLINE_EXCEEDED, "This server took too long to respond."
             )
@@ -691,15 +700,23 @@ class _SelfHostedBoundedRaw:
             amt = limit
         else:
             amt = min(amt, limit)
-        return self._account(self._raw.read(amt, *args, **kwargs))
+        try:
+            return self._account(self._raw.read(amt, *args, **kwargs))
+        except Exception:
+            self._fail()
+            raise
 
     def stream(self, amt=CHUNK_SIZE, *args, **kwargs):
         # urllib3's stream returns decoded bytes when decode_content=True.
         # These are the bytes Requests' iter_content() and .content consume.
         if not isinstance(amt, int) or amt <= 0:
             amt = CHUNK_SIZE
-        for chunk in self._raw.stream(min(amt, CHUNK_SIZE), *args, **kwargs):
-            yield self._account(chunk)
+        try:
+            for chunk in self._raw.stream(min(amt, CHUNK_SIZE), *args, **kwargs):
+                yield self._account(chunk)
+        except Exception:
+            self._fail()
+            raise
 
     def __getattr__(self, name):
         return getattr(self._raw, name)
@@ -751,7 +768,9 @@ def _send_pinned_self_hosted(method, parsed, address, *, deadline, max_bytes, **
     if parsed.port is not None:
         headers["Host"] += f":{parsed.port}"
 
-    session = _pinned_session(address, hostname, parsed.scheme.lower(), deadline=deadline)
+    session = _pinned_session(
+        address, hostname, parsed.scheme.lower(), deadline=deadline
+    )
     response = None
     try:
         response = session.request(
@@ -763,6 +782,11 @@ def _send_pinned_self_hosted(method, parsed, address, *, deadline, max_bytes, **
             **request_kwargs,
         )
 
+        if time.monotonic() >= deadline:
+            raise SelfHostedUrlError(
+                REASON_DEADLINE_EXCEEDED, "This server took too long to respond."
+            )
+
         # Avoid an unlimited body read, including gzip decompression.
         if response.status_code not in SELF_HOSTED_REDIRECT_STATUSES:
             declared = response.headers.get("Content-Length", "")
@@ -770,7 +794,9 @@ def _send_pinned_self_hosted(method, parsed, address, *, deadline, max_bytes, **
                 raise SelfHostedUrlError(
                     REASON_RESPONSE_TOO_LARGE, "This server response is too large."
                 )
-            response.raw = _SelfHostedBoundedRaw(response.raw, max_bytes, deadline)
+            response.raw = _SelfHostedBoundedRaw(
+                response.raw, max_bytes, deadline, session.close
+            )
 
         if response.status_code in SELF_HOSTED_REDIRECT_STATUSES or streaming:
             # Redirects only need headers. Streams retain the session until
@@ -800,7 +826,10 @@ def _send_pinned_self_hosted(method, parsed, address, *, deadline, max_bytes, **
         if response is not None:
             response.close()
         session.close()
-        if isinstance(error, requests.RequestException) and time.monotonic() >= deadline:
+        if (
+            isinstance(error, requests.RequestException)
+            and time.monotonic() >= deadline
+        ):
             raise SelfHostedUrlError(
                 REASON_DEADLINE_EXCEEDED, "This server took too long to respond."
             ) from error
