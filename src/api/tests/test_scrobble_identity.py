@@ -6,6 +6,8 @@ from django.test import SimpleTestCase
 
 from integrations.webhooks.generic_scrobble import GenericScrobbleProcessor
 
+from .base import FloppyApiTestCase
+
 
 class GenericScrobbleIdentityTests(SimpleTestCase):
     """Normalised episode identities are authoritative on the stop path."""
@@ -100,3 +102,42 @@ class GenericScrobbleIdentityTests(SimpleTestCase):
         self.assertIsNone(GenericScrobbleProcessor().process_payload(payload, self.user))
         process_tv.assert_not_called()
         process_media.assert_not_called()
+
+
+class CanonicalEpisodeWritePathTests(FloppyApiTestCase):
+    """Exercise real TV dispatch without making external provider requests."""
+
+    @patch.object(GenericScrobbleProcessor, "_should_record", return_value=True)
+    @patch(
+        "app.providers.tmdb.tv_with_seasons",
+        return_value={"title": "Modern Family", "tvdb_id": "999999"},
+    )
+    @patch.object(GenericScrobbleProcessor, "_handle_tv_episode")
+    @patch(
+        "integrations.webhooks.base.app.providers.tmdb.find",
+        return_value={
+            "tv_episode_results": [
+                {"show_id": 1622, "season_number": 7, "episode_number": 15}
+            ]
+        },
+    )
+    def test_external_episode_lookup_cannot_override_explicit_coordinates(
+        self, find, handle_episode, seasons, _policy
+    ):
+        payload = {
+            "media_type": "episode",
+            "ids": {"tvdb": "999999"},
+            "series_title": "Modern Family",
+            "season_number": 2,
+            "episode_number": 3,
+            "completed": True,
+        }
+
+        GenericScrobbleProcessor().process_payload(payload, self.user1)
+
+        find.assert_called()
+        seasons.assert_called()
+        handle_episode.assert_called_once()
+        media_id, season, episode = handle_episode.call_args.args[:3]
+        self.assertEqual(str(media_id), "1622")
+        self.assertEqual((season, episode), (2, 3))
