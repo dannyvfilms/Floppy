@@ -585,14 +585,15 @@ templates are compatibility/composition sources, not equally active parallel pag
   `clz_import_fallback.html` is its retained server fallback. Their ownership is
   recorded here; this alphabet change does not alter their migration state.
 - Migration status (browser-verified only; iOS/Android unverified): single-file imports for
-  Yamtrack/Floppy, HLTB, Playnite, Grouvee, IMDb, Goodreads and StoryGraph use `FileImport.jsx`
+  Yamtrack/Floppy, HLTB, Playnite, Grouvee, IMDb, Goodreads, StoryGraph, YouTube and WeTrakr use `FileImport.jsx`
   through `provider_ui.FILE_IMPORTS` with `file_import_fallback.html` as the hidden-until-mount
   fallback. Credentials on every provider Connection tab use `Credentials.jsx`
   (`provider_ui.provider_credentials`, island `data-provider-credentials-root`, fallback is the legacy
   `provider_connection.html`). Kapowarr, Mylar, Radarr, Sonarr and GPodder Connection use
-  `AccountConnection.jsx` (instances list for the arr family). Remaining legacy: Hardcover, YouTube,
-  WeTrakr and TV Time uploads, Plex/Jellyfin/Emby/Kodi/Stremio/Kavita/Komga/Last.fm/Koito/Pocket
-  Casts/PSN/Xbox/Storyteller/KOReader/MDBList/Seerr/Nuvio/Navidrome/MAL connection and import bodies;
+  `AccountConnection.jsx` (instances list for the arr family), as do Pocket Casts, Koito, Last.fm, PSN and
+  Storyteller. Remaining legacy (blocker: extra non-credential controls such as OAuth, webhooks, library
+  pickers, SSL/threshold options or a second upload): Hardcover and TV Time uploads,
+  Plex/Jellyfin/Emby/Kodi/Stremio/Kavita/Komga/Xbox/KOReader/MDBList/Seerr/Nuvio/Navidrome/MAL bodies;
   retire each when its connection model moves to `account_connection` or a dedicated island. Masked
   credential previews are not serialized to React; the fallback still shows them.
 - Implementation: provider-import/schedule/game-sync/Plex-selector/upload-badge components, `users/_reading_server_card.html`, `_reading_server_modal.html`; retained import page.

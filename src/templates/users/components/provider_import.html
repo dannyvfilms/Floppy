@@ -3469,6 +3469,12 @@
               {% include "app/icons/x.svg" with classes="w-4 h-4" %}
             </button>
 {% endif %}
+{% if provider_tab == 'import' and file_import %}
+      {{ file_import|json_script:"file-import-props" }}
+      <div data-file-import-root data-props-id="file-import-props" x-ignore hx-disable>
+        {% include "users/components/file_import_fallback.html" %}
+      </div>
+{% else %}
         <div class="{% if provider_tab != 'import' %}bg-[var(--color-surface-strong)] p-4 rounded-lg{% endif %}">
           <div class="flex items-center mb-3">{% if provider_tab != 'import' %}{% source_display "youtube" %}{% endif %}{% include "users/components/import_upload_badge.html" %}</div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Export YouTube history from Google Takeout. Upload watch-history.json, watch-history.html, or the zip." %}</p>
@@ -3491,6 +3497,7 @@
             </label>
           </form>
         </div>
+{% endif %}
 {% if provider_tab != 'import' %}</div></div>{% endif %}
 
     {% endif %}
@@ -3511,6 +3518,12 @@
               {% include "app/icons/x.svg" with classes="w-4 h-4" %}
             </button>
 {% endif %}
+{% if provider_tab == 'import' and file_import %}
+      {{ file_import|json_script:"file-import-props" }}
+      <div data-file-import-root data-props-id="file-import-props" x-ignore hx-disable>
+        {% include "users/components/file_import_fallback.html" %}
+      </div>
+{% else %}
         <div class="{% if provider_tab != 'import' %}bg-[var(--color-surface-strong)] p-4 rounded-lg{% endif %}">
           <div class="flex items-center mb-3">{% if provider_tab != 'import' %}{% source_display "wetrakr" %}{% endif %}{% include "users/components/import_upload_badge.html" %}</div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Upload the .zip from a WeTrakr data export, or its tracklog, ratings, notes and lists .csv files. Importing lists replaces any lists previously imported from WeTrakr." %}</p>
@@ -3534,6 +3547,7 @@
             </label>
           </form>
         </div>
+{% endif %}
 {% if provider_tab != 'import' %}</div></div>{% endif %}
 
     {% endif %}

@@ -25,7 +25,7 @@ export function FileImport({ model, host }) {
       {model.postFields.map(field => <input key={field.name} type="hidden" name={field.name} value={preferences[field.key]} />)}
       {model.mediaTypes?.length > 0 && <SelectField id="file-import-media-type" name={model.mediaField} label={model.fieldLabel}
         value={mediaType} options={model.mediaTypes} onChange={event => setMediaType(event.target.value)} />}
-      <FilePicker name={model.fileField} accept={model.accept} required label={model.selectLabel} disabled={blocked}
+      <FilePicker name={model.fileField} accept={model.accept} multiple={model.multiple} required label={model.selectLabel} disabled={blocked}
         onChange={event => { if (event.target.files.length) event.target.form.requestSubmit(); }} />
       {blocked && <p className="provider-small">{model.blockedLabel}</p>}
     </Form>

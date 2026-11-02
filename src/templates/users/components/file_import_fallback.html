@@ -4,11 +4,9 @@
   <p>{{ file_import.description }}{% if file_import.docs %} <a href="{{ file_import.docs.url }}" target="_blank" rel="noopener">{{ file_import.docs.label }}</a>{% endif %}</p>
   <form class="ui-form" method="post" action="{{ file_import.action }}" enctype="multipart/form-data">
     {% csrf_token %}<input type="hidden" name="next" value="{{ file_import.next }}">
-    <input type="hidden" name="frequency" data-import-preference="frequency" value="{{ user.import_frequency }}">
-    <input type="hidden" name="time" data-import-preference="time" value="{{ user.import_time }}">
-    <input type="hidden" name="mode" data-import-preference="mode" value="{{ user.import_mode }}">
+    {% for field in file_import.postFields %}<input type="hidden" name="{{ field.name }}" data-import-preference="{{ field.key }}" value="{% if field.key == 'frequency' %}{{ file_import.values.frequency }}{% elif field.key == 'time' %}{{ file_import.values.time }}{% else %}{{ file_import.values.mode }}{% endif %}">{% endfor %}
     <div class="ui-field"><label for="file-import-fallback">{{ file_import.selectLabel }}</label>
-      <input id="file-import-fallback" type="file" name="{{ file_import.fileField }}" accept="{{ file_import.accept }}" required>
+      <input id="file-import-fallback" type="file" name="{{ file_import.fileField }}" accept="{{ file_import.accept }}"{% if file_import.multiple %} multiple{% endif %} required>
     </div>
     <button type="submit" class="ui-button">{% translate "Import" %}</button>
   </form>

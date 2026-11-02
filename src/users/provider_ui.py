@@ -40,6 +40,11 @@ FILE_IMPORTS = {
     "grouvee": ("import_grouvee", "grouvee_json", ".json,.zip", "Import games", "Select File"),
     "imdb": ("import_imdb", "imdb_csv", ".csv", "Import movies and TV shows from your ratings", "Select CSV File"),
     "goodreads": ("import_goodreads", "goodreads_csv", ".csv", "Import from Goodreads backup", "Select CSV File"),
+    "youtube": ("import_youtube_takeout", "youtube_takeout", ".json,.html,.zip",
+                "Export YouTube history from Google Takeout. Upload watch-history.json, watch-history.html, or the zip.", "Select File", {"fields": ("mode",)}),
+    "wetrakr": ("import_wetrakr", "wetrakr_export", ".zip,.csv",
+                "Upload the .zip from a WeTrakr data export, or its tracklog, ratings, notes and lists .csv files. Importing lists replaces any lists previously imported from WeTrakr.",
+                "Select File", {"fields": ("mode",), "multiple": True}),
     "storygraph": ("import_storygraph", "storygraph_csv", ".csv", "Import from StoryGraph export (Profile -> Manage Account -> Export StoryGraph Library)", "Select CSV File"),
 }
 CSV_FORMAT_DOCS = "https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#csv-import-floppy--yamtrack-format"
@@ -47,12 +52,14 @@ CSV_FORMAT_DOCS = "https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Opera
 
 def file_import(request, slug, preferences):
     """Shared single-file import presentation; the file is the only upload."""
-    action, field, accept, description, label = FILE_IMPORTS[slug]
+    action, field, accept, description, label, *rest = FILE_IMPORTS[slug]
+    options = rest[0] if rest else {}
     model = {
         "action": reverse(action), "csrf": get_token(request), "next": request.get_full_path(),
         "values": preferences["values"], "description": _(description), "selectLabel": _(label),
         "fileField": field, "accept": accept, "mediaTypes": [],
-        "postFields": [{"name": name, "key": name} for name in ("frequency", "time", "mode")],
+        "postFields": [{"name": name, "key": name} for name in options.get("fields", ("frequency", "time", "mode"))],
+        "multiple": options.get("multiple", False),
         "blockedLabel": _("This import mode is not supported by this provider."),
         "oneTime": {"label": _("One-time"), "title": _("File uploads can't be scheduled. This file imports once, now.")},
     }

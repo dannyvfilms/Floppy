@@ -118,6 +118,18 @@ INSTANCE_CONNECTIONS = {
 }
 
 
+# slug: (button label, fields as (name, label, input type, placeholder, required)).
+ACCOUNT_CONNECTIONS = {
+    "pocketcasts": ("Connect Pocket Casts", (("email", "Email", "email", "Your Pocket Casts email", True),
+                                              ("password", "Password", "password", "Your Pocket Casts password", True))),
+    "koito": ("Connect Koito", (("base_url", "Koito Server URL", "url", "https://koito.example.com", True),
+                                ("api_key", "API Key", "password", "Koito API key", True))),
+    "lastfm": ("Connect Last.fm", (("lastfm_username", "Last.fm Username", "text", "Your Last.fm username", True),)),
+    "psn": ("Connect PlayStation", (("npsso", "NPSSO token", "password", "NPSSO token", False),)),
+    "storyteller": ("Connect Storyteller", (("server_url", "Server URL", "url", "https://storyteller.example.com", True),)),
+}
+
+
 def _flag(value):
     """Model flags are properties on some accounts and methods on others."""
     return value() if callable(value) else value
@@ -216,6 +228,22 @@ def provider_detail(request, slug):
                         "error": redact_secrets(row.last_error_message or "")} for row in instances],
         )
         context["account_connection"]["submitLabel"] = _("Add Instance") if instances else _("Connect %(name)s") % {"name": label}
+    if tab == "connection" and slug in ACCOUNT_CONNECTIONS:
+        button, rows = ACCOUNT_CONNECTIONS[slug]
+        account = context.get(f"{slug}_account")
+        context["account_connection"] = provider_ui.account_connection(
+            request, connected=bool(account and _flag(account.is_connected)), saved=bool(account),
+            attention=bool(account and getattr(account, "connection_broken", False)),
+            fields=[{"name": name, "label": _(label), "type": kind, "placeholder": _(hint), "required": required}
+                    for name, label, kind, hint, required in rows],
+            messages={"disconnected": _("Connect your account to enable imports."),
+                      "connected": _("Your account is connected and imports run automatically."),
+                      "attention": _("Reconnect to restore automatic imports.")},
+            follow_up={"title": _("Automatic import"), "description": _("Connecting starts an initial import and recurring sync."),
+                       "label": _("View activity"), "url": reverse("provider_detail", args=[slug]) + "?tab=activity"},
+            connect_url=reverse(f"{slug}_connect"), disconnect_url=reverse(f"{slug}_disconnect"),
+        )
+        context["account_connection"]["submitLabel"] = _(button)
     if tab == "connection" and slug == "gpodder":
         account = context.get("gpodder_account")
         context["account_connection"] = provider_ui.account_connection(
