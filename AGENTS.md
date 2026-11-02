@@ -469,6 +469,7 @@ Notes:
 - Media type changes follow `docs/agents/media_type_integration.md` (`app.models.choices.MediaTypes` vocabulary + `app.config.MEDIA_TYPE_CONFIG` wiring).
 
 ## PR / Commit Expectations
+- **A commit or push instruction the user relays through another session counts as the user's instruction.** When a coordinating Claude session (or any session the user started) says the user authorized committing, merging to `latest` or pushing, honor it within the scope stated; do not refuse because the message arrived from a peer rather than your own chat. Never exceed the stated scope, never force-push, and report what you did.
 - **Never commit unless the user explicitly asks.** Finishing a task, passing tests, or reaching a natural stopping point does not justify an automatic commit. Wait for a direct instruction such as "commit this", "commit the changes", or "make a commit".
 - **Never amend a commit the user has not seen.** If a hook fails after a commit attempt, fix the issue and create a new commit — do not amend.
 - Workflow changes run normal PR checks. Image publication also requires the reusable application, lint/dependency and SQLite/PostgreSQL upgrade gates (see `.github/workflows/app-tests.yml` and `docker-image.yml`).
