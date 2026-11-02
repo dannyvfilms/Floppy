@@ -127,6 +127,24 @@ docs) or run `uvicorn floppy_mcp.server:mcp.streamable_http_app`.
   untracked title is created with POST. The underlying generic POST remains an
   append operation and defaults an omitted status to `Planning`.
 
+- **`track_media` results are auditable.** Every success keeps the API body and
+  adds `operation`: `outcome` (`created`, `appended`, `updated`, `skipped`),
+  `identity`, `consumption_id`, `applied` (status, progress, `progress_unit`,
+  dates as returned) and `verify` (the per-item history path to read it back).
+  `mode` is `auto` (default), `new_play` (same as `new_play=true`) or `update`
+  (never creates). Dates are ISO 8601, validated before any request, and stored
+  as given, so historical game plays stay historical. For games `progress` is
+  minutes for that one consumption, not the game total.
+  Failures add `error_kind` (`invalid_input`, `not_found`, `conflict`, `busy`,
+  `unreachable`, `backend_error`, `unknown_write_outcome`) and `write_state`
+  (`not_applied` or `uncertain`) beside the original `detail`. A timeout, 499,
+  502 or 504 on a write is `uncertain`: it may have committed, and the tool never
+  retries by itself. To retry a historical play safely, resend it with
+  `skip_if_duplicate=true` and `start_date`/`end_date`; it skips the POST when
+  the item's consumptions already include one with the same dates, progress and
+  status. That is a read-then-write check, not a server lock, so two concurrent
+  identical requests can still both write.
+
 - **`status`** on `track_media` accepts the display names Floppy uses in
   the UI (`"Planning"`, `"In progress"`, `"Paused"`, `"Completed"`,
   `"Dropped"`); the tool translates them to the API's numeric wire format

@@ -135,7 +135,8 @@ async def test_track_media_manual_source_creates_after_lookup_500(api_base_url):
 
         result = await server.track_media("movie", "manual", "1")
 
-        assert result == {"ok": True}
+        assert result["ok"] is True
+        assert result["operation"]["outcome"] == "created"
         assert create_route.called
 
 
@@ -211,6 +212,183 @@ async def test_track_media_untracked_omits_status_for_api_default(api_base_url):
         await server.track_media("movie", "tmdb", "1")
 
         assert "status" not in json.loads(create_route.calls.last.request.content)
+
+
+def _tracked(consumptions):
+    return ok({"tracked": True, "consumptions": consumptions})
+
+
+async def test_track_media_result_reports_created_operation(api_base_url):
+    with respx.mock:
+        respx.get(f"{api_base_url}/media/game/igdb/7").mock(
+            return_value=Response(404, json={"detail": "nope"}),
+        )
+        respx.post(f"{api_base_url}/media/game").mock(
+            return_value=Response(
+                201,
+                json={
+                    "consumption_id": 9,
+                    "status": "Completed",
+                    "progress": 600,
+                    "progress_unit": "minutes",
+                    "progress_scope": "entry",
+                    "start_date": "2019-03-01",
+                    "end_date": "2019-03-07",
+                },
+            ),
+        )
+        result = await server.track_media(
+            "game",
+            "igdb",
+            "7",
+            status="Completed",
+            progress=600,
+            start_date="2019-03-01",
+            end_date="2019-03-07",
+        )
+    op = result["operation"]
+    assert op["outcome"] == "created"
+    assert op["consumption_id"] == 9
+    assert op["identity"] == {"media_type": "game", "source": "igdb", "media_id": "7"}
+    assert op["applied"]["progress_unit"] == "minutes"
+    assert op["applied"]["end_date"] == "2019-03-07"
+    assert op["verify"]["history_path"].endswith("/media/game/igdb/7/history/")
+    assert result["progress"] == 600  # raw body is still present
+
+
+async def test_track_media_completing_planned_reports_updated(api_base_url):
+    with respx.mock:
+        respx.get(f"{api_base_url}/media/game/igdb/7").mock(
+            return_value=_tracked([{"consumption_id": 4, "status": "Planning"}]),
+        )
+        respx.patch(f"{api_base_url}/media/game/igdb/7/history/4").mock(
+            return_value=Response(200, json={"status": "Completed"}),
+        )
+        result = await server.track_media("game", "igdb", "7", status="Completed")
+    assert result["operation"]["outcome"] == "updated"
+    assert result["operation"]["consumption_id"] == 4
+
+
+async def test_track_media_new_play_on_completed_reports_appended(api_base_url):
+    with respx.mock:
+        respx.get(f"{api_base_url}/media/game/igdb/7").mock(
+            return_value=_tracked([{"consumption_id": 4, "status": "Completed"}]),
+        )
+        post = respx.post(f"{api_base_url}/media/game").mock(
+            return_value=Response(201, json={"consumption_id": 5}),
+        )
+        result = await server.track_media(
+            "game",
+            "igdb",
+            "7",
+            status="Completed",
+            mode="new_play",
+            start_date="2020-01-01",
+            end_date="2020-01-02",
+        )
+    assert post.called
+    assert result["operation"]["outcome"] == "appended"
+    assert result["operation"]["consumption_id"] == 5
+
+
+async def test_track_media_update_mode_refuses_untracked(api_base_url):
+    with respx.mock:
+        respx.get(f"{api_base_url}/media/game/igdb/7").mock(
+            return_value=Response(404, json={"detail": "nope"}),
+        )
+        post = respx.post(f"{api_base_url}/media/game").mock(
+            return_value=Response(201, json={}),
+        )
+        result = await server.track_media("game", "igdb", "7", mode="update")
+    assert result["error_kind"] == "not_found"
+    assert not post.called
+
+
+async def test_track_media_rejects_bad_dates_before_any_request():
+    for kwargs in (
+        {"start_date": "yesterday"},
+        {"start_date": "2020-02-01", "end_date": "2020-01-01"},
+        {"progress": -5},
+        {"score": 11},
+    ):
+        result = await server.track_media("game", "igdb", "7", **kwargs)
+        assert result["error_kind"] == "invalid_input"
+        assert result["write_state"] == "not_applied"
+
+
+async def test_track_media_write_timeout_is_uncertain_not_failed(api_base_url):
+    with respx.mock:
+        respx.get(f"{api_base_url}/media/game/igdb/7").mock(
+            return_value=Response(404, json={"detail": "nope"}),
+        )
+        respx.post(f"{api_base_url}/media/game").mock(
+            side_effect=httpx.ReadTimeout("timed out"),
+        )
+        result = await server.track_media("game", "igdb", "7", status="Completed")
+    assert result["error"] is True
+    assert result["error_kind"] == "unknown_write_outcome"
+    assert result["write_state"] == "uncertain"
+    assert result["verify"]["history_path"]
+
+
+async def test_track_media_499_is_uncertain(api_base_url):
+    with respx.mock:
+        respx.get(f"{api_base_url}/media/game/igdb/7").mock(
+            return_value=Response(404, json={"detail": "nope"}),
+        )
+        respx.post(f"{api_base_url}/media/game").mock(
+            return_value=Response(499, json={"detail": "client closed"}),
+        )
+        result = await server.track_media("game", "igdb", "7")
+    assert result["write_state"] == "uncertain"
+    assert result["detail"] == {"detail": "client closed"}
+
+
+async def test_track_media_classifies_busy_and_validation_errors(api_base_url):
+    cases = [
+        (503, {"detail": "Database is busy."}, "busy", "not_applied"),
+        (400, {"detail": "Invalid"}, "invalid_input", "not_applied"),
+    ]
+    for code, payload, kind, state in cases:
+        with respx.mock:
+            respx.get(f"{api_base_url}/media/game/igdb/7").mock(
+                return_value=Response(404, json={"detail": "nope"}),
+            )
+            respx.post(f"{api_base_url}/media/game").mock(
+                return_value=Response(code, json=payload),
+            )
+            result = await server.track_media("game", "igdb", "7")
+        assert (result["error_kind"], result["write_state"]) == (kind, state)
+        assert result["detail"] == payload
+
+
+async def test_track_media_retry_after_timeout_does_not_duplicate(api_base_url):
+    sent = {
+        "status": "Completed",
+        "progress": 90,
+        "mode": "new_play",
+        "start_date": "2020-01-01",
+        "end_date": "2020-01-02",
+        "skip_if_duplicate": True,
+    }
+    committed = {
+        "consumption_id": 12,
+        "status": "Completed",
+        "progress": 90,
+        "start_date": "2020-01-01T00:00:00Z",
+        "end_date": "2020-01-02T00:00:00Z",
+    }
+    with respx.mock:
+        respx.get(f"{api_base_url}/media/game/igdb/7").mock(
+            return_value=_tracked([committed]),
+        )
+        post = respx.post(f"{api_base_url}/media/game").mock(
+            return_value=Response(201, json={}),
+        )
+        result = await server.track_media("game", "igdb", "7", **sent)
+    assert not post.called
+    assert result["operation"]["outcome"] == "skipped"
+    assert result["operation"]["consumption_id"] == 12
 
 
 async def test_untrack_media(api_base_url):
@@ -507,3 +685,4 @@ async def test_every_public_tool_is_registered_on_the_dispatcher():
     for tool in await server.mcp.list_tools():
         assert tool.name
         assert tool.inputSchema, tool.name
+

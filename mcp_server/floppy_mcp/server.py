@@ -9,7 +9,8 @@ FLOPPY_TOKEN environment variables (see client.py).
 from __future__ import annotations
 
 import json
-from typing import Any
+from datetime import datetime
+from typing import Any, Literal
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -73,6 +74,10 @@ _STATUS_CODES = {
     "Completed": 3,
     "Dropped": 4,
 }
+
+
+_STATUS_NAMES = {code: name for name, code in _STATUS_CODES.items()}
+MAX_SCORE = 10
 
 
 def _status_code(status: str | None) -> int | None:
@@ -187,39 +192,269 @@ async def list_tracked_media(
     )
 
 
-@mcp.tool()
-async def track_media(
+_TrackMediaType = Literal[
+    "tv",
+    "movie",
+    "anime",
+    "manga",
+    "game",
+    "book",
+    "comic",
+    "boardgame",
+    "music",
+    "podcast",
+    "comicissue",
+    "season",
+    "episode",
+]
+_TrackStatus = Literal["Planning", "In progress", "Paused", "Completed", "Dropped"]
+_TrackMode = Literal["auto", "new_play", "update"]
+
+# Statuses where the server may have committed before the response was lost.
+_UNCERTAIN_STATUSES = {
+    499,
+    httpx.codes.BAD_GATEWAY,
+    httpx.codes.GATEWAY_TIMEOUT,
+}
+_APPLIED_FIELDS = (
+    "status",
+    "score",
+    "progress",
+    "progress_unit",
+    "progress_scope",
+    "start_date",
+    "end_date",
+)
+
+
+def _parse_when(name: str, value: str) -> datetime:
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        msg = (
+            f"Invalid {name} {value!r}; use ISO 8601, e.g. 2019-03-07 or "
+            "2019-03-07T21:30:00+00:00"
+        )
+        raise ValueError(msg) from None
+
+
+def _validate_track_input(
+    score: float | None,
+    progress: int | None,
+    start_date: str | None,
+    end_date: str | None,
+) -> str | None:
+    """Return a human-readable problem, or None when the input is coherent."""
+    try:
+        start = _parse_when("start_date", start_date) if start_date else None
+        end = _parse_when("end_date", end_date) if end_date else None
+    except ValueError as exc:
+        return str(exc)
+    if (
+        start
+        and end
+        and (start.tzinfo is None) == (end.tzinfo is None)
+        and start > end
+    ):
+        return f"start_date {start_date!r} is after end_date {end_date!r}"
+    if progress is not None and progress < 0:
+        return f"progress must be >= 0, got {progress}"
+    if score is not None and not 0 <= score <= MAX_SCORE:
+        return f"score must be between 0 and {MAX_SCORE}, got {score}"
+    return None
+
+
+def _classify_write_error(error: dict[str, Any]) -> dict[str, Any]:
+    """Tag a failed write with its kind and whether it may have been applied."""
+    code = error.get("status_code")
+    detail_text = json.dumps(error.get("detail", "")).lower()
+    if code is None:
+        # No HTTP response. A refused connection never reached the server; a
+        # timeout or dropped connection may have been committed.
+        kind, state = (
+            ("unreachable", "not_applied")
+            if error.get("connect_failed")
+            else ("unknown_write_outcome", "uncertain")
+        )
+    elif code in _UNCERTAIN_STATUSES:
+        kind, state = "unknown_write_outcome", "uncertain"
+    elif code == httpx.codes.SERVICE_UNAVAILABLE or "locked" in detail_text:
+        kind, state = "busy", "not_applied"
+    elif code in {httpx.codes.BAD_REQUEST, httpx.codes.UNPROCESSABLE_ENTITY}:
+        kind, state = "invalid_input", "not_applied"
+    elif code == httpx.codes.NOT_FOUND:
+        kind, state = "not_found", "not_applied"
+    elif code == httpx.codes.CONFLICT:
+        kind, state = "conflict", "not_applied"
+    else:
+        kind, state = "backend_error", "uncertain"
+    error.pop("connect_failed", None)
+    return {**error, "error_kind": kind, "write_state": state}
+
+
+async def _write(method: str, path: str, **kwargs: Any) -> Any:
+    """Like _call, but flags transport failures that may have committed."""
+    try:
+        return await get_client().request(method, path, **kwargs)
+    except httpx.ConnectError as exc:
+        payload = _error_payload(exc)
+        payload["connect_failed"] = True
+        return payload
+    except (FloppyAPIError, FloppyConfigError, httpx.RequestError) as exc:
+        return _error_payload(exc)
+
+
+def _verify_ref(
     media_type: str,
     source: str,
     media_id: str,
-    status: str | None = None,
+    consumption_id: int | None,
+) -> dict[str, Any]:
+    return {
+        "get_media": {
+            "media_type": media_type,
+            "source": source,
+            "media_id": media_id,
+        },
+        "history_path": f"/api/v1/media/{media_type}/{source}/{media_id}/history/",
+        "consumption_id": consumption_id,
+        "note": (
+            "Read the history list and match consumption_id (or the dates/"
+            "progress you sent) to confirm exactly what was written."
+        ),
+    }
+
+
+def _same_play(consumption: dict[str, Any], body: dict[str, Any]) -> bool:
+    """Report whether a consumption already carries the requested play."""
+    if not any(k in body for k in ("start_date", "end_date")):
+        return False  # nothing identifies a play without dates
+    for field in ("start_date", "end_date", "progress"):
+        if field in body and not _matches(consumption.get(field), body[field]):
+            return False
+    return "status" not in body or consumption.get("status") in {
+        body["status"],
+        _STATUS_NAMES.get(body["status"]),
+    }
+
+
+def _matches(have: Any, want: Any) -> bool:
+    if have == want:
+        return True
+    if isinstance(have, str) and isinstance(want, str):
+        try:
+            a, b = datetime.fromisoformat(have), datetime.fromisoformat(want)
+        except ValueError:
+            return False
+        if len(want) == len("2020-01-01"):
+            # A bare date matches any stored timestamp on that calendar day.
+            return a.date() == b.date()
+        if (a.tzinfo is None) != (b.tzinfo is None):
+            return False
+        return a == b
+    return False
+
+
+def _envelope(
+    response: Any,
+    outcome: str,
+    media: tuple[str, str, str],
+    consumption_id: int | None,
+    **extra: Any,
+) -> Any:
+    if not isinstance(response, dict):
+        response = {"result": response}
+    if consumption_id is None:
+        consumption_id = response.get("consumption_id")
+    operation = {
+        "outcome": outcome,
+        "identity": dict(zip(("media_type", "source", "media_id"), media, strict=True)),
+        "consumption_id": consumption_id,
+        "applied": {k: response[k] for k in _APPLIED_FIELDS if k in response},
+        "verify": _verify_ref(*media, consumption_id),
+        **extra,
+    }
+    return {**response, "operation": operation}
+
+
+@mcp.tool()
+async def track_media(  # noqa: C901, PLR0911, PLR0912
+    media_type: _TrackMediaType,
+    source: str,
+    media_id: str,
+    status: _TrackStatus | None = None,
     score: float | None = None,
     progress: int | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
     notes: str | None = None,
     new_play: bool = False,  # noqa: FBT001, FBT002
+    mode: _TrackMode = "auto",
+    skip_if_duplicate: bool = False,  # noqa: FBT001, FBT002
 ) -> Any:
     """Start tracking a media item, or update it if already tracked.
 
     status is one of "Completed", "In progress", "Planning", "Paused",
-    "Dropped". score is 0-10. Only pass the fields you want to set. Set
-    new_play=True to append a separate consumption instead of updating an
-    existing one.
+    "Dropped". score is 0-10. Only pass the fields you want to set.
+
+    mode chooses between a NEW consumption and editing the current one:
+    "auto" (default) updates a tracked item and creates an untracked one;
+    "new_play" always appends a separate consumption (same as
+    new_play=True); "update" only edits and refuses if nothing is tracked.
+
+    start_date/end_date are ISO 8601 (2019-03-07 or a full timestamp) and
+    are stored as given, so historical plays stay historical. They are
+    validated before anything is written.
 
     progress is always the value for THIS ONE tracked entry, never a sum
     across a user's other entries for the same item (each response also
     carries progress_scope="entry" for clarity). Its unit depends on
-    media_type: minutes for games, episodes for tv/season/anime, plays for
-    boardgame/music, percentage/pages/chapters for book/manga/comic
+    media_type: minutes for games, episodes for tv/season/anime,
+    plays for boardgame/music, percentage/pages/chapters for book/manga/comic
     depending on the user's preference and format, minutes for podcast.
     Each response's progress_unit field states the unit actually in use;
     check it rather than assuming from media_type alone.
+
+    Every success result keeps the API body and adds "operation":
+    outcome (created | appended | updated | skipped), identity,
+    consumption_id, applied (status/progress/progress_unit/dates as
+    returned) and verify (where to read the entry back).
+
+    Failures carry error_kind (invalid_input, not_found, conflict, busy,
+    unreachable, backend_error, unknown_write_outcome) and write_state
+    (not_applied | uncertain). unknown_write_outcome means a timeout or
+    gateway error: the write MAY have committed, so do not blindly retry.
+    Read the verify reference first, or retry with skip_if_duplicate=True
+    plus start_date/end_date, which skips the POST when a consumption with
+    the same dates, progress and status already exists. That check is
+    best-effort (read, then write), not a server-side lock.
     """
+    new_play = new_play or mode == "new_play"
+    if new_play and mode == "update":
+        return {
+            "error": True,
+            "error_kind": "invalid_input",
+            "write_state": "not_applied",
+            "detail": 'new_play=True conflicts with mode="update"',
+        }
     try:
         status_code = _status_code(status)
     except ValueError as exc:
-        return {"error": True, "detail": str(exc)}
+        return {
+            "error": True,
+            "error_kind": "invalid_input",
+            "write_state": "not_applied",
+            "detail": str(exc),
+        }
+    problem = _validate_track_input(score, progress, start_date, end_date)
+    if problem:
+        return {
+            "error": True,
+            "error_kind": "invalid_input",
+            "write_state": "not_applied",
+            "detail": problem,
+        }
+    media = (media_type, source, media_id)
     body = {
         "source": source,
         "status": status_code,
@@ -250,28 +485,67 @@ async def track_media(
         )
     ):
         return existing
-    if (
+    tracked = (
         isinstance(existing, dict)
         and not existing.get("error")
-        and existing.get("tracked")
-        and not new_play
-    ):
+        and bool(existing.get("tracked"))
+    )
+    consumptions = (existing.get("consumptions") or []) if tracked else []
+    if mode == "update" and not tracked:
+        return {
+            "error": True,
+            "error_kind": "not_found",
+            "write_state": "not_applied",
+            "detail": 'mode="update" but this item is not tracked yet',
+        }
+    if tracked and not new_play:
         if status_code == _STATUS_CODES["Completed"]:
-            for consumption in existing.get("consumptions") or []:
+            for consumption in consumptions:
                 if consumption.get("status") in {"Planning", "In progress", 0, 1}:
                     consumption_id = consumption["consumption_id"]
-                    return await _call(
+                    result = await _write(
                         "patch",
                         f"media/{media_type}/{source}/{media_id}/history/{consumption_id}",
                         json=body,
                     )
-        return await _call(
+                    if isinstance(result, dict) and result.get("error"):
+                        return {
+                            **_classify_write_error(result),
+                            "verify": _verify_ref(*media, consumption_id),
+                        }
+                    return _envelope(
+                        result,
+                        "updated",
+                        media,
+                        consumption_id,
+                        consumption_target="pending_consumption",
+                    )
+        result = await _write(
             "patch",
             f"media/{media_type}/{source}/{media_id}",
             json=body,
         )
+        if isinstance(result, dict) and result.get("error"):
+            return {
+                **_classify_write_error(result),
+                "verify": _verify_ref(*media, None),
+            }
+        return _envelope(result, "updated", media, None, consumption_target="current")
+    if skip_if_duplicate and new_play:
+        for consumption in consumptions:
+            if _same_play(consumption, body):
+                return _envelope(
+                    consumption,
+                    "skipped",
+                    media,
+                    consumption.get("consumption_id"),
+                    reason="an identical consumption already exists",
+                )
     body["media_id"] = media_id
-    return await _call("post", f"media/{media_type}", json=body)
+    result = await _write("post", f"media/{media_type}", json=body)
+    if isinstance(result, dict) and result.get("error"):
+        return {**_classify_write_error(result), "verify": _verify_ref(*media, None)}
+    return _envelope(result, "appended" if tracked else "created", media, None)
 
 
 @mcp.tool()
