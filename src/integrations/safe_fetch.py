@@ -681,12 +681,10 @@ class _SelfHostedBoundedRaw:
     def _account(self, chunk):
         self._read_bytes += len(chunk)
         if self._read_bytes > self._max_bytes:
-            self._fail()
             raise SelfHostedUrlError(
                 REASON_RESPONSE_TOO_LARGE, "This server response is too large."
             )
         if time.monotonic() >= self._deadline:
-            self._fail()
             raise SelfHostedUrlError(
                 REASON_DEADLINE_EXCEEDED, "This server took too long to respond."
             )
