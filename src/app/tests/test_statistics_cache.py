@@ -18,7 +18,18 @@ from app import (
     statistics_refresh,
     statistics_sync,
 )
-from app.models import Item, MediaTypes, Movie, Sources, Status
+from app.models import (
+    Album,
+    Artist,
+    BoardGame,
+    Item,
+    MediaTypes,
+    Movie,
+    Music,
+    Sources,
+    Status,
+    Track,
+)
 from app.statistics_aggregator import (
     _aggregate_minutes_per_media_type_from_days,
     _build_combined_hours_charts,
@@ -412,6 +423,144 @@ class StatisticsHourBucketTests(TestCase):
             _aggregate_minutes_per_media_type_from_days(self.user, [midnight.date()]),
             {"movie": 210},
         )
+
+
+class StatisticsBoardGameDayTests(TestCase):
+    """Board game plays contribute minutes, one play and spread daily time."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(
+            username="stats-boardgame-user",
+            password="secret123",
+        )
+        self.day = timezone.make_aware(datetime(2025, 1, 15, 12))
+
+    def tearDown(self):
+        cache.clear()
+
+    def _boardgame(self, key, progress, start, end):
+        item = Item.objects.create(
+            media_id=key,
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.BOARDGAME.value,
+            title=key,
+        )
+        BoardGame.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=progress,
+            start_date=start,
+            end_date=end,
+        )
+        return item
+
+    def _day_stats(self):
+        return statistics_cache.build_stats_for_day(self.user.id, self.day.date())
+
+    def test_play_ending_today_counts_minutes_play_and_top_played(self):
+        item = self._boardgame("bg-same-day", 90, self.day, self.day)
+
+        stats = self._day_stats()
+
+        key = MediaTypes.BOARDGAME.value
+        self.assertEqual(stats["totals"]["minutes_by_type"][key], 90)
+        self.assertEqual(stats["daily_minutes_by_type"][key], 90)
+        self.assertEqual(stats["top_played"][key][str(item.id)]["plays"], 1)
+        self.assertEqual(stats["top_played"][key][str(item.id)]["minutes"], 90)
+        self.assertIn(str(item.id), stats["items"][key])
+
+    def test_multi_day_span_spreads_daily_time_without_counting_a_play(self):
+        self._boardgame(
+            "bg-span",
+            300,
+            self.day - timedelta(days=1),
+            self.day + timedelta(days=1),
+        )
+
+        stats = self._day_stats()
+
+        key = MediaTypes.BOARDGAME.value
+        self.assertEqual(stats["daily_minutes_by_type"][key], 100)
+        self.assertEqual(stats["totals"]["minutes_by_type"].get(key, 0), 0)
+        self.assertEqual(stats["top_played"].get(key, {}), {})
+
+    def test_zero_progress_records_item_but_no_time(self):
+        item = self._boardgame("bg-zero", 0, self.day, self.day)
+
+        stats = self._day_stats()
+
+        key = MediaTypes.BOARDGAME.value
+        self.assertIn(str(item.id), stats["items"][key])
+        self.assertEqual(stats["totals"]["minutes_by_type"].get(key, 0), 0)
+        self.assertEqual(stats["daily_minutes_by_type"].get(key, 0), 0)
+
+
+class StatisticsMusicDayTests(TestCase):
+    """Music plays count once, with runtime from the track and rollups."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(
+            username="stats-music-user",
+            password="secret123",
+        )
+        self.day = timezone.make_aware(datetime(2025, 1, 15, 12))
+        self.artist = Artist.objects.create(name="Day Artist", genres=["rock"])
+        self.album = Album.objects.create(title="Day Album", artist=self.artist)
+
+    def tearDown(self):
+        cache.clear()
+
+    def _music(self, key, duration_ms):
+        track = Track.objects.create(
+            album=self.album, title=key, track_number=1, duration_ms=duration_ms
+        )
+        item = Item.objects.create(
+            media_id=key,
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.MUSIC.value,
+            title=key,
+        )
+        return Music.objects.create(
+            item=item,
+            user=self.user,
+            album=self.album,
+            artist=self.artist,
+            track=track,
+            status=Status.COMPLETED.value,
+            progress=1,
+            start_date=self.day,
+            end_date=self.day,
+        )
+
+    def test_play_adds_runtime_play_hour_and_rollups(self):
+        music = self._music("song", 180000)
+
+        stats = statistics_cache.build_stats_for_day(self.user.id, self.day.date())
+
+        key = MediaTypes.MUSIC.value
+        self.assertEqual(stats["totals"]["minutes_by_type"][key], 3)
+        self.assertEqual(stats["totals"]["plays_by_type"][key], 1)
+        self.assertEqual(stats["daily_minutes_by_type"][key], 3)
+        self.assertEqual(stats["hour_counts"][key], {"12": 1})
+        self.assertEqual(stats["top_played"][key][str(music.item_id)]["plays"], 1)
+        rollups = stats["music"]
+        self.assertEqual(rollups["tracks"][str(music.id)]["minutes"], 3)
+        self.assertEqual(rollups["artists"][str(self.artist.id)]["plays"], 1)
+        self.assertEqual(rollups["albums"][str(self.album.id)]["minutes"], 3)
+        self.assertEqual(rollups["genres"]["Rock"]["plays"], 1)
+
+    def test_play_without_runtime_counts_play_but_no_minutes(self):
+        self._music("silent", 0)
+
+        stats = statistics_cache.build_stats_for_day(self.user.id, self.day.date())
+
+        key = MediaTypes.MUSIC.value
+        self.assertEqual(stats["totals"]["plays_by_type"][key], 1)
+        self.assertEqual(stats["totals"]["minutes_by_type"].get(key, 0), 0)
+        self.assertEqual(stats["top_played"].get(key, {}), {})
 
 
 # ---------------------------------------------------------------------------

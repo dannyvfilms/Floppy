@@ -459,6 +459,272 @@ def _build_prefetch_for_range(user, day_list):
     return prefetch
 
 
+def _add_boardgame_rows(
+    rows,
+    day,
+    day_start,
+    day_end,
+    *,
+    minutes_by_type,
+    daily_minutes_by_type,
+    update_item_meta,
+    update_top_played,
+):
+    """Add one day's board game rows to the day builder's accumulators.
+
+    A row's progress is minutes played. A play counts on the day it ended; the
+    minutes are spread evenly over the local days between start and end.
+    """
+    key = MediaTypes.BOARDGAME.value
+    for row in rows:
+        activity_dt = (
+            row.get("end_date") or row.get("start_date") or row.get("created_at")
+        )
+        update_item_meta(
+            key,
+            row.get("item_id"),
+            row.get("id"),
+            row.get("status"),
+            row.get("score"),
+            activity_dt,
+        )
+
+        total_minutes = row.get("progress") or 0
+        if total_minutes <= 0:
+            continue
+
+        play_dt = row.get("end_date") or row.get("start_date")
+        if play_dt and day_start <= play_dt < day_end:
+            minutes_by_type[key] += total_minutes
+            update_top_played(
+                key,
+                row.get("item_id"),
+                row.get("id"),
+                minutes=total_minutes,
+                plays=1,
+                episode_count=0,
+                activity_dt=play_dt,
+            )
+
+        start_dt = row.get("start_date")
+        end_dt = row.get("end_date")
+        start_local = _localize_datetime(start_dt).date() if start_dt else None
+        end_local = _localize_datetime(end_dt).date() if end_dt else None
+        if start_local and end_local and start_local <= day <= end_local:
+            total_days = (end_local - start_local).days + 1
+            per_day = total_minutes / total_days if total_days else total_minutes
+            daily_minutes_by_type[key] += per_day
+        else:
+            activity_local = _localize_datetime(activity_dt)
+            if activity_local and activity_local.date() == day:
+                daily_minutes_by_type[key] += total_minutes
+
+
+def _add_music_plays(
+    user,
+    day,
+    day_start,
+    day_end,
+    prefetch,
+    *,
+    plays_by_type,
+    minutes_by_type,
+    daily_minutes_by_type,
+    music_rollups,
+    add_hour,
+    update_item_meta,
+    update_top_played,
+):
+    """Add one day's music plays to the day builder's accumulators.
+
+    A play is one (music id, end date) pair, deduplicated across history rows.
+    Returns how many plays were added and how many lacked a runtime or genres.
+    """
+    missing_runtime = 0
+    missing_genres = 0
+    plays = 0
+    if prefetch is not None:
+        music_history = prefetch.get("music_history", {}).get(day, [])
+        music_map = prefetch.get("music_map", {})
+        track_duration_cache = prefetch.get("track_duration_cache", {})
+    else:
+        HistoricalMusic = apps.get_model("app", "HistoricalMusic")
+        music_history = (
+            HistoricalMusic.objects.filter(
+                Q(history_user=user) | Q(history_user__isnull=True),
+                end_date__gte=day_start,
+                end_date__lt=day_end,
+            )
+            .values("id", "end_date", "history_date")
+            .iterator(chunk_size=1000)
+        )
+
+    plays_by_key = {}
+    for record in music_history:
+        music_id = record.get("id")
+        play_end = record.get("end_date")
+        hist_date = record.get("history_date")
+        if not music_id or not play_end or not hist_date:
+            continue
+        key = (music_id, play_end)
+        existing = plays_by_key.get(key)
+        if not existing:
+            plays_by_key[key] = hist_date
+            continue
+        existing_diff = abs((existing - play_end).total_seconds())
+        current_diff = abs((hist_date - play_end).total_seconds())
+        if current_diff < existing_diff and current_diff < SECONDS_PER_DAY:
+            plays_by_key[key] = hist_date
+
+    if prefetch is None:
+        music_ids = {key[0] for key in plays_by_key}
+        if music_ids:
+            Music = apps.get_model("app", "Music")
+            music_map = {
+                entry.id: entry
+                for entry in Music.objects.filter(id__in=music_ids).select_related(
+                    "item", "artist", "album", "track"
+                )
+            }
+        else:
+            music_map = {}
+
+        track_duration_cache = {}
+        if music_map:
+            album_ids = {
+                music.album_id
+                for music in music_map.values()
+                if music and music.album_id
+            }
+            if album_ids:
+                Track = apps.get_model("app", "Track")
+                track_rows = Track.objects.filter(
+                    album_id__in=album_ids,
+                    duration_ms__isnull=False,
+                ).values(
+                    "album_id", "title", "duration_ms", "musicbrainz_recording_id"
+                )
+                for track_data in track_rows:
+                    title_key = (track_data["album_id"], track_data["title"])
+                    track_duration_cache[title_key] = track_data["duration_ms"]
+                    recording_id = track_data.get("musicbrainz_recording_id")
+                    if recording_id:
+                        recording_key = ("recording", recording_id)
+                        track_duration_cache[recording_key] = track_data[
+                            "duration_ms"
+                        ]
+
+    for music_id, play_end in plays_by_key:
+        music = music_map.get(music_id)
+        if not music:
+            continue
+        runtime_minutes = _get_music_runtime_minutes(
+            music,
+            track_duration_cache=track_duration_cache,
+        )
+        if runtime_minutes <= 0:
+            missing_runtime += 1
+            runtime_minutes = 0
+        localized = _localize_datetime(play_end)
+        plays_by_type[MediaTypes.MUSIC.value] += 1
+        plays += 1
+        add_hour(MediaTypes.MUSIC.value, localized, runtime_minutes)
+        if runtime_minutes:
+            minutes_by_type[MediaTypes.MUSIC.value] += runtime_minutes
+            daily_minutes_by_type[MediaTypes.MUSIC.value] += runtime_minutes
+
+        update_item_meta(
+            MediaTypes.MUSIC.value,
+            music.item_id if getattr(music, "item_id", None) else music.id,
+            music.id,
+            getattr(music, "status", None),
+            getattr(music, "score", None),
+            play_end,
+        )
+        if runtime_minutes:
+            update_top_played(
+                MediaTypes.MUSIC.value,
+                music.item_id if getattr(music, "item_id", None) else music.id,
+                music.id,
+                minutes=runtime_minutes,
+                plays=1,
+                episode_count=0,
+                activity_dt=play_end,
+            )
+
+        track_key = music.id
+        track_stats = music_rollups["tracks"][track_key]
+        track_stats["minutes"] += runtime_minutes
+        track_stats["plays"] += 1
+        track_stats["title"] = music.item.title if music.item else "Unknown"
+        track_stats["id"] = music.id
+
+        album = getattr(music, "album", None)
+        artist = getattr(music, "artist", None) or getattr(album, "artist", None)
+        if artist:
+            track_stats["artist"] = artist.name
+            artist_stats = music_rollups["artists"][artist.id]
+            artist_stats["minutes"] += runtime_minutes
+            artist_stats["plays"] += 1
+            artist_stats["name"] = artist.name
+            artist_stats["image"] = artist.image or ""
+            artist_stats["id"] = artist.id
+
+        if album:
+            track_stats["album"] = album.title
+            track_stats["album_image"] = (
+                album.image or track_stats.get("album_image") or ""
+            )
+            track_stats["album_id"] = album.id
+            track_stats["album_artist_id"] = artist.id if artist else None
+            track_stats["album_artist_name"] = artist.name if artist else ""
+            album_stats = music_rollups["albums"][album.id]
+            album_stats["minutes"] += runtime_minutes
+            album_stats["plays"] += 1
+            album_stats["title"] = album.title
+            album_stats["artist"] = artist.name if artist else "Unknown"
+            album_stats["artist_id"] = artist.id if artist else None
+            album_stats["artist_name"] = artist.name if artist else ""
+            album_stats["image"] = album.image or ""
+            album_stats["id"] = album.id
+
+        genres = []
+        if album and album.genres:
+            genres = _coerce_genre_list(album.genres)
+        elif artist and artist.genres:
+            genres = _coerce_genre_list(artist.genres)
+        elif getattr(music, "track", None) and music.track.genres:
+            genres = _coerce_genre_list(music.track.genres)
+
+        if runtime_minutes > 0 and not genres:
+            missing_genres += 1
+
+        for genre in genres:
+            key = str(genre).title()
+            genre_stats = music_rollups["genres"][key]
+            genre_stats["minutes"] += runtime_minutes
+            genre_stats["plays"] += 1
+            genre_stats["name"] = key
+
+        release_date = getattr(album, "release_date", None) if album else None
+        if release_date and release_date.year:
+            decade_label = f"{(release_date.year // 10) * 10}s"
+            decade_stats = music_rollups["decades"][decade_label]
+            decade_stats["minutes"] += runtime_minutes
+            decade_stats["plays"] += 1
+            decade_stats["label"] = decade_label
+
+        country_code = getattr(artist, "country", None) if artist else None
+        if country_code:
+            code_upper = str(country_code).upper()
+            country_stats = music_rollups["countries"][code_upper]
+            country_stats["minutes"] += runtime_minutes
+            country_stats["plays"] += 1
+            country_stats["code"] = code_upper
+            country_stats["name"] = _country_name_from_code(code_upper)
+    return plays, missing_runtime, missing_genres
+
+
 def build_stats_for_day(
     user_id: int,
     day_value,
@@ -1222,229 +1488,35 @@ def build_stats_for_day(
             "boardgame",
             prefetch,
         )
-        for row in boardgame_rows:
-            activity_dt = (
-                row.get("end_date") or row.get("start_date") or row.get("created_at")
-            )
-            _update_item_meta(
-                MediaTypes.BOARDGAME.value,
-                row.get("item_id"),
-                row.get("id"),
-                row.get("status"),
-                row.get("score"),
-                activity_dt,
-            )
-
-            total_minutes = row.get("progress") or 0
-            if total_minutes <= 0:
-                continue
-
-            play_dt = row.get("end_date") or row.get("start_date")
-            if play_dt and day_start <= play_dt < day_end:
-                minutes_by_type[MediaTypes.BOARDGAME.value] += total_minutes
-                _update_top_played(
-                    MediaTypes.BOARDGAME.value,
-                    row.get("item_id"),
-                    row.get("id"),
-                    minutes=total_minutes,
-                    plays=1,
-                    episode_count=0,
-                    activity_dt=play_dt,
-                )
-
-            start_dt = row.get("start_date")
-            end_dt = row.get("end_date")
-            start_local = _localize_datetime(start_dt).date() if start_dt else None
-            end_local = _localize_datetime(end_dt).date() if end_dt else None
-            if start_local and end_local and start_local <= day <= end_local:
-                total_days = (end_local - start_local).days + 1
-                per_day = total_minutes / total_days if total_days else total_minutes
-                daily_minutes_by_type[MediaTypes.BOARDGAME.value] += per_day
-            else:
-                activity_local = _localize_datetime(activity_dt)
-                if activity_local and activity_local.date() == day:
-                    daily_minutes_by_type[MediaTypes.BOARDGAME.value] += total_minutes
+        _add_boardgame_rows(
+            boardgame_rows,
+            day,
+            day_start,
+            day_end,
+            minutes_by_type=minutes_by_type,
+            daily_minutes_by_type=daily_minutes_by_type,
+            update_item_meta=_update_item_meta,
+            update_top_played=_update_top_played,
+        )
 
     if MediaTypes.MUSIC.value in active_media_types:
-        if prefetch is not None:
-            music_history = prefetch.get("music_history", {}).get(day, [])
-            music_map = prefetch.get("music_map", {})
-            track_duration_cache = prefetch.get("track_duration_cache", {})
-        else:
-            HistoricalMusic = apps.get_model("app", "HistoricalMusic")
-            music_history = (
-                HistoricalMusic.objects.filter(
-                    Q(history_user=user) | Q(history_user__isnull=True),
-                    end_date__gte=day_start,
-                    end_date__lt=day_end,
-                )
-                .values("id", "end_date", "history_date")
-                .iterator(chunk_size=1000)
-            )
-
-        plays_by_key = {}
-        for record in music_history:
-            music_id = record.get("id")
-            play_end = record.get("end_date")
-            hist_date = record.get("history_date")
-            if not music_id or not play_end or not hist_date:
-                continue
-            key = (music_id, play_end)
-            existing = plays_by_key.get(key)
-            if not existing:
-                plays_by_key[key] = hist_date
-                continue
-            existing_diff = abs((existing - play_end).total_seconds())
-            current_diff = abs((hist_date - play_end).total_seconds())
-            if current_diff < existing_diff and current_diff < SECONDS_PER_DAY:
-                plays_by_key[key] = hist_date
-
-        if prefetch is None:
-            music_ids = {key[0] for key in plays_by_key}
-            if music_ids:
-                Music = apps.get_model("app", "Music")
-                music_map = {
-                    entry.id: entry
-                    for entry in Music.objects.filter(id__in=music_ids).select_related(
-                        "item", "artist", "album", "track"
-                    )
-                }
-            else:
-                music_map = {}
-
-            track_duration_cache = {}
-            if music_map:
-                album_ids = {
-                    music.album_id
-                    for music in music_map.values()
-                    if music and music.album_id
-                }
-                if album_ids:
-                    Track = apps.get_model("app", "Track")
-                    track_rows = Track.objects.filter(
-                        album_id__in=album_ids,
-                        duration_ms__isnull=False,
-                    ).values(
-                        "album_id", "title", "duration_ms", "musicbrainz_recording_id"
-                    )
-                    for track_data in track_rows:
-                        title_key = (track_data["album_id"], track_data["title"])
-                        track_duration_cache[title_key] = track_data["duration_ms"]
-                        recording_id = track_data.get("musicbrainz_recording_id")
-                        if recording_id:
-                            recording_key = ("recording", recording_id)
-                            track_duration_cache[recording_key] = track_data[
-                                "duration_ms"
-                            ]
-
-        for music_id, play_end in plays_by_key:
-            music = music_map.get(music_id)
-            if not music:
-                continue
-            runtime_minutes = _get_music_runtime_minutes(
-                music,
-                track_duration_cache=track_duration_cache,
-            )
-            if runtime_minutes <= 0:
-                missing_runtime += 1
-                runtime_minutes = 0
-            localized = _localize_datetime(play_end)
-            plays_by_type[MediaTypes.MUSIC.value] += 1
-            play_count += 1
-            _add_hour(MediaTypes.MUSIC.value, localized, runtime_minutes)
-            if runtime_minutes:
-                minutes_by_type[MediaTypes.MUSIC.value] += runtime_minutes
-                daily_minutes_by_type[MediaTypes.MUSIC.value] += runtime_minutes
-
-            _update_item_meta(
-                MediaTypes.MUSIC.value,
-                music.item_id if getattr(music, "item_id", None) else music.id,
-                music.id,
-                getattr(music, "status", None),
-                getattr(music, "score", None),
-                play_end,
-            )
-            if runtime_minutes:
-                _update_top_played(
-                    MediaTypes.MUSIC.value,
-                    music.item_id if getattr(music, "item_id", None) else music.id,
-                    music.id,
-                    minutes=runtime_minutes,
-                    plays=1,
-                    episode_count=0,
-                    activity_dt=play_end,
-                )
-
-            track_key = music.id
-            track_stats = music_rollups["tracks"][track_key]
-            track_stats["minutes"] += runtime_minutes
-            track_stats["plays"] += 1
-            track_stats["title"] = music.item.title if music.item else "Unknown"
-            track_stats["id"] = music.id
-
-            album = getattr(music, "album", None)
-            artist = getattr(music, "artist", None) or getattr(album, "artist", None)
-            if artist:
-                track_stats["artist"] = artist.name
-                artist_stats = music_rollups["artists"][artist.id]
-                artist_stats["minutes"] += runtime_minutes
-                artist_stats["plays"] += 1
-                artist_stats["name"] = artist.name
-                artist_stats["image"] = artist.image or ""
-                artist_stats["id"] = artist.id
-
-            if album:
-                track_stats["album"] = album.title
-                track_stats["album_image"] = (
-                    album.image or track_stats.get("album_image") or ""
-                )
-                track_stats["album_id"] = album.id
-                track_stats["album_artist_id"] = artist.id if artist else None
-                track_stats["album_artist_name"] = artist.name if artist else ""
-                album_stats = music_rollups["albums"][album.id]
-                album_stats["minutes"] += runtime_minutes
-                album_stats["plays"] += 1
-                album_stats["title"] = album.title
-                album_stats["artist"] = artist.name if artist else "Unknown"
-                album_stats["artist_id"] = artist.id if artist else None
-                album_stats["artist_name"] = artist.name if artist else ""
-                album_stats["image"] = album.image or ""
-                album_stats["id"] = album.id
-
-            genres = []
-            if album and album.genres:
-                genres = _coerce_genre_list(album.genres)
-            elif artist and artist.genres:
-                genres = _coerce_genre_list(artist.genres)
-            elif getattr(music, "track", None) and music.track.genres:
-                genres = _coerce_genre_list(music.track.genres)
-
-            if runtime_minutes > 0 and not genres:
-                missing_genres += 1
-
-            for genre in genres:
-                key = str(genre).title()
-                genre_stats = music_rollups["genres"][key]
-                genre_stats["minutes"] += runtime_minutes
-                genre_stats["plays"] += 1
-                genre_stats["name"] = key
-
-            release_date = getattr(album, "release_date", None) if album else None
-            if release_date and release_date.year:
-                decade_label = f"{(release_date.year // 10) * 10}s"
-                decade_stats = music_rollups["decades"][decade_label]
-                decade_stats["minutes"] += runtime_minutes
-                decade_stats["plays"] += 1
-                decade_stats["label"] = decade_label
-
-            country_code = getattr(artist, "country", None) if artist else None
-            if country_code:
-                code_upper = str(country_code).upper()
-                country_stats = music_rollups["countries"][code_upper]
-                country_stats["minutes"] += runtime_minutes
-                country_stats["plays"] += 1
-                country_stats["code"] = code_upper
-                country_stats["name"] = _country_name_from_code(code_upper)
+        music_plays, music_missing_runtime, music_missing_genres = _add_music_plays(
+            user,
+            day,
+            day_start,
+            day_end,
+            prefetch,
+            plays_by_type=plays_by_type,
+            minutes_by_type=minutes_by_type,
+            daily_minutes_by_type=daily_minutes_by_type,
+            music_rollups=music_rollups,
+            add_hour=_add_hour,
+            update_item_meta=_update_item_meta,
+            update_top_played=_update_top_played,
+        )
+        play_count += music_plays
+        missing_runtime += music_missing_runtime
+        missing_genres += music_missing_genres
 
     if MediaTypes.PODCAST.value in active_media_types:
         if prefetch is not None:
