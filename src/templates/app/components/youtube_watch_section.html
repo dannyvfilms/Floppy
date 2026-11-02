@@ -1,14 +1,38 @@
 {% load i18n %}
 
-<section class="mb-8">
+<section class="mb-8" x-data="{ all: false }">
   <h2 class="text-xl font-bold mb-3">{% translate "Watched on YouTube" %}</h2>
-  <div class="rounded-lg bg-[#2a2f35] p-4">
+  <div class="rounded-lg bg-[var(--color-surface)] p-4">
     <p class="text-lg font-semibold">
       {% if youtube_watch.seconds %}~{{ youtube_watch.hours_label }}{% else %}{% translate "Started" %}{% endif %}
     </p>
-    <p class="text-sm text-gray-400">
-      {% blocktranslate count count=youtube_watch.videos %}{{ count }} video YouTube tags with this game{% plural %}{{ count }} videos YouTube tags with this game{% endblocktranslate %}
+    <p class="text-sm text-[var(--color-text-muted)]">
+      {% blocktranslate count count=youtube_watch.videos %}{{ count }} video about this game{% plural %}{{ count }} videos about this game{% endblocktranslate %}
       · {% translate "Estimated from how far you got in each video. Your playtime is not affected." %}
     </p>
+    <ul class="mt-3 divide-y divide-[var(--color-border)] text-sm">
+      {% for row in youtube_watch.items %}
+        <li class="flex items-center justify-between gap-3 py-2" {% if forloop.counter > 5 %}x-show="all" x-cloak{% endif %}>
+          <div class="min-w-0">
+            <a class="block truncate hover:underline"
+               href="{% url 'media_details' source=row.item.source media_type=row.item.media_type media_id=row.item.media_id title=row.item.title|slugify %}">{{ row.item.title }}</a>
+            <span class="text-xs text-[var(--color-text-muted)]">
+              {% if row.video.channel %}{{ row.video.channel }}{% endif %}
+              {% if row.when %}{% if row.video.channel %} · {% endif %}{{ row.when|date:"M j, Y" }}{% endif %}
+              {% if row.how == "linked" %} · {% translate "Linked by you" %}{% endif %}
+            </span>
+          </div>
+          <div class="flex shrink-0 items-center gap-3">
+            {% if row.label %}<span class="text-xs text-[var(--color-text-muted)]">~{{ row.label }}</span>{% endif %}
+            <button type="button" class="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                    hx-post="{% url 'video_game_set' row.item.pk %}" hx-vals='{"mode": "none"}'
+                    hx-swap="none" hx-on::after-request="window.location.reload()">{% translate "Not this game" %}</button>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+    {% if youtube_watch.items|length > 5 %}
+      <button type="button" class="mt-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)]" x-show="!all" @click="all = true">{% translate "Show all" %}</button>
+    {% endif %}
   </div>
 </section>

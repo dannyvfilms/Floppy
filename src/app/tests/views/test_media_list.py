@@ -4594,3 +4594,37 @@ class GameGroupingViewTests(TestCase):
 
         self.assertEqual(response.context["current_group_by"], "item")
         self.assertEqual(response.context["media_groups"], [])
+
+
+class MediaListStatusCaseTests(TestCase):
+    """A status written in a link matches however its capitals are typed."""
+
+    def setUp(self):
+        cache.clear()
+        self.credentials = {"username": "statuscase", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+        self.url = reverse("medialist", kwargs={"media_type": MediaTypes.GAME.value})
+        for title, status in (
+            ("Playing Now", Status.IN_PROGRESS.value),
+            ("Already Done", Status.COMPLETED.value),
+        ):
+            item = Item.objects.create(
+                media_id=title,
+                source=Sources.MANUAL.value,
+                media_type=MediaTypes.GAME.value,
+                title=title,
+            )
+            Game.objects.create(item=item, user=self.user, status=status)
+
+    def test_status_matches_without_regard_to_case(self):
+        for spelling in ("In progress", "In Progress", "in progress"):
+            with self.subTest(spelling=spelling):
+                response = self.client.get(self.url, {"status": spelling})
+                self.assertContains(response, "Playing Now")
+                self.assertNotContains(response, "Already Done")
+
+    def test_unknown_status_is_ignored(self):
+        response = self.client.get(self.url, {"status": "Nonsense"})
+        self.assertContains(response, "Playing Now")
+        self.assertContains(response, "Already Done")

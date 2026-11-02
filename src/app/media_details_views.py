@@ -2133,6 +2133,17 @@ def media_details(
             and not public_view
             else None
         ),
+        "video_game": (
+            youtube_game_watch.game_for_video(request.user, detail_item)
+            if render_secondary_only
+            and media_type == MediaTypes.VIDEO.value
+            and detail_item
+            and current_instance
+            and request.user.is_authenticated
+            and not public_view
+            else None
+        ),
+        "video_item": detail_item,
         "game_lengths_pending": game_lengths_refresh_pending
         and not (game_lengths and game_lengths.get("available")),
         "notes_entry": notes_entry,
