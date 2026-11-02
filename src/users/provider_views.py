@@ -261,6 +261,21 @@ def provider_detail(request, slug):
             connect_url=reverse(f"{slug}_connect"), disconnect_url=reverse(f"{slug}_disconnect"),
         )
         context["account_connection"]["submitLabel"] = _(button)
+    if tab == "connection" and slug == "mdblist":
+        context["file_import"] = provider_ui.file_import(request, slug, provider_ui.import_preferences(request, slug, context), context)
+    if tab == "connection" and slug == "koreader":
+        account = context.get("koreader_account")
+        connected = bool(account and _flag(account.is_connected))
+        context["account_connection"] = provider_ui.account_connection(
+            request, connected=connected, saved=bool(account), attention=bool(account and getattr(account, "last_error_message", "")),
+            fields=[], messages={
+                "disconnected": _("Connect your self-hosted KOReader sync server. Enable Send document metadata in KOReader for automatic matching on supported servers."),
+                "connected": _("Sync reading progress using your import schedule."),
+                "attention": _("Reconnect to restore automatic imports.")},
+            follow_up=None, connect_url="", disconnect_url=reverse("koreader_disconnect"),
+            summary={"url": account.server_url, "lastSync": user_datetime_format(account.last_sync_at, request.user) if account.last_sync_at else "",
+                     "error": redact_secrets(account.last_error_message or "")} if account else None,
+        )
     if tab == "connection" and slug == "gpodder":
         account = context.get("gpodder_account")
         context["account_connection"] = provider_ui.account_connection(
@@ -282,7 +297,7 @@ def provider_detail(request, slug):
         context["setup_guides"], context["guide_copy"] = provider_guides.setup_guides(request, slug, context)
     if (tab == "connection" and slug in {"jellyfin", "seerr"}) or (tab in {"connection", "import", "tracking"} and slug == "stremio"):
         context["setup_guides"], context["guide_copy"] = provider_guides.setup_guides(request, slug, context)
-    if slug in {"plex", "jellyfin", "seerr", "koreader"}:
+    if slug in {"plex", "jellyfin", "seerr", "koreader", "hardcover"}:
         context["provider_forms"] = provider_forms.build(request, slug, tab, context)
     if tab == "import" and slug != "anilist":
         context["import_preferences"] = provider_ui.import_preferences(request, slug, context)

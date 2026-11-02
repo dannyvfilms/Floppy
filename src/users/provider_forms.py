@@ -34,6 +34,16 @@ def build(request, slug, tab, context):
                 "help": _("Mark media as watched when it is manually marked watched in Plex."),
                 "value": bool(account and account.mark_watched_sync_enabled),
             }])
+    elif slug == "hardcover" and context.get("hardcover_personal_key"):
+        forms["hardcover_sync"] = _form(request, "hardcover-sync", "hardcover_sync", [
+            {"name": "frequency", "type": "select", "label": _("Import Frequency"), "value": "once",
+             "options": [{"value": "once", "label": _("One Time Import")}, {"value": "daily", "label": _("Every Day")},
+                         {"value": "2days", "label": _("Every 2 Days")}]},
+            {"name": "time", "type": "time", "label": _("Import Time"), "value": str(user.import_time)[:5], "required": True,
+             "showWhen": {"name": "frequency", "not": "once"}},
+        ], {"mode": user.import_mode}, submit="Sync now")
+        forms["hardcover_sync"]["followPreferences"] = True
+        forms["hardcover_sync"]["blockedLabel"] = _("This import mode is not supported by this provider.")
     elif slug == "koreader":
         account = context.get("koreader_account")
         connected = bool(account and (account.is_connected() if callable(account.is_connected) else account.is_connected))

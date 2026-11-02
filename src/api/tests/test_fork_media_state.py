@@ -2,7 +2,7 @@
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import Mock, patch
 
-from app.models import MediaTypes, Sources
+from app.models import MediaTypes, Movie, MoviePlay, Sources
 from app.providers import services
 
 from .base import FloppyApiTestCase
@@ -38,6 +38,25 @@ class MediaStateTests(FloppyApiTestCase):
         self.assertTrue(body["tracked"])
         self.assertTrue(body["consumptions"])
         self.assertIn("consumption_id", body["consumptions"][0])
+
+    def test_movie_with_several_plays_lists_each_with_its_own_id(self):
+        item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        movie = Movie.objects.filter(user=self.user1, item=item).first()
+        plays = [MoviePlay.objects.create(movie=movie) for _ in range(2)]
+        response = self._get(item.media_type, item.source, item.media_id)
+        ids = {entry["consumption_id"] for entry in response.json()["consumptions"]}
+        self.assertEqual(ids, {play.id for play in plays})
+
+    def test_unknown_consumption_id_has_typed_404(self):
+        item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        response = self.call_api(
+            "get",
+            "api_media_consumption_entry_detail",
+            args=(item.media_type, item.source, item.media_id, 999999),
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+        self.assertEqual(response.json()["code"], "CONSUMPTION_NOT_FOUND")
 
     def test_valid_provider_item_untracked_is_200_with_no_consumptions(self):
         with patch(METADATA_PATH, return_value={"title": "Wii Fit"}):

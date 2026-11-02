@@ -800,3 +800,38 @@ async def test_resolve_game_provider_outage_is_an_error_not_no_match(api_base_ur
     assert out["error"] is True
     assert out["error_kind"] == "provider_unavailable"
     assert "status" not in out
+
+
+async def test_track_media_multiple_game_sessions_stay_separate(api_base_url):
+    first = {
+        "consumption_id": 1,
+        "status": "Completed",
+        "progress": 120,
+        "start_date": "2019-01-01",
+        "end_date": "2019-01-02",
+    }
+    with respx.mock:
+        respx.get(f"{api_base_url}/media/game/igdb/7").mock(
+            return_value=_tracked([first]),
+        )
+        post = respx.post(f"{api_base_url}/media/game").mock(
+            return_value=Response(
+                201,
+                json={"consumption_id": 2, "progress": 90, "progress_unit": "minutes"},
+            ),
+        )
+        result = await server.track_media(
+            "game",
+            "igdb",
+            "7",
+            status="Completed",
+            progress=90,
+            mode="new_play",
+            start_date="2020-05-01",
+            end_date="2020-05-02",
+            skip_if_duplicate=True,
+        )
+    assert post.called
+    assert result["operation"]["outcome"] == "appended"
+    assert result["operation"]["consumption_id"] == 2
+    assert result["operation"]["applied"]["progress_unit"] == "minutes"
