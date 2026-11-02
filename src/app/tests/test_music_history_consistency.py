@@ -121,7 +121,10 @@ class MusicHistoryConsistencyTests(TestCase):
             {day_key: {MediaTypes.MUSIC.value}},
         )
         prefetched_day = history_cache.build_history_day(
-            user, day_key, "sessions", media_types=(MediaTypes.MUSIC.value,),
+            user,
+            day_key,
+            "sessions",
+            media_types=(MediaTypes.MUSIC.value,),
             prefetch=prefetch,
         )
         self.assertEqual(prefetched_day, day)
