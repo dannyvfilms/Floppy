@@ -28,8 +28,8 @@ validation and connect. Cancellation is subject to OS thread scheduling.
 """
 
 import ipaddress
-import math
 import logging
+import math
 import socket
 import threading
 import time
