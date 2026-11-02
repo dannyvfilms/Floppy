@@ -7,7 +7,8 @@ from urllib.parse import urljoin
 import yaml
 from bs4 import BeautifulSoup
 from django.conf import settings
-from django.test import RequestFactory, SimpleTestCase
+from django.contrib.auth import get_user_model
+from django.test import RequestFactory, SimpleTestCase, TestCase
 from django.test.utils import override_settings
 from django.urls import get_script_prefix, reverse, set_script_prefix
 from drf_spectacular.renderers import OpenApiYamlRenderer
@@ -1236,3 +1237,45 @@ class AsyncAPIContractTests(SimpleTestCase):
 
         head_response = self.client.head(reverse("asyncapi-contract"))
         self.assertEqual(head_response.status_code, 200)
+
+
+class LiveSchemaNegotiationTests(TestCase):
+    """The ``/api/schema/`` response matrix (#1615; #1049 was the earlier report)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = get_user_model().objects.create_user("schema", password="x")
+
+    def setUp(self):
+        self.client.force_login(self.user)
+
+    def test_response_matrix(self):
+        cases = [
+            ("", {}, "text/yaml", "yaml"),
+            ("?format=yaml", {}, "text/yaml", "yaml"),
+            ("?format=json", {}, "application/json", "json"),
+            ("?format=bogus", {}, "text/yaml", "yaml"),
+            ("", {"HTTP_ACCEPT": "application/json"}, "application/json", "json"),
+            (
+                "",
+                {"HTTP_ACCEPT": "application/vnd.oai.openapi+json"},
+                "application/vnd.oai.openapi+json",
+                "json",
+            ),
+            ("", {"HTTP_ACCEPT": "text/yaml"}, "text/yaml", "yaml"),
+            (
+                "",
+                {"HTTP_ACCEPT": "application/vnd.oai.openapi"},
+                "application/vnd.oai.openapi",
+                "yaml",
+            ),
+        ]
+        for query, headers, mime, kind in cases:
+            with self.subTest(query=query, headers=headers):
+                response = self.client.get(f"/api/schema/{query}", **headers)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response["Content-Type"].split(";")[0], mime)
+                self.assertIn(f"openapi-live.{kind}", response["Content-Disposition"])
+                body = response.content.decode()
+                parsed = json.loads(body) if kind == "json" else yaml.safe_load(body)
+                self.assertEqual(parsed["openapi"], "3.0.3")

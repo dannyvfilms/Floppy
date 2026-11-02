@@ -36,10 +36,28 @@ class LiveSchemaView(SpectacularAPIView):
         OpenApiJsonRenderer2,
     ]
 
+    # ``URL_FORMAT_OVERRIDE`` is disabled project-wide, so ``?format=`` is
+    # honoured here only. Other values fall back to Accept negotiation (#1049).
+    FORMAT_QUERY_RENDERERS = {
+        "json": OpenApiJsonRenderer2,
+        "yaml": OpenApiTextYamlRenderer,
+    }
+
+    def perform_content_negotiation(self, request, force=False):
+        """Let ``?format=json|yaml`` pick the renderer; otherwise use Accept."""
+        renderer_class = self.FORMAT_QUERY_RENDERERS.get(request.query_params.get("format"))
+        if renderer_class is not None:
+            renderer = renderer_class()
+            return renderer, renderer.media_type
+        return super().perform_content_negotiation(request, force)
+
     def get(self, request, *args, **kwargs):
         """Serve dynamic OpenAPI schema with text/yaml content-type and inline disposition."""
         response = super().get(request, *args, **kwargs)
-        response["Content-Disposition"] = 'inline; filename="openapi-live.yaml"'
+        is_json = request.accepted_renderer.format == "json"
+        response["Content-Disposition"] = (
+            f'inline; filename="openapi-live.{"json" if is_json else "yaml"}"'
+        )
         return response
 
 
