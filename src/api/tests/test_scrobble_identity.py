@@ -49,10 +49,15 @@ class GenericScrobbleIdentityTests(SimpleTestCase):
     @patch.object(GenericScrobbleProcessor, "_process_tv")
     def test_write_policy_still_blocks_tv_processing(self, process_tv, policy):
         payload = {
-            "media_type": "episode", "ids": {"tmdb": "1421"},
-            "season_number": 2, "episode_number": 3, "completed": True,
+            "media_type": "episode",
+            "ids": {"tmdb": "1421"},
+            "season_number": 2,
+            "episode_number": 3,
+            "completed": True,
         }
-        self.assertIsNone(GenericScrobbleProcessor().process_payload(payload, self.user))
+        self.assertIsNone(
+            GenericScrobbleProcessor().process_payload(payload, self.user)
+        )
         policy.assert_called_once()
         process_tv.assert_not_called()
 
@@ -99,7 +104,9 @@ class GenericScrobbleIdentityTests(SimpleTestCase):
             "episode_number": 3,
             "completed": True,
         }
-        self.assertIsNone(GenericScrobbleProcessor().process_payload(payload, self.user))
+        self.assertIsNone(
+            GenericScrobbleProcessor().process_payload(payload, self.user)
+        )
         process_tv.assert_not_called()
         process_media.assert_not_called()
 

@@ -190,7 +190,9 @@ class GenericScrobbleProcessor(BaseWebhookProcessor):
             entry = next(
                 (
                     e
-                    for e in anime_mappings.find_entries_for_mal_id(mapping_data, mal_id)
+                    for e in anime_mappings.find_entries_for_mal_id(
+                        mapping_data, mal_id
+                    )
                     if e.get("tvdb_id") or e.get("tmdb_id")
                 ),
                 None,
