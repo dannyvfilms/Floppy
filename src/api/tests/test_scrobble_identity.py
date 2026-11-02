@@ -53,3 +53,50 @@ class GenericScrobbleIdentityTests(SimpleTestCase):
         self.assertIsNone(GenericScrobbleProcessor().process_payload(payload, self.user))
         policy.assert_called_once()
         process_tv.assert_not_called()
+
+    @patch("integrations.webhooks.base.BaseWebhookProcessor._find_tv_media_id")
+    def test_fallback_retains_user_and_transient_error_policy(self, base_resolve):
+        ids = {"tmdb_id": None, "tvdb_id": "999999", "imdb_id": None}
+        base_resolve.return_value = ("1622", 7, 15)
+        result = GenericScrobbleProcessor()._find_tv_media_id(
+            ids,
+            series_title="Modern Family",
+            allow_title_fallback=True,
+            season_number=2,
+            episode_ids=True,
+            user=self.user,
+            raise_transient=True,
+        )
+        self.assertEqual(result, ("1622", 7, 15))
+        base_resolve.assert_called_once_with(
+            ids,
+            series_title="Modern Family",
+            allow_title_fallback=True,
+            year=None,
+            season_number=2,
+            episode_ids=True,
+            user=self.user,
+            raise_transient=True,
+        )
+
+    @patch.object(GenericScrobbleProcessor, "_should_record", return_value=True)
+    @patch.object(GenericScrobbleProcessor, "_process_media")
+    def test_movie_keeps_existing_dispatch(self, process_media, _policy):
+        payload = {"media_type": "movie", "ids": {"tmdb": "603"}, "completed": True}
+        GenericScrobbleProcessor().process_payload(payload, self.user)
+        process_media.assert_called_once()
+        self.assertEqual(process_media.call_args.args[2]["tmdb_id"], "603")
+
+    @patch.object(GenericScrobbleProcessor, "_process_tv")
+    @patch.object(GenericScrobbleProcessor, "_process_media")
+    def test_missing_ids_never_dispatches(self, process_media, process_tv):
+        payload = {
+            "media_type": "episode",
+            "ids": {},
+            "season_number": 2,
+            "episode_number": 3,
+            "completed": True,
+        }
+        self.assertIsNone(GenericScrobbleProcessor().process_payload(payload, self.user))
+        process_tv.assert_not_called()
+        process_media.assert_not_called()
