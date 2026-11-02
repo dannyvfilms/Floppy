@@ -118,6 +118,7 @@ class FloppyClient:
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
         files: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> Any:
         """Issue a request and return the parsed JSON body (or None for 204)."""
         client = self._ensure_client()
@@ -131,6 +132,7 @@ class FloppyClient:
             params=clean_params,
             json=json,
             files=files,
+            headers=headers,
         )
         if response.status_code == httpx.codes.NO_CONTENT:
             return None

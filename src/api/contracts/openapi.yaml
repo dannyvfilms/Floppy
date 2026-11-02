@@ -1322,6 +1322,11 @@ paths:
         status means Planning. Clients updating an existing play should first
         read its consumption_id and use the exact history route instead.
 
+        Send an `Idempotency-Key` header to make a retry safe: repeating the
+        same key and body replays the first success (header
+        `Idempotent-Replayed: true` and `idempotent_replayed: true` in the body) instead of appending another play. The
+        same key with a different body is refused with 422.
+
         `progress` set here (and returned by every media/history endpoint) is
         always this one consumption's own value, never a sum across a user's
         other entries for the same item -- the response's `progress_scope`
@@ -1330,6 +1335,15 @@ paths:
         plays for boardgame/music) and is named in the response's
         `progress_unit` field.
       parameters:
+      - in: header
+        name: Idempotency-Key
+        schema:
+          type: string
+        description: 'Optional. Repeating the same key and body replays the first
+          success (`idempotent_replayed: true`) instead of appending another play;
+          the same key with a different body returns 422 `IDEMPOTENCY_KEY_REUSED`.
+          Records last 24 hours. Use after a timeout or 499, when the write may have
+          committed.'
       - in: path
         name: media_type
         schema:
