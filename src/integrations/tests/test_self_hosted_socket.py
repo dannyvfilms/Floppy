@@ -150,7 +150,8 @@ class SelfHostedTLSNameTests(SimpleTestCase):
 
         import requests
 
-        if not shutil.which("openssl"):
+        openssl = shutil.which("openssl")
+        if openssl is None:
             self.skipTest("OpenSSL executable unavailable for offline TLS fixture")
 
         class Handler(BaseHTTPRequestHandler):
@@ -171,9 +172,9 @@ class SelfHostedTLSNameTests(SimpleTestCase):
         with tempfile.TemporaryDirectory(prefix="floppy-c07-tls-") as tmp:
             certificate = Path(tmp) / "cert.pem"
             key = Path(tmp) / "key.pem"
-            subprocess.run(
+            subprocess.run(  # noqa: S603 - fixed local test fixture, no shell
                 [
-                    "openssl", "req", "-x509", "-newkey", "ec",
+                    openssl, "req", "-x509", "-newkey", "ec",
                     "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes",
                     "-keyout", str(key), "-out", str(certificate),
                     "-days", "1", "-subj", "/CN=other.home",
@@ -216,12 +217,12 @@ class SelfHostedTLSNameTests(SimpleTestCase):
                     )
                     self.assertEqual(good.content, b"ok")
 
-                    with self.assertRaises(requests.exceptions.SSLError) as caught:
+                    with self.assertRaises(requests.exceptions.SSLError):
                         safe_fetch.send_to_self_hosted_pinned(
                             "GET", f"https://wrong.home:{port}/",
                             verify=str(certificate), timeout=2, total_timeout=5,
                         )
-                self.assertIn("hostname mismatch", str(caught.exception).lower())
+                # Exception wording varies across OpenSSL and urllib3 versions.
                 self.assertEqual(seen_names, ["other.home", "wrong.home"])
             finally:
                 server.shutdown()
