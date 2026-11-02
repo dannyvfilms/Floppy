@@ -9,6 +9,7 @@ from app.models.choices import (
     Sources,
     Status,
 )
+from app.models.consumption_batch import ConsumptionBatchItem
 from app.models.credits import (
     CREDITS_BACKFILL_VERSION,
     DISCOVER_MOVIE_METADATA_BACKFILL_VERSION,
@@ -144,6 +145,7 @@ __all__ = [
     "CollectionFieldType",
     "Comic",
     "ComicIssue",
+    "ConsumptionBatchItem",
     "CreditRoleType",
     "DeletedMedia",
     "DiscoverApiCache",

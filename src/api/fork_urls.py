@@ -4,6 +4,7 @@ from django.urls import re_path
 
 from . import (
     fork_views,
+    fork_views_consumption_batch,
     fork_views_discover,
     fork_views_integrations,
     fork_views_lists,
@@ -115,6 +116,16 @@ urlpatterns = [
         r"^collection/(?P<entry_id>\d+)/?$",
         fork_views.CollectionEntryView.as_view(),
         name="api_collection_entry",
+    ),
+    re_path(
+        r"^consumptions/batch/?$",
+        fork_views_consumption_batch.ConsumptionBatchView.as_view(),
+        name="api_consumption_batch",
+    ),
+    re_path(
+        r"^consumptions/batch/(?P<operation_id>[^/]+)/?$",
+        fork_views_consumption_batch.ConsumptionBatchDetailView.as_view(),
+        name="api_consumption_batch_detail",
     ),
     re_path(
         r"^tasks/(?P<task_id>[\w-]+)/?$",
@@ -407,7 +418,6 @@ urlpatterns = [
         fork_views_watched_state.SyncConflictResolveView.as_view(),
         name="api_sync_conflict_resolve",
     ),
-]
     re_path(
         r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/state/?$",
         fork_views_tracking.MediaStateView.as_view(),
@@ -423,3 +433,4 @@ urlpatterns = [
         fork_views_tracking.MediaEpisodeStateView.as_view(),
         name="api_media_episode_state",
     ),
+]

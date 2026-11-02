@@ -139,6 +139,7 @@ SpecialModels = [
     "DiscoverTasteProfile",
     "DiscoverRowCache",
     "DeletedMedia",
+    "ConsumptionBatchItem",
     "PlaybackProgress",
     "ApplicationSettings",
     "InstanceProviderCredential",
