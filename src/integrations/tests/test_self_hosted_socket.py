@@ -228,3 +228,75 @@ class SelfHostedTLSNameTests(SimpleTestCase):
                 worker.join(timeout=5)
                 server.server_close()
             self.assertFalse(worker.is_alive())
+
+
+class SelfHostedResourceLimitSocketTests(SimpleTestCase):
+    def _serve(self, handler):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        return server, worker
+
+    def test_slow_drip_cannot_hold_pinned_connection_indefinitely(self):
+        import time
+        from contextlib import suppress
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Length", "200")
+                self.end_headers()
+                with suppress(BrokenPipeError, ConnectionResetError, OSError):
+                    for _ in range(40):
+                        self.wfile.write(b"12345")
+                        self.wfile.flush()
+                        time.sleep(0.04)
+
+            def log_message(self, _format, *_args):
+                pass
+
+        server, worker = self._serve(Handler)
+        try:
+            started = time.monotonic()
+            with self.assertRaises(safe_fetch.SelfHostedUrlError) as caught:
+                safe_fetch.send_to_self_hosted_pinned(
+                    "GET", f"http://127.0.0.1:{server.server_address[1]}/",
+                    timeout=(3, 3), total_timeout=0.2,
+                )
+            self.assertEqual(caught.exception.reason_code, "deadline_exceeded")
+            self.assertLess(time.monotonic() - started, 1.5)
+        finally:
+            server.shutdown()
+            worker.join(timeout=5)
+            server.server_close()
+        self.assertFalse(worker.is_alive())
+
+    def test_compressed_body_is_limited_after_decompression(self):
+        import gzip
+
+        payload = gzip.compress(b"a" * 10000)
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Encoding", "gzip")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def log_message(self, _format, *_args):
+                pass
+
+        server, worker = self._serve(Handler)
+        try:
+            with self.assertRaises(safe_fetch.SelfHostedUrlError) as caught:
+                safe_fetch.send_to_self_hosted_pinned(
+                    "GET", f"http://127.0.0.1:{server.server_address[1]}/",
+                    total_timeout=5, max_bytes=200,
+                )
+            self.assertEqual(caught.exception.reason_code, "response_too_large")
+        finally:
+            server.shutdown()
+            worker.join(timeout=5)
+            server.server_close()
+        self.assertFalse(worker.is_alive())
