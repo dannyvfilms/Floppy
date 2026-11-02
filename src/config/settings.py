@@ -1657,6 +1657,7 @@ else:
         "integrations.tasks._ratings",
         "integrations.tasks._state_sync",
         "integrations.tasks._webhook",
+        "integrations.tasks._wetrakr_export",
     )
 CELERY_REDIS_RETRY_ON_TIMEOUT = True
 
