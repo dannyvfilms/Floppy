@@ -352,6 +352,14 @@ can inform a focused completion pass.
 - Reuse/blockers: selection/review patterns shared; mutation semantics need explicit API audit.
 - Validation targets: `src/app/tests/test_episode_ordering.py`, `test_tv_provider_switch.py`.
 
+### DETAIL-RELATED — Related-media sections and Steam DLC cards
+
+- Purpose/usage: game/media detail related sections (IGDB DLCs, expansions, remakes) plus display-only Steam DLC cards when IGDB lists none.
+- Implementation: legacy Django template `src/templates/app/components/detail_secondary_content.html`; heading via `related_section_label` in `src/app/templatetags/app_tags.py`; data from `app.providers.igdb.get_steam_dlcs`.
+- Contract: Steam DLC cards are untracked links to the Steam store (title, header image, URL); IGDB DLCs remain tracked media cards.
+- Status: legacy (not React-owned). Deferred: the section is Alpine-driven and shares one `x-data` grid with the media card; porting needs the shared media card island first. Reopen when `media_card` ships as a React component.
+- Validation: `app.tests.providers.test_metadata` (`get_steam_dlcs`), `app.tests.test_templatetags`. Browser/iOS/Android verification: none.
+
 ## Feature interfaces
 
 ### HISTORY — Feed, edits and activity dialog

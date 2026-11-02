@@ -117,6 +117,14 @@ class AppTagsTests(TestCase):
         result = app_tags.get_static_file_mtime("nonexistent.css")
         self.assertEqual(result, "")
 
+    def test_related_section_label(self):
+        """DLCs keep their acronym casing; other sections are title-cased."""
+        self.assertEqual(app_tags.related_section_label("dlcs"), "DLCs")
+        self.assertEqual(
+            app_tags.related_section_label("standalone_expansions"),
+            "Standalone Expansions",
+        )
+
     def test_no_underscore(self):
         """Test the no_underscore filter."""
         self.assertEqual(app_tags.no_underscore("hello_world"), "hello world")
