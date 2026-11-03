@@ -1,0 +1,4 @@
+/* The sidebar host adds no box: its children lay out inside the server's <aside>. */
+[data-sidebar-root] {
+  display: contents;
+}

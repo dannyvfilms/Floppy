@@ -748,6 +748,18 @@ html:is(.glass, .custom) [class*="bg-[var(--color-panel)]"] {
   -webkit-backdrop-filter: blur(var(--theme-blur)) saturate(145%);
 }
 
+/*
+ * Floating menus and suggestion lists sit over page content, so under glass and
+ * custom themes they stay solid: a translucent panel lets the text behind it
+ * show through and hurts readability.
+ */
+html:is(.glass, .custom) [class*="bg-[var(--color-surface)]"][class~="z-50"],
+html:is(.glass, .custom) [class*="bg-[var(--color-panel)]"][class~="z-50"] {
+  background-color: var(--color-surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 html.glass [class*="bg-[var(--color-sidebar)]"] {
   background-color: rgb(12 16 32 / 76%);
   backdrop-filter: blur(22px) saturate(150%);

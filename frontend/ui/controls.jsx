@@ -212,9 +212,45 @@ export function Dialog({ open, title, closeLabel, onClose, children }) {
   </dialog>;
 }
 
+// One horizontally scrolling row for tabs and chip filters. It never wraps; a soft
+// fade on a side shows there is more to scroll to, and `scrollTo` brings the
+// selected child into view without moving the page.
+export function ScrollRow({ as: Tag = 'div', className = '', children, selectedKey, ...props }) {
+  const ref = useRef(null);
+  const [edges, setEdges] = useState({ start: false, end: false });
+  const measure = () => {
+    const row = ref.current;
+    if (!row) return;
+    setEdges({ start: row.scrollLeft > 1, end: row.scrollLeft + row.clientWidth < row.scrollWidth - 1 });
+  };
+  useEffect(() => {
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(ref.current);
+    return () => observer?.disconnect();
+  }, [children]);
+  useLayoutEffect(() => {
+    const row = ref.current;
+    const target = row?.querySelector('[aria-current], [aria-pressed="true"]');
+    if (!row || !target) return;
+    const left = target.offsetLeft - (row.clientWidth - target.offsetWidth) / 2;
+    row.scrollTo({ left: Math.max(0, left) });
+    measure();
+  }, [selectedKey]);
+  return <Tag ref={ref} className={`ui-scroll-row ${className}`.trim()} onScroll={measure}
+    data-more-start={edges.start || undefined} data-more-end={edges.end || undefined} {...props}>{children}</Tag>;
+}
+
+export function FilterChips({ items, selected, onSelect, label }) {
+  return <ScrollRow className="ui-filter-chips" role="group" aria-label={label} selectedKey={selected}>
+    {items.map(item => <button key={item.value} type="button" className="ui-filter-chip"
+      aria-pressed={selected === item.value} onClick={() => onSelect(item.value)}>{item.label}</button>)}
+  </ScrollRow>;
+}
+
 export function Tabs({ items, selected, label }) {
-  return <nav className="ui-tabs" aria-label={label}>{items.map(item =>
-    <a key={item.key} href={item.url} aria-current={selected === item.key ? 'page' : undefined}>{item.label}</a>)}</nav>;
+  return <ScrollRow as="nav" className="ui-tabs" aria-label={label} selectedKey={selected}>{items.map(item =>
+    <a key={item.key} href={item.url} aria-current={selected === item.key ? 'page' : undefined}>{item.label}</a>)}</ScrollRow>;
 }
 
 export function FilterToolbar({ children, ...props }) {

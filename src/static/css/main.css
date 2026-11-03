@@ -7158,6 +7158,11 @@ html:is(.glass, .custom) [class*="bg-[var(--color-panel)]"] {
   backdrop-filter: blur(var(--theme-blur)) saturate(145%);
   -webkit-backdrop-filter: blur(var(--theme-blur)) saturate(145%);
 }
+html:is(.glass, .custom) [class*="bg-[var(--color-surface)]"][class~="z-50"], html:is(.glass, .custom) [class*="bg-[var(--color-panel)]"][class~="z-50"] {
+  background-color: var(--color-surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
 html.glass [class*="bg-[var(--color-sidebar)]"] {
   background-color: rgb(12 16 32 / 76%);
   backdrop-filter: blur(22px) saturate(150%);

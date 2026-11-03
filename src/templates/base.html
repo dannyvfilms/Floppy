@@ -224,8 +224,8 @@
         {% if not public_view|default:False %}
           <aside class="fixed top-0 left-0 z-[43] h-dvh w-64 pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)] bg-[var(--color-sidebar)] transform transition-[transform,translate,visibility] duration-300 ease-in-out border-r border-[var(--color-border)] -translate-x-full lg:translate-x-0 lg:sticky flex flex-col"
                  :class="isMobileMenuOpen ? 'translate-x-0' : 'max-lg:invisible'"
-                 x-data="sidebarNavigation('{{ user.pk|escapejs }}')"
-                 @sidebar-lists-changed.window="onPinnedListsChanged()">
+                 >
+            {% sidebar_react media_type as sidebar %}{% if sidebar.props %}{{ sidebar.props|json_script:sidebar.id }}{% endif %}<div data-sidebar-root data-props-id="{{ sidebar.id }}" x-ignore>
             <div class="h-16 border-b border-[var(--color-border)] flex items-center px-6">
               <h1 class="flex items-center">
                 {% if user.is_authenticated and user.logo_style == 'monochrome' %}
@@ -318,9 +318,11 @@
                 </div>
             </nav>
 
+            <div data-sidebar-slot="onboarding" class="contents">
             {% if request.user.is_authenticated and request.user.onboarding_status == "in_progress" %}
               {% include "users/components/onboarding_banner.html" %}
             {% endif %}
+            </div>
 
             <div class="p-4 border-t border-[var(--color-border)] mt-auto">
               <div class="space-y-2">
@@ -375,6 +377,7 @@
                   </button>
                 </form>
               </div>
+            </div>
             </div>
           </aside>
         {% endif %}

@@ -2370,6 +2370,38 @@ def global_search_react(context, search_type):
     }
 
 
+@register.simple_tag(takes_context=True)
+def sidebar_react(context, media_type):
+    """Return the props the shared React sidebar needs."""
+    from uuid import uuid4
+
+    from app.sidebar_model import sidebar_model
+
+    request = context.get("request")
+    return {
+        "id": f"sidebar-{uuid4().hex[:8]}",
+        # A page rendered without a request keeps the server sidebar.
+        "props": sidebar_model(request, context["user"], media_type) if request else None,
+    }
+
+
+@register.simple_tag
+def filter_chips_react(options, label):
+    """Return the props the shared React chip row needs for ``options``."""
+    from uuid import uuid4
+
+    return {
+        "id": f"filter-chips-{uuid4().hex[:8]}",
+        "props": {
+            "label": str(label),
+            "items": [
+                {"value": str(option["value"]), "label": str(_(option["label"]))}
+                for option in options
+            ],
+        },
+    }
+
+
 # Icons the detail action row may hold, in display order. Below 400px wide the
 # row keeps this many cells (the More menu is one of them) so each stays tappable.
 DETAIL_ROW_PHONE_CAP = 5
