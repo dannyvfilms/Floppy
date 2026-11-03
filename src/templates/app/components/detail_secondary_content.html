@@ -156,7 +156,7 @@
           {% for key, value in media.details.items %}
             {% if not authors_linked or key not in author_detail_keys %}
               {% if not studios_linked or key not in studio_detail_keys %}
-                {% if key != "themes" and key != "last_air_date" and key != "episodes" and key != "runtime" and key != "seasons" %}
+                {% if key != "themes" and key != "last_air_date" and key != "episodes" and key != "runtime" and key != "seasons" and key != book_formats_replaces %}
                 <div class="detail-sidebar-fact mb-4 {% if key in detail_promotion.suppressed_keys %}detail-sidebar-fact--promoted{% endif %}">
                   {% if key == "first_air_date" %}
                     <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">{% translate "AIR DATES" %}</h3>
@@ -206,14 +206,12 @@
               {% endif %}
             {% endif %}
           {% endfor %}
-          {% if other_book_formats %}
+          {% if book_formats %}
             <div class="detail-sidebar-fact mb-4">
-              <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">{% translate "Other Formats" %}</h3>
-              <div class="flex flex-col gap-1">
-                {% for other in other_book_formats %}
-                  <a href="{{ other.href }}" class="text-sm text-[var(--color-text-secondary)] hover:text-indigo-500 transition-colors duration-200">{{ other.label }}</a>
-                {% endfor %}
-              </div>
+              <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">{% translate "Format" %}</h3>
+              <p class="text-sm text-[var(--color-text-secondary)]">
+                {% for book_format in book_formats %}{% if book_format.href %}<a href="{{ book_format.href }}" class="hover:text-indigo-500 transition-colors duration-200">{{ book_format.label }}</a>{% else %}{{ book_format.label }}{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}
+              </p>
             </div>
           {% endif %}
           {% if authors_linked %}

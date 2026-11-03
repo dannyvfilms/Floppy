@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from app.models import (
     Book,
+    BookListeningSession,
     Item,
     MediaTypes,
     Podcast,
@@ -111,6 +112,73 @@ class AudiobookshelfImporterTests(TestCase):
             base_url="https://abs.example.com",
             api_token=helpers.encrypt("token"),
         )
+        patcher = patch(
+            "integrations.imports.audiobookshelf.AudiobookshelfClient"
+            ".get_listening_sessions",
+            return_value={"sessions": [], "numPages": 0},
+        )
+        self.mock_sessions = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_stores_listening_sessions_for_tracked_audiobooks(
+        self, mock_me, mock_item,
+    ):
+        """Dated sessions are kept per audiobook, and re-imports add nothing."""
+        mock_me.return_value = {
+            "mediaProgress": [
+                {"libraryItemId": "item-s", "currentTime": 600, "duration": 7200},
+            ],
+        }
+        mock_item.return_value = {
+            "media": {"duration": 7200, "metadata": {"title": "Piranesi"}},
+        }
+        started = 1_761_900_000_000
+        self.mock_sessions.return_value = {
+            "numPages": 1,
+            "sessions": [
+                {"id": "s1", "libraryItemId": "item-s", "startedAt": started,
+                 "timeListening": 5040, "currentTime": 18120},
+                {"id": "s2", "libraryItemId": "item-s", "startedAt": started - 86_400_000,
+                 "timeListening": 20},
+                {"id": "s3", "libraryItemId": "someone-elses", "startedAt": started,
+                 "timeListening": 600},
+                {"id": "s4", "libraryItemId": "item-s", "episodeId": "ep",
+                 "startedAt": started, "timeListening": 600},
+            ],
+        }
+
+        AudiobookshelfImporter(self.user).import_data()
+        AudiobookshelfImporter(self.user).import_data()
+
+        sessions = list(BookListeningSession.objects.all())
+        self.assertEqual(
+            [(s.session_id, s.minutes, s.position_minutes) for s in sessions],
+            [("s1", 84, 302)],
+        )
+        self.assertEqual(sessions[0].book.user, self.user)
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_unavailable_listening_history_only_warns(self, mock_me, mock_item):
+        """A server that cannot list sessions still imports progress."""
+        from integrations.imports.audiobookshelf import AudiobookshelfClientError
+
+        mock_me.return_value = {
+            "mediaProgress": [
+                {"libraryItemId": "item-w", "currentTime": 60, "duration": 7200},
+            ],
+        }
+        mock_item.return_value = {
+            "media": {"duration": 7200, "metadata": {"title": "Dune"}},
+        }
+        self.mock_sessions.side_effect = AudiobookshelfClientError("nope")
+
+        counts, warnings = AudiobookshelfImporter(self.user).import_data()
+
+        self.assertEqual(counts.get(MediaTypes.BOOK.value), 1)
+        self.assertIn("listening history unavailable", warnings)
 
     @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
     @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
@@ -152,6 +220,35 @@ class AudiobookshelfImporterTests(TestCase):
         self.assertEqual(media.item.source, Sources.AUDIOBOOKSHELF.value)
         self.assertEqual(media.item.media_type, MediaTypes.BOOK.value)
         self.assertEqual(media.item.runtime_minutes, 120)
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_stores_narrators_and_shows_them_in_details(self, mock_me, mock_item):
+        """Narrators from ABS land on the Item and in the detail payload."""
+        from app.providers import services
+
+        mock_me.return_value = {
+            "mediaProgress": [
+                {"libraryItemId": "item-n", "currentTime": 60, "duration": 7200},
+            ],
+        }
+        mock_item.return_value = {
+            "media": {
+                "duration": 7200,
+                "metadata": {
+                    "title": "Project Hail Mary",
+                    "authors": [{"name": "Andy Weir"}],
+                    "narrators": ["Ray Porter", " ", "Ray Porter"],
+                },
+            },
+        }
+
+        AudiobookshelfImporter(self.user).import_data()
+
+        item = Book.objects.get(user=self.user).item
+        self.assertEqual(item.narrators, ["Ray Porter"])
+        details = services._audiobookshelf_book(item.media_id)["details"]
+        self.assertEqual(details["narrator"], ["Ray Porter"])
 
     @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
     @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")

@@ -1229,6 +1229,42 @@ class Book(Media):
         _percentage_decrease_progress(self)
 
 
+class BookListeningSession(models.Model):
+    """One dated stretch of listening to an audiobook, as a server reports it."""
+
+    book = models.ForeignKey(
+        Book,
+        on_delete=models.CASCADE,
+        related_name="listening_sessions",
+    )
+    session_id = models.CharField(
+        max_length=100,
+        help_text="The server's id for the session, so a re-import updates it.",
+    )
+    started_at = models.DateTimeField()
+    minutes = models.PositiveIntegerField(default=0)
+    position_minutes = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Where in the book the session stopped, as listening time.",
+    )
+
+    class Meta:
+        """Meta options for the model."""
+
+        ordering = ["-started_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["book", "session_id"],
+                name="app_booklisteningsession_unique",
+            ),
+        ]
+
+    def __str__(self):
+        """Return the session as 'title: minutes on date'."""
+        return f"{self.book.item.title}: {self.minutes}m on {self.started_at:%Y-%m-%d}"
+
+
 class Comic(Media):
     """Model for comics."""
 

@@ -106,6 +106,7 @@ SpecialModels = [
     "MoviePlay",
     "VideoPlay",
     "VideoGameLink",
+    "BookListeningSession",
     "VideoGameTag",
     "BasicMedia",
     "Artist",
