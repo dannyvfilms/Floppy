@@ -10,11 +10,12 @@ function AccountField({ field, draft }) {
       options={field.options} onChange={event => setValue(event.target.value)} />;
   }
   return <Field id={`account-${field.name}`} name={field.name} label={field.label} type={field.type} placeholder={field.placeholder}
-    required={field.required !== false} autoComplete="off" defaultValue={draft[field.name] || ''} />;
+    required={field.required !== false} autoComplete="off" defaultValue={draft[field.name] || field.value || ''} />;
 }
 
 export function AccountConnection({ model, draft = {} }) {
   const t = text => model.labels[text] || text;
+  const [editing, setEditing] = useState(false);
   const status = model.connected ? 'Connected' : model.attention ? 'Needs attention' : 'Not connected';
   const form = { csrf: model.csrf, returnTo: model.next };
   const fields = model.fields.map(field => <AccountField key={field.name} field={field} draft={draft} />);
@@ -43,8 +44,10 @@ export function AccountConnection({ model, draft = {} }) {
         <Form action={model.connectUrl} {...form}>{fields}<Button type="submit">{model.submitLabel}</Button></Form>
       </> : <>
         <p>{model.messages[model.connected ? 'connected' : model.attention ? 'attention' : 'disconnected']}</p>
-        {(!model.connected || model.attention) && model.connectUrl && <Form action={model.connectUrl} {...form}>{fields}
-          <Button type="submit">{model.submitLabel || t(model.saved ? 'Reconnect' : 'Connect')}</Button></Form>}
+        {(!model.connected || model.attention || editing) && model.connectUrl && <Form action={model.connectUrl} {...form}>{fields}
+          <Button type="submit">{model.submitLabel || t(model.saved ? 'Reconnect' : 'Connect')}</Button>
+          {editing && <Button type="button" secondary onClick={() => setEditing(false)}>{t('Cancel')}</Button>}</Form>}
+        {model.editable && model.connected && !editing && <Button type="button" secondary onClick={() => setEditing(true)}>{t('Edit connection')}</Button>}
         {model.saved && <Form action={model.disconnectUrl} {...form}><Button type="submit" danger>{t('Disconnect')}</Button></Form>}
       </>}
     </Card>

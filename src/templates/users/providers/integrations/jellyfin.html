@@ -213,7 +213,7 @@
     </div>
 
 {% endif %}
-{% if not provider_tab or provider_tab == 'connection' or provider_tab == 'import' or provider_tab == 'sync' or provider_tab == 'activity' %}
+{% if not provider_tab or provider_tab == 'import' or provider_tab == 'sync' or provider_tab == 'activity' or provider_tab == 'connection' and not account_connection %}
     {# Jellyfin push (Floppy -> Jellyfin) #}
     <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
          x-show="activeIntegration === 'all' || activeIntegration === 'jellyfin'"

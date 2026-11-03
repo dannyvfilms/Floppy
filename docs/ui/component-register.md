@@ -608,7 +608,19 @@ templates are compatibility/composition sources, not equally active parallel pag
   `FileImport.jsx` inline instead of a modal. Plex's Connection tab is now the shared webhook card (`SetupGuide.jsx` with a primary copy
   field, status badge/tooltip and collapsed steps; `provider_guides._plex_webhook_badge`) above the shared account
   card (`AccountConnection.jsx` with badges and a single full-width card); the "Set up account access here /
-  Open connection setup" header and button no longer render on provider pages. Remaining legacy, each with a
+  Open connection setup" header and button no longer render on provider pages. Jellyfin's Connection tab now matches it: one webhook card (primary copy field, status tag) with the two plugin
+  setups (official, unofficial) as two side-by-side cards below it (one fold each, stacked on phones), and every folded `SetupGuide.jsx` guide
+  (Plex, Jellyfin, Emby, Seerr) now renders as two cards, status and copy field first, steps second, with a 1rem gap
+  (`.ui-guide-stack`, and a margin between separate guide roots). Emby's and Seerr's guides are folded with a primary copy field (the Jellyfin official
+  guide shows a "Needs update" badge when the template is outdated; no last-received badge because Floppy stores no
+  Jellyfin webhook timestamp, so adding one needs a user-model migration), above the shared
+  `AccountConnection.jsx` card (`provider_views`, new `editable` flag: connected accounts get an "Edit connection"
+  toggle that re-submits server URL, API key and username, prefilled from non-secret fields; the API key is never
+  serialized). Status: React-owned on browser (Connection tab), verified in the browser only; iOS and Android not
+  verified. Remaining legacy, with blockers: Jellyfin Import/Sync/Tracking cards and the Emby/Kodi Sync push forms
+  (per-tab conditional flags share one POST that must preserve the other tab's flags, covered by
+  `test_provider_integration_sections`; reopen when those flags move to `provider_forms`); Kodi, Navidrome and Nuvio
+  guides stay expanded (their URL sits mid-step, not a plain "set the URL" step; reopen when the step copy is split). Remaining legacy, each with a
   concrete blocker: Plex libraries picker and webhook sharing (Tracking/Import tabs; live library fetch,
   per-share Alpine state); Jellyfin account/push controls (conditional per-tab
   states); Stremio addon catalog grants (htmx status); the same-tab modal copies of upload and connection forms used outside provider pages. Retire each by moving it to a `provider_forms` or
