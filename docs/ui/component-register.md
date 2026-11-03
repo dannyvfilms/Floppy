@@ -491,9 +491,12 @@ can inform a focused completion pass.
 ### RELEASE-CALENDAR — Upcoming releases and subscriptions
 
 - Purpose/usage: release calendar page, not `DATE-TIME`.
-- Implementation: `src/templates/events/calendar.html`, calendar grid/list components; primarily inline Alpine.
+- Status: `Partial / coexisting`. The gear menu (Go to Today, Fetch New Releases, Download Calendar, Week starts on Monday/Sunday) is React-owned through the shared `ActionMenu` (now with an icon trigger, link items and a pressed state on inline actions). The month grid, agenda, list, filters and toolbar remain legacy Alpine/server templates. Browser verification: menu, week-start switch and agenda labels exercised in the built-in browser. Native iOS and Android: not verified.
+- Implementation: `src/templates/events/calendar.html`, calendar grid/list components; mostly inline Alpine. Gear menu: `frontend/ui/mountCalendarMenu.jsx` + `ActionMenu` in `frontend/ui/controls.jsx`; props from `events.views._calendar_menu_props`. The week start saves through the existing `update_statistics_preferences` endpoint (same `week_start_day` the date pickers and Statistics read), then reloads.
+- Episode labels: grid agenda and list share `Event.season_episode_label` ("S39E170"); a season's title drops a trailing "Season N" so the label carries it once.
 - Contract: month/today/grid/list, media/status/release/tag filters, persisted view, grouped dates/media, ICS/download/subscription/reload and empty states. Redesign needs explicit requirements.
 - Data: `src/events/views.py`, `src/events/calendar/`, tasks; [reload contract](../architecture/calendar-reload.md), REST parity unverified.
+- Retirement: the Alpine toolbar/grid retire as the filter menu and day grid are ported. The server-rendered "Go to Today" link inside the menu host is the no-JS fallback.
 - Reuse/blockers: date/filter/group values shared; layout/ICS/browser subscription adapters explicit.
 - Validation targets: `src/events/tests/test_views.py`, `test_release_semantics.py`, `calendar/test_main.py`, `src/api/tests/test_calendar.py`.
 

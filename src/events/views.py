@@ -10,12 +10,16 @@ from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q
 from django.http import HttpResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import formats, timezone
+from django.utils.translation import gettext
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from app import backdrops
+from app.icon_specs import file_icon
 from app.models import Item, MediaTypes, PodcastEpisode, Status
 from events import tasks
 from events.history_feed import (
@@ -231,8 +235,11 @@ def calendar(request):
     for release in releases:
         release.status = status_by_item_id.get(release.item_id)
         release.calendar_title = (
-            show_titles.get((release.item.source, release.item.media_id))
-            or release.item.title
+            _show_title(
+                show_titles.get((release.item.source, release.item.media_id))
+                or release.item.title,
+                release.item.season_number,
+            )
             if release.item.media_type == MediaTypes.SEASON.value
             else str(release.item)
         )
@@ -301,8 +308,41 @@ def calendar(request):
         "days_in_month": days_in_month,
         "selected_day": selected_day,
         "weekday_headers": weekday_headers,
+        "calendar_menu": _calendar_menu_props(request, today),
     }
     return render(request, "events/calendar.html", context)
+
+
+def _show_title(title, season_number):
+    """Drop a trailing "Season N" so the season only appears in its own label."""
+    suffix = f" Season {season_number}"
+    if season_number is not None and title.endswith(suffix) and title != suffix.strip():
+        return title.removesuffix(suffix)
+    return title
+
+
+def _calendar_menu_props(request, today):
+    """Return the props the shared React calendar menu needs."""
+    return {
+        "csrf": get_token(request),
+        "icon": file_icon("settings"),
+        "weekStart": request.user.week_start_day,
+        "labels": {
+            "menu": gettext("Calendar Actions"),
+            "today": gettext("Go to Today"),
+            "fetch": gettext("Fetch New Releases"),
+            "download": gettext("Download Calendar"),
+            "weekStart": gettext("Week starts on"),
+            "monday": gettext("Monday"),
+            "sunday": gettext("Sunday"),
+        },
+        "urls": {
+            "today": f"{reverse('calendar')}?month={today.month}&year={today.year}",
+            "fetch": reverse("reload_calendar"),
+            "download": reverse("download_calendar", kwargs={"token": request.user.token}),
+            "preferences": reverse("update_statistics_preferences"),
+        },
+    }
 
 
 @require_POST

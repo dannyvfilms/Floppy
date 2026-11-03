@@ -377,6 +377,55 @@ class CalendarViewTests(TestCase):
 
     @patch("events.models.Event.objects.get_user_events")
     @patch.object(get_user_model(), "update_preference")
+    def test_calendar_list_shows_season_label_and_clean_show_title(
+        self,
+        mock_update_preference,
+        mock_get_user_events,
+    ):
+        """A season's episode reads "S39E170" and the show name drops "Season 39"."""
+        mock_update_preference.return_value = "list"
+        item = Item.objects.create(
+            media_id="1",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Home and Away Season 39",
+            image="",
+            season_number=39,
+        )
+        today = timezone.localdate()
+        mock_get_user_events.return_value = [
+            Event(
+                item=item,
+                content_number=170,
+                datetime=timezone.make_aware(
+                    timezone.datetime(today.year, today.month, 15, 12, 0),
+                ),
+            ),
+        ]
+
+        rendered = self.client.get(reverse("calendar") + "?view=list").content.decode()
+
+        self.assertIn("S39E170", rendered)
+        self.assertIn(">Home and Away</h4>", rendered)
+
+    def test_calendar_menu_offers_week_start_and_saves_through_preferences(self):
+        """The gear menu carries the saved week start and the endpoint it saves to."""
+        with patch("events.models.Event.objects.get_user_events", return_value=[]):
+            response = self.client.get(reverse("calendar"))
+
+        menu = response.context["calendar_menu"]
+        self.assertEqual(menu["weekStart"], "monday")
+        self.assertEqual(menu["urls"]["preferences"], reverse("update_statistics_preferences"))
+        self.assertContains(response, "data-calendar-menu-root")
+
+        self.client.post(reverse("update_statistics_preferences"), {"week_start_day": "sunday"})
+        with patch("events.models.Event.objects.get_user_events", return_value=[]):
+            response = self.client.get(reverse("calendar"))
+        self.assertEqual(response.context["calendar_menu"]["weekStart"], "sunday")
+        self.assertEqual(response.context["weekday_headers"][0], "Sun")
+
+    @patch("events.models.Event.objects.get_user_events")
+    @patch.object(get_user_model(), "update_preference")
     def test_calendar_list_uses_podcast_show_image_when_item_image_missing(
         self,
         mock_update_preference,

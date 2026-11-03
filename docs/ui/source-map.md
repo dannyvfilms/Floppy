@@ -507,6 +507,7 @@ Shared `Badge` lives in `frontend/ui/controls.jsx` and `controls.css` (FORM-CONT
 - `src/templates/events/calendar.html`
 - `src/templates/events/components/calendar_grid.html`
 - `src/templates/events/components/calendar_list.html`
+- `frontend/ui/mountCalendarMenu.jsx`
 
 ## LISTS
 
