@@ -287,25 +287,12 @@
               </div>
 
               {% if episode.item or season_metadata %}
-                <div x-data="{ listsOpen: false }" class="flex-1 sm:flex-none">
+                <div class="flex-1 sm:flex-none">
                   <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
                           title="{% translate "Add to custom lists" %}"
-                          hx-get="{% if episode.item %}{% media_view_url 'lists_modal' episode.item %}{% else %}{% media_view_url 'lists_modal' episode %}{% endif %}"
-                          hx-vals='{"return_url": "{{ detail_return_url|urlencode }}"}'
-                          hx-target="#{% if episode.item %}{% component_id 'lists' episode.item %}{% else %}{% component_id 'lists' episode %}{% endif %}"
-                          hx-trigger="click once"
-                          @click="listsOpen = true">
+                          {% if episode.item %}{% lists_modal_click episode.item detail_return_url %}{% else %}{% lists_modal_click episode detail_return_url %}{% endif %}>
                     {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
                   </button>
-                  <div x-show="listsOpen"
-                  @mousedown.self="listsOpen = false"
-                       x-cloak
-                       @keydown.escape.window="listsOpen = false"
-                       class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div class="w-96 max-h-[90dvh] px-4 md:px-0 relative z-60">
-                      <div id="{% if episode.item %}{% component_id 'lists' episode.item %}{% else %}{% component_id 'lists' episode %}{% endif %}"></div>
-                    </div>
-                  </div>
                 </div>
               {% endif %}
 

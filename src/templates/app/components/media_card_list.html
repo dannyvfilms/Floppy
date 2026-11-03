@@ -4,7 +4,7 @@
 
 {% media_row_react item media title matched_title as react_row %}
 <div class="bg-[var(--color-surface)] rounded-lg overflow-hidden hover:bg-[var(--color-surface-strong)] transition-colors duration-200"
-     {% if react_row.props.model.actions %}>{% else %}x-data="{ trackOpen: false, listsOpen: false }">{% endif %}
+     {% if react_row.props.model.actions %}>{% else %}x-data="{ trackOpen: false }">{% endif %}
   {% with item|display_title:user as resolved_item_title %}
     {% with item|alternative_title:user as resolved_alt_title %}
   {{ react_row.props|json_script:react_row.id }}<div data-media-card-root data-props-id="{{ react_row.id }}">
@@ -134,11 +134,7 @@
           {# Lists Button #}
           <button class="p-2.5 bg-emerald-600 text-white rounded-full hover:bg-emerald-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(16,185,129,0.5)] transition-all duration-200 cursor-pointer"
                   title="{% translate "Add to custom lists" %}"
-                  hx-get="{% media_view_url 'lists_modal' item %}"
-                  hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
-                  hx-target="#{% component_id 'lists' item %}"
-                  hx-trigger="click once"
-                  @click="listsOpen = true">{% include "app/icons/list-add.svg" with classes="w-4 h-4" %}</button>
+                  {% lists_modal_click item request.get_full_path %}>{% include "app/icons/list-add.svg" with classes="w-4 h-4" %}</button>
 
           {# History Button #}
           <a class="p-2.5 bg-amber-600 text-white rounded-full hover:bg-amber-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(245,158,11,0.5)] transition-all duration-200 cursor-pointer"
@@ -166,15 +162,6 @@
   </div>
 
   {# Lists Modal #}
-  <div x-show="listsOpen"
-       x-cloak
-       @keydown.escape.window="listsOpen = false"
-       @mousedown.self="listsOpen = false"
-       class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-    <div class="w-96 max-h-[90dvh] px-4 md:px-0 relative z-60">
-      <div id="{% component_id 'lists' item %}"></div>
-    </div>
-  </div>
   {% endif %}
     {% endwith %}
   {% endwith %}

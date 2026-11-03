@@ -8,26 +8,13 @@
   {% include "app/components/music_track_notes_button.html" with track=track_data.track request=request only %}
   {% if track_data.music %}
     {# Lists button #}
-    <div x-data="{ listsOpen: false }">
+    <div>
       <button class="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full transition duration-300 cursor-pointer"
               title="{% translate "Add to custom lists" %}"
-              hx-get="{% media_view_url 'lists_modal' track_data.music.item %}"
-              hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
-              hx-target="#lists-modal-{{ track_data.track.id }}"
-              hx-trigger="click once"
-              @click="listsOpen = true">
+              {% lists_modal_click track_data.music.item request.get_full_path %}>
         {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
       </button>
 
-      <div x-show="listsOpen"
-           x-cloak
-           @keydown.escape.window="listsOpen = false"
-           class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-           @mousedown.self="listsOpen = false">
-        <div class="w-96 max-h-[90dvh] px-4 md:px-0 relative z-60">
-          <div id="lists-modal-{{ track_data.track.id }}"></div>
-        </div>
-      </div>
     </div>
 
     {# History button #}

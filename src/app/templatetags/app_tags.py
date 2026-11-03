@@ -1732,6 +1732,25 @@ def item_slot_id(prefix, item):
 
 
 @register.simple_tag
+def lists_modal_click(media, return_url=""):
+    """Return the onclick attribute that opens the Add-to-lists form in the popup host."""
+    import json
+
+    from app.media_card_model import lists_modal_spec
+
+    spec = lists_modal_spec(
+        media,
+        f"#{component_id('lists', media)}",
+        return_url,
+    )
+    return format_html(
+        "onclick=\"window.dispatchEvent(new CustomEvent('floppy-open-modal', "
+        '{{detail: {}}}))"',
+        json.dumps(spec),
+    )
+
+
+@register.simple_tag
 def component_id(component_type, media, instance_id=None):
     """Return the component ID for both metadata and model object cases."""
     is_dict = isinstance(media, dict)

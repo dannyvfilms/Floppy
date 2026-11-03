@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { ListsForm } from './ListsForm';
 
 // One host per page for the track and add-to-list popups that cards open. The
-// popups' server forms still close themselves by finding the nearest element
+// add-to-lists form is React-owned (ListsForm). The track popup's server form
+// still closes itself by finding the nearest element
 // with x-show="trackOpen" (or listsOpen) and setting that Alpine value, so the
 // wrapper below keeps that contract and tells React when Alpine hid it.
 
@@ -24,6 +26,24 @@ const shells = {
     style: undefined,
   },
 };
+
+// React-owned popup: the overlay, Escape, focus return and scroll are handled
+// here and the body is a React form that closes itself through onClose.
+function ReactModal({ spec, onClose }) {
+  const shell = shells[spec.modal];
+  useEffect(() => {
+    const trigger = document.activeElement;
+    const key = (event) => { if (event.key === 'Escape') onClose(spec.target); };
+    window.addEventListener('keydown', key);
+    return () => { window.removeEventListener('keydown', key); if (trigger?.isConnected) trigger.focus(); };
+  }, []);
+  return <div className={shell.outer} role="dialog" aria-modal="true" aria-labelledby="ui-modal-title" data-floppy-modal=""
+    onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(spec.target); }}>
+    <div className={shell.inner} style={shell.style}>
+      <ListsForm url={spec.url} vals={spec.vals} labels={spec.labels || {}} targetId={spec.target.slice(1)} onClose={() => onClose(spec.target)} />
+    </div>
+  </div>;
+}
 
 function Modal({ spec, onClose }) {
   const host = useRef(null);
@@ -68,5 +88,7 @@ export function ModalHost() {
     return () => window.removeEventListener('floppy-open-modal', onOpen);
   }, []);
   const close = (target) => setOpen((current) => current.filter((spec) => spec.target !== target));
-  return <>{open.map((spec) => createPortal(<Modal key={spec.target} spec={spec} onClose={close} />, document.body))}</>;
+  return <>{open.map((spec) => createPortal(spec.modal === 'lists'
+    ? <ReactModal key={spec.target} spec={spec} onClose={close} />
+    : <Modal key={spec.target} spec={spec} onClose={close} />, document.body))}</>;
 }

@@ -600,6 +600,37 @@ def row_card_model(item, media, title, matched_title, user, request=None):
     }
 
 
+def lists_modal_spec(item, target, return_url=""):
+    """Describe the Add-to-lists form for the shared popup host."""
+    return {
+        "kind": "modal",
+        "modal": "lists",
+        "tone": TONES["lists"],
+        "title": _("Add to custom lists"),
+        "url": app_tags.media_view_url("lists_modal", item),
+        "vals": {"return_url": return_url},
+        "target": target,
+        "labels": {
+            "title": _("Lists"),
+            "close": _("Close"),
+            "loading": _("Loading"),
+            "loadFailed": _("Couldn't load your lists."),
+            "retry": _("Try again"),
+            "filterByTag": _("Filter by tag"),
+            "allLists": _("All lists"),
+            "countOne": _("On %s list"),
+            "countMany": _("On %s lists"),
+            "add": _("Add"),
+            "remove": _("Remove"),
+            "addTo": _("Add item to %s"),
+            "removeFrom": _("Remove item from %s"),
+            "emptyTag": _("No lists with this tag."),
+            "emptyLists": _("You haven't created any lists yet."),
+            "toggleFailed": _("Couldn't update this list. Please try again."),
+        },
+    }
+
+
 TONES = {"track": "indigo", "lists": "emerald", "history": "amber", "plan": "indigo", "hide": "rose"}
 
 
@@ -653,14 +684,8 @@ def card_actions(ctx):
 
     def lists_button():
         return {
-            "kind": "modal",
-            "modal": "lists",
-            "tone": TONES["lists"],
-            "title": _("Add to custom lists"),
+            **lists_modal_spec(item, f"#{lists_id}", return_url),
             "icon": file_icon("list-add"),
-            "url": app_tags.media_view_url("lists_modal", item),
-            "vals": {"return_url": return_url},
-            "target": f"#{lists_id}",
         }
 
     def history_button():
@@ -867,14 +892,8 @@ def history_actions(entry, history_mode, user, request):
                 "target": f"#{track_id}",
             },
             {
-                "kind": "modal",
-                "modal": "lists",
-                "tone": "emerald",
-                "title": _("Add to custom lists"),
+                **lists_modal_spec(item, f"#{lists_id}", return_url),
                 "icon": file_icon("list-add"),
-                "url": app_tags.media_view_url("lists_modal", item),
-                "vals": {"return_url": return_url},
-                "target": f"#{lists_id}",
             },
             {
                 "kind": "link",

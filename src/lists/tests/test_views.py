@@ -3396,6 +3396,67 @@ class ListsModalViewTests(TestCase):
             owner=self.user,
         )
 
+    def test_lists_modal_json_form_model(self):
+        """format=json returns the form model the React Lists form renders."""
+        self.list1.tags = ["Movies", "Night"]
+        self.list1.save()
+        self.list1.items.add(self.item)
+        url = reverse(
+            "lists_modal",
+            args=[Sources.TMDB.value, MediaTypes.MOVIE.value, 10494],
+        )
+        response = self.client.get(url, {"format": "json"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/json")
+        data = response.json()
+        self.assertEqual(data["itemId"], self.item.id)
+        self.assertEqual(data["title"], "Test Movie")
+        self.assertEqual(data["tags"], ["Movies", "Night"])
+        self.assertEqual(data["toggleUrl"], reverse("list_item_toggle"))
+        self.assertTrue(data["csrfToken"])
+        by_name = {entry["name"]: entry for entry in data["lists"]}
+        self.assertTrue(by_name["Test List 1"]["hasItem"])
+        self.assertFalse(by_name["Test List 2"]["hasItem"])
+        self.assertEqual(by_name["Test List 1"]["tags"], ["Movies", "Night"])
+
+    def test_lists_modal_json_omits_smart_lists(self):
+        """Smart lists cannot be edited by hand, so the form never offers them."""
+        CustomList.objects.create(name="Smart", owner=self.user, is_smart=True)
+        response = self.client.get(
+            reverse(
+                "lists_modal",
+                args=[Sources.TMDB.value, MediaTypes.MOVIE.value, 10494],
+            ),
+            {"format": "json"},
+        )
+        names = [entry["name"] for entry in response.json()["lists"]]
+        self.assertNotIn("Smart", names)
+
+    def test_lists_modal_json_does_not_list_other_users_lists(self):
+        """A person only sees the lists they own or collaborate on."""
+        other = get_user_model().objects.create_user(username="other", password="x")
+        CustomList.objects.create(name="Private", owner=other)
+        response = self.client.get(
+            reverse(
+                "lists_modal",
+                args=[Sources.TMDB.value, MediaTypes.MOVIE.value, 10494],
+            ),
+            {"format": "json"},
+        )
+        names = [entry["name"] for entry in response.json()["lists"]]
+        self.assertNotIn("Private", names)
+
+    def test_lists_modal_anonymous_is_redirected(self):
+        """A signed-out request gets the login redirect, not a form model."""
+        response = Client().get(
+            reverse(
+                "lists_modal",
+                args=[Sources.TMDB.value, MediaTypes.MOVIE.value, 10494],
+            ),
+            {"format": "json"},
+        )
+        self.assertEqual(response.status_code, 302)
+
     def test_lists_modal_view(self):
         """Test the basic lists_modal view."""
         response = self.client.get(
@@ -4093,6 +4154,66 @@ class ListItemToggleTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn(self.item, self.list.items.all())
+
+    def test_json_toggle_reports_membership(self):
+        """format=json answers with the new membership instead of a button."""
+        self.client.login(**self.credentials)
+        post = {
+            "item_id": self.item.id,
+            "custom_list_id": self.list.id,
+            "format": "json",
+        }
+        response = self.client.post(reverse("list_item_toggle"), post)
+        self.assertEqual(response.json(), {"success": True, "hasItem": True})
+        response = self.client.post(reverse("list_item_toggle"), post)
+        self.assertEqual(response.json(), {"success": True, "hasItem": False})
+        self.assertNotIn(self.item, self.list.items.all())
+
+    def test_json_toggle_rejects_smart_list(self):
+        """Smart lists answer 403 with a message the form can show."""
+        self.client.login(**self.credentials)
+        smart = CustomList.objects.create(
+            name="Smart", owner=self.user, is_smart=True
+        )
+        response = self.client.post(
+            reverse("list_item_toggle"),
+            {"item_id": self.item.id, "custom_list_id": smart.id, "format": "json"},
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(response.json()["success"])
+
+    def test_json_toggle_not_found_for_stranger(self):
+        """A list the person cannot edit is a 404, as for the HTML button."""
+        self.client.login(**self.other_credentials)
+        response = self.client.post(
+            reverse("list_item_toggle"),
+            {
+                "item_id": self.item.id,
+                "custom_list_id": self.list.id,
+                "format": "json",
+            },
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_json_toggle_failure_returns_error_message(self):
+        """A failed write returns JSON the form shows, with the list unchanged."""
+        self.client.login(**self.credentials)
+        with patch(
+            "lists.views_list_actions._toggle_list_membership",
+            side_effect=RuntimeError("boom"),
+        ):
+            response = self.client.post(
+                reverse("list_item_toggle"),
+                {
+                    "item_id": self.item.id,
+                    "custom_list_id": self.list.id,
+                    "format": "json",
+                },
+            )
+        self.assertEqual(response.status_code, 500)
+        self.assertFalse(response.json()["success"])
+        self.assertTrue(response.json()["error"])
+        self.assertNotIn(self.item, self.list.items.all())
 
     def test_list_item_owner_toggle_remove(self):
         """Test removing an item from a list as owner."""
