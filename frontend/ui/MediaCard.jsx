@@ -1,0 +1,227 @@
+import React, { useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+
+// The shared media card body. It renders the same class names the Django card
+// used, so every existing theme and layout rule keeps applying. Pieces that
+// still belong to the server (status chip, hover actions, rating) arrive as
+// live DOM nodes in `slots` and are placed, not re-rendered.
+
+const aspect = { square: 'aspect-[1/1]', poster: 'aspect-[2/3] aspect-2/3', landscape: 'aspect-[2/3] aspect-2/3' };
+const chipBase = 'absolute z-20 bg-gray-900/90 text-white text-[11px] font-medium px-2 py-1 rounded-md shadow-md';
+
+function Slot({ name, node }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    if (node && ref.current && node.parentNode !== ref.current) ref.current.replaceChildren(node);
+  }, [node]);
+  return <div className="media-card-slot" data-card-slot={name} ref={ref} />;
+}
+
+const statusIcons = {
+  Completed: <><path d="M21.801 10A10 10 0 1 1 17 3.335" /><path d="m9 11 3 3L22 4" /></>,
+  'In progress': <polygon points="6 3 20 12 6 21 6 3" />,
+  Paused: <><rect x="14" y="4" width="4" height="16" rx="1" /><rect x="6" y="4" width="4" height="16" rx="1" /></>,
+  Planning: <><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" /><line x1="12" x2="12" y1="7" y2="13" /><line x1="15" x2="9" y1="10" y2="10" /></>,
+  Dropped: <><path d="m15 9-6 6" /><path d="M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z" /><path d="m9 9 6 6" /></>,
+};
+
+function MediaTypeChip({ chip }) {
+  return <div className={`media-type-chip media-type-chip--${chip.style}`} data-media-type-chip={chip.type}
+    data-media-type-chip-style={chip.style}
+    style={{ '--media-type-chip-color': chip.color, '--media-type-chip-contrast': chip.contrast }}>
+    <span>{chip.label}</span>
+  </div>;
+}
+
+function StatusChip({ chip }) {
+  return <div className="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md">
+    <span className="sr-only">{chip.label}</span>
+    <div className={`w-4 h-4 ${chip.colorClass}`} aria-hidden="true">
+      <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+        strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">{statusIcons[chip.status]}</svg>
+    </div>
+  </div>;
+}
+
+function ChevronRight() {
+  return <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>;
+}
+
+function CornerChip({ chip, labels }) {
+  if (chip.kind === 'runtime') {
+    return <span className="absolute bottom-3 right-2 z-10 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md shadow-md">{chip.text}</span>;
+  }
+  if (chip.kind === 'runtime-top') {
+    return <div className="absolute top-2 right-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md shadow-md">{chip.text}</div>;
+  }
+  if (chip.kind === 'local-only') {
+    return <div className="absolute bottom-2 left-2 rounded-md border border-amber-500/30 bg-amber-500/15 px-2 py-1 text-[11px] font-medium text-amber-100 shadow-md">{chip.text}</div>;
+  }
+  if (chip.kind === 'collected') {
+    return <div className="absolute bottom-2 right-2 rounded-md border border-amber-500/30 bg-amber-500/15 px-2 py-1 text-[11px] font-medium text-amber-100 shadow-md" title={chip.title}>{chip.text}</div>;
+  }
+  const inner = chip.kind === 'next-episode'
+    ? <><ChevronRight /><span>{chip.text}</span></>
+    : <><span>{chip.text}</span><ChevronRight /></>;
+  if (!chip.href) {
+    return <span className={`${chipBase} top-2 right-2`} data-episode-queue="true">{chip.text}</span>;
+  }
+  return <a href={chip.href} {...{ 'hx-disable': '' }}
+    className={`${chipBase} top-2 right-2 hover:bg-indigo-600 flex items-center gap-0.5 transition-colors`}
+    data-episode-queue={chip.kind === 'queue' ? 'true' : undefined}
+    title={labels.nextEpisode}>{inner}</a>;
+}
+
+function AltTitle({ text, label, inline }) {
+  const [open, setOpen] = useState(false);
+  const [style, setStyle] = useState(null);
+  const trigger = useRef(null);
+  const panel = useRef(null);
+  function place() {
+    const rect = trigger.current?.getBoundingClientRect();
+    if (!rect) return;
+    const width = Math.min(panel.current?.offsetWidth || 224, window.innerWidth - 32);
+    const height = panel.current?.offsetHeight || 0;
+    const left = Math.min(Math.max(16, rect.left + rect.width / 2 - width / 2), window.innerWidth - width - 16);
+    const top = rect.top >= height + 24 ? rect.top - height - 8 : rect.bottom + 8;
+    setStyle({ left, top, width });
+  }
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    place();
+    const close = () => setOpen(false);
+    const onKey = (event) => { if (event.key === 'Escape') close(); };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [open]);
+  return <span className={inline ? 'inline-flex items-center ml-1 align-middle relative' : 'relative shrink-0'}>
+    <button ref={trigger} type="button" aria-label={label}
+      className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center"
+      onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}
+      onFocus={() => setOpen(true)} onBlur={() => setOpen(false)}
+      onClick={(event) => { event.preventDefault(); event.stopPropagation(); setOpen((value) => !value); }}>
+      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+        strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
+      </svg>
+    </button>
+    {open && createPortal(
+      <div ref={panel} role="tooltip" className="fixed z-50 pointer-events-none rounded-lg p-3 text-xs text-white"
+        style={{ background: 'rgba(0, 0, 0, 0.85)', boxShadow: '0 4px 10px rgba(0, 0, 0, 0.3)', ...style }}>
+        <p>{text}</p>
+      </div>, document.body)}
+  </span>;
+}
+
+function Line({ line }) {
+  if (line.variant === 'provenance') {
+    return <p className="text-xs text-[var(--color-text-muted)] mt-0.5 line-clamp-1">{line.parts[0].text}</p>;
+  }
+  const className = `media-card-year text-xs text-[var(--color-text-muted)] mt-1${line.clamp ? ' line-clamp-1' : ''}${line.dormant ? ' media-card-line-dormant' : ''}`;
+  if (line.placeholderItemId) {
+    return <p className={`${className} release-year-placeholder`} data-item-id={line.placeholderItemId}
+      data-progress-text={line.progressText || undefined} />;
+  }
+  const plain = line.join === 'plain';
+  return <p className={className} title={line.tooltip}>
+    {line.parts.map((part, index) => {
+      const sep = !plain && index > 0 ? ' · ' : '';
+      if (part.score) {
+        return <React.Fragment key={index}>{sep}<span className="inline-flex items-center gap-0.5 text-yellow-300 align-middle">
+          <svg className="w-3 h-3 text-yellow-400 fill-current" viewBox="0 0 24 24" aria-hidden="true">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+          </svg><span className="font-medium">{part.text}</span></span></React.Fragment>;
+      }
+      if (part.link) return <React.Fragment key={index}>{sep}<span className="text-[var(--color-link)] font-medium">{part.text}</span></React.Fragment>;
+      return <React.Fragment key={index}>{sep}{part.muted
+        ? <span className="ml-1 text-[var(--color-text-muted)]">{part.text}</span> : part.text}</React.Fragment>;
+    })}
+  </p>;
+}
+
+// The Search list view: the same card content laid out as a row.
+function MediaRow({ model, slots, labels }) {
+  return <div className="flex items-center p-4 gap-4">
+    <div className="shrink-0 relative">
+      <a href={model.href} {...{ 'hx-boost': 'true' }}>
+        <img data-media-artwork="" loading="lazy" decoding="sync" alt={model.title}
+          className="w-16 h-24 object-cover rounded shadow-md bg-[var(--color-surface-alt)]" src={model.image.src} />
+      </a>
+    </div>
+    <div className="flex-1 min-w-0">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <h3 className="text-lg font-semibold text-[var(--color-text)] mb-2 line-clamp-2">
+            <a href={model.href} {...{ 'hx-boost': 'true' }}
+              className="hover:text-[var(--color-link)] transition-colors">{model.title}</a>
+            {model.altTitle && <AltTitle inline text={model.altTitle} label={labels.altTitle} />}
+          </h3>
+          {model.lines.map((line, index) => <Line key={index} line={line} />)}
+          {model.matched && <p className="text-xs text-[var(--color-text-muted)] mb-2 line-clamp-1"
+            title={model.matched.title}>{model.matched.text}</p>}
+          <Slot name="meta" node={slots.meta} />
+        </div>
+        <Slot name="actions" node={slots.actions} />
+      </div>
+    </div>
+  </div>;
+}
+
+export function MediaCard({ model, slots, labels, selection }) {
+  if (model.layout === 'row') return <MediaRow model={model} slots={slots} labels={labels} />;
+  const art = model.image;
+  const imgClass = `media-card-poster w-full ${aspect[model.shape]} bg-[var(--color-surface-alt)] object-cover`;
+  const bar = model.progressBar;
+  return <>
+    <div className="media-card-visual relative">
+      {model.recommend ? <div className="cursor-pointer"><img decoding="sync" loading="lazy" alt={model.title}
+        className={imgClass} src={art.src} data-image-source={art.source} /></div> : <a href={model.href} {...(model.boost ? { 'hx-boost': 'true' } : {})} onClick={(event) => {
+        if (selection?.active) { event.preventDefault(); selection.toggle(); }
+      }}>
+        {selection?.active && <div className="absolute top-2 left-2 z-10" onClick={(event) => event.stopPropagation()}>
+          <input type="checkbox" className="cursor-pointer w-5 h-5" checked={selection.selected}
+            aria-label={model.title} onChange={selection.toggle} />
+        </div>}
+        <img decoding="sync" loading="lazy" alt={model.title} className={imgClass} src={art.src}
+          data-image-source={art.source}
+          {...(model.video ? { 'data-image-fallback': art.fallback, 'data-image-fallback-on-small': 'true' } : {})} />
+      </a>}
+      {model.statusChip?.kind === 'status-native' ? <StatusChip chip={model.statusChip} />
+        : model.statusChip?.kind === 'media-type' ? <MediaTypeChip chip={model.statusChip} />
+          : <Slot name="status" node={slots.status} />}
+      {model.cornerChips.map((chip) => <CornerChip key={chip.kind} chip={chip} labels={labels} />)}
+      {bar && <div className="media-card-progress-bar absolute bottom-0 left-0 right-0 h-1 bg-gray-900/60 z-20">
+        <div className={`h-full ${bar.paused ? 'bg-indigo-500/40' : 'bg-indigo-500'} transition-[width] duration-300 ease-out`}
+          style={{ width: `${bar.percent}%` }} />
+      </div>}
+      <Slot name="overlay" node={slots.overlay} />
+    </div>
+    <div className="media-card-body p-3 bg-card-body">
+      <div className="media-card-title-row flex items-center gap-2 min-w-0">
+        {model.titleLinks.length ? <div className="min-w-0 flex-1">
+          {model.titleLinks.map((part, index) => <a key={part.url} href={part.url} title={part.label}
+            className={index === 0
+              ? 'media-card-title block text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-1'
+              : 'mt-0.5 block text-xs text-[var(--color-text-muted)] hover:text-[var(--color-link)] line-clamp-1'}>{part.label}</a>)}
+        </div> : model.recommend ? <h3 title={model.title}
+          className="media-card-title font-medium text-[var(--color-text)] line-clamp-1 text-sm leading-tight min-w-0">{model.title}</h3>
+          : <a href={model.href} title={model.title} {...(model.boost ? { 'hx-boost': 'true' } : {})}
+          className={`media-card-title text-sm font-semibold text-[var(--color-text)] ${model.publicView ? '' : 'hover:text-[var(--color-link)] '}transition duration-300 line-clamp-1 min-w-0`}>{model.title}</a>}
+        {model.altTitle && <AltTitle text={model.altTitle} label={labels.altTitle} />}
+        {model.scoreText != null && <span className="flex items-center gap-1 text-xs text-yellow-300 shrink-0">
+          <svg className="w-3 h-3 text-yellow-400 fill-current" viewBox="0 0 24 24" aria-hidden="true">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+          </svg><span className="font-medium">{model.scoreText}</span></span>}
+        {slots.rating && <Slot name="rating" node={slots.rating} />}
+      </div>
+      {model.lines.map((line, index) => <Line key={index} line={line} />)}
+    </div>
+  </>;
+}

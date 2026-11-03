@@ -24,6 +24,7 @@
            :class="revealed ? 'media-card-revealed' : ''">
         {% comment %}Kometa's parser only recognizes TVDB-shaped episode anchors.{% endcomment %}
         {% if item.kometa_episode_url %}<a href="{{ item.kometa_episode_url }}" class="hidden" aria-hidden="true" tabindex="-1"></a>{% endif %}
+        {% if react_props_id %}{{ react_props|json_script:react_props_id }}<div data-media-card-root data-props-id="{{ react_props_id }}">{% endif %}
         <div class="media-card-visual relative">
           {% if recommend_mode %}
             <div class="cursor-pointer">
@@ -673,6 +674,8 @@
 
           {# Aggregated chips already cover repeats; no extra text block. #}
         </div>
+
+        {% if react_props_id %}</div>{% endif %}
 
         {# Track Modal #}
         <div x-show="trackOpen"

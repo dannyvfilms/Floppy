@@ -2278,6 +2278,49 @@ def media_card(context, surface, **values):
     return card_surfaces.card_context(context.flatten(), surface, values)
 
 
+@register.simple_tag(takes_context=True)
+def history_card_react(context, entry, card_class, history_mode):
+    """Return the shared React card's props for one History entry."""
+    from uuid import uuid4
+
+    from django.utils.translation import gettext as _
+
+    from app.media_card_model import history_card_model
+
+    return {
+        "id": f"media-card-{uuid4().hex[:8]}",
+        "props": {
+            "model": history_card_model(
+                entry, card_class, history_mode, context.get("user"),
+            ),
+            "labels": {
+                "altTitle": str(_("Show alternative title")),
+                "nextEpisode": str(_("Jump to next episode")),
+            },
+        },
+    }
+
+
+@register.simple_tag(takes_context=True)
+def media_row_react(context, item, media, title, matched_title):
+    """Return the shared React card's props for one Search list-view row."""
+    from uuid import uuid4
+
+    from django.utils.translation import gettext as _
+
+    from app.media_card_model import row_card_model
+
+    return {
+        "id": f"media-card-{uuid4().hex[:8]}",
+        "props": {
+            "model": row_card_model(
+                item, media, title, matched_title, context.get("user"),
+            ),
+            "labels": {"altTitle": str(_("Show alternative title"))},
+        },
+    }
+
+
 # Icons the detail action row may hold, in display order. Below 400px wide the
 # row keeps this many cells (the More menu is one of them) so each stays tappable.
 DETAIL_ROW_PHONE_CAP = 5

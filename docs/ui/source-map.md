@@ -139,6 +139,7 @@ build artifacts. The Python composition tag is documented in the register.
 
 - `src/templates/app/components/card_lines.html`
 - `src/templates/app/components/media_card.html`
+- `frontend/ui/MediaCard.jsx`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/media-card.css`, `src/app/media_card_model.py` (React card body for every grid surface, History and the Search list row; the status chip, hover actions and rating stay server slots)
 - `src/templates/app/components/media_card_list.html`
 - `src/templates/app/components/media_card_status_chip.html`
 

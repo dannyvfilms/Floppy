@@ -13,6 +13,7 @@
      @media-card-revealed.window="if ($event.detail !== $root) revealed = false"
            @click.window="if (revealed && !$root.contains($event.target)) revealed = false"
      :class="revealed ? 'media-card-revealed' : ''">
+  {% if entry.item and entry.item.media_type %}{% history_card_react entry card_class history_mode as react_card %}{{ react_card.props|json_script:react_card.id }}<div data-media-card-root data-props-id="{{ react_card.id }}">{% endif %}
   <div class="media-card-visual relative">
     {% with entry.item|display_title:user as preferred_entry_title %}
     <a hx-boost="true"
@@ -229,6 +230,8 @@
     </p>
     {% card_lines entry.media_type entry.item entry %}
   </div>
+
+  {% if entry.item and entry.item.media_type %}</div>{% endif %}
 
   {# Modals #}
   {% if entry.item and entry.item.media_type and history_mode != "release" %}
