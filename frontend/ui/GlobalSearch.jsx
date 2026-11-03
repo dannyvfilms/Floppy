@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Spinner } from './controls';
 
 // The header search form. Class names match the Django form it replaces, so the
 // themes keep applying. Suggestions stay a server fragment: htmx fills
@@ -105,7 +106,7 @@ export function GlobalSearch({ props }) {
           onClick={() => fileInput.current?.click()}
           className="absolute right-2 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-(--color-accent) rounded-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
           {scanning
-            ? <span className="block"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[var(--color-text-muted)]" /></span>
+            ? <span className="block"><Spinner size={20} tone="muted" /></span>
             : <span className="block"><Icon className="w-5 h-5"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" /><circle cx="12" cy="13" r="3" /></Icon></span>}
         </button>}
         <input ref={fileInput} type="file" accept="image/*" className="hidden" onChange={onBarcodeImage} />

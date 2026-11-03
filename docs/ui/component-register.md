@@ -136,6 +136,16 @@ can inform a focused completion pass.
 - Reuse/blockers: potentially share transitions; browser lifecycle/task transport need adapters. This is not offline synchronization.
 - Validation targets: `src/static/js/cache-updater.selfcheck.mjs`, owning feature tests; native background behavior unverified.
 
+### SPINNER — Loading ring
+
+- Purpose/usage: the small spinning ring shown while an HTMX search, infinite-scroll page or library lookup is in flight.
+- Status: `Web Migrated` on every consumer that used the legacy `animate-spin rounded-full border-b-2` ring (17 template sites in 12 templates, plus the React header search). Browser verification: built-in browser at desktop and phone width, light and dark, on the list page (3 rings) and the Movies library page; ring size, colour, border, position and 1s linear animation compared numerically with the legacy markup; HTMX-swapped markup mounts. Native iOS and Android: not verified.
+- Implementation: shared `Spinner` in `frontend/ui/controls.jsx` (`.ui-spinner` in `controls.css`; `size` in px, `tone` accent, muted or white; decorative, `aria-hidden`), `frontend/ui/mountSpinner.jsx` web adapter registered as `data-spinner-root` in `frontend/settings/index.js`, and the `{% spinner size tone %}` tag (`users/templatetags/ui_tags.py`, `users/components/spinner.html`). The server markup inside the host is the same ring, so it is the fallback if the module fails. The host is `display: contents`, so it adds no box. A host nested inside another island (the header search form) is skipped by the loader; that island renders its own `Spinner`.
+- Consumers: Movies/library list, Collection list, Person filmography, List detail (search indicators and load-more), Smart list detail, Custom lists hub, Smart rules builder, Add item, Recommend item, Library move panel and its results, header barcode scan (React `GlobalSearch` and `base.html` fallback). Public list pages use `base_public.html`, which loads the same island bundle.
+- Left on legacy, with reopening condition: `users/about.html` (SVG ring with its own look; reopen when About is migrated), `progress_changer.html` (icon swapped by `htmx-indicator`; reopen with the quick progress bar), and the Alpine `:class="{ 'animate-spin': loading }"` refresh icons in detail action buttons, music album/artist pages and Statistics (they rotate an icon, not a ring; reopen when those buttons are ported).
+- Native mapping: `ActivityIndicator`; the contract is `size` and `tone` only.
+- Validation: `users.tests.test_spinner_tag`, `lists`, targeted template views.
+
 ### WEB-UTILITIES — Clipboard, installation and static service worker
 
 - Purpose/usage: copy controls, install feedback and cached static assets.

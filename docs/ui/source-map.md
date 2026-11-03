@@ -126,6 +126,13 @@ build artifacts. The Python composition tag is documented in the register.
 - `src/static/js/cache-updater.js`
 - `src/static/js/cache-updater.selfcheck.mjs`
 
+## SPINNER
+
+Shared `Spinner` lives in `frontend/ui/controls.jsx` and `controls.css` (FORM-CONTROLS); its consumer templates are mapped under their own families.
+
+- `frontend/ui/mountSpinner.jsx`
+- `src/templates/users/components/spinner.html`
+
 ## WEB-UTILITIES
 
 - `src/static/js/copy-item.js`

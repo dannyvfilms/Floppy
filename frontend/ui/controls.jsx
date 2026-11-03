@@ -318,3 +318,10 @@ export function ToggleRow({ id, name, label, help, defaultChecked, tone, disable
     <input id={id} type="checkbox" name={name} defaultChecked={defaultChecked} disabled={disabled} />
   </div>;
 }
+
+// Loading indicator. `size` is in px; `tone` is accent, muted or white. Decorative:
+// callers put any accessible status text beside it.
+export function Spinner({ size = 16, tone = 'accent' }) {
+  return <span className={`ui-spinner${size <= 12 ? ' ui-spinner-thin' : ''}`} data-tone={tone}
+    style={{ width: size, height: size }} aria-hidden="true" />;
+}

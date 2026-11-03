@@ -8,6 +8,8 @@ from django.template.loader import render_to_string
 
 register = template.Library()
 
+SPINNER_SIZES = (8, 48)
+
 
 @register.tag
 def settings_card(parser, token):
@@ -72,4 +74,16 @@ def rating_stars(context, post_url):
             "label": str(_("Rate")),
         },
         "props_id": f"rating-stars-{uuid4().hex}",
+    })
+
+
+@register.simple_tag
+def spinner(size=16, tone="accent"):
+    """Render the shared React loading ring; the server markup is the fallback."""
+    return render_to_string("users/components/spinner.html", {
+        "props": {
+            "size": size if isinstance(size, int) and SPINNER_SIZES[0] <= size <= SPINNER_SIZES[1] else 16,
+            "tone": tone if tone in {"accent", "muted", "white"} else "accent",
+        },
+        "props_id": f"spinner-{uuid4().hex}",
     })

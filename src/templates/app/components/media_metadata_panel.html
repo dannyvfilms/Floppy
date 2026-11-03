@@ -1,6 +1,7 @@
 
 {% load i18n %}
 {% load app_tags user_tags widget_tweaks %}
+{% load ui_tags %}
 
 <div class="space-y-6">
   {% if match_item and media_type == MediaTypes.MOVIE.value or match_item and media_type == MediaTypes.TV.value or media_type == MediaTypes.TV.value and current_instance or tv_provider_switch_target %}
@@ -225,7 +226,7 @@
       <div id="library-move-search-indicator"
            class="htmx-indicator flex items-center gap-2 text-sm text-[var(--color-text-muted)]"
            aria-live="polite">
-        <span class="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-500"></span>
+        {% spinner 16 %}
         {% blocktranslate trimmed with value_1=library_move_context.target_source_label %}Searching {{ value_1 }}...{% endblocktranslate %}
       </div>
       <div id="library-move-results"></div>

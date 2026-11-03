@@ -1,0 +1,2 @@
+{{ props|json_script:props_id }}
+<span data-spinner-root data-props-id="{{ props_id }}" class="ui-spinner-host" x-ignore><span class="ui-spinner{% if props.size <= 12 %} ui-spinner-thin{% endif %}" data-tone="{{ props.tone }}" style="width:{{ props.size }}px;height:{{ props.size }}px" aria-hidden="true"></span></span>

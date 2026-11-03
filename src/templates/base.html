@@ -2,6 +2,7 @@
 {% load app_tags %}
 {% load user_tags %}
 {% load i18n %}
+{% load ui_tags %}
 
 <!DOCTYPE html>
 <html lang="{{ LANGUAGE_CODE }}"
@@ -455,7 +456,7 @@
                                   title="{% translate "Scan barcode" %}"
                                   aria-label="{% translate "Scan barcode" %}">
                             <span x-show="barcodeScanning" class="block">
-                              <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-[var(--color-text-muted)]"></div>
+                              {% spinner 20 "muted" %}
                             </span>
                             <span x-show="!barcodeScanning" class="block">{% include "app/icons/camera.svg" with classes="w-5 h-5" %}</span>
                           </button>
