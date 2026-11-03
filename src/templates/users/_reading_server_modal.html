@@ -1,3 +1,4 @@
+{% load ui_tags %}
 {% load i18n user_tags %}
 {% with connect_url=slug|add:"_connect" disconnect_url=slug|add:"_disconnect" sync_url="import_"|add:slug %}
 {# Reading server modal. Params: slug, name, account, blurb, help, placeholder (translated). #}
@@ -45,9 +46,7 @@
       <form method="post" action="{% url sync_url %}">
         {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
-        <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-          {% translate "Sync now" %}
-        </button>
+        {% button _("Sync now") "primary" "sm" "full" submit=True %}
       </form>
       {% if slug == "kavita" %}
         <p class="text-xs text-[var(--color-text-muted)]">
@@ -56,18 +55,14 @@
         <form method="post" action="{% url "refresh_kavita" %}">
           {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
-          <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-            {% translate "Refresh metadata and progress" %}
-          </button>
+          {% button _("Refresh metadata and progress") "primary" "sm" "full" submit=True %}
         </form>
       {% endif %}
       {% endif %}
       <form method="post" action="{% url disconnect_url %}">
         {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
-        <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
-          {% translate "Disconnect" %}
-        </button>
+        {% button _("Disconnect") "danger-solid" "sm" "full" submit=True %}
       </form>
     </div>
   {% else %}

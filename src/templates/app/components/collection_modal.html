@@ -1,3 +1,4 @@
+{% load ui_tags %}
 
 {% load i18n %}
 {% load widget_tweaks %}
@@ -64,10 +65,7 @@
       {% include "app/components/collection_form_fields.html" with form=form collection_fields=collection_fields %}
 
       <div class="flex justify-end mt-6">
-        <button type="submit"
-                class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 cursor-pointer">
-          {% translate "Add Copy" %}
-        </button>
+        {% button _("Add Copy") "primary" "base" submit=True %}
       </div>
     </form>
 

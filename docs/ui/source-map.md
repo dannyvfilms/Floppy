@@ -143,6 +143,16 @@ Shared `Badge` lives in `frontend/ui/controls.jsx` and `controls.css` (FORM-CONT
 - `src/users/templatetags/ui_tags.py` (`{% badge %}`)
 - Consumers: `app/podcast_show_detail.html`, `app/episode_details.html`, `app/music_album_detail.html`, `app/components/detail_music_artist.html`, `detail_music_album.html`, `detail_music_track.html`, `detail_secondary_content.html`, `cells/media_genres_cell.html`, `media_metadata_panel.html`, `lists/components/add_item_preview_modal.html`, `recommend_preview_modal.html`, `integrations/library_panel.html`, `integrations/seerr_status.html`, `users/components/whats_new.html`, `users/onboarding/metadata.html`
 
+## BUTTON
+
+Shared `Button` lives in `frontend/ui/controls.jsx` and `controls.css` (FORM-CONTROLS); its consumer templates are mapped under their own families.
+
+- `frontend/ui/mountButton.jsx`
+- `src/templates/users/components/button.html`
+- `src/users/templatetags/ui_tags.py` (`{% button %}`)
+- Consumers (22 templates, 65 sites): `users/account.html`, `users/cards.html`, `users/_reading_server_modal.html`, `users/components/provider_import.html`, `provider_instance_credentials.html`, `provider_personal_credentials.html`, `tmdb_proxy.html`, `media_type_provider_modal.html`, `users/providers/integrations/jellyfin.html`, `users/providers/mal_sync.html`, `users/onboarding/media_types.html`, `metadata.html`, `import_status.html`, `components/connect_trakt.html`, `lists/custom_lists.html`, `integrations/oauth_device.html`, `integrations/match_fix.html`, `app/components/collection_modal.html`, `collection_entry_summary.html`, `music_track_notes.html`, `history_day.html`, `fill_track_song.html`.
+- Remaining legacy: Alpine-bound, in-place htmx, icon and composed-attribute buttons (see the BUTTON register entry).
+
 ## WEB-UTILITIES
 
 - `src/static/js/copy-item.js`

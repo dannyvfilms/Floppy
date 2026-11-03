@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load ui_tags %}
 {% load i18n %}
 {% load app_tags user_tags %}
 
@@ -42,8 +43,7 @@
                  value="{{ request.GET.q|default:'' }}"
                  placeholder="{% translate "Search titles" %}"
                  class="h-10 min-w-0 flex-1 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 text-sm text-[var(--color-text)]">
-          <button class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 cursor-pointer"
-                  type="submit">{% translate "Search" %}</button>
+          {% button _("Search") "primary" "base" submit=True %}
         </form>
 
         {% if request.GET.q %}

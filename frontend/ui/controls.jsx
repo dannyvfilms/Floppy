@@ -60,11 +60,14 @@ export function CardGrid({ children, auto = false, alignStart = false, className
   return <div className={`ui-card-grid${auto ? ' ui-card-grid-auto' : ''}${alignStart ? ' ui-card-grid-start' : ''} ${className}`}>{children}</div>;
 }
 
-export function Button({ children, danger = false, secondary = false, href, ...props }) {
+// `tone` (danger-solid, danger-deep, surface, ghost-danger), `small` (text-sm), `auto` (fit the label) and `flat` (no border)
+// reproduce the buttons templates used to write by hand; the AniList and provider callers pass none of them.
+export function Button({ children, danger = false, secondary = false, href, tone, small = false, auto = false, flat = false, ...props }) {
   const Element = href ? 'a' : 'button';
-  return <Element href={href} className={`ui-button${danger ? ' ui-button-danger' : ''}${secondary ? ' ui-button-secondary' : ''}`}
+  return <Element href={href} className={`ui-button${danger ? ' ui-button-danger' : ''}${secondary ? ' ui-button-secondary' : ''}${tone ? ` ui-button-tone-${tone}` : ''}${small ? ' ui-button-small' : ''}${auto ? ' ui-button-auto' : ''}${flat ? ' ui-button-flat' : ''}`}
     {...props}>{children}</Element>;
 }
+
 
 export function Field({ label, labelHidden = false, icon, id, ...props }) {
   const input = <input id={id} {...props} />;

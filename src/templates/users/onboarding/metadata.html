@@ -48,10 +48,7 @@
               class="px-4 py-2 text-sm rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
         {% translate "Skip for now" %}
       </button>
-      <button type="submit"
-              class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-        {% translate "Continue" %}
-      </button>
+      {% button _("Continue") submit=True %}
     </div>
   </form>
 {% endblock step_options %}

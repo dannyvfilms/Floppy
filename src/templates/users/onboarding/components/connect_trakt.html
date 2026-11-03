@@ -1,3 +1,4 @@
+{% load ui_tags %}
 
 {% load i18n %}
 {% load user_tags %}
@@ -53,10 +54,7 @@
     <input type="hidden" name="frequency" value="once">
     <input type="hidden" name="time" value="00:00">
     <input type="hidden" name="next" value="{% url 'onboarding_service_setup' %}">
-    <button type="submit"
-            class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-      {% translate "Connect with Trakt" %}
-    </button>
+    {% button _("Connect with Trakt") "primary" "sm" "full" submit=True %}
   </form>
 
   <form method="post"
