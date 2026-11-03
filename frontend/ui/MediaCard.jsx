@@ -5,9 +5,8 @@ import { openModal } from './ModalHost';
 import { RatingStars } from './RatingStars';
 
 // The shared media card body. It renders the same class names the Django card
-// used, so every existing theme and layout rule keeps applying. Pieces that
-// still belong to the server (status chip, hover actions, rating) arrive as
-// live DOM nodes in `slots` and are placed, not re-rendered.
+// used, so every existing theme and layout rule keeps applying. Only the Search
+// list row still places server DOM (its `meta` and fallback `actions` slots).
 
 const aspect = { square: 'aspect-[1/1]', poster: 'aspect-[2/3] aspect-2/3', landscape: 'aspect-[2/3] aspect-2/3' };
 const chipBase = 'absolute z-20 bg-gray-900/90 text-white text-[11px] font-medium px-2 py-1 rounded-md shadow-md';
@@ -271,7 +270,10 @@ function useTapToReveal(host, enabled, selecting) {
       window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: card }));
     };
     const onOther = (event) => { if (event.detail !== card) setRevealed(false); };
-    const onOutside = (event) => { if (state.current.revealed && !card.contains(event.target)) setRevealed(false); };
+    // A popup the card opened lives outside it; using it must not hide the buttons again.
+    const onOutside = (event) => {
+      if (state.current.revealed && !card.contains(event.target) && !event.target.closest?.('[data-floppy-modal]')) setRevealed(false);
+    };
     card.addEventListener('click', onClick, true);
     window.addEventListener('media-card-revealed', onOther);
     window.addEventListener('click', onOutside);
@@ -427,17 +429,16 @@ export function MediaCard({ model, slots, labels, selection, host }) {
       </a>}
       {model.statusChip?.kind === 'status-native' ? <StatusChip chip={model.statusChip} />
         : model.statusChip?.kind === 'media-type' ? <MediaTypeChip chip={model.statusChip} />
-          : model.statusId ? <div id={model.statusId} data-react-owned="">{(() => {
+          : model.statusId && <div id={model.statusId} data-react-owned="">{(() => {
             const chip = liveChip(model.statusChip, live, labels);
             return chip && <CardStatusChip chip={chip} />;
-          })()}</div> : <Slot name="status" node={slots.status} />}
+          })()}</div>}
       {model.cornerChips.map((chip) => <CornerChip key={chip.kind} chip={chip} labels={labels} />)}
       {bar && <div className="media-card-progress-bar absolute bottom-0 left-0 right-0 h-1 bg-gray-900/60 z-20">
         <div className={`h-full ${bar.paused ? 'bg-indigo-500/40' : 'bg-indigo-500'} transition-[width] duration-300 ease-out`}
           style={{ width: `${bar.percent}%` }} />
       </div>}
-      {model.actions ? (!selection?.active && <CardOverlay actions={model.actions} host={host} revealed={revealed} labels={labels} />)
-        : <Slot name="overlay" node={slots.overlay} />}
+      {model.actions && !selection?.active && <CardOverlay actions={model.actions} host={host} revealed={revealed} labels={labels} />}
     </div>
     <div className="media-card-body p-3 bg-card-body">
       <div className="media-card-title-row flex items-center gap-2 min-w-0">
@@ -455,11 +456,11 @@ export function MediaCard({ model, slots, labels, selection, host }) {
           <svg className="w-3 h-3 text-yellow-400 fill-current" viewBox="0 0 24 24" aria-hidden="true">
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
           </svg><span className="font-medium">{model.scoreText}</span></span>}
-        {model.ratingId ? <span id={model.ratingId} data-react-owned="">{(() => {
+        {model.ratingId && <span id={model.ratingId} data-react-owned="">{(() => {
           const rating = live?.rating !== undefined && live ? (live.rating || null) : model.rating;
           const cardRating = live ? { ...rating, rateUrl: rating?.rateUrl || model.rating?.rateUrl } : rating;
           return cardRating && <CardRating rating={cardRating} csrfToken={model.csrfToken} editable={model.ratingEditable} />;
-        })()}</span> : slots.rating && <Slot name="rating" node={slots.rating} />}
+        })()}</span>}
       </div>
       {model.lines.map((line, index) => <Line key={index} line={line} />)}
     </div>

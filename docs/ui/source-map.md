@@ -161,10 +161,10 @@ Shared `Badge` lives in `frontend/ui/controls.jsx` and `controls.css` (FORM-CONT
 ## MEDIA-CARD
 
 - `src/templates/app/components/card_lines.html`
-- `src/templates/app/components/media_card.html`
-- `frontend/ui/MediaCard.jsx`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/media-card.css`, `src/app/media_card_model.py` (React card body for every grid surface, History and the Search list row; the status chip, hover actions and rating stay server slots)
+- `src/templates/app/components/media_card.html` (shell: wrapper classes, props script and first-paint poster and title; React replaces it on mount)
+- `frontend/ui/MediaCard.jsx`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/ModalHost.jsx`, `frontend/ui/media-card.css`, `src/app/media_card_model.py`, `src/app/card_surfaces.py` (the whole card is React on every surface: body, status chip, rating, hover buttons, popups host, touch reveal and bulk-select checkbox)
 - `src/templates/app/components/media_card_list.html`
-- `src/templates/app/components/media_card_status_chip.html`
+- `src/templates/app/components/media_card_status_chip.html` (out-of-band save fragment only; no card renders it)
 
 ## RATING
 

@@ -2,15 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
 import { MediaCard } from './MediaCard';
 
-// The server renders the whole legacy card inside the host. Before React takes
-// the host over, lift out the three server-owned pieces (status chip, hover
-// actions, rating) so the htmx and Alpine behaviour on them keeps working.
-const sources = {
-  status: '[id^="media-status-chip"]',
-  overlay: '.media-card-overlay',
-  rating: '[id^="media-card-rating"]',
-};
-
 // Bulk selection lives in the page's Alpine scope (selectMode, isItemSelected,
 // toggleItemSelected). Mirror it here instead of keeping a second copy.
 function useSelection(host, itemId) {
@@ -38,10 +29,6 @@ export function mountMediaCard(host, props) {
   if (props.model.layout === 'row') {
     for (const name of ['meta', 'actions']) {
       if (name !== 'actions' || !props.model.actions) slots[name] = host.querySelector(`[data-card-slot-source="${name}"]`);
-    }
-  } else {
-    for (const [name, selector] of Object.entries(sources)) {
-      if (name === 'overlay' ? !props.model.actions : !(name === 'status' && props.model.statusId) && !(name === 'rating' && props.model.ratingId)) slots[name] = host.querySelector(selector);
     }
   }
   const restore = mountRoot(host, <Card host={host} props={props} slots={slots} />);

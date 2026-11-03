@@ -29,6 +29,7 @@ from app.models import (
     Video,
 )
 from app.templatetags.app_tags import item_slot_id
+from app.tests.card_props import card_models
 from lists import smart_rules
 from lists.feeds import FloppyRssFeed
 from lists.models import CustomList, CustomListItem, ListActivity, ListRecommendation
@@ -2633,7 +2634,12 @@ class ListDetailViewTests(TestCase):
         response = self.client.get(reverse("list_detail", args=[episode_list.id]))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'title="Add to custom lists"')
+        titles = [
+            item["title"]
+            for model in card_models(response.content)
+            for item in (model["actions"] or {}).get("items", [])
+        ]
+        self.assertIn("Add to custom lists", titles)
 
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")
@@ -2715,14 +2721,23 @@ class ListDetailViewTests(TestCase):
                 "season_number": 1,
             },
         )
-        self.assertContains(response, f'hx-get="{expected_url}"')
-        self.assertContains(response, '"is_create": "1"')
-        self.assertContains(
-            response,
-            f'"instance_id": "{watched_episode.id}"',
+        actions = [
+            item
+            for model in card_models(response.content)
+            for item in (model["actions"] or {}).get("items", [])
+        ]
+        track = [a for a in actions if a.get("modal") == "track"]
+        self.assertIn(expected_url, [a["url"] for a in track])
+        self.assertTrue(any(a["vals"].get("is_create") == "1" for a in track))
+        self.assertTrue(
+            any(
+                a["vals"].get("instance_id") == str(watched_episode.id)
+                for a in track
+            )
         )
-        self.assertContains(response, 'title="Mark watched"')
-        self.assertContains(response, 'title="Watched"')
+        titles = [a["title"] for a in actions]
+        self.assertIn("Mark watched", titles)
+        self.assertIn("Watched", titles)
 
         # Regression: Django's {# #} comment syntax is single-line only —
         # spreading one across multiple lines silently stops it being
@@ -2819,8 +2834,11 @@ class ListDetailViewTests(TestCase):
 
         response = self.client.get(reverse("list_detail", args=[episode_list.id]))
 
-        self.assertContains(response, f'id="{item_slot_id("media-card-rating", episode_item)}"')
-        self.assertContains(response, ">7.5</span>")
+        ratings = {
+            m["ratingId"]: m["rating"] for m in card_models(response.content)
+        }
+        rating = ratings[item_slot_id("media-card-rating", episode_item)]
+        self.assertEqual(rating["label"], "7.5")
 
     @patch("lists.views.services.get_media_metadata")
     @patch.object(get_user_model(), "update_preference")
@@ -5196,6 +5214,7 @@ class ListRecommendationsViewTests(TestCase):
 
         content = response.content.decode()
         self.assertIn("Untracked Recommendation", content)
-        self.assertIn(f'id="{item_slot_id("media-card-rating", movie.item)}"', content)
-        self.assertIn(f'id="{item_slot_id("media-status-chip", movie.item)}"', content)
-        self.assertEqual(content.count('class="media-status-chip '), 1)
+        models = {m["ratingId"]: m for m in card_models(content)}
+        tracked = models[item_slot_id("media-card-rating", movie.item)]
+        self.assertEqual(tracked["statusId"], item_slot_id("media-status-chip", movie.item))
+        self.assertEqual(sum(1 for m in models.values() if m["statusChip"]), 1)

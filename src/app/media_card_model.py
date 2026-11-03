@@ -214,6 +214,27 @@ def _progress_text(ctx, media_type):
 
 
 def _subtitle_lines(ctx, media_type):
+    """Lines under the title, then what a credited person did on this title."""
+    lines = _item_lines(ctx, media_type)
+    credit = ctx.get("credit")
+    if credit:
+        from users.card_metadata import card_lines
+
+        lines.extend(
+            {
+                "clamp": True,
+                "dormant": bool(line.get("dormant")),
+                "parts": [
+                    {"text": part["text"], **({"score": True} if part.get("score") else {})}
+                    for part in line["parts"]
+                ],
+            }
+            for line in card_lines(ctx.get("user"), "person", credit, None)
+        )
+    return lines
+
+
+def _item_lines(ctx, media_type):
     """Lines under the title, in the same precedence the template used."""
     media, item, user = ctx.get("media"), ctx.get("item"), ctx.get("user")
     lines = []

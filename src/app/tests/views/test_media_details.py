@@ -62,6 +62,7 @@ from app.models import (
 from app.providers import services, tmdb
 from app.services import game_lengths as game_length_services
 from app.services.metadata_resolution import AnimeTMDBIdentity, MetadataResolutionResult
+from app.tests.card_props import card_models
 from events.calendar.helpers import date_parser
 from integrations.models import PlexAccount
 from lists.models import CustomList, CustomListItem
@@ -82,6 +83,14 @@ def _record_sleep_threads(mock_sleep):
 
 
 class MediaDetailsViewTests(TestCase):
+
+    @staticmethod
+    def _card_titles(response):
+        """Return every title and title link the page's cards show."""
+        models = card_models(response.content)
+        return {m["title"] for m in models} | {
+            link["label"] for m in models for link in m["titleLinks"]
+        }
     """Test the media details views."""
 
     def setUp(self):
@@ -10557,8 +10566,9 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["current_instance"].end_date, watched_special)
         self.assertEqual(response.context["current_instance"].progress, 12)
-        self.assertContains(response, 'title="Specials">Specials</a>', html=False)
-        self.assertContains(response, 'title="Season 1">Season 1</a>', html=False)
+        titles = self._card_titles(response)
+        self.assertIn("Specials", titles)
+        self.assertIn("Season 1", titles)
 
     @patch("app.providers.services.get_media_metadata")
     def test_anime_details_view_renders_named_season_card_titles(
@@ -10646,16 +10656,9 @@ class MediaDetailsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(
-            response,
-            'title="Indigo League">Indigo League</a>',
-            html=False,
-        )
-        self.assertContains(
-            response,
-            'title="Orange Islands">Orange Islands</a>',
-            html=False,
-        )
+        titles = self._card_titles(response)
+        self.assertIn("Indigo League", titles)
+        self.assertIn("Orange Islands", titles)
 
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_backfills_author_credits_and_renders_links(

@@ -255,7 +255,8 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                 lambda request: "lists_modal" in request.url,
             ):
                 card.get_by_title("Add to custom lists").click()
-            lists_modal = card.locator("[x-show='listsOpen']")
+            # The popup lives in the page's one modal host, not inside the card.
+            lists_modal = touch_page.locator("[x-show='listsOpen']")
             expect(lists_modal).to_be_visible()
             expect(lists_modal.locator(".list-modal-root")).to_be_visible()
         finally:
@@ -292,20 +293,17 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                 '.home-row-card .media-card:has(a.media-card-title[title="Poster Action Test"])'
             )
             expect(cards).to_have_count(2)
-            for title in ("Add to tracker", "Add to custom lists"):
-                first_target = (
-                    cards.nth(0).get_by_title(title).get_attribute("hx-target")
-                )
-                second_target = (
-                    cards.nth(1).get_by_title(title).get_attribute("hx-target")
-                )
-                self.assertNotEqual(first_target, second_target)
-                self.assertEqual(page.locator(second_target).count(), 1)
+            # Each card names its own popup targets, even for the same item.
+            props = "el => JSON.parse(el.querySelector('script[type=\"application/json\"]').textContent).model.actions.modals"
+            first_targets = cards.nth(0).evaluate(props)
+            second_targets = cards.nth(1).evaluate(props)
+            for kind in ("track", "lists"):
+                self.assertNotEqual(first_targets[kind], second_targets[kind])
             card = cards.nth(1)
             expect(card).to_be_visible()
             card.locator(".media-card-poster").click()
             card.get_by_title("Add to custom lists").click()
-            modal = card.locator("[x-show='listsOpen']")
+            modal = page.locator("[x-show='listsOpen']")
             expect(modal.locator(".list-modal-root")).to_be_visible()
             box = modal.bounding_box()
             self.assertIsNotNone(box)
@@ -321,7 +319,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             modal.locator(".list-modal-root button").first.click()
             expect(modal).not_to_be_visible()
             card.get_by_title("Add to tracker").click()
-            track_modal = card.locator("[x-show='trackOpen']")
+            track_modal = page.locator("[x-show='trackOpen']")
             expect(track_modal.locator("[data-track-modal-root]")).to_be_visible()
             page.keyboard.press("Escape")
             expect(track_modal).not_to_be_visible()
