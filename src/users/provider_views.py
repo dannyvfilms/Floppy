@@ -261,6 +261,33 @@ def provider_detail(request, slug):
             connect_url=reverse(f"{slug}_connect"), disconnect_url=reverse(f"{slug}_disconnect"),
         )
         context["account_connection"]["submitLabel"] = _(button)
+    if tab == "connection" and slug == "plex":
+        account = context.get("plex_account")
+        connected = bool(account and account.plex_token)
+        badges = []
+        notes = {}
+        if account:
+            badges.append({
+                "label": _("Watchlist sync on") if account.watchlist_sync_enabled else _("Watchlist sync off"),
+                "tone": "info" if account.watchlist_sync_enabled else "neutral",
+                "tooltip": _("Sync the connected Plex account's watchlist into Planning every 15 minutes. Plex usernames still control webhook filtering."),
+            })
+            if account.watchlist_last_synced_at:
+                notes["lastSync"] = _("Last watchlist sync: %(when)s") % {"when": user_datetime_format(account.watchlist_last_synced_at, request.user)}
+        context["account_connection"] = provider_ui.account_connection(
+            request, connected=connected, saved=bool(account),
+            attention=bool(account and getattr(account, "connection_broken", False)),
+            fields=[], messages={
+                "disconnected": _("Connect your Plex account to import watch history, load your libraries and sync your watchlist."),
+                "connected": _("Your Plex account is connected."),
+                "attention": _("Plex rejected the saved sign-in. Reconnect to restore library loading and imports.")},
+            follow_up=None, connect_url=reverse("plex_connect"), disconnect_url=reverse("plex_disconnect"),
+            summary={"url": "", "lastSync": notes.get("lastSync", ""),
+                     "error": redact_secrets(account.watchlist_last_error or "") if account else ""} if account else None,
+        )
+        context["account_connection"]["badges"] = badges
+        context["account_connection"]["title"] = _("Plex account")
+        context["account_connection"]["submitLabel"] = _("Reconnect Plex") if account else _("Connect Plex")
     if tab == "connection" and slug == "mdblist":
         context["file_import"] = provider_ui.file_import(request, slug, provider_ui.import_preferences(request, slug, context), context)
     if tab == "connection" and slug == "koreader":
@@ -295,7 +322,7 @@ def provider_detail(request, slug):
         context["account_connection"]["submitLabel"] = _("Connect GPodder")
     if tab in {"connection", "tracking"} and slug in {"emby", "kodi", "navidrome", "nuvio"}:
         context["setup_guides"], context["guide_copy"] = provider_guides.setup_guides(request, slug, context)
-    if (tab == "connection" and slug in {"jellyfin", "seerr"}) or (tab in {"connection", "import", "tracking"} and slug == "stremio"):
+    if (tab == "connection" and slug in {"jellyfin", "seerr", "plex"}) or (tab in {"connection", "import", "tracking"} and slug == "stremio"):
         context["setup_guides"], context["guide_copy"] = provider_guides.setup_guides(request, slug, context)
     if slug in {"plex", "jellyfin", "seerr", "koreader", "hardcover"}:
         context["provider_forms"] = provider_forms.build(request, slug, tab, context)

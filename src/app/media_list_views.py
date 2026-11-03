@@ -3479,6 +3479,9 @@ def media_list(request, media_type):
                 self.start_date = tracker.start_date
                 self.end_date = tracker.end_date
                 self.notes = tracker.notes
+                self.score_url = reverse(
+                    "update_podcast_show_score", args=[tracker.id]
+                )
                 self.created_at = tracker.created_at
                 self.updated_at = tracker.updated_at
                 self.release_datetime = getattr(tracker, "first_published", None)

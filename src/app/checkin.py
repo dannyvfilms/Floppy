@@ -220,7 +220,7 @@ def _subject(user, media_type, media_id):
             media_id=str(media_id),
             item=item,
             duration=_seconds(item.runtime_minutes),
-            card={"title": item.title, "image": item.image},
+            card={"title": item.title},
         )
 
     show = _tracked_show(user, media_id)
@@ -250,7 +250,6 @@ def _subject(user, media_type, media_id):
             "series_title": show.item.title,
             "season_number": season_number,
             "episode_number": episode_number,
-            "image": episode_item.image or show.item.image,
         },
     )
 

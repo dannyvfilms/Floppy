@@ -5018,6 +5018,72 @@ class MediaDetailsViewTests(TestCase):
         )
 
     @patch("app.providers.services.get_media_metadata")
+    def test_audiobook_page_lists_formats_and_narrator(
+        self,
+        mock_get_metadata,
+    ):
+        """The Details card joins Book and Audiobook and shows the narrator."""
+        mock_get_metadata.return_value = {
+            "media_id": "abs-2",
+            "title": "Project Hail Mary",
+            "media_type": MediaTypes.BOOK.value,
+            "source": Sources.AUDIOBOOKSHELF.value,
+            "image": "http://example.com/cover.jpg",
+            "max_progress": 966,
+            "details": {
+                "format": "audiobook",
+                "author": ["Andy Weir"],
+                "narrator": ["Ray Porter"],
+            },
+            "related": {},
+        }
+        ebook = Item.objects.create(
+            media_id="OL-phm",
+            source=Sources.OPENLIBRARY.value,
+            media_type=MediaTypes.BOOK.value,
+            title="Project Hail Mary",
+            authors=["Andy Weir"],
+        )
+        audio = Item.objects.create(
+            media_id="abs-2",
+            source=Sources.AUDIOBOOKSHELF.value,
+            media_type=MediaTypes.BOOK.value,
+            title="Project Hail Mary",
+            authors=["Andy Weir"],
+            format="audiobook",
+            narrators=["Ray Porter"],
+        )
+        Book.objects.create(item=ebook, user=self.user, status=Status.PLANNING.value)
+        Book.objects.create(
+            item=audio, user=self.user, status=Status.IN_PROGRESS.value, progress=10,
+        )
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.AUDIOBOOKSHELF.value,
+                    "media_type": MediaTypes.BOOK.value,
+                    "media_id": "abs-2",
+                    "title": "project-hail-mary",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        soup = BeautifulSoup(response.content, "html.parser")
+        facts = {
+            fact.h3.get_text(strip=True): fact
+            for fact in soup.select(".detail-sidebar-fact")
+            if fact.h3
+        }
+        self.assertEqual(
+            facts["Format"].p.get_text(" ", strip=True).replace(" ,", ","),
+            "Book, Audiobook",
+        )
+        self.assertIn("OL-phm", facts["Format"].a["href"])
+        self.assertEqual(facts["Narrator"].get_text(" ", strip=True), "Narrator Ray Porter")
+
+    @patch("app.providers.services.get_media_metadata")
     def test_game_media_details_renders_activity_subtitle_without_stats_cards(
         self,
         mock_get_metadata,

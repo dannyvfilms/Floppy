@@ -148,6 +148,7 @@ def _audiobookshelf_book(media_id):
     image = item.image if item and item.image else settings.IMG_NONE
     runtime_minutes = item.runtime_minutes if item else None
     authors = item.authors if item else []
+    narrators = item.narrators if item else []
     isbn = item.isbn if item else []
     genres = item.genres if item else []
     publishers = item.publishers if item else ""
@@ -170,6 +171,7 @@ def _audiobookshelf_book(media_id):
         "related": {},
         "details": {
             "author": authors,
+            "narrator": narrators,
             "isbn": isbn,
             "publisher": publishers,
             "publish_date": publish_date,

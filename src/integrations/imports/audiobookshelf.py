@@ -43,6 +43,8 @@ logger = logging.getLogger(__name__)
 
 ENTRY_SOURCE = "audiobookshelf"
 HTTP_BAD_REQUEST = 400
+LISTENING_SESSION_PAGE_SIZE = 100
+LISTENING_SESSION_MAX_PAGES = 20
 BOOK_METADATA_PROVIDER_ORDER = (
     Sources.HARDCOVER.value,
     Sources.OPENLIBRARY.value,
@@ -118,6 +120,12 @@ class AudiobookshelfClient:
     def get_me(self):
         """Return authenticated user payload."""
         return self._request("/api/me")
+
+    def get_listening_sessions(self, page: int, items_per_page: int):
+        """Return one page (0-indexed, newest first) of the user's sessions."""
+        return self._request(
+            f"/api/me/listening-sessions?itemsPerPage={items_per_page}&page={page}",
+        )
 
     def get_library_item(self, library_item_id: str, *, expanded: bool = False):
         """Return metadata for an Audiobookshelf library item.
@@ -223,6 +231,8 @@ class AudiobookshelfImporter:
                 "Audiobookshelf unchanged book repairs applied=%s",
                 repaired_count,
             )
+
+        self._import_listening_sessions()
 
         changed_podcast_entries, _ = self._partition_book_progress_entries(
             podcast_progress_entries,
@@ -386,6 +396,7 @@ class AudiobookshelfImporter:
                 "title": title,
                 "image": image,
                 "authors": authors_list,
+                "narrators": self._extract_narrator_names(metadata),
                 "isbn": isbn_values,
                 "publishers": publishers,
                 "genres": genres,
@@ -463,6 +474,62 @@ class AudiobookshelfImporter:
         if isinstance(value, (int, float)):
             return value != 0
         return False
+
+    def _import_listening_sessions(self):
+        """Store dated listening sessions for audiobooks the user tracks.
+
+        Sessions are newest first, so paging stops at the first page that holds
+        nothing new. A server that cannot list sessions only costs a warning.
+        """
+        for page in range(LISTENING_SESSION_MAX_PAGES):
+            try:
+                payload = self.client.get_listening_sessions(
+                    page,
+                    LISTENING_SESSION_PAGE_SIZE,
+                )
+            except (AudiobookshelfClientError, requests.exceptions.RequestException):
+                self.warnings.append("Audiobookshelf listening history unavailable")
+                return
+            sessions = payload.get("sessions") or []
+            created = sum(self._store_listening_session(row) for row in sessions)
+            if not sessions or not created or page + 1 >= (payload.get("numPages") or 0):
+                return
+
+    def _store_listening_session(self, row: dict[str, Any]) -> bool:
+        """Save one session against its Book; return whether it was new."""
+        library_item_id = row.get("libraryItemId")
+        started_ms = self._coerce_positive_int(row.get("startedAt"))
+        seconds = row.get("timeListening") or 0
+        if not library_item_id or row.get("episodeId") or not started_ms:
+            return False
+        minutes = round(seconds / 60)
+        if minutes < 1:
+            return False
+        current_time = row.get("currentTime")
+        position_minutes = (
+            round(current_time / 60) if isinstance(current_time, int | float) else None
+        )
+
+        book = app.models.Book.objects.filter(
+            user=self.user,
+            item__source=Sources.AUDIOBOOKSHELF.value,
+            item__media_id=self._stable_media_id(
+                self.account.base_url,
+                library_item_id,
+            ),
+        ).first()
+        if book is None:
+            return False
+        _, created = app.models.BookListeningSession.objects.update_or_create(
+            book=book,
+            session_id=str(row.get("id") or started_ms),
+            defaults={
+                "started_at": datetime.fromtimestamp(started_ms / 1000, tz=UTC),
+                "minutes": minutes,
+                "position_minutes": position_minutes,
+            },
+        )
+        return created
 
     def _stable_media_id(self, base_url: str, library_item_id: str):
         value = f"{base_url.strip().lower()}::{library_item_id}"
@@ -1057,6 +1124,13 @@ class AudiobookshelfImporter:
             if normalized:
                 authors.append(normalized)
         return list(dict.fromkeys(authors))
+
+    def _extract_narrator_names(self, metadata: dict[str, Any]):
+        raw = metadata.get("narrators") or metadata.get("narratorName") or []
+        if not isinstance(raw, list):
+            raw = [raw]
+        names = [str(value or "").strip() for value in raw]
+        return list(dict.fromkeys(name for name in names if name))
 
     def _extract_isbns(self, metadata: dict[str, Any]):
         candidates = []

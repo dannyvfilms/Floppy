@@ -33,6 +33,7 @@ from app.models import (
     Anime,
     BoardGame,
     Book,
+    BookListeningSession,
     Comic,
     Episode,
     Game,
@@ -202,6 +203,18 @@ def _build_shared_history_days(user, requested_media_types):
             .distinct()
         )
     music_count = _add_days(days, music_days)
+
+    # Audiobook listening sessions are dated on their own, so a day with only a
+    # listen (no start or end of the book) still has to be asked for.
+    if requested_media_types is None or "book" in requested_media_types:
+        session_days = (
+            BookListeningSession.objects.filter(book__user=user)
+            .annotate(day=TruncDate("started_at"))
+            .order_by()
+            .values_list("day", flat=True)
+            .distinct()
+        )
+        reading_count += _add_days(days, session_days)
 
     podcast_days = []
     if include_podcast:

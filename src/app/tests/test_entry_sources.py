@@ -193,3 +193,33 @@ class BackfillEntrySourceMigrationTests(TestCase):
         self.assertEqual(blank_from_run.entry_source, "trakt")
         self.assertEqual(typed.entry_source, "Theatre")
         self.assertEqual(blank_manual.entry_source, "")
+
+    def test_historical_rows_with_a_deleted_run_stay_blank(self):
+        from importlib import import_module
+
+        migration = import_module(
+            "app.migrations.0218_backfill_entry_source_from_import_run",
+        )
+        user = get_user_model().objects.create_user(username="a", password="x")
+        run = ImportRun.objects.create(user=user, source="trakt")
+        game = Game.objects.create(
+            user=user,
+            item=make_item("1"),
+            status=Status.COMPLETED.value,
+            entry_source="",
+            import_run=run,
+        )
+        orphan_id = run.pk
+        run.delete()
+        history = Game.history.filter(id=game.id).first()
+        self.assertIsNotNone(history)
+        Game.history.filter(pk=history.pk).update(import_run_id=orphan_id)
+
+        apps = MigrationExecutor(connection).loader.project_state(
+            [("app", "0218_backfill_entry_source_from_import_run")],
+        ).apps
+        migration.fill_blank_entry_sources(apps, None)
+        migration.fill_blank_entry_sources(apps, None)
+
+        history.refresh_from_db()
+        self.assertEqual(history.entry_source, "")
