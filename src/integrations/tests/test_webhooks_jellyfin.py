@@ -18,10 +18,14 @@ from app.models import (
     ItemProviderLink,
     MediaTypes,
     Movie,
+    MoviePlay,
     PlaybackProgress,
+    ProgressChange,
     Season,
     Sources,
     Status,
+    WatchStateChange,
+    WatchStateSequence,
 )
 from app.services.grouped_anime import GroupedAnimeMatch
 from integrations import tasks
@@ -553,6 +557,338 @@ class JellyfinWebhookTests(TestCase):
         state = live_playback.get_user_playback_state(self.user.id)
         self.assertEqual(state["status"], live_playback.PLAYBACK_STATUS_STOPPED)
         self.assertEqual(state["event_ts"], stop_received.timestamp())
+
+    def _send_ordered_movie_event(self, event, received, *, ticks=None, played=False):
+        """Run one queued Jellyfin movie event through the webhook worker."""
+        payload = {
+            "Event": event,
+            "Item": {
+                "Id": "jf-order",
+                "Name": "Zombie",
+                "Type": "Movie",
+                "RunTimeTicks": "54000000000",
+                "ProviderIds": {"Tmdb": "7219"},
+                "UserData": {"Played": played},
+            },
+        }
+        if ticks is not None:
+            payload["PlaybackPositionTicks"] = ticks
+        tasks.process_webhook(
+            "jellyfin",
+            payload,
+            self.user.id,
+            received_at=received.isoformat(),
+            event_id=f"jf-{event.lower()}-{received.timestamp()}",
+        )
+
+    def _paused_movie_progress(self, second):
+        """Play, then pause at 1620s received at ``second``; return the row.
+
+        A pause only stores progress against an Item that already exists.
+        """
+        item = Item.objects.create(
+            media_id="7219",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Zombie",
+            image="",
+        )
+        self._send_ordered_movie_event("Play", second - timedelta(seconds=60), ticks="0")
+        self._send_ordered_movie_event("Pause", second, ticks="16200000000")
+        return PlaybackProgress.objects.get(user=self.user, item=item)
+
+    @patch("app.providers.tmdb.movie")
+    def test_older_completed_stop_does_not_close_newer_progress(self, mock_movie):
+        """Watching closes the resume point only in receipt order.
+
+        The Stop marks the movie watched before its own progress write is
+        checked, so the closure must check the receipt time itself.
+        """
+        mock_movie.return_value = {
+            "title": "Zombie",
+            "image": "",
+            "max_progress": 1,
+            "provider_external_ids": {},
+        }
+        WatchStateSequence.objects.update_or_create(
+            user=self.user,
+            defaults={"emit_changes": True},
+        )
+        second = timezone.now().replace(microsecond=0) - timedelta(seconds=5)
+        pause_received = second + timedelta(milliseconds=900)
+        before = self._paused_movie_progress(pause_received)
+        changes = ProgressChange.objects.filter(user=self.user, item=before.item)
+        change_count = changes.count()
+
+        # Received before the Pause, processed after it.
+        self._send_ordered_movie_event(
+            "Stop",
+            second + timedelta(milliseconds=100),
+            ticks="53000000000",
+            played=True,
+        )
+
+        after = PlaybackProgress.objects.get(pk=before.pk)
+        self.assertFalse(after.completed)
+        self.assertEqual(after.position_seconds, 1620)
+        self.assertEqual(after.duration_seconds, before.duration_seconds)
+        self.assertEqual(after.last_event_at, pause_received)
+        self.assertEqual(after.updated_at, before.updated_at)
+        self.assertEqual(changes.count(), change_count)
+
+    @patch("app.providers.tmdb.movie")
+    def test_mark_played_keeps_its_receipt_time_against_a_late_pause(
+        self,
+        mock_movie,
+    ):
+        """MarkPlayed has no playback context; its closure still carries the clock."""
+        mock_movie.return_value = {
+            "title": "Zombie",
+            "image": "",
+            "max_progress": 1,
+            "provider_external_ids": {},
+        }
+        self.user.jellyfin_mark_played_enabled = True
+        self.user.save(update_fields=["jellyfin_mark_played_enabled"])
+        second = timezone.now().replace(microsecond=0) - timedelta(seconds=5)
+        progress = self._paused_movie_progress(second)
+        marked_received = second + timedelta(milliseconds=900)
+
+        self._send_ordered_movie_event("MarkPlayed", marked_received, played=True)
+        self._send_ordered_movie_event(
+            "Pause",
+            second + timedelta(milliseconds=500),
+            ticks="17000000000",
+        )
+
+        progress.refresh_from_db()
+        self.assertTrue(progress.completed)
+        self.assertEqual(progress.position_seconds, 1620)
+        self.assertEqual(progress.last_event_at, marked_received)
+
+    @patch("app.providers.tmdb.movie")
+    def test_completed_stop_without_position_keeps_its_receipt_time(
+        self,
+        mock_movie,
+    ):
+        """A Stop with no position writes no progress, only the closure."""
+        mock_movie.return_value = {
+            "title": "Zombie",
+            "image": "",
+            "max_progress": 1,
+            "provider_external_ids": {},
+        }
+        second = timezone.now().replace(microsecond=0) - timedelta(seconds=5)
+        progress = self._paused_movie_progress(second)
+        stop_received = second + timedelta(milliseconds=900)
+
+        self._send_ordered_movie_event("Stop", stop_received, played=True)
+        self._send_ordered_movie_event(
+            "Pause",
+            second + timedelta(milliseconds=500),
+            ticks="17000000000",
+        )
+
+        progress.refresh_from_db()
+        self.assertEqual(
+            Movie.objects.get(item=progress.item, user=self.user).status,
+            Status.COMPLETED.value,
+        )
+        self.assertTrue(progress.completed)
+        self.assertEqual(progress.position_seconds, 1620)
+        self.assertEqual(progress.last_event_at, stop_received)
+
+    def _watched_movie_history(self, item):
+        """Count the play, history and feed rows a repeated completion must not add."""
+        return (
+            Movie.objects.filter(user=self.user, item=item).count(),
+            Movie.history.count(),
+            MoviePlay.objects.filter(movie__user=self.user).count(),
+            ProgressChange.objects.filter(user=self.user, item=item).count(),
+            WatchStateChange.objects.filter(user=self.user).count(),
+        )
+
+    def _assert_repeated_completion_keeps_its_receipt_time(self, event, **kwargs):
+        """A completion deduplicated against the watched movie still moves the clock.
+
+        Nothing is saved for the repeat, so no signal closes the resume point;
+        without its receipt time a pause received in between reopens the title.
+        """
+        WatchStateSequence.objects.update_or_create(
+            user=self.user,
+            defaults={"emit_changes": True},
+        )
+        second = timezone.now().replace(microsecond=0) - timedelta(seconds=5)
+        item = Item.objects.create(
+            media_id="7219",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Zombie",
+            image="",
+        )
+        Movie.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            end_date=timezone.now(),
+        )
+        before = PlaybackProgress.objects.create(
+            user=self.user,
+            item=item,
+            position_seconds=5300,
+            duration_seconds=5400,
+            completed=True,
+            last_event_at=second,
+        )
+        history = self._watched_movie_history(item)
+        repeated_received = second + timedelta(milliseconds=900)
+
+        self._send_ordered_movie_event(event, repeated_received, played=True, **kwargs)
+
+        progress = PlaybackProgress.objects.get(pk=before.pk)
+        self.assertTrue(progress.completed)
+        self.assertEqual(progress.position_seconds, 5300)
+        self.assertEqual(progress.duration_seconds, 5400)
+        self.assertEqual(progress.last_event_at, repeated_received)
+        self.assertEqual(progress.updated_at, before.updated_at)
+        self.assertEqual(self._watched_movie_history(item), history)
+
+        # Received between the two completions, processed after both.
+        self._send_ordered_movie_event(
+            "Pause",
+            second + timedelta(milliseconds=500),
+            ticks="17000000000",
+        )
+
+        progress.refresh_from_db()
+        self.assertTrue(progress.completed)
+        self.assertEqual(progress.position_seconds, 5300)
+        self.assertEqual(progress.last_event_at, repeated_received)
+        self.assertEqual(progress.updated_at, before.updated_at)
+        self.assertEqual(self._watched_movie_history(item), history)
+
+    @patch("app.providers.tmdb.movie")
+    def test_repeated_mark_played_keeps_its_receipt_time(self, mock_movie):
+        """MarkPlayed on a watched movie adds no play but still dates the closure."""
+        mock_movie.return_value = {
+            "title": "Zombie",
+            "image": "",
+            "max_progress": 1,
+            "provider_external_ids": {},
+        }
+        self.user.jellyfin_mark_played_enabled = True
+        self.user.save(update_fields=["jellyfin_mark_played_enabled"])
+
+        self._assert_repeated_completion_keeps_its_receipt_time("MarkPlayed")
+
+    @patch("app.providers.tmdb.movie")
+    def test_repeated_completed_stop_without_position_keeps_its_receipt_time(
+        self,
+        mock_movie,
+    ):
+        """A duplicate played Stop with no position writes only the clock."""
+        mock_movie.return_value = {
+            "title": "Zombie",
+            "image": "",
+            "max_progress": 1,
+            "provider_external_ids": {},
+        }
+
+        self._assert_repeated_completion_keeps_its_receipt_time("Stop")
+
+    @patch("app.providers.tmdb.tv_with_seasons")
+    @patch("app.providers.tmdb.find")
+    def test_repeated_episode_mark_played_keeps_its_receipt_time(
+        self,
+        mock_find,
+        mock_tv_with_seasons,
+    ):
+        """The episode path deduplicates its own plays and must date the closure too."""
+        mock_find.return_value = {
+            "tv_episode_results": [
+                {"show_id": 1416, "season_number": 4, "episode_number": 4},
+            ],
+            "tv_results": [],
+        }
+        mock_tv_with_seasons.return_value = {
+            "media_id": "1416",
+            "title": "Grey's Anatomy",
+            "image": "",
+            "season/4": {
+                "image": "",
+                "episodes": [{"episode_number": 4, "runtime": 45}],
+            },
+            "related": {"seasons": [{"season_number": 4}]},
+        }
+        self.user.jellyfin_mark_played_enabled = True
+        self.user.save(update_fields=["jellyfin_mark_played_enabled"])
+        WatchStateSequence.objects.update_or_create(
+            user=self.user,
+            defaults={"emit_changes": True},
+        )
+
+        def send(event, received, *, ticks=None, played=False):
+            payload = {
+                "Event": event,
+                "Item": {
+                    "Id": "jf-episode",
+                    "Name": "Episode Four",
+                    "Type": "Episode",
+                    "SeriesName": "Grey's Anatomy",
+                    "ParentIndexNumber": 4,
+                    "IndexNumber": 4,
+                    "RunTimeTicks": "27000000000",
+                    "ProviderIds": {"Tvdb": "301234"},
+                    "UserData": {"Played": played},
+                },
+            }
+            if ticks is not None:
+                payload["PlaybackPositionTicks"] = ticks
+            tasks.process_webhook(
+                "jellyfin",
+                payload,
+                self.user.id,
+                received_at=received.isoformat(),
+                event_id=f"jf-episode-{event.lower()}-{received.timestamp()}",
+            )
+
+        second = timezone.now().replace(microsecond=0) - timedelta(seconds=5)
+        send("Stop", second - timedelta(seconds=60), played=True)
+        episode = Episode.objects.get(related_season__user=self.user)
+        before = PlaybackProgress.objects.create(
+            user=self.user,
+            item=episode.item,
+            position_seconds=2600,
+            duration_seconds=2700,
+            completed=True,
+            last_event_at=second,
+        )
+
+        def history():
+            return (
+                Episode.objects.filter(related_season__user=self.user).count(),
+                ProgressChange.objects.filter(user=self.user).count(),
+                WatchStateChange.objects.filter(user=self.user).count(),
+            )
+
+        counts = history()
+        marked_received = second + timedelta(milliseconds=900)
+
+        send("MarkPlayed", marked_received, played=True)
+
+        progress = PlaybackProgress.objects.get(pk=before.pk)
+        self.assertTrue(progress.completed)
+        self.assertEqual(progress.last_event_at, marked_received)
+        self.assertEqual(progress.updated_at, before.updated_at)
+        self.assertEqual(history(), counts)
+
+        send("Pause", second + timedelta(milliseconds=500), ticks="17000000000")
+
+        progress.refresh_from_db()
+        self.assertTrue(progress.completed)
+        self.assertEqual(progress.position_seconds, 2600)
+        self.assertEqual(progress.last_event_at, marked_received)
+        self.assertEqual(history(), counts)
 
     @patch("app.providers.tmdb.find")
     @patch("app.providers.tmdb.movie")

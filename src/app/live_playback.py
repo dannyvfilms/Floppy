@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from urllib.parse import quote
 
@@ -46,6 +48,49 @@ PLAYBACK_PROGRESS_EVENTS = (
     "media.scrobble",
 )
 PLAYBACK_COMPLETION_TAIL_RATIO = 0.1
+
+# Receipt time of the webhook being processed. Watching a title closes its
+# resume point from a post_save signal, which no caller can hand the time to.
+_WEBHOOK_EVENT_AT: ContextVar[float | None] = ContextVar(
+    "webhook_event_at",
+    default=None,
+)
+
+
+@contextmanager
+def webhook_event_time(event_at: float | None):
+    """Date progress completions inside the block with a webhook's receipt time.
+
+    A completion with a receipt time is ordered against ``last_event_at`` like
+    any other webhook progress write. Outside a block, completions come from the
+    UI or API and leave the clock alone.
+    """
+    token = _WEBHOOK_EVENT_AT.set(event_at)
+    try:
+        yield
+    finally:
+        _WEBHOOK_EVENT_AT.reset(token)
+
+
+def current_webhook_event_at() -> float | None:
+    """Return the receipt time of the webhook being processed, if any."""
+    return _WEBHOOK_EVENT_AT.get()
+
+
+def close_resume_point_without_play(user_id: int, item_id: int) -> None:
+    """Date a watched title's resume point when no play row was saved.
+
+    A deduplicated completion saves no history, so the post_save signal that
+    closes the resume point never runs. Its receipt time must still move the
+    clock, or an older pause processed later reopens the title. Outside a
+    webhook there is no receipt time and nothing to order, so this does nothing.
+    """
+    event_at = current_webhook_event_at()
+    if event_at is None:
+        return
+    from api.fork_views_playback import complete_playback_progress
+
+    complete_playback_progress(user_id, item_id, event_at=event_at)
 
 # Types a manual Check-in can put on the card. Media servers only report movies
 # and episodes; these have no runtime to play against, so the card shows elapsed

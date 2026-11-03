@@ -11,7 +11,7 @@ from django.utils.dateparse import parse_datetime
 from django.utils.module_loading import import_string
 from simple_history.models import HistoricalRecords
 
-from app import cache_safety
+from app import cache_safety, live_playback
 from app.log_safety import mapping_keys
 from app.providers import credentials
 from app.providers.services import ProviderAPIError
@@ -248,7 +248,11 @@ def _process_webhook(
     logger.info("Webhook received provider=%s keys=%s", provider, mapping_keys(payload))
 
     try:
-        with _webhook_history_user(user), credentials.current_user_scope(user):
+        with (
+            _webhook_history_user(user),
+            credentials.current_user_scope(user),
+            live_playback.webhook_event_time(event_ts),
+        ):
             if share is None:
                 result = processor.process_payload(payload, user)
             else:

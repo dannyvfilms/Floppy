@@ -167,24 +167,58 @@ def _resolve_podcast(user, ids):
     )
 
 
-def complete_playback_progress(user_id, item_id):
-    """Close the resume point of an item that has just become watched."""
-    open_rows = PlaybackProgress.objects.filter(
-        user_id=user_id,
-        item_id=item_id,
-        completed=False,
-    ).select_related("user", "item")
-    for progress in open_rows:
-        with transaction.atomic():
-            progress.completed = True
-            progress.save(update_fields=["completed", "updated_at"])
-            record_progress_change(
-                progress.user,
-                progress.item,
-                position_seconds=progress.position_seconds,
-                duration_seconds=progress.duration_seconds,
-                completed=True,
+def complete_playback_progress(user_id, item_id, *, event_at=None):
+    """Close the resume point of an item that has just become watched.
+
+    ``event_at`` is the receipt time of the webhook that marked it watched, and
+    orders the closure as ``upsert_playback_progress`` orders a write: one older
+    than ``last_event_at`` is dropped without saving, and an applied one
+    advances the clock, so an older pause processed later cannot reopen it.
+    Without it (UI, API) an open row closes and its clock is left alone.
+    """
+    if event_at is None:
+        open_rows = PlaybackProgress.objects.filter(
+            user_id=user_id,
+            item_id=item_id,
+            completed=False,
+        ).select_related("user", "item")
+        for progress in open_rows:
+            with transaction.atomic():
+                progress.completed = True
+                progress.save(update_fields=["completed", "updated_at"])
+                record_progress_change(
+                    progress.user,
+                    progress.item,
+                    position_seconds=progress.position_seconds,
+                    duration_seconds=progress.duration_seconds,
+                    completed=True,
+                )
+        return
+
+    event_time = datetime.fromtimestamp(event_at, tz=UTC)
+    with state_transaction(user_id):
+        progress = (
+            PlaybackProgress.objects.select_for_update()
+            .filter(user_id=user_id, item_id=item_id)
+            .first()
+        )
+        if progress is None:
+            return
+        if progress.last_event_at and event_time < progress.last_event_at:
+            logger.info(
+                "Dropping out-of-order playback completion: event_at=%s "
+                "last_event_at=%s",
+                event_at,
+                progress.last_event_at,
             )
+            return
+        progress.last_event_at = event_time
+        # An already closed row only moves its clock, which is not a change.
+        update_fields = ["last_event_at"]
+        if not progress.completed:
+            progress.completed = True
+            update_fields += ["completed", "updated_at"]
+        progress.save(update_fields=update_fields)
 
 
 def upsert_playback_progress(

@@ -986,6 +986,26 @@ class UnknownRuntimeCardTests(TestCase):
         self.assertEqual(Item.objects.get(media_id="88").runtime_minutes, 100)
 
 
+class WebhookEventTimeScopeTests(TestCase):
+    """The receipt-time scope nests and is restored when processing fails."""
+
+    def test_nested_scopes_restore_the_outer_time(self):
+        self.assertIsNone(live_playback.current_webhook_event_at())
+        with live_playback.webhook_event_time(100.5):
+            with live_playback.webhook_event_time(200.25):
+                self.assertEqual(live_playback.current_webhook_event_at(), 200.25)
+            self.assertEqual(live_playback.current_webhook_event_at(), 100.5)
+        self.assertIsNone(live_playback.current_webhook_event_at())
+
+    def test_failure_inside_the_scope_restores_it(self):
+        with (
+            self.assertRaises(RuntimeError),
+            live_playback.webhook_event_time(100.5),
+        ):
+            raise RuntimeError
+        self.assertIsNone(live_playback.current_webhook_event_at())
+
+
 class ResumePointClosedOnWatchedTests(TestCase):
     """Marking a title watched closes its open resume point (#1809)."""
 
@@ -1010,3 +1030,80 @@ class ResumePointClosedOnWatchedTests(TestCase):
         Movie.objects.create(user=user, item=item, status=Status.COMPLETED.value)
 
         self.assertTrue(PlaybackProgress.objects.get(user=user, item=item).completed)
+
+    def test_deduplicated_episode_order_play_still_dates_the_closure(self):
+        """A repeat play mapped through an episode order saves nothing either."""
+        from datetime import UTC, datetime, timedelta
+
+        from api.fork_views_playback import upsert_playback_progress
+        from app.models import TV, Episode, Season, Status
+        from integrations.episode_orders import apply_targets
+
+        user = get_user_model().objects.create_user(username="order", password="pw")
+        show = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Show",
+        )
+        season_item = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Show",
+        )
+        episode_item = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Pilot",
+        )
+        tv = TV.objects.create(item=show, user=user, status=Status.IN_PROGRESS.value)
+        season = Season.objects.create(
+            item=season_item,
+            related_tv=tv,
+            user=user,
+            status=Status.IN_PROGRESS.value,
+        )
+        watched_at = datetime(2026, 1, 1, 20, tzinfo=UTC)
+        Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            end_date=watched_at,
+        )
+        first = datetime(2026, 1, 2, tzinfo=UTC)
+        progress = PlaybackProgress.objects.create(
+            user=user,
+            item=episode_item,
+            position_seconds=1300,
+            duration_seconds=1320,
+            completed=True,
+            last_event_at=first,
+        )
+        updated_at = progress.updated_at
+        repeated = first + timedelta(seconds=2)
+
+        # Outside a webhook there is no receipt time to record.
+        apply_targets(user, [episode_item], watched_at=watched_at)
+        progress.refresh_from_db()
+        self.assertEqual(progress.last_event_at, first)
+
+        with live_playback.webhook_event_time(repeated.timestamp()):
+            apply_targets(user, [episode_item], watched_at=watched_at)
+        upsert_playback_progress(
+            user,
+            episode_item,
+            600,
+            1320,
+            event_at=(first + timedelta(seconds=1)).timestamp(),
+        )
+
+        progress.refresh_from_db()
+        self.assertEqual(Episode.objects.filter(item=episode_item).count(), 1)
+        self.assertTrue(progress.completed)
+        self.assertEqual(progress.position_seconds, 1300)
+        self.assertEqual(progress.last_event_at, repeated)
+        self.assertEqual(progress.updated_at, updated_at)
