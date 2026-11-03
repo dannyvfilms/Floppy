@@ -256,7 +256,9 @@ throws away every day payload the user has.
 Signals (`app/signals.py`, `_handle_media_cache_change`) mark the days a media
 row touched; a change with no day marks the aggregate. A `pre_save`/`post_save`
 pair marks the day a Movie, Music, Podcast, Game, BoardGame, Anime, Manga, Book
-or Comic entry moved *away* from (Episode already did this). Paths without
+or Comic entry moved *away* from (Episode already did this). Audiobook listening
+sessions (`BookListeningSession`) mark the day they started on, since Statistics
+reports their minutes apart from page counts. Paths without
 signals mark explicitly: generic imports
 (`invalidate_all_statistics_days`), the TV and season completion fan-outs,
 episode-order remaps, music track relinks and TV provider migrations.

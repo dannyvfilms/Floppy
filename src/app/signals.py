@@ -1254,7 +1254,7 @@ def refresh_history_cache_on_book_listening_session_change(
         MediaTypes.BOOK.value,
         reason="book_listening_session_change",
         history_specs=[([day_key] if day_key else [], ("sessions", "repeats"))],
-        statistics_day_values=[],
+        statistics_day_values=[day_key] if day_key else [],
     )
 
 
@@ -1443,6 +1443,11 @@ def refresh_statistics_cache_on_book_change(sender, instance, **kwargs):
     user_id = getattr(instance, "user_id", None)
     day_keys = _collect_reading_statistics_day_keys(instance)
     history_day_keys = _collect_reading_history_day_keys(instance)
+    # A progress save is dated now in the change log, which History reads for
+    # page-based books, so today's day is rebuilt too.
+    today_key = history_cache.history_day_key(timezone.now())
+    if today_key and today_key not in history_day_keys:
+        history_day_keys = [*history_day_keys, today_key]
     _handle_media_cache_change(
         user_id,
         MediaTypes.BOOK.value,

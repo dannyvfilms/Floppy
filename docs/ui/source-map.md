@@ -743,3 +743,5 @@ build artifacts. The Python composition tag is documented in the register.
 ## STREMIO
 
 - `src/templates/integrations/stremio_configure.html`
+- `src/templates/app/components/session_history_row.html` (audiobook "stopped at" and book "at page" fragments)
+- `src/templates/app/components/reading_consumption_section.html` (Books "Listening Time" card)

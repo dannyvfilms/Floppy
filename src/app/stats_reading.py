@@ -4,10 +4,16 @@ from collections import Counter, defaultdict
 
 from django.apps import apps
 from django.core.cache import cache
-from django.db.models import Prefetch, Q
+from django.db.models import Prefetch, Q, Sum
 
-from app import config
-from app.models import CreditRoleType, ItemPersonCredit, MediaTypes, Status
+from app import config, helpers
+from app.models import (
+    BookListeningSession,
+    CreditRoleType,
+    ItemPersonCredit,
+    MediaTypes,
+    Status,
+)
 from app.statistics_cache import STATISTICS_TOP_N
 
 
@@ -331,6 +337,28 @@ def _build_weighted_media_charts(weighted_datetimes, color, dataset_label):
     }
 
 
+def _is_audiobook_entry(media_type, entry):
+    """Return whether this entry counts minutes, which never join a page total."""
+    return media_type == MediaTypes.BOOK.value and entry.item.format == "audiobook"
+
+
+def _listening_minutes(books, start_date, end_date):
+    """Return audiobook listening time in range, kept apart from page counts."""
+    if not hasattr(books, "values"):
+        return None
+    sessions = BookListeningSession.objects.filter(
+        book__user_id__in=books.values("user_id"),
+    )
+    if start_date:
+        sessions = sessions.filter(started_at__gte=start_date)
+    if end_date:
+        sessions = sessions.filter(started_at__lte=end_date)
+    total = sessions.aggregate(total=Sum("minutes"))["total"] or 0
+    if not total:
+        return None
+    return {"minutes": total, "formatted": helpers.minutes_to_hhmm(total)}
+
+
 def get_reading_consumption_stats(user_media, start_date, end_date, media_type):
     """Return aggregate metrics and chart/top-list data for book/comic/manga activity."""
     from app.statistics import (
@@ -384,6 +412,9 @@ def get_reading_consumption_stats(user_media, start_date, end_date, media_type):
             release_item_ids.add(entry.item.id)
             release_datetimes.append(release_dt)
 
+        if _is_audiobook_entry(media_type, entry):
+            # Minutes, not pages: counted from listening sessions below.
+            continue
         total_units = entry.progress or 0
         if total_units <= 0:
             continue
@@ -433,7 +464,11 @@ def get_reading_consumption_stats(user_media, start_date, end_date, media_type):
     items_with_authors = _fetch_reading_items_with_authors(grouped_entries.keys())
 
     for item_id, entries in grouped_entries.items():
-        total_item_units = sum((entry.progress or 0) for entry in entries)
+        total_item_units = sum(
+            (entry.progress or 0)
+            for entry in entries
+            if not _is_audiobook_entry(media_type, entry)
+        )
         total_item_units = max(0, total_item_units)
 
         latest_entry = max(
@@ -486,7 +521,9 @@ def get_reading_consumption_stats(user_media, start_date, end_date, media_type):
             )
             completed_datetimes.append(_localize_datetime(completed_dt))
             completed_length = (
-                latest_completed.progress
+                0
+                if _is_audiobook_entry(media_type, latest_completed)
+                else latest_completed.progress
                 or getattr(latest_completed.item, "number_of_pages", 0)
                 or 0
             )
@@ -555,6 +592,10 @@ def get_reading_consumption_stats(user_media, start_date, end_date, media_type):
         end_date,
     )
 
+    listening = None
+    if media_type == MediaTypes.BOOK.value and user_media.get(media_type) is not None:
+        listening = _listening_minutes(user_media[media_type], start_date, end_date)
+
     return {
         "units": units_breakdown,
         "completions": completion_breakdown,
@@ -565,7 +606,8 @@ def get_reading_consumption_stats(user_media, start_date, end_date, media_type):
         },
         "completed_length_chart": completed_length_chart,
         "release_chart": release_chart,
-        "has_data": total_units > 0 or len(completed_datetimes) > 0,
+        "listening": listening,
+        "has_data": total_units > 0 or len(completed_datetimes) > 0 or bool(listening),
         "unit_name": unit_name,
         "unit_label": chart_label,
         "completion_label": completion_label,
