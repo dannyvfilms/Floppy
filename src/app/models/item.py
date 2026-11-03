@@ -132,6 +132,9 @@ class Item(CalendarTriggerMixin, models.Model):
         default=list, blank=True, help_text="Array of themes (Games)"
     )
     authors = models.JSONField(default=list, blank=True, help_text="Array of authors")
+    narrators = models.JSONField(
+        default=list, blank=True, help_text="Array of narrators (audiobooks)"
+    )
     publishers = models.CharField(
         max_length=255, blank=True, default="", help_text="Publisher name"
     )
@@ -531,6 +534,7 @@ class Item(CalendarTriggerMixin, models.Model):
             "studios",
             "themes",
             "authors",
+            "narrators",
             "isbn",
             "creators",
         ]

@@ -32,6 +32,7 @@ from app.models import (
     ArtistTracker,
     BoardGame,
     Book,
+    BookListeningSession,
     CollectionEntry,
     Comic,
     ComicIssue,
@@ -1231,6 +1232,29 @@ def refresh_history_cache_on_podcast_change(sender, instance, **kwargs):
         history_specs=history_specs,
         statistics_day_values=[day_key] if day_key else [],
         history_dates_may_have_moved=_history_dates_may_have_moved(instance, kwargs),
+    )
+
+
+@receiver([post_save, post_delete], sender=BookListeningSession)
+def refresh_history_cache_on_book_listening_session_change(
+    sender,
+    instance,
+    **kwargs,
+):
+    """Rebuild the history day a listening session lands on."""
+    if kwargs.get("raw"):
+        return
+    try:
+        user_id = instance.book.user_id
+    except Book.DoesNotExist:
+        return
+    day_key = history_cache.history_day_key(instance.started_at)
+    _handle_media_cache_change(
+        user_id,
+        MediaTypes.BOOK.value,
+        reason="book_listening_session_change",
+        history_specs=[([day_key] if day_key else [], ("sessions", "repeats"))],
+        statistics_day_values=[],
     )
 
 

@@ -83,7 +83,7 @@ PY
 - `src/static/ui/*.css`
 - `src/templates/users/components/settings_card.html`
 - `src/templates/users/components/settings_link_chip.html`
-- `src/templates/app/components/detail_secondary_content.html` (Book "Other Formats" fact)
+- `src/templates/app/components/detail_secondary_content.html` (Book "Format" and "Narrator" facts)
 
 The generated UI subtree belongs to this island runtime; globs cover content-hashed
 chunks without renaming ownership records on every build. License notices are
@@ -144,6 +144,9 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## RATING
 
+- `frontend/ui/RatingStars.jsx`
+- `frontend/ui/mountRatingStars.jsx`
+- `src/templates/app/components/rating_stars.html`
 - `src/templates/app/components/derived_tv_rating_coverage.html`
 - `src/templates/app/components/derived_tv_rating_detail.html`
 - `src/templates/app/components/detail_episode_rating_chip.html`

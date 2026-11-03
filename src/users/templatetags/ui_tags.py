@@ -55,3 +55,21 @@ def settings_link_chip(label, url):
                  "hrefAttrs": {"target": "_blank", "rel": "noopener"}},
         "props_id": f"settings-chip-{uuid4().hex}",
     })
+
+
+@register.simple_tag(takes_context=True)
+def rating_stars(context, post_url):
+    """Render the shared React star row; the caller's popup owns open/close state."""
+    from django.utils.translation import gettext as _
+
+    from app.templatetags.app_tags import rating_scale_max
+
+    return render_to_string("app/components/rating_stars.html", {
+        "props": {
+            "postUrl": str(post_url),
+            "scaleMax": rating_scale_max(context.get("user")),
+            "csrfToken": str(context.get("csrf_token") or ""),
+            "label": str(_("Rate")),
+        },
+        "props_id": f"rating-stars-{uuid4().hex}",
+    })

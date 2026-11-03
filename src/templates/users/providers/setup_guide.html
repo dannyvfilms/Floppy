@@ -6,12 +6,15 @@
     <section class="settings-card">
       {% if not guide.bare %}<h4>{{ guide.title }}</h4>
       <p>{{ guide.description }}</p>{% endif %}
+      {% if guide.badge %}<p class="provider-small ui-guide-status"><strong>{{ guide.badge.label }}</strong> {{ guide.badge.summary }}</p>{% endif %}
       {% if guide.warning %}<p role="alert" data-testid="jellyfin-template-outdated"><strong>{{ guide.warning.title }}</strong> {{ guide.warning.text }}</p>{% endif %}
-      <h4>{{ guide.heading }}</h4>
+      {% if guide.primary %}<div class="ui-guide-primary"><span class="ui-guide-primary-label">{{ guide.primary.label }}</span><code>{{ guide_copy|dict_get:guide.primary.key }}</code></div>{% endif %}
+      {% if guide.collapsed %}<details class="ui-guide-details"><summary>{{ guide.heading }}</summary>{% else %}<h4>{{ guide.heading }}</h4>{% endif %}
       <ol class="ui-guide-steps">
         {% for step in guide.steps %}<li>{% include "users/providers/setup_guide_parts.html" with parts=step.parts|default:step %}
           {% if step.items %}<ul>{% for item in step.items %}<li>{% include "users/providers/setup_guide_parts.html" with parts=item %}</li>{% endfor %}</ul>{% endif %}</li>{% endfor %}
       </ol>
+      {% if guide.collapsed %}</details>{% endif %}
       {% for key, value in guide_copy.items %}<input type="hidden" data-copy-id="{{ key }}" value="{{ value }}" readonly>{% endfor %}
     </section>
   </div>

@@ -39,6 +39,7 @@ from app.history_entry_builders import (
     _serialize_album,
     _serialize_item,
     _serialize_show,
+    build_listening_session_entry,
     flat_anime_episode_entries,
     flat_anime_episode_watches,
 )
@@ -48,6 +49,7 @@ from app.models import (
     Anime,
     BoardGame,
     Book,
+    BookListeningSession,
     Comic,
     Episode,
     Game,
@@ -465,6 +467,23 @@ def build_history_day(
                 )
             else:
                 entries.append(entry)
+
+    # Audiobook listening sessions: one dated entry per session, so the history
+    # shows when and for how long a book was listened to, not only when it ended.
+    if (
+        requested_media_types is None
+        or MediaTypes.BOOK.value in requested_media_types
+    ):
+        sessions = (
+            BookListeningSession.objects.filter(
+                book__user=user,
+                started_at__gte=day_start,
+                started_at__lt=day_end,
+            )
+            .select_related("book__item")
+            .defer(*history_deferred_item_fields("book__item"))
+        )
+        entries.extend(build_listening_session_entry(session) for session in sessions)
 
     # Music (HistoricalMusic for the day)
     music_history = []

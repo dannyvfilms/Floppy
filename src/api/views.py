@@ -101,6 +101,7 @@ from .helpers import (
     try_parse_date,
     validate_body,
 )
+from .idempotency import idempotent_create
 from .schema import (
     LIBRARY_MEDIA_TYPE_PARAM,
     MEDIA_LIST_FILTER_PARAMS,
@@ -879,7 +880,23 @@ class MediaTypeListView(drf_views.APIView):
         return _media_list_response(request, media_type)
 
     @extend_schema(
-        parameters=[MEDIA_TYPE_COMPLETE_PARAM],
+        parameters=[
+            MEDIA_TYPE_COMPLETE_PARAM,
+            OpenApiParameter(
+                name="Idempotency-Key",
+                type=str,
+                location=OpenApiParameter.HEADER,
+                required=False,
+                description=(
+                    "Optional. Repeating the same key and body replays the "
+                    "first success (`idempotent_replayed: true`) instead of "
+                    "appending another play; the same key with a different "
+                    "body returns 422 `IDEMPOTENCY_KEY_REUSED`. Records last "
+                    "24 hours. Use after a timeout or 499, when the write may "
+                    "have committed."
+                ),
+            ),
+        ],
         operation_id="trackMedia",
         request=TrackMediaRequestSerializer,
         responses={
@@ -891,6 +908,7 @@ class MediaTypeListView(drf_views.APIView):
             500: DetailErrorSerializer,
         },
     )
+    @idempotent_create
     @rating_edit
     def post(self, request, media_type):
         """Create a new consumption for a media item.
@@ -898,6 +916,11 @@ class MediaTypeListView(drf_views.APIView):
         This append-oriented endpoint keeps its historical default: omitted
         status means Planning. Clients updating an existing play should first
         read its consumption_id and use the exact history route instead.
+
+        Send an `Idempotency-Key` header to make a retry safe: repeating the
+        same key and body replays the first success (header
+        `Idempotent-Replayed: true` and `idempotent_replayed: true` in the body) instead of appending another play. The
+        same key with a different body is refused with 422.
 
         `progress` set here (and returned by every media/history endpoint) is
         always this one consumption's own value, never a sum across a user's

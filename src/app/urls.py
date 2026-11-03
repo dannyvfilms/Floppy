@@ -139,6 +139,11 @@ urlpatterns = [
         name="media_details",
     ),
     path(
+        "podcast/show-tracker/<int:tracker_id>/update-score/",
+        views.update_podcast_show_score,
+        name="update_podcast_show_score",
+    ),
+    path(
         "update-score/<media_type:media_type>/<int:instance_id>",
         views.update_media_score,
         name="update_media_score",

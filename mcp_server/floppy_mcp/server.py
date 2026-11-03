@@ -485,6 +485,7 @@ async def track_media(  # noqa: C901, PLR0911, PLR0912
     new_play: bool = False,  # noqa: FBT001, FBT002
     mode: _TrackMode = "auto",
     skip_if_duplicate: bool = False,  # noqa: FBT001, FBT002
+    idempotency_key: str | None = None,
 ) -> Any:
     """Start tracking a media item, or update it if already tracked.
 
@@ -513,6 +514,11 @@ async def track_media(  # noqa: C901, PLR0911, PLR0912
     outcome (created | appended | updated | skipped), identity,
     consumption_id, applied (status/progress/progress_unit/dates as
     returned) and verify (where to read the entry back).
+
+    idempotency_key makes a retried create safe at the server: resending the
+    same key and arguments replays the first success (outcome "skipped", with
+    reason "replayed") instead of appending another play. Use a fresh key per
+    intended play, and reuse it only to retry that same call.
 
     Failures carry error_kind (invalid_input, not_found, conflict, busy,
     unreachable, backend_error, unknown_write_outcome) and write_state
@@ -636,9 +642,22 @@ async def track_media(  # noqa: C901, PLR0911, PLR0912
                     reason="an identical consumption already exists",
                 )
     body["media_id"] = media_id
-    result = await _write("post", f"media/{media_type}", json=body)
+    result = await _write(
+        "post",
+        f"media/{media_type}",
+        json=body,
+        headers={"Idempotency-Key": idempotency_key} if idempotency_key else None,
+    )
     if isinstance(result, dict) and result.get("error"):
         return {**_classify_write_error(result), "verify": _verify_ref(*media, None)}
+    if isinstance(result, dict) and result.get("idempotent_replayed"):
+        return _envelope(
+            result,
+            "skipped",
+            media,
+            None,
+            reason="replayed: this idempotency_key already completed",
+        )
     return _envelope(result, "appended" if tracked else "created", media, None)
 
 
