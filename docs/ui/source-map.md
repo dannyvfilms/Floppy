@@ -65,6 +65,7 @@ PY
 - `src/templates/app/components/sidebar_navigation_items.html`
 - `src/templates/app/components/sidebar_pin_menu.html`
 - `src/templates/base.html`
+- `frontend/ui/GlobalSearch.jsx`, `frontend/ui/mountGlobalSearch.jsx`, `frontend/ui/global-search.css` (header search form inside `base.html`; suggestions stay a server fragment)
 - `src/templates/base_public.html`
 
 ## SETTINGS-CARD

@@ -2,12 +2,13 @@ import './settings-card.css';
 import '../ui/controls.css';
 import '../ui/alphabet.css';
 import '../ui/media-card.css';
+import '../ui/global-search.css';
 import '../providers/provider-page.css';
 
 // One small loader on every page; React/RNW are fetched only when a card appears.
 const roots = new Map();
 const renderers = {};
-const selector = '[data-media-card-root], [data-rating-stars-root], [data-alphabet-root], [data-settings-card-root], [data-provider-root], [data-provider-credentials-root], [data-setup-guide-root], [data-settings-form-root], [data-provider-directory-root], [data-tooltip-root], [data-import-preferences-root], [data-link-chip-root], [data-account-connection-root], [data-account-import-action-root], [data-file-import-root], [data-backup-status-root]';
+const selector = '[data-global-search-root], [data-media-card-root], [data-rating-stars-root], [data-alphabet-root], [data-settings-card-root], [data-provider-root], [data-provider-credentials-root], [data-setup-guide-root], [data-settings-form-root], [data-provider-directory-root], [data-tooltip-root], [data-import-preferences-root], [data-link-chip-root], [data-account-connection-root], [data-account-import-action-root], [data-file-import-root], [data-backup-status-root]';
 const hostsWithin = (element) => [
   ...(element.matches?.(selector) ? [element] : []),
   ...element.querySelectorAll?.(selector) || [],
@@ -18,22 +19,23 @@ const hostsWithin = (element) => [
 async function mountWithin(element) {
   const hosts = hostsWithin(element);
   if (!hosts.length) return;
-  for (const host of hosts) {
-    const kind = host.matches('[data-media-card-root]') ? 'mediaCard' : host.matches('[data-rating-stars-root]') ? 'ratingStars' : host.matches('[data-alphabet-root]') ? 'alphabet' : host.matches('[data-backup-status-root]') ? 'backupStatus' : host.matches('[data-file-import-root]') ? 'fileImport' : host.matches('[data-account-import-action-root]') ? 'accountImportAction' : host.matches('[data-account-connection-root]') ? 'accountConnection' : host.matches('[data-link-chip-root]') ? 'linkChip' : host.matches('[data-import-preferences-root]') ? 'importPreferences' : host.matches('[data-tooltip-root]') ? 'tooltip' : host.matches('[data-provider-directory-root]') ? 'directory' : host.matches('[data-settings-form-root]') ? 'settingsForm' : host.matches('[data-setup-guide-root]') ? 'guide' : host.matches('[data-provider-credentials-root]') ? 'credentials' : host.matches('[data-provider-root]') ? 'provider' : 'card';
+  // Islands mount side by side so one slow chunk never holds up the others.
+  await Promise.all(hosts.map(async (host) => {
+    const kind = host.matches('[data-global-search-root]') ? 'globalSearch' : host.matches('[data-media-card-root]') ? 'mediaCard' : host.matches('[data-rating-stars-root]') ? 'ratingStars' : host.matches('[data-alphabet-root]') ? 'alphabet' : host.matches('[data-backup-status-root]') ? 'backupStatus' : host.matches('[data-file-import-root]') ? 'fileImport' : host.matches('[data-account-import-action-root]') ? 'accountImportAction' : host.matches('[data-account-connection-root]') ? 'accountConnection' : host.matches('[data-link-chip-root]') ? 'linkChip' : host.matches('[data-import-preferences-root]') ? 'importPreferences' : host.matches('[data-tooltip-root]') ? 'tooltip' : host.matches('[data-provider-directory-root]') ? 'directory' : host.matches('[data-settings-form-root]') ? 'settingsForm' : host.matches('[data-setup-guide-root]') ? 'guide' : host.matches('[data-provider-credentials-root]') ? 'credentials' : host.matches('[data-provider-root]') ? 'provider' : 'card';
     try {
-      renderers[kind] ??= (kind === 'mediaCard' ? import('../ui/mountMediaCard.jsx') : kind === 'ratingStars' ? import('../ui/mountRatingStars.jsx') : kind === 'alphabet' ? import('../ui/mountAlphabet.jsx') : kind === 'backupStatus' ? import('./BackupStatus.jsx') : kind === 'fileImport' ? import('../providers/FileImport.jsx') : (kind === 'accountConnection' || kind === 'accountImportAction') ? import('../providers/AccountConnection.jsx') : kind === 'importPreferences' ? import('../providers/ImportPreferences.jsx') : kind === 'directory' ? import('../providers/Directory.jsx') : kind === 'settingsForm' ? import('../providers/SettingsForm.jsx') : kind === 'guide' ? import('../providers/SetupGuide.jsx') : kind === 'credentials' ? import('../providers/Credentials.jsx') : kind === 'provider' ? import('../providers/mount.jsx') : import('./mount.jsx'))
+      renderers[kind] ??= (kind === 'globalSearch' ? import('../ui/mountGlobalSearch.jsx') : kind === 'mediaCard' ? import('../ui/mountMediaCard.jsx') : kind === 'ratingStars' ? import('../ui/mountRatingStars.jsx') : kind === 'alphabet' ? import('../ui/mountAlphabet.jsx') : kind === 'backupStatus' ? import('./BackupStatus.jsx') : kind === 'fileImport' ? import('../providers/FileImport.jsx') : (kind === 'accountConnection' || kind === 'accountImportAction') ? import('../providers/AccountConnection.jsx') : kind === 'importPreferences' ? import('../providers/ImportPreferences.jsx') : kind === 'directory' ? import('../providers/Directory.jsx') : kind === 'settingsForm' ? import('../providers/SettingsForm.jsx') : kind === 'guide' ? import('../providers/SetupGuide.jsx') : kind === 'credentials' ? import('../providers/Credentials.jsx') : kind === 'provider' ? import('../providers/mount.jsx') : import('./mount.jsx'))
         .catch(error => { delete renderers[kind]; throw error; });
       const renderer = await renderers[kind];
-      if (!host.isConnected || roots.has(host)) continue;
+      if (!host.isConnected || roots.has(host)) return;
       const script = document.getElementById(host.dataset.propsId);
-      if (!script || !host.parentElement.contains(script)) continue;
+      if (!script || !host.parentElement.contains(script)) return;
       const props = JSON.parse(script.textContent);
-      roots.set(host, (kind === 'mediaCard' ? renderer.mountMediaCard : kind === 'ratingStars' ? renderer.mountRatingStars : kind === 'alphabet' ? renderer.mountAlphabet : kind === 'backupStatus' ? renderer.mountBackupStatus : kind === 'fileImport' ? renderer.mountFileImport : kind === 'accountImportAction' ? renderer.mountAccountImportAction : kind === 'accountConnection' ? renderer.mountAccountConnection : kind === 'linkChip' ? renderer.mountLinkChip : kind === 'importPreferences' ? renderer.mountImportPreferences : kind === 'directory' ? renderer.mountDirectory : kind === 'settingsForm' ? renderer.mountSettingsForm : kind === 'guide' ? renderer.mountSetupGuide : kind === 'credentials' ? renderer.mountCredentials : kind === 'provider' ? renderer.mountProvider : kind === 'tooltip' ? renderer.mountTooltip : renderer.mountCard)(host, props));
+      roots.set(host, (kind === 'globalSearch' ? renderer.mountGlobalSearch : kind === 'mediaCard' ? renderer.mountMediaCard : kind === 'ratingStars' ? renderer.mountRatingStars : kind === 'alphabet' ? renderer.mountAlphabet : kind === 'backupStatus' ? renderer.mountBackupStatus : kind === 'fileImport' ? renderer.mountFileImport : kind === 'accountImportAction' ? renderer.mountAccountImportAction : kind === 'accountConnection' ? renderer.mountAccountConnection : kind === 'linkChip' ? renderer.mountLinkChip : kind === 'importPreferences' ? renderer.mountImportPreferences : kind === 'directory' ? renderer.mountDirectory : kind === 'settingsForm' ? renderer.mountSettingsForm : kind === 'guide' ? renderer.mountSetupGuide : kind === 'credentials' ? renderer.mountCredentials : kind === 'provider' ? renderer.mountProvider : kind === 'tooltip' ? renderer.mountTooltip : renderer.mountCard)(host, props));
     } catch (error) {
       // Retain the server-rendered fallback and allow unrelated islands to mount.
       console.error('Settings component could not mount', error);
     }
-  }
+  }));
 }
 
 function unmountWithin(element) {

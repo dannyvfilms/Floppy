@@ -16,6 +16,11 @@ Every changed component must record ownership/migration state for each affected
 surface and update the source map. Only evidenced compatibility blockers permit
 deferral; record their reopening condition and report them explicitly.
 
+A component is migrated on every surface that uses it, public pages (public lists,
+auth and error screens) and signed-in pages alike. Check both shells (`base.html` and
+`base_public.html`) and the `public_view` paths before marking a surface done, and
+record any public consumer that is left behind.
+
 - `Existing`: current implementation, not migrated.
 - `Ready`: foundation validated and component assessed for migration.
 - `Web Migrated`: accepted browser replacement; native verification stays separate.
@@ -264,6 +269,8 @@ can inform a focused completion pass.
 - Contract: type/local-All/provider queries, pagination/matched titles, two-character suggestions, active-descendant arrows/Enter, shortcut ignores editing, photo ISBN/error/manual fallback.
 - Data: `src/app/search_views.py`, provider services, manual artist/album routes; API search parity unverified.
 - Reuse/blockers: result/selection values shared; browser keyboard/file/blob and ZXing decoding need native camera equivalents.
+- Status: `Partial / coexisting`. The header search form (input, media-type menu, barcode button and its error toast) is React-owned through `frontend/ui/GlobalSearch.jsx` and `mountGlobalSearch.jsx`, fed by the `global_search_react` tag in `app_tags.py`. It appears on every signed-in page. The suggestions list is still a server fragment that htmx swaps into `#search-suggestions`, and `searchAutocomplete.js` and `searchShortcut.js` still drive its keyboard handling through the same element ids. The Alpine form stays inside the host as the fallback. Search results pages are unchanged.
+- Verification: `app.tests.test_global_search_props`. Chromium (built-in browser, macOS) on `/discover`: form mounts with the right placeholder, typing shows suggestions, the type menu opens with 12 options, picking Books submits `/search?q=matrix&media_type=book`. The barcode scan flow (camera, decode, error toast) was ported but not exercised, and nothing was checked on a phone or in other themes. iOS and Android not tested.
 - Validation targets: `src/app/tests/test_search_suggestions.py`, `src/app/tests/views/test_media_search.py`, barcode selfcheck.
 
 ### RAILS — Horizontal scrolling and load more

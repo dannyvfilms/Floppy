@@ -83,7 +83,10 @@ authentication redirects, CSRF injection, modal containers and response events.
 code matters as much as files in `src/static/js/`. `package.json` pins React,
 React DOM, RNW and esbuild alongside Tailwind. `npm run build:ui` emits committed,
 self-hosted assets under `src/static/ui`; `npm run check:ui` checks reproducibility.
-The tiny page loader fetches the shared React runtime only when an island appears.
+The tiny page loader fetches the shared React runtime when an island appears. The
+header search form is an island on every signed-in page, so the runtime (about 97 KB
+gzipped plus 5 KB of CSS) loads on each of them. This is deliberate: the application
+is moving to React page by page, and a runtime that loads everywhere is the end state.
 There is no native application or Expo build pipeline.
 The deployed stylesheet is `src/static/css/main.css`, generated from `input.css`.
 

@@ -2321,6 +2321,55 @@ def media_row_react(context, item, media, title, matched_title):
     }
 
 
+@register.simple_tag(takes_context=True)
+def global_search_react(context, search_type):
+    """Return the props the shared React header search form needs."""
+    from uuid import uuid4
+
+    from django.utils.translation import gettext as _
+
+    request = context.get("request")
+    return {
+        "id": f"global-search-{uuid4().hex[:8]}",
+        "props": {
+            "action": reverse("search"),
+            "query": request.GET.get("q", "") if request else "",
+            "selectedType": {
+                "display": str(media_type_readable_plural(search_type)),
+                "value": str(search_type),
+            },
+            "mediaTypes": [
+                {"display": str(item["display"]), "value": str(item["value"])}
+                for item in get_search_media_types(context.get("user"))
+            ],
+            "barcodeTypes": ["book", "manga", "comic", "comicissue"],
+            "suggestionsUrl": reverse("search_suggestions"),
+            "labels": {
+                "inputLabel": str(_("Search your library or online")),
+                "search": str(_("Search")),
+                "scan": str(_("Scan barcode")),
+                "dismiss": str(_("Dismiss error")),
+                "placeholderAll": str(_("Search your whole library...")),
+                "placeholderShort": str(_("Search %(media)s...")),
+                "placeholderLong": str(
+                    _("Search %(media)s in your library or online..."),
+                ),
+                "barcodeNotLoaded": str(
+                    _("Barcode scanner utilities not loaded. Please refresh the page."),
+                ),
+                "barcodeUnreadable": str(
+                    _(
+                        "Could not read barcode from image. "
+                        "Please try again or enter ISBN manually.",
+                    ),
+                ),
+                "barcodeFailed": str(_("Error scanning barcode: ")),
+                "tryAgain": str(_("Please try again.")),
+            },
+        },
+    }
+
+
 # Icons the detail action row may hold, in display order. Below 400px wide the
 # row keeps this many cells (the More menu is one of them) so each stays tappable.
 DETAIL_ROW_PHONE_CAP = 5
