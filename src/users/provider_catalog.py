@@ -346,7 +346,7 @@ def catalog():
                     {"game"} if "games" in spec.media_tags else set()
                 )
     result["jellyfin"]["import"] = True
-    for slug in ("jellyfin", "emby", "kodi"):
+    for slug in ("jellyfin", "emby", "kodi", "plex"):
         result[slug]["sync"] = True
     for slug in ("mal", "tmdb", "wetrakr"):
         result[slug]["sync"] = True

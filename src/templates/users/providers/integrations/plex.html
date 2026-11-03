@@ -1,4 +1,4 @@
-{% load i18n static app_tags user_tags %}
+{% load i18n static app_tags user_tags ui_tags %}
     {# Plex #}
     <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
          x-show="activeIntegration === 'all' || activeIntegration === 'plex'"
@@ -189,8 +189,11 @@
         {% endif %}
       </div>
 
-      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4" x-data="{ plexPushOpen: false }">
-        <h4 class="text-sm font-medium mb-3">{% translate "Send Watched to Plex" %}</h4>
+{% endif %}
+{% if not provider_tab or provider_tab == 'sync' %}
+{% translate "Send Watched to Plex" as plex_push_title %}
+{% settings_card title=plex_push_title %}
+      <div x-data="{ plexPushOpen: false }">
         <p class="text-[var(--color-text-muted)] mb-4 text-sm">
           {% translate "Mark what you watched in Floppy as watched for you or a Plex Home user. You review every change first; nothing is marked unwatched." %}
         </p>
@@ -222,7 +225,7 @@
           <p class="text-sm text-[var(--color-warning-text)]">{% translate "Connect Plex from its Connection tab to use this." %}</p>
         {% endif %}
       </div>
-
+{% endsettings_card %}
 {% endif %}
 {% if not provider_tab or provider_tab == 'tracking' %}
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4">

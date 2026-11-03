@@ -483,7 +483,7 @@ class PlexPushViewTests(TestCase):
         )
 
     def test_integrations_card_follows_the_plex_connection(self):
-        url = reverse("provider_detail", args=["plex"]) + "?tab=import"
+        url = reverse("provider_detail", args=["plex"]) + "?tab=sync"
         page = self.client.get(url)
         self.assertContains(page, "Send Watched to Plex")
         self.assertNotContains(page, reverse("plex_push_targets"))
@@ -494,6 +494,10 @@ class PlexPushViewTests(TestCase):
         # Opening the page never calls plex.tv; users load on request.
         users.assert_not_called()
         self.assertContains(page, reverse("plex_push_targets"))
+        import_tab = self.client.get(
+            reverse("provider_detail", args=["plex"]) + "?tab=import",
+        )
+        self.assertNotContains(import_tab, "Send Watched to Plex")
         self.assertNotContains(
             self.client.get(reverse("mal_export"), follow=True), "plex_push",
         )
