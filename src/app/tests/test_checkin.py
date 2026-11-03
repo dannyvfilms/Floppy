@@ -131,6 +131,18 @@ class CheckInTests(TestCase):
         self.assertIsNotNone(card["scrobble_expires_at_ts"])
         self.assertEqual(self.phase(planning), checkin.PHASE_ACTIVE)
 
+    def test_start_card_uses_the_backdrop_not_the_stored_poster(self):
+        self.movie(Status.PLANNING.value)
+
+        with patch(
+            "app.helpers.get_tmdb_backdrop_image",
+            return_value="http://example.com/heat-backdrop.jpg",
+        ):
+            self.start()
+
+        card = self.card()
+        self.assertEqual(card["image"], "http://example.com/heat-backdrop.jpg")
+
     def test_start_on_a_completed_movie_adds_a_rewatch_row(self):
         done = self.movie(Status.COMPLETED.value)
 
