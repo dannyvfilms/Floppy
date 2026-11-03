@@ -215,6 +215,7 @@ class HomePodcastShowShelfTests(TestCase):
         response = self.client.get(reverse("home"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "The Show", count=3)  # title, alt text, link
+        # title, alt text, link, and the title in the React card's props
+        self.assertContains(response, "The Show", count=4)
         self.assertNotContains(response, "Episode 1")
         self.assertNotContains(response, "Episode 2")
