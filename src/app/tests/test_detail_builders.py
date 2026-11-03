@@ -283,22 +283,50 @@ class OtherBookFormatsTests(TestCase):
         return item
 
     def test_links_ebook_and_audiobook_of_same_work(self):
-        from app.detail_builders import build_other_book_formats
+        from app.detail_builders import build_book_formats
 
         ebook = self._book("OL1", Sources.OPENLIBRARY.value, "ebook")
         audio = self._book("abs1", Sources.AUDIOBOOKSHELF.value, "audiobook")
 
-        chips = build_other_book_formats(self.user, ebook)
+        chips = build_book_formats(self.user, ebook)
 
-        self.assertEqual([c["label"] for c in chips], ["Audiobook"])
-        self.assertIn("abs1", chips[0]["href"])
+        self.assertEqual([c["label"] for c in chips], ["eBook", "Audiobook"])
+        self.assertIsNone(chips[0]["href"])
+        self.assertIn("abs1", chips[1]["href"])
         self.assertEqual(
-            [c["label"] for c in build_other_book_formats(self.user, audio)],
-            ["eBook"],
+            [c["label"] for c in build_book_formats(self.user, audio)],
+            ["eBook", "Audiobook"],
+        )
+
+    def test_plain_book_and_audiobook_list_book_first(self):
+        from app.detail_builders import build_book_formats
+
+        audio = self._book("abs5", Sources.AUDIOBOOKSHELF.value, "audiobook")
+        self._book("OL5", Sources.OPENLIBRARY.value, "")
+
+        self.assertEqual(
+            [c["label"] for c in build_book_formats(self.user, audio)],
+            ["Book", "Audiobook"],
+        )
+
+    def test_several_audiobooks_are_labelled_by_narrator(self):
+        from app.detail_builders import build_book_formats
+
+        ebook = self._book("OL6", Sources.OPENLIBRARY.value, "")
+        self._book(
+            "abs6", Sources.AUDIOBOOKSHELF.value, "audiobook", narrators=["Ray Porter"],
+        )
+        self._book(
+            "abs7", Sources.AUDIOBOOKSHELF.value, "audiobook", narrators=["Andy Weir"],
+        )
+
+        self.assertEqual(
+            [c["label"] for c in build_book_formats(self.user, ebook)],
+            ["Book", "Audiobook (Ray Porter)", "Audiobook (Andy Weir)"],
         )
 
     def test_matches_on_isbn_despite_title_difference(self):
-        from app.detail_builders import build_other_book_formats
+        from app.detail_builders import build_book_formats
 
         ebook = self._book(
             "OL2", Sources.OPENLIBRARY.value, "ebook", isbn=["978-0-441-17271-9"],
@@ -312,25 +340,25 @@ class OtherBookFormatsTests(TestCase):
             isbn=["9780441172719"],
         )
 
-        self.assertEqual(len(build_other_book_formats(self.user, ebook)), 1)
+        self.assertEqual(len(build_book_formats(self.user, ebook)), 2)
 
     def test_same_title_different_author_is_not_linked(self):
-        from app.detail_builders import build_other_book_formats
+        from app.detail_builders import build_book_formats
 
         ebook = self._book("OL3", Sources.OPENLIBRARY.value, "ebook")
         self._book(
             "abs3", Sources.AUDIOBOOKSHELF.value, "audiobook", authors=["Someone Else"],
         )
 
-        self.assertEqual(build_other_book_formats(self.user, ebook), [])
+        self.assertEqual(build_book_formats(self.user, ebook), [])
 
     def test_ignores_other_users_books_and_never_merges_items(self):
-        from app.detail_builders import build_other_book_formats
+        from app.detail_builders import build_book_formats
 
         ebook = self._book("OL4", Sources.OPENLIBRARY.value, "ebook")
         self._book(
             "abs4", Sources.AUDIOBOOKSHELF.value, "audiobook", user=self.other_user,
         )
 
-        self.assertEqual(build_other_book_formats(self.user, ebook), [])
+        self.assertEqual(build_book_formats(self.user, ebook), [])
         self.assertEqual(Item.objects.filter(title="Dune").count(), 2)
