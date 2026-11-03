@@ -30,7 +30,7 @@ function useSelection(host, itemId) {
 
 function Card({ host, props, slots }) {
   const selection = useSelection(host, props.model.bulkItemId);
-  return <MediaCard model={props.model} slots={slots} labels={props.labels} selection={selection} />;
+  return <MediaCard model={props.model} slots={slots} labels={props.labels} selection={selection} host={host} />;
 }
 
 export function mountMediaCard(host, props) {
@@ -38,7 +38,9 @@ export function mountMediaCard(host, props) {
   if (props.model.layout === 'row') {
     for (const name of ['meta', 'actions']) slots[name] = host.querySelector(`[data-card-slot-source="${name}"]`);
   } else {
-    for (const [name, selector] of Object.entries(sources)) slots[name] = host.querySelector(selector);
+    for (const [name, selector] of Object.entries(sources)) {
+      if (name !== 'overlay' || !props.model.actions) slots[name] = host.querySelector(selector);
+    }
   }
   const restore = mountRoot(host, <Card host={host} props={props} slots={slots} />);
   // The release-year loader runs once per page or swap, often before this mount.

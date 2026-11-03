@@ -10,6 +10,7 @@ from django.urls import reverse
 from django.utils.translation import gettext as _
 from django.utils.translation import ngettext
 
+from app.icon_specs import file_icon
 from app.models import MediaTypes, Status
 from app.templatetags import app_tags
 from users.templatetags import user_tags
@@ -395,6 +396,7 @@ def card_model(ctx):
         ],
         "progressBar": _progress_bar(ctx, media_type),
         "lines": _subtitle_lines(ctx, media_type),
+        "actions": card_actions(ctx),
     }
 
 
@@ -435,7 +437,7 @@ def _history_info_parts(entry, media_type, history_mode, user):
     return [{"text": when(played, user)}]
 
 
-def history_card_model(entry, card_class, history_mode, user):
+def history_card_model(entry, card_class, history_mode, user, request=None):
     """Return the History card's visible content for the shared React card."""
     from users.card_metadata import card_lines, hides_zero_rating, shows_score
 
@@ -522,6 +524,7 @@ def history_card_model(entry, card_class, history_mode, user):
         "progressBar": None,
         "scoreText": score_text,
         "lines": lines,
+        "actions": _with_href(history_actions(entry, history_mode, user, request), href),
     }
 
 
@@ -561,4 +564,295 @@ def row_card_model(item, media, title, matched_title, user):
         "lines": lines,
         "cornerChips": [],
         "titleLinks": [],
+    }
+
+
+TONES = {"track": "indigo", "lists": "emerald", "history": "amber", "plan": "indigo", "hide": "rose"}
+
+
+def _history_href(ctx, media_type):
+    """Return the History page filtered to this item, as the hover button links."""
+    from urllib.parse import quote
+
+    item, media = ctx["item"], ctx.get("media")
+    kind = _safe(item, "media_type")
+    media_id = quote(str(_safe(item, "media_id") or ""), safe="")
+    source = quote(str(_safe(item, "source") or ""), safe="")
+    base = reverse("history")
+    show = _safe(media, "show") or _safe(_safe(media, "tracker"), "show")
+    if kind in {MediaTypes.SEASON.value, MediaTypes.EPISODE.value}:
+        query = f"media_type={MediaTypes.TV.value}&media_id={media_id}&source={source}"
+        if _safe(item, "season_number"):
+            query += f"&season_number={_safe(item, 'season_number')}"
+    elif kind == MediaTypes.TV.value:
+        query = f"media_type={MediaTypes.TV.value}&media_id={media_id}&source={source}"
+    elif kind == MediaTypes.PODCAST.value and show:
+        query = f"media_type={MediaTypes.PODCAST.value}&podcast_show={show.id}"
+    else:
+        query = f"media_type={kind}&media_id={media_id}&source={source}"
+    if kind in {MediaTypes.GAME.value, MediaTypes.BOARDGAME.value}:
+        query += "&logging_style=sessions"
+    return f"{base}?{query}"
+
+
+def card_actions(ctx):
+    """Return the hover buttons, their modal targets and list-order controls."""
+    from django.conf import settings
+
+    mode = ctx.get("hover_action_mode") or "standard"
+    if ctx.get("is_recommend_mode") or ctx.get("public_view") or mode == "none":
+        return None
+    item, media = ctx["item"], ctx.get("media")
+    media_type = ctx.get("card_media_type") or _safe(item, "media_type")
+    uid = ctx.get("card_uid")
+    suffix = f"-{uid}" if uid else ""
+    row = ctx.get("home_row_id")
+    return_url = ctx.get("return_url") or (
+        ctx["request"].get_full_path() if ctx.get("request") else ""
+    )
+    media_pk = _safe(media, "id")
+    show = ctx.get("podcast_show") if ctx.get("use_podcast_show") else None
+    album = _safe(media, "album") if _safe(media, "home_music_card") else None
+    artist = _safe(media, "artist") if _safe(media, "home_music_card") else None
+    lists_id = f"{app_tags.component_id('lists', item)}{suffix}"
+    track_id = f"{app_tags.component_id('track', item, media_pk)}{suffix}"
+    items = []
+
+    def lists_button():
+        return {
+            "kind": "modal",
+            "modal": "lists",
+            "tone": TONES["lists"],
+            "title": _("Add to custom lists"),
+            "icon": file_icon("list-add"),
+            "url": app_tags.media_view_url("lists_modal", item),
+            "vals": {"return_url": return_url},
+            "target": f"#{lists_id}",
+        }
+
+    def history_button():
+        return {
+            "kind": "link",
+            "tone": TONES["history"],
+            "title": _("View your activity history"),
+            "icon": file_icon("history"),
+            "href": _history_href(ctx, media_type),
+        }
+
+    def track_button(title, url, vals, target, icon="edit"):
+        return {
+            "kind": "modal",
+            "modal": "track",
+            "tone": TONES["track"],
+            "title": title,
+            "icon": file_icon(icon),
+            "url": url,
+            "vals": vals,
+            "target": target,
+        }
+
+    if mode == "discover":
+        base = {
+            "candidate_media_type": media_type,
+            "identity_media_type": _safe(item, "identity_media_type") or "",
+            "library_media_type": _safe(item, "library_media_type") or "",
+            "source": _safe(item, "source"),
+            "media_id": _safe(item, "media_id"),
+            "season_number": _safe(item, "season_number")
+            if _safe(item, "season_number") is not None
+            else "",
+            "active_media_type": ctx.get("discover_active_media_type") or "all",
+            "show_more": "1" if ctx.get("discover_show_more") else "0",
+            "row_key": ctx.get("discover_row_key") or "",
+            "title": _title(ctx, media_type),
+            "image": _safe(item, "image") or settings.IMG_NONE,
+            "release_date": str(_safe(item, "release_date") or ""),
+            "discover_debug": "1" if ctx.get("discover_debug") else "0",
+        }
+        target = f"#discover-row-{ctx['discover_row_key']}" if ctx.get("discover_row_key") else "#discover-rows"
+        swap = "outerHTML" if ctx.get("discover_row_key") else "innerHTML"
+        for key, title, icon, tone in (
+            ("planning", _("Add to Planning"), "planning", "plan"),
+            ("dismiss", _("Hide from Discover"), "eye-closed", "hide"),
+        ):
+            items.append(
+                {
+                    "kind": "post",
+                    "tone": TONES[tone],
+                    "title": title,
+                    "icon": file_icon(f"states/{icon}" if icon == "planning" else icon),
+                    "url": reverse("discover_action"),
+                    "vals": {**base, "action": key},
+                    "target": target,
+                    "swap": swap,
+                },
+            )
+        items.append(lists_button())
+    elif _safe(item, "media_type") == MediaTypes.EPISODE.value:
+        vals = {"return_url": return_url, "episode_number": str(_safe(item, "episode_number"))}
+        vals.update({"instance_id": str(media_pk)} if media else {"is_create": "1"})
+        items.append(
+            track_button(
+                _("Watched") if media else _("Mark watched"),
+                reverse(
+                    "track_modal",
+                    kwargs={
+                        "source": _safe(item, "source"),
+                        "media_type": "episode",
+                        "media_id": _safe(item, "media_id"),
+                        "season_number": _safe(item, "season_number"),
+                    },
+                ),
+                vals,
+                f"#{track_id}",
+            ),
+        )
+        items.extend([lists_button(), history_button()])
+    else:
+        home = {"home_row_id": str(row)} if row else {}
+        if show:
+            target = f"#podcast-show-track-modal-{show.id}-{media_pk}{f'-home-{row}' if row else ''}"
+            items.append(
+                track_button(
+                    _("Edit tracking"),
+                    reverse("podcast_show_track_modal", args=[show.id]),
+                    {"return_url": return_url, **home},
+                    target,
+                ),
+            )
+        elif album:
+            items.append(
+                track_button(
+                    _("Edit tracking"),
+                    reverse("album_track_modal", args=[album.id]),
+                    {"return_url": return_url, **home},
+                    f"#album-track-modal-{album.id}{f'-home-{row}' if row else ''}",
+                ),
+            )
+        elif artist:
+            items.append(
+                track_button(
+                    _("Edit tracking"),
+                    reverse("artist_track_modal", args=[artist.id]),
+                    {"return_url": return_url, **home},
+                    f"#artist-track-modal-{artist.id}{f'-home-{row}' if row else ''}",
+                ),
+            )
+        else:
+            vals = {"return_url": return_url, **home}
+            if media:
+                vals["instance_id"] = str(media_pk)
+            items.append(
+                track_button(
+                    _("Add to tracker"),
+                    app_tags.media_view_url("track_modal", item),
+                    vals,
+                    f"#{track_id}",
+                ),
+            )
+        items.extend([lists_button(), history_button()])
+
+    overlay_href = (
+        _safe(media, "card_tile_url")
+        or (app_tags.music_album_url(media.album) if _safe(media, "album") else None)
+        or (app_tags.music_artist_url(media.artist) if _safe(media, "artist") else None)
+        or (_href({**ctx, "public_view": False, "public_list_reference": None}))
+    )
+    ordering = None
+    if ctx.get("list_ordering_enabled") and ctx.get("custom_list") is not None:
+        ordering = {
+            "url": reverse("list_reorder_item", args=[ctx["custom_list"].id]),
+            "itemId": _safe(item, "id"),
+            "dragIcon": file_icon("drag-handle"),
+            "labels": {
+                "first": _("Move to first"),
+                "back": _("Move back"),
+                "next": _("Move next"),
+                "last": _("Move to last"),
+                "drag": _("Drag to reorder"),
+            },
+        }
+    return {
+        "href": overlay_href,
+        "items": items,
+        "ordering": ordering,
+        "modals": {"track": track_id, "lists": lists_id},
+        "csrfToken": str(ctx.get("csrf_token") or ""),
+        "clickable": bool(getattr(ctx.get("user"), "clickable_media_cards", False)),
+    }
+
+
+def _with_href(actions, href):
+    """Point a card's overlay link at its page."""
+    if actions:
+        actions["href"] = href
+    return actions
+
+
+def history_actions(entry, history_mode, user, request):
+    """Return the History card's hover buttons: edit tracking, lists, history."""
+    from urllib.parse import quote
+
+    if history_mode == "release" or not (_safe(entry, "item") and _safe(_safe(entry, "item"), "media_type")):
+        return None
+    item = entry["item"] if isinstance(entry, dict) else entry.item
+    media_type = _safe(entry, "media_type")
+    key = _safe(entry, "entry_key")
+    return_url = request.get_full_path() if request else ""
+    track_vals = {"return_url": return_url, "standard_modal": "1"}
+    if _safe(entry, "instance_id"):
+        track_vals["instance_id"] = str(entry["instance_id"] if isinstance(entry, dict) else entry.instance_id)
+    media_id = quote(str(_safe(item, "media_id") or ""), safe="")
+    source = quote(str(_safe(item, "source") or ""), safe="")
+    show = _safe(entry, "show")
+    if media_type == MediaTypes.MUSIC.value and _safe(entry, "album"):
+        album = entry["album"] if isinstance(entry, dict) else entry.album
+        query = f"album={_safe(album, 'id')}"
+    elif media_type == MediaTypes.PODCAST.value and show:
+        query = f"media_type={MediaTypes.PODCAST.value}&podcast_show={_safe(show, 'id')}"
+    elif media_type == MediaTypes.EPISODE.value:
+        query = f"media_type={MediaTypes.TV.value}&media_id={media_id}&source={source}"
+        if _safe(item, "season_number"):
+            query += f"&season_number={_safe(item, 'season_number')}"
+    else:
+        query = f"media_type={media_type}&media_id={media_id}&source={source}"
+    if media_type in {MediaTypes.GAME.value, MediaTypes.BOARDGAME.value}:
+        query += "&logging_style=sessions"
+    track_id = app_tags.component_id("track", item, key)
+    lists_id = app_tags.component_id("lists", item, key)
+    return {
+        "href": None,
+        "items": [
+            {
+                "kind": "modal",
+                "modal": "track",
+                "tone": "indigo",
+                "title": _("Edit tracking"),
+                "icon": file_icon("edit"),
+                "url": app_tags.media_view_url("track_modal", item),
+                "vals": track_vals,
+                "target": f"#{track_id}",
+            },
+            {
+                "kind": "modal",
+                "modal": "lists",
+                "tone": "emerald",
+                "title": _("Add to custom lists"),
+                "icon": file_icon("list-add"),
+                "url": app_tags.media_view_url("lists_modal", item),
+                "vals": {"return_url": return_url},
+                "target": f"#{lists_id}",
+            },
+            {
+                "kind": "link",
+                "tone": "amber",
+                "title": _("View your activity history"),
+                "icon": file_icon("history"),
+                "href": f"{reverse('history')}?{query}",
+            },
+        ],
+        "ordering": None,
+        "modals": {"track": track_id, "lists": lists_id},
+        "csrfToken": "",
+        "clickable": bool(getattr(user, "clickable_media_cards", False)),
     }

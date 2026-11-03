@@ -2291,7 +2291,7 @@ def history_card_react(context, entry, card_class, history_mode):
         "id": f"media-card-{uuid4().hex[:8]}",
         "props": {
             "model": history_card_model(
-                entry, card_class, history_mode, context.get("user"),
+                entry, card_class, history_mode, context.get("user"), context.get("request"),
             ),
             "labels": {
                 "altTitle": str(_("Show alternative title")),

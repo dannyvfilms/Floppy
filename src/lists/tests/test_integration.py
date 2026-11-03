@@ -128,6 +128,10 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         lists modal flow, not the overlay's hit-testing, so address the button
         directly and keep the assertions below meaningful.
         """
+        # The shared React card replaces the server overlay once it mounts.
+        expect(
+            self.page.locator('[data-media-card-root][data-react-mounted="true"]').first,
+        ).to_be_attached()
         button = (
             self.page.locator(".media-card-overlay")
             .first.locator(".relative > button:nth-child(2)")
@@ -174,7 +178,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
     def test_blank_modal(self):
         """Test the blank modal for creating a list."""
         self.page.get_by_role("button", name="TV Shows").click()
-        self.page.locator("li").filter(has_text=re.compile(r"^Anime$")).click()
+        self.page.locator("form[action='/search'] li").filter(has_text=re.compile(r"^Anime$")).click()
         self.search_and_submit("perfect blue")
         self.click_card_lists_action()
         expect(self.page.locator('[id^="lists-anime-437-"]')).to_contain_text(
@@ -201,7 +205,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
         # Add item to list
         self.page.get_by_role("button", name="TV Shows").click()
-        self.page.locator("li").filter(has_text=re.compile(r"^Anime$")).click()
+        self.page.locator("form[action='/search'] li").filter(has_text=re.compile(r"^Anime$")).click()
         self.search_and_submit("perfect blue")
         self.click_card_lists_action()
         expect(self.page.locator('[id^="lists-anime-437-"]')).to_contain_text("Lists test Add")

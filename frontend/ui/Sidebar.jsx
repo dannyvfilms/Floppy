@@ -1,25 +1,10 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Icon } from './Icon';
 
 // The signed-in sidebar. Class names match the Django sidebar it replaces, so
 // every theme keeps applying. Pins, pinned lists and group open states keep the
 // same localStorage keys the page's list-pin buttons and saved-view scripts use.
-
-const camel = (name) => name.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase());
-
-function Shape({ node }) {
-  const props = {};
-  for (const [name, value] of Object.entries(node.attrs)) if (name !== 'class') props[camel(name)] = value;
-  return React.createElement(node.tag, props, ...node.children.map((child, index) => <Shape key={index} node={child} />));
-}
-
-export function Icon({ spec, className }) {
-  return <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox={spec.viewBox}
-    fill={spec.root.fill} stroke={spec.root.stroke} strokeWidth={spec.root['stroke-width']}
-    strokeLinecap={spec.root['stroke-linecap']} strokeLinejoin={spec.root['stroke-linejoin']} className={className} aria-hidden="true">
-    {spec.children.map((child, index) => <Shape key={index} node={child} />)}
-  </svg>;
-}
 
 const rowClass = (active) => `transition-colors duration-200 text-sm ${active
   ? 'text-[var(--color-text)] bg-[var(--color-border)]'

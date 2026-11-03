@@ -1,5 +1,6 @@
-import React, { useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Icon } from './Icon';
 
 // The shared media card body. It renders the same class names the Django card
 // used, so every existing theme and layout rule keeps applying. Pieces that
@@ -174,7 +175,118 @@ function MediaRow({ model, slots, labels }) {
   </div>;
 }
 
-export function MediaCard({ model, slots, labels, selection }) {
+const tones = {
+  indigo: 'bg-indigo-600 hover:bg-indigo-500 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)]',
+  emerald: 'bg-emerald-600 hover:bg-emerald-500 hover:shadow-[0_0_15px_rgba(16,185,129,0.5)]',
+  amber: 'bg-amber-600 hover:bg-amber-500 hover:shadow-[0_0_15px_rgba(245,158,11,0.5)]',
+  rose: 'bg-rose-600 hover:bg-rose-500 hover:shadow-[0_0_15px_rgba(244,63,94,0.45)]',
+};
+const actionClass = (tone) => `p-2.5 ${tones[tone]} text-white rounded-full hover:scale-110 transition-all duration-200 cursor-pointer`;
+const orderClass = 'min-w-9 h-9 px-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-500 transition-colors cursor-pointer text-sm font-semibold';
+
+// Read one value from the page's Alpine scope (list order editing, bulk select) and keep it live.
+function usePageValue(host, read) {
+  const [value, setValue] = useState(false);
+  useEffect(() => {
+    const Alpine = window.Alpine;
+    if (!Alpine) return undefined;
+    const runner = Alpine.effect(() => setValue(!!read(Alpine.$data(host))));
+    return () => Alpine.release(runner);
+  }, [host]);
+  return value;
+}
+
+// The hover buttons. Track and list popups still live in the card's Alpine scope
+// (trackOpen, listsOpen) because their server forms close themselves through it.
+function CardOverlay({ actions, host, revealed, labels }) {
+  const loaded = useRef(new Set());
+  const editing = usePageValue(host, (scope) => scope.isOrderEditing);
+  const card = () => host.closest('.media-card');
+
+  function run(action) {
+    if (action.kind === 'modal') {
+      if (!loaded.current.has(action.target)) {
+        loaded.current.add(action.target);
+        window.htmx?.ajax('GET', action.url, { target: action.target, swap: 'innerHTML', values: action.vals });
+      }
+      const scope = window.Alpine?.$data(card());
+      if (scope) scope[`${action.modal}Open`] = true;
+    } else if (action.kind === 'post') {
+      window.htmx?.ajax('POST', action.url, {
+        target: action.target, swap: action.swap, values: action.vals, headers: { 'X-CSRFToken': actions.csrfToken },
+      });
+    }
+  }
+
+  function reorder(step) {
+    const form = document.getElementById('filter-form');
+    const values = { ...Object.fromEntries(form ? new FormData(form) : []), item_id: String(actions.ordering.itemId), action: step };
+    const indicator = document.getElementById('loading-indicator');
+    indicator?.classList.add('htmx-request');
+    window.htmx?.ajax('POST', actions.ordering.url, { swap: 'none', values, headers: { 'X-CSRFToken': actions.csrfToken } })
+      ?.then(() => window.refreshCustomListGrid?.())
+      .finally(() => indicator?.classList.remove('htmx-request'));
+  }
+
+  return <div className={`media-card-overlay absolute inset-0 flex items-center justify-center transition-opacity duration-200 ease-in-out${actions.clickable ? ' pointer-coarse:hidden' : ''}${revealed ? ' opacity-100 pointer-events-auto media-card-overlay-revealed' : ' opacity-0 pointer-events-none'}`}>
+    <div className="absolute inset-0 bg-black/50 z-0" />
+    <a href={actions.href} className="absolute inset-0 z-0" />
+    {!editing && <div className="relative z-10 flex w-full max-w-full flex-wrap items-center justify-center gap-2.5 px-2">
+      {actions.items.map((action, index) => action.kind === 'link'
+        ? <a key={index} href={action.href} title={action.title} className={actionClass(action.tone)}><Icon spec={action.icon} className="w-4 h-4" /></a>
+        : <button key={index} type="button" title={action.title} className={actionClass(action.tone)} onClick={() => run(action)}>
+          <Icon spec={action.icon} className="w-4 h-4" /></button>)}
+    </div>}
+    {editing && actions.ordering && <div className="relative z-10 flex flex-col items-center gap-2">
+      <div className="flex items-center justify-center gap-2">
+        {[['first', '<<'], ['back', '<'], ['next', '>'], ['last', '>>']].map(([step, text]) =>
+          <button key={step} type="button" title={actions.ordering.labels[step]} className={orderClass} onClick={() => reorder(step)}>{text}</button>)}
+      </div>
+      <div className="drag-handle cursor-grab px-4 py-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)] w-full flex justify-center"
+        title={actions.ordering.labels.drag}><Icon spec={actions.ordering.dragIcon} className="w-5 h-5" /></div>
+    </div>}
+  </div>;
+}
+
+// Touch screens show the hover buttons on the first tap, and follow the link on the second.
+function useTapToReveal(host, enabled, selecting) {
+  const [revealed, setRevealed] = useState(false);
+  const state = useRef({ revealed: false, selecting: false });
+  state.current = { revealed, selecting };
+  useEffect(() => {
+    const card = host.closest('.media-card');
+    if (!card || !enabled) return undefined;
+    const onClick = (event) => {
+      const { revealed: open, selecting: busy } = state.current;
+      if (open) {
+        if (event.target.closest('button, a, input, select, textarea')) return;
+        const link = card.querySelector('.media-card-overlay a[href]') || card.querySelector('a.media-card-title[href]');
+        if (link) { event.preventDefault(); event.stopPropagation(); link.click(); }
+        return;
+      }
+      if (!window.matchMedia('(pointer: coarse)').matches || card.classList.contains('media-card-hide-overlay') || busy) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setRevealed(true);
+      window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: card }));
+    };
+    const onOther = (event) => { if (event.detail !== card) setRevealed(false); };
+    const onOutside = (event) => { if (state.current.revealed && !card.contains(event.target)) setRevealed(false); };
+    card.addEventListener('click', onClick, true);
+    window.addEventListener('media-card-revealed', onOther);
+    window.addEventListener('click', onOutside);
+    return () => {
+      card.removeEventListener('click', onClick, true);
+      window.removeEventListener('media-card-revealed', onOther);
+      window.removeEventListener('click', onOutside);
+    };
+  }, [host, enabled]);
+  useEffect(() => { host.closest('.media-card')?.classList.toggle('media-card-revealed', revealed); }, [host, revealed]);
+  return revealed;
+}
+
+export function MediaCard({ model, slots, labels, selection, host }) {
+  const revealed = useTapToReveal(host, !!model.actions, !!selection?.active);
   if (model.layout === 'row') return <MediaRow model={model} slots={slots} labels={labels} />;
   const art = model.image;
   const imgClass = `media-card-poster w-full ${aspect[model.shape]} bg-[var(--color-surface-alt)] object-cover`;
@@ -201,7 +313,8 @@ export function MediaCard({ model, slots, labels, selection }) {
         <div className={`h-full ${bar.paused ? 'bg-indigo-500/40' : 'bg-indigo-500'} transition-[width] duration-300 ease-out`}
           style={{ width: `${bar.percent}%` }} />
       </div>}
-      <Slot name="overlay" node={slots.overlay} />
+      {model.actions ? (!selection?.active && <CardOverlay actions={model.actions} host={host} revealed={revealed} labels={labels} />)
+        : <Slot name="overlay" node={slots.overlay} />}
     </div>
     <div className="media-card-body p-3 bg-card-body">
       <div className="media-card-title-row flex items-center gap-2 min-w-0">
