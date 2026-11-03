@@ -539,12 +539,12 @@ def history_card_model(entry, card_class, history_mode, user, request=None):
     }
 
 
-def row_card_model(item, media, title, matched_title, user):
+def row_card_model(item, media, title, matched_title, user, request=None):
     """Return the Search list-view row: the same card content in a row layout."""
     from users.card_metadata import card_lines
 
     media_type = _safe(item, "media_type")
-    ctx = {"item": item, "media": media, "title": title, "user": user}
+    ctx = {"item": item, "media": media, "title": title, "user": user, "request": request}
     resolved = _title(ctx, media_type)
     lines = [
         {
@@ -575,6 +575,7 @@ def row_card_model(item, media, title, matched_title, user):
         "lines": lines,
         "cornerChips": [],
         "titleLinks": [],
+        "actions": card_actions(ctx),
     }
 
 

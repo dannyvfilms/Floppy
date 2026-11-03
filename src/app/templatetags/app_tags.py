@@ -2314,7 +2314,7 @@ def media_row_react(context, item, media, title, matched_title):
         "id": f"media-card-{uuid4().hex[:8]}",
         "props": {
             "model": row_card_model(
-                item, media, title, matched_title, context.get("user"),
+                item, media, title, matched_title, context.get("user"), context.get("request"),
             ),
             "labels": {"altTitle": str(_("Show alternative title"))},
         },

@@ -171,7 +171,12 @@ function MediaRow({ model, slots, labels }) {
             title={model.matched.title}>{model.matched.text}</p>}
           <Slot name="meta" node={slots.meta} />
         </div>
-        <Slot name="actions" node={slots.actions} />
+        {model.actions ? <div className="relative flex items-center justify-center space-x-2.5">
+          {model.actions.items.map((action, index) => action.kind === 'link'
+            ? <a key={index} href={action.href} title={action.title} className={actionClass(action.tone)}><Icon spec={action.icon} className="w-4 h-4" /></a>
+            : <button key={index} type="button" title={action.title} className={actionClass(action.tone)} onClick={() => openModal(action)}>
+              <Icon spec={action.icon} className="w-4 h-4" /></button>)}
+        </div> : <Slot name="actions" node={slots.actions} />}
       </div>
     </div>
   </div>;

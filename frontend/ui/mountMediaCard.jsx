@@ -36,7 +36,9 @@ function Card({ host, props, slots }) {
 export function mountMediaCard(host, props) {
   const slots = {};
   if (props.model.layout === 'row') {
-    for (const name of ['meta', 'actions']) slots[name] = host.querySelector(`[data-card-slot-source="${name}"]`);
+    for (const name of ['meta', 'actions']) {
+      if (name !== 'actions' || !props.model.actions) slots[name] = host.querySelector(`[data-card-slot-source="${name}"]`);
+    }
   } else {
     for (const [name, selector] of Object.entries(sources)) {
       if (name === 'overlay' ? !props.model.actions : !(name === 'status' && props.model.statusId) && !(name === 'rating' && props.model.ratingId)) slots[name] = host.querySelector(selector);

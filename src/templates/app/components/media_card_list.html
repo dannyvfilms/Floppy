@@ -2,11 +2,12 @@
 {% load i18n %}
 {% load app_tags %}
 
+{% media_row_react item media title matched_title as react_row %}
 <div class="bg-[var(--color-surface)] rounded-lg overflow-hidden hover:bg-[var(--color-surface-strong)] transition-colors duration-200"
-     x-data="{ trackOpen: false, listsOpen: false }">
+     {% if react_row.props.model.actions %}>{% else %}x-data="{ trackOpen: false, listsOpen: false }">{% endif %}
   {% with item|display_title:user as resolved_item_title %}
     {% with item|alternative_title:user as resolved_alt_title %}
-  {% media_row_react item media title matched_title as react_row %}{{ react_row.props|json_script:react_row.id }}<div data-media-card-root data-props-id="{{ react_row.id }}">
+  {{ react_row.props|json_script:react_row.id }}<div data-media-card-root data-props-id="{{ react_row.id }}">
   <div class="flex items-center p-4 gap-4">
     <div class="shrink-0 relative">
       <a href="{{ item|media_url }}" hx-boost="true">
@@ -151,6 +152,7 @@
   </div>
 
   </div>
+  {% if not react_row.props.model.actions %}
   {# Track Modal #}
   <div x-show="trackOpen"
        x-cloak
@@ -173,6 +175,7 @@
       <div id="{% component_id 'lists' item %}"></div>
     </div>
   </div>
+  {% endif %}
     {% endwith %}
   {% endwith %}
 
