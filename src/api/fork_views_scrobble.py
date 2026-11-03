@@ -13,6 +13,7 @@ import app.providers.tmdb
 from app import live_playback
 from app.models import MediaTypes, Sources
 from app.providers import services
+from app.providers.services import ProviderAPIError
 from app.stats_utils import parse_runtime_to_minutes
 from integrations.delivery import get_or_record_receipt
 from integrations.models import IntegrationToken
@@ -295,6 +296,15 @@ class ScrobbleView(drf_views.APIView):
                 "properties": {
                     "detail": {"type": "string"},
                     "errors": {"type": "string"},
+                    "code": {"type": "string"},
+                },
+            },
+            503: {
+                "type": "object",
+                "properties": {
+                    "detail": {"type": "string"},
+                    "code": {"type": "string"},
+                    "retryable": {"type": "boolean"},
                 },
             },
         },
@@ -316,7 +326,9 @@ class ScrobbleView(drf_views.APIView):
             media_type = request.data.get("media_type")
             ids = request.data.get("ids") or {}
 
-            self._update_live_playback(request.user, action, media_type, ids, request.data)
+            self._update_live_playback(
+                request.user, action, media_type, ids, request.data
+            )
 
             if action != "stop":
                 return Response({"detail": "accepted"}, status=HTTP.OK)
@@ -340,6 +352,29 @@ class ScrobbleView(drf_views.APIView):
             }
             try:
                 GenericScrobbleProcessor().process_payload(payload, request.user)
+            except ProviderAPIError as exc:
+                logger.warning(
+                    "Scrobble stop media resolution failed: provider=%s status=%s",
+                    exc.provider,
+                    exc.status_code,
+                    exc_info=True,
+                )
+                if exc.status_code == HTTP.NOT_FOUND:
+                    return Response(
+                        {
+                            "detail": "Could not resolve media.",
+                            "code": "MEDIA_NOT_FOUND",
+                        },
+                        status=HTTP.NOT_FOUND,
+                    )
+                return Response(
+                    {
+                        "detail": "Could not resolve media.",
+                        "code": "PROVIDER_UNAVAILABLE",
+                        "retryable": True,
+                    },
+                    status=HTTP.SERVICE_UNAVAILABLE,
+                )
             except Exception:
                 logger.exception("Failed to process generic scrobble payload.")
                 return Response(
@@ -370,7 +405,6 @@ class ScrobbleView(drf_views.APIView):
 
         return _execute()
 
-
     def _apply_episode_score(self, user, payload, raw_score):
         """Set the episode's rating; failures are logged, never raised.
 
@@ -389,7 +423,9 @@ class ScrobbleView(drf_views.APIView):
             )
             if item is None:
                 return
-            season = get_tracked_season(user, item.media_id, item.source, item.season_number)
+            season = get_tracked_season(
+                user, item.media_id, item.source, item.season_number
+            )
             if season is None:
                 return
             apply_episode_score(season, item.episode_number, score)

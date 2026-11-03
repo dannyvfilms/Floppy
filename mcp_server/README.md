@@ -146,6 +146,24 @@ docs) or run `uvicorn floppy_mcp.server:mcp.streamable_http_app`.
   the item's consumptions already include one with the same dates, progress and
   status. That is a read-then-write check, not a server lock, so two concurrent
   identical requests can still both write.
+  For a server-enforced guarantee pass `idempotency_key`: it is sent as the
+  `Idempotency-Key` header on the create, and repeating the same key and
+  arguments (for 24 hours) replays the first success (`outcome: "skipped"`,
+  `reason` "replayed") instead of appending another play. The same key with
+  different arguments is refused (`IDEMPOTENCY_KEY_REUSED`). Use one key per
+  intended play, such as `"zelda-botw-2019-03-07"`.
+
+  Logging a historical game play, safe to retry after a timeout:
+
+  ```json
+  {"media_type": "game", "source": "igdb", "media_id": "7346",
+   "status": "Completed", "progress": 1800,
+   "start_date": "2019-03-01", "end_date": "2019-03-07",
+   "mode": "new_play", "idempotency_key": "botw-2019-03-07"}
+  ```
+
+  `progress` is the 1800 minutes of this session, not the game total. If the
+  call times out (`unknown_write_outcome`), send the identical call again.
 
 - **`status`** on `track_media` accepts the display names Floppy uses in
   the UI (`"Planning"`, `"In progress"`, `"Paused"`, `"Completed"`,

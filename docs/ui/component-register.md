@@ -603,8 +603,12 @@ templates are compatibility/composition sources, not equally active parallel pag
   serialized). Small integration settings forms use `SettingsForm.jsx` (`provider_forms.py`:
   Plex usernames and mark-watched, Jellyfin webhook events, Seerr automation and connection, KOReader
   connect and settings). Hardcover sync, KOReader (Connection tab) and MDBList (Connection tab) now use `SettingsForm.jsx`/
-  `FileImport.jsx` inline instead of a modal. Remaining legacy, each with a concrete blocker: Plex
-  libraries picker and webhook sharing (live library fetch, per-share Alpine state); Jellyfin account/push controls (conditional per-tab
+  `FileImport.jsx` inline instead of a modal. Plex's Connection tab is now the shared webhook card (`SetupGuide.jsx` with a primary copy
+  field, status badge/tooltip and collapsed steps; `provider_guides._plex_webhook_badge`) above the shared account
+  card (`AccountConnection.jsx` with badges and a single full-width card); the "Set up account access here /
+  Open connection setup" header and button no longer render on provider pages. Remaining legacy, each with a
+  concrete blocker: Plex libraries picker and webhook sharing (Tracking/Import tabs; live library fetch,
+  per-share Alpine state); Jellyfin account/push controls (conditional per-tab
   states); Stremio addon catalog grants (htmx status); the same-tab modal copies of upload and connection forms used outside provider pages. Retire each by moving it to a `provider_forms` or
   `provider_guides` entry. Masked credential previews are not serialized to React; the fallback still
   shows them.
