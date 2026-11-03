@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button, Card } from '../ui/controls';
+import { Button, Card, Tooltip } from '../ui/controls';
 import { mountRoot } from '../settings/root';
 
 function Parts({ parts, values }) {
@@ -37,15 +37,20 @@ function PreBlock({ text, values }) {
 export function SetupGuide({ guide, copy }) {
   const values = { guide, copy };
   const Wrapper = guide.bare ? 'div' : Card;
-  return <Wrapper {...(guide.bare ? {} : { title: guide.title })}>
+  const steps = <ol className="ui-guide-steps">{guide.steps.map((step, index) => {
+    const parts = Array.isArray(step) ? step : step.parts;
+    return <li key={index}><Parts parts={parts} values={values} />
+      {step.items && <ul>{step.items.map((item, i) => <li key={i}><Parts parts={item} values={values} /></li>)}</ul>}</li>;
+  })}</ol>;
+  const cardProps = guide.bare ? {} : { title: guide.title, tone: guide.badge?.tone, badge: guide.badge?.label };
+  return <Wrapper {...cardProps}>
     {!guide.bare && <p>{guide.description}</p>}
+    {guide.badge?.tooltip && <p className="provider-small ui-guide-status"><Tooltip label={guide.badge.label} text={guide.badge.tooltip} /> {guide.badge.summary}</p>}
     {guide.warning && <p role="alert" data-testid="jellyfin-template-outdated"><strong>{guide.warning.title}</strong> {guide.warning.text}</p>}
-    <h4>{guide.heading}</h4>
-    <ol className="ui-guide-steps">{guide.steps.map((step, index) => {
-      const parts = Array.isArray(step) ? step : step.parts;
-      return <li key={index}><Parts parts={parts} values={values} />
-        {step.items && <ul>{step.items.map((item, i) => <li key={i}><Parts parts={item} values={values} /></li>)}</ul>}</li>;
-    })}</ol>
+    {guide.primary && <div className="ui-guide-primary"><span className="ui-guide-primary-label">{guide.primary.label}</span>
+      <CopyValue id={guide.primary.key} values={values} /></div>}
+    {guide.collapsed ? <details className="ui-guide-details"><summary>{guide.heading}</summary>{steps}</details>
+      : <><h4>{guide.heading}</h4>{steps}</>}
   </Wrapper>;
 }
 

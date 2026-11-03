@@ -353,20 +353,7 @@
     {% if provider_tab == 'import' and import_slug != 'plex' and import_slug != 'clz' and not import_preferences.fixed %}
       <p x-cloak x-show="standardImportsDisabled()" class="text-sm text-[var(--color-text-muted)]">{% translate "This import mode is not supported by this provider." %}</p>
     {% endif %}
-    {% if provider_slug %}
-      {% if provider_tab == 'connection' %}
-        <p class="text-sm text-[var(--color-text-muted)]">
-          {% translate "Set up account access here." %}
-          <a href="{% url 'provider_detail' provider_slug %}?tab=import" class="text-[var(--color-link)] hover:underline">{% translate "Open Import for import options, schedules and manual runs." %}</a>
-        </p>
-        {% if import_slug == 'audiobookshelf' or import_slug == 'stremio' or import_slug == 'kavita' or import_slug == 'komga' or import_slug == 'storyteller' or import_slug == 'pocketcasts' or import_slug == 'gpodder' or import_slug == 'lastfm' or import_slug == 'koito' or import_slug == 'psn' %}
-          <p class="text-sm text-[var(--color-warning-text)]">{% translate "Connecting also starts incoming imports and enables recurring intake. Review the provider's setup options before proceeding; Activity shows its runs and schedules." %}</p>
-        {% elif import_slug == 'xbox' or import_slug == 'koreader' or import_slug == 'mdblist' %}
-          <p class="text-sm text-[var(--color-warning-text)]">{% blocktranslate with frequency=user.get_import_frequency_display %}This setup also starts importing data using your saved import frequency: {{ frequency }}. Review Import before connecting if you want to change it.{% endblocktranslate %}</p>
-        {% endif %}
-      {% endif %}
-    {% endif %}
-    {% if provider_tab != 'import' %}<button type="button" @click="openModal('{{ import_slug }}')" class="px-4 py-2 rounded-md bg-indigo-600 text-white cursor-pointer">{% if provider_tab == 'connection' %}{% translate "Open connection setup" %}{% else %}{% translate "Open import options" %}{% endif %}</button>{% endif %}
+    {% if provider_tab != 'import' and not provider_slug %}<button type="button" @click="openModal('{{ import_slug }}')" class="px-4 py-2 rounded-md bg-indigo-600 text-white cursor-pointer">{% if provider_tab == 'connection' %}{% translate "Open connection setup" %}{% else %}{% translate "Open import options" %}{% endif %}</button>{% endif %}
     {% if provider_tab == 'import' and not provider.state.account_saved and import_slug in 'radarr,sonarr,mylar,kapowarr,stremio,kavita,komga,storyteller,pocketcasts,gpodder,lastfm,koito,psn' %}
       <div class="rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface-strong)] p-4 text-sm text-[var(--color-text-muted)]">
         {% translate "Connect this provider before starting an import." %}

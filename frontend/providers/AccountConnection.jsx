@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button, Card, CardGrid, Chip, Field, Form, SelectField } from '../ui/controls';
+import { Button, Card, CardGrid, Chip, Field, Form, SelectField, Tooltip } from '../ui/controls';
 import { mountRoot } from '../settings/root';
 
 // Presentation and actions are supplied by the provider adapter, never stored secrets.
@@ -20,10 +20,12 @@ export function AccountConnection({ model, draft = {} }) {
   const fields = model.fields.map(field => <AccountField key={field.name} field={field} draft={draft} />);
   return <div className="ui-section-stack">
     <h3>{t('Connection settings')}</h3>
-    <CardGrid alignStart><Card title={model.title || t('Account connection')} tone={model.connected ? 'success' : model.attention ? 'warning' : 'neutral'} badge={t(status)}>
+    <CardGrid alignStart className={model.followUp ? '' : 'ui-card-grid-single'}><Card title={model.title || t('Account connection')} tone={model.connected ? 'success' : model.attention ? 'warning' : 'neutral'} badge={t(status)}>
       {model.description && <p>{model.description}</p>}
+      {model.badges?.length > 0 && <div className="ui-account-badges">{model.badges.map(badge => <span key={badge.label} className="ui-account-badge">
+        <Chip tone={badge.tone} label={badge.label} />{badge.tooltip && <Tooltip label={badge.label} text={badge.tooltip} />}</span>)}</div>}
       {model.summary && <div className="ui-account-summary">
-        {model.summary.url && <p className="provider-small">{model.summary.url}{model.summary.lastSync && ` • ${model.summary.lastSync}`}</p>}
+        {(model.summary.url || model.summary.lastSync) && <p className="provider-small">{[model.summary.url, model.summary.lastSync].filter(Boolean).join(' • ')}</p>}
         {model.summary.error && <p className="provider-small" role="alert">{model.summary.error}</p>}
       </div>}
       {model.instances ? <>
@@ -41,7 +43,7 @@ export function AccountConnection({ model, draft = {} }) {
         <Form action={model.connectUrl} {...form}>{fields}<Button type="submit">{model.submitLabel}</Button></Form>
       </> : <>
         <p>{model.messages[model.connected ? 'connected' : model.attention ? 'attention' : 'disconnected']}</p>
-        {!model.connected && model.connectUrl && <Form action={model.connectUrl} {...form}>{fields}
+        {(!model.connected || model.attention) && model.connectUrl && <Form action={model.connectUrl} {...form}>{fields}
           <Button type="submit">{model.submitLabel || t(model.saved ? 'Reconnect' : 'Connect')}</Button></Form>}
         {model.saved && <Form action={model.disconnectUrl} {...form}><Button type="submit" danger>{t('Disconnect')}</Button></Form>}
       </>}
