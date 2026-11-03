@@ -59,9 +59,9 @@
           </p>
         </div>
         {% if metadata_provider_mapping_status == "missing" %}
-          <span class="shrink-0 text-[11px] px-2 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">{% translate "Mapping needed" %}</span>
+          {% badge _("Mapping needed") "xs" "amber-soft" %}
         {% elif metadata_provider_mapping_status == "mapped" %}
-          <span class="shrink-0 text-[11px] px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">{% translate "Mapped" %}</span>
+          {% badge _("Mapped") "xs" "emerald-soft" %}
         {% endif %}
       </div>
 

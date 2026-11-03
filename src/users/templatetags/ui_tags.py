@@ -9,6 +9,11 @@ from django.template.loader import render_to_string
 register = template.Library()
 
 SPINNER_SIZES = (8, 48)
+BADGE_SIZES = {"xs", "sm", "md", "tag"}
+BADGE_TONES = {
+    "indigo", "rose", "violet", "neutral", "outline", "tint", "genre",
+    "green-soft", "indigo-soft", "emerald-soft", "amber-soft",
+}
 
 
 @register.tag
@@ -86,4 +91,19 @@ def spinner(size=16, tone="accent"):
             "tone": tone if tone in {"accent", "muted", "white"} else "accent",
         },
         "props_id": f"spinner-{uuid4().hex}",
+    })
+
+
+@register.simple_tag
+def badge(label, size="sm", tone="outline", href="", nowrap=False):
+    """Render the shared React badge; the server markup is the fallback."""
+    return render_to_string("users/components/badge.html", {
+        "props": {
+            "label": str(label),
+            "size": size if size in BADGE_SIZES else "sm",
+            "tone": tone if tone in BADGE_TONES else "outline",
+            "href": str(href) if str(href).startswith(("/", "?")) else "",
+            "nowrap": bool(nowrap),
+        },
+        "props_id": f"badge-{uuid4().hex}",
     })

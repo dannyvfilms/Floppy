@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load i18n %}
+{% load ui_tags %}
 
 {% load app_tags %}
 {% load user_tags %}
@@ -71,12 +72,12 @@
       {# Type badges (like genre pills on Season) #}
       <div class="flex flex-wrap gap-2 mb-6">
         {% if album.release_type %}
-          <span class="px-3 py-1 bg-rose-600 text-white rounded-full text-sm">{{ album.release_type }}</span>
+          {% badge album.release_type "md" "rose" %}
         {% else %}
-          <span class="px-3 py-1 bg-rose-600 text-white rounded-full text-sm">{% translate "Album" %}</span>
+          {% badge _("Album") "md" "rose" %}
         {% endif %}
         {% if album.release_date %}
-          <span class="px-3 py-1 bg-[var(--color-surface-strong)] text-[var(--color-text)] rounded-full text-sm">{{ album.release_date|date:"Y" }}</span>
+          {% badge album.release_date|date:"Y" "md" "neutral" %}
         {% endif %}
         {# Collection metadata chips (aggregated from tracks) #}
         {% if collection_metadata.has_collection %}
@@ -99,7 +100,7 @@
             </span>
           {% endif %}
           {% if collection_metadata.media_type %}
-            <span class="px-3 py-1 bg-indigo-600 text-white rounded-full text-sm">{{ collection_metadata.media_type|title }}</span>
+            {% badge collection_metadata.media_type|title "md" "indigo" %}
           {% endif %}
         {% endif %}
       </div>

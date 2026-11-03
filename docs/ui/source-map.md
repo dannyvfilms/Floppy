@@ -133,6 +133,16 @@ Shared `Spinner` lives in `frontend/ui/controls.jsx` and `controls.css` (FORM-CO
 - `frontend/ui/mountSpinner.jsx`
 - `src/templates/users/components/spinner.html`
 
+
+## BADGE
+
+Shared `Badge` lives in `frontend/ui/controls.jsx` and `controls.css` (FORM-CONTROLS); its consumer templates are mapped under their own families.
+
+- `frontend/ui/mountBadge.jsx`
+- `src/templates/users/components/badge.html`
+- `src/users/templatetags/ui_tags.py` (`{% badge %}`)
+- Consumers: `app/podcast_show_detail.html`, `app/episode_details.html`, `app/music_album_detail.html`, `app/components/detail_music_artist.html`, `detail_music_album.html`, `detail_music_track.html`, `detail_secondary_content.html`, `cells/media_genres_cell.html`, `media_metadata_panel.html`, `lists/components/add_item_preview_modal.html`, `recommend_preview_modal.html`, `integrations/library_panel.html`, `integrations/seerr_status.html`, `users/components/whats_new.html`, `users/onboarding/metadata.html`
+
 ## WEB-UTILITIES
 
 - `src/static/js/copy-item.js`
