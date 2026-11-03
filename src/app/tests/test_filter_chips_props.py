@@ -23,7 +23,7 @@ class FilterChipsPropsTest(TestCase):
         match = re.search(
             r'<script id="(filter-chips-[0-9a-f]+)" type="application/json">(.*?)</script>',
             html,
-            re.S,
+            re.DOTALL,
         )
         props = json.loads(match.group(2))
         values = [item["value"] for item in props["items"]]

@@ -3728,12 +3728,11 @@ class MediaListViewTests(TestCase):
             html=False,
         )
         grid_html = grid_page.content.decode()
-        # x-cloak has to be on the modal so it can't flash before Alpine
-        # initialises, but it need not be the very next attribute: #1016
-        # inserted @mousedown.self between the two on the track modal, and an
-        # adjacency-pinned regex turned that into a red suite on latest.
-        self.assertRegex(grid_html, r'x-show="trackOpen"[^>]*\sx-cloak\b')
-        self.assertRegex(grid_html, r'x-show="listsOpen"[^>]*\sx-cloak\b')
+        # Grid cards open their track and lists popups from the shared React
+        # host, so the page no longer carries a hidden popup per card.
+        self.assertContains(grid_page, "data-media-card-root")
+        self.assertNotContains(grid_page, 'x-show="trackOpen"')
+        self.assertNotContains(grid_page, 'x-show="listsOpen"')
 
         first_page = self.client.get(
             reverse("medialist", args=[MediaTypes.MOVIE.value])

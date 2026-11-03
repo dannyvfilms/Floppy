@@ -25,7 +25,7 @@ class SidebarModelTest(TestCase):
         match = re.search(
             r'<script id="(sidebar-[0-9a-f]+)" type="application/json">(.*?)</script>',
             html,
-            re.S,
+            re.DOTALL,
         )
         return json.loads(match.group(2))
 

@@ -4,6 +4,7 @@ See docs/architecture/media-card.md. If a test here fails after adding a grid,
 declare the surface in app.card_surfaces rather than special-casing the card.
 """
 
+import json
 import re
 from pathlib import Path
 from unittest.mock import patch
@@ -320,11 +321,23 @@ class MediaCardSurfaceContractTest(TestCase):
     def test_two_cards_for_one_item_do_not_share_modal_targets(self):
         """A second copy of an item opens its own modal, not the first card's."""
         content = self.render_card("collection") + self.render_card("collection")
-        track_ids = re.findall(r'<div id="(track-movie-[^"]+)"></div>', content)
-        self.assertEqual(len(track_ids), 2)
-        self.assertNotEqual(track_ids[0], track_ids[1])
-        for track_id in track_ids:
-            self.assertIn(f'hx-target="#{track_id}"', content)
+        props = re.findall(
+            r'<script id="media-card-[0-9a-f]+" type="application/json">(.*?)</script>',
+            content,
+            re.DOTALL,
+        )
+        self.assertEqual(len(props), 2)
+        targets = [
+            next(
+                action["target"]
+                for action in json.loads(raw)["model"]["actions"]["items"]
+                if action.get("modal") == "track"
+            )
+            for raw in props
+        ]
+        self.assertNotEqual(targets[0], targets[1])
+        for target in targets:
+            self.assertTrue(target.startswith("#track-movie-"))
 
     def test_unknown_value_is_rejected(self):
         """An ad-hoc flag must be declared in app.card_surfaces first."""

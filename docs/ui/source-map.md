@@ -68,6 +68,8 @@ PY
 - `frontend/ui/GlobalSearch.jsx`, `frontend/ui/mountGlobalSearch.jsx`, `frontend/ui/global-search.css` (header search form inside `base.html`; suggestions stay a server fragment)
 - `frontend/ui/Sidebar.jsx`, `frontend/ui/mountSidebar.jsx`, `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html`; the onboarding banner stays a server slot)
 - `frontend/ui/Icon.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
+- `frontend/ui/ModalHost.jsx`, `frontend/ui/mountModalHost.jsx` (shared track and lists popup host, mounted from `base.html`; the card hover buttons open it)
+- `src/app/card_events.py` (the floppyCardUpdate event sent by `media_save` and the score views so React cards refresh their status chip and rating)
 - `frontend/ui/mountFilterChips.jsx`, `ScrollRow` and `FilterChips` in `frontend/ui/controls.jsx` (Discover media-type row; `Tabs` shares `ScrollRow`)
 - `src/templates/base_public.html`
 

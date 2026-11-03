@@ -24,7 +24,7 @@ class GlobalSearchPropsTest(TestCase):
         match = re.search(
             r'<script id="(global-search-[0-9a-f]+)" type="application/json">(.*?)</script>',
             html,
-            re.S,
+            re.DOTALL,
         )
         props = json.loads(match.group(2))
         self.assertEqual(props["query"], "dune")

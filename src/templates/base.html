@@ -191,6 +191,7 @@
         data-quick-season-mobile="{% if user.is_authenticated %}{% if user.quick_season_update_mobile == 'season_update' or user.quick_season_update_mobile == 'both' %}true{% else %}false{% endif %}{% else %}false{% endif %}">
     {% block alphabet_filter %}{% endblock alphabet_filter %}
     {% include "app/components/ui_asset_refresh.html" %}
+    <div data-modal-host-root data-props-id="modal-host-props"></div><script id="modal-host-props" type="application/json">{}</script>
     {% comment %}
       Navigation progress. Boosted links replace the page with a background
       request, so the browser shows no spinner and no stop button. Without

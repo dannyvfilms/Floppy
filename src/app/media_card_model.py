@@ -121,11 +121,11 @@ def _status_chip(ctx):
     )
     if _safe(media, "status") and (not recommend or watched):
         if has_event:
-            return {"kind": "event", "label": event_label, "hideOnMobile": hide_on_mobile}
+            return {"kind": "event", "label": event_label, "icon": file_icon("clock"), "hideOnMobile": hide_on_mobile}
         status = _safe(media, "aggregated_status") or _safe(media, "status")
         return {"kind": "status", "status": status, "hideOnMobile": hide_on_mobile}
     if has_event:
-        return {"kind": "event", "label": event_label, "hideOnMobile": hide_on_mobile}
+        return {"kind": "event", "label": event_label, "icon": file_icon("clock"), "hideOnMobile": hide_on_mobile}
     return None
 
 
@@ -397,6 +397,17 @@ def card_model(ctx):
         "progressBar": _progress_bar(ctx, media_type),
         "lines": _subtitle_lines(ctx, media_type),
         "actions": card_actions(ctx),
+        "cardKey": app_tags.item_slot_id("media-card", item),
+        "statusId": app_tags.item_slot_id("media-status-chip", item),
+        "ratingId": app_tags.item_slot_id("media-card-rating", item),
+        "rating": rating_model(ctx, media_type),
+        "ratingEditable": not (
+            ctx.get("public_view")
+            or ctx.get("is_recommend_mode")
+            or ctx.get("rating_read_only")
+            or ctx.get("use_podcast_show")
+        ),
+        "csrfToken": str(ctx.get("csrf_token") or ""),
     }
 
 
@@ -855,4 +866,54 @@ def history_actions(entry, history_mode, user, request):
         "modals": {"track": track_id, "lists": lists_id},
         "csrfToken": "",
         "clickable": bool(getattr(user, "clickable_media_cards", False)),
+    }
+
+
+def rating_label(user, media_type, value):
+    """Return the score as the user's scale shows it, or None when it is hidden."""
+    from users.card_metadata import hides_zero_rating, shows_score
+
+    if value is None or not shows_score(user, media_type):
+        return None
+    try:
+        if hides_zero_rating(user, media_type) and float(value) <= 0:
+            return None
+    except (TypeError, ValueError):
+        pass
+    return str(app_tags.score_display(value, user))
+
+
+def rating_model(ctx, media_type):
+    """Return the title-row rating: a button that opens the star picker, or text."""
+    user, media, item = ctx.get("user"), ctx.get("media"), ctx["item"]
+    if not media or not getattr(user, "ratings_enabled", True):
+        return None
+    value = _safe(media, "aggregated_score")
+    if value is None:
+        value = _safe(media, "formatted_score")
+    label = rating_label(user, media_type, value)
+    rate_url = _safe(media, "score_url")
+    editable = not (
+        ctx.get("public_view")
+        or ctx.get("is_recommend_mode")
+        or ctx.get("rating_read_only")
+        or ctx.get("use_podcast_show")
+    )
+    if not rate_url and editable and _safe(media, "id"):
+        rate_url = reverse(
+            "update_media_score",
+            args=[_safe(item, "media_type"), _safe(media, "id")],
+        )
+    if not rate_url and label is None:
+        return None
+    try:
+        number = float(label) if label is not None else None
+    except ValueError:
+        number = None
+    return {
+        "label": label,
+        "value": number,
+        "rateUrl": rate_url or None,
+        "scaleMax": app_tags.rating_scale_max(user),
+        "rateLabel": _("Rate"),
     }

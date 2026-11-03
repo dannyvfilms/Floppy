@@ -1,6 +1,8 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
+import { openModal } from './ModalHost';
+import { RatingStars } from './RatingStars';
 
 // The shared media card body. It renders the same class names the Django card
 // used, so every existing theme and layout rule keeps applying. Pieces that
@@ -199,18 +201,11 @@ function usePageValue(host, read) {
 // The hover buttons. Track and list popups still live in the card's Alpine scope
 // (trackOpen, listsOpen) because their server forms close themselves through it.
 function CardOverlay({ actions, host, revealed, labels }) {
-  const loaded = useRef(new Set());
   const editing = usePageValue(host, (scope) => scope.isOrderEditing);
-  const card = () => host.closest('.media-card');
 
   function run(action) {
     if (action.kind === 'modal') {
-      if (!loaded.current.has(action.target)) {
-        loaded.current.add(action.target);
-        window.htmx?.ajax('GET', action.url, { target: action.target, swap: 'innerHTML', values: action.vals });
-      }
-      const scope = window.Alpine?.$data(card());
-      if (scope) scope[`${action.modal}Open`] = true;
+      openModal(action);
     } else if (action.kind === 'post') {
       window.htmx?.ajax('POST', action.url, {
         target: action.target, swap: action.swap, values: action.vals, headers: { 'X-CSRFToken': actions.csrfToken },
@@ -285,8 +280,128 @@ function useTapToReveal(host, enabled, selecting) {
   return revealed;
 }
 
+// The save and score responses still swap server fragments out of band for pages
+// that render them. A card React owns ignores that swap and listens for the
+// floppyCardUpdate event the same responses send.
+if (typeof window !== 'undefined' && !window.__floppyCardOobGuard) {
+  window.__floppyCardOobGuard = true;
+  document.addEventListener('htmx:oobBeforeSwap', (event) => {
+    if (event.detail?.target?.hasAttribute?.('data-react-owned')) event.preventDefault();
+  });
+}
+
+function useLiveCard(model) {
+  const [live, setLive] = useState(null);
+  useEffect(() => {
+    if (!model.cardKey) return undefined;
+    const onUpdate = (event) => { if (event.detail?.cardKey === model.cardKey) setLive(event.detail); };
+    document.addEventListener('floppyCardUpdate', onUpdate);
+    return () => document.removeEventListener('floppyCardUpdate', onUpdate);
+  }, [model.cardKey]);
+  return live;
+}
+
+function liveChip(chip, live, labels) {
+  if (!live) return chip;
+  if (live.statusless) return { kind: 'no-status', label: labels.noStatus, hideOnMobile: chip?.hideOnMobile };
+  if (live.status) {
+    if (chip?.kind === 'event') return chip;
+    return { kind: 'status', status: live.status, colorClass: live.statusColor, hideOnMobile: chip?.hideOnMobile };
+  }
+  return chip?.kind === 'event' ? chip : null;
+}
+
+const chipShell = 'media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md max-w-[calc(100%-1rem)] overflow-hidden';
+const chipLabel = 'text-xs font-medium text-white drop-shadow-sm truncate min-w-0';
+
+function CardStatusChip({ chip }) {
+  const mobile = { 'data-mobile-hide-on-mobile': chip.hideOnMobile ? 'true' : 'false' };
+  if (chip.kind === 'no-status') {
+    return <div className={chipShell} data-status-label="no-status" {...mobile}><span className={chipLabel}>{chip.label}</span></div>;
+  }
+  if (chip.kind === 'event') {
+    return <div className={chipShell} {...mobile}><Icon spec={chip.icon} className="w-3.5 h-3.5 text-indigo-300" /><span className={chipLabel}>{chip.label}</span></div>;
+  }
+  return <div className={chipShell} {...mobile}><div className={`w-4 h-4 ${chip.colorClass}`}>
+    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+      strokeLinejoin="round" className="w-full h-full">{statusIcons[chip.status]}</svg></div></div>;
+}
+
+const starPalette = {
+  lit: '#facc15', unlit: '#4b5563', muted: 'var(--color-text-muted)',
+  focusStyle: { outlineStyle: 'solid', outlineWidth: 1, outlineColor: 'var(--color-accent)' },
+};
+const starShape = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"
+  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+</svg>;
+const smallStar = (className) => <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>;
+
+// The rating in the title row: a button that opens the shared star row, or read-only text.
+function CardRating({ rating, csrfToken, editable }) {
+  const [value, setValue] = useState(rating.value);
+  const [label, setLabel] = useState(rating.label);
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({});
+  const trigger = useRef(null);
+  const popup = useRef(null);
+  useEffect(() => { setValue(rating.value); setLabel(rating.label); }, [rating.value, rating.label]);
+  const place = () => {
+    const rect = trigger.current?.getBoundingClientRect();
+    if (!rect) return;
+    const width = Math.min(250, window.innerWidth - 32);
+    const height = popup.current?.offsetHeight || 90;
+    const left = Math.min(Math.max(16, rect.right - width), window.innerWidth - width - 16);
+    const below = rect.bottom + 8 + height <= window.innerHeight;
+    setPos({ left, top: below ? rect.bottom + 8 : Math.max(8, rect.top - height - 8), width });
+  };
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    place();
+    const away = (event) => { if (!popup.current?.contains(event.target) && !trigger.current?.contains(event.target)) setOpen(false); };
+    const key = (event) => { if (event.key === 'Escape') setOpen(false); };
+    document.addEventListener('click', away);
+    window.addEventListener('keydown', key);
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      document.removeEventListener('click', away);
+      window.removeEventListener('keydown', key);
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [open]);
+  function onSelect(score) {
+    setValue(score);
+    setLabel(score === null ? null : String(score));
+    setOpen(false);
+    window.htmx?.ajax('POST', rating.rateUrl, {
+      swap: 'none', headers: { 'X-CSRFToken': csrfToken }, values: { score: score ?? value, toggle: true },
+    });
+  }
+  if (!rating.rateUrl || !editable) {
+    return label == null ? null : <span className="flex h-5 items-center gap-1 text-xs text-yellow-300 shrink-0">
+      {smallStar('w-3 h-3 text-yellow-400 fill-current')}<span className="font-medium">{label}</span></span>;
+  }
+  return <span className="flex shrink-0">
+    <button ref={trigger} type="button" title={rating.rateLabel} aria-label={rating.rateLabel} aria-haspopup="true"
+      onClick={() => setOpen((current) => !current)}
+      className={`media-card-rate-button -mx-1 flex h-5 items-center gap-1 px-1 text-xs text-yellow-300 cursor-pointer${value === null || value === undefined ? ' media-card-rate-empty' : ''}`}>
+      <span className="media-card-rate-star">{smallStar('w-3 h-3 text-yellow-400')}</span>
+      {value !== null && value !== undefined && <span className="font-medium">{label ?? value}</span>}
+    </button>
+    {open && createPortal(<div ref={popup} style={pos}
+      className="fixed z-50 rounded-lg border border-gray-700 bg-[var(--color-surface)] p-3 shadow-lg">
+      <div className="mb-1"><RatingStars scaleMax={rating.scaleMax} value={value} label={rating.rateLabel}
+        renderStar={starShape} onSelect={onSelect} palette={starPalette} /></div>
+    </div>, document.body)}
+  </span>;
+}
+
 export function MediaCard({ model, slots, labels, selection, host }) {
   const revealed = useTapToReveal(host, !!model.actions, !!selection?.active);
+  const live = useLiveCard(model);
   if (model.layout === 'row') return <MediaRow model={model} slots={slots} labels={labels} />;
   const art = model.image;
   const imgClass = `media-card-poster w-full ${aspect[model.shape]} bg-[var(--color-surface-alt)] object-cover`;
@@ -307,7 +422,10 @@ export function MediaCard({ model, slots, labels, selection, host }) {
       </a>}
       {model.statusChip?.kind === 'status-native' ? <StatusChip chip={model.statusChip} />
         : model.statusChip?.kind === 'media-type' ? <MediaTypeChip chip={model.statusChip} />
-          : <Slot name="status" node={slots.status} />}
+          : model.statusId ? <div id={model.statusId} data-react-owned="">{(() => {
+            const chip = liveChip(model.statusChip, live, labels);
+            return chip && <CardStatusChip chip={chip} />;
+          })()}</div> : <Slot name="status" node={slots.status} />}
       {model.cornerChips.map((chip) => <CornerChip key={chip.kind} chip={chip} labels={labels} />)}
       {bar && <div className="media-card-progress-bar absolute bottom-0 left-0 right-0 h-1 bg-gray-900/60 z-20">
         <div className={`h-full ${bar.paused ? 'bg-indigo-500/40' : 'bg-indigo-500'} transition-[width] duration-300 ease-out`}
@@ -332,7 +450,11 @@ export function MediaCard({ model, slots, labels, selection, host }) {
           <svg className="w-3 h-3 text-yellow-400 fill-current" viewBox="0 0 24 24" aria-hidden="true">
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
           </svg><span className="font-medium">{model.scoreText}</span></span>}
-        {slots.rating && <Slot name="rating" node={slots.rating} />}
+        {model.ratingId ? <span id={model.ratingId} data-react-owned="">{(() => {
+          const rating = live?.rating !== undefined && live ? (live.rating || null) : model.rating;
+          const cardRating = live ? { ...rating, rateUrl: rating?.rateUrl || model.rating?.rateUrl } : rating;
+          return cardRating && <CardRating rating={cardRating} csrfToken={model.csrfToken} editable={model.ratingEditable} />;
+        })()}</span> : slots.rating && <Slot name="rating" node={slots.rating} />}
       </div>
       {model.lines.map((line, index) => <Line key={index} line={line} />)}
     </div>

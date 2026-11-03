@@ -122,8 +122,10 @@ class MediaSearchViewTests(TestCase):
             ],
         }
 
+        # The list layout still renders its popups with the row; the grid cards
+        # open theirs from the shared React host.
         response = self.client.get(
-            reverse("search") + "?media_type=movie&q=test",
+            reverse("search") + "?media_type=movie&q=test&layout=list",
         )
 
         self.assertEqual(response.status_code, 200)

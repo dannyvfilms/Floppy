@@ -16,10 +16,9 @@ from app.providers import credentials
 from app.tests.live_server import SerialStaticLiveServerTestCase
 from integrations.models import AudiobookshelfAccount, ImportRun
 
-
-# The header search form and the sidebar are React islands on every signed-in
+# The header search form, the sidebar and the popup host are React islands on every signed-in
 # page, so the card counts below leave them out.
-MOUNTED_ISLANDS = '[data-react-mounted="true"]:not([data-global-search-root]):not([data-sidebar-root])'
+MOUNTED_ISLANDS = '[data-react-mounted="true"]:not([data-global-search-root]):not([data-sidebar-root]):not([data-modal-host-root])'
 
 
 @tag("slow", "playwright")
@@ -616,7 +615,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             }
           }).observe({type: 'layout-shift', buffered: true});
           new MutationObserver(() => {
-            if (document.querySelectorAll('[data-react-mounted=true]:not([data-global-search-root]):not([data-sidebar-root])').length === 1) {
+            if (document.querySelectorAll('[data-react-mounted=true]:not([data-global-search-root]):not([data-sidebar-root]):not([data-modal-host-root]):not([data-modal-host-root])').length === 1) {
               cardProof.mountedAt ||= performance.now();
             }
           }).observe(document, {subtree:true, attributes:true, attributeFilter:['data-react-mounted']});

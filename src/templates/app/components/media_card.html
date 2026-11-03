@@ -17,7 +17,7 @@
            style="{% if card_title.lines != 'all' %}--card-title-rest-lines: {{ card_title.lines|default:1 }};{% endif %}{% if card_title.hover_lines != 'all' %}--card-title-hover-lines: {{ card_title.hover_lines|default:3 }};{% endif %}"
            data-media-type="{{ item.media_type }}"
            {% if recommend_mode %}hx-get="{% if resolved_search_preview_url %}{{ resolved_search_preview_url }}{% else %}{% url 'recommend_search' recommend_list_id %}{% endif %}?show_preview=true&media_id={{ item.media_id }}&media_type={{ item.media_type }}&source={{ item.source }}&title={{ resolved_item_title|default:title|urlencode }}&image={{ item.image|urlencode }}&q={{ query|urlencode }}&search_media_type={{ media_type|urlencode }}&page={{ page }}" hx-target="{{ resolved_search_modal_target }}" hx-swap="innerHTML"{% endif %}
-           {% if react_props_id %}x-data="{ trackOpen: false, listsOpen: false, revealed: false }">{% else %}           x-data="{ trackOpen: false, listsOpen: false, revealed: false, tapToReveal(e) { if (this.revealed) { if (e.target.closest('button, a, input, select, textarea')) { return; } const link = this.$root.querySelector('.media-card-overlay a[href]') || this.$root.querySelector('a.media-card-title[href]'); if (link) { e.preventDefault(); e.stopPropagation(); link.click(); } return; } if (!window.matchMedia('(pointer: coarse)').matches || this.$root.classList.contains('media-card-hide-overlay') || !this.$root.querySelector('.media-card-overlay'){% if enable_bulk_select %} || this.selectMode{% endif %}) { return; } e.preventDefault(); e.stopPropagation(); this.revealed = true; window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: this.$root })); } }"
+           {% if react_props_id %}>{% else %}           x-data="{ trackOpen: false, listsOpen: false, revealed: false, tapToReveal(e) { if (this.revealed) { if (e.target.closest('button, a, input, select, textarea')) { return; } const link = this.$root.querySelector('.media-card-overlay a[href]') || this.$root.querySelector('a.media-card-title[href]'); if (link) { e.preventDefault(); e.stopPropagation(); link.click(); } return; } if (!window.matchMedia('(pointer: coarse)').matches || this.$root.classList.contains('media-card-hide-overlay') || !this.$root.querySelector('.media-card-overlay'){% if enable_bulk_select %} || this.selectMode{% endif %}) { return; } e.preventDefault(); e.stopPropagation(); this.revealed = true; window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: this.$root })); } }"
            @click.capture="tapToReveal($event)"
            @media-card-revealed.window="if ($event.detail !== $root) revealed = false"
            @click.window="if (revealed && !$root.contains($event.target)) revealed = false"
@@ -677,6 +677,7 @@
 
         {% if react_props_id %}</div>{% endif %}
 
+        {% if not react_props_id %}
         {# Track Modal #}
         <div x-show="trackOpen"
              x-cloak
@@ -707,6 +708,7 @@
             <div id="{% component_id 'lists' item %}{% if card_uid %}-{{ card_uid }}{% endif %}"></div>
           </div>
         </div>
+        {% endif %}
 
       </div>
           {% endwith %}

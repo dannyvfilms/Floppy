@@ -39,7 +39,7 @@ export function mountMediaCard(host, props) {
     for (const name of ['meta', 'actions']) slots[name] = host.querySelector(`[data-card-slot-source="${name}"]`);
   } else {
     for (const [name, selector] of Object.entries(sources)) {
-      if (name !== 'overlay' || !props.model.actions) slots[name] = host.querySelector(selector);
+      if (name === 'overlay' ? !props.model.actions : !(name === 'status' && props.model.statusId) && !(name === 'rating' && props.model.ratingId)) slots[name] = host.querySelector(selector);
     }
   }
   const restore = mountRoot(host, <Card host={host} props={props} slots={slots} />);
