@@ -40,10 +40,13 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const document = {documentElement: {lang: 'es'}};
-const context = {document, gettext: value => value,
+const context = {document, window: {}, gettext: value => value,
   StatsMediaMerge: {mergeSummary: () => ({most_active_day: 'Friday'})}};
 vm.createContext(context);
-const picker = vm.runInContext(fs.readFileSync(process.argv[1], 'utf8') + '; dateRangePicker()', context);
+const source = fs.readFileSync(process.argv[1], 'utf8');
+vm.runInContext(source, context);
+vm.runInContext(source, context); // Boosted body swaps execute the script again.
+const picker = context.window.dateRangePicker();
 assert.equal(picker.currentTypeSummary.most_active_day_label, 'viernes');
 assert.equal(picker.currentTypeSummary.most_active_day, 'Friday');
 document.documentElement.lang = 'en';

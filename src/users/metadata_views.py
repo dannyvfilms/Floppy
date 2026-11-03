@@ -6,10 +6,12 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils.translation import gettext
 from django.views.decorators.http import require_GET, require_POST
 
 from app import config, preflight
+from app.helpers import safe_return_url
 from app.models import MediaTypes, Sources
 from app.providers import credentials
 from app.services import metadata_resolution
@@ -68,7 +70,7 @@ def _existing_library_count(user, media_type, current_provider):
     return 0
 
 
-def _provider_summary(user):
+def _provider_summary(user, slug=None, related_media=()):
     """Return one entry per enabled media type, showing its resolved provider.
 
     Every entry lists all sources the media type supports, whether or not each
@@ -81,9 +83,25 @@ def _provider_summary(user):
     separate, optional action; changing the default never does it implicitly.
     """
     summary = []
-    for media_type in user.get_sidebar_media_types():
+    media_types = user.get_sidebar_media_types()
+    if slug:
+        # Provider configuration remains discoverable even for a library type
+        # that the viewer has not enabled in their sidebar yet.
+        media_types = [
+            media_type
+            for media_type in config.MEDIA_TYPE_CONFIG
+            if media_type
+            not in {
+                MediaTypes.SEASON.value,
+                MediaTypes.EPISODE.value,
+                MediaTypes.COMIC_ISSUE.value,
+            }
+        ]
+    for media_type in media_types:
         all_sources = config.get_sources(media_type) or []
-        if not all_sources:
+        if not all_sources or (
+            slug and slug not in {source.value for source in all_sources} and media_type not in related_media
+        ):
             continue
         current = metadata_resolution.metadata_default_source(user, media_type)
         summary.append(
@@ -129,6 +147,8 @@ def _field_view(spec, field, user):
     source = credentials.source_of(spec.slug, field.name, user)
     env = credentials.env_value(field)
     stored = credentials.instance_value(spec.slug, field.name)
+    default = credentials.default_value(field)
+    personal = credentials.user_value(spec, field, user)
     return {
         "name": field.name,
         "label": field.label,
@@ -138,10 +158,13 @@ def _field_view(spec, field, user):
         "setting": field.setting,
         "source": source,
         "locked": bool(env),
-        "preview": _mask(env or stored),
+        "preview": _mask(env or stored or default),
+        "has_fallback_value": bool(env or stored or default),
+        "using_default": bool(default and not (env or stored)),
         "has_instance_value": bool(stored),
         "personal": field.name in {f.name for f in spec.personal_fields()},
-        "has_personal_value": bool(credentials.user_value(spec, field, user)),
+        "has_personal_value": bool(personal),
+        "personal_preview": _mask(personal),
     }
 
 
@@ -165,6 +188,7 @@ def _provider_view(spec, user):
         "logo_slug": spec.logo_slug or spec.slug,
         "description": spec.description,
         "docs_url": spec.docs_url,
+        "setup_hint": spec.setup_hint,
         "user_scope": spec.user_scope,
         "configured": credentials.is_configured(spec.slug, user),
         "status": status,
@@ -186,14 +210,20 @@ def _promote_command(username):
     """
     if preflight.in_container():
         container = os.environ.get("HOST_CONTAINERNAME", "floppy")
-        return f"docker exec -it {container} python manage.py promote_superuser {username}"
+        return (
+            f"docker exec -it {container} python manage.py promote_superuser {username}"
+        )
     return f"python src/manage.py promote_superuser {username}"
 
 
-@require_GET
-def metadata_settings(request):
-    """Render the metadata provider credentials page."""
-    user = request.user
+def metadata_context(user, slug=None, related_media=()):
+    """Build the shared credentials and source-selection context.
+
+    A provider page gets only its own credential fields and the global source
+    settings for its supported library types. Source choices remain shared:
+    choosing a default on one provider page changes the same User field seen
+    from every other applicable page.
+    """
     # Every provider takes a personal key now, so "who can set it" no longer
     # separates anything; grouping by what the provider does is what is left.
     can_edit_instance = user.is_superuser
@@ -203,7 +233,7 @@ def metadata_settings(request):
             (
                 _provider_view(spec, user)
                 for spec in credentials.REGISTRY.values()
-                if spec.group == group
+                if spec.group == group and (not slug or spec.slug == slug)
             ),
             key=lambda provider: provider["label"].casefold(),
         )
@@ -215,18 +245,22 @@ def metadata_settings(request):
                     "description": gettext(credentials.GROUP_DESCRIPTIONS[group]),
                     "providers": providers,
                     "media_tags": sorted(
-                        {tag for provider in providers for tag in provider["media_tags"]},
+                        {
+                            tag
+                            for provider in providers
+                            for tag in provider["media_tags"]
+                        },
                     ),
                 },
             )
 
     duplicate_anime_count = 0
-    if user.anime_enabled:
+    if user.anime_enabled and not slug:
         from app.tasks_anime_library_repair import duplicate_pair_count
 
         duplicate_anime_count = duplicate_pair_count(user_id=user.id)
 
-    provider_summary = _provider_summary(user)
+    provider_summary = _provider_summary(user, slug, related_media)
     present_tags = {entry["media_tag"] for entry in provider_summary}
     for group in groups:
         for provider in group["providers"]:
@@ -239,6 +273,26 @@ def metadata_settings(request):
         "provider_summary": provider_summary,
         "anime_library_mode_choices": AnimeLibraryModeChoices.choices,
         "duplicate_anime_count": duplicate_anime_count,
+        "metadata_provider": next(
+            (provider for group in groups for provider in group["providers"]),
+            None,
+        ),
+        "provider_navigation": bool(slug),
+        "tmdb_proxy_configured": bool(user.tmdb_proxy_url),
+        "metadata_source_connections": {
+            choice["value"]: (
+                reverse("provider_detail", args=[choice["value"]])
+                + (
+                    "?tab=connection"
+                    if choice["value"] in credentials.REGISTRY
+                    else "?tab=metadata"
+                )
+            )
+            for entry in provider_summary
+            for choice in entry["choices"]
+        }
+        if slug
+        else {},
     }
     if not can_edit_instance:
         # Floppy's setup never flags anyone, so the owner of a fresh install is
@@ -248,7 +302,24 @@ def metadata_settings(request):
         )
         context["in_container"] = preflight.in_container()
         context["promote_command"] = _promote_command(user.username)
-    return render(request, "users/metadata.html", context)
+    return context
+
+
+@require_GET
+def metadata_settings(request):
+    """Render the metadata provider credentials page."""
+    return render(request, "users/metadata.html", metadata_context(request.user))
+
+
+def _metadata_redirect(request):
+    """Return to an explicitly supplied local provider tab after a form save."""
+    return redirect(
+        safe_return_url(
+            request,
+            request.POST.get("next", ""),
+            fallback=reverse("metadata_settings"),
+        ),
+    )
 
 
 @require_POST
@@ -258,16 +329,16 @@ def set_media_type_provider(request, media_type):
         return HttpResponse(status=404)
     if request.user.is_demo:
         messages.error(request, "This section is view-only for demo accounts.")
-        return redirect("metadata_settings")
+        return _metadata_redirect(request)
 
     source = request.POST.get("source", "")
     valid_sources = {
         choice.value
-        for choice in metadata_resolution.available_metadata_sources(media_type)
+        for choice in metadata_resolution.available_metadata_sources(media_type, request.user)
     }
     if source not in valid_sources:
         messages.error(request, "That provider isn't available for this media type.")
-        return redirect("metadata_settings")
+        return _metadata_redirect(request)
 
     field = _provider_default_field(media_type)
     if getattr(request.user, field) != source:
@@ -286,7 +357,7 @@ def set_media_type_provider(request, media_type):
             request.user.save(update_fields=["anime_library_mode"])
 
     messages.success(request, "Metadata provider updated.")
-    return redirect("metadata_settings")
+    return _metadata_redirect(request)
 
 
 def _spec_or_none(slug):
@@ -324,12 +395,12 @@ def save_provider_credential(request, slug):
         error = spec.validator(values)
         if error:
             messages.error(request, f"{spec.label}: {error}")
-            return redirect("metadata_settings")
+            return _metadata_redirect(request)
 
     credentials.set_instance(slug, values, actor=request.user)
     _reopen_game_groups_if_igdb(slug)
     messages.success(request, f"{spec.label} credentials saved.")
-    return redirect("metadata_settings")
+    return _metadata_redirect(request)
 
 
 @require_POST
@@ -344,7 +415,7 @@ def clear_provider_credential(request, slug):
 
     credentials.clear_instance(slug)
     messages.success(request, f"{spec.label} credentials removed.")
-    return redirect("metadata_settings")
+    return _metadata_redirect(request)
 
 
 @require_POST
@@ -362,7 +433,7 @@ def save_personal_credential(request, slug):
         error = spec.validator(values)
         if error:
             messages.error(request, f"{spec.label}: {error}")
-            return redirect("metadata_settings")
+            return _metadata_redirect(request)
 
     credentials.set_user(slug, request.user, values)
     _reopen_game_groups_if_igdb(slug, request.user)
@@ -370,4 +441,4 @@ def save_personal_credential(request, slug):
         messages.success(request, f"Your {spec.label} key was saved.")
     else:
         messages.success(request, f"Your {spec.label} key was removed.")
-    return redirect("metadata_settings")
+    return _metadata_redirect(request)

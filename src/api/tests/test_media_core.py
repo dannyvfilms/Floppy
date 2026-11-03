@@ -1292,7 +1292,10 @@ class MediaCoreTests(FloppyApiTestCase):
         )
 
         self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.json(), {"detail": "Media not found."})
+        self.assertEqual(
+            response.json(),
+            {"detail": "Media not found.", "code": "MEDIA_NOT_FOUND"},
+        )
 
     @patch("api.views.services.get_media_metadata")
     def test_media_detail_get_book_publishers_shapes(self, mock_metadata):
@@ -1366,7 +1369,10 @@ class MediaCoreTests(FloppyApiTestCase):
         )
 
         self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.json(), {"detail": "Media not found."})
+        self.assertEqual(
+            response.json(),
+            {"detail": "Media not found.", "code": "MEDIA_NOT_FOUND"},
+        )
 
     @patch("api.views.services.get_media_metadata")
     def test_media_detail_get_music_preserves_identity_metadata(self, mock_metadata):

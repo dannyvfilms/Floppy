@@ -15,6 +15,7 @@ from pathlib import Path
 from celery import shared_task
 from django.conf import settings
 
+from app import backup_status
 from app.memory_envelope import sample_memory
 from config.sqlite_integrity import create_live_database_snapshot
 
@@ -54,13 +55,17 @@ def write_database_snapshot():
             max_keep=settings.DB_SNAPSHOT_RETENTION_COUNT,
             timeout_seconds=settings.SQLITE_BUSY_TIMEOUT_SECONDS,
         )
-    except Exception:
+    except Exception as error:
         logger.exception("Database snapshot task failed unexpectedly")
+        backup_status.record_failure(backup_status.SNAPSHOT, error)
         raise
 
     if path is None:
         message = "Database snapshot failed; no verified backup was published"
+        backup_status.record_failure(backup_status.SNAPSHOT, message)
         raise RuntimeError(message)
+
+    backup_status.record_success(backup_status.SNAPSHOT, path.name)
 
     _log_snapshot_envelope(path, before, (time.perf_counter() - started) * 1000)
     return {"status": "ok", "path": str(path)}

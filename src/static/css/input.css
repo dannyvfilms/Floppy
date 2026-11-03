@@ -1,4 +1,5 @@
 @import "tailwindcss" source("../../");
+@source not "../ui";
 
 @theme {
   --breakpoint-xs: 30rem;
@@ -4432,6 +4433,13 @@ html.light .theme-toggle-icon-moon {
 .episode-card-actions:has([data-episode-has-data="true"]) {
   grid-column: 2;
   justify-self: end;
+}
+
+/* Centered under the text on mobile only; right-aligned from the md breakpoint. */
+@media (min-width: 768px) {
+  .episode-card-actions {
+    justify-self: end;
+  }
 }
 
 .media-card-rate-empty .media-card-rate-star svg {

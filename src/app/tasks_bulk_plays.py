@@ -260,3 +260,16 @@ def bulk_music_plays_task(
         context_kind,
         context_id,
     )
+
+
+@shared_task(bind=True, name="Bulk Consumption Batch")
+def bulk_consumption_batch_task(self, user_id: int, operation_id: str, items: list):
+    """Create each pending item of a consumption batch, one transaction each."""
+    from api import consumption_batch
+
+    user = get_user_model().objects.filter(pk=user_id).first()
+    if user is None:
+        logger.warning("Consumption batch %s: user %s is gone", operation_id, user_id)
+        return {"operation_id": operation_id, "results": []}
+    results = consumption_batch.run_batch(user, operation_id, items)
+    return {"operation_id": operation_id, "results": results}

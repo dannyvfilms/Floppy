@@ -7,6 +7,7 @@ from django.utils import timezone
 
 import app
 from app.models import MediaTypes
+from integrations import import_progress
 from integrations.imports.mylar import comic_issue_item
 from integrations.imports.reading_server import (
     ReadingServerImporter,
@@ -81,7 +82,9 @@ class KomgaImporter(ReadingServerImporter):
 
     def sync(self, cutoff, counts, links):
         """Import every book with reading progress newer than the cutoff."""
-        for book in self.client.recently_read_books():
+        for index, book in enumerate(self.client.recently_read_books(), start=1):
+            # Pages arrive lazily, so there is no total to report.
+            import_progress.report(index, None, "Komga")
             progress = book.get("readProgress") or {}
             read_at = parse_datetime(
                 progress.get("readDate") or progress.get("lastModified"),

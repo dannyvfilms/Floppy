@@ -9,6 +9,7 @@ import logging
 from datetime import UTC, datetime
 from http import HTTPStatus as HTTP  # noqa: N814
 
+from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
@@ -26,6 +27,7 @@ from app.models import (
     Status,
 )
 from app.models.episode_runtimes import usable_runtime_minutes
+from app.services.progress_changes import record_progress_change
 from app.services.sync_lock import state_transaction
 from app.services.tracking_hydration import ensure_item_metadata
 from app.templatetags.app_tags import media_url
@@ -163,6 +165,26 @@ def _resolve_podcast(user, ids):
         .order_by("-id")
         .first()
     )
+
+
+def complete_playback_progress(user_id, item_id):
+    """Close the resume point of an item that has just become watched."""
+    open_rows = PlaybackProgress.objects.filter(
+        user_id=user_id,
+        item_id=item_id,
+        completed=False,
+    ).select_related("user", "item")
+    for progress in open_rows:
+        with transaction.atomic():
+            progress.completed = True
+            progress.save(update_fields=["completed", "updated_at"])
+            record_progress_change(
+                progress.user,
+                progress.item,
+                position_seconds=progress.position_seconds,
+                duration_seconds=progress.duration_seconds,
+                completed=True,
+            )
 
 
 def upsert_playback_progress(

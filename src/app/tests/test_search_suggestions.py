@@ -1,8 +1,11 @@
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
-from app.models import Item, MediaTypes, Movie, Sources
+from app.models import TV, Item, MediaTypes, Movie, Season, Sources
+from app.search_views import _local_media_results, get_saved_suggestions
 from users.models import Status
 
 
@@ -47,6 +50,44 @@ class SearchSuggestionsViewTests(TestCase):
         self.assertContains(response, "/details/")
         # The footer offers the full online search.
         self.assertContains(response, "Search online for")
+
+    def test_tv_suggestions_do_not_load_tracking_graph_or_availability(self):
+        """Typing must not hydrate seasons, episodes or availability JSON."""
+        item = Item.objects.create(
+            media_id="show", source="tmdb", media_type="tv", title="Saved Show",
+            watch_providers={"US": {"flatrate": [{"provider_name": "Unused"}]}},
+        )
+        TV.objects.create(item=item, user=self.user, status=Status.COMPLETED.value)
+
+        with CaptureQueriesContext(connection) as queries:
+            suggestions = get_saved_suggestions(self.user, "tv", "Saved")
+
+        self.assertEqual([row["title"] for row in suggestions], ["Saved Show"])
+        sql = "\n".join(query["sql"] for query in queries)
+        for column_or_table in ('"watch_providers"', 'FROM "app_season"', 'FROM "app_episode"'):
+            self.assertNotIn(column_or_table, sql)
+        self.assertFalse(any('SELECT "app_tv"."id"' in query["sql"] for query in queries))
+
+    def test_local_tv_cards_do_not_load_availability(self):
+        """The full search still hydrates tracking data, without wide JSON."""
+        item = Item.objects.create(
+            media_id="show", source="tmdb", media_type="tv", title="Saved Show",
+        )
+        show = TV.objects.create(item=item, user=self.user, status=Status.COMPLETED.value)
+        season_item = Item.objects.create(
+            media_id="show", source="tmdb", media_type="season", title="Saved Show",
+            season_number=1,
+        )
+        Season.objects.create(
+            item=season_item, user=self.user, related_tv=show, status=Status.COMPLETED.value,
+        )
+
+        with CaptureQueriesContext(connection) as queries:
+            results, total = _local_media_results(self.user, "tv", "Saved", 8)
+
+        self.assertEqual(total, 1)
+        self.assertEqual(results[0]["media"], show)
+        self.assertNotIn('"watch_providers"', "\n".join(query["sql"] for query in queries))
 
     def test_search_matches_both_localized_and_original_titles(self):
         self.item.original_title = "The Godfather"

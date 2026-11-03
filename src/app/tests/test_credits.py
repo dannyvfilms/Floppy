@@ -322,3 +322,43 @@ class CreditSyncQueryBudgetTests(TestCase):
         credits.sync_item_credits_from_metadata(self.item, self.metadata)
 
         mock_invalidate.assert_called_once_with(user.id, MediaTypes.MOVIE.value)
+
+
+class MissingCreditsBackfillQueryTests(TestCase):
+    """The backfill reads only item ids, so it must not sort or join people (#1791).
+
+    ``ItemPersonCredit`` orders by ``sort_order, person__name`` by default; on a
+    library with hundreds of thousands of credits that made person pages time out.
+    """
+
+    def test_id_reads_are_unordered_and_skip_the_person_join(self):
+        item = Item.objects.create(
+            media_id="movie-1791",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Backfill",
+            image="http://example.com/b.jpg",
+        )
+        person = Person.objects.create(
+            source=Sources.TMDB.value, source_person_id="1", name="Actor"
+        )
+        ItemPersonCredit.objects.create(
+            item=item,
+            person=person,
+            role_type=CreditRoleType.CAST.value,
+            sort_order=0,
+        )
+
+        with CaptureQueriesContext(connection) as queries:
+            credits.missing_credits_backfill_item_ids([item.id])
+
+        credit_sql = [
+            q["sql"].upper()
+            for q in queries
+            if "APP_ITEMPERSONCREDIT" in q["sql"].upper()
+            or "APP_ITEMSTUDIOCREDIT" in q["sql"].upper()
+        ]
+        self.assertTrue(credit_sql)
+        for sql in credit_sql:
+            self.assertNotIn("ORDER BY", sql)
+            self.assertNotIn("APP_PERSON", sql)

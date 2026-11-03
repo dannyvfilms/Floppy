@@ -179,18 +179,17 @@ class KoitoCredentialTests(TestCase):
             base_url=BASE_URL,
             api_key=helpers.encrypt(API_KEY),
         )
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["koito"]) + "?tab=import")
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
         self.assertNotIn(API_KEY, body)
         self.assertIn(BASE_URL, body)
 
     def test_connect_form_renders_when_disconnected(self):
-        """The Koito modal offers URL + API key inputs before connecting."""
-        response = self.client.get(reverse("import_data"))
+        """The Connection tab offers URL and API key inputs before connecting."""
+        response = self.client.get(reverse("provider_detail", args=["koito"]) + "?tab=connection")
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
-        self.assertIn("activeModal === 'koito'", body)
         self.assertIn(reverse("koito_connect"), body)
         self.assertIn('name="base_url"', body)
         self.assertIn('name="api_key"', body)

@@ -48,7 +48,7 @@ class CardRatingFragmentTests(TestCase):
 
         self.assertContains(response, f'id="{item_slot_id("media-card-rating", self.movie.item)}"')
         self.assertContains(response, "media-card-rate-button")
-        self.assertContains(response, f'hx-post="{self.url}"')
+        self.assertContains(response, f'"postUrl": "{self.url}"')
         self.assertContains(response, "rating: 7")
 
     def test_clearing_the_rating_leaves_the_empty_star(self):

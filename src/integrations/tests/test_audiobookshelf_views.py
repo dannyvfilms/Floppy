@@ -103,6 +103,16 @@ class AudiobookshelfScheduleTests(TestCase):
         self.assertIsNotNone(task.interval)
         self.assertEqual(task.interval.every, 15)
 
+    @patch("integrations.views.tasks.import_audiobookshelf.delay")
+    def test_manual_import_and_disconnect_return_to_safe_provider_page(self, mock_import):
+        AudiobookshelfAccount.objects.create(user=self.user, base_url=BASE_URL, api_token="encrypted")
+        next_url = reverse("provider_detail", args=["audiobookshelf"]) + "?tab=import"
+        response = self.client.post(reverse("import_audiobookshelf"), {"next": next_url})
+        self.assertRedirects(response, next_url, fetch_redirect_response=False)
+        mock_import.assert_called_once()
+        response = self.client.post(reverse("audiobookshelf_disconnect"), {"next": "https://evil.example/"})
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
+
     def test_disconnect_removes_schedule(self):
         """Disconnecting deletes the recurring periodic task."""
         AudiobookshelfAccount.objects.create(

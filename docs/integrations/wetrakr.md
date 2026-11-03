@@ -28,7 +28,7 @@ WeTrakr application key and a consenting test account have confirmed:
 ## Connecting
 
 1. Get an application key from WeTrakr and set `WETRAKR_CLIENT_ID`, or paste it
-   under Settings > Metadata. Floppy ships no shared key.
+   under Settings > Providers > WeTrakr > Connection. Floppy ships no shared key.
 2. Integrations > WeTrakr > Connect. Floppy shows a code; approve it on
    wetrakr.com. Floppy stores the tokens encrypted and refreshes them under a
    lock, because WeTrakr rotates refresh tokens.

@@ -22,10 +22,11 @@ on:
 # A push to latest must not be overtaken by an older build that started later
 # because runners were queued. Keep one publish per ref in flight and let the
 # newest pending run replace intermediate commits without cancelling the run
-# currently publishing.
+# currently publishing. Pull request runs publish nothing, so a newer push to
+# the same PR cancels the older run outright.
 concurrency:
   group: docker-image-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -294,6 +295,90 @@ jobs:
           build-args: |
             VERSION=${{ steps.get-version.outputs.VERSION }}
             COMMIT_SHA=${{ github.sha }}
+
+    outputs:
+      digest: ${{ steps.build-and-push.outputs.digest }}
+      tags: ${{ steps.meta.outputs.tags }}
+
+  # Verifies what was actually distributed, by immutable digest, in both package
+  # namespaces. Read-only registry access; any scanner, registry or attestation
+  # failure fails the job, so an outage can never look like a clean scan.
+  verify-image:
+    name: Verify distributed image
+    needs: [build]
+    if: ${{ github.event_name != 'pull_request' && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    env:
+      DIGEST: ${{ needs.build.outputs.digest }}
+      TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db
+      TRIVY_MAX_DB_AGE_HOURS: "48"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Docker buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Log into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify attestation subjects match platform digests
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$DIGEST"
+          for image in "$REGISTRY/$IMAGE_NAME" "$REGISTRY/$LEGACY_IMAGE_NAME"; do
+            python3 scripts/verify_image_attestations.py "$image" "$DIGEST"
+          done
+
+      - name: Scan distributed images
+        run: |
+          set -euo pipefail
+          # Policy lives in .trivyignore.yaml (reviewed exceptions only).
+          # --exit-code 1 fails on HIGH/CRITICAL with an available fix; scanner
+          # or DB errors also exit nonzero.
+          for image in "$REGISTRY/$IMAGE_NAME" "$REGISTRY/$LEGACY_IMAGE_NAME"; do
+            for platform in linux/amd64 linux/arm64; do
+              echo "::group::$image $platform"
+              docker run --rm \
+                -v "$HOME/.docker/config.json:/root/.docker/config.json:ro" \
+                -v trivy-cache:/root/.cache \
+                -v "$GITHUB_WORKSPACE/.trivyignore.yaml:/.trivyignore.yaml:ro" \
+                -e TRIVY_DB_REPOSITORY \
+                ghcr.io/aquasecurity/trivy:0.76.1 image \
+                  --platform "$platform" \
+                  --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+                  --ignorefile /.trivyignore.yaml \
+                  "$image@$DIGEST"
+              echo "::endgroup::"
+            done
+          done
+
+      - name: Check scanner database freshness
+        run: |
+          set -euo pipefail
+          meta=$(docker run --rm -v trivy-cache:/root/.cache ghcr.io/aquasecurity/trivy:0.76.1 \
+            version --format json)
+          python3 - "$meta" "$TRIVY_MAX_DB_AGE_HOURS" <<'PY'
+          import datetime, json, sys
+          db = json.loads(sys.argv[1])["VulnerabilityDB"]
+          age = datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.fromisoformat(
+              db["UpdatedAt"].replace("Z", "+00:00"))
+          assert age.total_seconds() < int(sys.argv[2]) * 3600, f"scanner DB stale: {age}"
+          print("scanner DB age:", age)
+          PY
 
   # A failed tag build publishes nothing, and the failure sits unseen in the
   # Actions tab until a user notices the missing image (#1227, #1445). Open an

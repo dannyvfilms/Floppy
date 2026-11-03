@@ -101,6 +101,8 @@
                   {% if general_existing_instance %}data-existing-instance{% endif %}
                   @submit="closeTrackModal($el)">
           {% csrf_token %}
+          {# Enter submits via the first submit button; keep it Update/Add, not Delete. #}
+          <button type="submit" class="sr-only" tabindex="-1" aria-hidden="true"></button>
           <input type="hidden" name="track_form_id" value="{{ track_form_id }}">
           {% if can_manage_hardcover_edition and hardcover_edition_id_hint %}
             <input type="hidden" name="edition_id" value="{{ hardcover_edition_id_hint }}">

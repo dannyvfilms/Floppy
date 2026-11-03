@@ -12,6 +12,40 @@ from app.tests.live_server import SerialStaticLiveServerTestCase
 class MediaListColumnsBrowserTests(SerialStaticLiveServerTestCase):
     """Exercise the actual HTMX swap, including artwork preparation."""
 
+    def test_layout_switch_keeps_updated_status(self):
+        user = get_user_model().objects.create_user(
+            username="layout-browser", password="12345"
+        )
+        for title, status in (
+            ("Playing", Status.IN_PROGRESS.value),
+            ("Finished", Status.COMPLETED.value),
+        ):
+            item = Item.objects.create(
+                media_id=title,
+                source=Sources.MANUAL.value,
+                media_type=MediaTypes.GAME.value,
+                title=title,
+            )
+            Game.objects.create(item=item, user=user, status=status)
+
+        with sync_playwright() as playwright, playwright.chromium.launch() as browser:
+            page = browser.new_page(viewport={"width": 1600, "height": 1000})
+            page.goto(self.live_server_url)
+            page.get_by_placeholder("Enter your username").fill("layout-browser")
+            page.get_by_placeholder("Enter your password").fill("12345")
+            page.get_by_role("button", name="Sign in").click()
+            page.goto(f"{self.live_server_url}/medialist/game?status=In%20progress")
+            page.get_by_role("button", name="In Progress", exact=True).click()
+            all_buttons = page.get_by_role("button", name="All", exact=True)
+            expect(all_buttons).to_have_count(2)
+            all_buttons.last.click()
+            expect(page.get_by_text("Finished", exact=True)).to_be_visible()
+            page.get_by_role("button", name="View settings").first.click()
+            page.get_by_role("link", name="Table View").first.click()
+            expect(page.locator(".media-table")).to_contain_text("Finished")
+            expect(page.locator(".media-table")).to_contain_text("Playing")
+            self.assertIn("status=all", page.url)
+
     def test_toggle_notes_preserves_filtered_table(self):
         user = get_user_model().objects.create_user(
             username="columns-browser", password="12345"

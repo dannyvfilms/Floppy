@@ -68,14 +68,16 @@ def _require_no_incident(db_path: str) -> None:
     ):
         msg = (
             "Unresolved or unreadable SQLite recovery report. Inspect the recovery "
-            "page/report; use sqlite_startup --recover while services are stopped."
+            "page/report. Steps: " + integrity.RECOVERY_DOC_URL
         )
         raise StartupBlockedError(msg)
     previous = integrity.read_startup_status(db_path)
     if previous and previous.get("status") in {"failed", "blocked"}:
         msg = (
-            "A previous SQLite check failed. Run sqlite_startup --prepare-migrations "
-            "with services stopped; a timeout alone does not mean corruption."
+            "The last SQLite startup check did not finish; a timeout or crash alone "
+            "does not mean corruption. With Floppy stopped, run "
+            f"`{integrity.PREPARE_COMMAND}` in /floppy. Steps: "
+            + integrity.RECOVERY_DOC_URL
         )
         raise StartupBlockedError(msg)
 
@@ -165,8 +167,9 @@ def startup_gate(db_path: str, connection) -> bool:
     ):
         msg = (
             "Pending migrations require an unchanged verified recovery snapshot. "
-            "Stop all database writers, then run: python manage.py sqlite_startup "
-            "--prepare-migrations (bounded to one hour by default). Restart afterwards."
+            "Stop all database writers, then run "
+            f"`{integrity.PREPARE_COMMAND}` in /floppy (up to one hour by default), "
+            "then restart. Steps: " + integrity.RECOVERY_DOC_URL
         )
         raise MigrationPermitRequiredError(msg)
     if not isinstance(permit.get("backup"), str) or not permit["backup"]:

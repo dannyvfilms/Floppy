@@ -28,7 +28,8 @@
 
     <a :href="layoutHref(layout === 'grid' ? 'table' : 'grid')"
        class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
-       @click="open = false">
+       @click="$el.href = layoutHref(layout === 'grid' ? 'table' : 'grid'); open = false"
+       @auxclick="$el.href = layoutHref(layout === 'grid' ? 'table' : 'grid')">
       <span x-show="layout === 'grid'">{% include "app/icons/table.svg" with classes="w-4 h-4" %}</span>
       <span x-show="layout !== 'grid'">{% include "app/icons/four-square.svg" with classes="w-4 h-4" %}</span>
       {% translate "Table View" as media_i18n_55 %}{% translate "Grid View" as media_i18n_56 %}<span x-text="layout === 'grid' ? '{{ media_i18n_55|escapejs }}' : '{{ media_i18n_56|escapejs }}'"></span>

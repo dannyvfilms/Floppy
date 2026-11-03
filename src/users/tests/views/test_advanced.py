@@ -70,17 +70,21 @@ class TmdbProxyUpdateTests(TestCase):
         )
         self.assertIsNone(services._get_tmdb_proxy_url())
 
-    def test_advanced_page_hides_proxy_form_from_non_superuser(self):
-        """Only superusers see the TMDB proxy form."""
-        response = self.client.get(reverse("advanced"))
-        self.assertContains(response, reverse("update_tmdb_proxy"))
+    def test_provider_page_hides_proxy_form_from_non_superuser(self):
+        """Only superusers get the TMDB proxy form on the TMDB metadata tab."""
+        url = reverse("provider_detail", args=["tmdb"])
+        page = self.client.get(url, {"tab": "metadata"}).context["provider_page"]
+        self.assertEqual(
+            page["metadata"]["proxy"]["action"],
+            reverse("update_tmdb_proxy"),
+        )
 
         member = {"username": "member", "password": "12345"}
         get_user_model().objects.create_user(**member)
         self.client.login(**member)
 
-        response = self.client.get(reverse("advanced"))
-        self.assertNotContains(response, reverse("update_tmdb_proxy"))
+        page = self.client.get(url, {"tab": "metadata"}).context["provider_page"]
+        self.assertIsNone(page["metadata"]["proxy"])
 
     def test_update_tmdb_proxy_saves_encrypted_value(self):
         """Posting a proxy URL should save it encrypted and invalidate the cache."""
@@ -172,7 +176,7 @@ class CacheClearButtonsTests(TestCase):
 
     def test_advanced_page_renders_media_type_delete_confirmation(self):
         """The Danger Zone should expose a typed confirmation for media deletion."""
-        response = self.client.get(reverse("advanced"))
+        response = self.client.get(reverse("data_management"))
 
         self.assertContains(response, "Danger Zone")
         self.assertContains(response, "Delete Selected Type")

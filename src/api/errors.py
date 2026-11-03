@@ -10,6 +10,14 @@ from app import db_diagnostics
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
+# ``validate_body`` returns prose; map the one refusal an agent must tell apart.
+_INVALID_STATUS_DETAIL = "Invalid status value."
+
+
+def validation_error_code(error):
+    """Return ``{"code": ...}`` for a ``validate_body`` refusal that has one."""
+    return {"code": "INVALID_STATUS"} if error == _INVALID_STATUS_DETAIL else {}
+
 
 def database_busy_response(error, *, request=None, report=True):
     """Return a 503 JSON response for database contention, or ``None``.

@@ -984,3 +984,29 @@ class UnknownRuntimeCardTests(TestCase):
             )
 
         self.assertEqual(Item.objects.get(media_id="88").runtime_minutes, 100)
+
+
+class ResumePointClosedOnWatchedTests(TestCase):
+    """Marking a title watched closes its open resume point (#1809)."""
+
+    def test_completed_movie_closes_open_resume_point(self):
+        from app.models import Movie, Status
+
+        user = get_user_model().objects.create_user(username="resume", password="pw")
+        item = Item.objects.create(
+            media_id="1809",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Resume",
+            image="none",
+        )
+        PlaybackProgress.objects.create(
+            user=user,
+            item=item,
+            position_seconds=1200,
+            duration_seconds=1320,
+        )
+
+        Movie.objects.create(user=user, item=item, status=Status.COMPLETED.value)
+
+        self.assertTrue(PlaybackProgress.objects.get(user=user, item=item).completed)

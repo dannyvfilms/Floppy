@@ -370,6 +370,14 @@ def no_underscore(arg1):
 
 
 @register.filter
+def related_section_label(name):
+    """Heading for a related-media section; keep acronyms like DLCs upper-case."""
+    if name == "dlcs":
+        return "DLCs"
+    return str(name).replace("_", " ").title()
+
+
+@register.filter
 def image_url(value):
     """Return a safe Floppy image proxy URL when external caching is enabled."""
     return image_cache.rewrite_image_url(value)

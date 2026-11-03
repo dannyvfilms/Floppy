@@ -1,6 +1,7 @@
 {% load i18n user_tags %}
 {% with connect_url=slug|add:"_connect" disconnect_url=slug|add:"_disconnect" sync_url="import_"|add:slug %}
 {# Reading server modal. Params: slug, name, account, blurb, help, placeholder (translated). #}
+{% if provider_tab != 'import' %}
 <div x-show="activeModal === '{{ slug }}'"
      x-cloak
      @keydown.escape.window="closeModal()"
@@ -14,9 +15,10 @@
             class="block w-fit ml-auto mb-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer p-1 rounded-md hover:bg-[var(--color-surface-hover)] bg-[var(--color-surface)]">
       {% include "app/icons/x.svg" with classes="w-4 h-4" %}
     </button>
-<div class="bg-[var(--color-surface-strong)] p-4 rounded-lg space-y-3">
+{% endif %}
+<div class="{% if provider_tab != 'import' %}bg-[var(--color-surface-strong)] p-4 rounded-lg {% endif %}space-y-3">
   <div class="flex items-center justify-between">
-    <div class="flex items-center">{% source_display slug %}</div>
+    {% if provider_tab != 'import' %}<div class="flex items-center">{% source_display slug %}</div>{% endif %}
     {% if account and account.is_connected %}
       <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-[var(--color-success-text)] border border-emerald-500/30">{% translate "Connected" %}</span>
     {% else %}
@@ -39,8 +41,10 @@
       </div>
     {% endif %}
     <div class="space-y-3">
+      {% if provider_tab != 'connection' %}
       <form method="post" action="{% url sync_url %}">
         {% csrf_token %}
+              {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
         <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
           {% translate "Sync now" %}
         </button>
@@ -51,13 +55,16 @@
         </p>
         <form method="post" action="{% url "refresh_kavita" %}">
           {% csrf_token %}
+              {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
           <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
             {% translate "Refresh metadata and progress" %}
           </button>
         </form>
       {% endif %}
+      {% endif %}
       <form method="post" action="{% url disconnect_url %}">
         {% csrf_token %}
+              {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
         <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
           {% translate "Disconnect" %}
         </button>
@@ -67,6 +74,7 @@
     <p class="text-sm text-[var(--color-text-muted)] mb-3">{{ help }}</p>
     <form method="post" action="{% url connect_url %}" class="space-y-3">
       {% csrf_token %}
+              {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
       <div>
         <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Server URL" %}</label>
         <input type="url" name="base_url" required
@@ -98,6 +106,6 @@
     </form>
   {% endif %}
 </div>
-  </div>
-</div>
+  {% if provider_tab != 'import' %}</div>
+</div>{% endif %}
 {% endwith %}

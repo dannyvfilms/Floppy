@@ -153,10 +153,15 @@ class GenericScrobbleHeuristicTests(TestCase):
         )
 
     def test_is_played_uses_buffer_when_duration_known(self):
-        """Position within the scrobble buffer of duration counts as played."""
+        """Position at 90% or more of duration counts as played."""
         self.assertTrue(
             self.processor._is_played(
                 {"position_seconds": 5380, "duration_seconds": 5400},
+            ),
+        )
+        self.assertTrue(
+            self.processor._is_played(
+                {"position_seconds": 1254, "duration_seconds": 1320},
             ),
         )
         self.assertFalse(

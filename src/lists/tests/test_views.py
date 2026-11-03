@@ -3425,6 +3425,99 @@ class ListsModalViewTests(TestCase):
         self.assertEqual(item.title, "Sternstunde Philosophie")
         mock_import.assert_called_once_with("1532744254")
 
+    @patch("app.services.podcast_import.import_show_from_itunes_id")
+    def test_quick_add_podcast_search_result_uses_show_uuid_once(self, mock_import):
+        """Quick add files a searched podcast under its uuid, never twice."""
+        show = PodcastShow.objects.create(
+            podcast_uuid="itunes:1532744254",
+            title="The Belles",
+            image="http://example.com/podcast.jpg",
+            rss_feed_url="",
+        )
+        mock_import.return_value = show
+        custom_list = CustomList.objects.create(name="Pods", owner=self.user)
+        data = {
+            "media_id": "1532744254",
+            "media_type": MediaTypes.PODCAST.value,
+            "source": Sources.POCKETCASTS.value,
+        }
+
+        for _ in range(2):
+            self.client.post(
+                reverse("list_add_item_submit", args=[custom_list.id]),
+                data,
+            )
+
+        item = Item.objects.get(
+            media_id=show.podcast_uuid,
+            media_type=MediaTypes.PODCAST.value,
+        )
+        self.assertFalse(Item.objects.filter(media_id="1532744254").exists())
+        self.assertEqual(custom_list.items.filter(id=item.id).count(), 1)
+
+    def test_list_detail_merges_stray_podcast_item_into_tracked_show(self):
+        """A show filed under its iTunes id folds into the tracked show's Item."""
+        show = PodcastShow.objects.create(
+            podcast_uuid="itunes:1532744254",
+            title="The Belles",
+            image="http://example.com/podcast.jpg",
+            rss_feed_url="",
+        )
+        kwargs = {
+            "source": Sources.POCKETCASTS.value,
+            "media_type": MediaTypes.PODCAST.value,
+            "title": "The Belles",
+            "image": "http://example.com/podcast.jpg",
+        }
+        real = Item.objects.create(media_id=show.podcast_uuid, **kwargs)
+        stray = Item.objects.create(media_id="1532744254", **kwargs)
+        custom_list = CustomList.objects.create(name="Pods", owner=self.user)
+        CustomListItem.objects.create(custom_list=custom_list, item=real)
+        CustomListItem.objects.create(custom_list=custom_list, item=stray)
+
+        response = self.client.get(
+            reverse("list_detail", args=[custom_list.public_reference]),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Item.objects.filter(pk=stray.pk).exists())
+        self.assertEqual(
+            list(custom_list.items.values_list("pk", flat=True)),
+            [real.pk],
+        )
+
+    def test_merge_stray_podcast_items_rekeys_when_show_item_missing(self):
+        """Without a tracked Item the stray is re-keyed to the show's uuid."""
+        from app.services.podcast_import import merge_stray_podcast_items
+
+        show = PodcastShow.objects.create(
+            podcast_uuid="itunes:42",
+            title="Serial",
+            image="",
+            rss_feed_url="",
+        )
+        stray = Item.objects.create(
+            media_id="42",
+            source=Sources.POCKETCASTS.value,
+            media_type=MediaTypes.PODCAST.value,
+            title="Serial",
+            image="",
+        )
+        unknown = Item.objects.create(
+            media_id="999",
+            source=Sources.POCKETCASTS.value,
+            media_type=MediaTypes.PODCAST.value,
+            title="Unknown",
+            image="",
+        )
+
+        self.assertEqual(merge_stray_podcast_items(), 1)
+
+        stray.refresh_from_db()
+        unknown.refresh_from_db()
+        self.assertEqual(stray.media_id, show.podcast_uuid)
+        self.assertEqual(unknown.media_id, "999")
+
     @patch("app.providers.services.get_media_metadata")
     @patch("lists.models.CustomList.objects.get_user_lists_with_item")
     def test_lists_modal_view_with_existing_item(

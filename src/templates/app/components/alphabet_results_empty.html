@@ -1,0 +1,8 @@
+{% load alphabet_tags %}
+{% if alphabet_table_fragment %}
+  <tbody id="{{ table_body_id|default:'media-table-body' }}"><tr><td colspan="100">
+    {% alphabet_filter alphabet_form_id|default:'filter-form' "empty" %}
+  </td></tr></tbody>
+{% else %}
+  {% alphabet_filter alphabet_form_id|default:'filter-form' "empty" %}
+{% endif %}

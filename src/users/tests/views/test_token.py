@@ -22,7 +22,7 @@ class RegenerateTokenTests(TestCase):
     def test_regenerate_token(self):
         """Test token regeneration."""
         response = self.client.post(reverse("regenerate_token"))
-        self.assertRedirects(response, reverse("integrations"))
+        self.assertRedirects(response, reverse("access_tokens"), fetch_redirect_response=False)
 
         self.user.refresh_from_db()
         self.assertNotEqual(self.user.token, "initial_token")
@@ -41,7 +41,7 @@ class RegenerateTokenTests(TestCase):
         ]
 
         response = self.client.post(reverse("regenerate_token"))
-        self.assertRedirects(response, reverse("integrations"))
+        self.assertRedirects(response, reverse("access_tokens"), fetch_redirect_response=False)
 
         self.assertEqual(mock_save.call_count, 2)
 

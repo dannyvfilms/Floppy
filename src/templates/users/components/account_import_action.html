@@ -1,0 +1,10 @@
+{% load i18n %}
+{{ account_import_action|json_script:"account-import-action-props" }}
+<div class="ui-account-action" data-account-import-action-root data-props-id="account-import-action-props" x-ignore hx-disable>
+  <p>{{ account_import_action.description }}</p>
+  {% if account_import_action.href %}<a class="ui-button" href="{{ account_import_action.href }}">{{ account_import_action.label }}</a>{% else %}
+  <form class="ui-form" action="{{ account_import_action.action }}" method="post">
+    {% csrf_token %}<input type="hidden" name="next" value="{{ account_import_action.next }}">
+    <button class="ui-button" type="submit">{{ account_import_action.label }}</button>
+  </form>{% endif %}
+</div>

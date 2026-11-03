@@ -1858,7 +1858,7 @@ class StremioViewTests(TestCase):
             {"email": "user@example.com", "password": "hunter2"},
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         mock_login.assert_called_once_with("user@example.com", "hunter2")
         mock_delay.assert_called_once_with(user_id=self.user.id, mode="new")
 
@@ -1883,7 +1883,7 @@ class StremioViewTests(TestCase):
             {"auth_key": "pasted-key"},
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         mock_get_user.assert_called_once_with("pasted-key")
         mock_delay.assert_called_once()
 
@@ -1926,7 +1926,7 @@ class StremioViewTests(TestCase):
 
         response = self.client.post(reverse("stremio_disconnect"))
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         self.assertFalse(StremioAccount.objects.filter(user=self.user).exists())
         self.assertFalse(
             PeriodicTask.objects.filter(
@@ -1952,5 +1952,5 @@ class StremioViewTests(TestCase):
 
         response = self.client.post(reverse("import_stremio"))
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         mock_delay.assert_called_once_with(user_id=self.user.id, mode="new")

@@ -3593,7 +3593,10 @@ class MediaListViewTests(TestCase):
             response,
             "layoutHref(nextLayout) { return buildMediaListHref(this.mediaListUrl, document.getElementById('filter-form'), { layout: nextLayout }); }",
         )
-        self.assertContains(response, '@click="open = false"')
+        self.assertContains(
+            response,
+            '@click="$el.href = layoutHref(layout === \'grid\' ? \'table\' : \'grid\'); open = false"',
+        )
         self.assertNotContains(
             response, "layout = layout === 'grid' ? 'table' : 'grid'"
         )

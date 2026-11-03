@@ -32,6 +32,7 @@ from app.models import (
     ArtistTracker,
     BoardGame,
     Book,
+    BookListeningSession,
     CollectionEntry,
     Comic,
     ComicIssue,
@@ -54,6 +55,7 @@ from app.models import (
     PodcastShowTracker,
     Season,
     Sources,
+    Status,
     VideoPlay,
 )
 from lists.models import CustomList, CustomListItem
@@ -89,6 +91,7 @@ TRACKED_TASK_NAMES = frozenset(
         "Scheduled backup export",
         "Bulk Episode Plays",
         "Bulk Music Plays",
+        "Bulk Consumption Batch",
     },
 )
 DISCOVER_PRIORITY_HISTORY_DEBOUNCE_SECONDS = 15
@@ -682,6 +685,23 @@ def clear_discover_feedback_on_media_save(sender, instance, **kwargs):
     ).delete()
 
 
+@receiver(post_save, sender=Movie)
+@receiver(post_save, sender=Episode)
+def close_resume_point_on_watched(sender, instance, **kwargs):
+    """Close the open resume point of a watched movie or episode (#1809)."""
+    if kwargs.get("raw") or instance.status != Status.COMPLETED.value:
+        return
+    item_id = instance.item_id
+    user_id = (
+        instance.related_season.user_id if sender is Episode else instance.user_id
+    )
+    if not user_id or not item_id:
+        return
+    from api.fork_views_playback import complete_playback_progress
+
+    complete_playback_progress(user_id, item_id)
+
+
 # Same top-level, importer-tracked media types as helpers.get_existing_media()
 # (Season/Episode excluded there and here).
 @receiver(post_delete, sender=TV)
@@ -1212,6 +1232,29 @@ def refresh_history_cache_on_podcast_change(sender, instance, **kwargs):
         history_specs=history_specs,
         statistics_day_values=[day_key] if day_key else [],
         history_dates_may_have_moved=_history_dates_may_have_moved(instance, kwargs),
+    )
+
+
+@receiver([post_save, post_delete], sender=BookListeningSession)
+def refresh_history_cache_on_book_listening_session_change(
+    sender,
+    instance,
+    **kwargs,
+):
+    """Rebuild the history day a listening session lands on."""
+    if kwargs.get("raw"):
+        return
+    try:
+        user_id = instance.book.user_id
+    except Book.DoesNotExist:
+        return
+    day_key = history_cache.history_day_key(instance.started_at)
+    _handle_media_cache_change(
+        user_id,
+        MediaTypes.BOOK.value,
+        reason="book_listening_session_change",
+        history_specs=[([day_key] if day_key else [], ("sessions", "repeats"))],
+        statistics_day_values=[],
     )
 
 

@@ -29,7 +29,7 @@ class JellyfinWebhookEventsUpdateTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, reverse("integrations"))
+        self.assertRedirects(response, reverse("provider_detail", args=["jellyfin"]) + "?tab=tracking")
         self.user.refresh_from_db()
         self.assertTrue(self.user.jellyfin_mark_played_enabled)
         self.assertTrue(self.user.jellyfin_mark_unplayed_enabled)
@@ -79,9 +79,14 @@ class JellyfinTemplateOutdatedNoticeTests(TestCase):
 
     def test_notice_hidden_by_default(self):
         """No old-template traffic means no notice."""
-        response = self.client.get(reverse("integrations"))
+        response = self.client.get(
+            reverse("provider_detail", args=["jellyfin"]) + "?tab=connection"
+        )
         self.assertNotContains(response, 'data-testid="jellyfin-template-outdated"')
-        self.assertContains(response, "Manual Watched Changes")
+        tracking = self.client.get(
+            reverse("provider_detail", args=["jellyfin"]) + "?tab=tracking"
+        )
+        self.assertContains(tracking, "Manual Watched Changes")
 
     def test_notice_shown_after_old_template_event(self):
         """An old-template UserDataSaved shows the re-copy notice."""
@@ -92,7 +97,9 @@ class JellyfinTemplateOutdatedNoticeTests(TestCase):
             },
             self.user,
         )
-        response = self.client.get(reverse("integrations"))
+        response = self.client.get(
+            reverse("provider_detail", args=["jellyfin"]) + "?tab=connection"
+        )
         self.assertContains(response, 'data-testid="jellyfin-template-outdated"')
 
     def test_current_template_event_clears_notice(self):
@@ -106,5 +113,7 @@ class JellyfinTemplateOutdatedNoticeTests(TestCase):
             },
             self.user,
         )
-        response = self.client.get(reverse("integrations"))
+        response = self.client.get(
+            reverse("provider_detail", args=["jellyfin"]) + "?tab=connection"
+        )
         self.assertNotContains(response, 'data-testid="jellyfin-template-outdated"')

@@ -562,3 +562,33 @@ def _build_music_album_entries(
     if implied_genres:
         entry["implied_genres"] = implied_genres
     return entry
+
+
+def build_listening_session_entry(session):
+    """Build the history entry for one audiobook listening session."""
+    book = session.book
+    item = book.item
+    entry = {
+        "media_type": MediaTypes.BOOK.value,
+        "item": _serialize_item(item),
+        "poster": item.image or settings.IMG_NONE,
+        "title": item.title,
+        "display_title": item.title,
+        "status": book.status,
+        "episode_label": None,
+        "episode_code": None,
+        "played_at_local": _localize_datetime(session.started_at),
+        **_entry_dates(book),
+        "runtime_minutes": session.minutes,
+        "runtime_display": helpers.minutes_to_hhmm(session.minutes),
+        "instance_id": book.id,
+        "entry_key": f"book-session-{session.id}",
+    }
+    if session.position_minutes is not None:
+        entry["position_display"] = helpers.minutes_to_hhmm(session.position_minutes)
+        if item.runtime_minutes:
+            entry["position_total_display"] = helpers.minutes_to_hhmm(
+                item.runtime_minutes,
+            )
+    _attach_entry_score(entry, book)
+    return entry

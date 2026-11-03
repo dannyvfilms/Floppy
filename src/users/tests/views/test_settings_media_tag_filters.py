@@ -40,34 +40,32 @@ class SettingsPageTests(TestCase):
         )
         self.client.force_login(self.user)
 
-    def test_connected_applications_is_a_top_level_nav_item(self):
+    def test_access_and_tokens_is_a_top_level_nav_item(self):
         response = self.client.get(reverse("appearance"))
         html = response.content.decode()
-        link = html[html.index(reverse("oauth_applications")) :]
+        link = html[html.index(reverse("access_tokens")) :]
         link = link[: link.index("</a>")]
-
         self.assertIn("px-2 py-2", link)
         self.assertNotIn("pl-10", link)
 
-    def test_integrations_page_keeps_only_its_jump_chips(self):
-        response = self.client.get(reverse("integrations"))
+    def test_provider_directory_combines_capability_and_media_filters(self):
+        response = self.client.get(reverse("providers"), {"capability": "metadata", "media": "game"})
+        self.assertContains(response, 'name="capability"')
+        self.assertContains(response, 'name="media"')
+        self.assertContains(response, "SteamGridDB")
+        self.assertNotContains(response, "Goodreads")
 
-        self.assertContains(response, "Jump to integration:")
-        self.assertNotContains(response, 'data-testid="media-tag-filter"')
+    def test_provider_directory_offers_import_sources(self):
+        response = self.client.get(reverse("providers"), {"capability": "import"})
+        self.assertContains(response, "Playnite")
+        self.assertContains(response, "Pocket Casts")
+        self.assertNotContains(response, "SteamGridDB")
 
-    def test_metadata_page_filters_by_media_type(self):
-        response = self.client.get(reverse("metadata_settings"))
-
-        self.assertContains(response, 'data-testid="media-tag-filter"')
-        self.assertContains(response, "Games")
-        self.assertContains(response, "matchesTag(")
-
-    def test_import_data_page_uses_the_shared_filter(self):
-        response = self.client.get(reverse("import_data"))
-
-        self.assertContains(response, 'data-testid="media-tag-filter"')
-        self.assertContains(response, "All Sources")
-        self.assertContains(response, "Backups")
+    def test_navigation_uses_consolidated_destinations(self):
+        response = self.client.get(reverse("appearance"))
+        for route in ("providers", "provider_activity", "data_management", "access_tokens"):
+            self.assertContains(response, reverse(route))
+        self.assertNotContains(response, ">Connected Applications</span>")
 
 
 class ProviderTagCoverageTests(SimpleTestCase):

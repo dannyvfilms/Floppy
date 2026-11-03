@@ -5,7 +5,7 @@ from django.templatetags.static import static
 from django.utils.text import slugify
 
 from app import helpers
-from app.models import MediaTypes, Sources
+from app.models import Item, MediaTypes, Sources
 from app.services import game_lengths as game_length_services
 from app.services import trakt_popularity as trakt_popularity_service
 from app.templatetags import app_tags
@@ -1211,3 +1211,97 @@ def _build_detail_person_rows(media_metadata, item=None):
             card_width_class="w-36",
         ),
     }
+
+
+_BOOK_FORMAT_LABELS = {
+    "audiobook": "Audiobook",
+    "ebook": "eBook",
+    "hardcover": "Hardcover",
+    "paperback": "Paperback",
+}
+
+
+def _book_isbns(item):
+    return {
+        "".join(ch for ch in str(value) if ch.isalnum()).upper()
+        for value in item.isbn or []
+        if value
+    } - {""}
+
+
+def _book_author_keys(item):
+    return {
+        key
+        for key in (Item._title_comparison_key(a) for a in item.authors or [])
+        if key
+    }
+
+
+def _other_book_items(user, item):
+    """Return the viewer's other tracked Items that are the same book."""
+    if (
+        item is None
+        or item.media_type != MediaTypes.BOOK.value
+        or not getattr(user, "is_authenticated", False)
+    ):
+        return []
+
+    title_key = Item._title_comparison_key(item.title)
+    isbns = _book_isbns(item)
+    authors = _book_author_keys(item)
+    if not title_key and not isbns:
+        return []
+
+    candidates = Item.objects.filter(
+        media_type=MediaTypes.BOOK.value,
+        book__user=user,
+    ).exclude(pk=item.pk)
+    matches = []
+    for other in candidates.distinct():
+        same_isbn = bool(isbns & _book_isbns(other))
+        same_work = (
+            bool(title_key)
+            and title_key == Item._title_comparison_key(other.title)
+            and bool(authors & _book_author_keys(other))
+        )
+        if same_isbn or same_work:
+            matches.append(other)
+    return matches
+
+
+def _book_format_label(book_item):
+    return _BOOK_FORMAT_LABELS.get((book_item.format or "").lower(), "Book")
+
+
+def build_book_formats(user, item):
+    """Return the formats of this book the viewer tracks, or [] if only one.
+
+    An audiobook and an ebook are separate Items on purpose (their progress
+    units differ), so this only lists and links them. Two Items match when
+    they share an ISBN, or share a title and at least one author. The current
+    Item has no link. Audiobooks sort last, and when several audiobooks are
+    tracked each is labelled with its narrator so they can be told apart.
+    """
+    others = _other_book_items(user, item)
+    if not others:
+        return []
+
+    items = sorted(
+        [item, *others],
+        key=lambda book: (_book_format_label(book) == "Audiobook", book.pk),
+    )
+    audiobook_count = sum(_book_format_label(book) == "Audiobook" for book in items)
+    formats = []
+    for book in items:
+        label = _book_format_label(book)
+        narrators = ", ".join(book.narrators or [])
+        if label == "Audiobook" and audiobook_count > 1 and narrators:
+            label = f"{label} ({narrators})"
+        formats.append(
+            {
+                "label": label,
+                "href": None if book.pk == item.pk else app_tags.media_url(book),
+            },
+        )
+    return formats
+

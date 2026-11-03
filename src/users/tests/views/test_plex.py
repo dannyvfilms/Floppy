@@ -26,7 +26,7 @@ class PlexUsernamesUpdateTests(TestCase):
             {"plex_usernames": "user1, user2, user3"},
         )
 
-        self.assertRedirects(response, reverse("integrations"))
+        self.assertRedirects(response, reverse("provider_detail", args=["plex"]) + "?tab=tracking")
         self.user.refresh_from_db()
 
         self.assertEqual(self.user.plex_usernames, "user1, user2, user3")
@@ -120,7 +120,7 @@ class PlexWebhookLibrariesUpdateTests(TestCase):
             {"plex_webhook_libraries": ["machine-a::1"]},
         )
 
-        self.assertRedirects(response, reverse("integrations"))
+        self.assertRedirects(response, reverse("provider_detail", args=["plex"]) + "?tab=tracking")
         self.user.refresh_from_db()
         self.assertEqual(self.user.plex_webhook_libraries, ["machine-a::1"])
 
@@ -174,7 +174,7 @@ class PlexWebhookShareTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, reverse("integrations"))
+        self.assertRedirects(response, reverse("provider_detail", args=["plex"]) + "?tab=tracking")
         share = PlexWebhookShare.objects.get()
         self.assertEqual(share.owner, self.user)
         self.assertEqual(share.recipient, self.recipient)
@@ -195,7 +195,7 @@ class PlexWebhookShareTests(TestCase):
             {"plex_webhook_share_id": share.id, "enabled": "1"},
         )
 
-        self.assertRedirects(response, reverse("integrations"))
+        self.assertRedirects(response, reverse("provider_detail", args=["plex"]) + "?tab=tracking")
         share.refresh_from_db()
         self.assertTrue(share.recipient_enabled)
 
@@ -222,7 +222,7 @@ class PlexWebhookShareTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, reverse("integrations"))
+        self.assertRedirects(response, reverse("provider_detail", args=["plex"]) + "?tab=tracking")
         self.assertEqual(PlexWebhookShare.objects.count(), 1)
 
     def test_owner_can_revoke_share(self):
@@ -237,7 +237,7 @@ class PlexWebhookShareTests(TestCase):
             {"plex_webhook_share_id": share.id},
         )
 
-        self.assertRedirects(response, reverse("integrations"))
+        self.assertRedirects(response, reverse("provider_detail", args=["plex"]) + "?tab=tracking")
         self.assertFalse(PlexWebhookShare.objects.exists())
 
     def test_integrations_page_shows_owner_and_received_share_controls(self):
@@ -248,14 +248,18 @@ class PlexWebhookShareTests(TestCase):
             allowed_libraries=["machine-a::2"],
         )
 
-        owner_response = self.client.get(reverse("integrations"))
+        owner_response = self.client.get(
+            reverse("provider_detail", args=["plex"]) + "?tab=tracking"
+        )
 
         self.assertContains(owner_response, "Share Plex Webhook")
         self.assertContains(owner_response, "Plex Friend")
         self.assertContains(owner_response, "Waiting for recipient opt-in")
 
         self.client.force_login(self.recipient)
-        recipient_response = self.client.get(reverse("integrations"))
+        recipient_response = self.client.get(
+            reverse("provider_detail", args=["plex"]) + "?tab=tracking"
+        )
 
         self.assertContains(recipient_response, "Shared Plex Webhooks")
         self.assertContains(recipient_response, self.user.username)
@@ -279,7 +283,9 @@ class PlexWebhookShareTests(TestCase):
             is_test_account=True,
         )
 
-        response = self.client.get(reverse("integrations"))
+        response = self.client.get(
+            reverse("provider_detail", args=["plex"]) + "?tab=tracking"
+        )
 
         recipient_options = response.context["plex_share_recipients"]
         self.assertIn(self.recipient, recipient_options)
@@ -337,7 +343,10 @@ class PlexWebhookShareTests(TestCase):
 
         response = self.client.post(reverse("plex_disconnect"))
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(
+            response,
+            reverse("provider_detail", args=["plex"]) + "?tab=connection",
+        )
         self.assertFalse(PlexWebhookShare.objects.exists())
 
 
@@ -358,7 +367,9 @@ class PlexSectionsRefreshTests(TestCase):
         mock_delay,
     ):
         """The view must dispatch the refresh task, never call list_sections() itself."""
-        response = self.client.get(reverse("integrations"))
+        response = self.client.get(
+            reverse("provider_detail", args=["plex"]) + "?tab=tracking"
+        )
 
         self.assertEqual(response.status_code, 200)
         mock_delay.assert_called_once_with(self.user.id)

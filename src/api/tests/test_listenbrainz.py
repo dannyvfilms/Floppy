@@ -853,8 +853,8 @@ class NavidromeConformanceTests(ListenBrainzTestCase):
         URL plus `submit-listens` / `validate-token` must hit these views.
         """
         self.client.force_login(self.user)
-        page = self.client.get(reverse("integrations")).content.decode()
-        match = re.search(r'id="navidrome-listenbrainz-url"[^>]*value="([^"]+)"', page)
+        page = self.client.get(reverse("provider_detail", args=["navidrome"]) + "?tab=connection").content.decode()
+        match = re.search(r'data-copy-id="webhook"[^>]*value="([^"]+)"', page)
         self.assertIsNotNone(match)
         base_path = urlsplit(match.group(1)).path
 
