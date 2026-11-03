@@ -15,6 +15,7 @@ values and owns requests, validation, permissions and state.
 | `FilterToolbar` | Search/filter form layout; uses `Field` and `SelectField` with optional visually hidden labels, retaining accessible names |
 | `Chip` | Passive, button or link badge with consistent highlight and no underline |
 | `AlphabetBar`, `AlphabetEmpty` | Shared RNW Pressable/Text alphabet navigation and filtered empty state in `frontend/ui/AlphabetBar.jsx`; surface adapters supply translated options, active state, URLs and navigation. The slim rail starts at the first poster, fits every entry without scrolling, puts # before A, and displays an actual other-bucket glyph. The web adapter centers glyph ink using font metrics; the empty state reuses Chip |
+| `RatingStars` | Star row with hover preview and toggle-to-clear; `scaleMax`, `value`, `label`, `renderStar`, `onSelect`. The web adapter (`mountRatingStars.jsx`) owns the htmx write, CSRF and popup events |
 | `ToggleChip` | Controlled two-state chip; `value`, `onChange`, `offLabel`, `onLabel`; stable accessible label and `aria-pressed` |
 | `Field`, `SelectField` | Labeled input and preference dropdown; semantic panel/border/focus styling, inset arrow and custom option menu matching Preferences; caller supplies IDs, values/options and handlers |
 | `FilterDropdown` | Same dropdown interaction with Lists hub styling: funnel icon, filled trigger/menu, purple selected option; visually hidden accessible label; use in filter toolbars rather than preference forms |

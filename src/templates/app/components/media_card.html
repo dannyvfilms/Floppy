@@ -472,7 +472,7 @@
                   {% if not public_view|default:False and not recommend_mode and not rating_read_only|default:False and not use_podcast_show|default:False %}
                     {% url 'update_media_score' item.media_type media.id as card_rate_url %}
                   {% endif %}
-                  {% include "app/components/media_card_rating.html" with rate_url=card_rate_url|default:"" %}
+                  {% if media.score_url %}{% include "app/components/media_card_rating.html" with rate_url=media.score_url %}{% else %}{% include "app/components/media_card_rating.html" with rate_url=card_rate_url|default:"" %}{% endif %}
                 </span>
               {% else %}
                 <span id="{% item_slot_id 'media-card-rating' item %}">

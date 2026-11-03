@@ -160,11 +160,15 @@ can inform a focused completion pass.
 ### RATING — Score display and picker
 
 - Purpose/usage: cards, details, children and music scores.
-- Implementation: `src/templates/app/components/rating_picker.html`, `media_card_rating.html`, `media_card_rate_button.html`, OOB/score-chip/derived-TV fragments.
+- Status: `Partial / coexisting`. The star-row picker is React-owned on every consumer; chips, card rate buttons, popup wrappers and derived-TV fragments remain legacy Alpine/HTMX. Browser verification: see below. Native iOS and Android: not verified.
+- Implementation: shared RNW `frontend/ui/RatingStars.jsx` with the `mountRatingStars.jsx` web adapter, the `rating_stars` tag (`users/templatetags/ui_tags.py`) and `rating_picker.html` (Alpine wrapper). Legacy: `media_card_rating.html`, `media_card_rate_button.html`, OOB/score-chip/derived-TV fragments.
+- Picker consumers: detail score chip (podcast shows, movies, TV, etc.), media card rate button, episode/track/row rating buttons, music artist/album pages, comic issue page. The adapter publishes writes through `htmx.ajax` so server OOB chip/card swaps still apply, and signals the Alpine wrapper with `rating-select`. Alpine publishes the current score through the wrapper's `data-rating`.
+- Podcasts rate per show: chip and list cards post to `update_podcast_show_score` (tracker id), not `update_media_score` (episode plays) (#1830).
+- Retirement: the Alpine popup wrappers and direct-rating stars in `detail_score_chip.html` retire when the chip and card rate button are ported with a portal/focus proof.
 - Contract: viewer scale, empty/read-only states, hover preview, toggle-to-clear, CSRF writes, teleported popup and OOB/events; derived score/coverage differs from direct score.
 - Data: `src/app/score_views.py` and server score projections.
 - Reuse/blockers: read-only presentation recommended first proof; interactive picker needs later portal/focus/write proof. Do not infer keyboard support from pointer behavior.
-- Validation targets: `src/app/tests/views/test_score_views.py`, `src/app/tests/test_derived_tv_ratings.py`, card contract tests.
+- Validation targets: `src/app/tests/views/test_score_views.py`, `src/app/tests/test_podcast_show_rating.py`, `src/app/tests/test_derived_tv_ratings.py`, card contract tests.
 
 ### LIBRARY — Result composition and media grouping
 

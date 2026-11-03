@@ -144,6 +144,9 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## RATING
 
+- `frontend/ui/RatingStars.jsx`
+- `frontend/ui/mountRatingStars.jsx`
+- `src/templates/app/components/rating_stars.html`
 - `src/templates/app/components/derived_tv_rating_coverage.html`
 - `src/templates/app/components/derived_tv_rating_detail.html`
 - `src/templates/app/components/detail_episode_rating_chip.html`
