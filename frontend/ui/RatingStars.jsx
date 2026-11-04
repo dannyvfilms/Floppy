@@ -19,7 +19,7 @@ export function RatingStars({ scaleMax, value, label, renderStar, onSelect, pale
         aria-pressed={value === star}
         onPress={() => onSelect(value === star ? null : star)}
         onHoverIn={() => setHover(star)}
-        style={({ focused }) => [{ alignItems: 'center', cursor: 'pointer' },
+        style={({ focused }) => [{ alignItems: 'center' },
           focused && palette.focusStyle]}>
         <View style={{ color: lit ? palette.lit : palette.unlit }}>{renderStar(lit)}</View>
         <Text style={{ fontSize: 12, marginTop: 4, color: palette.muted }}>{star}</Text>

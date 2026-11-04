@@ -2,6 +2,7 @@
 {% load i18n %}
 {% load l10n %}
 {% load app_tags %}
+{% load ui_tags %}
 
 <div id="detail-score-chip-{{ current_instance.id }}"
      {% if score_chip_oob %}hx-swap-oob="outerHTML"{% endif %}
@@ -9,6 +10,8 @@
      @detail-score-row-scroll.window="showRatingPopup = false"
      @resize.window="showRatingPopup = false"
      class="detail-personal-score-slot relative min-w-0 sm:w-auto">
+  {% if media_type == 'podcast' %}{% url 'update_podcast_show_score' current_instance.id as rating_chip_url %}{% else %}{% url 'update_media_score' media_type current_instance.id as rating_chip_url %}{% endif %}
+  {% rating_chip current_instance media_type rating_chip_url derived_tv_score %}
   <button type="button"
           x-ref="ratingTrigger"
           @click="showRatingPopup = !showRatingPopup"
