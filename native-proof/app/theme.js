@@ -37,6 +37,27 @@ export const progressPalette = {
   showButtons: true,
 };
 
+export const progressDetailPalette = {
+  text: palette.text,
+  textSecondary: palette.textSecondary,
+  textMuted: palette.textMuted,
+  surface: palette.surface,
+  surfaceStrong: palette.surfaceStrong,
+  surfaceBorder: palette.border,
+  surfaceMuted: palette.surfaceMuted,
+  surfaceHover: palette.surfaceStrong,
+  fill: palette.success,
+  glow: '#a7f3d0',
+  glowShadow: '#6ee7b7',
+  watchedBorder: 'rgba(16, 185, 129, 0.4)',
+  watchedBg: 'rgba(16, 185, 129, 0.1)',
+  watchedText: palette.success,
+  upcomingBorder: palette.border,
+  droppedBackground: palette.surfaceMuted,
+  droppedText: palette.textMuted,
+  focusStyle: {},
+};
+
 export const ratingPalette = {
   lit: palette.warning,
   unlit: palette.surfaceMuted,

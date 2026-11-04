@@ -424,11 +424,17 @@ the action layer; `MediaCardView` is the native candidate and does not yet repla
 ## PROGRESS
 
 The quick +/- controls are shared React presentation. The detail progress card and
-breakdown modal remain server/Alpine-owned.
+modal shell remain server/Alpine-owned; the season/episode breakdown inside the
+modal is shared React presentation on mount, with the server markup as fallback.
 
 - `frontend/ui/ProgressChanger.jsx`
+- `frontend/ui/ProgressBar.jsx`
+- `frontend/ui/ProgressCard.jsx`
+- `frontend/ui/ProgressBreakdown.jsx`
 - `frontend/ui/ProgressChangerTheme.web.jsx`
+- `frontend/ui/ProgressBreakdownTheme.web.jsx`
 - `frontend/ui/mountProgressChanger.jsx`
+- `frontend/ui/mountProgressBreakdown.jsx`
 - `src/templates/users/components/progress_changer.html`
 - `src/templates/app/components/detail_progress_card_slot.html`
 - `src/templates/app/components/progress_breakdown.html`

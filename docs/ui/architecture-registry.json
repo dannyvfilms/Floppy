@@ -101,6 +101,66 @@
         }
       }
     },
+    "frontend/ui/ProgressBar.jsx": {
+      "components": [
+        "ProgressBar"
+      ],
+      "register": "PROGRESS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Web adapter and Expo export compile; not exercised in a browser during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised."
+        }
+      }
+    },
+    "frontend/ui/ProgressCard.jsx": {
+      "components": [
+        "ProgressCard"
+      ],
+      "register": "PROGRESS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Web adapter and Expo export compile; the web detail card remains the legacy Alpine version and was not exercised in a browser during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised."
+        }
+      }
+    },
+    "frontend/ui/ProgressBreakdown.jsx": {
+      "components": [
+        "ProgressBreakdown"
+      ],
+      "register": "PROGRESS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Web adapter and Expo export compile; the mounted breakdown was not exercised in a browser during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised."
+        }
+      }
+    },
     "frontend/ui/Rail.jsx": {
       "components": [
         "Rail"
@@ -750,6 +810,14 @@
     "frontend/ui/mountProgressChanger.jsx": {
       "register": "PROGRESS",
       "purpose": "Django/browser integration for the registered surface."
+    },
+    "frontend/ui/ProgressBreakdownTheme.web.jsx": {
+      "register": "PROGRESS",
+      "purpose": "Resolve document theme and navigation for the shared progress breakdown while the Alpine modal, card and cancel form keep their server contract."
+    },
+    "frontend/ui/mountProgressBreakdown.jsx": {
+      "register": "PROGRESS",
+      "purpose": "Mount the shared progress breakdown into the htmx-rendered modal body and hide its server fallback."
     },
     "frontend/ui/Rail.web.jsx": {
       "register": "RAILS",
