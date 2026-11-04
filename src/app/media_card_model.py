@@ -52,7 +52,7 @@ def _href(ctx):
             kwargs={
                 "source": "pocketcasts",
                 "media_type": "podcast",
-                "media_id": show.podcast_uuid,
+                "media_id": _safe(show, "podcast_uuid"),
                 "title": str(slug),
             },
         )
@@ -485,7 +485,7 @@ def history_card_model(entry, card_class, history_mode, user, request=None):
             kwargs={
                 "source": "pocketcasts",
                 "media_type": "podcast",
-                "media_id": show.podcast_uuid,
+                "media_id": _safe(show, "podcast_uuid"),
                 "title": str(slug),
             },
         )
