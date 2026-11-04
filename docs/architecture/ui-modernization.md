@@ -1,5 +1,132 @@
 # Incremental cross-platform UI
 
+## Enforceable architecture contract
+
+Universal presentation is the default for reusable components. Use React Native
+primitives, concrete semantic theme values, explicit data and action props, and
+accessible behavior. Local React state and hooks are allowed. Keep Django, HTML,
+HTMX, Alpine, browser globals, CSS classes/units and networking outside universal
+presentation. Shared logic is renderer-independent and communicates through
+explicit contracts. HTTP, credentials, persistence, navigation and platform
+capabilities belong to data layers or adapters. Browser mounts own DOM and Django
+lifecycle; platform-specific implementations may use `.web`, `.native`, `.ios`
+and `.android` files where platforms genuinely need different APIs. Implement
+equivalent behavior, not a placeholder or a WebView/Expo DOM substitute. Preserve
+themes, accessibility, responsive behavior and web parity.
+
+Investigate and solve incompatibilities by extracting logic, using native
+primitives and adding genuine platform adapters. Do not downgrade a component,
+add a baseline entry, suppress a check, or change a check to make a violation
+pass. If reasonable approaches encounter an external blocker, report evidence,
+attempts and the unresolved dependency; the work remains incomplete. Existing
+web-only components are preserved until their own component is reworked.
+
+Before UI work, identify its classification and existing shared implementation;
+for significant conversions write a brief plan covering data, platform APIs,
+dependencies and regression risks. Update the component register and source map,
+run the relevant checks and report actual platform evidence. Provider pages
+continue to use the shared provider model and page components; the web-only
+`controls.jsx` is a migration source, not a universal dependency.
+
+`docs/ui/architecture-registry.json` is the machine-readable inventory. Register
+universal presentation, shared logic, browser integration adapters and paired
+platform files with their owner, component names and separate web/iOS/Android
+evidence where applicable. Existing browser-specific presentation is frozen as
+legacy; unchanged declarations may coexist, but a changed or added declaration
+must be moved to an appropriate shared component or adapter. Browser mount adapters
+may change to integrate shared components but cannot define HTML presentation.
+Removing migrated declarations is allowed; reintroducing
+them is rejected against the base revision. Never add or change a baseline entry
+to pass a check. On initial adoption the registry establishes the baseline; later
+PRs compare it with the target branch. A platform-specific implementation needs a
+web implementation and a native implementation (or both iOS and Android), and
+each must be registered. Use `kind: "adapter"` for paired non-rendering services
+and `kind: "presentation"` for platform views; counterparts describe the same
+named contract. Check:
+
+```sh
+npm run check:ui-architecture
+npm run test:ui-architecture
+npm run check:ui
+cd native-proof && npm ci --ignore-scripts && npm run export -- --platform all
+```
+
+For example, a universal registry entry is keyed by its source path and has
+`register`, `components`, and `verification` fields. Each platform's verification
+value is an object such as `{"status": "unverified", "evidence": "Not exercised"}`;
+use `verified` only with actual runtime evidence. Universal and platform view
+component names must be direct named exports that render an element. A platform
+entry also has `kind` and a concrete `purpose`; a browser integration adapter
+uses `web_adapters` with its register ID and purpose. Register each paired file.
+Non-rendering adapters must not introduce presentation markup. These checks do
+not establish that a rendered element implements the required behavior.
+
+CI runs these checks, an Expo dependency audit and the existing regression gates.
+The parser enforces source boundaries and ledger links, not visual equivalence,
+behavioral completeness, accessibility, truthful evidence or all transitive
+platform dependencies. Review those explicitly. CI compares against the PR base
+(`UI_ARCH_BASE`); local checks default to `HEAD`. Protect changes to the validator,
+workflow and registry through normal code review and branch protection: a check
+controlled by a PR cannot protect itself against a deliberate rewrite.
+
+### Separate acceptance and evidence
+
+- **Web complete:** relevant presentation and interactions are migrated with web
+  parity and obsolete legacy consumers removed where safe.
+- **Native-compatible candidate:** registered universal implementation passes
+  architecture checks and has been assessed for its actual platform contracts.
+- **iOS verified** and **Android verified:** each requires exercising the stated
+  component and behavior on that runtime and recording environment and limits.
+- **Production-ready:** applicable workflows, server integration, authentication,
+  interaction, accessibility and regression checks have been validated.
+
+These statuses are independent. An import, static check or Metro export is not
+runtime verification. The proof card's iOS result does not verify the production
+Media Card or its actions. Native verification on both platforms does not by itself
+establish production readiness.
+
+## Native proof and next gate
+
+`native-proof/` is an isolated Expo experiment, not a production app. It imports
+the read-only `NativeProofLabel` and `NativeProofCard` from `frontend/ui/` and
+fetches the existing authenticated `/api/v1/media` endpoint through the proof's
+`mediaClient.js` data boundary. The current card
+does not replace or preserve the web card's actions and presentation. The Django
+esbuild configuration already aliases `react-native` to React Native Web; the
+proof's Metro configuration resolves shared imports to the Expo app's single React
+and React Native installation. Expo exported web, iOS and Android bundles; this
+alone does not establish device behavior. The shared label and card rendered
+six real demo-library entries on an iOS 17.2 simulator using a temporary
+loopback relay to the authenticated local API. Browser rendering and URL
+validation were exercised; Android, direct native authentication, images and
+full visual parity remain unverified.
+
+To try the web proof against a local source-run Django instance, run `npm ci` and
+`npm run export:django` inside `native-proof/`, then open
+`http://localhost:8000/static/native-proof/index.html` on that same instance. Enter its
+server URL and API token. The generated static directory is ignored. For a
+production server the exported files must be served by that same origin (and
+its existing authentication and deployment rules); a separately hosted page
+is subject to browser CORS. Native requests do not have browser CORS but still
+need a reachable server and valid token. HTTPS is required except on loopback.
+The proof holds credentials only in memory and is not a production auth design.
+The simulator demo used a temporary loopback-only relay; the relay is not part of
+the app or a deployment design. A production client needs an explicit flow for
+the user's self-hosted HTTPS origin, scoped credentials, secure platform storage,
+revocation, error handling and a server identity policy. No production login is
+implemented by this proof. The proof and its generated web export are excluded
+from Docker's build context; changing that boundary needs explicit review.
+`npm audit --audit-level=high` runs in CI and displays moderate advisories as well;
+the proof's Expo dependency tree currently has five moderate advisory findings.
+
+The next gate is a direct authenticated read and Android execution,
+including images, accessibility, responsive sizing and themes. Then port one
+small shared control with its web adapters and parity checks before expanding to
+other high-reuse controls. `controls.jsx` is not yet safe for bulk conversion:
+DOM events, focus, popups, CSS variables and server-owned interactions still need
+platform contracts. Translate semantic theme tokens at each platform boundary;
+do not pass browser CSS values, HTML or stored credentials as native props.
+
 ## Decision and limits
 
 Keep Django's server-rendered web application, backend, domain rules, integrations,
@@ -18,15 +145,17 @@ a future bulk migration. Users should not notice the framework change: preserve
 appearance, interactions, responsive behavior, accessibility and performance.
 Reuse or extend existing shared components before introducing a new one; keep
 domain logic, permissions and transport in feature adapters. Only a concrete
-compatibility blocker permits deferral, with evidence, a reopening condition and
-explicit reporting to the user. Task size and trivial edits are not exemptions.
+external blocker leaves the work incomplete and must be reported with evidence
+and attempted solutions. Task size and trivial edits are not exemptions.
 Every change updates the component register and source map for each affected
 surface, including ownership state, remaining legacy consumers and retirement
-conditions. Browser and actual iOS/Android verification remain separate. No component
-has been verified on iOS or Android, and native products remain separately scoped.
+conditions. Browser and actual iOS/Android verification remain separate. Only the
+experimental proof components have been exercised on iOS; native products remain
+separately scoped.
 The migration unit is the reusable component, not a provider or page. Use the
-[shared controls](../ui/react-components.md) for fields, selects, buttons, chips,
-tabs, dialogs and card layouts wherever those elements are reworked. Feature code
+[shared controls](../ui/react-components.md) as the starting point for fields,
+selects, buttons, chips, tabs, dialogs and card layouts; migrate a touched legacy
+control rather than importing its web-only implementation into universal code. Feature code
 supplies domain behavior; a bounded component adoption needs no whole-page rewrite.
 Use the [component register](../ui/component-register.md) for
 component status and the [source map](../ui/source-map.md) for ownership.
@@ -64,10 +193,10 @@ behavior still require platform testing.
 ### Alternatives
 
 - Continue Django/HTMX/Alpine: smallest current maintenance burden and good server
-  rendering, but offers no shared native view implementation. Remains the default
-  for untouched components and explicitly documented migration deferrals.
-- React DOM islands alone: workable web composition, but their DOM views would
-  need native replacements. Useful only for explicitly web-specific exceptions.
+  rendering, but offers no shared native view implementation. Untouched legacy
+  components remain in place until their affected unit is migrated.
+- React DOM islands alone: workable web composition, but their DOM views need
+  native replacements; they are not universal presentation.
 - Whole Expo web application or SPA: potentially shares more screens, but adds
   routing, authentication and rendering migration before it solves a component
   need. Outside this initiative's scope.
@@ -87,7 +216,8 @@ The tiny page loader fetches the shared React runtime when an island appears. Th
 header search form is an island on every signed-in page, so the runtime (about 97 KB
 gzipped plus 5 KB of CSS) loads on each of them. This is deliberate: the application
 is moving to React page by page, and a runtime that loads everywhere is the end state.
-There is no native application or Expo build pipeline.
+There is no production native application or native release pipeline; the
+isolated Expo proof above is a development experiment.
 The deployed stylesheet is `src/static/css/main.css`, generated from `input.css`.
 
 Media cards already have one contract in `app/card_surfaces.py` and a template tag;

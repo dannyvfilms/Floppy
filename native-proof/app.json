@@ -1,0 +1,8 @@
+{
+  "expo": {
+    "name": "Floppy Native Proof",
+    "slug": "floppy-native-proof",
+    "version": "1.0.0",
+    "experiments": { "baseUrl": "/static/native-proof" }
+  }
+}

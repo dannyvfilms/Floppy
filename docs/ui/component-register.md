@@ -8,13 +8,22 @@ points; the map enumerates every member. Existing backend contracts remain autho
 
 ## Status and maintenance
 
+`architecture-registry.json` records universal files, platform-specific files,
+shared logic and the frozen legacy baseline. Its component names and individual
+web, iOS and Android evidence are checked against this register and the source
+map. Use the independent acceptance criteria in
+[`ui-modernization.md`](../architecture/ui-modernization.md#separate-acceptance-and-evidence):
+web ownership, native candidacy, each runtime verification and production
+readiness are different claims. Never infer platform verification from a build.
+
 Every agent edit to a UI component, including copy or styling, upgrades that
 component to the shared React pattern with visual and behavioral parity. Reuse or
 extend shared components first. This incrementally prepares shared presentation
 for eventual native iOS and Android apps and reduces a future bulk migration.
 Every changed component must record ownership/migration state for each affected
-surface and update the source map. Only evidenced compatibility blockers permit
-deferral; record their reopening condition and report them explicitly.
+surface and update the source map. An external blocker leaves the affected work
+incomplete; record evidence, attempted solutions and a reopening condition and
+report it explicitly.
 
 A component is migrated on every surface that uses it, public pages (public lists,
 auth and error screens) and signed-in pages alike. Check both shells (`base.html` and
@@ -25,7 +34,8 @@ record any public consumer that is left behind.
 - `Ready`: foundation validated and component assessed for migration.
 - `Web Migrated`: accepted browser replacement; native verification stays separate.
 - `Cross-Platform Verified`: shared implementation passed recorded web, iOS and Android checks.
-- `Exception`: intentionally platform-specific, unsuitable or blocked; document reason and reconsideration condition.
+- `Exception`: historical platform-specific or blocked work; descriptive only,
+  never a waiver from the architecture checks or evidence that work is complete.
 
 **Defaults for every entry below:** Status `Existing`; verification is static source
 inspection only, browser migration not performed, native not tested. Test references
@@ -193,6 +203,16 @@ can inform a focused completion pass.
 ## Library, discovery and media presentation
 
 ### MEDIA-CARD — Canonical card and metadata lines
+
+- Native proof: `frontend/ui/NativeProofCard.jsx` exports `NativeProofLabel` and
+  `NativeProofCard`, a read-only label and minimal poster/title card consumed only
+  by `native-proof/App.js`, with transport in `native-proof/mediaClient.js`. It is an
+  experimental sibling, not a replacement for any Django surface. The existing
+  web `MediaCard` retains all consumers until a future port preserves its actions,
+  slots, themes and surface contracts. Expo web, iOS and Android bundles export;
+  iOS 17.2 Simulator displayed six demo-library cards through a temporary
+  authenticated loopback relay. Android, direct authentication, images and
+  visual parity remain unverified.
 
 - Purpose/usage: library, Home, related, search, Discover, lists, collection, credits and tier/group surfaces.
 - Implementation: `src/templates/app/components/media_card.html`, `card_lines.html`, `media_card_list.html`, `src/app/card_surfaces.py`, template tags.

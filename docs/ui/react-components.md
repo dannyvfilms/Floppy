@@ -1,12 +1,12 @@
 # Shared React web components
 
 Every component created or edited by an agent, including copy or styling edits,
-must migrate with visual and behavioral parity. This incrementally prepares shared
-presentation for eventual native iOS and Android apps and reduces bulk work later.
-Modernize by reusable component, keeping untouched siblings in place. Reuse or extend
-`frontend/ui/controls.jsx` for the same element on another screen. These controls
-have no provider model, context, URLs or credentials. Feature code supplies those
-values and owns requests, validation, permissions and state.
+must follow the [cross-platform contract](../architecture/ui-modernization.md)
+with visual and behavioral parity. Modernize by reusable component, keeping
+untouched siblings in place. The `frontend/ui/controls.jsx` contracts below
+describe legacy web consumers and guide a native-compatible replacement;
+universal code must not import that web-only file. Feature adapters supply domain
+data and actions and own requests, permissions and platform integration.
 
 | Component | Contract |
 | --- | --- |

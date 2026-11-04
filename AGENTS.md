@@ -20,9 +20,9 @@ and retirement conditions. Record browser verification separately from actual iO
 and Android verification. UI plans and completion summaries must name migrated
 components, ledger updates and blockers.
 
-Deferral requires a concrete compatibility blocker, evidence, a reopening condition
-in the component register, and explicit reporting to the user. Task size, trivial
-copy/styling, or pending native verification are not deferral reasons.
+Solve architectural incompatibilities; do not bypass checks or reclassify components.
+If reasonable solutions encounter an external blocker, report evidence and attempts;
+the affected work remains incomplete. Record actual platform verification separately.
 
 ## Operating Principles
 
@@ -374,57 +374,24 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 
 ## Incremental UI Modernization
 
-- For every UI change, consult `docs/ui/component-register.md` and its source map;
-  follow `docs/architecture/ui-modernization.md`. Update affected records when
-  components change, move, consolidate or retire; record blockers and verification.
-- **If you touch a UI component, upgrade it.** Every component creation or edit,
-  including copy and styling, must implement/reuse the shared React pattern in the
-  same change. The Connection/Import settings-card pilot is the first authorized browser
-  implementation; follow `docs/ui/settings-cards.md` for the working island boundary,
-  build, fallback and lifecycle pattern. Prefer React Native primitives for shared
-  presentation and explicit web adapters for Django/DOM behavior.
-- AniList's complete provider region is the reference for a full component port:
-  see `docs/ui/provider-pages.md`. When a task calls for the complete component,
-  migrate its content and interactions too; do not stop at a React heading around
-  legacy controls. Keep one framework owner per subtree. Other providers' partial
-  card shells and Django form slots remain explicit, documented migration consumers.
-- **Provider structure is shared across every provider.** All provider headers,
-  media chips, tabs and Overview cards use `frontend/providers/ProviderPage.jsx`
-  and `users.provider_ui.provider_page`. Add capability/state data to that shared
-  model; do not add provider-specific Overview layouts or parallel page shells.
-  When a shared component changes, update its consumers together. Provider-specific
-  behavior belongs in data/action adapters. Unported tab bodies remain separate
-  server-owned siblings until their components are migrated.
-  Metadata is now a shared React tab for every metadata provider, using
-  `frontend/providers/Metadata.jsx`; extend its data contract for provider settings
-  rather than adding provider-specific layouts or credential/source modals.
-- **The migration unit is a reusable component, not a provider or page.** Created or
-  edited fields, buttons, chips, tabs, dialogs and card layouts must reuse or
-  extend `frontend/ui/controls.jsx`; see `docs/ui/react-components.md`. Keep domain
-  data, permissions and transport in the consuming feature. Adopt these components
-  as other UI is reworked without requiring a whole-page port or duplicating an
-  AniList layout. Register bounded islands with the existing loader and runtime.
-- **Layout and responsive redesigns count as component work.** When adjusting a
-  legacy page's grid, cards or filter layout, port those affected components to
-  shared React in the same change. Do not treat a breakpoint/layout request as a
-  CSS-only exemption. Preserve useful server fallbacks and migrate only the owned
-  region; unrelated components can remain legacy.
-- This is authorization for incremental browser components, not a whole-app rewrite,
-  a SPA, a second frontend runtime or native applications. Preserve Django routes,
-  server permissions and existing action contracts. Never serialize stored credentials or raw
-  server HTML as React presentation props. User-entered credentials belong only
-  in current-page form state and its POST body. Native acceptance still requires actual
-  iOS and Android verification; browser adoption does not imply that gate passed.
-- Preserve behavior, appearance, responsive states, accessibility, permissions and
-  performance unless the issue explicitly approves a redesign. Migration alone does
-  not authorize simplification or removal of functionality.
-- Defer modernization only for a concrete compatibility blocker; record evidence
-  and the reopening condition in the component register and report it to the user.
-  Copy/styling changes and task size are not exemptions. Pending native proof is
-  not a blocker for browser adoption.
-- Replace legacy consumers where practical. Document necessary coexistence and its
-  retirement condition. Record web implementation and native verification separately;
-  never claim native compatibility from React syntax or a web build alone.
+- Follow the authoritative contract and checks in `docs/architecture/ui-modernization.md`.
+  Before editing UI, identify its architecture classification, reuse the appropriate
+  shared component, and plan significant conversions around data, platform behavior,
+  dependencies and regression risks. Solve incompatibilities; never add a baseline,
+  suppress checks, substitute WebViews or downgrade a component to avoid the work.
+- Migrate the affected reusable component when touched, preserving appearance,
+  functionality, accessibility, themes, responsive behavior and server permissions.
+  Keep platform integrations in adapters. Keep one owner per subtree and preserve
+  server fallbacks where necessary. Do not serialize credentials or raw server HTML
+  into presentation props.
+- Update `docs/ui/component-register.md`, `docs/ui/source-map.md`, and the
+  architecture registry. Run the architecture, build and relevant regression checks.
+  Report browser, iOS and Android evidence independently; builds do not establish
+  runtime verification. An unresolved external blocker leaves the task incomplete.
+- Provider pages use the shared provider model and page components; see
+  `docs/ui/provider-pages.md`. Existing `frontend/ui/controls.jsx` is web-only:
+  use its behavior as a migration source, not a universal dependency. See
+  `docs/ui/react-components.md` and `docs/ui/settings-cards.md` for current consumers.
 
 ## Frontend Tooling
 - Tailwind CLI install (supported): `brew install tailwindcss`.

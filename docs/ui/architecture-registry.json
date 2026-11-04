@@ -1,0 +1,484 @@
+{
+  "universal": {
+    "frontend/ui/NativeProofCard.jsx": {
+      "components": [
+        "NativeProofLabel",
+        "NativeProofCard"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Rendered with existing esbuild/RNW; Expo browser proof screen."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "iOS 17.2 simulator: label and six demo-library cards via local authenticated relay."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised."
+        }
+      }
+    }
+  },
+  "legacy": {
+    "frontend/providers/AccountConnection.jsx": {
+      "sha256": "3dd32895e187b478eb8c14f7cb759ced0b0610ee466ba2e35350812014edf5c8",
+      "statements": [
+        "456e1478bb5a48f07ed5364c67f07e754df4fabfd0a3b92bcb07927d12186d63",
+        "fb8ca525108e5db732bf01a3eb0585e1a22e59fd15222fd96eebad208d8223d5",
+        "1ac8024a5891f369f598688152a2626d6a6d490b3b6446a8cd992ca0d6f2d178",
+        "a33e72f771803c3236552c968018cadfcfa5874b742b8ec73a95ba973ddfb3e4",
+        "e550487b36154b7308535e676de61334e4c1426e33b03791e78a0f2c9d2c257a",
+        "88a2ffe83bf218842e9ef94f1015e2333e97a09630cf0f671f6e15624c946cbc",
+        "afff0ba34c28a36e638bce0c85af5870da47bdb16ad9a11f5da7cb9e5d8ef87b",
+        "e414c62bacae1c55de0c8a2ab575b7e9db6e5e1b2085c745ef212036c373d3b2"
+      ]
+    },
+    "frontend/providers/Activity.jsx": {
+      "sha256": "2d756688f2013458b41bf5717742f1f2ac987a703a56aee70d98825a8c1d82a4",
+      "statements": [
+        "46056659fd109f22317f1cc82577cb4d798dd3263024368a8a655690803e65c2",
+        "de5be025ed3e5839aebd56cab94069def8c8989e855872eb57cd94ea1fe1509a",
+        "c9969ad0e8a82767232871cffee3eaa545be61ce067fca02402390dbafe125c6",
+        "4ffe1ef547627ad292bc0bea6c2cce6a237e2888255f0f065f600955670b89da"
+      ]
+    },
+    "frontend/providers/Connection.jsx": {
+      "sha256": "23eff238a06d760a3d4605964aca052dc56b6101a421d5bbb1a56321ee985ab3",
+      "statements": [
+        "ef79f3686fbe6325b9f609b48264595cdec16f24406c71fa5f065514c32339e5",
+        "3f953bb7393e5b0aa9f74af7c9767300c08114fffd248c648c3a9427097829ca",
+        "69daa918d16f5524c7a798382b169deb9d01e5875ca18a34fb3d86d44dae4b7f",
+        "25b1e8b4bfab89250f58d62aaad42f4968a18e0efa2ed2276d03f8356f6860be"
+      ]
+    },
+    "frontend/providers/Credentials.jsx": {
+      "sha256": "998152113ac46b96977048d91fd530502215c5c53397ee1bb04a9d4c9bdccd64",
+      "statements": [
+        "456e1478bb5a48f07ed5364c67f07e754df4fabfd0a3b92bcb07927d12186d63",
+        "dd578c5b985118def4ed5fca8c4290edd64bf5a9eb1420ac0d68e27dcf22c752",
+        "1ac8024a5891f369f598688152a2626d6a6d490b3b6446a8cd992ca0d6f2d178",
+        "ad07154f62cd992369253751c949eac217fabd812e9d5abdb10960558ba319e5",
+        "627d0cf2f5a09972989a316e791edcdd37f1c77781ecbba40d789e20789a4244"
+      ]
+    },
+    "frontend/providers/Directory.jsx": {
+      "sha256": "efcd229fddc9c95d2d143d433c5d8bcecd6ebf6809b82e327750e428f8a4e694",
+      "statements": [
+        "46056659fd109f22317f1cc82577cb4d798dd3263024368a8a655690803e65c2",
+        "6ba1825d8b2495d31d2ad2447e03dae22782832d0e4c1fa0eaf65a6125055a15",
+        "1ac8024a5891f369f598688152a2626d6a6d490b3b6446a8cd992ca0d6f2d178",
+        "b90f74c5a5e0ec139c51e915315c9dc2b42ff94c47bee850dbdddc26f7ae1d84",
+        "ad7bf6ed08a82ebb00641e15b2bce05686118de56013d94ab37953f9a0707b43"
+      ]
+    },
+    "frontend/providers/FileImport.jsx": {
+      "sha256": "4d8d65d44aa9d762335fb6670a2bd084f7e9d6383a29c8c4887bb72a8078e2f4",
+      "statements": [
+        "f7b494e855841f7fe02d727adf5848286ef531e2d7bc1a5d7a740299317e149f",
+        "534a9505da12908c61c14d024a6bb14daac771d5d38ea19e05e799ef5471b3c6",
+        "1ac8024a5891f369f598688152a2626d6a6d490b3b6446a8cd992ca0d6f2d178",
+        "7ac8f725ebeca01459ef1b1fb6777925ae84d6686b8139c1036cf7c6cf39f14f",
+        "1ecc51a479eb38c7b43d294794e43b3131d11f19e14a654919366b85a5889a80"
+      ]
+    },
+    "frontend/providers/Import.jsx": {
+      "sha256": "a34ef8778bdec680ea9e45d5a2e576508dac941746a1d7bad59f8ebec69624bc",
+      "statements": [
+        "456e1478bb5a48f07ed5364c67f07e754df4fabfd0a3b92bcb07927d12186d63",
+        "4a06370c548681183e43c3b3304aaac905665fe568823109f642826f744034aa",
+        "309df7060d064679c7a3a5254a38be8effe37b16cb160bfbc0e96f96d6f769dd",
+        "c9969ad0e8a82767232871cffee3eaa545be61ce067fca02402390dbafe125c6",
+        "31b535769fb2662c44e72c374035258674a7a6609a344da7cbe8b670dd40013c"
+      ]
+    },
+    "frontend/providers/ImportPreferences.jsx": {
+      "sha256": "fa373ed5671995a69676db578470927b8f2bc5d79ad77a0856827258a1bc9e38",
+      "statements": [
+        "46056659fd109f22317f1cc82577cb4d798dd3263024368a8a655690803e65c2",
+        "2cdf207c9960c6788e7dbeab0ec71f150e8818365bad72a8c600fafbc9fbf4bf",
+        "1ac8024a5891f369f598688152a2626d6a6d490b3b6446a8cd992ca0d6f2d178",
+        "713336f5b136d3032dea01bb37c6ecb41fe9b202f2d54e98d61e03e26e8cad78",
+        "37be74a6428c5247c102be041e0e597d22997f204ca88e531032bb8c88344f9d",
+        "46e4313583e11dd44024ded75657918e4ac5e048b900457508a25a7ac85c83cc",
+        "82a8707b7f11de9942b2335fc51f95c24d0c0b36d3c078e41718e209c383a3d6"
+      ]
+    },
+    "frontend/providers/Metadata.jsx": {
+      "sha256": "dd37a9bc1b953e242c5686e5dd3a553f8577c87bd2b2316ec7d08429466cc2b1",
+      "statements": [
+        "456e1478bb5a48f07ed5364c67f07e754df4fabfd0a3b92bcb07927d12186d63",
+        "2f4577137eb38d813bbf52828661c59b92e69929442938fde79af6d49518a127",
+        "c9969ad0e8a82767232871cffee3eaa545be61ce067fca02402390dbafe125c6",
+        "0ed46cf9dab535fb74db4d570cce2a6260e74c09542fc4737d29fc924e12a406",
+        "b423de4645fa18baecd8e5fbc6d3d53cf196893ef63d80d39250184d7ba66927"
+      ]
+    },
+    "frontend/providers/ProviderPage.jsx": {
+      "sha256": "f989d79fcb14c7f78b8a887e62123a49c769928ba85b6f5076d6afa18fd58ef7",
+      "statements": [
+        "ef79f3686fbe6325b9f609b48264595cdec16f24406c71fa5f065514c32339e5",
+        "46554b69797b10334483400c53a9fc730a5926e3fa76a60e06ae1e7978b20073",
+        "9e216363905c5a178cbf3740beba11d66c675b29f3721341a48cf568f934f74e",
+        "7030b70360b8bdbb10d763bad784d8fe3d0780d49d1877effd639ce1a13ceed9",
+        "c59512d4392383b058ae20e46cbb43646a54dc46153ec98e755567d9ddcb98d4",
+        "03d40e6d35b75237cc3abee10b17f7db5dfae6ed81250ccce59d8bc568978b8f",
+        "a8565f7a58b86f0ecc1a8725e411fc88c520a063a0b5b43cde10f723ab7f776b",
+        "7a2d0e03932a8b639c3fc80cbdecb4e046d21c00dcdffae26581a865b1fd0d72",
+        "cb5963e82995402e7d58b8040c66152a70b05a3d2039d589d96bdc56b7c727b3"
+      ]
+    },
+    "frontend/providers/SettingsForm.jsx": {
+      "sha256": "6dc659fedfd23079613033bb70d2f5b127e0b8e3ff7412e63325749c75a3c389",
+      "statements": [
+        "f7b494e855841f7fe02d727adf5848286ef531e2d7bc1a5d7a740299317e149f",
+        "09176b35050f87f6309420bc2503e1b6d599a5a19c45d0472e5c349de3bbb464",
+        "1ac8024a5891f369f598688152a2626d6a6d490b3b6446a8cd992ca0d6f2d178",
+        "c59e655d6015586ca9ca529dda0c50186bb2559e21530123c4db1e4dbb9e0d5c",
+        "54ea200c18d2680721f8f4c5f4e59afd5dfcc5bb804a28f7bc277fa1ef8a07e8",
+        "3065f000a05bc2b6015b3962f00b9e96155c45071a4f7517c601e0293e257e5e",
+        "bf51e1d8216c25f63218d123dab16d001622c90590957fda1068b44bc744d285"
+      ]
+    },
+    "frontend/providers/SetupGuide.jsx": {
+      "sha256": "6152d76ca3d9ef0ce0ff86e5b7634f3c20d20533c9ecb8dd29444623abc4691b",
+      "statements": [
+        "456e1478bb5a48f07ed5364c67f07e754df4fabfd0a3b92bcb07927d12186d63",
+        "9a7f198aae3ae9fc83ac41d579ebec801781bc043d4d892017059aa75d2c9ddd",
+        "1ac8024a5891f369f598688152a2626d6a6d490b3b6446a8cd992ca0d6f2d178",
+        "043c22b921d766986844d01662a729a72d01e7883f5ce5162f3d865c05a9bf40",
+        "5cd2e5028e98e5ea56cbc0806b3fa27ff9845277c600d19aae02884aa03b1a15",
+        "27c74695752f41d8c486c36e8fa0d88c168379e784f41261c6667b2f4f6afda1",
+        "03d3d0480e6fe3c667ee5f9b4063c6c7979670024926f9b9edbe4f9cd8d48d37",
+        "bb5b31ba30c32260d3f0ee00b51af287cebca0085d2556df1f57edb2672d8286",
+        "5b30ab93ba2f2643fd45bcdc73562c6971ea09aef998bc860044fa60054ccc74"
+      ]
+    },
+    "frontend/providers/web.jsx": {
+      "sha256": "b044528d77c9487f59f81021e9dea110027bff6d63199c303251524cee6a6882",
+      "statements": [
+        "25b21f9c23c0a4376372f7cb3b34812d631a6f9630fff197cbd895cc50b35eda",
+        "d1d402cf766c473b5c7859be1aeb8bcd29cffda9d83cfd26bddc90c71faf0edb",
+        "343fda58dce0bd8dce7d6ca42d60e4f436dfaed8be28383c491635ed316196d6",
+        "dae6f10932cc56c65582b3efe11d5416d4cb619d9cd8563f9039dca5fddf546d",
+        "ead15e1f5a113cb31c839f7620255e1822832a5ed85bcad0b55d380866b88369"
+      ]
+    },
+    "frontend/settings/BackupStatus.jsx": {
+      "sha256": "b8581c9cb1f3a34853dd1524a56a0135349f5450b4f78cd3359dc538b797e5d6",
+      "statements": [
+        "ef79f3686fbe6325b9f609b48264595cdec16f24406c71fa5f065514c32339e5",
+        "b9f554b3ec1f763b19f7545b356d55809814f2d6e77b3fdf173fbafcdd7a1510",
+        "76c8bd9c2985aa307200381ed29c91683181324ff8ec4ff1e8f7744fceed2292",
+        "a07027ce899bae25bf52fa467389c1d705d16a75d4febd3371620265d035aecf"
+      ]
+    },
+    "frontend/settings/Chip.jsx": {
+      "sha256": "c9e6e9b9987d1d024426cce9562ad2c11bb0f62362e261cc40fcf3083b6b9d32",
+      "statements": [
+        "ef79f3686fbe6325b9f609b48264595cdec16f24406c71fa5f065514c32339e5",
+        "785005174491e40aa44fc3be2fd080936e0b8eb42d704eb6a10b90f8fac3b393",
+        "e20713690732690f08b3aafdc9c4b2d6f8b5a69d3e1649ceea84382d66b8d0ef",
+        "c5988f604e794650091d24a3743adabc791578fbb6cceac83d50af0f16388193"
+      ]
+    },
+    "frontend/settings/SettingsCard.jsx": {
+      "sha256": "52eb6ce2f7eefccf57d5ab81f72670217107751be41542d7b898f5cbbe17f008",
+      "statements": [
+        "ef79f3686fbe6325b9f609b48264595cdec16f24406c71fa5f065514c32339e5",
+        "98d603ebae13e65a62f3420dba416bc1f59d6d2e6f839dcf6de38626c718aad3",
+        "6a00ecf8adac232a250448b6844532f2686b264e6cc4c7d90331abdb1358fe93",
+        "46d4e6043d73c99191099443c727e30e19ecc8180ae8de3ffdb1ac57f15d34d8",
+        "57cc871aa04ddec70d10bbdb67fc5cd3db2e354d2d4b205d7031aa26f3b213a8"
+      ]
+    },
+    "frontend/settings/root.jsx": {
+      "sha256": "07528cdf1dab694de6586dd927c024b63db00103134e7342898d3581e2e50882",
+      "statements": [
+        "9245c6c8f1389fb31ba88d7a4d2c01a5c886c3aa58073dc14add4e776911becf",
+        "ca2e6176e3446c90972a986116c82e2cb48637b60c40a56fef7251537e17739f",
+        "a4a1a0ea949f61d96608bf50d2f484b8def476b795f7453aec59d8a83414c6be"
+      ]
+    },
+    "frontend/ui/AlphabetBar.jsx": {
+      "sha256": "518550112fa87f08a7ce5f6d36069208774ddb2782db4447132d92b425400eef",
+      "statements": [
+        "ef79f3686fbe6325b9f609b48264595cdec16f24406c71fa5f065514c32339e5",
+        "50229ec336bed37ff1d990ba4a4e458e89665fd74b7c52961c9877020c1a34b8",
+        "17ad8375523261cef95a2496efd97e6156fe6d5d49f32a59da8d82b863bac881",
+        "8cb6a35c72ec63d82d38ebc247bd65ed1fc89315a98e2e3a541a55abdc739762",
+        "40682162811e6234e4f7ed4832802a890a109ad03697bba2a328d8f548d4eee0"
+      ]
+    },
+    "frontend/ui/GlobalSearch.jsx": {
+      "sha256": "72a261276d7a528a8211f8a30b383cdcd9ef1c33bf5dfb2cfb1c146f1dfde7fc",
+      "statements": [
+        "46056659fd109f22317f1cc82577cb4d798dd3263024368a8a655690803e65c2",
+        "f4c82ccc51af434333d565a636b226d83fa2cd6f7619e1f6f7bfd8e6694bda77",
+        "f20631fe3b902b9350f85e09af041dc18b7c25b4aa7e384df88d6e7dc3e236d6",
+        "7d6d48d9191e09d0ab64012ae310ed8a632646975dcd7ec4625b5cf3dfecd14a",
+        "aa896d2673e825fdf72bfb568403ed36a1a2170afa2d077a9e249b5d192ac0f9"
+      ]
+    },
+    "frontend/ui/Icon.jsx": {
+      "sha256": "d2469cfcca63d91c8c61f9342046184f2c64ed26d14d7124c76311f72a399b97",
+      "statements": [
+        "ef79f3686fbe6325b9f609b48264595cdec16f24406c71fa5f065514c32339e5",
+        "e23337ba00788208444cf4e5e6ee44fb2d099789bc30548887bf300930c834a9",
+        "600fb34c7ccf0d3dab7ed5c2fa893f94a80ae52afc3a18f210f20f74c54126fb",
+        "cbba1f7e2bb68dc97bf7698950b1212f4f62f91478fd55b432556f70f43a6332"
+      ]
+    },
+    "frontend/ui/ListsForm.jsx": {
+      "sha256": "13f77a0943d6065d6b125a0300992ac0591e04d445efc2d87a94e909e15a2230",
+      "statements": [
+        "46056659fd109f22317f1cc82577cb4d798dd3263024368a8a655690803e65c2",
+        "e40f56369d0d606069bbda06257d0938a57e88a34c63ce4c5835f3d00f2a0bd5",
+        "965a3e303e16986b23fe89c76aab0d0b2470a91a105a3f97e438ce12abb5fc8f",
+        "960ba4107e451767327aefc8ff01946f9fddab16cb2433816ee075b8be599185"
+      ]
+    },
+    "frontend/ui/MediaCard.jsx": {
+      "sha256": "9e2f89493c4a15e587b36dc193b9b579e19afd0ff8cf24fc42cf7625f912e42e",
+      "statements": [
+        "672adddf32b13c956f1bb3dff412396c71a70acbbc8d3d2f58d5803e7af673da",
+        "8d277ce5917fdab1c2a67c8bf79d7c2eced62d7585458c970fd0d4a8fbaa6262",
+        "d4f206a2d3d21b9195a8595e9e397e849ed72ca297216ed66c5dd1fe96c42fc9",
+        "2167b24800beea5f7bf7a4a780977276ab9ba463d1a813d535afe988d667a9bc",
+        "f8960e1eaa0c96d9d284f09e84badf55cfa25a88d28fe54fe836c5eaef7892c6",
+        "f5f064de0b0981a83bdb1914d93e5827cc3f2a8ccd7be3e124559bceee2c1996",
+        "3a87fbd68d84f5280951c85988ca4b95c8aa7d932d693374eeeb701d156c4c6b",
+        "5fb338691d97df0040242d642009ea56638862bc16096d5cb3bc6a9ecc3f8b9f",
+        "e001f06c8d7940fcb93a23c125f3ade881be0c79960050bd7fd6637c1ab6bdef",
+        "189db82d1c9f724f646763b7bec0eab610dd17f356e06eb8bfebdbd1f68e4c9e",
+        "0da81a8efa3fe417bdcb1adeba46c6a4b869157def96ef4162e5a5c5ec2312e3",
+        "59dca08a7bc321fc0688704355006d05e2d2f69d64708c9b82f446fda717d32c",
+        "e93c6b0c8268a47590251864eccb20f30b703e95e50d06224931208af7de37c9",
+        "2d40b02dc330c661fd585bc6b93ad5a33d46bb98421fc159dda220138b11259d",
+        "754bdc8d3f7c0394e9e33568e640c4a75cf867cd12f119106227829cdd123742",
+        "3338028108985f6e781ea0510e8579f8c6cc7c701fb5500ddc1498c0e46ad085",
+        "a64f99395d7be7e027d266941f06fb21c67e9a35766f55e9dc93710f20ae6ab2",
+        "a95257e1c43aac09b6c37862900570239a0b0e356ff0b8ac61432d6552a95429",
+        "136395c4dcd059e99f4c65298ad83447686b050eee43a1ccfe6f01fb7d4aedd3",
+        "b94fca60ffa9fdfd40ba791a541c193522e074c7d55012cc950f768c4fd8f0cf",
+        "3f29f2ac82fe60b5c45b09cdb23980a514d4b96872faaa0ce17ff45e81bc8d6e",
+        "50006afb1ff5a4589c8de8d2e69a81f4b0693763758492d442121ea6ddafdf10",
+        "52850f76b262105a283bb51d71b666f9b6e97b1d9495d1d8d72c319e236d111f",
+        "0a1c6b2297dfde6fcbec9d1924809d10783c29d6251e7121e9afa508d62cc3b1",
+        "2cd4f38d74b6fb9f53ef6eb6f5f3be122e333be2ee6e9a2b0b9ded3e51d4031a",
+        "fdfa6b9f7e161a0e2ac4ff68ca558930042ab88336c0d64edf203a8ecc5836a1",
+        "4433a0e2332c68501d99d6d005fa76b42c9f2ed5f47252ff06fa18d540134c63",
+        "0850c22943fa43fb0a731b0510798f5c5a39c834989ce7a3b6ded4209036b77a",
+        "3029c3b892ff2b8e6ffeb215c65853ebcf26875641c9f30c5a1b53fca70fb55c",
+        "619f4f4bef7b13cbc998bee568b42d114ff3b4eaf83415f519c3f4cde92c1a42",
+        "bbdef4698c4086a8aa9357d39b4ea8dd145d7a2c24a82843463e332a30230be1",
+        "70c27b417106f0ea3dd1558a3be908dd6e88b6bfbe2f4f141973cf2d1daabf95",
+        "c3483bf72e4706abc0991398157ba5733cd7e19765ea4c87b8b0dbf891a85b0a"
+      ]
+    },
+    "frontend/ui/ModalHost.jsx": {
+      "sha256": "e652f5b8a80c8a7e33acd8e83303f92f1a60092a501b20041e1f6fedc21bc410",
+      "statements": [
+        "46056659fd109f22317f1cc82577cb4d798dd3263024368a8a655690803e65c2",
+        "8d277ce5917fdab1c2a67c8bf79d7c2eced62d7585458c970fd0d4a8fbaa6262",
+        "8448cfe0a46df75b7f12a5c0a3da72f770913f5941d7b28719cd57ea2beab6cd",
+        "37b7391d64e4afd9477357c4d972b9f626ab6e45b6409f8b1cad1aa55720b867",
+        "2d067a65855c3a5984656154edfbb930af35083c2a993dcc917eae4a8517a1c7",
+        "225719cf3a9a2de2c16f5035eb6e7e095f39bce4d1d3799bd7367e51b5ed3c1f",
+        "79ceeaad821593d6650ae50a51b3333adb8bd5c0d895d17049bc37da2e5134d2",
+        "cdf6ea1f01c3a7cd3237d8d735125c85456cf3eb0129cd7e8256eb3e708ad956"
+      ]
+    },
+    "frontend/ui/RatingStars.jsx": {
+      "sha256": "630d5eac15f7324875f9d4bff6420c24af9bf99836ab46dac09b03634e4cd3ab",
+      "statements": [
+        "456e1478bb5a48f07ed5364c67f07e754df4fabfd0a3b92bcb07927d12186d63",
+        "50229ec336bed37ff1d990ba4a4e458e89665fd74b7c52961c9877020c1a34b8",
+        "3db82e250f9ff808c3c10fe1ca6b5ee5dfc884a5752ee5167db8bdf58701ae5a"
+      ]
+    },
+    "frontend/ui/Sidebar.jsx": {
+      "sha256": "fddfcea7ff73590bcd8bdb11dc1fc650753b83ae1b906862f5e329fc42a3ea69",
+      "statements": [
+        "672adddf32b13c956f1bb3dff412396c71a70acbbc8d3d2f58d5803e7af673da",
+        "8d277ce5917fdab1c2a67c8bf79d7c2eced62d7585458c970fd0d4a8fbaa6262",
+        "d4f206a2d3d21b9195a8595e9e397e849ed72ca297216ed66c5dd1fe96c42fc9",
+        "c725d5bf0b10224f07ef586a21df6765de7eeaba82c7e3801052f8117f0fadc6",
+        "3d46a573bfe95ecbaebbcbd6d17b1e7004249e56d7649aa4dede4c229d187c7a",
+        "c5bf3e4a870d9754702c414eb939feecfbd8b9d62a2ea691e6d00d15c8953c93",
+        "b51a22272fb733fdb16cead7af95ae3ebb04adcb64d83bcbacf67992f2e98977",
+        "072dae6e6815a76514bc3268a4a4b9b98f7b82023c396487dc9748e9e3de3cca",
+        "40bcc14ec3fc66a8e590abd04f99b8a4bf0d2eb8c2ec48a3aba301fdfb347b2b",
+        "4d016207af2a759a074424726f4b6d778cca6ff878f805540406ee24ced3bae9",
+        "389d22d5c4cddffa71eb6cab4d784cfb8222fb1c0b028e8f1d42ab9406a5ffcf",
+        "8eedd9e304b150d931567e6fe223b997d98702f038f18092cbe98bf437cb7389",
+        "e6578e078c00c107dd1cc06b8eb5d2fcd07a1510780a792838c32a46616a620d",
+        "8cd7a2773038468b4568b04311eb1a06ab451ae6c54cdf12ac6afab41c5684fc",
+        "0da55d58eac30085fc07c2e563458a530e51a221595a31a57cb119438273ef95",
+        "61eb1f304891ad8492bee1fcf9d0d1e051aa83eb47c9304dec2d1444711b062a",
+        "df3b9c5d56ec6772917be8f93943f726e407319797b1bf49a150314528b08620",
+        "909e0047f0f814864179a0256d36b10702f4a16ddd8523db52bfa5f96cb104c2",
+        "503f58a7c4cc86c9010b5ffd14017d4a6e99d489c871e214ec846c6f636fa19c",
+        "2c75d2250a58a9a4e108c651f92694b218030fc4fd7e78b8f5ae2256cba70e2c"
+      ]
+    },
+    "frontend/ui/controls.jsx": {
+      "sha256": "5ec78a860ff726f7bebadac12f73084474c66f5ec09f967d80875ad6ed67925e",
+      "statements": [
+        "672adddf32b13c956f1bb3dff412396c71a70acbbc8d3d2f58d5803e7af673da",
+        "8d277ce5917fdab1c2a67c8bf79d7c2eced62d7585458c970fd0d4a8fbaa6262",
+        "3cb263a2e1525224b7ae63fe2d8136b96ed606617049a68b0f15cfd79178383f",
+        "6affd00a23f8a7657469166b5e088528dd7af4dbe5ad7d842ae9440f50bc817e",
+        "d5cbbf6b98a2aae310d00ff2a7f493691fdeffed2ad29326281a30754eea34cb",
+        "5d608076d0a6ed4fc0da9bd270d1ade6533c682c4041d32f3f65a1f1cd0daaad",
+        "2be3c49aee2d85b39f066ac6e4b6e98f95ce17891ebd058345be5c4f27b35dfb",
+        "194d44f00d8dbdfd612e1f02b563b23a14063f71656c5a5dd0700d1e31bec030",
+        "74c3ac456867f7c70cfe653e3da728950eaf54f8e4a432932b64c14420d1ef84",
+        "3bda16681a452f9ccaf4b2c609bba0aec07956dd4b3ec5a71e7a4c76bc76c374",
+        "213c8b742664d4826c29813177ecfe652692eb36df7696a57c88bb32803a8f6a",
+        "7b5eb796320bdd680910d3a888b121eb917a0128435684b88e5771d1d3d71fb9",
+        "f244048e59779b462307e9db3eba403444060cd19216a4fed043836d264c826b",
+        "ce779841b5ecb23ed2d73850c116427674d1acb0942d5bd3f614fa3f9c350b87",
+        "110ad4dbe1a552160d23437ba8bd89e17857f6fd4916bfb292e53c6a203a87e8",
+        "379c28895822b1704e03297388378bad5c21cde055f4a4dd0d1175606de2c5da",
+        "8d59bda1d2cfe396b102139c2175e2551060d48e09538b6a6c12a402c87674bc",
+        "6134717e55b0213575c7cda6a269e24998720e05dc01b2edff5856411fc45039",
+        "049d1386bd671ef33c83ce0ba69dba615b2c9fec0bb52059e0fcdc34e0d66a2c",
+        "7479f311426dec1aec92492b4dd2eeb24b2e86fc1470d17c7ba87edc96788a5d",
+        "56d3da0e8b203a97c0459154e006bee3e8d17b6f5f1c25e80f6e5fb492644962",
+        "5105007590cc26ff40206e1bd51022608c4173bcb39946fa18ec2235d71735b3",
+        "cf3614bc5ebadce0be0c229f20e38c0a9110397f94a6a030f34007299e17c774",
+        "61bc3d85c866af997880c8520692309595a09deea9ff862087b3d0db42a4d50b",
+        "b88afbba442717f3d384fa1b049544c8644859d7bc347fb1ba490edc9c6dba80",
+        "bef4328c8de5f2580de948f4646a3d3d16649287629cbe7e0e34f6e8483106e8",
+        "23c2437fe7547aa0ed20597be15cb4d9c3a776018905c1a7705c6683e4c7fa8e",
+        "728cd2ab77f073476665dc61cec5c8f45c083e683183f27b43db06ff344e10f9",
+        "a6778c2c4bd48c7a61e0353905a97e7d1a49ffb2fd1cacca9b1adcce753548ea",
+        "6eb33691eddc5a6f7b74d99232ca2aa3d4f4be8b7b7be99ccf243222452853ae",
+        "18725d65ffc6eb61d5864be0b229737b86feed4f7073e4fe373802f1a331a688",
+        "daff16f97eed303f71615b32c7ce6d09b179195edd7c7e48278026f52d337ad9"
+      ]
+    },
+    "frontend/ui/mountBulkActions.jsx": {
+      "sha256": "e1fa826ef97ad07dd869020899ac467c5df91cc853130bbf52743bdcd11fabc8",
+      "statements": [
+        "9de8a78a942078d77d8f1a331c552dc29dcc44a336dff53339376fe99cd045f6",
+        "1ac8024a5891f369f598688152a2626d6a6d490b3b6446a8cd992ca0d6f2d178",
+        "6dc97e0b4a25cc3fb12831b67900705b0cf793be1644fcf848271b2e02c3ee92",
+        "c10715f9d6636ee466f5f3f3d5e7cae32ab1943ad6b327331ba8717ac3703383",
+        "989592b1957f14ee945890f3247dcb67044a983e047f07404f5f56fa802d009a",
+        "3d8e6ca4c8f314e1a36f75a31aa91b6705ea172beac6e38d705e15827b7e3618",
+        "efc72b27bd18776a6bd1145dc056983b8bb30c2dcb3e466a531c9b484321b5c0",
+        "eb21d46f43a0cdd20b5e70db4b118374a1d2ab08ff34b47511edad7cbca50e89",
+        "5ce2306e3794ecb06f4f16d1710aeee5994ead842402b72b63a4c8a03cb686ac",
+        "be7958a88fb6e4c373fdcacba5a2b5c7b6e95e2ddef1b13fdcb5a555da917175",
+        "ce2dcc592a5c8de4494c163727f82abf9107570f2b5c3e138f1e9a4dbf832faa",
+        "6582e1bf90a206024779677c7491c726ea6d4f102e4a13e8678889384e3b3df3",
+        "542787a9c99e258ab240080a5e052521f9b4166b2cae1124f168418e0ff8c2b3",
+        "18a6604566d0596391579492f6f7853db5a1ed44ac0df245539b0363425d872a",
+        "961ece2587519129cff2a79a2494569169f83ee25dc112e6d538f74a8eadf8e0",
+        "cee8a81faf1fd21808dfdb09e2a52c9415b001f67cb6ea2fb7be38b42d977dcf",
+        "1c2b327348af6c633f2b3efe89f4d2a2d533ba347b3d66222a8d19b30b39da96",
+        "838cc5f94bebb07a3a7f141b86be6e57c8d7600e1c82984795f93914a2f38fd2",
+        "3a891841a734b431dfddf81220df6ae67a4465be78d57b1e5db4b82213d5660c",
+        "a798f69f8bfcb9fcd6df592143c36488661d5aa971b9a7fdce77860b81a5c434",
+        "762c69433d9efd0348f7e8e23b9e463c3aa33517f7258dc977ed01289d4d7294",
+        "f3a1db7b2a367f2b44cfc8b3a868810ebd733099b542cd148480f680332ec221",
+        "cfe09494bd0f9554cf64c05f94dd764cf422b1a5922c2e6f5fbfab397e7a52b4",
+        "8913b39b12d3d98901d4aeccb09de2ea72f9c10914573139c1eba4e49a367a22",
+        "12ffe36349316df699ec75d3f4201ca11422abfb03013687de544a5f3d3086bf",
+        "55974510ce37854efefcca7a2bd792a29116764e213fa61583ba21f575dd3f9a",
+        "6ba535f1d5155f2cf273658867f6666207741caa798e64376f7f08d90cef63d4",
+        "224c5b3cb84881ff4b244caa5b9b2cc5700218d2e437c3c842c76bc392737a54",
+        "f0fd9c861bd6574c56d07a98ff73b1c45dbfe52dbe41748a2d2f96b08de480de",
+        "2268081f449b894930b6c5eaa5522b73f3a9a6845e3e3dc02b7ce69bb8801e12",
+        "c9f7ce3a68103e095a1f59be63bc1e0d9af18e168d55fef9a26d313ef1104ee2"
+      ]
+    },
+    "frontend/ui/mountBulkToolbar.jsx": {
+      "sha256": "be2487cdead2871b88da2d74dbd4fad8efeb2b757ca63d4268866342bf5053df",
+      "statements": [
+        "f7b494e855841f7fe02d727adf5848286ef531e2d7bc1a5d7a740299317e149f",
+        "1ac8024a5891f369f598688152a2626d6a6d490b3b6446a8cd992ca0d6f2d178",
+        "1877ac5600f36653521b37bb0fce4eea4bf46030b90bf63f25d540ce355805b7",
+        "6afa3d56e771fa058db62d481f5eb8be1d1e3bbdccebdbcd9c8be31947fc7485",
+        "ce2dcc592a5c8de4494c163727f82abf9107570f2b5c3e138f1e9a4dbf832faa",
+        "26a5cbe8cd06ac37b62289cdbf26b25fdf7fa14c15dedcd18dee9bb0f453bd11",
+        "e2be3e5558f69134d4a5d426e88c0ac081e4b11ba49ec53acde39cb5fb60ac3c"
+      ]
+    },
+    "frontend/ui/mountRatingStars.jsx": {
+      "sha256": "77408a56aed4880e8f0bdb1fa466c9ebe94dd29932e1d438c3ef72df9c29cc79",
+      "statements": [
+        "f7b494e855841f7fe02d727adf5848286ef531e2d7bc1a5d7a740299317e149f",
+        "1ac8024a5891f369f598688152a2626d6a6d490b3b6446a8cd992ca0d6f2d178",
+        "f8960e1eaa0c96d9d284f09e84badf55cfa25a88d28fe54fe836c5eaef7892c6",
+        "ff03d86e94ce59220fca5d21418db3e065cfdfc4d9d331f2a6f2b9ebc34ee97c",
+        "8ba311d61ba131d6f6428785fdd73c8d0e32f96039ae8c665a1a51198596f3df",
+        "f2b18fe7f66d845d7ad50e59bab8ea35a89f9329af608b8a4ad8993b7f0da629",
+        "6e24d38a44a995939175973a650c0e644868f3aea2e7e76db8eff890af4a0281",
+        "1674aa323dee5268b49b8e22e0b2402ac83fa4192d4cca466dc2416118e32571"
+      ]
+    }
+  },
+  "web_adapters": {
+    "frontend/settings/index.js": {
+      "register": "SETTINGS-CARD",
+      "purpose": "Django/browser integration for the registered surface."
+    },
+    "frontend/settings/webPalette.js": {
+      "register": "SETTINGS-CARD",
+      "purpose": "Django/browser integration for the registered surface."
+    },
+    "frontend/ui/mountMediaCard.jsx": {
+      "register": "MEDIA-CARD",
+      "purpose": "Django/browser integration for the registered surface."
+    },
+    "frontend/ui/mountModalHost.jsx": {
+      "register": "SHELL",
+      "purpose": "Django/browser integration for the registered surface."
+    },
+    "frontend/ui/mountAlphabet.jsx": {
+      "register": "ALPHABET",
+      "purpose": "Django/browser integration for the registered surface."
+    },
+    "frontend/ui/mountSidebar.jsx": {
+      "register": "SHELL",
+      "purpose": "Django/browser integration for the registered surface."
+    },
+    "frontend/ui/mountGlobalSearch.jsx": {
+      "register": "SHELL",
+      "purpose": "Django/browser integration for the registered surface."
+    },
+    "frontend/ui/mountSpinner.jsx": {
+      "register": "SPINNER",
+      "purpose": "Django/browser integration for the registered surface."
+    },
+    "frontend/ui/mountButton.jsx": {
+      "register": "BUTTON",
+      "purpose": "Django/browser integration for the registered surface."
+    },
+    "frontend/ui/mountBadge.jsx": {
+      "register": "BADGE",
+      "purpose": "Django/browser integration for the registered surface."
+    },
+    "frontend/ui/mountFilterChips.jsx": {
+      "register": "SHELL",
+      "purpose": "Django/browser integration for the registered surface."
+    },
+    "frontend/ui/mountCalendarMenu.jsx": {
+      "register": "RELEASE-CALENDAR",
+      "purpose": "Django/browser integration for the registered surface."
+    },
+    "frontend/providers/mount.jsx": {
+      "register": "SET-PROVIDERS",
+      "purpose": "Django/browser integration for the registered surface."
+    },
+    "frontend/settings/mount.jsx": {
+      "register": "SETTINGS-CARD",
+      "purpose": "Django/browser integration for the registered surface."
+    }
+  }
+}

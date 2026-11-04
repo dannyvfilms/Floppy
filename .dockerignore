@@ -49,6 +49,8 @@ src/logs/
 reports/
 wiki/
 node_modules/
+/native-proof/
+/src/static/native-proof/
 .pytest_cache/
 .ruff_cache/
 

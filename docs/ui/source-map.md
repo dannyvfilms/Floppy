@@ -170,6 +170,10 @@ Shared `Button` lives in `frontend/ui/controls.jsx` and `controls.css` (FORM-CON
 
 ## MEDIA-CARD
 
+- `frontend/ui/NativeProofCard.jsx`
+
+The experimental read-only label and card are consumed only by `native-proof/App.js`,
+whose proof data adapter is `native-proof/mediaClient.js`; they have no production surface.
 - `src/templates/app/components/card_lines.html`
 - `src/templates/app/components/media_card.html` (shell: wrapper classes, props script and first-paint poster and title; React replaces it on mount)
 - `frontend/ui/MediaCard.jsx`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/ModalHost.jsx`, `frontend/ui/media-card.css`, `src/app/media_card_model.py`, `src/app/card_surfaces.py` (the whole card is React on every surface: body, status chip, rating, hover buttons, popups host, touch reveal and bulk-select checkbox)
