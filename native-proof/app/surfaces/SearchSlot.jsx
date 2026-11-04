@@ -4,7 +4,8 @@ import { Note } from '../components/Note';
 export const surface = {
   id: 'SEARCH',
   title: 'Global search and suggestions',
-  where: 'Header on Home, Discover and Library',
+  where: 'Header on Home, Discover and Library, and the Search screen',
+  status: 'in_progress',
   note: 'The search field, media-type menu and suggestion list will open the Search screen and result detail routes.',
 };
 
