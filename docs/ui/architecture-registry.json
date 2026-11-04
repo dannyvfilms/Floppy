@@ -80,6 +80,26 @@
           "evidence": "Expo Go on Pixel 7 AVD (sdk_gphone64_arm64), Android 15 API 35: increase tap changed 3 to 4, disabled plus at 10/10 did not change, light palette rendered; accessibility tree exposed Increase/Decrease labels, values and enabled=false. TalkBack not exercised."
         }
       }
+    },
+    "frontend/ui/Button.jsx": {
+      "register": "BUTTON",
+      "components": [
+        "Button"
+      ],
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not exercised; this port added build and static checks only."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not exercised; this port added build and static checks only."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised; this port added build and static checks only."
+        }
+      }
     }
   },
   "legacy": {
@@ -481,6 +501,52 @@
         "6e24d38a44a995939175973a650c0e644868f3aea2e7e76db8eff890af4a0281",
         "1674aa323dee5268b49b8e22e0b2402ac83fa4192d4cca466dc2416118e32571"
       ]
+    }
+  },
+  "platform": {
+    "frontend/ui/Button.web.jsx": {
+      "kind": "presentation",
+      "register": "BUTTON",
+      "components": [
+        "Button"
+      ],
+      "purpose": "Render the shared Button with browser button and anchor semantics for forms, links and htmx attributes.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not exercised; this port added build and static checks only."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not exercised; this port added build and static checks only."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised; this port added build and static checks only."
+        }
+      }
+    },
+    "frontend/ui/Button.native.jsx": {
+      "kind": "presentation",
+      "register": "BUTTON",
+      "components": [
+        "Button"
+      ],
+      "purpose": "Render the shared Button with React Native primitives on iOS and Android.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not exercised; this port added build and static checks only."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not exercised; this port added build and static checks only."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised; this port added build and static checks only."
+        }
+      }
     }
   },
   "web_adapters": {

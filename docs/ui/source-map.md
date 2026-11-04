@@ -156,13 +156,16 @@ Fallback styling remains in `controls.css`; templates are mapped under their own
 
 ## BUTTON
 
-Shared `Button` lives in `frontend/ui/controls.jsx` and `controls.css` (FORM-CONTROLS); its consumer templates are mapped under their own families.
+Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform implementation is `frontend/ui/Button.web.jsx` (`.ui-button` in `controls.css`) and the native counterpart is `frontend/ui/Button.native.jsx`. The legacy `Button` in `frontend/ui/controls.jsx` still serves React islands.
 
+- `frontend/ui/Button.jsx`
+- `frontend/ui/Button.web.jsx`
+- `frontend/ui/Button.native.jsx`
 - `frontend/ui/mountButton.jsx`
 - `src/templates/users/components/button.html`
 - `src/users/templatetags/ui_tags.py` (`{% button %}`)
 - Consumers (22 templates, 65 sites): `users/account.html`, `users/cards.html`, `users/_reading_server_modal.html`, `users/components/provider_import.html`, `provider_instance_credentials.html`, `provider_personal_credentials.html`, `tmdb_proxy.html`, `media_type_provider_modal.html`, `users/providers/integrations/jellyfin.html`, `users/providers/mal_sync.html`, `users/onboarding/media_types.html`, `metadata.html`, `import_status.html`, `components/connect_trakt.html`, `lists/custom_lists.html`, `integrations/oauth_device.html`, `integrations/match_fix.html`, `app/components/collection_modal.html`, `collection_entry_summary.html`, `music_track_notes.html`, `history_day.html`, `fill_track_song.html`.
-- Remaining legacy: Alpine-bound, in-place htmx, icon and composed-attribute buttons (see the BUTTON register entry).
+- Remaining legacy: `frontend/ui/controls.jsx` Button and its React-island consumers, Alpine-bound, in-place htmx, icon and composed-attribute buttons (see the BUTTON register entry).
 
 ## WEB-UTILITIES
 

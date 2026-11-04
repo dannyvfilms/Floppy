@@ -24,7 +24,7 @@ data and actions and own requests, permissions and platform integration.
 | `MediaIcon` | Shared media-type glyphs for provider and library rows |
 | `StatusIcon` | Accessible success/warning/neutral icon with a descriptive tooltip; feature code supplies the actual meaning |
 | `FeatureList` | Shared feature rows with `key`, `label`, optional `note`, `status` and semantic `tone`; leading accessible status icons replace repeated Active text, with other states labeled and no dividers |
-| `Button` | Purple primary action with secondary, danger and disabled variants |
+| `Button` | Shared React Native `Pressable`/`Text` action with primary, surface, solid danger and ghost danger tones; the browser platform implementation keeps real button/anchor semantics, form submission, links and htmx attributes |
 | `Form` | Native POST with explicit action, CSRF and optional local return destination/confirmation |
 | `Dialog` | Native modal dialog, Escape/backdrop dismissal and focus restoration; caller supplies translated title/close label |
 | `Tabs` | Native navigation links with current-page state and no hover underline |
