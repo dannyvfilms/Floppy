@@ -40,6 +40,26 @@
           "evidence": "Expo Go 58.0.5 on Pixel 7 AVD, Android 15 API 35 arm64: the 12, 16 and 20 dp white, accent and muted rings rendered; separate screenshots showed changing orientation. Accessibility hierarchy capture was killed twice and accessibility service dump timed out; TalkBack, reduced motion and exact animation timing were not verified."
         }
       }
+    },
+    "frontend/ui/Badge.jsx": {
+      "register": "BADGE",
+      "components": [
+        "Badge"
+      ],
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium: 45 cases across 13 theme states; geometry, colors, link focus and hover, and nowrap compared with Django fallback."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "iPhone 15 Pro iOS 17.2 simulator: four sizes, palette switch, full narrow nowrap label, accessible link and activation; VoiceOver not exercised."
+        },
+        "android": {
+          "status": "verified",
+          "evidence": "Pixel 7 Android 15 emulator: four sizes, palette switch, full narrow nowrap label, clickable/focusable accessibility node and activation; TalkBack not exercised."
+        }
+      }
     }
   },
   "legacy": {
@@ -503,6 +523,10 @@
     "frontend/ui/SpinnerTheme.web.jsx": {
       "register": "SPINNER",
       "purpose": "Resolve document theme colors for the shared Spinner."
+    },
+    "frontend/ui/BadgeTheme.web.jsx": {
+      "register": "BADGE",
+      "purpose": "Translate web theme values and links for the shared Badge."
     }
   }
 }

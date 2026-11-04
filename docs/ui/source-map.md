@@ -128,6 +128,8 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## SPINNER
 
+The Expo proof offers a toggle for its spinner examples during native verification.
+
 Shared `Spinner` uses native primitives; the web adapter resolves theme colors. `controls.jsx` re-exports the web interface for `GlobalSearch` and `ListsForm`. Server fallback styling remains in `controls.css` until Django fallback is retired; template consumers are mapped under their own families. The Expo proof exercises the shared component directly; the register records separate browser, iOS and Android runtime evidence and limitations.
 
 - `frontend/ui/Spinner.jsx`
@@ -140,9 +142,14 @@ Shared `Spinner` uses native primitives; the web adapter resolves theme colors. 
 
 ## BADGE
 
-Shared `Badge` lives in `frontend/ui/controls.jsx` and `controls.css` (FORM-CONTROLS); its consumer templates are mapped under their own families.
+Shared `Badge` uses native presentation; `controls.jsx` re-exports its web adapter.
+Fallback styling remains in `controls.css`; templates are mapped under their own families.
+
+- `frontend/ui/Badge.jsx`
+- `frontend/ui/BadgeTheme.web.jsx`
 
 - `frontend/ui/mountBadge.jsx`
+- `src/users/tests/test_badge_browser.py`
 - `src/templates/users/components/badge.html`
 - `src/users/templatetags/ui_tags.py` (`{% badge %}`)
 - Consumers: `app/podcast_show_detail.html`, `app/episode_details.html`, `app/music_album_detail.html`, `app/components/detail_music_artist.html`, `detail_music_album.html`, `detail_music_track.html`, `detail_secondary_content.html`, `cells/media_genres_cell.html`, `media_metadata_panel.html`, `lists/components/add_item_preview_modal.html`, `recommend_preview_modal.html`, `integrations/library_panel.html`, `integrations/seerr_status.html`, `users/components/whats_new.html`, `users/onboarding/metadata.html`

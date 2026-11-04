@@ -2,15 +2,22 @@ import React, { useState } from 'react';
 import { Button, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { NativeProofCard, NativeProofLabel } from '../frontend/ui/NativeProofCard';
 import { Spinner } from '../frontend/ui/Spinner';
+import { Badge } from '../frontend/ui/Badge';
 import { loadMedia } from './mediaClient';
 
 const palette = { background: '#27272a', border: '#52525b', placeholder: '#3f3f46', text: '#fafafa' };
+const badgePalettes = {
+  dark: { indigo: { color: '#fff', backgroundColor: '#4338ca' }, outline: { color: '#fff', borderColor: '#aaa', borderWidth: 1 } },
+  light: { indigo: { color: '#fff', backgroundColor: '#4338ca' }, outline: { color: '#222', backgroundColor: '#fff', borderColor: '#555', borderWidth: 1 } },
+};
 
 export default function App() {
   const [server, setServer] = useState('');
   const [token, setToken] = useState('');
   const [items, setItems] = useState([]);
   const [message, setMessage] = useState('Enter your Floppy server URL and API token.');
+  const [badgeDark, setBadgeDark] = useState(true);
+  const [showSpinners, setShowSpinners] = useState(true);
   async function load() {
     try {
       setItems(await loadMedia(server, token));
@@ -22,7 +29,11 @@ export default function App() {
   }
   return <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
     <NativeProofLabel text="Floppy native proof" color={palette.text} />
-    <View style={styles.rings}><Spinner size={12} color="#fff" /><Spinner size={16} color="#6366f1" /><Spinner size={20} color="#adb5bd" /></View>
+    {showSpinners && <View style={styles.rings}><Spinner size={12} color="#fff" /><Spinner size={16} color="#6366f1" /><Spinner size={20} color="#adb5bd" /></View>}
+    <Button title="Toggle spinner examples" onPress={() => setShowSpinners(!showSpinners)} />
+    <View style={styles.badges}>{['xs', 'sm', 'md', 'tag'].map(size => <Badge key={size} label={size.toUpperCase()} size={size} tone="indigo" palette={badgePalettes[badgeDark ? 'dark' : 'light']} />)}<Badge label="Details" size="md" palette={badgePalettes[badgeDark ? 'dark' : 'light']} onPress={() => setMessage('Badge pressed.')} /></View>
+    <View style={{ width: 100 }}><Badge label="One line badge example" nowrap palette={badgePalettes[badgeDark ? 'dark' : 'light']} /></View>
+    <Button title="Toggle badge theme" onPress={() => setBadgeDark(!badgeDark)} />
     <Text style={styles.text}>Server URL</Text>
     <TextInput accessibilityLabel="Server URL" autoCapitalize="none" autoCorrect={false} value={server} onChangeText={setServer} style={styles.input} />
     <Text style={styles.text}>API token</Text>
@@ -38,5 +49,6 @@ const styles = StyleSheet.create({
   text: { color: '#fafafa' },
   input: { color: '#18181b', backgroundColor: '#fff', padding: 10, borderRadius: 4 },
   rings: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  badges: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 },
   cards: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
 });

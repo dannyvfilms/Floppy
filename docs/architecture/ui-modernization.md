@@ -35,6 +35,9 @@ evidence where applicable. Existing browser-specific presentation is frozen as
 legacy; unchanged declarations may coexist, but a changed or added declaration
 must be moved to an appropriate shared component or adapter. Browser mount adapters
 may change to integrate shared components but cannot define HTML presentation.
+They may wrap a directly imported registered shared component in an unstyled
+anchor for native browser link semantics; the checker restricts its attributes
+and requires the shared component as its only child.
 Removing migrated declarations is allowed; reintroducing
 them is rejected against the base revision. A legacy module may replace an
 existing named component export with a same-name re-export of registered

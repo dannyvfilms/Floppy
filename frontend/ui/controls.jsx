@@ -365,7 +365,4 @@ export { Spinner } from './SpinnerTheme.web';
 // Small rounded label for statuses, genres and flags. `size` is xs, sm, md or tag;
 // `tone` picks the colours (see `.ui-badge` in controls.css). `label` is plain text,
 // never markup. `href` makes it a link (genre badges); `nowrap` keeps one line.
-export function Badge({ label, size = 'sm', tone = 'outline', href = '', nowrap = false }) {
-  const props = { className: `ui-badge ui-badge-${size}${nowrap ? ' ui-badge-nowrap' : ''}`, 'data-tone': tone };
-  return href ? <a href={href} {...props}>{label}</a> : <span {...props}>{label}</span>;
-}
+export { Badge } from './BadgeTheme.web';

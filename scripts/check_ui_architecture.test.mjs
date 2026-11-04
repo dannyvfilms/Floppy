@@ -68,6 +68,11 @@ test('web mount adapters may integrate DOM but cannot introduce HTML presentatio
   for (const code of ['<div/>', 'host.innerHTML = "<b>hello</b>"', 'document.createElement("div")']) {
     assert.ok(inspectWebAdapter(code, 'mountCard.jsx').length, code);
   }
+  assert.deepEqual(inspectWebAdapter('const x = <a href="/genres"><SharedBadge /></a>;', 'BadgeTheme.web.jsx', ['SharedBadge']), []);
+  assert.deepEqual(inspectWebAdapter('const x = <a href="/genres" style={{textDecoration:"none"}}><SharedBadge /></a>;', 'BadgeTheme.web.jsx', ['SharedBadge']), []);
+  assert.ok(inspectWebAdapter('const x = <a href="/genres" style={{color:"red"}}><SharedBadge /></a>;', 'BadgeTheme.web.jsx', ['SharedBadge']).length);
+  assert.ok(inspectWebAdapter('const x = <a href="/genres">text</a>;', 'BadgeTheme.web.jsx', ['SharedBadge']).length);
+  assert.ok(inspectWebAdapter('const x = <a href="/genres"><Unregistered /></a>;', 'BadgeTheme.web.jsx', ['SharedBadge']).length);
 });
 
 test('cannot reclassify a universal component as platform-specific', () => {

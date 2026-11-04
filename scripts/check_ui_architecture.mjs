@@ -86,15 +86,20 @@ export function inspectUniversal(source, file = 'component.jsx', { nativeAdapter
   return errors;
 }
 
-export function inspectWebAdapter(source, file) {
+export function inspectWebAdapter(source, file, registeredPresentation = []) {
   const errors = [];
   let ast;
   try { ast = parse(source, { sourceType: 'module', plugins: ['jsx', 'typescript'] }); }
   catch (error) { return [`${file}: cannot parse: ${error.message}`]; }
-  function walk(node) {
+  function walk(node, parent) {
     if (!node || typeof node !== 'object') return;
     const fail = reason => errors.push(`${file}:${node.loc?.start.line ?? '?'}: ${reason}`);
-    if (node.type === 'JSXOpeningElement' && node.name.type === 'JSXIdentifier' && /^[a-z]/.test(node.name.name)) fail('web adapters cannot define HTML presentation; mount a shared component');
+    if (node.type === 'JSXOpeningElement' && node.name.type === 'JSXIdentifier' && /^[a-z]/.test(node.name.name)) {
+      const children = parent?.children?.filter(child => child.type !== 'JSXText' || child.value.trim());
+      const safeStyle = attribute => attribute.name?.name === 'style' && attribute.value?.expression?.type === 'ObjectExpression' && attribute.value.expression.properties.length === 1 && attribute.value.expression.properties[0].key?.name === 'textDecoration' && attribute.value.expression.properties[0].value?.value === 'none';
+      const link = node.name.name === 'a' && node.attributes.some(a => a.name?.name === 'href') && node.attributes.every(a => ['href', 'onMouseEnter', 'onMouseLeave'].includes(a.name?.name) || safeStyle(a)) && children?.length === 1 && children[0].type === 'JSXElement' && registeredPresentation.includes(children[0].openingElement.name.name);
+      if (!link) fail('web adapters cannot define HTML presentation; mount a shared component');
+    }
     if (node.type === 'JSXAttribute' && ['className', 'dangerouslySetInnerHTML'].includes(node.name.name)) fail('web adapters cannot own presentation styling or HTML');
     if (node.type === 'AssignmentExpression' && ['innerHTML', 'outerHTML'].includes(node.left?.property?.name)) fail('web adapters cannot generate HTML');
     if (node.type === 'CallExpression' && node.callee.type === 'MemberExpression') {
@@ -104,7 +109,7 @@ export function inspectWebAdapter(source, file) {
     }
     if (node.type === 'CallExpression' && node.callee.name === 'createElement' && node.arguments[0]?.type === 'StringLiteral') fail('web adapters cannot construct presentation elements');
     for (const [key, value] of Object.entries(node)) if (!['loc', 'start', 'end', 'extra', 'leadingComments', 'trailingComments', 'innerComments'].includes(key)) {
-      if (Array.isArray(value)) value.forEach(walk); else if (value && typeof value === 'object') walk(value);
+      if (Array.isArray(value)) value.forEach(child => walk(child, node)); else if (value && typeof value === 'object') walk(value, node);
     }
   }
   walk(ast.program);
@@ -152,7 +157,16 @@ export function validateRegistry(registry, base, sourceFiles, readSource, docume
       const entry = webAdapters[path];
       if (!/(?:^|\/)(?:mount(?:[A-Z][^/]*)?|index|webPalette|[^/]+\.web)\.(?:js|jsx|ts|tsx|mjs|cjs|mts|cts)$/.test(path)) errors.push(`${path}: web integration adapters must use an adapter or .web filename`);
       if (!entry.register || !entry.purpose || !register.includes(`### ${entry.register} —`) || !map.includes('`' + path + '`')) errors.push(`${path}: document the web adapter purpose, register owner and source-map path`);
-      errors.push(...inspectWebAdapter(source, path));
+      let names = [];
+      try {
+        const ast = parse(source, { sourceType: 'module', plugins: ['jsx', 'typescript'] });
+        names = ast.program.body.filter(n => n.type === 'ImportDeclaration' && n.source.value.startsWith('.')).flatMap(n => {
+          const destination = relative(root, resolve(root, dirname(path), n.source.value));
+          const target = Object.entries(universal).find(([file]) => file === destination || sourceExtensions.some(ext => file === `${destination}.${ext}`));
+          return target ? n.specifiers.filter(s => target[1].components.includes(s.imported?.name)).map(s => s.local.name) : [];
+        });
+      } catch { /* Parsing errors are reported by inspectWebAdapter. */ }
+      errors.push(...inspectWebAdapter(source, path, names));
       continue;
     }
     if (legacy[path]) {
