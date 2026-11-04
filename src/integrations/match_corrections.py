@@ -386,8 +386,15 @@ def _merge_scalars(source, destination, decisions):
     )
 
 
-def _move_unique_state(model, user, source_item, destination_item, fields):
-    """Move one user/item singleton, keeping the newer destination row."""
+def _move_unique_state(
+    model, user, source_item, destination_item, fields, *, clock=None
+):
+    """Move one user/item singleton, keeping the newer destination row.
+
+    ``clock`` names an event-ordering watermark. Both rows describe the same
+    title, so the kept row takes the newer of the two whichever row's values
+    win: an event older than one already applied to either row is stale.
+    """
     source = model.objects.filter(user=user, item=source_item).first()
     if not source:
         return
@@ -395,12 +402,22 @@ def _move_unique_state(model, user, source_item, destination_item, fields):
     if destination is None:
         model.objects.filter(pk=source.pk).update(item=destination_item)
         return
+    values = {}
     if (
         getattr(source, "updated_at", None)
         and getattr(destination, "updated_at", None)
         and source.updated_at > destination.updated_at
     ):
         values = {field: getattr(source, field) for field in fields}
+    if clock:
+        clocks = [
+            value
+            for value in (getattr(source, clock), getattr(destination, clock))
+            if value is not None
+        ]
+        if clocks:
+            values[clock] = max(clocks)
+    if values:
         model.objects.filter(pk=destination.pk).update(**values)
     source.delete()
 
@@ -416,6 +433,7 @@ def _move_relations(user, source_item, destination_item):
         source_item,
         destination_item,
         ("position_seconds", "duration_seconds", "completed"),
+        clock="last_event_at",
     )
     _move_unique_state(
         WatchState,

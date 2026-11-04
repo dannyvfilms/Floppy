@@ -698,8 +698,13 @@ def close_resume_point_on_watched(sender, instance, **kwargs):
     if not user_id or not item_id:
         return
     from api.fork_views_playback import complete_playback_progress
+    from app import live_playback
 
-    complete_playback_progress(user_id, item_id)
+    complete_playback_progress(
+        user_id,
+        item_id,
+        event_at=live_playback.current_webhook_event_at(),
+    )
 
 
 # Same top-level, importer-tracked media types as helpers.get_existing_media()
