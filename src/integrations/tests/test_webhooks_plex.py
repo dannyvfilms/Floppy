@@ -581,6 +581,47 @@ class PlexWebhookTests(TestCase):
         self.assertIsNotNone(state)
         self.assertEqual(state["event_type"], "media.scrobble")
 
+    def test_late_play_from_the_same_second_does_not_clear_a_scrobble(self):
+        """Receipt order inside one second survives a reversed backlog."""
+        metadata = {
+            "type": "movie",
+            "title": "The Matrix",
+            "ratingKey": "rk-movie-order",
+            "duration": 8100000,
+            "Guid": [{"id": "tmdb://603"}],
+        }
+        base = {"Account": {"title": "testuser"}, "Metadata": metadata}
+        second = timezone.now().replace(microsecond=0) - timedelta(seconds=5)
+
+        tasks.process_webhook(
+            "plex",
+            {**base, "event": "media.scrobble", "Metadata": {**metadata, "viewOffset": 8000000}},
+            self.user.id,
+            received_at=(second + timedelta(milliseconds=900)).isoformat(),
+            event_id="scrobble-same-second",
+        )
+        tasks.process_webhook(
+            "plex",
+            {**base, "event": "media.play", "Metadata": {**metadata, "viewOffset": 0}},
+            self.user.id,
+            received_at=(second + timedelta(milliseconds=100)).isoformat(),
+            event_id="play-same-second",
+        )
+
+        progress = PlaybackProgress.objects.get(
+            user=self.user,
+            item__media_id="603",
+        )
+        self.assertTrue(progress.completed)
+        self.assertGreater(progress.position_seconds, 0)
+        self.assertEqual(
+            progress.last_event_at,
+            second + timedelta(milliseconds=900),
+        )
+        state = live_playback.get_user_playback_state(self.user.id)
+        self.assertIsNotNone(state)
+        self.assertEqual(state["event_type"], "media.scrobble")
+
     def test_movie_scrobble_with_cold_cache_does_not_invent_a_start_date(self):
         """No earlier Play (e.g. after a restart) leaves the start date unset."""
         payload = {
