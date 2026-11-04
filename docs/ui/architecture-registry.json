@@ -262,6 +262,26 @@
         }
       }
     },
+    "frontend/ui/SearchResults.jsx": {
+      "components": [
+        "SearchResults"
+      ],
+      "register": "SEARCH",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The Django search page provides the props and server-rendered fallback and the UI bundle builds; the mounted results surface was not exercised in a browser in this pass."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the native shell that renders the demo search results; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the native shell that renders the demo search results; no emulator run was performed."
+        }
+      }
+    },
     "frontend/settings/Chip.jsx": {
       "components": [
         "Chip"
@@ -884,6 +904,14 @@
     "frontend/ui/GlobalSearch.web.jsx": {
       "register": "SEARCH",
       "purpose": "Resolve theme values, fetch JSON suggestions, keep GET search navigation and run the browser barcode file picker for the shared search form."
+    },
+    "frontend/ui/SearchResults.web.jsx": {
+      "register": "SEARCH",
+      "purpose": "Resolve theme colors and keep the existing search URLs, card actions, rating writes and navigation for the shared results surface."
+    },
+    "frontend/ui/mountSearchResults.jsx": {
+      "register": "SEARCH",
+      "purpose": "Django/browser integration for the shared search results surface."
     },
     "frontend/ui/mountSpinner.jsx": {
       "register": "SPINNER",

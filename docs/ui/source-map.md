@@ -317,6 +317,9 @@ and runtime evidence remain outstanding.
 - `frontend/ui/GlobalSearch.jsx`
 - `frontend/ui/GlobalSearch.web.jsx`
 - `frontend/ui/mountGlobalSearch.jsx`
+- `frontend/ui/SearchResults.jsx`
+- `frontend/ui/SearchResults.web.jsx`
+- `frontend/ui/mountSearchResults.jsx`
 - `frontend/ui/global-search.css`
 - `src/static/js/barcode-scanner.js`
 - `src/static/js/barcode-scanner.selfcheck.mjs`
