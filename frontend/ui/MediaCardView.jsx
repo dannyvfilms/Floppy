@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { MediaCardActionRow, MediaCardActions } from './MediaCardActions';
 
 const ASPECT = { poster: 2 / 3, square: 1, landscape: 16 / 9 };
 const STATUS_GLYPHS = {
@@ -23,6 +24,15 @@ const DEFAULT_PALETTE = {
   progressTrack: 'rgba(24, 24, 27, 0.6)',
   progressFill: '#6366f1',
   progressPaused: 'rgba(99, 102, 241, 0.4)',
+  actionText: '#ffffff',
+  overlay: 'rgba(0, 0, 0, 0.5)',
+  reorder: 'rgba(79, 70, 229, 0.95)',
+  actionTones: {
+    indigo: '#4f46e5',
+    emerald: '#059669',
+    amber: '#d97706',
+    rose: '#e11d48',
+  },
   local: {
     backgroundColor: 'rgba(245, 158, 11, 0.15)',
     borderColor: 'rgba(245, 158, 11, 0.3)',
@@ -284,8 +294,14 @@ export function MediaCardView({
   palette,
   width = 168,
   selection,
+  actions,
   onOpen,
   onOpenLink,
+  onAction,
+  onReorder,
+  onRevealChange,
+  revealed,
+  renderActionIcon,
   onRate,
   renderRating,
   style,
@@ -300,18 +316,57 @@ export function MediaCardView({
     ...labels,
   };
   const [altOpen, setAltOpen] = useState(false);
-  const open = selection?.active ? selection.toggle : onOpen;
+  const [localRevealed, setLocalRevealed] = useState(false);
+  const shownActions = actions === undefined ? model.actions : actions;
+  const isRevealed = revealed === undefined ? localRevealed : revealed;
+
+  function setReveal(value) {
+    if (revealed === undefined) setLocalRevealed(value);
+    onRevealChange?.(value);
+  }
+
+  function open() {
+    if (selection?.active) {
+      selection.toggle?.();
+      return;
+    }
+    if (shownActions && !isRevealed) {
+      setReveal(true);
+      return;
+    }
+    onOpen?.();
+  }
+
+  const rowOpen = selection?.active ? selection.toggle : onOpen;
+
+  function gatedOpen() {
+    if (shownActions && !selection?.active && !isRevealed) {
+      setReveal(true);
+      return;
+    }
+    onOpen?.();
+  }
+
+  function gatedOpenLink(href) {
+    if (shownActions && !selection?.active && !isRevealed) {
+      setReveal(true);
+      return;
+    }
+    onOpenLink?.(href);
+  }
 
   if (model.layout === 'row') {
     return <View style={[styles.row, style]}>
       <View style={styles.rowArtwork}>
-        <Artwork model={model} palette={colors} selection={selection} onPress={open} />
+        <Artwork model={model} palette={colors} selection={selection} onPress={rowOpen} />
       </View>
       <View style={styles.rowBody}>
         <CardMetadata model={model} palette={colors} labels={copy} onOpen={onOpen}
           onOpenLink={onOpenLink} onRate={onRate} renderRating={renderRating} altOpen={altOpen} setAltOpen={setAltOpen} />
         {model.matched ? <Text numberOfLines={1} accessibilityLabel={model.matched.title}
           style={[styles.matched, { color: colors.textMuted }]}>{model.matched.text}</Text> : null}
+        {shownActions && !selection?.active ? <MediaCardActionRow actions={shownActions}
+          palette={colors} onAction={onAction} renderIcon={renderActionIcon} /> : null}
       </View>
     </View>;
   }
@@ -320,19 +375,28 @@ export function MediaCardView({
     width,
     backgroundColor: colors.card,
     borderColor: colors.border,
-  }, style]}>
+  }, style]}
+    onPointerEnter={event => {
+      if (event?.nativeEvent?.pointerType === 'mouse' && shownActions && !selection?.active) setReveal(true);
+    }}
+    onPointerLeave={event => {
+      if (event?.nativeEvent?.pointerType === 'mouse' && shownActions && !selection?.active) setReveal(false);
+    }}>
     <View style={styles.artworkWrap}>
       <Artwork model={model} palette={colors} selection={selection} onPress={open} />
       {model.statusChip?.kind === 'media-type'
         ? <MediaTypeChip chip={model.statusChip} palette={colors} />
         : <StatusChip chip={model.statusChip} palette={colors} labels={copy} />}
       {model.cornerChips?.map((chip, index) => <CornerChip key={`${chip.kind}-${index}`}
-        chip={chip} palette={colors} labels={copy} onOpenLink={onOpenLink} />)}
+        chip={chip} palette={colors} labels={copy} onOpenLink={gatedOpenLink} />)}
       <ProgressBar bar={model.progressBar} palette={colors} />
+      {shownActions && !selection?.active ? <MediaCardActions actions={shownActions}
+        palette={colors} labels={copy} revealed={isRevealed} onOpen={onOpen}
+        onAction={onAction} onReorder={onReorder} renderIcon={renderActionIcon} /> : null}
     </View>
     <View style={styles.body}>
-      <CardMetadata model={model} palette={colors} labels={copy} onOpen={onOpen}
-        onOpenLink={onOpenLink} onRate={onRate} renderRating={renderRating} altOpen={altOpen} setAltOpen={setAltOpen} />
+      <CardMetadata model={model} palette={colors} labels={copy} onOpen={gatedOpen}
+        onOpenLink={gatedOpenLink} onRate={onRate} renderRating={renderRating} altOpen={altOpen} setAltOpen={setAltOpen} />
     </View>
   </View>;
 }

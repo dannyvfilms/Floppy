@@ -217,16 +217,25 @@ can inform a focused completion pass.
   poster, square, landscape and row layouts, artwork with a fallback chain, status
   and media-type chips, corner chips, progress, title and alternative title,
   subtitle lines, score and a rating affordance, plus read-only and selectable
-  states. It consumes the same `card_model` shape and labels as the web card.
+  states. `MediaCardActions` adds the action overlay and row buttons (track,
+  lists, history, Discover plan/hide action specs and list reorder controls) with
+  explicit `onAction`, `onReorder` and reveal callbacks; `MediaCardActionRow` and
+  `MediaCardActionButton` are its named exports. `MediaCardActionHost` is the
+  native popup shell for that callback contract. It consumes the same
+  `card_model` shape, action specs and labels as the web card.
   `native-proof/app/surfaces/MediaCardSlot.jsx` renders it with realistic demo
   library items on Home, Discover and Library. The older
   `frontend/ui/NativeProofCard.jsx` (`NativeProofLabel`, `NativeProofCard`) remains
   an experimental proof only and is not the current card.
-- Native status: `in_progress`. The existing web `MediaCard.jsx` and
-  `mountMediaCard.jsx` remain the active adapter and keep all web consumers. The
-  universal view does not yet open the shared popup host or perform track, lists,
-  history, Discover, list-reorder or bulk-select actions. Expo exported web, iOS
-  and Android bundles, but no native runtime was exercised in this change.
+- Native status: `in_progress`. The existing web `MediaCard.jsx`,
+  `mountMediaCard.jsx` and `ModalHost.jsx` remain the active browser adapter and
+  popup host. The universal action presentation and callback contract are in
+  place, including touch/hover reveal and selection rendering. Still outstanding:
+  native Track and Add-to-lists form bodies with their server transport and CSRF,
+  Discover plan/hide and list-reorder writes (the drag handle is visual only; a
+  native drag gesture is not ported), the shared bulk-selection store and toolbar,
+  and real iOS/Android runtime evidence. Expo exported web, iOS and
+  Android bundles, but no native runtime was exercised in this change.
 
 - Purpose/usage: library, Home, related, search, Discover, lists, collection, credits and tier/group surfaces.
 - Implementation: `src/templates/app/components/media_card.html`, `card_lines.html`, `media_card_list.html`, `src/app/card_surfaces.py`, template tags.
@@ -235,7 +244,8 @@ can inform a focused completion pass.
 - Reuse/blockers: highest leverage; [media-card contract](../architecture/media-card.md) authoritative. Replace consumers and response slots, never create an unrelated second card system.
 - Status: `React-owned` for every card the `media_card` tag, `history_card_react` and `media_row_react` render. All 14 surfaces in `card_surfaces.py` set `react_card=True`; History (`history_card.html`) and the Search list row (`media_card_list.html`) use the same `MediaCard.jsx` (poster, square, landscape and `layout: row`). The artwork link, corner chips, progress bar, title and alternate-title tooltip, subtitle lines (including a credit's role line), status chip, rating button with its star popup, hover buttons (track, lists, history, Discover plan and hide, list reorder and drag handle), touch tap-to-reveal and bulk-select checkbox are all React (`MediaCard.jsx`, `mountMediaCard.jsx`, model in `media_card_model.py`). The track and lists popups open in the page's one React host (`ModalHost.jsx`); the cards carry no Alpine and no popup markup. `media_card.html` is now a shell: the card wrapper classes (themes and title settings still key off them), the props `<script>`, and a first-paint poster and title link inside the React host that React replaces on mount. The legacy server body, its Alpine fallback and the empty status, overlay and rating slots are deleted. `app.tests.test_media_card_contract.MediaCardInventoryTest` fails if a surface opts out of React, if the template regrows a legacy body, or if any template draws `media-card` markup that is neither the tag nor a documented exception.
 - Remaining consumers and retirement: (1) Bulk select is still read from the page's Alpine scope (`selectMode`, `isItemSelected`, `toggleItemSelected`) by `mountMediaCard.jsx`. It retires when the Library bulk toolbar (`bulkSelection.js`, `mountBulkToolbar.jsx`, owned by another change in flight) publishes selection through a shared store; reopen then. (2) The save and score responses still send server fragments out of band (`media_card_status_chip.html`, `media_card_rating_oob.html`) for pages that render those slots; a React card ignores the swap (`data-react-owned`) and updates from `floppyCardUpdate`. They retire with the detail-page chips. (3) Documented exceptions that are different kinds of card, not this one: person and cast cards, Statistics highlights and the repeat-player strip, Now Playing, list index cards, and the music album and artist grids (they need an Album or Artist, not an Item). They are listed with reasons in `DOCUMENTED_EXCEPTIONS` in the contract test; reopen if a media item is ever drawn there. (4) The Search list row keeps its `meta` slot (server-rendered per-type metadata) inside the React host.
-- Native blockers: `MediaCardView` still needs the card action adapter (track, lists and history popups from the shared host, Discover plan/hide, list reorder), touch hover-reveal parity, and bulk-selection wiring before the surface can leave `in_progress`. It also needs real iOS and Android runtime evidence; an Expo export is only a compile check. The web DOM card remains the behavior source until that adapter exists.
+- Native blockers: the action presentation is ported, but the session-backed Track and Add-to-lists forms, Discover plan/hide and list-reorder transport (including a native drag gesture),
+  the bulk-selection store/toolbar and iOS/Android runtime evidence remain. An Expo export is only a compile check. The web DOM card remains the behavior source until those adapters exist.
 - Fixed while proving it: a credit card lost its role line (for example "Developer, Publisher") once React took over; the track popup was unmounted the moment its form submitted, so htmx fired the save response (card refresh, toast) from a detached form and cards never updated after a tracker save (`ModalHost.jsx` now waits for the request); and a touch card hid its buttons again after its own popup was used.
 - Browser verification (Chromium, built-in browser pane and Playwright, macOS, throwaway database and test login): Library grid (movie, game, book), Home, History, Collection, custom list grid, tier board and list table at desktop (1024 and 1280) and phone (375 and 390) widths, light and dark (system theme driven by the OS setting, plus the explicit `light` and `dark` classes). Before and after builds compared on 36 surface, width and theme combinations: 0.0% differing pixels and identical card geometry on all 36; the only DOM differences are the removed empty slot wrappers and the timing of the async release-year fill. Interactions exercised: tracker popup open and save with live card refresh, lists popup add, rating popup and score change, touch tap-to-reveal, bulk select, status chip and no native `<select>` in any card. Not exercised in a browser (no provider network in the test setup): Search (card and list row), Discover and hidden Discover, detail-page related and seasons cards, credit and group surfaces, modal search picker, list recommendations, smart lists, the media-type chip and alternative-title tooltip on a real title. Those are covered by `app.tests.test_media_card_contract` and `test_media_card_model`, which render every surface. Other theme presets (Dracula, Nord, Gruvbox, OLED, Glass, Custom) were not opened. iOS and Android: not tested.
 - Validation targets: `src/app/tests/test_media_card_contract.py`, `src/app/tests/test_media_card_model.py`; complete native/consumer matrix outstanding.

@@ -43,14 +43,21 @@ legacy body, or a template draws `media-card` markup that is neither the tag nor
 `card_model`: poster, square, landscape and row layouts, artwork fallback, status
 and media-type chips, corner chips, progress, title and alternative title,
 subtitle lines, score and the rating affordance, plus read-only and selectable
-states. `native-proof/app/surfaces/MediaCardSlot.jsx` renders it on Home, Discover
-and Library with demo library items.
+states. `frontend/ui/MediaCardActions.jsx` renders the action overlay, row buttons
+and list-reorder controls from the same action specs, with explicit `onAction`,
+`onReorder` and reveal callbacks; touch reveals the buttons and hover reveals them
+where the platform reports hover. It never posts, fetches or opens a popup itself.
+`frontend/ui/MediaCardActionHost.jsx` is the native popup shell for modal actions,
+while the browser keeps `ModalHost.jsx`. `native-proof/app/surfaces/MediaCardSlot.jsx`
+renders the card and the callback contract on Home, Discover and Library with demo
+library items.
 
 The web DOM card (`MediaCard.jsx` with `mountMediaCard.jsx`) is still the active
-adapter and keeps web consumers, themes, popups and server writes. The native shell
-does not yet perform the action layer: track, lists and history popups, Discover
-plan/hide, list reorder, touch reveal and bulk select. That is why the component
-register keeps `MEDIA-CARD` at `in_progress` for native.
+adapter and keeps web consumers, themes, popups and server writes. The native action
+presentation exists, but native Track and Add-to-lists form bodies, Discover
+plan/hide and list-reorder transports (the drag handle is visual only), the
+bulk-selection store/toolbar and iOS and Android runtime evidence remain. That is why the component register keeps
+`MEDIA-CARD` at `in_progress` for native.
 
 ## What `media` must be
 

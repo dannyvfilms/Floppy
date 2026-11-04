@@ -190,7 +190,9 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 ## MEDIA-CARD
 
 - `frontend/ui/MediaCardView.jsx` (universal native card shell: layouts, artwork fallback, chips, progress, title/lines, rating affordance and read-only/selectable states; presentation only)
-- `native-proof/app/surfaces/MediaCardSlot.jsx` (native placement with demo library items on Home, Discover and Library)
+- `frontend/ui/MediaCardActions.jsx` (universal action overlay, row buttons and list-reorder controls; explicit action/reorder/reveal callbacks, no transport)
+- `frontend/ui/MediaCardActionHost.jsx` (universal popup shell for the card action callback contract; the browser ModalHost remains the web host)
+- `native-proof/app/surfaces/MediaCardSlot.jsx` (native placement with demo library items, action callbacks and popup host on Home, Discover and Library)
 - `frontend/ui/NativeProofCard.jsx`
 
 The experimental read-only label and card are consumed only by `native-proof/App.js`,
@@ -201,8 +203,10 @@ whose proof data adapter is `native-proof/mediaClient.js`; they have no producti
 - `src/templates/app/components/media_card_list.html`
 - `src/templates/app/components/media_card_status_chip.html` (out-of-band save fragment only; no card renders it)
 
-The existing web `MediaCard.jsx` and `mountMediaCard.jsx` remain the active adapter for
-the action layer; `MediaCardView` is the native candidate and does not yet replace that DOM card.
+The existing web `MediaCard.jsx`, `mountMediaCard.jsx` and `ModalHost.jsx` remain the active
+browser adapter and popup host; `MediaCardView` and `MediaCardActions` are the native candidates
+and do not yet replace that DOM card. The native forms, write transports, bulk-selection store
+and runtime evidence remain outstanding.
 
 ## RATING
 
