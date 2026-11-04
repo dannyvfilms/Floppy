@@ -1,5 +1,0 @@
-<<<<<<<< HEAD:src/static/ui/mountButton-ZXB5I2MX.js
-import{j as u}from"./chunk-35GHYLZE.js";import"./chunk-YH34WVDU.js";import"./chunk-CDMQMCBF.js";import"./chunk-PFYNERWX.js";import{a as B,c as m,d as r}from"./chunk-RU43FRVD.js";import{b as t}from"./chunk-SQE76S5B.js";var h=t(B());var e=t(r());function R(o,{label:f,type:i,attrs:n,...p}){let c=m(o,(0,e.jsx)(u,{flat:!0,type:i,...n,...p,children:f}));return Object.keys(n).some(s=>s.startsWith("hx-"))&&window.htmx?.process(o),c}export{R as mountButton};
-========
-import{k as u}from"./chunk-EXPVCFV6.js";import"./chunk-GKX4WOJ4.js";import"./chunk-J6D4P2JY.js";import"./chunk-7O5HQWYV.js";import{a as B,c as m,d as r}from"./chunk-RU43FRVD.js";import{b as t}from"./chunk-SQE76S5B.js";var h=t(B());var e=t(r());function R(o,{label:f,type:i,attrs:n,...p}){let c=m(o,(0,e.jsx)(u,{flat:!0,type:i,...n,...p,children:f}));return Object.keys(n).some(s=>s.startsWith("hx-"))&&window.htmx?.process(o),c}export{R as mountButton};
->>>>>>>> native-port/rating:src/static/ui/mountButton-T3WBCU4B.js

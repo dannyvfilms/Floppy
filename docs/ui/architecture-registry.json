@@ -581,19 +581,6 @@
         "26a5cbe8cd06ac37b62289cdbf26b25fdf7fa14c15dedcd18dee9bb0f453bd11",
         "e2be3e5558f69134d4a5d426e88c0ac081e4b11ba49ec53acde39cb5fb60ac3c"
       ]
-    },
-    "frontend/ui/mountRatingStars.jsx": {
-      "sha256": "77408a56aed4880e8f0bdb1fa466c9ebe94dd29932e1d438c3ef72df9c29cc79",
-      "statements": [
-        "f7b494e855841f7fe02d727adf5848286ef531e2d7bc1a5d7a740299317e149f",
-        "1ac8024a5891f369f598688152a2626d6a6d490b3b6446a8cd992ca0d6f2d178",
-        "f8960e1eaa0c96d9d284f09e84badf55cfa25a88d28fe54fe836c5eaef7892c6",
-        "ff03d86e94ce59220fca5d21418db3e065cfdfc4d9d331f2a6f2b9ebc34ee97c",
-        "8ba311d61ba131d6f6428785fdd73c8d0e32f96039ae8c665a1a51198596f3df",
-        "f2b18fe7f66d845d7ad50e59bab8ea35a89f9329af608b8a4ad8993b7f0da629",
-        "6e24d38a44a995939175973a650c0e644868f3aea2e7e76db8eff890af4a0281",
-        "1674aa323dee5268b49b8e22e0b2402ac83fa4192d4cca466dc2416118e32571"
-      ]
     }
   },
   "logic": {},
