@@ -42,3 +42,17 @@ export const ratingPalette = {
   unlit: palette.surfaceMuted,
   muted: palette.textMuted,
 };
+
+export const railPalette = {
+  text: palette.text,
+  textSecondary: palette.textSecondary,
+  textMuted: palette.textMuted,
+  surface: palette.surface,
+  surfaceHover: palette.surfaceStrong,
+  border: palette.border,
+  accent: palette.accent,
+  arrow: palette.textSecondary,
+  arrowDisabled: palette.surfaceMuted,
+  loading: palette.accent,
+  focus: palette.accent,
+};

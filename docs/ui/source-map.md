@@ -307,6 +307,8 @@ whose proof data adapter is `native-proof/mediaClient.js`; they have no producti
 
 ## RAILS
 
+- `frontend/ui/Rail.jsx`
+- `frontend/ui/Rail.web.jsx`
 - `src/static/js/horizontal-scroll.js`
 - `src/static/js/horizontal-scroll.selfcheck.mjs`
 - `src/templates/app/components/_scrollable_row.html`
