@@ -1,26 +1,5 @@
 {
   "universal": {
-    "frontend/ui/NativeProofCard.jsx": {
-      "components": [
-        "NativeProofLabel",
-        "NativeProofCard"
-      ],
-      "register": "MEDIA-CARD",
-      "verification": {
-        "web": {
-          "status": "verified",
-          "evidence": "Rendered with existing esbuild/RNW; Expo browser proof screen."
-        },
-        "ios": {
-          "status": "verified",
-          "evidence": "iOS 17.2 simulator: label and six demo-library cards via local authenticated relay."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Not exercised."
-        }
-      }
-    },
     "frontend/ui/MediaCardView.jsx": {
       "components": [
         "MediaCardView"

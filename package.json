@@ -16,6 +16,6 @@
     "build:ui": "node scripts/build_ui.mjs",
     "check:ui": "node scripts/build_ui.mjs --check",
     "check:ui-architecture": "node scripts/check_ui_architecture.mjs",
-    "test:ui-architecture": "node --test scripts/check_ui_architecture.test.mjs scripts/native_proof_client.test.mjs"
+    "test:ui-architecture": "node --test scripts/check_ui_architecture.test.mjs"
   }
 }

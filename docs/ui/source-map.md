@@ -88,6 +88,7 @@ server fallback classes remain in `settings-card.css`.
 - `frontend/settings/root.jsx`
 - `frontend/settings/webPalette.js`
 - `frontend/settings/settings-card.css`
+- `native-proof/app/surfaces/SettingsCardSlot.jsx` (native placement on the Settings screen)
 - `src/templates/app/components/ui_asset_refresh.html`
 - `scripts/build_ui.mjs`
 - `src/static/ui/*.js`
@@ -133,9 +134,7 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## SPINNER
 
-The Expo proof offers a toggle for its spinner examples during native verification.
-
-Shared `Spinner` uses native primitives; the web adapter resolves theme colors. `controls.jsx` re-exports the web interface for `GlobalSearch` and `ListsForm`. Server fallback styling remains in `controls.css` until Django fallback is retired; template consumers are mapped under their own families. The Expo proof exercises the shared component directly; the register records separate browser, iOS and Android runtime evidence and limitations.
+Shared `Spinner` uses native primitives; the web adapter resolves theme colors. `controls.jsx` re-exports the web interface for `GlobalSearch` and `ListsForm`. Server fallback styling remains in `controls.css` until Django fallback is retired; template consumers are mapped under their own families. The native shell renders the shared component directly; the register records separate browser, iOS and Android runtime evidence and limitations.
 
 - `frontend/ui/Spinner.jsx`
 - `frontend/ui/SpinnerTheme.web.jsx`
@@ -167,6 +166,7 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 - `frontend/ui/Button.web.jsx`
 - `frontend/ui/Button.native.jsx`
 - `frontend/ui/mountButton.jsx`
+- `native-proof/app/surfaces/ButtonSlot.jsx` (native placement in the Settings save bar and Library load-more/danger actions)
 - `src/templates/users/components/button.html`
 - `src/users/templatetags/ui_tags.py` (`{% button %}`)
 - Consumers (22 templates, 65 sites): `users/account.html`, `users/cards.html`, `users/_reading_server_modal.html`, `users/components/provider_import.html`, `provider_instance_credentials.html`, `provider_personal_credentials.html`, `tmdb_proxy.html`, `media_type_provider_modal.html`, `users/providers/integrations/jellyfin.html`, `users/providers/mal_sync.html`, `users/onboarding/media_types.html`, `metadata.html`, `import_status.html`, `components/connect_trakt.html`, `lists/custom_lists.html`, `integrations/oauth_device.html`, `integrations/match_fix.html`, `app/components/collection_modal.html`, `collection_entry_summary.html`, `music_track_notes.html`, `history_day.html`, `fill_track_song.html`.
@@ -191,10 +191,6 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 
 - `frontend/ui/MediaCardView.jsx` (universal native card shell: layouts, artwork fallback, chips, progress, title/lines, rating affordance and read-only/selectable states; presentation only)
 - `native-proof/app/surfaces/MediaCardSlot.jsx` (native placement with demo library items on Home, Discover and Library)
-- `frontend/ui/NativeProofCard.jsx`
-
-The experimental read-only label and card are consumed only by `native-proof/App.js`,
-whose proof data adapter is `native-proof/mediaClient.js`; they have no production surface.
 - `src/templates/app/components/card_lines.html`
 - `src/templates/app/components/media_card.html` (shell: wrapper classes, props script and first-paint poster and title; React replaces it on mount)
 - `frontend/ui/MediaCard.jsx`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/ModalHost.jsx`, `frontend/ui/media-card.css`, `src/app/media_card_model.py`, `src/app/card_surfaces.py` (the whole card is React on every surface: body, status chip, rating, hover buttons, popups host, touch reveal and bulk-select checkbox)
@@ -212,6 +208,7 @@ the action layer; `MediaCardView` is the native candidate and does not yet repla
 - `frontend/ui/RatingStarIcon.native.jsx`
 - `frontend/ui/mountRatingChip.jsx`
 - `frontend/ui/mountRatingStars.jsx`
+- `native-proof/app/surfaces/RatingSlot.jsx` (native placement on the Detail screen)
 - `src/templates/app/components/rating_chip.html`
 - `src/templates/app/components/rating_stars.html`
 - `src/templates/app/components/derived_tv_rating_coverage.html`
@@ -327,6 +324,7 @@ the action layer; `MediaCardView` is the native candidate and does not yet repla
 
 - `frontend/ui/Rail.jsx`
 - `frontend/ui/Rail.web.jsx`
+- `native-proof/app/surfaces/RailsSlot.jsx` (native placement on the Home and Discover screens)
 - `src/static/js/horizontal-scroll.js`
 - `src/static/js/horizontal-scroll.selfcheck.mjs`
 - `src/templates/app/components/_scrollable_row.html`
@@ -828,8 +826,5 @@ breakdown modal remain server/Alpine-owned.
 - `frontend/ui/mountBulkActions.jsx`
 - `frontend/ui/mountBulkToolbar.jsx`
 - `src/templates/base.html` (dock mount)
-- `frontend/ui/controls.css`
-- `src/static/js/bulkSelection.js`
-- `src/templates/app/components/bulk_selection_toolbar.html`
 - `src/app/bulk_action_views.py`
 - `src/app/services/bulk_show_plays.py`

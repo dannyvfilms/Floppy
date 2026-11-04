@@ -136,9 +136,9 @@ provider-specific import controls retain their legacy owners. Their retirement c
 port with equivalent permissions, validation and interactions, not removal of a
 fallback or an automatic conversion of every provider at once.
 
-iOS and Android runtime are **not verified**. The native proof app renders the
-shared card and chip with concrete theme values and React-owned children, and
-`expo export --platform all` compiles; that export is a build check, not runtime
+iOS and Android runtime are **not verified**. `native-proof/app/surfaces/SettingsCardSlot.jsx`
+renders the shared card and chip with concrete theme values and React-owned children,
+and `expo export --platform all` compiles; that export is a build check, not runtime
 evidence. CSS variables, server body slots and DOM dialog events stay in the web
 adapter. Do not label this component Cross-Platform Verified until both platforms
-have been exercised and recorded. The broader native architecture proof remains open.
+have been exercised and recorded. The broader native architecture work remains open.

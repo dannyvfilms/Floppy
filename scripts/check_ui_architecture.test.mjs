@@ -82,10 +82,10 @@ test('cannot reclassify a universal component as platform-specific', () => {
 });
 
 test('each registered presentation export must render, even beside a real component', () => {
-  const path = 'frontend/ui/NativeProofCard.jsx';
-  const source = "import {View} from 'react-native'; export function NativeProofCard(){return null} export function NativeProofLabel(){return <View/>}";
-  const registry = { legacy: {}, universal: { [path]: { register: 'MEDIA-CARD', components: ['NativeProofCard', 'NativeProofLabel'], verification: evidence } } };
-  assert.match(validateRegistry(registry, null, [path], () => source).join(), /NativeProofCard.*renders an element/);
+  const path = 'frontend/ui/ExampleCard.jsx';
+  const source = "import {View} from 'react-native'; export function ExampleCard(){return null} export function ExampleLabel(){return <View/>}";
+  const registry = { legacy: {}, universal: { [path]: { register: 'MEDIA-CARD', components: ['ExampleCard', 'ExampleLabel'], verification: evidence } } };
+  assert.match(validateRegistry(registry, null, [path], () => source).join(), /ExampleCard.*renders an element/);
 });
 
 test('a legacy export may redirect only its existing component to registered shared presentation', () => {

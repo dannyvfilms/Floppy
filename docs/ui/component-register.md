@@ -41,7 +41,7 @@ record any public consumer that is left behind.
 inspection only, browser migration not performed, native not tested. Test references
 are available regression targets, **not executed test results**. Related work and
 recurring deferrals: none recorded; attach real issue/PR links when known. The
-settings-card shell is the first authorized browser pilot; native proof remains open.
+settings-card shell is the first authorized browser pilot; native runtime verification remains open.
 Ordinary unassessed components stay `Existing` rather than prematurely becoming exceptions.
 
 When a component changes, update affected paths/contracts and add explicit fields:
@@ -102,6 +102,7 @@ can inform a focused completion pass.
 - Data: presentation-only `json_script`; no credentials, server body HTML or transport in the shared React API. Shared source uses React Native primitives; `Chip.web.jsx` and `webPalette.js` supply browser links, DOM events and theme values.
 - Status: `Web Migrated` shared card/chip presentation; native presentation is registered but runtime-unverified. AniList uses full React composition; Audiobookshelf uses reusable account connection and manual-import islands. Other providers retain Django body slots and setup/restore dialogs until their controls are ported. This does not migrate `FORM-CONTROLS` as a whole.
 - Native mapping: `SettingsCard` takes a title, badge/info chip and React-owned children; `Chip` takes a concrete palette, optional `onPress` action and accessibility props. Links remain a web-adapter concern.
+- Native placement: `ported` in `native-proof/app/surfaces/SettingsCardSlot.jsx`; it renders a provider connection card and chip on the Settings screen. Placement completion is separate from runtime evidence: iOS and Android remain unverified.
 - Verification: production assets build and collect through Django; targeted Django/theme tests and Chromium focus/link checks cover the shared card and chip. Actual iOS/Android runtime remains unverified; Expo export is a compile check, not runtime evidence.
 - Related work: [#1793](https://github.com/dannyvfilms/Floppy/issues/1793); user-authorized first React browser component pilot.
 - Deferrals: server-owned form bodies retire through scoped control ports after parity checks; native acceptance awaits actual iOS/Android runs and a native theme/transport boundary. Broader performance evidence remains required before larger component adoption.
@@ -149,8 +150,6 @@ can inform a focused completion pass.
 
 ### SPINNER — Loading ring
 
-- The Expo proof can hide its spinner examples while inspecting other components.
-
 - Purpose/usage: the small spinning ring shown while an HTMX search, infinite-scroll page or library lookup is in flight.
 - Status: `React-owned` for the existing ring consumers, with Django fallback retained. Browser verification for this implementation: Chromium on macOS at phone width exercised real public and private Django list pages, visible rotating indicators during delayed HTMX search, and successful swaps. An isolated host also checked 12/20px sizes, thin/regular borders, muted/white/accent colors including Tailwind oklch, animation, theme mutation, decorative `aria-hidden`, and synthetic HTMX load/cleanup events. On the private desktop list, boosted navigation cleaned up the root and back navigation remounted it. Other browser engines were not exercised in this revision. iOS: Expo Go on iPhone 15 Pro iOS 17.2 simulator rendered 12/16/20 point rings in three colors and separate frames showed movement; VoiceOver and reduced motion were not exercised. Android: Expo Go 58.0.5 on a Pixel 7 Android 15 API 35 arm64 emulator rendered 12/16/20 dp white, accent and muted rings; separate frames showed movement. Accessibility-tree capture was killed twice and the accessibility service dump timed out; TalkBack, reduced motion and exact animation timing were not exercised.
 - Implementation: universal `Spinner` in `frontend/ui/Spinner.jsx` takes a concrete color and size; `frontend/ui/SpinnerTheme.web.jsx` translates the existing size and tone interface and observes document theme changes. The web ring is decorative, and `.ui-spinner` in `controls.css` preserves the Django fallback; `frontend/ui/mountSpinner.jsx` web adapter registered as `data-spinner-root` in `frontend/settings/index.js`, and the `{% spinner size tone %}` tag (`users/templatetags/ui_tags.py`, `users/components/spinner.html`). The server markup inside the host preserves the ring as a fallback if the module fails. The host is `display: contents`, so it adds no box. A host nested inside another island (the header search form) is skipped by the loader; that island renders its own `Spinner`.
@@ -189,6 +188,7 @@ can inform a focused completion pass.
   - Look variants not yet in `Button`: sizes with `h-10`, `w-48` or `flex-1` (Connect buttons in `provider_import.html`), `rounded-lg` with `hover:bg-indigo-500`, `text-xs` compact buttons, the tracker Delete (red when a tracker exists, grey when not), the segmented buttons in `appearance.html`, tab and chip buttons. Each reopens when its variant is added or its page is ported.
   - Links styled as buttons: the browser implementation covers `href`; no template site has moved yet.
 - Native mapping: the universal `Button` uses `Pressable` and `Text`; callers supply concrete palette values and an `onPress` action instead of transport. `native-proof/app/surfaces/ButtonSlot.jsx` renders the primary Save, surface Load more and solid danger actions in the Settings and Library screens.
+- Native placement: `ported` in `native-proof/app/surfaces/ButtonSlot.jsx`. The placement is complete for the three tones it demonstrates; browser, iOS and Android runtime behavior remain unverified.
 - Validation: `users.tests.test_button_tag`, `npm run check:ui-architecture`, `npm run test:ui-architecture`, `npm run check:ui`, and the Expo export. Browser and device runtime were not exercised.
 
 ### WEB-UTILITIES — Clipboard, installation and static service worker
@@ -213,15 +213,13 @@ can inform a focused completion pass.
 
 ### MEDIA-CARD — Canonical card and metadata lines
 
-- Native proof: `frontend/ui/MediaCardView.jsx` is the universal native card shell:
+- Native implementation: `frontend/ui/MediaCardView.jsx` is the universal native card shell:
   poster, square, landscape and row layouts, artwork with a fallback chain, status
   and media-type chips, corner chips, progress, title and alternative title,
   subtitle lines, score and a rating affordance, plus read-only and selectable
   states. It consumes the same `card_model` shape and labels as the web card.
   `native-proof/app/surfaces/MediaCardSlot.jsx` renders it with realistic demo
-  library items on Home, Discover and Library. The older
-  `frontend/ui/NativeProofCard.jsx` (`NativeProofLabel`, `NativeProofCard`) remains
-  an experimental proof only and is not the current card.
+  library items on Home, Discover and Library.
 - Native status: `in_progress`. The existing web `MediaCard.jsx` and
   `mountMediaCard.jsx` remain the active adapter and keep all web consumers. The
   universal view does not yet open the shared popup host or perform track, lists,
@@ -257,6 +255,7 @@ can inform a focused completion pass.
 - Purpose/usage: cards, details, children and music scores.
 - Status: `Partial / coexisting`. The detail personal score chip and its rating popup are React-owned through the shared `RatingChip` and `RatingStars`. The media card's rating button and popup are also React-owned (`CardRating`). Episode/track/row rating buttons, music artist/album pages, the comic issue page and the provider score chips (TMDB/Trakt/IMDb/MAL/IGDB/OpenCritic) remain legacy Alpine/HTMX. Native iOS and Android: not verified. Browser: not exercised in this change; the Expo export and web bundle compile.
 - Implementation: shared RNW `frontend/ui/RatingChip.jsx` and `frontend/ui/RatingStars.jsx`, the web adapters `frontend/ui/mountRatingChip.jsx` and `frontend/ui/mountRatingStars.jsx`, `frontend/ui/RatingStarIcon.web.jsx` / `.native.jsx`, the `rating_chip` and `rating_stars` tags (`users/templatetags/ui_tags.py`), `rating_chip.html`, `rating_stars.html` and `rating_picker.html` (Alpine wrapper for the remaining consumers). The detail chip keeps its existing server markup as a progressive fallback; the web adapter hides it on mount. Legacy: `detail_episode_rating_chip.html`, `detail_row_rating_button.html`, `media_card_rate_button.html`, `media_card_rating.html`, OOB/score-chip/derived-TV fragments and provider score chips.
+- Native placement: `ported` in `native-proof/app/surfaces/RatingSlot.jsx`, which renders the detail score chip and popup. Placement is complete for that surface; iOS and Android runtime evidence remains unverified.
 - Detail chip consumer: `detail_score_chip.html` mounts the shared chip with the viewer scale, the manual and derived-TV values, coverage, the existing CSRF token and the existing `update_media_score` / `update_podcast_show_score` endpoint. The adapter posts through `htmx.ajax` so the server's out-of-band chip and card swaps still apply. The universal chip also renders the carousel card layout; the web adapter chooses it from the existing responsive/carousel state.
 - Picker consumers still legacy: media card rate button markup returned for OOB swaps, episode/track/row rating buttons, music artist/album pages and the comic issue page. They keep the Alpine popup wrapper and the shared star-row island until each surface is ported.
 - Podcasts rate per show: chip and list cards post to `update_podcast_show_score` (tracker id), not `update_media_score` (episode plays) (#1830).
@@ -367,8 +366,9 @@ can inform a focused completion pass.
 - Implementation: `frontend/ui/Rail.jsx` is the universal rail and `frontend/ui/Rail.web.jsx` is its browser behavior adapter. `src/templates/app/components/_scrollable_row.html`, `_scrollable_row_js.html` and `src/static/js/horizontal-scroll.js` remain the web implementation. The native shell renders demo rails in `native-proof/app/surfaces/RailsSlot.jsx`.
 - Contract: heading/collapse state, arrows/drag/touch, suppress post-drag clicks, bounded load-more, stable art anchors and listener cleanup. `Rail` takes `items`, `renderItem(item, index)`, a stable `itemWidth`, `onLoadMore`/`hasMore`/`loadingMore`, heading and accessibility labels; the browser adapter keeps pointer drag, click suppression, keyboard arrows and focus behavior.
 - Data: row descriptors/fragment URL/item template from owning view. The web path still swaps server fragments through HTMX; the shared rail accepts already-resolved items and a renderer.
-- Reuse/blockers: row/item values shared; scrolling/observer/pointer/persistence adapters required. The media card is deliberately not ported, so the rail is proven only with demo item renderers.
-- Status: `Partial / coexisting`. The universal `Rail` and browser adapter are registered; no production web call site was replaced. Home, detail cast/crew/recommendations, person strips, collection rows and statistics still use `_scrollable_row.html` because parity depends on server HTML fragments and the unported media card.
+- Reuse/blockers: row/item values shared; scrolling/observer/pointer/persistence adapters required. The native shell currently renders demo tiles because the native media card action layer is still in progress, so the rail's item slot is proven only with demo renderers.
+- Status: `Partial / coexisting`. The universal `Rail` and browser adapter are registered; no production web call site was replaced. Home, detail cast/crew/recommendations, person strips, collection rows and statistics still use `_scrollable_row.html` because parity depends on server HTML fragments and the native media card's action layer is still in progress.
+- Native placement: `ported` in `native-proof/app/surfaces/RailsSlot.jsx`, which renders two production-shaped shelves with headings, sort direction, load more and a note. Placement completion is separate from runtime evidence: browser, iOS and Android behavior of the new rail remains unverified.
 - Retirement condition: a bounded Django row adapter passes resolved items and a ported card renderer to `Rail`, and the HTMX load-more path is replaced by the bounded callback with equivalent scroll, retry, exhaustion and cleanup behavior.
 - Verification: `app.tests.test_horizontal_scroll`, `src/static/js/horizontal-scroll.selfcheck.mjs`, `npm run build:ui`, `npm run check:ui`, UI architecture checks and `expo export --platform all`. Browser, iOS and Android runtime behavior of the new rail is **unverified**; only the static contracts and the native bundle compile were checked.
 - Validation targets: `src/app/tests/test_horizontal_scroll.py`, `src/static/js/horizontal-scroll.selfcheck.mjs`.

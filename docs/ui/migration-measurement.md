@@ -100,10 +100,12 @@ its universal entries must pass `npm run check:ui-architecture`. Each listed
 component counts once. The legacy count is frozen **files** and is not a component
 count; browser integration adapters are counted separately. The RN import/clean-line figures are
 historical heuristics, not native-compatible or verified percentages: imports and
-indirect dependencies do not prove behavior. The current registry lists two proof
-components exercised on iOS, neither on Android. Evidence is reviewed by humans;
-the script cannot prove its truth. The experimental card does not count for the
-production Media Card. An Expo export is never runtime evidence.
+indirect dependencies do not prove behavior. The registry currently records Spinner,
+Badge and ProgressChanger as exercised on both iOS and Android; Chip and SettingsCard
+are browser-verified only; Button, MediaCardView, RatingChip, RatingStars and Rail are
+unverified on every runtime. The native shell's demo placement does not count as
+runtime evidence. Evidence is reviewed by humans; the script cannot prove its truth.
+An Expo export is never runtime evidence.
 
 ## Headline and range
 

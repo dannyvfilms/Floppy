@@ -87,51 +87,57 @@ controlled by a PR cannot protect itself against a deliberate rewrite.
   interaction, accessibility and regression checks have been validated.
 
 These statuses are independent. An import, static check or Metro export is not
-runtime verification. The proof card's iOS result does not verify the production
-Media Card or its actions. Native verification on both platforms does not by itself
-establish production readiness.
+runtime verification. A component rendering in the native shell does not verify the
+production web card or its actions. Native verification on both platforms does not
+by itself establish production readiness.
 
-## Native proof and next gate
+## Native app shell and next gate
 
-`native-proof/` is an isolated Expo experiment, not a production app. It imports
-the read-only `NativeProofLabel` and `NativeProofCard` from `frontend/ui/` and
-fetches the existing authenticated `/api/v1/media` endpoint through the proof's
-`mediaClient.js` data boundary. The current card
-does not replace or preserve the web card's actions and presentation. The Django
-esbuild configuration already aliases `react-native` to React Native Web; the
-proof's Metro configuration resolves shared imports to the Expo app's single React
-and React Native installation. Expo exported web, iOS and Android bundles; this
-alone does not establish device behavior. The shared label and card rendered
-six real demo-library entries on an iOS 17.2 simulator using a temporary
-loopback relay to the authenticated local API. Browser rendering and URL
-validation were exercised; Android, direct native authentication, images and
-full visual parity remain unverified.
+`native-proof/` is a development Expo app, not a production client. `native-proof/App.js`
+renders a production-shaped shell: a bottom `TabBar` for Home, Discover, Library,
+Calendar and Settings, plus a stack for Detail, Lists, History, Statistics and Search.
+`app/screens/*` compose the real screens; `app/components/Screen.jsx` supplies the
+header, back action and sections; `app/components/Note.jsx` renders the note for a
+surface that is not ported.
 
-To try the web proof against a local source-run Django instance, run `npm ci` and
-`npm run export:django` inside `native-proof/`, then open
-`http://localhost:8000/static/native-proof/index.html` on that same instance. Enter its
-server URL and API token. The generated static directory is ignored. For a
-production server the exported files must be served by that same origin (and
-its existing authentication and deployment rules); a separately hosted page
-is subject to browser CORS. Native requests do not have browser CORS but still
-need a reachable server and valid token. HTTPS is required except on loopback.
-The proof holds credentials only in memory and is not a production auth design.
-The simulator demo used a temporary loopback-only relay; the relay is not part of
-the app or a deployment design. A production client needs an explicit flow for
-the user's self-hosted HTTPS origin, scoped credentials, secure platform storage,
-revocation, error handling and a server identity policy. No production login is
-implemented by this proof. The proof and its generated web export are excluded
-from Docker's build context; changing that boundary needs explicit review.
-`npm audit --audit-level=high` runs in CI and displays moderate advisories as well;
-the proof's Expo dependency tree currently has five moderate advisory findings.
+Finished ports render in place: `ButtonSlot` in the Settings save bar and Library
+actions, `SettingsCardSlot` on Settings, `MediaCardSlot` on Home, Discover and
+Library, `RatingSlot` on Detail, and `RailsSlot` on Home and Discover. The screens
+use realistic labels and demo content only where a finished screen would show it.
+Unported surfaces remain `Note` entries with `surface.id`, `surface.title`,
+`surface.where` and `surface.status`; they are not replaced by fake controls or a
+gallery. The stack screens are intentionally not tabs: Settings navigation rows and
+a card press reach them, and no tab is added for an unfinished surface.
 
-The next gate is a direct authenticated read and Android execution,
-including images, accessibility, responsive sizing and themes. Then port one
-small shared control with its web adapters and parity checks before expanding to
-other high-reuse controls. `controls.jsx` is not yet safe for bulk conversion:
-DOM events, focus, popups, CSS variables and server-owned interactions still need
-platform contracts. Translate semantic theme tokens at each platform boundary;
-do not pass browser CSS values, HTML or stored credentials as native props.
+The Django esbuild configuration aliases `react-native` to React Native Web; the
+shell's Metro configuration resolves shared imports to the app's single React and
+React Native installation. Run `npm ci` and `npm run export -- --platform all`
+inside `native-proof/` for a compile check. An export is not runtime verification:
+it does not establish iOS or Android behavior. The shell renders local demo data
+and does not authenticate or read the API, so native transport, secure credential
+storage, revocation and server identity remain undesigned. `export:django` still
+writes the web export under the ignored `src/static/native-proof/`; that directory
+and `native-proof/` stay outside Docker's build context. `npm audit --audit-level=high`
+runs in CI; the Expo dependency tree currently has five moderate advisories.
+
+The next gate is runtime evidence on both iOS and Android for each ported component
+(interaction, accessibility, themes and responsive sizing), then the remaining action
+adapters (media-card popups, bulk selection, progress and date-time controls).
+`controls.jsx` remains a migration source, not a universal dependency: DOM events,
+focus, popups, CSS variables and server-owned interactions still need platform
+contracts. Translate semantic theme tokens at each platform boundary; never pass
+browser CSS values, HTML or stored credentials as native props.
+
+### Adding the next port
+
+A follow-up port replaces its slot note in
+`native-proof/app/surfaces/<Name>Slot.jsx` with the shared component, keeping
+`surface.id`, `surface.title` and `surface.where` accurate. Set `surface.status` to
+`'in_progress'` in the first commit and `'ported'` only when the placement is
+complete; if only part of the surface is ported, leave `'in_progress'` and say what
+remains. Unfinished surfaces stay as `Note` entries rather than placeholder controls.
+Record implementation status in the component register and source map and keep
+iOS/Android runtime evidence separate; an Expo export is only a build check.
 
 ## Decision and limits
 
@@ -155,8 +161,10 @@ external blocker leaves the work incomplete and must be reported with evidence
 and attempted solutions. Task size and trivial edits are not exemptions.
 Every change updates the component register and source map for each affected
 surface, including ownership state, remaining legacy consumers and retirement
-conditions. Browser and actual iOS/Android verification remain separate. Only the
-experimental proof components have been exercised on iOS; native products remain
+conditions. Browser and actual iOS/Android verification remain separate. Shared
+controls with recorded iOS and Android runtime evidence include Spinner, Badge and
+ProgressChanger; the Button, SettingsCard/Chip, MediaCardView, RatingChip and Rail
+ports in the native shell remain runtime-unverified. Native products remain
 separately scoped.
 The migration unit is the reusable component, not a provider or page. Use the
 [shared controls](../ui/react-components.md) as the starting point for fields,
@@ -223,7 +231,7 @@ header search form is an island on every signed-in page, so the runtime (about 9
 gzipped plus 5 KB of CSS) loads on each of them. This is deliberate: the application
 is moving to React page by page, and a runtime that loads everywhere is the end state.
 There is no production native application or native release pipeline; the
-isolated Expo proof above is a development experiment.
+native shell above is a development experiment.
 The deployed stylesheet is `src/static/css/main.css`, generated from `input.css`.
 
 Media cards already have one contract in `app/card_surfaces.py` and a template tag;
@@ -245,7 +253,7 @@ work. Chart.js, Select2, SortableJS, marked, lazySizes, ZXing browser decoding a
 the service worker are web implementations, not native dependencies. Keep shared
 models/intent where useful and choose platform renderers only when needed.
 
-## Rules for a future proof and migrated components
+## Rules for migrated components and the native shell
 
 ### Ownership and coexistence
 
@@ -308,9 +316,9 @@ pluralization, title preferences and accessible names supplied explicitly.
 For native Phase B work, pin compatible React, React DOM, RN, RNW and Expo
 versions after checking their supported combination. First try one web entry with
 a small build command and a `react-native` to RNW alias, emitted through Django's
-existing static asset path and container collection. A disposable Expo test harness
+existing static asset path and container collection. The development Expo app
 can verify the same source on iOS and Android; it must not become a second product.
-Select the bundler based on this proof, rather than adding Vite, Metro, a monorepo,
+Select the bundler based on this experiment, rather than adding Vite, Metro, a monorepo,
 Expo Router, a UI kit or a native styling layer to production now.
 
 Verify deterministic locked builds, source-run development, cache busting, static
@@ -355,7 +363,7 @@ working component, record the blocker and reassess the architecture. Do not set
 - **C — Incremental modernization:** every component creation or edit, including
   copy and spacing, includes the shared React implementation in the same task.
   Reuse the card pilot's web boundary; do not create a parallel app or bundle/runtime
-  per component. Native proof is not a blocker for browser ports. Deferral requires
+  per component. Native runtime verification is not a blocker for browser ports. Deferral requires
   an evidenced compatibility blocker, a reopening condition in the register and
   explicit reporting to the user; task size is not an exemption.
 - **D — Completion passes:** use register status, affected surfaces and dependencies

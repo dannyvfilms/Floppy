@@ -279,7 +279,6 @@ function main() {
   } : undefined;
   const errors = validateRegistry(registry, base, files, path => readFileSync(resolve(root, path), 'utf8'), undefined, readBase);
   errors.push(...inspectUniversal(readFileSync(resolve(root, 'native-proof/App.js'), 'utf8'), 'native-proof/App.js'));
-  errors.push(...inspectUniversal(readFileSync(resolve(root, 'native-proof/mediaClient.js'), 'utf8'), 'native-proof/mediaClient.js', { logic: true, dataLayer: true }));
   const repositoryFiles = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: root, encoding: 'utf8' }).split('\0');
   for (const path of repositoryFiles) {
     if (!/\.(jsx|tsx)$/.test(path) || path.startsWith('frontend/')) continue;
