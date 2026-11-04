@@ -419,3 +419,83 @@ def date_time_picker(context):
         "field_value": field_value,
         "track_time": track_time,
     })
+
+
+@register.simple_tag(takes_context=True)
+def detail_composition(context, part="synopsis"):
+    """Render the shared detail header or synopsis with a server fallback."""
+    from html import unescape
+
+    from django.utils.html import strip_tags
+    from django.utils.translation import gettext as _
+    from django.utils.translation import ngettext
+
+    from app.models import MediaTypes
+    from app.templatetags.app_tags import (
+        alternative_title,
+        display_title,
+        image_url,
+        release_year,
+    )
+
+    media = context.get("media") or {}
+    media_type = context.get("media_type") or media.get("media_type")
+    user = context.get("user")
+    public_view = bool(context.get("public_view"))
+    details = media.get("details") if isinstance(media.get("details"), dict) else {}
+    title = display_title(media, user)
+    alt_title = alternative_title(media, user)
+    facts = []
+    year = release_year(details)
+    if year:
+        facts.append({"label": str(_("Year")), "value": str(year)})
+    runtime = details.get("runtime")
+    if runtime:
+        facts.append({"label": str(_("Runtime")), "value": str(runtime)})
+    episodes = details.get("episodes")
+    if isinstance(episodes, (list, tuple)):
+        episodes = len(episodes)
+    if isinstance(episodes, int) and not isinstance(episodes, bool) and episodes > 0:
+        facts.append({
+            "label": str(ngettext("Episode", "Episodes", episodes)),
+            "value": str(episodes),
+        })
+    status = details.get("status")
+    if status:
+        facts.append({"label": str(_("Status")), "value": str(status)})
+    subtitle = ""
+    if media_type == MediaTypes.SEASON.value:
+        subtitle = str(media.get("season_header_title") or "")
+    elif media.get("series_name"):
+        subtitle = str(media["series_name"])
+    props = {
+        "part": part,
+        "title": title,
+        "altTitle": alt_title or "",
+        "subtitle": subtitle,
+        "artwork": {
+            "src": image_url(media.get("image")) or "",
+            "alt": title,
+            "aspect": "poster",
+        },
+        "facts": facts,
+        "synopsis": {
+            "text": unescape(strip_tags(str(media.get("synopsis") or ""))).strip(),
+            "previewLines": 3,
+        },
+        "publicView": public_view,
+        "readOnly": public_view,
+        "labels": {
+            "altTitle": str(_("Show alternative title")),
+            "publicView": str(_("Public view")),
+            "readMore": str(_("Read more")),
+            "showLess": str(_("Show less")),
+            "noSynopsis": str(_("No synopsis available.")),
+        },
+        "actions": None,
+        "sections": [],
+    }
+    return render_to_string("app/components/detail_composition.html", {
+        "props": props,
+        "props_id": f"detail-composition-{uuid4().hex}",
+    })

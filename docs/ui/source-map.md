@@ -363,6 +363,16 @@ and runtime evidence remain outstanding.
 
 ## DETAIL
 
+Shared React presentation and browser integration:
+
+- `frontend/ui/DetailComposition.jsx`
+- `frontend/ui/DetailCompositionTheme.web.jsx`
+- `frontend/ui/mountDetailComposition.jsx`
+- `src/templates/app/components/detail_composition.html`
+- `src/users/templatetags/ui_tags.py`
+
+Server-owned detail composition retained behind the fallback:
+
 - `src/templates/app/components/detail_action_buttons.html`
 - `src/templates/app/components/detail_activity_subtitle.html`
 - `src/templates/app/components/detail_activity_subtitle_slot.html`
