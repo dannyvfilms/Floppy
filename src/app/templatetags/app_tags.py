@@ -2416,6 +2416,19 @@ def global_search_react(context, search_type):
 
 
 @register.simple_tag(takes_context=True)
+def search_results_react(context):
+    """Return the props the shared React search results surface needs."""
+    from uuid import uuid4
+
+    from app.search_views import build_search_results_props
+
+    return {
+        "id": f"search-results-{uuid4().hex[:8]}",
+        "props": build_search_results_props(context.flatten()),
+    }
+
+
+@register.simple_tag(takes_context=True)
 def sidebar_react(context, media_type):
     """Return the props the shared React sidebar needs."""
     from uuid import uuid4

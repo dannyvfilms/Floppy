@@ -22,6 +22,7 @@ data and actions and own requests, permissions and platform integration.
 | `ToggleChip` | Controlled two-state chip; `value`, `onChange`, `offLabel`, `onLabel`; stable accessible label and `aria-pressed` |
 | `Field`, `SelectField` | Labeled input and preference dropdown; semantic panel/border/focus styling, inset arrow and custom option menu matching Preferences; caller supplies IDs, values/options and handlers |
 | `FilterDropdown` | Same dropdown interaction with Lists hub styling: funnel icon, filled trigger/menu, purple selected option; visually hidden accessible label; use in filter toolbars rather than preference forms |
+| `SearchResults` | Search results surface: media-type/source scope, grid/list layout, local and online sections, matched titles, empty/loading/error states, bounded paging or load more and the online-search action. Callers supply resolved card models, labels, palette and navigation/action/rating callbacks; the browser adapter keeps URLs, card popups and rating writes |
 | `FilterBar` | Universal filter toolbar: media-type and status multi-select, sort with direction, layout and saved-view selection, relative/absolute ranges, clear/default, selected/disabled/busy states and responsive sheets. `mountFilterBar.jsx` mirrors Alpine state and reuses the existing form/htmx refresh |
 | `Tooltip` | Accessible help trigger with a viewport-clamped portal; usable from a legacy island with a title fallback |
 | `ActivityList` | Keyboard-scrollable bounded activity list for long histories |

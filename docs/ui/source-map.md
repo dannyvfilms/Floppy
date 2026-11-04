@@ -319,6 +319,9 @@ in the register.
 - `frontend/ui/GlobalSearch.jsx`
 - `frontend/ui/GlobalSearch.web.jsx`
 - `frontend/ui/mountGlobalSearch.jsx`
+- `frontend/ui/SearchResults.jsx`
+- `frontend/ui/SearchResults.web.jsx`
+- `frontend/ui/mountSearchResults.jsx`
 - `frontend/ui/global-search.css`
 - `native-proof/app/surfaces/SearchSlot.jsx` (native placement on Home, Discover, Library and Search)
 - `src/static/js/barcode-scanner.js`
