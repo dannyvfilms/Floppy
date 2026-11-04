@@ -82,3 +82,37 @@ test('each registered presentation export must render, even beside a real compon
   const registry = { legacy: {}, universal: { [path]: { register: 'MEDIA-CARD', components: ['NativeProofCard', 'NativeProofLabel'], verification: evidence } } };
   assert.match(validateRegistry(registry, null, [path], () => source).join(), /NativeProofCard.*renders an element/);
 });
+
+test('a legacy export may redirect only its existing component to registered shared presentation', () => {
+  const oldPath = 'frontend/Old.jsx';
+  const sharedPath = 'frontend/Shared.jsx';
+  const old = 'export function Spinner(){ return <span/> }; export function Other(){ return <div/> }';
+  const shared = 'import {View} from "react-native"; export function Spinner(){return <View/>}';
+  const baseline = { sha256: createHash('sha256').update(old).digest('hex'), statements: legacyStatements(old) };
+  const base = { legacy: { [oldPath]: baseline }, universal: {} };
+  const registry = { legacy: base.legacy, universal: { [sharedPath]: { register: 'SPINNER', components: ['Spinner'], verification: evidence } } };
+  const docs = { register: '### SPINNER — Spinner', map: `\`${sharedPath}\`` };
+  const run = source => validateRegistry(registry, base, [oldPath, sharedPath], path => path === oldPath ? source : shared, docs, path => path === oldPath ? old : undefined).join();
+  assert.equal(run('export { Spinner } from "./Shared"; export function Other(){ return <div/> }'), '');
+  for (const source of [
+    'export { Other } from "./Shared"; export function Spinner(){ return <span/> }',
+    'export { Spinner } from "./Shared"; export function Other(){ return <button/> }',
+    'export { Spinner } from "./Unregistered"; export function Other(){ return <div/> }',
+    'export { Spinner as Other } from "./Shared"; export function Spinner(){ return <span/> }',
+    'export { Spinner } from "./Shared"; export function Other(){ return <div/> }; const added = 1',
+  ]) assert.match(run(source), /legacy declaration changed/);
+});
+
+test('a legacy re-export through a web adapter must lead to the registered component', () => {
+  const oldPath = 'frontend/Old.jsx', adapterPath = 'frontend/Spinner.web.jsx', sharedPath = 'frontend/Shared.jsx';
+  const old = 'export function Spinner(){return <span/>}';
+  const baseline = { sha256: createHash('sha256').update(old).digest('hex'), statements: legacyStatements(old) };
+  const base = { legacy: { [oldPath]: baseline }, universal: {} };
+  const registry = { legacy: base.legacy, universal: { [sharedPath]: { register: 'SPINNER', components: ['Spinner'], verification: evidence } }, web_adapters: { [adapterPath]: { register: 'SPINNER', purpose: 'Resolve colors' } } };
+  const docs = { register: '### SPINNER — Spinner', map: `\`${sharedPath}\` \`${adapterPath}\`` };
+  const shared = 'import {View} from "react-native"; export function Spinner(){return <View/>}';
+  const run = adapter => validateRegistry(registry, base, [oldPath, adapterPath, sharedPath], path => path === oldPath ? 'export {Spinner} from "./Spinner.web"' : path === adapterPath ? adapter : shared, docs, path => path === oldPath ? old : undefined).join();
+  assert.equal(run('import {Spinner as Shared} from "./Shared"; export function Spinner(){return <Shared/>}'), '');
+  assert.match(run('export function Spinner(){return <Other/>}'), /legacy declaration changed/);
+  assert.match(run('import {Spinner as Shared} from "./Shared"; export function Spinner(){return <div/>}'), /cannot define HTML/);
+});

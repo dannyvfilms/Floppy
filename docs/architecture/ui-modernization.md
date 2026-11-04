@@ -36,7 +36,10 @@ legacy; unchanged declarations may coexist, but a changed or added declaration
 must be moved to an appropriate shared component or adapter. Browser mount adapters
 may change to integrate shared components but cannot define HTML presentation.
 Removing migrated declarations is allowed; reintroducing
-them is rejected against the base revision. Never add or change a baseline entry
+them is rejected against the base revision. A legacy module may replace an
+existing named component export with a same-name re-export of registered
+universal presentation or its registered web adapter; other legacy statements
+remain frozen. Never add or change a baseline entry
 to pass a check. On initial adoption the registry establishes the baseline; later
 PRs compare it with the target branch. A platform-specific implementation needs a
 web implementation and a native implementation (or both iOS and Android), and

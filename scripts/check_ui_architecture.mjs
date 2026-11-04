@@ -161,10 +161,27 @@ export function validateRegistry(registry, base, sourceFiles, readSource, docume
       if (previous === undefined ? digest(source) !== baseline.sha256 : source !== previous) {
         try {
           const available = previous === undefined ? [...baseline.statements] : legacyStatements(previous);
-          for (const hash of legacyStatements(source)) {
+          const program = parse(source, { sourceType: 'module', plugins: ['jsx', 'typescript'] }).program;
+          const previousProgram = previous === undefined ? null : parse(previous, { sourceType: 'module', plugins: ['jsx', 'typescript'] }).program;
+          for (const statement of program.body) {
+            const hash = legacyStatements(source.slice(statement.start, statement.end))[0];
             const index = available.indexOf(hash);
-            if (index < 0) { errors.push(`${path}: a legacy declaration changed or was added; migrate the affected component into universal presentation instead`); break; }
-            available.splice(index, 1);
+            if (index >= 0) { available.splice(index, 1); continue; }
+            // A removed exported component may be redirected to a registered shared
+            // implementation or its web adapter. No other legacy statement changes.
+            const target = statement.source?.value;
+            const resolved = target?.startsWith('.') && sourceFiles.find(candidate =>
+              sourceExtensions.some(ext => candidate === `${relative(root, resolve(root, dirname(path), target))}.${ext}`) || candidate === relative(root, resolve(root, dirname(path), target)));
+            const names = statement.specifiers?.map(specifier => specifier.exported?.name) || [];
+            const oldExports = previousProgram?.body.filter(node => node.type === 'ExportNamedDeclaration' && node.declaration?.id).map(node => node.declaration.id.name) || [];
+            const owner = universal[resolved] || webAdapters[resolved];
+            const direct = universal[resolved] || (webAdapters[resolved] && resolved && parse(readSource(resolved), { sourceType: 'module', plugins: ['jsx', 'typescript'] }).program.body.some(node => {
+              if (node.type !== 'ImportDeclaration' || !node.source.value.startsWith('.')) return false;
+              const destination = relative(root, resolve(root, dirname(resolved), node.source.value));
+              return Object.entries(universal).some(([file, entry]) => (file === destination || sourceExtensions.some(ext => file === `${destination}.${ext}`)) && entry.register === owner.register && node.specifiers.some(specifier => entry.components.includes(specifier.imported?.name) && names.includes(specifier.imported.name)));
+            }));
+            if (statement.type === 'ExportNamedDeclaration' && !statement.declaration && names.length && statement.specifiers.every(specifier => specifier.type === 'ExportSpecifier' && specifier.local.name === specifier.exported.name) && names.every(name => oldExports.includes(name)) && owner && direct && (universal[resolved] ? names.every(name => owner.components.includes(name)) : names.every(name => parse(readSource(resolved), { sourceType: 'module', plugins: ['jsx', 'typescript'] }).program.body.some(node => node.type === 'ExportNamedDeclaration' && node.declaration?.id?.name === name)))) continue;
+            errors.push(`${path}: a legacy declaration changed or was added; migrate the affected component into universal presentation instead`); break;
           }
         } catch { errors.push(`${path}: changed legacy source cannot be parsed`); }
       }

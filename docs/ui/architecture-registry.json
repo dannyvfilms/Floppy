@@ -20,6 +20,26 @@
           "evidence": "Not exercised."
         }
       }
+    },
+    "frontend/ui/Spinner.jsx": {
+      "components": [
+        "Spinner"
+      ],
+      "register": "SPINNER",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium on macOS: public and private Django lists at phone width; visible rotating ring during real delayed HTMX search and successful swap. Private desktop boosted navigation verified cleanup and back-navigation remount. Isolated host checked sizes, colors including Tailwind oklch, theme mutation and cleanup. Other browser engines not exercised."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Expo Go on iPhone 15 Pro iOS 17.2 simulator: 12, 16 and 20 point colored rings rendered and changed orientation in separate frames. VoiceOver and reduced motion not exercised."
+        },
+        "android": {
+          "status": "verified",
+          "evidence": "Expo Go 58.0.5 on Pixel 7 AVD, Android 15 API 35 arm64: the 12, 16 and 20 dp white, accent and muted rings rendered; separate screenshots showed changing orientation. Accessibility hierarchy capture was killed twice and accessibility service dump timed out; TalkBack, reduced motion and exact animation timing were not verified."
+        }
+      }
     }
   },
   "legacy": {
@@ -479,6 +499,10 @@
     "frontend/settings/mount.jsx": {
       "register": "SETTINGS-CARD",
       "purpose": "Django/browser integration for the registered surface."
+    },
+    "frontend/ui/SpinnerTheme.web.jsx": {
+      "register": "SPINNER",
+      "purpose": "Resolve document theme colors for the shared Spinner."
     }
   }
 }

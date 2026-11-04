@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Button, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { NativeProofCard, NativeProofLabel } from '../frontend/ui/NativeProofCard';
+import { Spinner } from '../frontend/ui/Spinner';
 import { loadMedia } from './mediaClient';
 
 const palette = { background: '#27272a', border: '#52525b', placeholder: '#3f3f46', text: '#fafafa' };
@@ -21,6 +22,7 @@ export default function App() {
   }
   return <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
     <NativeProofLabel text="Floppy native proof" color={palette.text} />
+    <View style={styles.rings}><Spinner size={12} color="#fff" /><Spinner size={16} color="#6366f1" /><Spinner size={20} color="#adb5bd" /></View>
     <Text style={styles.text}>Server URL</Text>
     <TextInput accessibilityLabel="Server URL" autoCapitalize="none" autoCorrect={false} value={server} onChangeText={setServer} style={styles.input} />
     <Text style={styles.text}>API token</Text>
@@ -35,5 +37,6 @@ const styles = StyleSheet.create({
   page: { flexGrow: 1, backgroundColor: '#18181b', padding: 24, gap: 12 },
   text: { color: '#fafafa' },
   input: { color: '#18181b', backgroundColor: '#fff', padding: 10, borderRadius: 4 },
+  rings: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   cards: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
 });

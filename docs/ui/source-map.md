@@ -128,10 +128,14 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## SPINNER
 
-Shared `Spinner` lives in `frontend/ui/controls.jsx` and `controls.css` (FORM-CONTROLS); its consumer templates are mapped under their own families.
+Shared `Spinner` uses native primitives; the web adapter resolves theme colors. `controls.jsx` re-exports the web interface for `GlobalSearch` and `ListsForm`. Server fallback styling remains in `controls.css` until Django fallback is retired; template consumers are mapped under their own families. The Expo proof exercises the shared component directly; the register records separate browser, iOS and Android runtime evidence and limitations.
+
+- `frontend/ui/Spinner.jsx`
+- `frontend/ui/SpinnerTheme.web.jsx`
 
 - `frontend/ui/mountSpinner.jsx`
 - `src/templates/users/components/spinner.html`
+- `src/users/tests/test_spinner_browser.py`
 
 
 ## BADGE

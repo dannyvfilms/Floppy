@@ -360,12 +360,7 @@ export function ActionMenu({ label, items, empty, disabled, align = 'start', sec
   </div>;
 }
 
-// Loading indicator. `size` is in px; `tone` is accent, muted or white. Decorative:
-// callers put any accessible status text beside it.
-export function Spinner({ size = 16, tone = 'accent' }) {
-  return <span className={`ui-spinner${size <= 12 ? ' ui-spinner-thin' : ''}`} data-tone={tone}
-    style={{ width: size, height: size }} aria-hidden="true" />;
-}
+export { Spinner } from './SpinnerTheme.web';
 
 // Small rounded label for statuses, genres and flags. `size` is xs, sm, md or tag;
 // `tone` picks the colours (see `.ui-badge` in controls.css). `label` is plain text,

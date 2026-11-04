@@ -8,7 +8,7 @@ const result = await build({
   outdir, bundle: true, splitting: true, format: 'esm', minify: true,
   target: ['es2022'], jsx: 'automatic', legalComments: 'external',
   alias: { 'react-native': 'react-native-web' },
-  define: { 'process.env.NODE_ENV': '"production"' },
+  define: { 'process.env.NODE_ENV': '"production"', global: 'globalThis' },
   chunkNames: '[name]-[hash]', write: false,
 });
 const files = new Map(result.outputFiles.map((file) => [basename(file.path), file.contents]));
