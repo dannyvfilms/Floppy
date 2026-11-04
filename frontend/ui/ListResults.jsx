@@ -1,0 +1,458 @@
+import React, { useState } from 'react';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import { Button } from './Button';
+import { MediaCardView } from './MediaCardView';
+import { RatingStars } from './RatingStars';
+
+const FALLBACK_PALETTE = {
+  surface: '#27272a',
+  surfaceStrong: '#3f3f46',
+  surfaceMuted: '#52525b',
+  border: '#3f3f46',
+  text: '#fafafa',
+  textSecondary: '#d4d4d8',
+  textMuted: '#a1a1aa',
+  accent: '#6366f1',
+  accentStrong: '#4f46e5',
+  success: '#10b981',
+  danger: '#ef4444',
+};
+
+const defaultLabels = {
+  selectItem: 'Select',
+  selectItems: 'Select Items',
+  cancelSelect: 'Cancel Select',
+  clear: 'Clear',
+  selected: 'selected',
+  noSelection: 'Pick items to use these actions.',
+  updateStatus: 'Update Status',
+  addToList: 'Add to List',
+  addToCollection: 'Add to Collection',
+  applyTag: 'Apply Tag',
+  addPlays: 'Add Plays to History',
+  noResultsTitle: 'No results found',
+  noResultsSearch: "We couldn't find any matches. Try a different search or adjust your filters.",
+  noResultsFilters: "We couldn't find any matches with the current filters.",
+  recommend: 'Recommend Item',
+  emptyTitle: 'No items in this list yet',
+  emptyCopy: 'Start adding your favorite media to build your collection.',
+  emptyReadOnly: 'This list is empty.',
+  smartEmptyTitle: 'No matching items yet',
+  smartEmptyCopy: 'Saved rules keep this list updated as your library changes.',
+  browse: 'Browse Media',
+  title: 'Title',
+  type: 'Type',
+  status: 'Status',
+  score: 'Score',
+  progress: 'Progress',
+  released: 'Released',
+  added: 'Added',
+};
+
+const TABLE_COLUMNS = [
+  { key: 'title', label: 'title', wide: true },
+  { key: 'mediaTypeLabel', label: 'type' },
+  { key: 'statusLabel', label: 'status' },
+  { key: 'score', label: 'score' },
+  { key: 'progressLabel', label: 'progress' },
+  { key: 'releaseLabel', label: 'released' },
+  { key: 'addedLabel', label: 'added' },
+];
+
+function mergePalette(palette) {
+  return { ...FALLBACK_PALETTE, ...(palette || {}) };
+}
+
+function mergeLabels(labels) {
+  return { ...defaultLabels, ...(labels || {}) };
+}
+
+function isSelected(selectedIds, id) {
+  if (!selectedIds) {
+    return false;
+  }
+  return typeof selectedIds.has === 'function'
+    ? selectedIds.has(id)
+    : selectedIds.includes(id);
+}
+
+function sortNote(item, sort) {
+  switch (sort) {
+    case 'end_date':
+      return item.endDateLabel || null;
+    case 'start_date':
+      return item.startDateLabel || null;
+    case 'date_added':
+      return item.addedLabel || null;
+    case 'custom':
+      return item.rank ? `#${item.rank}` : null;
+    case 'release_date':
+      return item.releaseLabel || null;
+    case 'progress':
+      return item.progressLabel || null;
+    case 'media_type':
+      return item.mediaTypeLabel || null;
+    default:
+      return null;
+  }
+}
+
+function defaultLines(item) {
+  const parts = [];
+  if (item.mediaTypeLabel) {
+    parts.push({ text: item.mediaTypeLabel });
+  }
+  if (item.statusLabel) {
+    parts.push({ text: ` • ${item.statusLabel}`, muted: true });
+  }
+  if (item.progressLabel) {
+    parts.push({ text: ` • ${item.progressLabel}`, muted: true });
+  }
+  return parts.length ? [{ join: 'plain', parts }] : [];
+}
+
+function cardModel(item, sort, canEdit) {
+  const rating = item.rating || (item.score != null
+    ? { label: String(item.score), value: item.score, scaleMax: 10 }
+    : null);
+  return {
+    mediaType: item.mediaType,
+    shape: item.cardShape || 'poster',
+    video: item.video || false,
+    title: item.title,
+    altTitle: item.altTitle || null,
+    publicView: item.publicView || false,
+    image: item.image || { src: null, fallback: '', source: 'primary' },
+    statusChip: item.cardStatusChip || (item.status
+      ? { kind: 'status', status: item.status, label: item.statusLabel }
+      : null),
+    cornerChips: item.cardCornerChips || [],
+    titleLinks: [],
+    progressBar: item.progressBar || null,
+    lines: item.cardLines || defaultLines(item),
+    rating,
+    ratingEditable: canEdit && item.ratingEditable !== false,
+    actions: canEdit ? item.cardActions || null : null,
+  };
+}
+
+export function ListResultGrid({
+  items,
+  sort,
+  palette,
+  labels,
+  selectedIds,
+  selectMode,
+  canEdit = false,
+  onToggleItem,
+  onOpenItem,
+  onRate,
+  onOpenLink,
+  onAction,
+  renderRating,
+}) {
+  const colors = mergePalette(palette);
+  const copy = mergeLabels(labels);
+  const { width } = useWindowDimensions();
+  const columns = width >= 760 ? 4 : width >= 560 ? 3 : 2;
+  const cardWidth = Math.min(184, Math.max(128, (width - 32 - (columns - 1) * 12) / columns));
+  const ratingRenderer = renderRating || ((props) => <RatingStars
+    scaleMax={props.scaleMax}
+    value={props.value}
+    label={props.label}
+    onSelect={props.onSelect}
+    palette={props.palette}
+    renderStar={lit => <Text style={[styles.pickerStar, { color: lit ? props.palette.lit : props.palette.unlit }]}>★</Text>} />);
+  return <View style={styles.grid}>
+    {items.map(item => <View key={item.id} style={{ width: cardWidth }}>
+      <MediaCardView
+        model={cardModel(item, sort, canEdit)}
+        palette={{
+          card: colors.surface,
+          text: colors.text,
+          textSecondary: colors.textSecondary,
+          textMuted: colors.textMuted,
+          border: colors.border,
+          link: colors.accent,
+          placeholder: colors.surfaceStrong,
+          progressFill: colors.accent,
+        }}
+        width={cardWidth}
+        labels={{ selectItem: copy.selectItem }}
+        selection={selectMode ? {
+          active: true,
+          selected: isSelected(selectedIds, item.id),
+          toggle: () => onToggleItem?.(item.id),
+          label: `${copy.selectItem} ${item.title}`,
+        } : undefined}
+        onOpen={onOpenItem ? () => onOpenItem(item) : undefined}
+        onRate={onRate ? score => onRate(item, score) : undefined}
+        onOpenLink={onOpenLink}
+        onAction={onAction ? action => onAction(item, action) : undefined}
+        renderRating={ratingRenderer}
+      />
+      {sortNote(item, sort) ? <Text style={[styles.sortNote, { color: colors.text }]}>
+        {sortNote(item, sort)}
+      </Text> : null}
+    </View>)}
+  </View>;
+}
+
+export function ListResultTable({
+  items,
+  palette,
+  labels,
+  selectedIds,
+  selectMode,
+  onToggleItem,
+  onOpenItem,
+}) {
+  const colors = mergePalette(palette);
+  const copy = mergeLabels(labels);
+  return <ScrollView horizontal showsHorizontalScrollIndicator={false}
+    contentContainerStyle={styles.tableScroll}>
+    <View style={styles.table}>
+      <View style={[styles.tableRow, styles.tableHeader, { borderColor: colors.border }]}>
+        {selectMode ? <View style={styles.checkColumn}>
+          <Text style={[styles.headerCell, { color: colors.textMuted }]}> </Text>
+        </View> : null}
+        {TABLE_COLUMNS.map(column => <View key={column.key}
+          style={[styles.cell, column.wide && styles.wideCell]}>
+          <Text style={[styles.headerCell, { color: colors.textMuted }]}>
+            {copy[column.label]}
+          </Text>
+        </View>)}
+      </View>
+      {items.map(item => <Pressable key={item.id}
+        accessibilityRole="button"
+        accessibilityLabel={item.title}
+        onPress={onOpenItem ? () => onOpenItem(item) : undefined}
+        style={[styles.tableRow, { borderColor: colors.border }]}>
+        {selectMode ? <Pressable
+          accessibilityRole="checkbox"
+          accessibilityLabel={`${copy.selectItem} ${item.title}`}
+          accessibilityState={{ checked: isSelected(selectedIds, item.id) }}
+          onPress={event => {
+            event.stopPropagation?.();
+            onToggleItem?.(item.id);
+          }}
+          style={styles.checkColumn}>
+          <Text style={[styles.checkText, { color: isSelected(selectedIds, item.id) ? colors.accent : colors.textMuted }]}>
+            {isSelected(selectedIds, item.id) ? '✓' : '○'}
+          </Text>
+        </Pressable> : null}
+        {TABLE_COLUMNS.map(column => <View key={column.key}
+          style={[styles.cell, column.wide && styles.wideCell]}>
+          <Text numberOfLines={1}
+            style={[styles.cellText, {
+              color: column.key === 'title' ? colors.text : colors.textSecondary,
+            }]}>
+            {column.key === 'score'
+              ? item.score != null ? String(item.score) : '-'
+              : item[column.key] || '-'}
+          </Text>
+        </View>)}
+      </Pressable>)}
+    </View>
+  </ScrollView>;
+}
+
+export function ListBulkBar({
+  count = 0,
+  palette,
+  labels,
+  onClear,
+  onAction,
+}) {
+  const colors = mergePalette(palette);
+  const copy = mergeLabels(labels);
+  const actions = [
+    { kind: 'status', label: copy.updateStatus, tone: 'primary' },
+    { kind: 'list', label: copy.addToList, tone: 'surface' },
+    { kind: 'collection', label: copy.addToCollection, tone: 'surface' },
+    { kind: 'tag', label: copy.applyTag, tone: 'surface' },
+    { kind: 'plays', label: copy.addPlays, tone: 'surface' },
+  ];
+  return <View accessible accessibilityLabel="Bulk actions"
+    style={[styles.bulkBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    <View style={styles.bulkHeader}>
+      <Text style={[styles.bulkCount, { color: colors.text }]}>
+        <Text style={{ fontWeight: '700' }}>{count}</Text> {copy.selected}
+      </Text>
+      <Button label={copy.clear} tone="surface" onPress={onClear} />
+    </View>
+    {count === 0 ? <Text style={[styles.bulkHint, { color: colors.textMuted }]}>
+      {copy.noSelection}
+    </Text> : null}
+    <View style={styles.bulkActions}>
+      {actions.map(action => <Button key={action.kind}
+        label={action.label}
+        tone={action.tone}
+        disabled={count === 0}
+        onPress={() => onAction?.(action.kind)} />)}
+    </View>
+  </View>;
+}
+
+export function ListEmptyState({
+  mode = 'empty',
+  hasSearch = false,
+  canEdit = false,
+  canRecommend = false,
+  isSmart = false,
+  palette,
+  labels,
+  onBrowse,
+  onRecommend,
+}) {
+  const colors = mergePalette(palette);
+  const copy = mergeLabels(labels);
+  const smart = isSmart || mode === 'smart';
+  const title = smart
+    ? copy.smartEmptyTitle
+    : mode === 'search' || mode === 'filters' ? copy.noResultsTitle : copy.emptyTitle;
+  const description = smart
+    ? copy.smartEmptyCopy
+    : mode === 'search' ? copy.noResultsSearch
+      : mode === 'filters' ? copy.noResultsFilters
+        : canEdit ? copy.emptyCopy : copy.emptyReadOnly;
+  return <View style={[styles.empty, { backgroundColor: colors.surface }]}>
+    <Text style={[styles.emptyTitle, { color: colors.text }]}>{title}</Text>
+    <Text style={[styles.emptyCopy, { color: colors.textMuted }]}>{description}</Text>
+    {canEdit && mode === 'empty' ? <Button label={copy.browse} tone="primary"
+      onPress={onBrowse} /> : null}
+    {canRecommend ? <Button label={copy.recommend} tone="surface"
+      onPress={onRecommend} /> : null}
+  </View>;
+}
+
+export function ListResults({
+  items,
+  layout = 'grid',
+  sort = 'date_added',
+  palette,
+  labels,
+  canEdit = false,
+  canRecommend = false,
+  isSmart = false,
+  selectMode = false,
+  selectedIds = [],
+  onToggleItem,
+  onToggleSelectMode,
+  onClearSelection,
+  onBulkAction,
+  bulkMessage,
+  onOpenItem,
+  onRate,
+  onOpenLink,
+  onAction,
+  renderRating,
+  emptyMode,
+  hasSearch = false,
+  onBrowse,
+  onRecommend,
+}) {
+  const colors = mergePalette(palette);
+  const copy = mergeLabels(labels);
+  const [ratings, setRatings] = useState({});
+  const shownItems = items.map(item => ratings[item.id] === undefined
+    ? item
+    : {
+        ...item,
+        rating: {
+          ...(item.rating || { scaleMax: 10 }),
+          value: ratings[item.id],
+          label: ratings[item.id] == null ? null : String(ratings[item.id]),
+        },
+      });
+  const rate = (item, score) => {
+    setRatings(current => ({ ...current, [item.id]: score }));
+    onRate?.(item, score);
+  };
+  const mode = emptyMode || (hasSearch ? 'search' : 'empty');
+  return <View style={styles.results}>
+    {canEdit ? <View style={styles.selectRow}>
+      <Button
+        label={selectMode ? copy.cancelSelect : copy.selectItems}
+        tone="surface"
+        onPress={onToggleSelectMode} />
+    </View> : null}
+    {selectMode ? <ListBulkBar
+      count={selectedIds.length}
+      palette={colors}
+      labels={copy}
+      onClear={onClearSelection}
+      onAction={onBulkAction} /> : null}
+    {bulkMessage ? <Text style={[styles.bulkMessage, { color: colors.textMuted }]}>
+      {bulkMessage}
+    </Text> : null}
+    {shownItems.length === 0
+      ? <ListEmptyState
+          mode={mode}
+          hasSearch={hasSearch}
+          canEdit={canEdit}
+          canRecommend={canRecommend}
+          isSmart={isSmart}
+          palette={colors}
+          labels={copy}
+          onBrowse={onBrowse}
+          onRecommend={onRecommend} />
+      : layout === 'table'
+        ? <ListResultTable
+            items={shownItems}
+            palette={colors}
+            labels={copy}
+            selectMode={selectMode}
+            selectedIds={selectedIds}
+            onToggleItem={onToggleItem}
+            onOpenItem={onOpenItem} />
+        : <ListResultGrid
+            items={shownItems}
+            sort={sort}
+            palette={colors}
+            labels={copy}
+            canEdit={canEdit}
+            selectMode={selectMode}
+            selectedIds={selectedIds}
+            onToggleItem={onToggleItem}
+            onOpenItem={onOpenItem}
+            onRate={rate}
+            onOpenLink={onOpenLink}
+            onAction={onAction}
+            renderRating={renderRating} />}
+  </View>;
+}
+
+const styles = StyleSheet.create({
+  results: { gap: 12 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  pickerStar: { fontSize: 20 },
+  sortNote: { fontSize: 12, fontWeight: '600', marginTop: 6 },
+  selectRow: { flexDirection: 'row', justifyContent: 'flex-end' },
+  bulkBar: { borderWidth: 1, borderRadius: 10, padding: 12, gap: 8 },
+  bulkHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  bulkCount: { fontSize: 13 },
+  bulkHint: { fontSize: 12 },
+  bulkActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  bulkMessage: { fontSize: 12 },
+  empty: { borderRadius: 10, paddingVertical: 40, paddingHorizontal: 20, gap: 10, alignItems: 'center' },
+  emptyTitle: { fontSize: 18, fontWeight: '600', textAlign: 'center' },
+  emptyCopy: { fontSize: 13, lineHeight: 19, textAlign: 'center', maxWidth: 420 },
+  tableScroll: { paddingBottom: 4 },
+  table: { minWidth: 720 },
+  tableRow: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, paddingVertical: 10, paddingHorizontal: 8, gap: 8 },
+  tableHeader: { borderTopWidth: 0 },
+  checkColumn: { width: 28, alignItems: 'center', justifyContent: 'center' },
+  checkText: { fontSize: 16, fontWeight: '700' },
+  cell: { width: 92, paddingHorizontal: 4 },
+  wideCell: { width: 200, flexGrow: 1 },
+  headerCell: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.4 },
+  cellText: { fontSize: 13 },
+});

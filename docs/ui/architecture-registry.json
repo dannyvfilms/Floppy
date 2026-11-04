@@ -434,15 +434,61 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not exercised in a browser; the existing Django list header remains the active web consumer."
+          "evidence": "Not exercised in a browser; the existing Django list header remains the active web consumer. Extended with smart/source/role badges and the members entry point, without a browser pass."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export only; the list header has not been exercised on a simulator."
+          "evidence": "Expo export only; the extended list header has not been exercised on a simulator."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export only; the list header has not been exercised on an emulator."
+          "evidence": "Expo export only; the extended list header has not been exercised on an emulator."
+        }
+      }
+    },
+    "frontend/ui/ListResults.jsx": {
+      "components": [
+        "ListResults",
+        "ListResultGrid",
+        "ListResultTable",
+        "ListBulkBar",
+        "ListEmptyState"
+      ],
+      "register": "LISTS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted on the Django list detail page; the server-rendered grid, table and bulk toolbar remain the active web consumers."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export only; the list results grid, table and bulk bar have not been exercised on a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export only; the list results grid, table and bulk bar have not been exercised on an emulator."
+        }
+      }
+    },
+    "frontend/ui/ListMembership.jsx": {
+      "components": [
+        "ListMembershipPopup",
+        "ListMembershipSection",
+        "ListShareLinks"
+      ],
+      "register": "LISTS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted on the Django list detail page; the existing server list form remains the active web consumer."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export only; the membership and visibility popup has not been exercised on a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export only; the membership and visibility popup has not been exercised on an emulator."
         }
       }
     },

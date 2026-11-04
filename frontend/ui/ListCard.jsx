@@ -24,12 +24,14 @@ export function ListCard({ list, palette, width = 240, onOpen, onAction }) {
             : []),
         ],
       },
-      ...((list.isSmart || list.visibility || list.role || list.memberCount > 1)
+      ...((list.isSmart || (list.source && list.source !== 'local') || list.visibility || list.role || list.memberCount > 1)
         ? [{
             join: 'plain',
             parts: [
               ...(list.isSmart ? [{ text: 'Smart', muted: true }] : []),
-              ...(list.isSmart && (list.visibility || list.role || list.memberCount > 1) ? [{ text: ' • ', muted: true }] : []),
+              ...(list.isSmart && (list.source && list.source !== 'local') ? [{ text: ' • ', muted: true }] : []),
+              ...(list.source && list.source !== 'local' ? [{ text: list.sourceLabel || list.source, muted: true }] : []),
+              ...((list.isSmart || (list.source && list.source !== 'local')) && (list.visibility || list.role || list.memberCount > 1) ? [{ text: ' • ', muted: true }] : []),
               ...(list.visibility ? [{ text: list.visibility }] : []),
               ...(list.visibility && (list.role || list.memberCount > 1) ? [{ text: ' • ', muted: true }] : []),
               ...(list.role ? [{ text: list.role }] : []),
