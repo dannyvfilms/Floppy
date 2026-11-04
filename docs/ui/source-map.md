@@ -206,8 +206,13 @@ the action layer; `MediaCardView` is the native candidate and does not yet repla
 
 ## RATING
 
+- `frontend/ui/RatingChip.jsx`
 - `frontend/ui/RatingStars.jsx`
+- `frontend/ui/RatingStarIcon.web.jsx`
+- `frontend/ui/RatingStarIcon.native.jsx`
+- `frontend/ui/mountRatingChip.jsx`
 - `frontend/ui/mountRatingStars.jsx`
+- `src/templates/app/components/rating_chip.html`
 - `src/templates/app/components/rating_stars.html`
 - `src/templates/app/components/derived_tv_rating_coverage.html`
 - `src/templates/app/components/derived_tv_rating_detail.html`

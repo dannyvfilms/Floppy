@@ -86,6 +86,100 @@ def rating_stars(context, post_url):
     })
 
 
+def _number_or_value(value):
+    """Render integral display scores without a trailing `.0`."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return value
+    return int(number) if number.is_integer() else number
+
+
+def _derived_value(derived, name):
+    if derived is None:
+        return None
+    if isinstance(derived, dict):
+        return derived.get(name)
+    return getattr(derived, name, None)
+
+
+@register.simple_tag(takes_context=True)
+def rating_chip(context, instance, media_type, post_url, derived_tv_score=None):
+    """Render the shared personal score chip and popup with a server fallback."""
+    from django.template.defaultfilters import floatformat
+    from django.utils.translation import gettext as _
+
+    from app.templatetags.app_tags import rating_scale_max, score_display
+    from users.models import FIVE_POINT_RATING_SCALE
+
+    user = context.get("user")
+    scale_max = rating_scale_max(user)
+    score = getattr(instance, "score", None)
+    display = _number_or_value(score_display(score, user)) if score is not None else None
+    if display is None:
+        display_value = None
+        card_display_value = None
+    elif scale_max == FIVE_POINT_RATING_SCALE:
+        display_value = f"{display}/5"
+        card_display_value = f"{display}/5"
+    else:
+        display_value = str(display)
+        card_display_value = floatformat(display, 1)
+
+    derived = None
+    derived_score = _derived_value(derived_tv_score, "score")
+    if derived_score is not None:
+        coverage = render_to_string(
+            "app/components/derived_tv_rating_coverage.html",
+            {"derived_tv_score": derived_tv_score},
+        ).strip()
+        derived = {
+            "score": floatformat(derived_score, "-1"),
+            "coverage": coverage,
+            "label": str(_derived_value(derived_tv_score, "label") or ""),
+            "title": str(_derived_value(derived_tv_score, "title") or ""),
+        }
+
+    noun = {
+        "tv": _("show"),
+        "season": _("show"),
+        "movie": _("movie"),
+    }.get(media_type, _("item"))
+    labels = {
+        "rate": str(_("Rate")),
+        "derived": str(_("Derived")),
+        "yourRating": str(_("Your rating")),
+        "close": str(_("Close")),
+        "prompt": f"{_('Rate this')} {noun}",
+    }
+    if score is not None:
+        labels["yourScore"] = str(_("Your score"))
+    if derived is not None:
+        labels["derivedRating"] = str(_("Derived rating"))
+    elif score is None:
+        labels["addRating"] = str(_("Add rating"))
+    else:
+        labels["editRating"] = str(_("Edit rating"))
+
+    csrf_token = context.get("csrf_token")
+    if not csrf_token and context.get("request"):
+        csrf_token = context["request"].META.get("CSRF_COOKIE", "")
+
+    return render_to_string("app/components/rating_chip.html", {
+        "props": {
+            "postUrl": str(post_url),
+            "csrfToken": str(csrf_token or ""),
+            "scaleMax": scale_max,
+            "value": float(display) if display is not None else None,
+            "displayValue": display_value,
+            "cardDisplayValue": card_display_value,
+            "derived": derived,
+            "labels": labels,
+        },
+        "props_id": f"rating-chip-{uuid4().hex}",
+    })
+
+
 @register.simple_tag
 def spinner(size=16, tone="accent"):
     """Render the shared React loading ring; the server markup is the fallback."""

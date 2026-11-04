@@ -180,6 +180,46 @@
           "evidence": "Not exercised; Expo export compile only."
         }
       }
+    },
+    "frontend/ui/RatingStars.jsx": {
+      "components": [
+        "RatingStars"
+      ],
+      "register": "RATING",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Rendered by the existing web mounts; not exercised in a browser during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised."
+        }
+      }
+    },
+    "frontend/ui/RatingChip.jsx": {
+      "components": [
+        "RatingChip"
+      ],
+      "register": "RATING",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Web adapter and Expo export compile; not exercised in a browser during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised."
+        }
+      }
     }
   },
   "legacy": {
@@ -432,14 +472,6 @@
         "cdf6ea1f01c3a7cd3237d8d735125c85456cf3eb0129cd7e8256eb3e708ad956"
       ]
     },
-    "frontend/ui/RatingStars.jsx": {
-      "sha256": "630d5eac15f7324875f9d4bff6420c24af9bf99836ab46dac09b03634e4cd3ab",
-      "statements": [
-        "456e1478bb5a48f07ed5364c67f07e754df4fabfd0a3b92bcb07927d12186d63",
-        "50229ec336bed37ff1d990ba4a4e458e89665fd74b7c52961c9877020c1a34b8",
-        "3db82e250f9ff808c3c10fe1ca6b5ee5dfc884a5752ee5167db8bdf58701ae5a"
-      ]
-    },
     "frontend/ui/Sidebar.jsx": {
       "sha256": "fddfcea7ff73590bcd8bdb11dc1fc650753b83ae1b906862f5e329fc42a3ea69",
       "statements": [
@@ -564,6 +596,7 @@
       ]
     }
   },
+  "logic": {},
   "platform": {
     "frontend/ui/Button.web.jsx": {
       "kind": "presentation",
@@ -606,6 +639,50 @@
         "android": {
           "status": "unverified",
           "evidence": "Not exercised; this port added build and static checks only."
+        }
+      }
+    },
+    "frontend/ui/RatingStarIcon.web.jsx": {
+      "kind": "presentation",
+      "components": [
+        "RatingStarIcon"
+      ],
+      "register": "RATING",
+      "purpose": "Render the shared rating star as a filled SVG in the browser.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Compiled into the web bundle; not exercised in a browser during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to this web implementation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to this web implementation."
+        }
+      }
+    },
+    "frontend/ui/RatingStarIcon.native.jsx": {
+      "kind": "presentation",
+      "components": [
+        "RatingStarIcon"
+      ],
+      "register": "RATING",
+      "purpose": "Render the shared rating star as native text on iOS and Android.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not applicable to this native implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised."
         }
       }
     }
@@ -690,6 +767,14 @@
     "frontend/ui/Rail.web.jsx": {
       "register": "RAILS",
       "purpose": "Preserve browser pointer drag, click suppression, keyboard arrows and focus behavior for the shared rail."
+    },
+    "frontend/ui/mountRatingChip.jsx": {
+      "register": "RATING",
+      "purpose": "Django/browser integration for the shared personal score chip and popup."
+    },
+    "frontend/ui/mountRatingStars.jsx": {
+      "register": "RATING",
+      "purpose": "Django/browser integration for the shared star row."
     }
   }
 }

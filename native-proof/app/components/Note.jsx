@@ -6,7 +6,7 @@ export function Note({ surface, children, compact = false }) {
   return <View style={[styles.note, compact && styles.compact]}>
     <View style={styles.row}>
       <Text style={styles.id}>{surface.id}</Text>
-      <Text style={styles.status}>{surface.status === 'in_progress' ? 'In progress' : surface.status === 'ported' ? 'Ported' : 'Not ported yet'}</Text>
+      <Text style={styles.status}>{surface.status === 'ported' ? 'Ported' : surface.status === 'in_progress' ? 'In progress' : 'Not ported yet'}</Text>
     </View>
     <Text style={styles.title}>{surface.title}</Text>
     <Text style={styles.where}>{surface.where}</Text>
