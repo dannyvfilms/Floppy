@@ -1,9 +1,11 @@
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
+from api.fork_views_playback import upsert_playback_progress
 from app.models import (
     TV,
     Episode,
@@ -180,6 +182,90 @@ class MatchCorrectionTests(TestCase):
             reference.review_status,
             ExternalReferenceReviewStatus.CORRECTED.value,
         )
+
+    def _merge_progress(self, *, source_clock, destination_clock, source_newer):
+        """Merge two existing progress rows; return (destination item, row)."""
+        source = self._item("401", MediaTypes.MOVIE.value, "Wrong Movie")
+        destination = self._item("402", MediaTypes.MOVIE.value, "Right Movie")
+        for item in (source, destination):
+            Movie.objects.create(
+                user=self.user,
+                item=item,
+                status=Status.IN_PROGRESS.value,
+                progress=0,
+            )
+        processed = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+        rows = {
+            source: (2900, True, source_clock),
+            destination: (600, False, destination_clock),
+        }
+        for item, (position, completed, clock) in rows.items():
+            row = PlaybackProgress.objects.create(
+                user=self.user,
+                item=item,
+                position_seconds=position,
+                duration_seconds=3000,
+                completed=completed,
+                last_event_at=clock,
+            )
+            newer = (item is source) == source_newer
+            PlaybackProgress.objects.filter(pk=row.pk).update(
+                updated_at=processed + timedelta(minutes=1 if newer else 0),
+            )
+        preview = preview_match_correction(self.user, source, destination)
+        with patch("app.models.Item.fetch_releases"):
+            apply_match_correction(self.user, source.pk, destination.pk, preview["token"])
+        return destination, PlaybackProgress.objects.get(user=self.user)
+
+    def _follow_up(self, item, position, received):
+        upsert_playback_progress(
+            self.user, item, position, 3000, event_at=received.timestamp()
+        )
+        return PlaybackProgress.objects.get(user=self.user, item=item)
+
+    def test_progress_merge_keeps_the_newer_source_clock(self):
+        """The winning source row brings the newest event time with it."""
+        older = datetime(2026, 1, 1, 11, 0, 0, 100000, tzinfo=UTC)
+        newer = datetime(2026, 1, 1, 11, 0, 0, 900000, tzinfo=UTC)
+        destination, merged = self._merge_progress(
+            source_clock=newer, destination_clock=older, source_newer=True,
+        )
+
+        self.assertEqual(merged.item, destination)
+        self.assertEqual(merged.position_seconds, 2900)
+        self.assertEqual(merged.last_event_at, newer)
+        # Received between the two rows' events: stale against the winner.
+        delayed = self._follow_up(destination, 0, older + timedelta(milliseconds=400))
+        self.assertEqual(delayed.position_seconds, 2900)
+        valid = self._follow_up(destination, 2950, newer + timedelta(milliseconds=1))
+        self.assertEqual(valid.position_seconds, 2950)
+
+    def test_progress_merge_keeps_the_newer_destination_clock(self):
+        """Source values win on processing time, yet the newer clock is kept."""
+        older = datetime(2026, 1, 1, 11, 0, 0, 100000, tzinfo=UTC)
+        newer = datetime(2026, 1, 1, 11, 0, 0, 900000, tzinfo=UTC)
+        destination, merged = self._merge_progress(
+            source_clock=older, destination_clock=newer, source_newer=True,
+        )
+
+        self.assertEqual(merged.position_seconds, 2900)
+        self.assertEqual(merged.last_event_at, newer)
+        delayed = self._follow_up(destination, 0, older + timedelta(milliseconds=400))
+        self.assertEqual(delayed.position_seconds, 2900)
+        valid = self._follow_up(destination, 2950, newer)
+        self.assertEqual(valid.position_seconds, 2950)
+
+    def test_progress_merge_keeps_a_known_clock_over_an_unknown_one(self):
+        """An unknown clock on either row does not erase the other's."""
+        known = datetime(2026, 1, 1, 11, 0, 0, 500000, tzinfo=UTC)
+        destination, merged = self._merge_progress(
+            source_clock=None, destination_clock=known, source_newer=False,
+        )
+
+        self.assertEqual(merged.position_seconds, 600)
+        self.assertEqual(merged.last_event_at, known)
+        delayed = self._follow_up(destination, 0, known - timedelta(milliseconds=1))
+        self.assertEqual(delayed.position_seconds, 600)
 
     def test_stale_preview_is_rejected(self):
         source = self._item("301", MediaTypes.MOVIE.value, "Wrong")

@@ -251,4 +251,5 @@ class EmbyWebhookProcessor(BaseWebhookProcessor):
             "view_offset_seconds": offset_seconds,
             "duration_seconds": duration_seconds,
             "provider_completed": provider_completed,
+            "event_at": getattr(self, "_event_ts", None),
         }

@@ -1707,6 +1707,7 @@ class BaseWebhookProcessor:
                     now,
                     movie_item,
                 )
+                live_playback.close_resume_point_without_play(user.id, movie_item.id)
             else:
                 app.models.Movie.objects.create(
                     item=movie_item,
@@ -2584,6 +2585,7 @@ class BaseWebhookProcessor:
                     season_number,
                     episode_number,
                 )
+                live_playback.close_resume_point_without_play(user.id, episode_item.id)
 
             if should_create:
                 # A real new play starts a planning show/season and reopens one
