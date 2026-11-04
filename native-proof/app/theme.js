@@ -107,3 +107,21 @@ export const railPalette = {
   loading: palette.accent,
   focus: palette.accent,
 };
+
+export const dateTimePalette = {
+  text: palette.text,
+  textSecondary: palette.textSecondary,
+  textMuted: palette.textMuted,
+  surface: palette.surface,
+  surfaceStrong: palette.surfaceStrong,
+  surfaceMuted: palette.surfaceMuted,
+  border: palette.border,
+  accent: palette.accent,
+  accentContrast: '#ffffff',
+  link: '#818cf8',
+  danger: palette.danger,
+  radius: radius.md,
+  radiusSmall: radius.sm,
+  fontSize: 14,
+  smallFontSize: 12,
+};

@@ -220,6 +220,26 @@
           "evidence": "Not exercised."
         }
       }
+    },
+    "frontend/ui/DateTimePicker.jsx": {
+      "components": [
+        "DateTimePicker"
+      ],
+      "register": "DATE-TIME",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Mounted through the web adapter into the static tracking date/time fields; build and targeted tests only, no browser pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the picker in the Calendar screen; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the picker in the Calendar screen; no emulator run was performed."
+        }
+      }
     }
   },
   "legacy": {
@@ -583,7 +603,50 @@
       ]
     }
   },
-  "logic": {},
+  "logic": {
+    "frontend/ui/dateTime.js": {
+      "components": [
+        "pad2",
+        "dateKey",
+        "parseDateValue",
+        "normalizeValue",
+        "formatValue",
+        "valueFromDate",
+        "formatDisplayText",
+        "monthLabel",
+        "monthShortLabel",
+        "weekdayLabels",
+        "monthWeeks",
+        "yearPage",
+        "isSameDay",
+        "isToday",
+        "displayHour",
+        "meridiem",
+        "hour24FromDisplay",
+        "stepHour",
+        "stepMinute",
+        "stepSecond",
+        "nowParts",
+        "isMarkedDay",
+        "isSelectableDay"
+      ],
+      "register": "DATE-TIME",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Pure date/time calculations imported by the web adapter and component; no browser pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled through Expo export in the native shell; no runtime exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled through Expo export in the native shell; no runtime exercised."
+        }
+      }
+    }
+  },
   "platform": {
     "frontend/ui/Button.web.jsx": {
       "kind": "presentation",
@@ -754,6 +817,10 @@
     "frontend/ui/Rail.web.jsx": {
       "register": "RAILS",
       "purpose": "Preserve browser pointer drag, click suppression, keyboard arrows and focus behavior for the shared rail."
+    },
+    "frontend/ui/mountDateTimePicker.jsx": {
+      "register": "DATE-TIME",
+      "purpose": "Mount the shared picker on the browser field and keep the hidden input, htmx events, status autofill, paired dates, copy and clear behavior."
     },
     "frontend/ui/mountRatingChip.jsx": {
       "register": "RATING",

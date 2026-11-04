@@ -140,7 +140,7 @@ class TrackModalViewTests(TestCase):
         """The shared date/time picker should carry the release-date suggestion label."""
         content = response.content.decode()
         self.assertEqual(
-            content.count("suggestionLabel: 'Release Date'"),
+            content.count('"suggestionLabel": "Release Date"'),
             count,
         )
 
@@ -352,7 +352,7 @@ class TrackModalViewTests(TestCase):
         self.assertEqual(content.count("Start Now"), 1)
         self.assertEqual(content.count("Just Finished"), 1)
         self.assertEqual(content.count("Release Date"), 3)
-        self.assertEqual(content.count('x-show="resolvedSuggestionDate()"'), 1)
+        self.assertEqual(content.count('"id": "release-date"'), 1)
         general_field_names = [
             field.name for field in response.context["general_fields"]
         ]
@@ -374,9 +374,8 @@ class TrackModalViewTests(TestCase):
         self.assertContains(response, "Currently visible in Discover.")
         self.assertContains(response, 'hx-post="/discover/toggle-hidden"', html=False)
         self.assertContains(response, 'name="action"', html=False)
-        self.assertContains(response, "data-calendar-component", html=False)
-        self.assertContains(response, "showMonthsView", html=False)
-        self.assertContains(response, "showYearsView", html=False)
+        self.assertContains(response, "data-date-time-picker-root", html=False)
+        self.assertContains(response, '"quickActions"', html=False)
         self.assertNotContains(response, "Custom Metadata")
 
     def test_track_modal_renders_tags_tab_for_tracked_media(self):
@@ -789,8 +788,8 @@ class TrackModalViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        self.assertEqual(content.count("suggestionDate: '2024\\u002D01\\u002D15'"), 2)
-        self.assertEqual(content.count("suggestionRuntimeMinutes: '95'"), 2)
+        self.assertEqual(content.count('"suggestionDate": "2024-01-15"'), 2)
+        self.assertEqual(content.count('"suggestionRuntimeMinutes": "95"'), 2)
         self.assert_release_shortcut_labels(response)
 
     def test_track_modal_close_button_supports_split_button_wrapper(self):
@@ -923,7 +922,7 @@ class TrackModalViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        self.assertEqual(content.count("suggestionDate: '2024\\u002D02\\u002D03'"), 2)
+        self.assertEqual(content.count('"suggestionDate": "2024-02-03"'), 2)
         self.assert_release_shortcut_labels(response)
 
     def test_artist_save_redirects_to_canonical_music_details(self):
@@ -1184,8 +1183,8 @@ class TrackModalViewTests(TestCase):
             "Save this image from the General tab when you add or update the entry.",
         )
         content = response.content.decode()
-        self.assertEqual(content.count("suggestionDate: '2024\\u002D01\\u002D15'"), 2)
-        self.assertEqual(content.count("suggestionRuntimeMinutes: '95'"), 2)
+        self.assertEqual(content.count('"suggestionDate": "2024-01-15"'), 2)
+        self.assertEqual(content.count('"suggestionRuntimeMinutes": "95"'), 2)
         self.assert_release_shortcut_labels(response)
         self.assertNotContains(response, "Save Image")
 

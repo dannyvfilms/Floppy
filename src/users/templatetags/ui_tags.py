@@ -292,3 +292,130 @@ def button(label, tone="primary", size="sm", width="auto", *, submit=False, disa
         "classes": classes,
         "props_id": f"button-{uuid4().hex}",
     })
+
+
+def _extra_value(extra, name):
+    """Read a suggestion extra that may be a mapping or a namespace."""
+    if isinstance(extra, dict):
+        return extra.get(name, "")
+    return getattr(extra, name, "")
+
+
+@register.simple_tag(takes_context=True)
+def date_time_picker(context):
+    """Render the shared date/time field with the existing hidden form value.
+
+    Dynamic suggestion expressions stay on the legacy Alpine include; static
+    consumer configurations are handed to the React presentation explicitly.
+    """
+    from django.utils.translation import get_language, pgettext
+    from django.utils.translation import gettext as _
+
+    field_label = str(context.get("field_label") or _("Date"))
+    mobile_label = str(context.get("mobile_label") or "")
+    copy_from = str(context.get("copy_from") or "")
+    copy_label = (
+        str(context.get("copy_from_label") or copy_from)
+        if copy_from
+        else ""
+    )
+    track_time = bool(context.get("track_time"))
+    use_12_hour = bool(context.get("use_12_hour"))
+
+    raw_suggestion_label = str(context.get("suggestion_label") or "")
+    if raw_suggestion_label == "Release Date":
+        suggestion_label = str(pgettext("date picker shortcut", "Release Date"))
+    elif raw_suggestion_label:
+        suggestion_label = str(_(raw_suggestion_label))
+    else:
+        suggestion_label = ""
+
+    mode = context.get("quick_action_mode")
+    quick_actions = []
+    if mode != "end":
+        quick_actions.append({"id": "start-now", "label": str(pgettext("date picker shortcut", "Start Now"))})
+    if mode != "start":
+        quick_actions.append({"id": "just-finished", "label": str(pgettext("date picker shortcut", "Just Finished"))})
+    if mode != "end" or context.get("end_release_shortcut"):
+        quick_actions.append({
+            "id": "release-date",
+            "label": str(pgettext("date picker shortcut", "Release Date")),
+            "requiresSuggestion": True,
+        })
+
+    extras = []
+    for extra in context.get("suggestion_extras") or []:
+        date = str(_extra_value(extra, "date") or "")
+        label = str(_extra_value(extra, "label") or "")
+        if date and label:
+            extras.append({"date": date, "label": str(_(label))})
+
+    copy_empty_message = ""
+    if copy_from:
+        copy_empty_message = str(_("%(label)s is empty") % {"label": copy_label})
+
+    field_name = str(context.get("field_name") or "")
+    field_value = str(context.get("field_value") or "")
+    props = {
+        "fieldName": field_name,
+        "fieldId": str(context.get("field_id") or ""),
+        "initialValue": field_value,
+        "trackTime": track_time,
+        "use12Hour": use_12_hour,
+        "weekStart": str(context.get("week_start") or "monday"),
+        "locale": str(get_language() or ""),
+        "defaultNow": bool(context.get("default_now")),
+        "suggestionDate": str(context.get("suggestion_date") or ""),
+        "suggestionLabel": suggestion_label,
+        "suggestionRuntimeMinutes": str(context.get("suggestion_runtime_minutes") or ""),
+        "runtimeMinutes": str(context.get("runtime_minutes") or ""),
+        "copyFrom": copy_from,
+        "copyLabel": copy_label,
+        "copyEmptyMessage": copy_empty_message,
+        "quickActions": quick_actions,
+        "suggestionExtras": extras,
+        "labels": {
+            "field": field_label,
+            "mobileLabel": mobile_label,
+            "notSet": str(_("Not set")),
+            "openPicker": str(_("Open %(label)s picker") % {"label": field_label}),
+            "picker": str(_("%(label)s picker") % {"label": field_label}),
+            "quickActions": str(_("%(label)s quick actions") % {"label": field_label}),
+            "clear": str(_("Clear date")),
+            "close": str(_("Close date picker")),
+            "previousMonth": str(_("Previous month")),
+            "nextMonth": str(_("Next month")),
+            "selectMonth": str(_("Select month")),
+            "previousYear": str(_("Previous year")),
+            "nextYear": str(_("Next year")),
+            "selectYear": str(_("Select year")),
+            "previousYears": str(_("Previous years")),
+            "nextYears": str(_("Next years")),
+            "year": str(_("Year")),
+            "back": str(_("Back")),
+            "time": str(_("Time")),
+            "now": str(_("Now")),
+            "none": str(_("None")),
+            "copy": str(_("Copy from %(label)s") % {"label": copy_label}) if copy_from else "",
+            "suggestedDate": str(_("Suggested date")),
+            "hour": str(_("Hour")),
+            "minute": str(_("Minute")),
+            "second": str(_("Second")),
+            "earlierHour": str(_("Earlier hour")),
+            "laterHour": str(_("Later hour")),
+            "earlierMinute": str(_("Earlier minute")),
+            "laterMinute": str(_("Later minute")),
+            "earlierSecond": str(_("Earlier second")),
+            "laterSecond": str(_("Later second")),
+            "activity": str(_("View activity for")),
+        },
+    }
+    props_id = f"date-time-picker-{uuid4().hex}"
+    return render_to_string("app/components/date_time_picker_react.html", {
+        "props": props,
+        "props_id": props_id,
+        "field_name": field_name,
+        "field_id": props["fieldId"],
+        "field_value": field_value,
+        "track_time": track_time,
+    })
