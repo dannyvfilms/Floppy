@@ -528,12 +528,6 @@ def build_history_day(
             ).values("id", "end_date", "album_id", "track_id")
         )
     if music_history:
-        album_ids = {
-            record["album_id"] for record in music_history if record["album_id"]
-        }
-        track_ids = {
-            record["track_id"] for record in music_history if record["track_id"]
-        }
         music_ids = {record["id"] for record in music_history if record["id"]}
 
         if prefetch:
@@ -543,6 +537,28 @@ def build_history_day(
             track_duration_cache = prefetch.track_durations
             album_scores = prefetch.album_scores
         else:
+            music_map = (
+                {
+                    music.id: music
+                    for music in Music.objects.filter(id__in=music_ids, user=user)
+                    .select_related("item", "album", "album__artist", "track")
+                    .defer(*history_deferred_item_fields("item"))
+                }
+                if music_ids
+                else {}
+            )
+
+            # Prefer current Music relations over stale HistoricalMusic snapshots.
+            album_ids = {music.album_id for music in music_map.values() if music.album_id}
+            album_ids.update(
+                record["album_id"] for record in music_history if record["album_id"]
+            )
+
+            track_ids = {music.track_id for music in music_map.values() if music.track_id}
+            track_ids.update(
+                record["track_id"] for record in music_history if record["track_id"]
+            )
+
             album_map = (
                 {
                     album.id: album
@@ -556,18 +572,6 @@ def build_history_day(
             track_map = (
                 {track.id: track for track in Track.objects.filter(id__in=track_ids)}
                 if track_ids
-                else {}
-            )
-            music_map = (
-                {
-                    music.id: music
-                    for music in Music.objects.filter(
-                        id__in=music_ids, user=user
-                    )
-                    .select_related("item", "album", "track")
-                    .defer(*history_deferred_item_fields("item"))
-                }
-                if music_ids
                 else {}
             )
 
@@ -597,17 +601,25 @@ def build_history_day(
                     if tracker["score"] is not None:
                         album_scores[tracker["album_id"]] = tracker["score"]
 
-
         album_groups = {}
         for record in music_history:
             played_at_local = _localize_datetime(record["end_date"])
             if not played_at_local:
                 continue
-            album_id = record["album_id"]
-            track_id = record["track_id"]
+            music_entry = music_map.get(record["id"])
+
+            album_id = (
+                music_entry.album_id
+                if music_entry and music_entry.album_id
+                else record["album_id"]
+            )
+            track_id = (
+                music_entry.track_id
+                if music_entry and music_entry.track_id
+                else record["track_id"]
+            )
             runtime_minutes = 0
 
-            music_entry = music_map.get(record["id"])
             if music_entry:
                 runtime_minutes = _get_music_runtime_minutes(
                     music_entry, track_duration_cache
