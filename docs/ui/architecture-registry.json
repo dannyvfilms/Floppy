@@ -141,9 +141,6 @@
         }
       }
     }
-        }
-      }
-    }
   },
   "legacy": {
     "frontend/providers/AccountConnection.jsx": {
