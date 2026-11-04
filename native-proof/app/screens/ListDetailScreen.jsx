@@ -7,6 +7,14 @@ import { ListMembershipPopup } from '../../../frontend/ui/ListMembership';
 import { ListResults } from '../../../frontend/ui/ListResults';
 import { palette, radius, spacing } from '../theme';
 
+export const surface = {
+  id: 'LIST-DETAIL',
+  status: 'in_progress',
+  title: 'List detail results, membership and bulk actions',
+  where: 'List detail page for manual, smart and source-backed lists',
+  note: 'The results, membership and bulk actions are ported; their platform transport is being connected next.',
+};
+
 const MEMBERSHIPS = {
   1: [
     { id: 'you', name: 'Danny', handle: '@danny', role: 'owner' },
