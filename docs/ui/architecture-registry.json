@@ -100,6 +100,26 @@
         }
       }
     },
+    "frontend/ui/FilterBar.jsx": {
+      "components": [
+        "FilterBar"
+      ],
+      "register": "FILTERS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not exercised in a browser. The browser adapter and Expo web export compile the shared bar; the existing Django/Alpine filter toolbar remains the active web consumer."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared bar through the native shell; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared bar through the native shell; no emulator run was performed."
+        }
+      }
+    },
     "frontend/ui/Button.jsx": {
       "register": "BUTTON",
       "components": [
@@ -755,6 +775,10 @@
     "frontend/ui/mountRatingStars.jsx": {
       "register": "RATING",
       "purpose": "Django/browser integration for the shared star row."
+    },
+    "frontend/ui/mountFilterBar.jsx": {
+      "register": "FILTERS",
+      "purpose": "Django/browser integration for the shared filter bar: mirror the page Alpine filter state, write filter intents into the existing form, and refresh through the existing htmx/URL boundary."
     }
   }
 }

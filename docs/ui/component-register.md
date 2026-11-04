@@ -323,12 +323,12 @@ can inform a focused completion pass.
 ### FILTERS — Filter state, menus and saved views
 
 - Purpose/usage: library/lists, History, Calendar and Home configuration where included.
-- Migration state: existing menus/toolbars remain legacy on library and list surfaces;
-  the adjacent alphabet filter is fully React-owned (ALPHABET).
-- Implementation: `src/templates/app/components/filter_menu.html`, `filter_form.html`, toolbar/range/scripts, `sidebar_saved_views.html`; `src/static/js/libraryFilterState.js`, `savedViews.js`.
-- Contract: normalized rules, clear/default/range/relative/multi-value handling, URL/history/sort, saved-view expand/reorder; refresh after Alpine flush avoids one-click lag.
-- Data: owning view catalogs, shared library query, `src/lists/smart_rules.py`, saved-view endpoints in `src/users/views.py`.
-- Reuse/blockers: strong state reuse; preserve per-surface availability. URL/forms/SortableJS remain web boundaries.
+- Implementation: universal `frontend/ui/FilterBar.jsx` (media type, status, sort, view, range and saved-view sheets); browser intent bridge `frontend/ui/mountFilterBar.jsx`; server toolbar `src/templates/app/components/filter_menu.html`, `filter_form.html`, `filter_toolbar.html`, `filter_range_panel.html`, `filter_toolbar_scripts.html`, `sidebar_saved_views.html`; state `src/static/js/libraryFilterState.js`, `savedViews.js`.
+- Contract: normalized rules, clear/default/relative/multi-value ranges, selected/disabled/busy states, accessible trigger and option labels, responsive sheet layout, sort direction, layout view and saved-view selection. `FilterBar` receives normalized state and options and emits intents; it does not parse URLs or own transport. The browser adapter mirrors the page's Alpine state, writes intents into the existing hidden form and refreshes through `applyFilterChange`, preserving the server fallback and one runtime owner.
+- Data: owning view catalogs, shared library query, authoritative `src/app/media_list_filters.py` parser, `src/lists/smart_rules.py`, saved-view endpoints in `src/users/views.py`. The shared parser is not duplicated in JavaScript.
+- Status: `Partial / coexisting`. `FilterBar` is the native-compatible presentation and is rendered on the Library screen of the native shell; web library/list/History/Calendar toolbars remain the existing server/Alpine implementation. No web consumer was replaced because browser parity for the full menu surface is not yet proven.
+- Reuse/blockers: strong state reuse; preserve per-surface availability. URL/history, forms, focus management, localStorage and SortableJS remain web boundaries. Retirement requires mounting the browser adapter on a surface, proving menu/range/saved-view parity in a browser, and then removing that surface's Alpine panes while retaining the server fallback.
+- Verification: Expo export --platform all compiles the shared bar through the native shell; no simulator/emulator run was performed. The browser adapter and Expo web export compile; no browser interaction pass was performed. `app.tests.test_media_list_filter_parser`, `lists.tests.test_list_detail_filters` and `lists.tests.test_smart_list_semantics` cover the authoritative parser and list filtering.
 - Validation targets: `src/app/tests/test_media_list_filter_parser.py`, `src/lists/tests/test_list_detail_filters.py`, `test_smart_list_semantics.py`.
 
 ### TABLES — Configurable media tables and cells
