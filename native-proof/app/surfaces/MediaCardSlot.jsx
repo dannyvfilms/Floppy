@@ -19,7 +19,7 @@ export const surface = {
   title: 'Media card',
   where: 'Home rails, Discover, Library, Search and List results',
   status: 'in_progress',
-  note: 'Poster, square, landscape and row cards render the shared model with artwork fallback, chips, progress, rating, action overlay, touch/hover reveal and read-only/selectable states. The native action host is wired to explicit callbacks and is being extended with the shared Track and Lists form bodies; Discover writes, bulk selection store and runtime evidence are still outstanding.',
+  note: 'Poster, square, landscape and row cards render the shared model with artwork fallback, chips, progress, rating, action overlay, touch/hover reveal and read-only/selectable states. The native action host now owns the Track and Lists form bodies; this port is connecting those forms to the platform JSON transport and CSRF boundary, then adding the remaining Track tabs. Discover writes, list reorder, bulk selection and runtime evidence remain outstanding.',
 };
 
 const labels = {
