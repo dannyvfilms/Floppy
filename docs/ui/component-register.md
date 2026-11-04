@@ -625,6 +625,8 @@ can inform a focused completion pass.
 
 ### LISTS — Lists, memberships, public profiles and collaboration
 
+- Native hub: `frontend/ui/ListCard.jsx` maps list records onto the shared media card with visibility/smart state in the card status chip and member/role metadata in the body lines; list-specific metadata must not use overlapping artwork corner chips.
+
 - Purpose/usage: list browser/detail/activity/profile/forms and membership popup.
 - Status: `Partial / coexisting`. The lists hub and list detail header are React-owned through the shared `ListCard` and `ListHeader` components. The hub renders list cards with visibility, role, member counts, smart-list indicator, item/completion metadata, search, tags, create/edit entry points and empty/loading states. The list detail header renders the list name, counts, visibility/collaborator badges and actions. The list detail result grid remains server-rendered. The web list pages remain server-owned; the React components are mounted in the native shell.
 - Migration state by surface: manual-list grid/table/tiers and public detail pages consume the fully React-owned ALPHABET sibling. Existing list headers, toolbars, cards/tables and editing controls retain legacy ownership on web; migrate each when edited. The native shell now renders the shared hub and header.
