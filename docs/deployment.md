@@ -182,6 +182,30 @@ stop that is cut short is logged as an unclean shutdown that names the stop
 request. If you wrote your own compose file, add the setting to the `floppy`
 service.
 
+### Read-only container filesystem
+
+To run the image itself as an unprivileged user, add these settings to the
+Floppy service (keep the existing Redis and environment configuration):
+
+```yaml
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,mode=1777
+    volumes:
+      - ./db:/floppy/db
+      - ./backups:/floppy/backups
+```
+
+Create the host directories first and make them writable by UID and GID 1000.
+Any custom database, log, or backup paths also need writable persistent mounts.
+The tmpfs holds transient runtime configuration, sockets, and temporary files;
+size it for uploads and other temporary work. Startup uses the Docker user as
+supplied and cannot repair mount ownership; `PUID` and `PGID` only apply to the
+normal root-started mode. Use an unprivileged HTTP port. The image's collected
+static files are reused; configurations requiring a different collection need a
+writable `/floppy/staticfiles` mount.
+
 `BACKUP_DIR` defaults to `/floppy/backups` inside the container. The
 Settings → Export page shows this path, but it is a container path, not a
 host path — mount it to a host directory or the scheduled CSVs disappear

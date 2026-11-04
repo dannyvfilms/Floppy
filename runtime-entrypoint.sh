@@ -2,11 +2,11 @@
 
 set -eu
 
-RUNTIME_DIR=/run/floppy
+RUNTIME_DIR=/tmp/floppy-runtime
 RUNTIME_PORT_FILE="${RUNTIME_DIR}/server-port"
 NGINX_TEMPLATE=/etc/nginx/nginx.conf.template
-NGINX_IPV4=/etc/nginx/nginx.conf
-NGINX_IPV6=/etc/nginx/nginx.ipv6.conf
+NGINX_IPV4=${RUNTIME_DIR}/nginx.conf
+NGINX_IPV6=${RUNTIME_DIR}/nginx.ipv6.conf
 
 mkdir -p "$RUNTIME_DIR"
 

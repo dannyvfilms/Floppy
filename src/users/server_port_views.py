@@ -21,7 +21,7 @@ from config.server_port import (
     validate_port,
 )
 
-RUNTIME_PORT_PATH = Path("/run/floppy/server-port")
+RUNTIME_PORT_PATH = Path("/tmp/floppy-runtime/server-port")  # noqa: S108 - container-private runtime directory
 
 
 def _runtime_port() -> int | None:

@@ -370,6 +370,18 @@ class EntrypointDataPathTests(SimpleTestCase):
             ),
             encoding="utf-8",
         )
+        if overrides.get("FAKE_UID"):
+            supervisor_config = root / "supervisord.conf"
+            supervisor_config.write_text("[supervisord]\nuser=root\n")
+            script_path.write_text(
+                script_path.read_text(encoding="utf-8")
+                .replace("/etc/supervisord.conf", str(supervisor_config))
+                .replace(
+                    "/tmp/floppy-runtime/supervisord.conf",  # noqa: S108 - matching a script literal
+                    str(root / "runtime-supervisord.conf"),
+                ),
+                encoding="utf-8",
+            )
         script_path.chmod(0o755)
 
         self.write_command(
@@ -403,6 +415,12 @@ exec "$@"
             fake_bin / "sleep",
             """#!/bin/sh
 exec /bin/sleep 0.05
+""",
+        )
+        self.write_command(
+            fake_bin / "id",
+            """#!/bin/sh
+echo "${FAKE_UID:-0}"
 """,
         )
         self.write_command(
@@ -467,6 +485,37 @@ fi
             self.assertIn("SQLite schema is current", result.stderr)
             self.assertNotIn("<migrate>", commands)
             self.assertIn("supervisord", commands)
+
+    def test_unprivileged_start_reports_unwritable_data_mount(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            result, commands = self.run_entrypoint(
+                root,
+                FAKE_UID="1000",
+                FLOPPY_DATA_DIR="/dev/null/blocked",
+                BACKUP_DIR=str(root / "backups"),
+            )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must be writable by container UID 1000", result.stderr)
+        self.assertNotIn("groupmod", commands)
+        self.assertNotIn("supervisord", commands)
+
+    def test_unprivileged_start_preserves_identity_without_ownership_repair(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            result, commands = self.run_entrypoint(
+                root,
+                FAKE_UID="1000",
+                FLOPPY_DATA_DIR=str(root / "db"),
+                BACKUP_DIR=str(root / "backups"),
+                DB_HOST="fixture",
+            )
+            config = (root / "runtime-supervisord.conf").read_text()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("user=", config)
+        self.assertNotIn("chown", commands)
+        self.assertNotIn("groupmod", commands)
+        self.assertIn("supervisord", commands)
 
     def test_operator_decision_runs_offline_recovery_before_admission(self):
         with tempfile.TemporaryDirectory() as temp_dir:
