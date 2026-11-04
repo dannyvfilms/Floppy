@@ -65,7 +65,6 @@ PY
 - `src/templates/app/components/sidebar_navigation_items.html`
 - `src/templates/app/components/sidebar_pin_menu.html`
 - `src/templates/base.html`
-- `frontend/ui/GlobalSearch.jsx`, `frontend/ui/mountGlobalSearch.jsx`, `frontend/ui/global-search.css` (header search form inside `base.html`; suggestions stay a server fragment)
 - `frontend/ui/Sidebar.jsx`, `frontend/ui/mountSidebar.jsx`, `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html`; the onboarding banner stays a server slot)
 - `frontend/ui/Icon.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
 - `frontend/ui/ModalHost.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted from `base.html`; the card hover buttons and the legacy Add-to-lists buttons open it through `floppy-open-modal`; the Add-to-lists body is React in `frontend/ui/ListsForm.jsx` with `modal-forms.css`; the Track body is still the server form, see POPUP-HOST in the register)
@@ -309,6 +308,10 @@ the action layer; `MediaCardView` is the native candidate and does not yet repla
 
 ## SEARCH
 
+- `frontend/ui/GlobalSearch.jsx`
+- `frontend/ui/GlobalSearch.web.jsx`
+- `frontend/ui/mountGlobalSearch.jsx`
+- `frontend/ui/global-search.css`
 - `src/static/js/barcode-scanner.js`
 - `src/static/js/barcode-scanner.selfcheck.mjs`
 - `src/static/js/libraries/zxing-library-0.21.3.min.js`

@@ -137,3 +137,35 @@ class SearchSuggestionsViewTests(TestCase):
         self.client.logout()
         response = self._get("godfa")
         self.assertEqual(response.status_code, 302)
+
+    def test_json_suggestions_return_data_without_server_html(self):
+        """The universal autocomplete gets URLs and text, never rendered HTML."""
+        response = self.client.get(
+            reverse("search_suggestions"),
+            {"q": "godfa", "media_type": MediaTypes.MOVIE.value, "format": "json"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/json")
+        payload = response.json()
+        self.assertEqual([row["title"] for row in payload["suggestions"]], ["The Godfather"])
+        self.assertIn("/details/", payload["suggestions"][0]["url"])
+        self.assertNotIn("<a", response.content.decode())
+
+    def test_json_suggestions_short_query_returns_empty_list(self):
+        response = self.client.get(
+            reverse("search_suggestions"),
+            {"q": "g", "media_type": MediaTypes.MOVIE.value, "format": "json"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"suggestions": []})
+
+    def test_json_suggestions_without_matches_returns_empty_list(self):
+        response = self.client.get(
+            reverse("search_suggestions"),
+            {"q": "nonexistenttitle", "media_type": MediaTypes.MOVIE.value, "format": "json"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"suggestions": []})

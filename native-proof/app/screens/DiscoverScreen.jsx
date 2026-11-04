@@ -6,7 +6,10 @@ import SearchSlot from '../surfaces/SearchSlot';
 
 export default function DiscoverScreen({ navigate }) {
   return <Screen title="Discover" subtitle="Recommendations for the media types you follow">
-    <SearchSlot onOpenSearch={() => navigate('Search')} />
+    <SearchSlot
+      onOpenSearch={params => navigate('Search', params)}
+      onOpenSuggestion={item => navigate('Detail', { item })}
+    />
     <Section title="Recommended for you">
       <MediaCardSlot onOpenDetail={() => navigate('Detail')} />
     </Section>

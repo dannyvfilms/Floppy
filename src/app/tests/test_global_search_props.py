@@ -30,4 +30,12 @@ class GlobalSearchPropsTest(TestCase):
         self.assertEqual(props["query"], "dune")
         self.assertEqual(props["action"], reverse("search"))
         self.assertIn("book", {option["value"] for option in props["mediaTypes"]})
+        self.assertIn("suggestionsUrl", props)
+        for key in (
+            "suggestionsLoading",
+            "suggestionsSeeAll",
+            "suggestionsEmptyAll",
+            "barcodeUnavailable",
+        ):
+            self.assertIn(key, props["labels"])
         self.assertIn('id="global-search"', html)
