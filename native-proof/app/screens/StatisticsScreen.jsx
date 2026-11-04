@@ -14,9 +14,10 @@ export const surface = {
 
 const charts = {
   id: 'STATISTICS-CHARTS',
+  status: 'in_progress',
   title: 'Charts, comparison and taste views',
-  where: 'Activity rhythm, hours charts, taste/talent and featured repeats',
-  note: 'Chart canvases keep the web Chart.js renderer. No native chart renderer is invented here; these sections remain legacy consumers.',
+  where: 'Activity rhythm, activity history, hours, status/rating/completion charts and featured repeats',
+  note: 'Chart canvases keep the web Chart.js renderer while the native chart renderer is being ported to React Native primitives.',
 };
 
 const ranges = [
