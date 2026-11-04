@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Platform, SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
+import { SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
 import { TabBar } from './app/components/TabBar';
 import CalendarScreen from './app/screens/CalendarScreen';
 import DetailScreen from './app/screens/DetailScreen';
@@ -11,6 +11,7 @@ import ListsScreen from './app/screens/ListsScreen';
 import SearchScreen from './app/screens/SearchScreen';
 import SettingsScreen from './app/screens/SettingsScreen';
 import StatisticsScreen from './app/screens/StatisticsScreen';
+import { statusBarInset } from './app/status-bar-inset';
 import { palette } from './app/theme';
 
 const TAB_SCREENS = {
@@ -36,7 +37,7 @@ export default function App() {
   const back = () => setStack(current => current.slice(0, -1));
   const active = stack[stack.length - 1];
   const ActiveScreen = active ? STACK_SCREENS[active.screen] : TAB_SCREENS[tab];
-  return <SafeAreaView style={Platform.OS === 'android' ? [styles.root, { paddingTop: StatusBar.currentHeight || 0 }] : styles.root}>
+  return <SafeAreaView style={[styles.root, { paddingTop: statusBarInset }]}>
     <StatusBar barStyle="light-content" backgroundColor={palette.background} />
     <View style={styles.body}>
       {active
