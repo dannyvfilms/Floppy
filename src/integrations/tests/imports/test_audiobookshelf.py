@@ -34,6 +34,7 @@ from integrations.imports.audiobookshelf import (
 )
 from integrations.imports.helpers import MediaImportError
 from integrations.models import AudiobookshelfAccount
+from lists.models import CustomList
 
 
 def cover_proxy_target(image_url):
@@ -119,6 +120,94 @@ class AudiobookshelfImporterTests(TestCase):
         )
         self.mock_sessions = patcher.start()
         self.addCleanup(patcher.stop)
+        patcher = patch(
+            "integrations.imports.audiobookshelf.AudiobookshelfClient.get_libraries",
+            return_value={"libraries": []},
+        )
+        self.mock_libraries = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _continue_series_list(self):
+        return CustomList.objects.filter(
+            owner=self.user,
+            source="audiobookshelf",
+            source_id="continue-series",
+        ).first()
+
+    @patch(
+        "integrations.imports.audiobookshelf.AudiobookshelfClient"
+        ".get_personalized_shelves",
+    )
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_continue_series_shelf_is_mirrored_into_a_list(
+        self, mock_me, mock_item, mock_shelves,
+    ):
+        """The next books ABS suggests land in a list without being tracked."""
+        mock_me.return_value = {"mediaProgress": []}
+        self.mock_libraries.return_value = {
+            "libraries": [
+                {"id": "lib-books", "mediaType": "book"},
+                {"id": "lib-pods", "mediaType": "podcast"},
+            ],
+        }
+        shelf = {
+            "id": "continue-series",
+            "entities": [{"id": "next-1"}, {"id": "next-2"}],
+        }
+        mock_shelves.return_value = [
+            {"id": "continue-listening", "entities": [{"id": "other"}]},
+            shelf,
+        ]
+        mock_item.side_effect = lambda library_item_id: {
+            "media": {
+                "duration": 3600,
+                "metadata": {
+                    "title": f"Book {library_item_id}",
+                    "seriesName": "Saga",
+                    "seriesSequence": "2",
+                },
+            },
+        }
+
+        AudiobookshelfImporter(self.user).import_data()
+
+        mock_shelves.assert_called_once_with("lib-books")
+        custom_list = self._continue_series_list()
+        self.assertEqual(custom_list.name, "Continue Series")
+        self.assertEqual(
+            sorted(
+                custom_list.items.values_list(
+                    "title", "series_name", "series_position",
+                ),
+            ),
+            [("Book next-1", "Saga", 2.0), ("Book next-2", "Saga", 2.0)],
+        )
+        self.assertFalse(Book.objects.filter(user=self.user).exists())
+
+        # A book that left the shelf leaves the list; a known one is not refetched.
+        mock_item.reset_mock()
+        shelf["entities"] = [{"id": "next-2"}]
+        AudiobookshelfImporter(self.user).import_data()
+
+        mock_item.assert_not_called()
+        self.assertEqual(
+            list(custom_list.items.values_list("title", flat=True)),
+            ["Book next-2"],
+        )
+
+    @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")
+    def test_unreadable_continue_series_shelf_does_not_fail_the_sync(self, mock_me):
+        """The shelf is optional; a failure to read it keeps the sync going."""
+        mock_me.return_value = {"mediaProgress": []}
+        self.mock_libraries.side_effect = AudiobookshelfClientError("nope")
+
+        AudiobookshelfImporter(self.user).import_data()
+
+        self.assertIsNone(self._continue_series_list())
+        self.assertIsNotNone(
+            AudiobookshelfAccount.objects.get(user=self.user).last_sync_at,
+        )
 
     @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_library_item")
     @patch("integrations.imports.audiobookshelf.AudiobookshelfClient.get_me")

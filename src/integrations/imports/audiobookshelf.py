@@ -13,6 +13,7 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 from django.conf import settings
+from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -34,14 +35,22 @@ from integrations import audiobookshelf_cover, connection_health, import_progres
 from integrations.imports.helpers import (
     MediaImportError,
     decrypt_or_raise,
+    retry_on_lock,
     stamp_entry_source,
 )
 from integrations.models import AudiobookshelfAccount
 from integrations.safe_fetch import send_to_self_hosted
+from lists.models import CustomList, CustomListItem
+from lists.smart_rules import sync_smart_lists_for_item
 
 logger = logging.getLogger(__name__)
 
 ENTRY_SOURCE = "audiobookshelf"
+# ABS's own "Continue Series" home shelf: the next unstarted book of each
+# series the user has finished a book of. Floppy only knows played books, so
+# the shelf is mirrored into a list instead of being derived here.
+CONTINUE_SERIES_SHELF_ID = "continue-series"
+CONTINUE_SERIES_LIST_NAME = "Continue Series"
 HTTP_BAD_REQUEST = 400
 LISTENING_SESSION_PAGE_SIZE = 100
 LISTENING_SESSION_MAX_PAGES = 20
@@ -137,6 +146,14 @@ class AudiobookshelfClient:
         if expanded:
             path = f"{path}?expanded=1"
         return self._request(path)
+
+    def get_libraries(self):
+        """Return the libraries the user can access."""
+        return self._request("/api/libraries")
+
+    def get_personalized_shelves(self, library_id: str):
+        """Return a library's home shelves as the ABS home page builds them."""
+        return self._request(f"/api/libraries/{library_id}/personalized")
 
 
 def importer(identifier, user, mode):
@@ -254,6 +271,8 @@ class AudiobookshelfImporter:
                 podcast_processed,
             )
 
+        self._sync_continue_series()
+
         self.account.last_sync_ms = max_seen
         self.account.last_sync_at = timezone.now()
         self.account.connection_broken = False
@@ -276,6 +295,59 @@ class AudiobookshelfImporter:
         item_metadata: dict[str, Any],
     ):
         library_item_id = str(progress_entry.get("libraryItemId"))
+        item = self._upsert_book_item(
+            library_item_id,
+            item_metadata,
+            fallback_duration=progress_entry.get("duration"),
+        )
+        runtime_minutes = item.runtime_minutes
+
+        progress_seconds = int(progress_entry.get("currentTime") or 0)
+        progress_minutes = max(0, progress_seconds // 60)
+        is_finished = self._is_finished_progress_entry(progress_entry)
+
+        if is_finished and progress_minutes == 0 and runtime_minutes:
+            # ABS commonly resets currentTime to 0 after completion; use full runtime
+            # as a fallback so completed books don't show zero progress.
+            progress_minutes = runtime_minutes
+
+        if is_finished:
+            status = Status.COMPLETED.value
+        elif progress_minutes > 0:
+            status = Status.IN_PROGRESS.value
+        else:
+            status = Status.PLANNING.value
+
+        finished_at = self._parse_datetime(progress_entry.get("finishedAt"))
+        started_at = self._parse_datetime(progress_entry.get("startedAt"))
+
+        existing = app.models.Book.objects.filter(user=self.user, item=item).first()
+        defaults = keep_held_status(
+            existing,
+            {
+                "progress": progress_minutes,
+                "status": status,
+                "start_date": started_at,
+                "end_date": finished_at if is_finished else None,
+                "notes": "Format: Audiobook (Audiobookshelf)",
+            },
+            self._parse_datetime(progress_entry.get("lastUpdate")),
+        )
+        media, _ = app.models.Book.objects.update_or_create(
+            user=self.user,
+            item=item,
+            defaults=defaults,
+        )
+        return stamp_entry_source(media, ENTRY_SOURCE)
+
+    def _upsert_book_item(
+        self,
+        library_item_id: str,
+        item_metadata: dict[str, Any],
+        *,
+        fallback_duration=None,
+    ):
+        """Create or refresh the Item for an ABS book, without tracking it."""
         media_id = self._stable_media_id(self.account.base_url, library_item_id)
 
         media_info = item_metadata.get("media") or {}
@@ -381,9 +453,7 @@ class AudiobookshelfImporter:
             title_fields["original_title"] = title_fields.get("title") or title
         if not title_fields.get("localized_title"):
             title_fields["localized_title"] = title_fields.get("title") or title
-        duration_seconds = (
-            media_info.get("duration") or progress_entry.get("duration") or 0
-        )
+        duration_seconds = media_info.get("duration") or fallback_duration or 0
         runtime_minutes = int(duration_seconds // 60) if duration_seconds else None
         metadata_fetched_at = timezone.now()
 
@@ -408,44 +478,7 @@ class AudiobookshelfImporter:
                 "metadata_fetched_at": metadata_fetched_at,
             },
         )
-
-        progress_seconds = int(progress_entry.get("currentTime") or 0)
-        progress_minutes = max(0, progress_seconds // 60)
-        is_finished = self._is_finished_progress_entry(progress_entry)
-
-        if is_finished and progress_minutes == 0 and runtime_minutes:
-            # ABS commonly resets currentTime to 0 after completion; use full runtime
-            # as a fallback so completed books don't show zero progress.
-            progress_minutes = runtime_minutes
-
-        if is_finished:
-            status = Status.COMPLETED.value
-        elif progress_minutes > 0:
-            status = Status.IN_PROGRESS.value
-        else:
-            status = Status.PLANNING.value
-
-        finished_at = self._parse_datetime(progress_entry.get("finishedAt"))
-        started_at = self._parse_datetime(progress_entry.get("startedAt"))
-
-        existing = app.models.Book.objects.filter(user=self.user, item=item).first()
-        defaults = keep_held_status(
-            existing,
-            {
-                "progress": progress_minutes,
-                "status": status,
-                "start_date": started_at,
-                "end_date": finished_at if is_finished else None,
-                "notes": "Format: Audiobook (Audiobookshelf)",
-            },
-            self._parse_datetime(progress_entry.get("lastUpdate")),
-        )
-        media, _ = app.models.Book.objects.update_or_create(
-            user=self.user,
-            item=item,
-            defaults=defaults,
-        )
-        return stamp_entry_source(media, ENTRY_SOURCE)
+        return item
 
     def _is_finished_progress_entry(self, progress_entry: dict[str, Any]) -> bool:
         """Return whether ABS marks a title as completed."""
@@ -648,6 +681,110 @@ class AudiobookshelfImporter:
             for library_item_id, media_id in media_id_map.items()
             if media_id in items_by_media_id
         }
+
+    def _sync_continue_series(self):
+        """Mirror ABS's "Continue Series" shelf into the user's Floppy list.
+
+        The shelf is a convenience on top of the progress import, so a failure
+        to read it is logged and never fails the sync.
+        """
+        try:
+            library_item_ids = self._continue_series_library_item_ids()
+        except (AudiobookshelfClientError, requests.exceptions.RequestException):
+            logger.warning(
+                "Audiobookshelf continue-series shelf could not be read",
+                exc_info=True,
+            )
+            return
+
+        existing_items = app.models.Item.objects.filter(
+            media_id__in=[
+                self._stable_media_id(self.account.base_url, library_item_id)
+                for library_item_id in library_item_ids
+            ],
+            source=Sources.AUDIOBOOKSHELF.value,
+            media_type=MediaTypes.BOOK.value,
+        )
+        items_by_media_id = {item.media_id: item for item in existing_items}
+
+        desired_item_ids = []
+        for library_item_id in library_item_ids:
+            media_id = self._stable_media_id(self.account.base_url, library_item_id)
+            item = items_by_media_id.get(media_id)
+            if item is None:
+                # Only unseen books are fetched, so a shelf that stays the same
+                # costs one request per library, not one per book every sync.
+                item_metadata = self._fetch_library_item(library_item_id)
+                if item_metadata is None:
+                    continue
+                item = self._upsert_book_item(library_item_id, item_metadata)
+            desired_item_ids.append(item.id)
+
+        changed_item_ids = set()
+
+        def _apply():
+            with transaction.atomic():
+                custom_list, _ = CustomList.objects.get_or_create(
+                    owner=self.user,
+                    source=ENTRY_SOURCE,
+                    source_id=CONTINUE_SERIES_SHELF_ID,
+                    defaults={"name": CONTINUE_SERIES_LIST_NAME},
+                )
+                stale = custom_list.customlistitem_set.exclude(
+                    item_id__in=desired_item_ids,
+                )
+                removed_item_ids = set(stale.values_list("item_id", flat=True))
+                stale.delete()
+                existing_item_ids = set(
+                    custom_list.customlistitem_set.values_list("item_id", flat=True),
+                )
+                added_item_ids = [
+                    item_id
+                    for item_id in desired_item_ids
+                    if item_id not in existing_item_ids
+                ]
+                CustomListItem.objects.bulk_create(
+                    CustomListItem(
+                        custom_list=custom_list,
+                        item_id=item_id,
+                        added_by=self.user,
+                    )
+                    for item_id in added_item_ids
+                )
+                changed_item_ids.update(removed_item_ids, added_item_ids)
+
+        retry_on_lock(_apply)
+
+        # bulk_create() and the bulk delete() bypass the smart-list signal.
+        for item_id in changed_item_ids:
+            try:
+                sync_smart_lists_for_item(
+                    owner=self.user,
+                    item=app.models.Item(id=item_id),
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to sync smart lists for item %s after ABS shelf sync",
+                    item_id,
+                )
+
+    def _continue_series_library_item_ids(self):
+        """Return ABS library item ids on every book library's continue shelf."""
+        library_item_ids = []
+        libraries = (self.client.get_libraries() or {}).get("libraries") or []
+        for library in libraries:
+            if library.get("mediaType") != "book" or not library.get("id"):
+                continue
+            shelves = self.client.get_personalized_shelves(library["id"]) or []
+            for shelf in shelves:
+                if shelf.get("id") != CONTINUE_SERIES_SHELF_ID:
+                    continue
+                library_item_ids.extend(
+                    str(entity["id"])
+                    for entity in shelf.get("entities") or []
+                    if entity.get("id")
+                )
+        return list(dict.fromkeys(library_item_ids))
 
     def _fetch_library_item(self, library_item_id: str, *, expanded: bool = False):
         kwargs = {"expanded": True} if expanded else {}
