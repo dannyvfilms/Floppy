@@ -7,6 +7,7 @@ import DiscoverScreen from './app/screens/DiscoverScreen';
 import HistoryScreen from './app/screens/HistoryScreen';
 import HomeScreen from './app/screens/HomeScreen';
 import LibraryScreen from './app/screens/LibraryScreen';
+import ListDetailScreen from './app/screens/ListDetailScreen';
 import ListsScreen from './app/screens/ListsScreen';
 import SearchScreen from './app/screens/SearchScreen';
 import SettingsScreen from './app/screens/SettingsScreen';
@@ -24,6 +25,7 @@ const TAB_SCREENS = {
 
 const STACK_SCREENS = {
   Detail: DetailScreen,
+  ListDetail: ListDetailScreen,
   Lists: ListsScreen,
   History: HistoryScreen,
   Statistics: StatisticsScreen,

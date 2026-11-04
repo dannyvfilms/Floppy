@@ -361,6 +361,46 @@
           "evidence": "Expo export --platform all compiles the picker in the Calendar screen; no emulator run was performed."
         }
       }
+    },
+    "frontend/ui/ListCard.jsx": {
+      "components": [
+        "ListCard"
+      ],
+      "register": "LISTS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not exercised in a browser; the existing Django list grid remains the active web consumer."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export only; the list card has not been exercised on a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export only; the list card has not been exercised on an emulator."
+        }
+      }
+    },
+    "frontend/ui/ListHeader.jsx": {
+      "components": [
+        "ListHeader"
+      ],
+      "register": "LISTS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not exercised in a browser; the existing Django list header remains the active web consumer."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export only; the list header has not been exercised on a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export only; the list header has not been exercised on an emulator."
+        }
+      }
     }
   },
   "legacy": {

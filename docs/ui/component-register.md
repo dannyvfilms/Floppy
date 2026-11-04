@@ -589,13 +589,12 @@ can inform a focused completion pass.
 ### LISTS — Lists, memberships, public profiles and collaboration
 
 - Purpose/usage: list browser/detail/activity/profile/forms and membership popup.
-- Migration state by surface: manual-list grid/table/tiers and public detail pages
-  consume the fully React-owned ALPHABET sibling. Existing list headers, toolbars,
-  cards/tables and editing controls retain legacy ownership; migrate each when edited.
-- Implementation: `src/templates/lists/custom_lists.html`, `list_detail.html`, `user_profile.html`, `list_activity.html`, list grid/form/visibility/membership/table components.
+- Status: `Partial / coexisting`. The lists hub and list detail header are React-owned through the shared `ListCard` and `ListHeader` components. The hub renders list cards with visibility, role, member counts, smart-list indicator, item/completion metadata, search, tags, create/edit entry points and empty/loading states. The list detail header renders the list name, counts, visibility/collaborator badges and actions. The list detail result grid remains server-rendered. The web list pages remain server-owned; the React components are mounted in the native shell.
+- Migration state by surface: manual-list grid/table/tiers and public detail pages consume the fully React-owned ALPHABET sibling. Existing list headers, toolbars, cards/tables and editing controls retain legacy ownership on web; migrate each when edited. The native shell now renders the shared hub and header.
+- Implementation: `frontend/ui/ListCard.jsx` and `frontend/ui/ListHeader.jsx` (shared universal components); `src/templates/lists/custom_lists.html`, `list_detail.html`, `user_profile.html`, `list_activity.html`, list grid/form/visibility/membership/table components remain web-owned.
 - Contract: manual/smart/source-backed distinction, search/tags/roles, public/unlisted/private, membership/pins/feed/export/sync and public read-only rendering.
 - Data: `src/lists/views.py`, browse/action/helper views, models/forms; REST parity separately assessed.
-- Reuse/blockers: list card/editor/membership shared; consume canonical media/filter/table systems; collection ownership is separate.
+- Reuse/blockers: list card/editor/membership shared; consume canonical media/filter/table systems; collection ownership is separate. The native hub/header are runtime-unverified; the web list pages still own their legacy header/toolbar.
 - Validation targets: `src/lists/tests/test_views.py`, `test_forms.py`, `test_rss_feed.py`, `test_csv_export_import.py`.
 
 ### SMART-RULES — Rule editing and results
