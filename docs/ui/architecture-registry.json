@@ -60,6 +60,26 @@
           "evidence": "Pixel 7 Android 15 emulator: four sizes, palette switch, full narrow nowrap label, clickable/focusable accessibility node and activation; TalkBack not exercised."
         }
       }
+    },
+    "frontend/ui/ProgressChanger.jsx": {
+      "components": [
+        "ProgressChanger"
+      ],
+      "register": "PROGRESS",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium on macOS: mounted controls compared with the server fallback in 13 theme states; real progress_edit increase/decrease writes, remount and mobile compact unit rule checked."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Expo Go 58.0.7 on iPhone 15 Pro iOS 17.2 simulator: dark and light palettes, 3/10, 0/10 disabled decrease and 10/10 disabled increase, units and maximum rendered. Touch and VoiceOver not exercised."
+        },
+        "android": {
+          "status": "verified",
+          "evidence": "Expo Go on Pixel 7 AVD (sdk_gphone64_arm64), Android 15 API 35: increase tap changed 3 to 4, disabled plus at 10/10 did not change, light palette rendered; accessibility tree exposed Increase/Decrease labels, values and enabled=false. TalkBack not exercised."
+        }
+      }
     }
   },
   "legacy": {
@@ -527,6 +547,14 @@
     "frontend/ui/BadgeTheme.web.jsx": {
       "register": "BADGE",
       "purpose": "Translate web theme values and links for the shared Badge."
+    },
+    "frontend/ui/ProgressChangerTheme.web.jsx": {
+      "register": "PROGRESS",
+      "purpose": "Resolve document theme, responsive unit visibility and htmx writes for the shared progress controls."
+    },
+    "frontend/ui/mountProgressChanger.jsx": {
+      "register": "PROGRESS",
+      "purpose": "Django/browser integration for the registered surface."
     }
   }
 }

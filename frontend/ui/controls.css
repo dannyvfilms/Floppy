@@ -257,8 +257,7 @@ a.ui-card-link:focus-visible { outline: 2px solid var(--color-accent); outline-o
 [data-filter-chips-root][data-react-mounted] { display: block; min-width: 0; }
 
 /* Spinner: the host adds no box, so the ring sits where the legacy element did. */
-.ui-spinner-host { display: contents; }
-.ui-spinner { display: block; box-sizing: border-box; flex-shrink: 0; border-radius: 9999px;
+.ui-spinner-host { display: contents; }.ui-spinner { display: block; box-sizing: border-box; flex-shrink: 0; border-radius: 9999px;
   border: 0 solid transparent; border-bottom-width: 2px; animation: ui-spinner-spin 1s linear infinite; }
 .ui-spinner-thin { border-bottom-width: 1px; }
 .ui-spinner[data-tone="accent"] { border-bottom-color: var(--color-indigo-500, #6366f1); }
@@ -266,6 +265,8 @@ a.ui-card-link:focus-visible { outline: 2px solid var(--color-accent); outline-o
 .ui-spinner[data-tone="white"] { border-bottom-color: #fff; }
 @keyframes ui-spinner-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .ui-spinner { animation-duration: 3s; } }
+
+.ui-progress-changer-host { display: contents; }
 
 /* BADGE: small rounded label. Sizes and tones reproduce the legacy utility pills. */
 .ui-badge-host { display: contents; }

@@ -5,6 +5,7 @@ from uuid import uuid4
 from django import template
 from django.template.base import token_kwargs
 from django.template.loader import render_to_string
+from django.urls import reverse
 
 register = template.Library()
 
@@ -121,6 +122,53 @@ def _button_attrs(attrs):
         if name in BUTTON_ATTRS or (name.startswith(BUTTON_ATTR_PREFIXES) and not name.startswith("hx-on")):
             kept[name] = str(value)
     return kept
+
+
+@register.simple_tag
+def progress_changer(media, csrf_token=""):
+    """Render the shared quick progress controls with a working server fallback."""
+    from django.utils.translation import gettext as _
+    from django.utils.translation import ngettext
+
+    from app.models import MediaTypes
+    from app.templatetags.app_tags import progress_unit_label, watch_operation_id
+
+    media_type = media.item.media_type
+    percentage = bool(getattr(media, "progress_is_percentage", False))
+    show_units = media_type not in {MediaTypes.GAME.value, MediaTypes.MOVIE.value} and not percentage
+    max_progress = getattr(media, "max_progress", None)
+    unit = ""
+    if show_units and getattr(media, "progress_unit", None) != "minutes":
+        count = max_progress or (getattr(media, "progress", 0) or 0)
+        if media_type == MediaTypes.TV.value:
+            unit = ngettext("Episode", "Episodes", count)
+        else:
+            unit = progress_unit_label(media_type, count)
+    value = getattr(media, "formatted_progress", None) or str(getattr(media, "progress", ""))
+    progress = getattr(media, "progress", 0) or 0
+    formatted_max = getattr(media, "formatted_max_progress", None) or str(max_progress)
+    props = {
+        "value": str(value),
+        "max": str(formatted_max) if max_progress else None,
+        "unit": str(unit),
+        "showMax": bool(max_progress) and show_units,
+        "canDecrease": progress != 0,
+        "canIncrease": max_progress is None or progress != max_progress,
+        "decreaseLabel": str(_("Decrease progress")),
+        "increaseLabel": str(_("Increase progress")),
+        "url": reverse("progress_edit", args=[media_type, media.id]),
+        "target": f"progress-{media_type}-{media.id}",
+        "csrfToken": str(csrf_token or ""),
+        "watchOperationId": (
+            watch_operation_id()
+            if media_type in {MediaTypes.TV.value, MediaTypes.SEASON.value}
+            else ""
+        ),
+    }
+    return render_to_string("users/components/progress_changer.html", {
+        "props": props,
+        "props_id": f"progress-changer-{uuid4().hex}",
+    })
 
 
 @register.simple_tag

@@ -403,6 +403,13 @@ whose proof data adapter is `native-proof/mediaClient.js`; they have no producti
 
 ## PROGRESS
 
+The quick +/- controls are shared React presentation. The detail progress card and
+breakdown modal remain server/Alpine-owned.
+
+- `frontend/ui/ProgressChanger.jsx`
+- `frontend/ui/ProgressChangerTheme.web.jsx`
+- `frontend/ui/mountProgressChanger.jsx`
+- `src/templates/users/components/progress_changer.html`
 - `src/templates/app/components/detail_progress_card_slot.html`
 - `src/templates/app/components/progress_breakdown.html`
 - `src/templates/app/components/progress_changer.html`

@@ -447,11 +447,15 @@ can inform a focused completion pass.
 ### PROGRESS — Adjustment and repeat breakdown
 
 - Purpose/usage: Home/detail progress.
-- Implementation: progress changer/breakdown/detail slot fragments.
-- Contract: +/-/zero disabled state, spinner/live announcement, medium units/max, TV/season breakdown and run-specific cancel/refresh.
-- Data: `src/app/progress_views.py`, progress handler in `src/app/views.py`, domain operations.
-- Reuse/blockers: display/buttons shared; preserve authoritative server progress and operation identity.
-- Validation targets: `src/app/tests/views/test_progress.py`, `test_rewatch.py`.
+- Status: `Partial / coexisting`. The quick +/- controls on Home in-progress cards are React-owned by the shared `ProgressChanger`; the detail progress card, breakdown modal and rewatch controls remain legacy Alpine/HTMX.
+- Implementation: universal `ProgressChanger` in `frontend/ui/ProgressChanger.jsx` takes explicit formatted value, maximum, unit, enabled flags, labels, busy operation and `onAdjust`; `ProgressChangerTheme.web.jsx` resolves document theme tokens, responsive unit visibility and the htmx write, and `mountProgressChanger.jsx` is the browser adapter. `src/templates/users/components/progress_changer.html` keeps the same server fallback markup; `src/templates/app/components/progress_changer.html` delegates to the `{% progress_changer %}` tag in `src/users/templatetags/ui_tags.py`.
+- Contract: +/-/zero disabled state, busy feedback through the shared loading ring, polite live value updates, medium units/maximum (episodes, chapters, pages, issues, plays, minutes) and TV/season watch-operation identity. Progress values, percentage tracking and server operations remain authoritative in Django; the presentation receives only formatted strings and booleans.
+- Data: `src/app/progress_views.py`, `progress_edit` in `src/app/views.py`, `BasicMedia` progress properties and `watch_operation_id`.
+- Consumers: Home in-progress cards through `home_grid.html`, and the `progress_edit` response that replaces `#progress-<media_type>-<id>`. The detail progress card remains the only Home/detail consumer not migrated; it reopens when the breakdown modal and rewatch transaction are ported.
+- Retirement: the legacy button/value markup inside the fallback retires when the island is considered universal; the detail card and breakdown modal retire with their own port. The fallback remains intentionally for progressive enhancement.
+- Native mapping: React Native `Pressable` buttons, `Text` live region and the shared `Spinner`; callers supply concrete palette values and an `onAdjust` callback instead of transport.
+- Verification: `users.tests.test_progress_changer_tag` covers props, units, percentage and disabled states. Chromium on macOS compared the mounted controls with the server fallback in 13 theme states, checked the real `progress_edit` increase/decrease writes and remount, the mobile compact unit rule and component cleanup. iOS 17.2 simulator (Expo Go 58.0.7, iPhone 15 Pro) rendered dark and light palettes, 3/10 episodes, the 0/10 disabled decrease and 10/10 disabled increase states; touch and VoiceOver were not exercised. Android 15 API 35 (Pixel 7 AVD, Expo Go) changed 3 to 4 on an increase tap, kept 10/10 unchanged on the disabled plus, rendered the light palette, and exposed labelled Increase/Decrease buttons with the disabled state and live value text in its accessibility tree; TalkBack was not exercised.
+- Validation targets: `src/app/tests/views/test_progress.py`, `test_rewatch.py`, `users.tests.test_progress_changer_browser` (slow/Playwright).
 
 ### OWNERSHIP — Collection browser and copy editor
 
