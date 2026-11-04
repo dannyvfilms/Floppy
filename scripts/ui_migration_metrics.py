@@ -3,7 +3,7 @@
 
 Run from anywhere: ``python3 scripts/ui_migration_metrics.py`` (add ``--json`` for
 machine-readable output, ``--templates`` to list every island-hosting template, ``--areas`` for the by-area table, ``--reach`` for the pattern counts behind the next-items list, ``--entries`` to list the
-islands each register entry's own templates mount).
+islands each register entry's own templates mount, ``--native`` for the per-file native-reuse classification).
 Standard library only; reads tracked-or-not files under the repository root.
 
 Three independent measures, defined in docs/ui/migration-measurement.md:
@@ -14,6 +14,10 @@ Three independent measures, defined in docs/ui/migration-measurement.md:
    whole template is migrated.
 3. Code size: React lines (``frontend/``) against hand-written template lines and
    first-party JavaScript lines.
+
+A fourth, separate measure answers a different question: how much of that React is
+written so it could also run on iOS and Android (``--native`` lists it per file). It
+is *not* a share of the web migration; see docs/architecture/ui-modernization.md.
 """
 
 from __future__ import annotations
@@ -285,6 +289,67 @@ def reach_counts() -> dict[str, tuple[int, int]]:
     return result
 
 
+# Browser-only APIs: a file that touches these cannot run unchanged on iOS or Android.
+WEB_API_RE = re.compile(
+    r"\b(window\.|document\.|htmx|localStorage|sessionStorage|navigator\.|location\.|"
+    r"addEventListener|querySelector|classList|getBoundingClientRect|IntersectionObserver|"
+    r"ResizeObserver|CustomEvent|FormData\b|fetch\()"
+)
+
+
+def is_web_adapter(path: Path, text: str) -> bool:
+    """Mount points and island loaders are web adapters, unless they draw UI.
+
+    A ``mount*.jsx`` that sets ``className`` is presentation that happens to live in
+    a mount file (the bulk toolbar and dock), so it counts as presentation.
+    """
+    named = path.name.startswith("mount") or path.name in {"web.jsx", "index.js"}
+    return named and "className=" not in text
+
+
+def native_readiness() -> dict[str, dict]:
+    """Classify every React presentation file for native reuse.
+
+    ``rn`` files import ``react-native`` (rendered by react-native-web in the browser).
+    ``dom`` files write HTML tags with CSS class names and cannot run on a phone as is.
+    A file is ``clean`` when it also has no browser-only API reference. Web adapters
+    (mount points that draw nothing, the loader) are listed but left out of the shares.
+    """
+    out = {}
+    for path in sorted((ROOT / "frontend").rglob("*.jsx")):
+        text = path.read_text(encoding="utf-8")
+        rel = str(path.relative_to(ROOT))
+        adapter = is_web_adapter(path, text)
+        uses_rn = "from 'react-native'" in text or 'from "react-native"' in text
+        out[rel] = {
+            "lines": text.count("\n") + 1,
+            "kind": "adapter" if adapter else ("rn" if uses_rn else "dom"),
+            "web_api_refs": len(WEB_API_RE.findall(text)),
+            "class_names": len(re.findall(r"className=", text)),
+        }
+    return out
+
+
+def native_summary() -> dict[str, object]:
+    files = native_readiness()
+    pres = {rel: d for rel, d in files.items() if d["kind"] != "adapter"}
+    rn = {rel: d for rel, d in pres.items() if d["kind"] == "rn"}
+    clean = {rel: d for rel, d in rn.items() if d["web_api_refs"] == 0}
+    lines = sum(d["lines"] for d in pres.values())
+    return {
+        "native_presentation_files": len(pres),
+        "native_presentation_lines": lines,
+        "native_rn_files": len(rn),
+        "native_rn_lines": sum(d["lines"] for d in rn.values()),
+        "native_rn_line_share": round(sum(d["lines"] for d in rn.values()) / lines, 4) if lines else 0,
+        "native_clean_rn_files": len(clean),
+        "native_clean_rn_line_share": round(sum(d["lines"] for d in clean.values()) / lines, 4) if lines else 0,
+        "native_dom_files": len(pres) - len(rn),
+        "native_web_api_refs": sum(d["web_api_refs"] for d in pres.values()),
+        "native_class_name_uses": sum(d["class_names"] for d in pres.values()),
+    }
+
+
 def main() -> int:
     markers = loader_markers()
     if "--reach" in sys.argv:
@@ -294,6 +359,10 @@ def main() -> int:
     if "--areas" in sys.argv:
         for area, (credit, count) in area_scores().items():
             print(f"{area}: {credit:g} of {count} = {credit / count:.0%}")
+        return 0
+    if "--native" in sys.argv:
+        for rel, d in native_readiness().items():
+            print(f"{d['kind']:8} {d['lines']:5} lines  web-API refs {d['web_api_refs']:3}  className {d['class_names']:3}  {rel}")
         return 0
     if "--entries" in sys.argv:
         for entry_id, found in entry_islands(markers).items():
@@ -332,6 +401,7 @@ def main() -> int:
         **button_census(),
         **size,
         "react_share_of_ui_code": round(code_share, 4),
+        **native_summary(),
     }
     if "--json" in sys.argv:
         report["hosting_templates"] = hosts

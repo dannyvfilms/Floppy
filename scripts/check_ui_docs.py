@@ -77,6 +77,9 @@ def path_exists(path: str) -> bool:
     return (ROOT / path).exists()
 
 
+NATIVE_TERMS = {"DOM", "Primitives", "Ready", "Web-only", "n/a"}
+
+
 def main() -> int:
     problems: list[str] = []
     register = REGISTER.read_text()
@@ -94,6 +97,13 @@ def main() -> int:
             problems.append(f"register {entry_id}: Status must start with a vocabulary term in backticks")
         else:
             statuses[entry_id] = term
+            if term in {"Partial / coexisting", "Web Migrated"}:
+                native = re.findall(r"^- Native readiness: `([^`]+)`", body, re.M)
+                if len(native) != 1 or native[0] not in NATIVE_TERMS:
+                    problems.append(
+                        f"register {entry_id}: expected one '- Native readiness:' line starting with "
+                        f"one of {sorted(NATIVE_TERMS)} in backticks, found {native}",
+                    )
 
     for path in sorted(backticked_paths(register)):
         if not path_exists(path):

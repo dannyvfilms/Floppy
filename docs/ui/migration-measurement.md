@@ -70,6 +70,36 @@ cat $(git ls-files 'src/templates/*.html') | wc -l
 cat $(git ls-files 'src/static/js/*.js' | grep -v '/libraries/\|/i18n/') | wc -l
 ```
 
+## 4. Native readiness (a separate measure)
+
+The three measures above say how much of the *web* UI React owns. They do not say how
+much of that React could run on iOS or Android. A component can be 100% React on the web
+and 0% ready for a phone, so this measure is reported on its own and must never be
+added to, or read as part of, the migration percentage.
+
+- **Presentation files:** every `frontend/**/*.jsx` file except web adapters. A web
+  adapter is a `mount*.jsx`, `web.jsx` or loader file that draws nothing (it sets no
+  `className`). A mount file that does draw UI, such as the bulk toolbar and dock,
+  counts as presentation.
+- **`rn` file:** imports `react-native` (rendered by react-native-web in the browser).
+  **`dom` file:** writes HTML tags with CSS classes. The headline of this measure is
+  the share of presentation lines in `rn` files, and the share that are also free of
+  browser-only APIs (`window`, `document`, `htmx`, `localStorage`, `fetch`, event
+  listeners, `querySelector`, `classList`, observers).
+- **Limits:** it counts files, not verified behavior. `rn` means *can* be rendered by
+  react-native-web; only a run on both an iOS and an Android simulator or device
+  makes a component `Ready` (see the verification gate in
+  [ui-modernization](../architecture/ui-modernization.md)). A `rn` file can still be
+  fed by server-rendered props only. The per-entry judgment is the `Native readiness`
+  line in the register.
+
+Run `python3 scripts/ui_migration_metrics.py --native` for the per-file list, or read
+the `native_*` keys of the full report.
+
+Result, 3 Nov 2026: 27 presentation files, 2,864 lines; 4 `rn` files (123 lines,
+**4.3%**), all four free of browser APIs; 23 `dom` files with 216 browser-API
+references and 352 `className` uses; no component verified on iOS or Android.
+
 ## Headline and range
 
 Headline = the register score (measure 1). Range = the lowest to the highest of the
