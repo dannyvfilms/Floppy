@@ -99,18 +99,32 @@ Open `http://localhost:8000`, create your account, then set `REGISTRATION=False`
 
 The examples above set `DEMO_ACCOUNT_ENABLED=False` for clarity; it is also the default. Set `DEMO_ACCOUNT_ENABLED=True` only if you actually want a shared demo account — it provisions a publicly known `demo` / `demodemo` login after migrations.
 
-That's the whole install. `SECRET` is the only variable you truly must set; `TMDB_API` is what makes movie and TV metadata work, and every other API key is optional until you want that media type. Everything else — Postgres, reverse proxies, the full environment variable list, Docker Run, Portainer specifics — follows below.
+That's the whole install. `SECRET` is the only variable you truly must set (see
+[the signing key](#secret-the-signing-key) for what it does and a one-line
+generator); `TMDB_API` is what makes movie and TV metadata work, and every other
+API key is optional until you want that media type. Everything else — Postgres,
+reverse proxies, the full environment variable list, Docker Run, Portainer
+specifics — follows below.
 
 
 ## Backups and restore rehearsal
 
 This is the canonical backup guide; other pages link here.
 
-| Artifact | Where | What it is |
-| --- | --- | --- |
-| Raw SQLite snapshot | `BACKUP_DIR/database/*.sqlite3`, mode 0600 | Verified, atomically published copy of the live database. A same-host recovery point only. SQLite only. |
-| CSV export | `BACKUP_DIR/<username>/floppy_*.csv` | Portable media, ratings and lists. Not accounts, credentials or settings. |
-| PostgreSQL | operator-managed | Floppy does not back up PostgreSQL. Use `pg_dump` or your platform's backup. |
+`BACKUP_DIR` is Floppy's own backup folder, `/floppy/backups` inside the
+container by default. Nothing else writes there. It is not an extra service you
+must start: two background jobs write into it, and the CSV job only runs after a
+user creates a schedule.
+
+| Artifact | Where | What it is | When it is written |
+| --- | --- | --- | --- |
+| Raw SQLite snapshot | `BACKUP_DIR/database/*.sqlite3`, mode 0600 | Verified, atomically published copy of the live database. A same-host recovery point only. SQLite only. | Daily from Celery beat at 02:37 in `TZ` (`DB_SNAPSHOT_HOUR`, `DB_SNAPSHOT_MINUTE`), plus a startup snapshot before pending migrations. Seven completed files are kept by default (`DB_SNAPSHOT_RETENTION_COUNT`). |
+| CSV export | `BACKUP_DIR/<username>/floppy_*.csv` | Portable media, ratings and lists. Not accounts, credentials or settings. | Only when a user schedules exports in **Settings → Export**. Manual exports download in the browser and do not write here. |
+| PostgreSQL | operator-managed | Floppy does not back up PostgreSQL. Use `pg_dump` or your platform's backup. | Never. |
+
+Both schedules need Celery beat, a live worker, a reachable Redis, writable
+storage and enough free space. Beat being due is not proof that a snapshot was
+written: check the file dates and the status files described below.
 
 **Freshness is not liveness.** A running web process, or a dispatched beat
 task, does not mean a backup was published. Floppy records the last
@@ -127,6 +141,29 @@ are removed on the next export.
 **Off-host and encrypted copies.** Copy `BACKUP_DIR` off the machine on your
 own schedule (restic, borg, rclone to storage you control) with encryption
 you hold the key for. Floppy adds no cloud service or automatic restore.
+
+**One directory instead of two.** The shipped examples mount `/floppy/db` and
+`/floppy/backups` separately. That separation is convenient — backups can live
+on a different disk — but it is not required. To keep the database, generated
+key, logs and backups under one host directory, set `BACKUP_DIR` inside the
+mounted data directory:
+
+```yaml
+services:
+  floppy:
+    environment:
+      - BACKUP_DIR=/floppy/db/backups
+    volumes:
+      - ./floppy:/floppy/db
+```
+
+Floppy detects a backup directory nested under a mounted parent, so Settings →
+Export still reports it as reachable. With this layout the host's `./floppy`
+contains `db.sqlite3`, `secret_key`, `logs/`, and `backups/`; copying that one
+folder (with Floppy stopped) captures everything. Do not copy the live SQLite
+file while the container is running — stop Floppy first, or copy a published
+snapshot instead. The default `docker-compose.yml` in this repository and the
+Windows installer use separate folders or volumes, so this is an opt-in layout.
 
 **Rehearse a restore** on a scratch instance, never over production:
 
@@ -487,6 +524,42 @@ problem and reports `redis: ok` once Floppy can reach Redis.
 ## Environment variables
 
 The only universally required variable is `SECRET`. For Docker installs you should also set `REDIS_URL`.
+
+### `SECRET`: the signing key
+
+`SECRET` is Floppy's Django signing key. It is not a login password or a metadata
+API key. Floppy uses it to sign CSRF and password-reset tokens, to derive the key
+that encrypts saved integration credentials, to derive the stable Plex client
+identifier, and to derive HMAC digests for cache and dedupe keys.
+
+Keep it secret, keep it stable, and store the original value with every database
+backup. Changing it invalidates outstanding password-reset links and CSRF tokens
+and makes previously saved integration credentials unreadable, so those
+integrations must be reconnected. It does not encrypt the database itself, but
+restoring a database without its original key loses access to stored
+credentials.
+
+Generate one on Linux or macOS:
+
+```bash
+python3 -c "import secrets; print('SECRET=' + secrets.token_urlsafe(50))"
+# or, without Python:
+echo "SECRET=$(openssl rand -base64 48)"
+```
+
+On Windows PowerShell:
+
+```powershell
+$bytes = New-Object byte[] 48
+[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+"SECRET=" + [Convert]::ToBase64String($bytes)
+```
+
+Put the printed value in `.env` beside your Compose file, or in the stack's
+environment as `SECRET=<value>`. In Docker, Floppy generates and persists a key
+at `FLOPPY_DATA_DIR/secret_key` when `SECRET` is unset, but set it explicitly in
+production, use the same value for every process and restart, and back that file
+up if you rely on the generated one.
 
 **Optional but recommended:**
 
@@ -1009,23 +1082,164 @@ connected. Set `URLS=https://your_domain.com`, make sure the Trakt app lists
 
 ## Reverse proxy setup
 
-If you are behind a reverse proxy (Nginx, Traefik, Caddy, and so on) and see a `403 Forbidden`, add your URL to the environment:
+Floppy expects a reverse proxy to terminate TLS and forward HTTP to the
+published port (`8000` by default). There is no built-in certificate
+management, so a public deployment needs one. The container already runs its
+own Nginx in front of Gunicorn and serves static files; proxy the whole site to
+port 8000 rather than trying to serve Floppy's static files separately.
+
+Set the public origin and tell Floppy that TLS ends at the proxy:
 
 ```yaml
 environment:
   - URLS=https://floppy.mydomain.com
+  - USE_X_FORWARDED_PROTO=True
+  - SESSION_COOKIE_SECURE=True
+  - CSRF_COOKIE_SECURE=True
 ```
 
-Multiple origins can be comma-separated, for example `https://floppy.mydomain.com,https://floppy-alt.mydomain.com`.
+`URLS` adds the origin to `CSRF_TRUSTED_ORIGINS` and its hostname to
+`ALLOWED_HOSTS`; comma-separate additional origins, for example
+`https://floppy.mydomain.com,https://floppy-alt.mydomain.com`. `USE_X_FORWARDED_PROTO`
+is safe only when the proxy overwrites any client-supplied
+`X-Forwarded-Proto`; keep direct access to the application port closed.
+Without it, Django sees plain HTTP behind an HTTPS proxy and can build `http://`
+callback and redirect URLs.
 
-If callback URLs for AniList and other imports come out wrong, add:
+Leave `USE_X_FORWARDED_HOST` and `USE_X_FORWARDED_PORT` off when the proxy
+passes the original `Host` header through (the examples below do). Enable them
+only if the proxy rewrites `Host` or terminates on a different public port, and
+only when it always overwrites the forwarded headers. `USE_X_FORWARDED=True`
+turns on all three and is an alternative for a trusted proxy, not a safer
+default. See [HTTPS and deployment settings](security-hardening.md#https-and-deployment-settings).
+
+### Nginx
+
+```nginx
+server {
+    listen 80;
+    server_name floppy.mydomain.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name floppy.mydomain.com;
+
+    ssl_certificate     /etc/letsencrypt/live/floppy.mydomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/floppy.mydomain.com/privkey.pem;
+
+    # Match the container's own 512 MB limit, so imports and artwork uploads
+    # are not rejected at the outer layer.
+    client_max_body_size 512M;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host  $host;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+}
+```
+
+On Nginx older than 1.25.1, replace `listen 443 ssl;` and `http2 on;` with
+`listen 443 ssl http2;`. If Nginx runs in the same Compose network, proxy to the
+service name instead: `proxy_pass http://floppy:8000;`.
+
+### Caddy
+
+```caddyfile
+floppy.mydomain.com {
+    reverse_proxy 127.0.0.1:8000
+}
+```
+
+Caddy obtains and renews the certificate and sets the forwarded headers itself.
+In the same Compose network, use `reverse_proxy floppy:8000`.
+
+### Traefik
+
+Add these labels under the Floppy service:
 
 ```yaml
-environment:
-  - USE_X_FORWARDED=True
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.floppy.rule=Host(`floppy.mydomain.com`)
+      - traefik.http.routers.floppy.entrypoints=websecure
+      - traefik.http.routers.floppy.tls.certresolver=letsencrypt
+      - traefik.http.services.floppy.loadbalancer.server.port=8000
 ```
 
-> **Note:** With a Cloudflare Tunnel or any HTTPS-terminating proxy, also set `USE_X_FORWARDED_PROTO=True` — otherwise Django cannot detect the correct scheme and CSRF checks will fail.
+Traefik sets `X-Forwarded-*` and keeps the original `Host` when its headers
+middleware is left at the defaults. Put both containers on a network Traefik
+can reach.
+
+### Other proxies
+
+Whatever the proxy, forward the original `Host`, set `X-Forwarded-For` and
+`X-Forwarded-Proto`, allow request bodies up to at least 512 MB, and use a read
+timeout long enough for large imports. Set `URLS` to the external origin. Do
+not publish the Floppy port directly to the internet at the same time; clients
+could bypass the proxy and its TLS.
+
+> **Cloudflare Tunnel note:** the tunnel terminates HTTPS and forwards
+> `X-Forwarded-Proto: https`, so keep `USE_X_FORWARDED_PROTO=True`. If a
+> deployment uses another HTTPS-terminating proxy that strips that header,
+> restore it or Django cannot detect the correct scheme.
+
+### Authelia and other single sign-on
+
+Floppy keeps its own user accounts and data, so there are two separate
+integrations with an identity provider such as Authelia:
+
+- **OIDC sign-in (recommended).** Authelia authenticates the person and Floppy
+  creates or links a normal Floppy account. Each user keeps their own library,
+  ratings, permissions and API tokens. Register Floppy as an OIDC client in
+  Authelia, add this redirect URI:
+
+  ```text
+  https://floppy.mydomain.com/accounts/oidc/authelia/login/callback/
+  ```
+
+  and give the container:
+
+  ```yaml
+  environment:
+    - SOCIAL_PROVIDERS=allauth.socialaccount.providers.openid_connect
+    - 'SOCIALACCOUNT_PROVIDERS={"openid_connect":{"OAUTH_PKCE_ENABLED":true,"APPS":[{"provider_id":"authelia","name":"Authelia","client_id":"floppy","secret":"<client secret>","settings":{"server_url":"https://authelia.mydomain.com/.well-known/openid-configuration"}}]}}'
+  ```
+
+  Restart Floppy and the sign-in page shows **Authelia**. Keep `URLS` and
+  `USE_X_FORWARDED_PROTO` set as above, and leave `REGISTRATION=True` until
+  everyone has signed in once, then turn registration off. The same allauth
+  configuration works for Authentik, Keycloak, Pocket ID and other OpenID
+  Connect providers; change `provider_id`, `name`, and the discovery URL. The
+  wiki's
+  [Admin and Operations](https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#social-authentication)
+  page lists additional provider options.
+
+- **Forward authentication (optional outer gate).** Authelia can sit in front
+  of Floppy and block unauthenticated traffic. This is not Floppy sign-in: the
+  visitor still signs in to Floppy locally or through OIDC, and Floppy still
+  decides what they can see. Forward auth is useful as an extra perimeter for a
+  private instance. Do not pass forward-auth identity headers to Floppy
+  expecting it to create accounts or skip login. Exempt request paths that are
+  not browser sessions; otherwise API clients, media-server webhooks, health
+  checks and the OIDC callback are blocked:
+
+  ```text
+  /api/  /webhook/  /health/  /static/  /accounts/oidc/  /serviceworker.js
+  ```
+
+  Also exempt any public list, RSS or share paths you rely on. If everyone who
+  reaches Floppy is already trusted, turning registration off after creating
+  the accounts is often enough without forward auth.
 
 ## Troubleshooting: I updated and my login is gone
 
