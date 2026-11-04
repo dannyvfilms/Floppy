@@ -1,1 +1,0 @@
-import{c as r}from"./chunk-ZKDTUO3E.js";import"./chunk-B4UVKRTC.js";import"./chunk-RTK7BJ5V.js";import"./chunk-NYLBH4FL.js";import"./chunk-VF7ZRXKE.js";import{a as e,c as t,d as m}from"./chunk-7SN4BCPP.js";import{b as o}from"./chunk-SQE76S5B.js";var i=o(e());var f=o(m());function g(n,p){return t(n,(0,f.jsx)(r,{...p}))}export{g as mountBadge};
