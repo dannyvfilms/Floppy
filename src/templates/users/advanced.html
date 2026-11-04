@@ -1,5 +1,5 @@
 {% extends "users/base.html" %}
-{% load i18n %}
+{% load i18n ui_tags %}
 
 {% load app_tags %}
 {% load socialaccount %}
@@ -82,10 +82,7 @@
                        class="rounded border-gray-600 bg-[var(--color-surface)] text-indigo-600 focus:ring-indigo-500">
                 {% translate "Enable external image caching" %}
               </label>
-              <button type="submit"
-                      class="px-3 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm">
-                {% translate "Save" %}
-              </button>
+              {% button _("Save") "primary" "sm" submit=True %}
             </form>
             <form method="post"
                   action="{% url 'clear_image_cache' %}"

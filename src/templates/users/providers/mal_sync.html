@@ -506,10 +506,7 @@
           <form method="post" action="{% url 'mal_disconnect' %}" class="flex-1">
             {% csrf_token %}
             <input type="hidden" name="next" value="{{ request.get_full_path }}">
-            <button type="submit"
-                    class="w-full px-3 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
-              {% translate "Disconnect" %}
-            </button>
+            {% button _("Disconnect") "danger-solid" "sm" "full" submit=True %}
           </form>
           {% endif %}
         </div>

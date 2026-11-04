@@ -230,15 +230,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not exercised; this port added build and static checks only."
+          "evidence": "Rendered by the web bundle built with npm run build:ui; no browser comparison was run."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Not exercised; this port added build and static checks only."
+          "evidence": "Compiled by the Expo export through the native Button slot; no simulator run was performed."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Not exercised; this port added build and static checks only."
+          "evidence": "Compiled by the Expo export through the native Button slot; no simulator run was performed."
         }
       }
     },
@@ -769,15 +769,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not exercised; this port added build and static checks only."
+          "evidence": "Built into the web bundle and verified by npm run build:ui and npm run check:ui; not compared in a browser."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Not exercised; this port added build and static checks only."
+          "evidence": "Not applicable to this web implementation."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Not exercised; this port added build and static checks only."
+          "evidence": "Not applicable to this web implementation."
         }
       }
     },
@@ -791,15 +791,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not exercised; this port added build and static checks only."
+          "evidence": "Not applicable to this native implementation."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Not exercised; this port added build and static checks only."
+          "evidence": "Compiled by the Expo export through the native Button slot; no simulator run was performed."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Not exercised; this port added build and static checks only."
+          "evidence": "Compiled by the Expo export through the native Button slot; no simulator run was performed."
         }
       }
     },
