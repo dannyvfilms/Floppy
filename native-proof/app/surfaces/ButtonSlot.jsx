@@ -7,8 +7,8 @@ export const surface = {
   id: 'BUTTON',
   title: 'Primary, surface and danger actions',
   where: 'Save bars, Load more, provider actions and confirmations',
-  status: 'ported',
-  note: 'The shared action button renders here with the primary save, surface load-more and solid danger tones.',
+  status: 'in_progress',
+  note: 'The primary save, surface load-more and solid danger tones render here; the remaining hand-written and controls.jsx consumers are still migrating.',
 };
 
 const buttonPalette = {
