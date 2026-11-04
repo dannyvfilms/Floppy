@@ -6,8 +6,8 @@ export const surface = {
   id: 'SEARCH',
   title: 'Global search and suggestions',
   where: 'Header on Home, Discover and Library, and the Search screen',
-  status: 'ported',
-  note: 'The shared search field, media-type menu, suggestion list, barcode entry point and result links render here.',
+  status: 'in_progress',
+  note: 'The shared search field, media-type menu, suggestion list and barcode entry point are ported. Search results, source scope, paging and parent selection are being ported now.',
 };
 
 const mediaTypes = [
