@@ -431,6 +431,11 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
   never claim native compatibility from React syntax or a web build alone.
 
 ## Frontend Tooling
+- React UI bundles are committed. After changes to `frontend/`, the UI build
+  script, or npm dependencies, run `npm ci --ignore-scripts`,
+  `npm run build:ui` and `npm run check:ui`. Commit the regenerated
+  `src/static/ui/` files with the source. Never hand-edit hashed bundles or
+  claim completion if the verification fails.
 - Tailwind CLI install (supported): `brew install tailwindcss`.
 - Alternatives: `npm/pnpm/yarn add -D tailwindcss` and run `npx tailwindcss ...`, or download the standalone Tailwind binary and add it to `PATH`.
 - Note: `README.md` may reference output to `tailwind.css`; the supported committed output path is `src/static/css/main.css`.
