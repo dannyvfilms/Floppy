@@ -5,7 +5,8 @@ export const surface = {
   id: 'BUTTON',
   title: 'Primary, surface and danger actions',
   where: 'Save bars, Load more, provider actions and confirmations',
-  note: 'The shared action button will replace this note and become the focused, busy and disabled action primitive on every screen.',
+  status: 'in_progress',
+  note: 'The shared action button is being migrated to universal presentation and will replace this note with the focused, busy and disabled action primitive.',
 };
 
 export default function ButtonSlot() {
