@@ -37,6 +37,21 @@ the same component. `MediaCardInventoryTest` fails if a surface opts out, the te
 legacy body, or a template draws `media-card` markup that is neither the tag nor listed in its
 `DOCUMENTED_EXCEPTIONS`.
 
+## Native card
+
+`frontend/ui/MediaCardView.jsx` is the universal React Native shell for the same
+`card_model`: poster, square, landscape and row layouts, artwork fallback, status
+and media-type chips, corner chips, progress, title and alternative title,
+subtitle lines, score and the rating affordance, plus read-only and selectable
+states. `native-proof/app/surfaces/MediaCardSlot.jsx` renders it on Home, Discover
+and Library with demo library items.
+
+The web DOM card (`MediaCard.jsx` with `mountMediaCard.jsx`) is still the active
+adapter and keeps web consumers, themes, popups and server writes. The native shell
+does not yet perform the action layer: track, lists and history popups, Discover
+plan/hide, list reorder, touch reveal and bulk select. That is why the component
+register keeps `MEDIA-CARD` at `in_progress` for native.
+
 ## What `media` must be
 
 `media` is the viewer's tracking row for the item, or `None` when they do not track it.

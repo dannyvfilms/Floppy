@@ -21,6 +21,26 @@
         }
       }
     },
+    "frontend/ui/MediaCardView.jsx": {
+      "components": [
+        "MediaCardView"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not rendered by the web bundle; the existing web MediaCard adapter remains active."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export only; no runtime exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export only; no runtime exercised."
+        }
+      }
+    },
     "frontend/ui/Spinner.jsx": {
       "components": [
         "Spinner"

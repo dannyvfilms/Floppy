@@ -1,45 +1,141 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { Badge } from '../../../frontend/ui/Badge';
-import { ProgressChanger } from '../../../frontend/ui/ProgressChanger';
-import { Note } from '../components/Note';
-import { badgePalette, palette, progressPalette, spacing } from '../theme';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { MediaCardView } from '../../../frontend/ui/MediaCardView';
+import { RatingStars } from '../../../frontend/ui/RatingStars';
+import { mediaCardPalette, spacing } from '../theme';
 
 export const surface = {
   id: 'MEDIA-CARD',
   title: 'Media card',
   where: 'Home rails, Discover, Library, Search and List results',
-  note: 'The card artwork, title, status chip, rating and actions will replace this note. The shared badge and quick progress controls already render where the card will put them.',
+  status: 'in_progress',
+  note: 'Poster, square, landscape and row cards render the shared model with artwork fallback, chips, progress, rating and read-only states. The web-only action layer is still being ported.',
 };
 
-export default function MediaCardSlot() {
-  const [progress, setProgress] = useState(3);
-  const [busy, setBusy] = useState(null);
-  function adjust(operation) {
-    setBusy(operation);
-    setProgress(value => Math.max(0, Math.min(10, value + (operation === 'increase' ? 1 : -1))));
-    setTimeout(() => setBusy(null), 500);
-  }
-  return <Note surface={surface}>
-    <View style={styles.cardPreview}>
-      <View style={styles.artwork}><Text style={styles.artworkText}>Artwork</Text></View>
-      <View style={styles.cardBody}>
-        <Text style={styles.cardTitle}>A finished card will show the title here</Text>
-        <View style={styles.badgeRow}><Badge label="In progress" size="sm" tone="indigo" palette={badgePalette} /></View>
-        <ProgressChanger value={String(progress)} max="10" unit="Episodes" showMax
-          canDecrease={progress > 0} canIncrease={progress < 10} busyOperation={busy}
-          decreaseLabel="Decrease progress" increaseLabel="Increase progress" onAdjust={adjust}
-          palette={progressPalette} />
-      </View>
-    </View>
-  </Note>;
+const labels = {
+  altTitle: 'Show alternative title',
+  nextEpisode: 'Jump to next episode',
+  noStatus: 'No Status',
+  rate: 'Rate',
+  close: 'Close',
+};
+
+const demoItems = [
+  {
+    key: 'quiet-orbit',
+    model: {
+      mediaType: 'tv',
+      shape: 'poster',
+      video: false,
+      href: '/demo/the-quiet-orbit',
+      image: { src: 'https://picsum.photos/seed/floppy-orbit/400/600', fallback: '', source: 'primary' },
+      title: 'The Quiet Orbit',
+      altTitle: null,
+      statusChip: { kind: 'status', status: 'In progress', hideOnMobile: false },
+      cornerChips: [{ kind: 'next-episode', text: 'Next ep', href: '/demo/the-quiet-orbit/next' }],
+      titleLinks: [],
+      progressBar: { percent: 62, paused: false },
+      lines: [{ join: 'plain', parts: [{ text: '2024' }, { text: '• 6 / 10 episodes', muted: true }] }],
+      rating: { label: '8.0', value: 8, scaleMax: 10, rateLabel: 'Rate' },
+      ratingEditable: true,
+    },
+  },
+  {
+    key: 'signal-static',
+    model: {
+      mediaType: 'podcast',
+      shape: 'square',
+      video: false,
+      href: '/demo/signal-and-static',
+      image: { src: 'https://picsum.photos/seed/floppy-signal/400/400', fallback: '', source: 'primary' },
+      title: 'Signal & Static',
+      altTitle: 'Signal and Static',
+      statusChip: { kind: 'status', status: 'In progress', hideOnMobile: false },
+      cornerChips: [],
+      titleLinks: [],
+      progressBar: { percent: 38, paused: true },
+      lines: [{ join: 'plain', parts: [{ text: '2023' }, { text: '• 3 / 8 episodes', muted: true }] }],
+      rating: { label: '4.5', value: 4.5, scaleMax: 5, rateLabel: 'Rate' },
+      ratingEditable: true,
+    },
+  },
+  {
+    key: 'home-studio',
+    model: {
+      mediaType: 'video',
+      shape: 'landscape',
+      video: true,
+      href: '/demo/building-a-home-studio',
+      image: { src: 'https://picsum.photos/seed/floppy-studio/800/450', fallback: '', source: 'primary' },
+      title: 'Building a Home Studio',
+      altTitle: null,
+      statusChip: { kind: 'status', status: 'Completed', hideOnMobile: false },
+      cornerChips: [{ kind: 'runtime', text: '12:40' }],
+      titleLinks: [],
+      progressBar: null,
+      lines: [{ join: 'plain', parts: [{ text: '2024' }, { text: '• Watched', muted: true }] }],
+      rating: null,
+      ratingEditable: true,
+    },
+  },
+  {
+    key: 'paper-lanterns',
+    model: {
+      mediaType: 'book',
+      shape: 'poster',
+      video: false,
+      publicView: true,
+      href: '/demo/paper-lanterns',
+      image: { src: null, fallback: '', source: 'primary' },
+      title: 'Paper Lanterns',
+      altTitle: null,
+      statusChip: {
+        kind: 'media-type',
+        type: 'book',
+        style: 'soft',
+        color: '#D946EF',
+        contrast: '#FFFFFF',
+        label: 'Book',
+      },
+      cornerChips: [{ kind: 'collected', text: '4/8 collected', title: '4 of 8 episodes collected' }],
+      titleLinks: [],
+      progressBar: null,
+      lines: [{ join: 'plain', parts: [{ text: '2022' }, { text: '• 0 / 320 pages', muted: true }] }],
+      rating: { label: '6.5', value: 6.5, scaleMax: 10, rateLabel: 'Rate' },
+      ratingEditable: false,
+    },
+  },
+];
+
+export default function MediaCardSlot({ onOpenDetail }) {
+  const { width } = useWindowDimensions();
+  const [ratings, setRatings] = useState({});
+  const columns = width >= 760 ? 4 : width >= 560 ? 3 : 2;
+  const cardWidth = Math.min(180, Math.max(120, (width - 32 - (columns - 1) * spacing.md) / columns));
+
+  return <View style={styles.grid}>
+    {demoItems.map(item => {
+      const value = ratings[item.key];
+      const model = value === undefined ? item.model : {
+        ...item.model,
+        rating: item.model.rating && {
+          ...item.model.rating,
+          value,
+          label: value == null ? null : String(value),
+        },
+      };
+      return <MediaCardView key={item.key} model={model} labels={labels} palette={mediaCardPalette}
+        width={cardWidth} onOpen={onOpenDetail}
+        onOpenLink={onOpenDetail}
+        onRate={score => setRatings(current => ({ ...current, [item.key]: score }))}
+        renderRating={({ value, label, scaleMax, palette, onSelect }) => <RatingStars
+          scaleMax={scaleMax} value={value} label={label} onSelect={onSelect} palette={palette}
+          renderStar={lit => <Text style={[styles.pickerStar, { color: lit ? palette.lit : palette.unlit }]}>★</Text>} />} />;
+    })}
+  </View>;
 }
 
 const styles = StyleSheet.create({
-  cardPreview: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start', marginTop: spacing.xs },
-  artwork: { width: 72, aspectRatio: 2 / 3, borderRadius: 6, backgroundColor: palette.background, alignItems: 'center', justifyContent: 'center' },
-  artworkText: { color: palette.textMuted, fontSize: 10 },
-  cardBody: { flex: 1, minWidth: 0, gap: spacing.sm },
-  cardTitle: { color: palette.textSecondary, fontSize: 13, lineHeight: 18 },
-  badgeRow: { alignSelf: 'flex-start' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  pickerStar: { fontSize: 20 },
 });
