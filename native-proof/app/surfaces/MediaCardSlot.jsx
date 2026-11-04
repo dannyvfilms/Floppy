@@ -9,7 +9,7 @@ export const surface = {
   title: 'Media card',
   where: 'Home rails, Discover, Library, Search and List results',
   status: 'in_progress',
-  note: 'Poster, square, landscape and row cards render the shared model with artwork fallback, chips, progress, rating and read-only states. The web-only action layer is still being ported.',
+  note: 'Poster, square, landscape and row cards render the shared model with artwork fallback, chips, progress, rating and read-only states. The action layer port is in progress.',
 };
 
 const labels = {
