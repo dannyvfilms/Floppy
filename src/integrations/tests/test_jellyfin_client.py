@@ -19,6 +19,26 @@ class JellyfinClientTests(SimpleTestCase):
         """Create a client pointed at a fake server."""
         self.client = JellyfinClient("https://jellyfin.local:8096", "api-key", "user-1")
 
+    @patch("integrations.safe_fetch._send_pinned_self_hosted")
+    @patch("integrations.safe_fetch.socket.getaddrinfo")
+    def test_healthcheck_reuses_validated_address(self, mock_lookup, mock_send):
+        """An actual client call reaches the pinned transport, not Requests."""
+        mock_lookup.return_value = [
+            (0, 0, 0, "", ("192.168.40.20", 0)),
+        ]
+        mock_send.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {"Version": "10.9"},
+        )
+
+        result = self.client.healthcheck()
+
+        self.assertEqual(result, {"Version": "10.9"})
+        mock_lookup.assert_called_once()
+        mock_send.assert_called_once()
+        self.assertEqual(mock_send.call_args.args[0], "GET")
+        self.assertEqual(str(mock_send.call_args.args[2]), "192.168.40.20")
+
     @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
     def test_healthcheck_returns_json(self, mock_request):
         """Healthcheck should hit /System/Info and return the parsed body."""
