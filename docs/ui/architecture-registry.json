@@ -78,11 +78,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Detail screen; not exercised on a simulator."
+          "evidence": "Not exercised; the iOS pass rendered Home only."
         },
         "android": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Detail screen; not exercised on an emulator."
+          "status": "verified",
+          "evidence": "Android 15 Pixel 7 AVD: rendered the shared detail composition on Detail; no action, synopsis or TalkBack interaction; demo images did not load."
         }
       }
     },
@@ -298,11 +298,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiles the native shell that renders the demo search results; no simulator run was performed."
+          "evidence": "Not exercised; the iOS pass rendered Home only."
         },
         "android": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiles the native shell that renders the demo search results; no emulator run was performed."
+          "status": "verified",
+          "evidence": "Android 15 Pixel 7 AVD: rendered the shared results surface on Search; no paging, scope, layout or TalkBack interaction; demo images did not load."
         }
       }
     },
@@ -418,11 +418,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export only; the list card has not been exercised on a simulator."
+          "evidence": "Not exercised; the iOS pass rendered Home only."
         },
         "android": {
-          "status": "unverified",
-          "evidence": "Expo export only; the list card has not been exercised on an emulator."
+          "status": "verified",
+          "evidence": "Android 15 Pixel 7 AVD: rendered the shared list cards in the Lists hub; no search, tag, menu or TalkBack interaction; demo images did not load."
         }
       }
     },
@@ -438,11 +438,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export only; the list header has not been exercised on a simulator."
+          "evidence": "Not exercised; the iOS pass rendered Home only."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export only; the list header has not been exercised on an emulator."
+          "evidence": "Android reached the Lists hub, but the list detail header was not opened or confirmed."
         }
       }
     },
@@ -464,11 +464,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native History screen; day groups, filters, edit/delete actions and states were not exercised on a simulator or device."
+          "evidence": "Not exercised; the iOS pass rendered Home only."
         },
         "android": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native History screen; day groups, filters, edit/delete actions and states were not exercised on an emulator or device."
+          "status": "verified",
+          "evidence": "Android 15 Pixel 7 AVD: rendered the shared History feed; no edit/delete, filter, lazy-day or TalkBack interaction; demo images did not load."
         }
       }
     }

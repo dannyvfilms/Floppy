@@ -165,7 +165,7 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 - `frontend/ui/Button.web.jsx`
 - `frontend/ui/Button.native.jsx`
 - `frontend/ui/mountButton.jsx`
-- `native-proof/app/surfaces/ButtonSlot.jsx` (native placement in the Settings save bar and Library load-more/danger actions; status `in_progress`)
+- `native-proof/app/surfaces/ButtonSlot.jsx` (native placement in the Settings save bar and Library load-more/danger actions; status `ported`)
 - `src/templates/users/components/button.html`
 - `src/users/templatetags/ui_tags.py` (`{% button %}`)
 - Consumers (30 templates, 78 sites): `users/account.html`, `users/cards.html`, `users/_reading_server_modal.html`, `users/components/provider_import.html`, `provider_instance_credentials.html`, `provider_personal_credentials.html`, `tmdb_proxy.html`, `tmdb_rating_sync.html`, `wetrakr_sync.html`, `media_type_provider_modal.html`, `users/providers/integrations/jellyfin.html`, `users/providers/mal_sync.html`, `users/providers/mal_connection.html`, `users/advanced.html`, `users/components/metadata_library_repair.html`, `catalog_grants.html`, `integration_tokens.html`, `sync_state_section.html`, `users/onboarding/media_types.html`, `metadata.html`, `import_status.html`, `components/connect_trakt.html`, `lists/custom_lists.html`, `integrations/oauth_device.html`, `integrations/match_fix.html`, `app/components/collection_modal.html`, `collection_entry_summary.html`, `music_track_notes.html`, `history_day.html`, `fill_track_song.html`.
@@ -324,6 +324,7 @@ in the register.
 - `frontend/ui/mountSearchResults.jsx`
 - `frontend/ui/global-search.css`
 - `native-proof/app/surfaces/SearchSlot.jsx` (native placement on Home, Discover, Library and Search)
+- `native-proof/app/surfaces/SearchResultsSlot.jsx` (native search results on the Search screen)
 - `src/static/js/barcode-scanner.js`
 - `src/static/js/barcode-scanner.selfcheck.mjs`
 - `src/static/js/libraries/zxing-library-0.21.3.min.js`
@@ -374,8 +375,9 @@ Shared React presentation and browser integration:
 - `frontend/ui/DetailComposition.jsx`
 - `frontend/ui/DetailCompositionTheme.web.jsx`
 - `frontend/ui/mountDetailComposition.jsx`
+- `native-proof/app/surfaces/DetailSlot.jsx` (native composition on the Detail screen)
 - `src/templates/app/components/detail_composition.html`
-- `src/users/templatetags/ui_tags.py`
+- `src/users/templatetags/ui_tags.py` (`{% detail_composition %}`)
 
 Server-owned detail composition retained behind the fallback:
 
@@ -560,6 +562,7 @@ modal is shared React presentation on mount, with the server markup as fallback.
 
 - `frontend/ui/HistoryFeed.jsx`
 - `frontend/ui/mountHistoryFeed.jsx`
+- `native-proof/app/screens/HistoryScreen.jsx`
 - `src/static/js/sessionHistory.js`
 - `src/templates/app/components/fill_history.html`
 - `src/templates/app/components/history_card.html`

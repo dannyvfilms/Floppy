@@ -103,20 +103,23 @@ surface that is not ported.
 Finished ports render in place: `ButtonSlot` in the Settings save bar and Library
 actions, `SettingsCardSlot` on Settings, `MediaCardSlot` on Home, Discover and
 Library, `RatingSlot` on Detail, `RailsSlot` on Home and Discover, `SearchSlot` on
-Home, Discover, Library and Search, `FiltersSlot` on Library, `ProgressSlot` on
-Detail, and `DateTimeSlot` on Calendar. The screens use realistic labels and demo
-content only where a finished screen would show it. Unported surfaces remain
-`Note` entries with `surface.id`, `surface.title`, `surface.where` and
-`surface.status`; they are not replaced by fake controls or a gallery. The stack
-screens (Detail, Lists, History, Statistics and Search) are intentionally not tabs:
-Settings rows, a card press or a search suggestion reach them, and pages without
-ported controls (release calendar, lists/tiers, history, statistics, detail
-metadata/children, search results, tables and settings navigation) stay as notes
-until their controls are ported.
+Home, Discover, Library and Search, `SearchResultsSlot` on Search, `FiltersSlot` on
+Library, `ProgressSlot` on Detail, `DateTimeSlot` on Calendar, `ListCard` in the
+Lists hub, `ListHeader` in list detail, `HistoryFeed` on History, and
+`DetailComposition` on Detail. The screens use realistic labels and demo content
+only where a finished screen would show it. Unported surfaces remain `Note` entries
+with `surface.id`, `surface.title`, `surface.where` and `surface.status`; they are
+not replaced by fake controls or a gallery. The stack screens (Detail, Lists,
+History, Statistics and Search) are intentionally not tabs: Settings rows, a card
+press or a search suggestion reach them, and pages without ported controls (release
+calendar, statistics, list detail results and tiers, detail children, tables,
+settings navigation and the parent pickers) stay as notes until their controls are
+ported.
 
 Recorded runtime evidence is deliberately narrow. The Android 15 Pixel 7 AVD
-reached Home, Library, Calendar, Settings and Detail and rendered the shared search,
-filters, media cards, settings card/chip, buttons, rating chip, progress card and
+reached Home, Library, Calendar, Settings, Search results, Lists, History and Detail
+and rendered the shared search, filters, media cards, list cards, history rows,
+detail composition, settings card/chip, buttons, rating chip, progress card and
 date-time field; Android demo images did not load. The iOS 17.2 simulator rendered
 Home with search, cards and rails. Neither pass included VoiceOver/TalkBack or a
 full interaction pass, and each registry entry carries that limit separately.
@@ -134,11 +137,11 @@ runs in CI; the Expo dependency tree currently has five moderate advisories.
 
 The next gate is interaction and accessibility evidence on both iOS and Android
 for each ported component, then the remaining action adapters (media-card popups,
-bulk selection, search results, lists, history and detail). `controls.jsx` remains
-a migration source, not a universal dependency: DOM events, focus, popups, CSS
-variables and server-owned interactions still need platform contracts. Translate
-semantic theme tokens at each platform boundary; never pass browser CSS values,
-HTML or stored credentials as native props.
+bulk selection, list detail results and tiers, parent pickers and statistics).
+`controls.jsx` remains a migration source, not a universal dependency: DOM events,
+focus, popups, CSS variables and server-owned interactions still need platform
+contracts. Translate semantic theme tokens at each platform boundary; never pass
+browser CSS values, HTML or stored credentials as native props.
 
 ### Adding the next port
 
@@ -178,9 +181,10 @@ controls with recorded iOS and Android runtime evidence include Spinner, Badge a
 ProgressChanger. The second wave adds render-only evidence on Android for
 GlobalSearch, FilterBar, MediaCardView, ProgressCard/ProgressBar, DateTimePicker,
 Button, RatingChip and SettingsCard/Chip, and on iOS for GlobalSearch, MediaCardView
-and Rail; MediaCardActions, MediaCardActionHost, ProgressBreakdown and RatingStars
-remain unverified. Render evidence is not an interaction or accessibility pass.
-Native products remain separately scoped.
+and Rail. The third wave adds Android render evidence for SearchResults, ListCard,
+HistoryFeed and DetailComposition; ListHeader, MediaCardActions, MediaCardActionHost,
+ProgressBreakdown and RatingStars remain unverified. Render evidence is not an
+interaction or accessibility pass. Native products remain separately scoped.
 The migration unit is the reusable component, not a provider or page. Use the
 [shared controls](../ui/react-components.md) as the starting point for fields,
 selects, buttons, chips, tabs, dialogs and card layouts; migrate a touched legacy

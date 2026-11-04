@@ -103,14 +103,16 @@ historical heuristics, not native-compatible or verified percentages: imports an
 indirect dependencies do not prove behavior. The registry currently records Spinner,
 Badge and ProgressChanger as exercised on both iOS and Android; GlobalSearch,
 FilterBar, MediaCardView, ProgressBar, ProgressCard, DateTimePicker, Button,
-RatingChip, SettingsCard and Chip as rendered on Android; and GlobalSearch,
-MediaCardView and Rail as rendered on iOS. MediaCardActions, MediaCardActionHost,
+RatingChip, SettingsCard, Chip, SearchResults, ListCard, HistoryFeed and
+DetailComposition as rendered on Android; and GlobalSearch, MediaCardView and Rail
+as rendered on iOS. ListHeader, MediaCardActions, MediaCardActionHost,
 ProgressBreakdown, RatingStars and the web-only candidates remain unverified on the
-relevant runtime. The Android pass reached Home, Library, Calendar, Settings and
-Detail but demo images did not load; the iOS pass rendered Home only. Neither pass
-included VoiceOver/TalkBack or a full interaction pass. The native shell's demo
-placement does not count as runtime evidence. Evidence is reviewed by humans; the
-script cannot prove its truth. An Expo export is never runtime evidence.
+relevant runtime. The Android pass reached Home, Library, Calendar, Settings, Search
+results, Lists, History and Detail but demo images did not load; the iOS pass
+rendered Home only. Neither pass included VoiceOver/TalkBack or a full interaction
+pass. The native shell's demo placement does not count as runtime evidence. Evidence
+is reviewed by humans; the script cannot prove its truth. An Expo export is never
+runtime evidence.
 
 ## Headline and range
 
