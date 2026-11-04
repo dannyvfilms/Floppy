@@ -195,7 +195,10 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
-  lint:
+  release_lint:
+    name: release lint
+    # Keep this check distinct from the required 'lint' job in lint.yml.
+    # A skipped job named 'lint' can otherwise satisfy or obscure the gate.
     if: github.event_name != 'pull_request'
     uses: ./.github/workflows/lint.yml
 
