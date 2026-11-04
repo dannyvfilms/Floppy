@@ -16,7 +16,7 @@ export function MediaCardActionHost({ action, open = false, labels = {}, palette
     <View style={styles.root}>
       <Pressable accessible={false} accessibilityLabel={closeLabel} onPress={onClose}
         style={[StyleSheet.absoluteFill, { backgroundColor: colors.backdrop }]} />
-      <View accessibilityViewIsModal
+      <View accessibilityViewIsModal role="dialog" accessibilityLabel={action?.title || closeLabel}
         style={[styles.dialog, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.header}>
           <Text role="heading" aria-level={2} style={[styles.title, { color: colors.text }]}>{action?.title || ''}</Text>
