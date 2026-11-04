@@ -6,6 +6,7 @@ import { palette, ratingPalette, spacing } from '../theme';
 
 export const surface = {
   id: 'RATING',
+  status: 'in_progress',
   title: 'Score chip and rating popup',
   where: 'Detail pages, episode rows, music tracks and cards',
   note: 'The score chip and its anchored popup will replace this note. The shared star input already renders here.',
