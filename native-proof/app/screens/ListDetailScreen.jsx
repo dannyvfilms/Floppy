@@ -7,14 +7,6 @@ import { ListMembershipPopup } from '../../../frontend/ui/ListMembership';
 import { ListResults } from '../../../frontend/ui/ListResults';
 import { palette, radius, spacing } from '../theme';
 
-const listDetail = {
-  id: 'LIST-DETAIL',
-  title: 'List detail',
-  where: 'List detail page',
-  status: 'in_progress',
-  note: 'The result grid, table, bulk selection and membership/visibility popup are ported. Remaining: the native add-item, recommendation and tier flows, and server transport for membership and bulk actions.',
-};
-
 const MEMBERSHIPS = {
   1: [
     { id: 'you', name: 'Danny', handle: '@danny', role: 'owner' },
