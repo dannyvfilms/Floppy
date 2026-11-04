@@ -1,5 +1,6 @@
 import json
 import os
+import shlex
 import shutil
 import stat
 import subprocess
@@ -376,7 +377,7 @@ class EntrypointDataPathTests(SimpleTestCase):
             fake_bin / "python",
             f"""#!/bin/sh
 if [ "$1" = "-c" ]; then
-    exec {sys.executable} "$@"
+    exec {shlex.quote(sys.executable)} "$@"
 fi
 {{ printf 'python'; printf ' <%s>' "$@"; printf '\n'; }} >> "$FAKE_LOG"
 if [ "$1" = "manage.py" ] && [ "$2" = "sqlite_startup" ] && [ "$#" = "2" ]; then
