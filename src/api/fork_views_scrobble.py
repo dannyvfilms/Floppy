@@ -112,33 +112,28 @@ def _scrobble_request_error(data):
 def _resolve_live_playback_media_id(media_type, ids):
     """Best-effort tmdb id resolution for the Now Playing card.
 
-    Falls back to a single TMDB find() lookup when only imdb/tvdb ids are
+    Falls back to TMDB find() lookups when only imdb/tvdb ids are
     given. Failures are swallowed — the live card is best-effort and must
     never block a client's playback loop.
     """
     if ids.get("tmdb"):
         return str(ids["tmdb"])
 
-    ext_id = ids.get("imdb") or ids.get("tvdb")
-    ext_type = "imdb_id" if ids.get("imdb") else "tvdb_id"
-    if not ext_id:
-        return None
-
-    try:
-        find_response = app.providers.tmdb.find(ext_id, ext_type)
-    except Exception:
-        logger.warning("Scrobble live-playback id resolution failed", exc_info=True)
-        return None
-
-    if media_type == MediaTypes.MOVIE.value:
-        results = find_response.get("movie_results") or []
-        return str(results[0]["id"]) if results else None
-
-    episode_results = find_response.get("tv_episode_results") or []
-    if episode_results:
-        return str(episode_results[0]["show_id"])
-    tv_results = find_response.get("tv_results") or []
-    return str(tv_results[0]["id"]) if tv_results else None
+    for key in ("imdb", "tvdb"):
+        if not ids.get(key):
+            continue
+        try:
+            find_response = app.providers.tmdb.find(ids[key], f"{key}_id")
+        except Exception:
+            logger.warning("Scrobble live-playback id resolution failed", exc_info=True)
+            continue
+        result_key = (
+            "movie_results" if media_type == MediaTypes.MOVIE.value else "tv_results"
+        )
+        results = find_response.get(result_key) or []
+        if results:
+            return str(results[0]["id"])
+    return None
 
 
 def _runtime_seconds(item):

@@ -72,7 +72,7 @@ def resolve_show_tmdb_id(media_type, ids):
     """Resolve an `ids` object to a TMDB movie/show id, or None.
 
     Tries the ids we've already persisted before falling back to a single
-    network `find()` — unlike the live-playback card this feeds a durable
+    network `find()` calls — unlike the live-playback card this feeds a durable
     write, so it must not guess.
     """
     if ids.get("tmdb"):
@@ -92,21 +92,17 @@ def resolve_show_tmdb_id(media_type, ids):
         if known:
             return known.media_id
 
-    ext_id = ids.get("imdb") or ids.get("tvdb")
-    if not ext_id:
-        return None
-    ext_type = "imdb_id" if ids.get("imdb") else "tvdb_id"
-    find_response = app.providers.tmdb.find(ext_id, ext_type)
-
-    if media_type == MediaTypes.MOVIE.value:
-        results = find_response.get("movie_results") or []
-        return str(results[0]["id"]) if results else None
-
-    episode_results = find_response.get("tv_episode_results") or []
-    if episode_results:
-        return str(episode_results[0]["show_id"])
-    tv_results = find_response.get("tv_results") or []
-    return str(tv_results[0]["id"]) if tv_results else None
+    for key in ("imdb", "tvdb"):
+        if not ids.get(key):
+            continue
+        find_response = app.providers.tmdb.find(ids[key], f"{key}_id")
+        result_key = (
+            "movie_results" if media_type == MediaTypes.MOVIE.value else "tv_results"
+        )
+        results = find_response.get(result_key) or []
+        if results:
+            return str(results[0]["id"])
+    return None
 
 
 def _find_existing_item(media_type, tmdb_id, season_number, episode_number):
@@ -762,7 +758,6 @@ class PlaybackProgressView(drf_views.APIView):
             return response
 
         return _execute()
-
 
     def _clear(self, request):
         """Delete the stored position for the identified media."""
