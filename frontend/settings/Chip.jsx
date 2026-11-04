@@ -1,21 +1,23 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-/** Shared chip appearance and interaction. href/hrefAttrs are web-adapter props;
- * native consumers use onPress for navigation/actions.
+/** Shared chip appearance and interaction. Native consumers use onPress for an
+ * action; a web adapter attaches browser link props to the link mode.
  */
-export function Chip({ label, palette, onPress, href, hrefAttrs, accessibilityLabel,
-  accessibilityHint, hasPopup, pressed, pill = false, testID }) {
+export function Chip({ label, palette, onPress, link = false, accessibilityRole,
+  accessibilityLabel, accessibilityHint, hasPopup, pressed, pill = false,
+  testID, ...platformProps }) {
   const frame = [styles.frame, {
     borderColor: palette.badgeBorder, backgroundColor: palette.badgeBackground,
     borderRadius: pill ? 9999 : 4,
   }];
   const text = <Text style={[styles.text, { color: palette.badgeText, fontFamily: palette.fontFamily }]}>{label}</Text>;
-  if (onPress || href) {
-    return <Pressable role={href ? 'link' : 'button'} href={href} hrefAttrs={hrefAttrs}
+  if (onPress || link) {
+    return <Pressable accessibilityRole={accessibilityRole || (link ? 'link' : 'button')}
       accessibilityLabel={accessibilityLabel} accessibilityHint={accessibilityHint}
-      aria-haspopup={hasPopup} aria-pressed={pressed} onPress={onPress} testID={testID}
-      dataSet={{ uiChip: 'true' }}
+      aria-haspopup={hasPopup} aria-pressed={pressed}
+      accessibilityState={pressed === undefined ? undefined : { selected: pressed }}
+      onPress={onPress} testID={testID} {...platformProps}
       style={({ focused, hovered }) => [frame, palette.interactiveStyle,
         focused && palette.focusStyle, hovered && { backgroundColor: palette.badgeHover }]}>
       {text}

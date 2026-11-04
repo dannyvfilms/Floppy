@@ -80,6 +80,46 @@
           "evidence": "Expo Go on Pixel 7 AVD (sdk_gphone64_arm64), Android 15 API 35: increase tap changed 3 to 4, disabled plus at 10/10 did not change, light palette rendered; accessibility tree exposed Increase/Decrease labels, values and enabled=false. TalkBack not exercised."
         }
       }
+    },
+    "frontend/settings/Chip.jsx": {
+      "components": [
+        "Chip"
+      ],
+      "register": "SETTINGS-CARD",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium on macOS: all 42 settings-card browser tests passed after the shared card/chip port, covering card headings, info dialogs, keyboard-only focus rings, link hover/target/popup, provider Connection/Import surfaces, themes and responsive widths."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not exercised; Expo export compile only."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised; Expo export compile only."
+        }
+      }
+    },
+    "frontend/settings/SettingsCard.jsx": {
+      "components": [
+        "SettingsCard"
+      ],
+      "register": "SETTINGS-CARD",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium on macOS: all 42 settings-card browser tests passed after the shared card/chip port, covering card headings, info dialogs, keyboard-only focus rings, link hover/target/popup, provider Connection/Import surfaces, themes and responsive widths."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not exercised; Expo export compile only."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised; Expo export compile only."
+        }
+      }
     }
   },
   "legacy": {
@@ -233,25 +273,6 @@
         "b9f554b3ec1f763b19f7545b356d55809814f2d6e77b3fdf173fbafcdd7a1510",
         "76c8bd9c2985aa307200381ed29c91683181324ff8ec4ff1e8f7744fceed2292",
         "a07027ce899bae25bf52fa467389c1d705d16a75d4febd3371620265d035aecf"
-      ]
-    },
-    "frontend/settings/Chip.jsx": {
-      "sha256": "c9e6e9b9987d1d024426cce9562ad2c11bb0f62362e261cc40fcf3083b6b9d32",
-      "statements": [
-        "ef79f3686fbe6325b9f609b48264595cdec16f24406c71fa5f065514c32339e5",
-        "785005174491e40aa44fc3be2fd080936e0b8eb42d704eb6a10b90f8fac3b393",
-        "e20713690732690f08b3aafdc9c4b2d6f8b5a69d3e1649ceea84382d66b8d0ef",
-        "c5988f604e794650091d24a3743adabc791578fbb6cceac83d50af0f16388193"
-      ]
-    },
-    "frontend/settings/SettingsCard.jsx": {
-      "sha256": "52eb6ce2f7eefccf57d5ab81f72670217107751be41542d7b898f5cbbe17f008",
-      "statements": [
-        "ef79f3686fbe6325b9f609b48264595cdec16f24406c71fa5f065514c32339e5",
-        "98d603ebae13e65a62f3420dba416bc1f59d6d2e6f839dcf6de38626c718aad3",
-        "6a00ecf8adac232a250448b6844532f2686b264e6cc4c7d90331abdb1358fe93",
-        "46d4e6043d73c99191099443c727e30e19ecc8180ae8de3ffdb1ac57f15d34d8",
-        "57cc871aa04ddec70d10bbdb67fc5cd3db2e354d2d4b205d7031aa26f3b213a8"
       ]
     },
     "frontend/settings/root.jsx": {
@@ -484,6 +505,10 @@
     }
   },
   "web_adapters": {
+    "frontend/settings/Chip.web.jsx": {
+      "register": "SETTINGS-CARD",
+      "purpose": "Browser link adapter for the shared chip: supplies anchor navigation, new-tab attributes and the web CSS-variable palette while the shared chip owns hover and focus."
+    },
     "frontend/settings/index.js": {
       "register": "SETTINGS-CARD",
       "purpose": "Django/browser integration for the registered surface."

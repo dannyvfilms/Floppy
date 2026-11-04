@@ -75,7 +75,12 @@ PY
 
 ## SETTINGS-CARD
 
+Shared `SettingsCard` and `Chip` use native presentation. `Chip.web.jsx` is the
+browser link and palette adapter; `controls.jsx` keeps its web wrapper and the
+server fallback classes remain in `settings-card.css`.
+
 - `frontend/settings/Chip.jsx`
+- `frontend/settings/Chip.web.jsx`
 
 - `frontend/settings/SettingsCard.jsx`
 - `frontend/settings/index.js`
