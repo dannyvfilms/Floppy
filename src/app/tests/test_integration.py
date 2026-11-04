@@ -256,9 +256,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             ):
                 card.get_by_title("Add to custom lists").click()
             # The popup lives in the page's one modal host, not inside the card.
-            lists_modal = touch_page.locator("[x-show='listsOpen']")
+            lists_modal = touch_page.locator("[data-floppy-modal]")
             expect(lists_modal).to_be_visible()
-            expect(lists_modal.locator(".list-modal-root")).to_be_visible()
+            expect(lists_modal.locator("[data-lists-form]")).to_be_visible()
         finally:
             touch_context.close()
 
@@ -303,8 +303,8 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             expect(card).to_be_visible()
             card.locator(".media-card-poster").click()
             card.get_by_title("Add to custom lists").click()
-            modal = page.locator("[x-show='listsOpen']")
-            expect(modal.locator(".list-modal-root")).to_be_visible()
+            modal = page.locator("[data-floppy-modal]")
+            expect(modal.locator("[data-lists-form]")).to_be_visible()
             box = modal.bounding_box()
             self.assertIsNotNone(box)
             self.assertLess(abs(box["x"]), 2)
@@ -316,7 +316,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                     "element => element.contains(document.elementFromPoint(innerWidth / 2, innerHeight / 2))"
                 )
             )
-            modal.locator(".list-modal-root button").first.click()
+            modal.locator("[data-lists-form] .ui-modal-close").click()
             expect(modal).not_to_be_visible()
             card.get_by_title("Add to tracker").click()
             track_modal = page.locator("[x-show='trackOpen']")
