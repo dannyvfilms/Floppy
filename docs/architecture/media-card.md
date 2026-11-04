@@ -56,8 +56,10 @@ The web DOM card (`MediaCard.jsx` with `mountMediaCard.jsx`) is still the active
 adapter and keeps web consumers, themes, popups and server writes. The native action
 presentation exists, but native Track and Add-to-lists form bodies, Discover
 plan/hide and list-reorder transports (the drag handle is visual only), the
-bulk-selection store/toolbar and iOS and Android runtime evidence remain. That is why the component register keeps
-`MEDIA-CARD` at `in_progress` for native.
+bulk-selection store/toolbar and a full interaction/accessibility pass remain. The
+iOS 17.2 simulator and Android 15 Pixel 7 AVD rendered the shared cards; Android
+demo images did not load and no action overlay or popup was exercised. That is why
+the component register keeps `MEDIA-CARD` at `in_progress` for native.
 
 ## What `media` must be
 
