@@ -1,0 +1,10 @@
+{% load i18n %}
+<div class="relative flex-1 min-w-0" data-date-time-picker>
+  <input type="hidden"
+         name="{{ field_name }}"
+         id="{{ field_id }}"
+         value="{{ field_value }}"
+         data-track-time="{{ track_time|yesno:'true,false' }}">
+  {{ props|json_script:props_id }}
+  <div data-date-time-picker-root data-props-id="{{ props_id }}" x-ignore></div>
+</div>

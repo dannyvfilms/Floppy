@@ -1,0 +1,212 @@
+
+{% load i18n %}
+{% translate field_label|default:_("Date") as translated_field_label %}
+{% if copy_from %}
+  {% translate copy_from_label|default:copy_from as translated_copy_label %}
+  {% blocktranslate with value_1=translated_copy_label asvar copy_empty_message %}{{ value_1 }} is empty{% endblocktranslate %}
+{% endif %}
+{% if suggestion_label == "Release Date" %}
+  {% translate "Release Date" context "date picker shortcut" as translated_suggestion_label %}
+{% else %}
+  {% translate suggestion_label|default:"" as translated_suggestion_label %}
+{% endif %}
+{# djlint:off #}
+<div class="relative flex-1 min-w-0"
+     x-data="dateTimePicker({
+       fieldName: '{{ field_name }}',
+       trackTime: {{ track_time|yesno:'true,false' }},
+       initialValue: '{{ field_value|default:""|escapejs }}',
+       defaultNow: {{ default_now|yesno:'true,false' }},
+       suggestionLabel: '{{ translated_suggestion_label|escapejs }}',
+       suggestionDate: '{{ suggestion_date|default:""|escapejs }}',
+       suggestionRuntimeMinutes: '{{ suggestion_runtime_minutes|default:""|escapejs }}',
+       runtimeMinutes: '{{ runtime_minutes|default:""|escapejs }}',
+       copyFrom: '{{ copy_from|default:""|escapejs }}',
+       weekStart: '{{ week_start|default:"monday" }}',
+       use12Hour: {{ use_12_hour|yesno:'true,false' }}
+     })"
+     x-init="init"
+     {% if suggestion_date_expr or runtime_minutes_expr %}x-effect="{% if suggestion_date_expr %}suggestionDate = ({{ suggestion_date_expr }}) || '';{% endif %}{% if runtime_minutes_expr %}runtimeMinutes = ({{ runtime_minutes_expr }}) || '';{% endif %}"{% endif %}
+     @keydown.escape.window.capture="onEscape($event)">
+
+  <div class="date-picker-closed-row">
+    <div class="date-picker-closed-field flex-1 min-w-0 flex items-stretch border border-gray-600 rounded-md bg-[var(--color-surface-strong)] focus-within:ring-2 focus-within:ring-[var(--color-accent)]">
+      {% if mobile_label %}
+        <span class="sm:hidden text-xs text-[var(--color-text-muted)] pl-2 pr-1 flex items-center whitespace-nowrap">{% translate mobile_label %}</span>
+      {% endif %}
+      <input type="hidden"
+             name="{{ field_name }}"
+             id="{{ field_id }}"
+             x-ref="hiddenInput"
+             data-track-time="{{ track_time|yesno:'true,false' }}"
+             :value="value">
+      <span class="flex items-center p-2 text-[var(--color-text-muted)]" aria-hidden="true">
+        {% include "app/icons/calendar.svg" with classes="w-4 h-4 shrink-0" %}
+      </span>
+      <button type="button"
+              x-ref="trigger"
+              x-show="hasValue"
+              x-cloak
+              @click="togglePicker()"
+              aria-haspopup="dialog"
+              :aria-expanded="open"
+              aria-label="{% blocktranslate trimmed with value_1=translated_field_label %}{{ value_1 }} picker{% endblocktranslate %}"
+              class="date-picker-trigger flex-1 flex items-center gap-2 p-2 bg-transparent border-0 outline-none text-[var(--color-text)] text-sm min-w-0 text-left cursor-pointer">
+        <span class="truncate" x-text="displayText"></span>
+      </button>
+      <div class="date-picker-quick-actions"
+           x-show="!hasValue"
+           x-cloak
+           role="group"
+           aria-label="{% blocktranslate trimmed with value_1=translated_field_label %}{{ value_1 }} quick actions{% endblocktranslate %}">
+        <span class="date-picker-empty-label">{% translate "Not set" %}</span>
+        {% if quick_action_mode != "end" %}
+          <button type="button"
+                  @click="applyQuickAction('start-now')"
+                  class="date-picker-quick-action">
+            <span class="sm:hidden">{% translate "Starting" context "date picker shortcut" %}</span>
+            <span class="hidden sm:inline">{% translate "Start Now" %}</span>
+          </button>
+        {% endif %}
+        {% if quick_action_mode != "start" %}
+          <button type="button"
+                  @click="applyQuickAction('just-finished')"
+                  class="date-picker-quick-action">
+            <span class="sm:hidden">{% translate "Finished" context "date picker shortcut" %}</span>
+            <span class="hidden sm:inline">{% translate "Just Finished" %}</span>
+          </button>
+        {% endif %}
+        {% if quick_action_mode != "end" or end_release_shortcut %}
+          <button type="button"
+                  @click="applyQuickAction('release-date')"
+                  x-show="resolvedSuggestionDate()"
+                  x-cloak
+                  class="date-picker-quick-action">
+            <span class="sm:hidden">{% translate "Release" context "date picker shortcut" %}</span>
+            <span class="hidden sm:inline">{% translate "Release Date" context "date picker shortcut" %}</span>
+          </button>
+        {% endif %}
+      </div>
+      <button type="button"
+              x-ref="pickerToggle"
+              @click="togglePicker()"
+              aria-haspopup="dialog"
+              :aria-expanded="open"
+              aria-label="{% blocktranslate trimmed with value_1=translated_field_label %}Open {{ value_1 }} picker{% endblocktranslate %}"
+              title="{% blocktranslate trimmed with value_1=translated_field_label %}Open {{ value_1 }} picker{% endblocktranslate %}"
+              class="date-picker-picker-button flex items-center justify-center px-2 text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer">
+        {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
+      </button>
+      <div class="w-px bg-gray-600 self-stretch my-1" x-show="hasValue" x-cloak></div>
+      <button type="button"
+              @click="clear()"
+              x-show="hasValue"
+              x-cloak
+              aria-label="{% translate "Clear date" %}"
+              class="date-picker-clear-button inline-flex items-center text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-muted)] transition-colors px-2 cursor-pointer rounded-r-md">
+        {% include "app/icons/x.svg" with classes="w-3.5 h-3.5" %}
+      </button>
+    </div>
+  </div>
+
+  <template x-if="open">
+    <div class="fixed inset-0 bg-black/40 z-60 sm:hidden" @click="closePicker()" x-transition.opacity></div>
+  </template>
+
+  <div x-show="open"
+       x-cloak
+       x-ref="panel"
+       role="dialog"
+       :aria-modal="isMobile ? 'true' : 'false'"
+       aria-label="{% blocktranslate trimmed with value_1=translated_field_label %}{{ value_1 }} picker{% endblocktranslate %}"
+       @keydown.tab="trapFocus($event)"
+       @mousedown.outside="!isMobile && !$refs.trigger.contains($event.target) && !$refs.pickerToggle.contains($event.target) && closePicker()"
+       :style="popoverStyle"
+       class="date-picker-popover fixed inset-x-0 bottom-0 rounded-t-xl max-h-[85dvh] overflow-y-auto overscroll-contain bg-[var(--color-surface)] border-t border-[var(--color-border)] shadow-2xl p-4 sm:inset-x-auto sm:bottom-auto sm:w-[22rem] sm:rounded-lg sm:border"
+       x-transition:enter="transition ease-out duration-150"
+       x-transition:enter-start="opacity-0 translate-y-2 sm:translate-y-0"
+       x-transition:enter-end="opacity-100 translate-y-0">
+
+    <div class="flex items-center justify-between mb-3 sm:hidden">
+      <span class="text-sm font-medium text-[var(--color-text-secondary)]">{% translate field_label|default:_("Date") %}</span>
+      <button type="button" @click="closePicker()" aria-label="{% translate "Close date picker" %}" class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer p-1">
+        {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+      </button>
+    </div>
+
+    {% include "app/components/calendar.html" with calendar_mode="date-picker" only %}
+
+    {% if track_time %}
+      <div class="mt-3 pt-3 border-t border-[var(--color-border)]">
+        <label class="text-xs text-[var(--color-text-muted)] mb-1 block">{% translate "Time" %}</label>
+        <div class="flex items-center gap-1.5">
+          <select class="date-picker-time-select"
+                  x-ref="hourSelect"
+                  @change="setHour(Number($event.target.value))"
+                  x-effect="const hourValue = String(displayHour()); $nextTick(() => { if ($refs.hourSelect) $refs.hourSelect.value = hourValue })">
+            <template x-for="h in hourOptions()" :key="h">
+              <option :value="h" x-text="formatHourOption(h)"></option>
+            </template>
+          </select>
+          <span class="text-[var(--color-text-muted)]">:</span>
+          <select class="date-picker-time-select"
+                  x-ref="minuteSelect"
+                  @change="setMinute(Number($event.target.value))"
+                  x-effect="const minuteValue = String(minute); $nextTick(() => { if ($refs.minuteSelect) $refs.minuteSelect.value = minuteValue })">
+            <template x-for="m in minuteOptions()" :key="m">
+              <option :value="m" x-text="pad(m)"></option>
+            </template>
+          </select>
+          <span class="text-[var(--color-text-muted)]">:</span>
+          <select class="date-picker-time-select"
+                  x-ref="secondSelect"
+                  @change="setSecond(Number($event.target.value))"
+                  x-effect="const secondValue = String(second); $nextTick(() => { if ($refs.secondSelect) $refs.secondSelect.value = secondValue })">
+            <template x-for="s in minuteOptions()" :key="s">
+              <option :value="s" x-text="pad(s)"></option>
+            </template>
+          </select>
+          <template x-if="use12Hour">
+            <button type="button" @click="toggleMeridiem()" class="date-picker-time-select cursor-pointer" x-text="meridiem()"></button>
+          </template>
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="mt-3 pt-3 border-t border-[var(--color-border)]">
+      <div class="date-picker-common-times-row">
+        <button type="button" @click="applyNow()" class="date-picker-common-time-button">
+          {% include "app/icons/clock.svg" with classes="w-3.5 h-3.5" %}
+          {% translate "Now" %}
+        </button>
+        <button type="button" @click="clear()" class="date-picker-common-time-button">
+          {% include "app/icons/x.svg" with classes="w-3.5 h-3.5" %}
+          {% translate "None" %}
+        </button>
+        <template x-if="resolvedSuggestionDate()">
+          <button type="button" @click="applySuggestion()" class="date-picker-common-time-button">
+            {% include "app/icons/calendar.svg" with classes="w-3.5 h-3.5" %}
+            <span x-text="resolvedSuggestionLabel()"></span>
+          </button>
+        </template>
+        {% for extra in suggestion_extras %}
+          <button type="button" @click="applySuggestion('{{ extra.date|escapejs }}')" class="date-picker-common-time-button">
+            {% include "app/icons/calendar.svg" with classes="w-3.5 h-3.5" %}
+            {% translate extra.label %}
+          </button>
+        {% endfor %}
+        {% if copy_from %}
+        <button type="button"
+                @click="copyFromOther()"
+                :disabled="!copyAvailable"
+                :title="copyAvailable ? '' : '{{ copy_empty_message|escapejs }}'"
+                class="date-picker-common-time-button">
+          {% include "app/icons/copy.svg" with classes="w-3.5 h-3.5" %}
+          {% blocktranslate trimmed with value_1=translated_copy_label %}Copy from {{ value_1 }}{% endblocktranslate %}
+        </button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{# djlint:on #}

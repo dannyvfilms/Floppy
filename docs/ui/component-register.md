@@ -451,11 +451,15 @@ can inform a focused completion pass.
 ### DATE-TIME — Field picker and activity calendar
 
 - Purpose/usage: tracking dates and session history, distinct from release calendar.
-- Implementation: `src/templates/app/components/date_time_picker.html`, `calendar.html`, `src/static/js/dateTimePicker.js`, `calendar.js`.
-- Contract: clear/current/release/copy, optional time, 12/24h/week-start/locale, six-week grid/month/year, marked/selectable days, hidden values/events and Escape.
-- Data: owning field/history configuration and user preferences.
-- Reuse/blockers: calculations shareable; native field/popup, timezone and focus semantics need proof.
-- Validation targets: owning tracking/history tests; comprehensive independent keyboard/timezone coverage unverified.
+- Status: `Partial / coexisting`. The shared React Native `DateTimePicker` owns the field, quick actions, month/year navigation, six-week grid, optional 12/24-hour time, marked/selectable days, hidden value contract and dismiss/focus behavior. The browser adapter mounts it into the static tracking fields and keeps the hidden input, htmx input events, status autofill, paired start/end dates, copy/clear and saved week-start/12-hour preferences. Bulk episode forms whose suggestion dates are Alpine expressions keep the frozen `date_time_picker_legacy.html` include.
+- Shared logic exports: `pad2`, `dateKey`, `parseDateValue`, `normalizeValue`, `formatValue`, `valueFromDate`, `formatDisplayText`, `monthLabel`, `monthShortLabel`, `weekdayLabels`, `monthWeeks`, `yearPage`, `isSameDay`, `isToday`, `displayHour`, `meridiem`, `hour24FromDisplay`, `stepHour`, `stepMinute`, `stepSecond`, `isMarkedDay`, `isSelectableDay`, `nowParts`.
+- Implementation: universal `frontend/ui/DateTimePicker.jsx` with shared calculations in `frontend/ui/dateTime.js`; browser adapter `frontend/ui/mountDateTimePicker.jsx`; host template `src/templates/app/components/date_time_picker_react.html` and the `date_time_picker` tag in `src/users/templatetags/ui_tags.py`. Legacy consumers: `src/templates/app/components/date_time_picker_legacy.html`, `calendar.html`, `src/static/js/dateTimePicker.js`, `calendar.js`, and the activity calendar in `session_history_modal.html`.
+- Contract: clear/current/release/copy, optional time, 12/24h/week-start/locale supplied explicitly, six-week grid/month/year, marked/selectable days, hidden values/events and Escape. The shared presentation uses the value and callbacks only; the browser adapter owns form and Alpine integration.
+- Data: owning field/history configuration, user week-start and time-format preferences, suggestion/runtime values and copy source.
+- Reuse/blockers: the React picker is native placement complete in the proof app; the React web path is limited to static tracking fields until expression-driven suggestions become explicit events. The release calendar grid is `RELEASE-CALENDAR`, not this port. Timezone-specific behavior and the remaining activity-calendar web surface are not verified.
+- Verification: targeted tracking/modal and history tests plus `npm run build:ui`, architecture checks and Expo export. Browser interaction, iOS and Android runtime remain unverified.
+- Validation targets: `src/app/tests/views/test_track_modal.py`, `test_episode_bulk_save.py`, `test_music_bulk_save.py`, `src/app/tests/views/test_history.py`, `src/events/tests/test_views.py`; independent keyboard/timezone coverage unverified.
+- Retirement: `date_time_picker_legacy.html` and `dateTimePicker.js` retire when expression-driven suggestions are passed as data/events (bulk episode forms). The activity calendar retires with its own `HISTORY` port; the release calendar grid with `RELEASE-CALENDAR`.
 
 ### NOTES — Markdown editing and display
 

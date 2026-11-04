@@ -414,10 +414,21 @@ and runtime evidence remain outstanding.
 
 ## DATE-TIME
 
+Shared React Native field and its browser integration:
+
+- `frontend/ui/DateTimePicker.jsx`
+- `frontend/ui/dateTime.js`
+- `frontend/ui/mountDateTimePicker.jsx`
+- `src/templates/app/components/date_time_picker.html`
+- `src/templates/app/components/date_time_picker_react.html`
+- `src/users/templatetags/ui_tags.py`
+
+Legacy consumers retained until expression-driven suggestions and the activity calendar are ported:
+
 - `src/static/js/calendar.js`
 - `src/static/js/dateTimePicker.js`
 - `src/templates/app/components/calendar.html`
-- `src/templates/app/components/date_time_picker.html`
+- `src/templates/app/components/date_time_picker_legacy.html`
 
 ## NOTES
 
