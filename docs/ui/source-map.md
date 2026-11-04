@@ -612,7 +612,7 @@ by `src/static/js/date-range.js`.
 
 ## LISTS
 
-- `frontend/ui/ListCard.jsx` (list hub card; status and member/role metadata stay in the card body, not artwork corner chips)
+- `frontend/ui/ListCard.jsx` (list hub card; visibility/smart and member/role metadata stay in the card body, not artwork corner chips)
 - `frontend/ui/ListHeader.jsx`
 - `native-proof/app/screens/ListsScreen.jsx`
 - `native-proof/app/screens/ListDetailScreen.jsx`
