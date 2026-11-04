@@ -566,6 +566,18 @@ class ProgressBreakdownViewTests(BreakdownTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "1/2")
 
+    def test_breakdown_exposes_native_presentation(self):
+        """The shared presentation receives the same totals and episode states."""
+        response = self.get(reverse("tv_progress_breakdown", args=[self.tv.id]))
+
+        self.assertContains(response, "data-progress-breakdown-root")
+        props = response.context["props"]
+        self.assertEqual(props["model"]["summary"]["watched"], 1)
+        self.assertEqual(props["model"]["summary"]["total"], 2)
+        self.assertEqual(props["model"]["seasons"][0]["number"], 1)
+        self.assertEqual(props["model"]["seasons"][0]["episodes"][0]["state"], "watched")
+        self.assertEqual(props["model"]["seasons"][0]["episodes"][1]["state"], "unwatched")
+
     def test_modal_glows_only_for_an_open_rewatch(self):
         """The rewatch line and glow appear while a pass is open, and vanish after."""
         url = reverse("tv_progress_breakdown", args=[self.tv.id])
