@@ -247,6 +247,8 @@ the action layer; `MediaCardView` is the native candidate and does not yet repla
 
 ## FILTERS
 
+- `frontend/ui/FilterBar.jsx`
+- `frontend/ui/mountFilterBar.jsx`
 - `src/static/js/libraryFilterState.js`
 - `src/static/js/savedViews.js`
 - `src/templates/app/components/filter_form.html`
