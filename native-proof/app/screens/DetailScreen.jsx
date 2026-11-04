@@ -1,17 +1,9 @@
 import React from 'react';
 import { Screen, Section } from '../components/Screen';
-import { Note } from '../components/Note';
+import DetailChildrenSlot from '../surfaces/DetailChildrenSlot';
 import DetailSlot from '../surfaces/DetailSlot';
 import ProgressSlot from '../surfaces/ProgressSlot';
 import RatingSlot from '../surfaces/RatingSlot';
-
-const children = {
-  id: 'CHILDREN',
-  status: 'in_progress',
-  title: 'Seasons, episodes and issue rows',
-  where: 'Show, season, podcast and comic detail pages',
-  note: 'Episode and issue rows, watched controls and history links will replace this note.',
-};
 
 export default function DetailScreen({ params, onBack }) {
   const title = params?.item?.title || 'Detail';
@@ -23,8 +15,8 @@ export default function DetailScreen({ params, onBack }) {
     <Section title="Your progress">
       <ProgressSlot />
     </Section>
-    <Section title="Episodes and issues">
-      <Note surface={children} />
+    <Section title="Seasons, episodes and issues">
+      <DetailChildrenSlot />
     </Section>
   </Screen>;
 }

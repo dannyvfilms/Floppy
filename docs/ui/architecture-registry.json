@@ -86,6 +86,31 @@
         }
       }
     },
+    "frontend/ui/DetailChildren.jsx": {
+      "components": [
+        "DetailChildren",
+        "DetailSeasonList",
+        "DetailSeasonRow",
+        "DetailEpisodeRow",
+        "DetailIssueRow",
+        "DetailHistoryDialog"
+      ],
+      "register": "CHILDREN",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted in the browser; the existing server/HTMX episode, issue and season rows remain the web owner. No browser pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Detail screen; season, episode and issue rows, scores, actions, spoiler reveal, ordering and history dialog were not exercised on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Detail screen; season, episode and issue rows, scores, actions, spoiler reveal, ordering and history dialog were not exercised on a simulator or device."
+        }
+      }
+    },
     "frontend/ui/Spinner.jsx": {
       "components": [
         "Spinner"
