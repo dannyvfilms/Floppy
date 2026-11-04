@@ -471,6 +471,32 @@
           "evidence": "Compiled by the Expo export through the native History screen; day groups, filters, edit/delete actions and states were not exercised on an emulator or device."
         }
       }
+    },
+    "frontend/ui/StatisticsSummary.jsx": {
+      "components": [
+        "StatisticsSummary",
+        "StatisticsToolbar",
+        "StatisticsActivityOverview",
+        "StatisticsHero",
+        "StatisticsHighlights",
+        "StatisticsSummaryCards",
+        "StatisticsState"
+      ],
+      "register": "STATISTICS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The shared summary is not mounted in the browser; the existing server/Alpine Statistics page remains the web owner and no browser interaction pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Statistics screen; the summary, highlights, controls and states were not exercised on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Statistics screen; the summary, highlights, controls and states were not exercised on an emulator or device."
+        }
+      }
     }
   },
   "legacy": {
