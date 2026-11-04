@@ -815,3 +815,12 @@ templates are compatibility/composition sources, not equally active parallel pag
 - Data: addon configuration context/endpoints.
 - Reuse/blockers: assess explicit web-only exception when touched; do not omit or force into native shell assumptions.
 - Validation targets: Stremio integration tests; browser/native parity unverified.
+
+### BULK_ACTIONS — Select Items toolbar, dialogs and job dock
+
+- Purpose/usage: the Select Items bar on media lists, custom lists and smart lists, plus the Update Status confirmation and Add Plays to History for TV and anime. Slow work runs as a job in a docked card, so the page stays usable.
+- Status: `Partial / coexisting`. React owns the toolbar (Library group: Update Status, Add to List, Add to Collection, Apply Tag; History group: Add Plays to History), the two dialogs and the job dock. Selection state, select-mode and the card checkboxes remain legacy Alpine (`bulkSelection.js`, media cards). Browser verification: toolbar, menus, dock review, background progress across navigation and partial failure exercised in the built-in browser. Native iOS and Android: not verified.
+- Implementation: `frontend/ui/mountBulkToolbar.jsx` (per list page, reads `window.__bulkSelection`), `frontend/ui/mountBulkActions.jsx` (mounted once in `base.html` for signed-in users), and the new shared `ActionMenu` in `frontend/ui/controls.jsx` (styles in `controls.css`). Alpine and React talk through window events: `bulk-selection-change`, `bulk-actions-open`, `bulk-actions-done`, `bulk-actions-clear`, `bulk-job-finished`. Add Plays jobs persist in localStorage (`floppy-bulk-jobs`) and resume after navigation or reload.
+- Data/transport: `app/bulk_action_views.py` (`bulk_status_update`, `bulk_show_plays_start`, `bulk_show_plays_status`, quick list/collection/tag endpoints unchanged), `app/services/bulk_show_plays.py`, `bulk_show_plays_task` on the default `celery` queue. Writes go through `apply_bulk_episode_plays`, the single-show Episode Plays path.
+- Retirement: Alpine select-mode and card checkboxes retire when the media card selection is ported (see the media card entry). Legacy toolbar markup is removed.
+- Reuse/blockers: no server fallback for the toolbar; if the island fails to mount, selection works but no actions show. Reopen if a no-JS path is required. Add Plays to History shows on non-TV lists and reports those items as skipped.

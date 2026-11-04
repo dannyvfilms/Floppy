@@ -780,3 +780,14 @@ Shared `Button` lives in `frontend/ui/controls.jsx` and `controls.css` (FORM-CON
 - `src/templates/integrations/stremio_configure.html`
 - `src/templates/app/components/session_history_row.html` (audiobook "stopped at" and book "at page" fragments)
 - `src/templates/app/components/reading_consumption_section.html` (Books "Listening Time" card)
+
+## BULK_ACTIONS
+
+- `frontend/ui/mountBulkActions.jsx`
+- `frontend/ui/mountBulkToolbar.jsx`
+- `src/templates/base.html` (dock mount)
+- `frontend/ui/controls.css`
+- `src/static/js/bulkSelection.js`
+- `src/templates/app/components/bulk_selection_toolbar.html`
+- `src/app/bulk_action_views.py`
+- `src/app/services/bulk_show_plays.py`

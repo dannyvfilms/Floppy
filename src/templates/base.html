@@ -849,5 +849,11 @@
     <script src="{% static 'js/searchAutocomplete.js' %}{% get_static_file_mtime 'js/searchAutocomplete.js' %}"></script>
     <script src="{% static 'js/horizontal-scroll.js' %}{% get_static_file_mtime 'js/horizontal-scroll.js' %}"></script>
     <script src="{% static 'js/keepPopupsOnScreen.js' %}{% get_static_file_mtime 'js/keepPopupsOnScreen.js' %}"></script>
+{% if user.is_authenticated %}
+    <div>
+      <div data-bulk-actions-root data-props-id="bulk-dock-props"></div>
+      <script id="bulk-dock-props" type="application/json">{"statusUrl": "{% url 'bulk_status_update' %}", "playsUrl": "{% url 'bulk_show_plays_start' %}", "playsStatusUrl": "{% url 'bulk_show_plays_status' 'OPERATION' %}", "csrfToken": "{{ csrf_token }}"}</script>
+    </div>
+    {% endif %}
   </body>
 </html>

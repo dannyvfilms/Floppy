@@ -593,6 +593,16 @@ urlpatterns = [
         name="bulk_status_update",
     ),
     path(
+        "bulk/plays",
+        views.bulk_show_plays_start,
+        name="bulk_show_plays_start",
+    ),
+    path(
+        "bulk/plays/<str:operation_id>",
+        views.bulk_show_plays_status,
+        name="bulk_show_plays_status",
+    ),
+    path(
         "bulk/collection",
         views.bulk_collection_quick_add,
         name="bulk_collection_quick_add",

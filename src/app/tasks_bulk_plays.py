@@ -156,6 +156,38 @@ def bulk_episode_plays_task(
     )
 
 
+@shared_task(bind=True, name="Bulk Show Plays")
+def bulk_show_plays_task(
+    self,
+    user_id: int,
+    item_ids: list,
+    options: dict,
+    operation_id: str,
+    dry_run: bool = False,
+):
+    """Preview or add plays for many selected shows (default queue, not interactive)."""
+    from app.services import bulk_show_plays
+
+    user = get_user_model().objects.filter(pk=user_id).first()
+    if user is None:
+        logger.warning("Bulk show plays %s: user %s is gone", operation_id, user_id)
+        return None
+    state = bulk_show_plays.run(
+        user,
+        item_ids,
+        bulk_show_plays.PlayOptions.from_task_kwargs(options),
+        operation_id,
+        dry_run=dry_run,
+    )
+    logger.info(
+        "bulk_show_plays_task_complete operation_id=%s dry_run=%s shows=%d",
+        operation_id,
+        dry_run,
+        state["total"],
+    )
+    return state["done"]
+
+
 @shared_task(bind=True, name="Bulk Music Plays")
 def bulk_music_plays_task(
     self,

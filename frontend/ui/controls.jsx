@@ -68,7 +68,6 @@ export function Button({ children, danger = false, secondary = false, href, tone
     {...props}>{children}</Element>;
 }
 
-
 export function Field({ label, labelHidden = false, icon, id, ...props }) {
   const input = <input id={id} {...props} />;
   return <div className="ui-field"><label className={labelHidden ? 'ui-sr-only' : undefined} htmlFor={id}>{label}</label>
@@ -319,6 +318,45 @@ export function ToggleRow({ id, name, label, help, defaultChecked, tone, disable
   return <div className="ui-toggle-row" data-tone={tone}>
     <label htmlFor={id}><span>{label}</span>{help && <small>{help}</small>}</label>
     <input id={id} type="checkbox" name={name} defaultChecked={defaultChecked} disabled={disabled} />
+  </div>;
+}
+
+// Button that opens a short list of actions. Items are `{ label, onSelect }`, a
+// `{ label, actions: [{ label, onSelect }] }` row with several buttons, or a
+// `{ heading }` line. The consumer owns what each action does.
+// `icon` makes the trigger a square icon button named by `label`; an item with `href` is a real link;
+// an inline action with `selected` is marked pressed.
+export function ActionMenu({ label, items, empty, disabled, align = 'start', secondary = true, icon }) {
+  const [open, setOpen] = useState(false);
+  const host = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = event => { if (!host.current?.contains(event.target)) setOpen(false); };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [open]);
+  const choose = action => { setOpen(false); action(); };
+  const actionable = items.some(item => !item.heading);
+  return <div className={`ui-menu${icon ? ' ui-menu-has-icon' : ''}`} ref={host}
+    onKeyDown={event => { if (event.key === 'Escape') setOpen(false); }}>
+    <Button type="button" secondary={secondary} disabled={disabled} aria-haspopup="menu" aria-expanded={open}
+      onClick={() => setOpen(!open)}
+      {...(icon ? { 'aria-label': label, title: label } : {})}>{icon || label}
+      {!icon && <svg className="ui-menu-chevron" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>}
+    </Button>
+    {open && <div role="menu" className={`ui-menu-list ui-menu-${align}`}>
+      {items.map((item, index) => item.heading ? <p key={index} className="ui-menu-heading">{item.heading}</p>
+        : item.actions ? <div key={index} role="group" aria-label={item.label} className="ui-menu-row">
+          <span>{item.label}</span>
+          <span>{item.actions.map(action => <button key={action.label} type="button" role="menuitem" aria-pressed={action.selected}
+            onClick={() => choose(action.onSelect)}>{action.label}</button>)}</span></div>
+        : item.href ? <a key={index} role="menuitem" className="ui-menu-item" href={item.href}
+          onClick={() => setOpen(false)}>{item.label}</a>
+        : <button key={index} type="button" role="menuitem" className="ui-menu-item"
+          onClick={() => choose(item.onSelect)}>{item.label}</button>)}
+      {!actionable && <p className="ui-menu-heading">{empty}</p>}
+    </div>}
   </div>;
 }
 
