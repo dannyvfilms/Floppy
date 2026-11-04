@@ -621,10 +621,12 @@ stay legacy until a native chart renderer is chosen.
 
 ## RELEASE-CALENDAR
 
+- `frontend/ui/ReleaseCalendar.jsx`
+- `frontend/ui/mountReleaseCalendar.jsx`
+- `native-proof/app/surfaces/CalendarSlot.jsx`
 - `src/templates/events/calendar.html`
 - `src/templates/events/components/calendar_grid.html`
 - `src/templates/events/components/calendar_list.html`
-- `frontend/ui/mountCalendarMenu.jsx`
 
 ## LISTS
 

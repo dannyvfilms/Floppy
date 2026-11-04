@@ -131,8 +131,8 @@ class CalendarViewTests(TestCase):
         # Check response
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "events/calendar.html")
-        self.assertContains(response, 'x-html="filteredGridHtml"')
-        self.assertNotContains(response, 'x-html="filteredListHtml"')
+        self.assertContains(response, 'data-calendar-view="list"')
+        self.assertNotContains(response, 'data-calendar-view="grid"')
 
         # Check that the view called the mocked methods
         mock_update_preference.assert_called_once_with("calendar_layout", "list")
@@ -416,7 +416,11 @@ class CalendarViewTests(TestCase):
         menu = response.context["calendar_menu"]
         self.assertEqual(menu["weekStart"], "monday")
         self.assertEqual(menu["urls"]["preferences"], reverse("update_statistics_preferences"))
-        self.assertContains(response, "data-calendar-menu-root")
+        self.assertContains(response, "data-release-calendar-root")
+        self.assertEqual(
+            response.context["calendar_props"]["menu"]["weekStart"],
+            "monday",
+        )
 
         self.client.post(reverse("update_statistics_preferences"), {"week_start_day": "sunday"})
         with patch("events.models.Event.objects.get_user_events", return_value=[]):
