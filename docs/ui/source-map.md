@@ -312,6 +312,8 @@ the action layer; `MediaCardView` is the native candidate and does not yet repla
 
 ## RAILS
 
+- `frontend/ui/Rail.jsx`
+- `frontend/ui/Rail.web.jsx`
 - `src/static/js/horizontal-scroll.js`
 - `src/static/js/horizontal-scroll.selfcheck.mjs`
 - `src/templates/app/components/_scrollable_row.html`

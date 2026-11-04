@@ -362,10 +362,13 @@ can inform a focused completion pass.
 ### RAILS — Horizontal scrolling and load more
 
 - Purpose/usage: Home, cast, recommendations and related rows.
-- Implementation: `src/templates/app/components/_scrollable_row.html`, `_scrollable_row_js.html`, `src/static/js/horizontal-scroll.js`.
-- Contract: heading/collapse state, arrows/drag/touch, suppress post-drag clicks, bounded load-more, stable art anchors and listener cleanup.
-- Data: row descriptors/fragment URL/item template from owning view.
-- Reuse/blockers: row/item values shared; scrolling/observer/pointer/persistence adapters required.
+- Implementation: `frontend/ui/Rail.jsx` is the universal rail and `frontend/ui/Rail.web.jsx` is its browser behavior adapter. `src/templates/app/components/_scrollable_row.html`, `_scrollable_row_js.html` and `src/static/js/horizontal-scroll.js` remain the web implementation. The native shell renders demo rails in `native-proof/app/surfaces/RailsSlot.jsx`.
+- Contract: heading/collapse state, arrows/drag/touch, suppress post-drag clicks, bounded load-more, stable art anchors and listener cleanup. `Rail` takes `items`, `renderItem(item, index)`, a stable `itemWidth`, `onLoadMore`/`hasMore`/`loadingMore`, heading and accessibility labels; the browser adapter keeps pointer drag, click suppression, keyboard arrows and focus behavior.
+- Data: row descriptors/fragment URL/item template from owning view. The web path still swaps server fragments through HTMX; the shared rail accepts already-resolved items and a renderer.
+- Reuse/blockers: row/item values shared; scrolling/observer/pointer/persistence adapters required. The media card is deliberately not ported, so the rail is proven only with demo item renderers.
+- Status: `Partial / coexisting`. The universal `Rail` and browser adapter are registered; no production web call site was replaced. Home, detail cast/crew/recommendations, person strips, collection rows and statistics still use `_scrollable_row.html` because parity depends on server HTML fragments and the unported media card.
+- Retirement condition: a bounded Django row adapter passes resolved items and a ported card renderer to `Rail`, and the HTMX load-more path is replaced by the bounded callback with equivalent scroll, retry, exhaustion and cleanup behavior.
+- Verification: `app.tests.test_horizontal_scroll`, `src/static/js/horizontal-scroll.selfcheck.mjs`, `npm run build:ui`, `npm run check:ui`, UI architecture checks and `expo export --platform all`. Browser, iOS and Android runtime behavior of the new rail is **unverified**; only the static contracts and the native bundle compile were checked.
 - Validation targets: `src/app/tests/test_horizontal_scroll.py`, `src/static/js/horizontal-scroll.selfcheck.mjs`.
 
 ### HOME — Shelves, deferred groups and cover refresh

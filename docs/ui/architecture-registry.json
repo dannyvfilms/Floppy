@@ -100,6 +100,26 @@
           "evidence": "Expo Go on Pixel 7 AVD (sdk_gphone64_arm64), Android 15 API 35: increase tap changed 3 to 4, disabled plus at 10/10 did not change, light palette rendered; accessibility tree exposed Increase/Decrease labels, values and enabled=false. TalkBack not exercised."
         }
       }
+    },
+    "frontend/ui/Rail.jsx": {
+      "components": [
+        "Rail"
+      ],
+      "register": "RAILS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not exercised in a browser. The Expo web export compiles the native shell that renders the demo rail; no runtime browser pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared rail through the native shell; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared rail through the native shell; no emulator run was performed."
+        }
+      }
     }
   },
   "legacy": {
@@ -575,6 +595,10 @@
     "frontend/ui/mountProgressChanger.jsx": {
       "register": "PROGRESS",
       "purpose": "Django/browser integration for the registered surface."
+    },
+    "frontend/ui/Rail.web.jsx": {
+      "register": "RAILS",
+      "purpose": "Preserve browser pointer drag, click suppression, keyboard arrows and focus behavior for the shared rail."
     }
   }
 }
