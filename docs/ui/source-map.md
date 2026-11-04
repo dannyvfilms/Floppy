@@ -201,7 +201,8 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 The existing web `MediaCard.jsx`, `mountMediaCard.jsx` and `ModalHost.jsx` remain the active
 browser adapter and popup host; `MediaCardView` and `MediaCardActions` are the native candidates
 and do not yet replace that DOM card. The native forms, write transports, bulk-selection store
-and runtime evidence remain outstanding.
+and full interaction/accessibility pass remain outstanding; runtime render evidence is recorded
+in the register.
 
 ## RATING
 
@@ -249,6 +250,7 @@ and runtime evidence remain outstanding.
 
 - `frontend/ui/FilterBar.jsx`
 - `frontend/ui/mountFilterBar.jsx`
+- `native-proof/app/surfaces/FiltersSlot.jsx` (native placement on the Library screen)
 - `src/static/js/libraryFilterState.js`
 - `src/static/js/savedViews.js`
 - `src/templates/app/components/filter_form.html`
@@ -318,6 +320,7 @@ and runtime evidence remain outstanding.
 - `frontend/ui/GlobalSearch.web.jsx`
 - `frontend/ui/mountGlobalSearch.jsx`
 - `frontend/ui/global-search.css`
+- `native-proof/app/surfaces/SearchSlot.jsx` (native placement on Home, Discover, Library and Search)
 - `src/static/js/barcode-scanner.js`
 - `src/static/js/barcode-scanner.selfcheck.mjs`
 - `src/static/js/libraries/zxing-library-0.21.3.min.js`
@@ -419,6 +422,7 @@ Shared React Native field and its browser integration:
 - `frontend/ui/DateTimePicker.jsx`
 - `frontend/ui/dateTime.js`
 - `frontend/ui/mountDateTimePicker.jsx`
+- `native-proof/app/surfaces/DateTimeSlot.jsx` (native placement on the Calendar screen)
 - `src/templates/app/components/date_time_picker.html`
 - `src/templates/app/components/date_time_picker_react.html`
 - `src/users/templatetags/ui_tags.py`
@@ -453,6 +457,7 @@ modal is shared React presentation on mount, with the server markup as fallback.
 - `frontend/ui/ProgressBreakdownTheme.web.jsx`
 - `frontend/ui/mountProgressChanger.jsx`
 - `frontend/ui/mountProgressBreakdown.jsx`
+- `native-proof/app/surfaces/ProgressSlot.jsx` (native placement on the Detail screen)
 - `src/templates/users/components/progress_changer.html`
 - `src/templates/app/components/detail_progress_card_slot.html`
 - `src/templates/app/components/progress_breakdown.html`

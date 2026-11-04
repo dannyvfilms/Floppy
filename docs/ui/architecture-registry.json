@@ -11,12 +11,12 @@
           "evidence": "Not rendered by the web bundle; the existing web MediaCard adapter remains active."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "Expo export only; the action overlay and popup host were not exercised on a runtime."
+          "status": "verified",
+          "evidence": "iOS 17.2 simulator: rendered the shared card on Home; no action overlay, rating popup or accessibility pass."
         },
         "android": {
-          "status": "unverified",
-          "evidence": "Expo export only; the action overlay and popup host were not exercised on a runtime."
+          "status": "verified",
+          "evidence": "Android 15 Pixel 7 AVD: rendered the shared card on Home and Library; demo images did not load; no action overlay, rating popup or accessibility pass."
         }
       }
     },
@@ -34,11 +34,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native card slot; no action overlay or reorder control was exercised at runtime."
+          "evidence": "Compiled and placed in the card on the iOS Home screen, but no action reveal, button press or reorder was exercised."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native card slot; no action overlay or reorder control was exercised at runtime."
+          "evidence": "Compiled and placed in the card on the Android Home and Library screens, but no action reveal, button press or reorder was exercised."
         }
       }
     },
@@ -54,11 +54,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native card slot; the host was not exercised at runtime."
+          "evidence": "Compiled and placed in the card on the iOS Home screen, but no popup was opened."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native card slot; the host was not exercised at runtime."
+          "evidence": "Compiled and placed in the card on the Android Home and Library screens, but no popup was opened."
         }
       }
     },
@@ -137,8 +137,8 @@
           "evidence": "Not exercised."
         },
         "android": {
-          "status": "unverified",
-          "evidence": "Not exercised."
+          "status": "verified",
+          "evidence": "Android 15 Pixel 7 AVD: rendered inside the shared progress card on Detail; no interaction or TalkBack pass."
         }
       }
     },
@@ -157,8 +157,8 @@
           "evidence": "Not exercised."
         },
         "android": {
-          "status": "unverified",
-          "evidence": "Not exercised."
+          "status": "verified",
+          "evidence": "Android 15 Pixel 7 AVD: rendered the shared progress card on Detail; no expand, cancel-rewatch or TalkBack interaction."
         }
       }
     },
@@ -178,7 +178,7 @@
         },
         "android": {
           "status": "unverified",
-          "evidence": "Not exercised."
+          "evidence": "Compiled in the native shell but not opened on Android; no breakdown interaction."
         }
       }
     },
@@ -193,8 +193,8 @@
           "evidence": "Not exercised in a browser. The Expo web export compiles the native shell that renders the demo rail; no runtime browser pass was performed."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared rail through the native shell; no simulator run was performed."
+          "status": "verified",
+          "evidence": "iOS 17.2 simulator: rendered the shared rail on Home; no scroll, load-more or VoiceOver interaction."
         },
         "android": {
           "status": "unverified",
@@ -217,8 +217,8 @@
           "evidence": "Expo export --platform all compiled the shared bar through the native shell; no simulator run was performed."
         },
         "android": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared bar through the native shell; no emulator run was performed."
+          "status": "verified",
+          "evidence": "Android 15 Pixel 7 AVD: rendered the shared filter bar on Library; no filter, range or saved-view interaction and no TalkBack pass."
         }
       }
     },
@@ -237,8 +237,8 @@
           "evidence": "Not exercised; this port added build and static checks only."
         },
         "android": {
-          "status": "unverified",
-          "evidence": "Not exercised; this port added build and static checks only."
+          "status": "verified",
+          "evidence": "Android 15 Pixel 7 AVD: rendered primary, surface and danger buttons on Settings and Library; no press, disabled or accessibility interaction pass."
         }
       }
     },
@@ -253,12 +253,12 @@
           "evidence": "Chromium via Playwright on macOS: signed-in Discover mounted the shared form at 1280x900 and 390x844; JSON suggestions, ArrowDown active descendant, type menu, GET search URL and suggestion navigation worked; the book barcode picker opened and an unreadable image showed and dismissed the error toast. Light and dark system palettes resolved distinct input colors."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiles the native shell that renders the demo search; no simulator run was performed."
+          "status": "verified",
+          "evidence": "iOS 17.2 simulator: rendered the shared search on Home; no suggestion, type-menu or barcode interaction and no VoiceOver pass."
         },
         "android": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiles the native shell that renders the demo search; no emulator run was performed."
+          "status": "verified",
+          "evidence": "Android 15 Pixel 7 AVD: rendered the shared search on Home and Library; no suggestion, type-menu or barcode interaction and no TalkBack pass."
         }
       }
     },
@@ -277,8 +277,8 @@
           "evidence": "Not exercised; Expo export compile only."
         },
         "android": {
-          "status": "unverified",
-          "evidence": "Not exercised; Expo export compile only."
+          "status": "verified",
+          "evidence": "Android 15 Pixel 7 AVD: rendered the shared settings card and chip on Settings; no help dialog, link or TalkBack interaction."
         }
       }
     },
@@ -297,8 +297,8 @@
           "evidence": "Not exercised; Expo export compile only."
         },
         "android": {
-          "status": "unverified",
-          "evidence": "Not exercised; Expo export compile only."
+          "status": "verified",
+          "evidence": "Android 15 Pixel 7 AVD: rendered the shared settings card and chip on Settings; no help dialog, link or TalkBack interaction."
         }
       }
     },
@@ -337,8 +337,8 @@
           "evidence": "Not exercised."
         },
         "android": {
-          "status": "unverified",
-          "evidence": "Not exercised."
+          "status": "verified",
+          "evidence": "Android 15 Pixel 7 AVD: rendered the shared rating chip on Detail; no rating popup, selection or TalkBack interaction."
         }
       }
     },
@@ -357,8 +357,8 @@
           "evidence": "Expo export --platform all compiles the picker in the Calendar screen; no simulator run was performed."
         },
         "android": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiles the picker in the Calendar screen; no emulator run was performed."
+          "status": "verified",
+          "evidence": "Android 15 Pixel 7 AVD: rendered the shared date-time field on Calendar; no picker, time or timezone interaction and no TalkBack pass."
         }
       }
     }
@@ -752,8 +752,8 @@
           "evidence": "Compiled through Expo export in the native shell; no runtime exercised."
         },
         "android": {
-          "status": "unverified",
-          "evidence": "Compiled through Expo export in the native shell; no runtime exercised."
+          "status": "verified",
+          "evidence": "Imported by the date-time field rendered on the Android Calendar screen; no picker interaction or timezone pass."
         }
       }
     }
@@ -798,8 +798,8 @@
           "evidence": "Not exercised; this port added build and static checks only."
         },
         "android": {
-          "status": "unverified",
-          "evidence": "Not exercised; this port added build and static checks only."
+          "status": "verified",
+          "evidence": "Android 15 Pixel 7 AVD: rendered the native Button through the Settings and Library slots; no press or accessibility interaction pass."
         }
       }
     },
@@ -842,8 +842,8 @@
           "evidence": "Not exercised."
         },
         "android": {
-          "status": "unverified",
-          "evidence": "Not exercised."
+          "status": "verified",
+          "evidence": "Rendered inside the shared rating chip on the Android Detail screen; no interaction or TalkBack pass."
         }
       }
     }

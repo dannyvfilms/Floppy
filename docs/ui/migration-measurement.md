@@ -101,11 +101,16 @@ component counts once. The legacy count is frozen **files** and is not a compone
 count; browser integration adapters are counted separately. The RN import/clean-line figures are
 historical heuristics, not native-compatible or verified percentages: imports and
 indirect dependencies do not prove behavior. The registry currently records Spinner,
-Badge and ProgressChanger as exercised on both iOS and Android; Chip and SettingsCard
-are browser-verified only; Button, MediaCardView, RatingChip, RatingStars and Rail are
-unverified on every runtime. The native shell's demo placement does not count as
-runtime evidence. Evidence is reviewed by humans; the script cannot prove its truth.
-An Expo export is never runtime evidence.
+Badge and ProgressChanger as exercised on both iOS and Android; GlobalSearch,
+FilterBar, MediaCardView, ProgressBar, ProgressCard, DateTimePicker, Button,
+RatingChip, SettingsCard and Chip as rendered on Android; and GlobalSearch,
+MediaCardView and Rail as rendered on iOS. MediaCardActions, MediaCardActionHost,
+ProgressBreakdown, RatingStars and the web-only candidates remain unverified on the
+relevant runtime. The Android pass reached Home, Library, Calendar, Settings and
+Detail but demo images did not load; the iOS pass rendered Home only. Neither pass
+included VoiceOver/TalkBack or a full interaction pass. The native shell's demo
+placement does not count as runtime evidence. Evidence is reviewed by humans; the
+script cannot prove its truth. An Expo export is never runtime evidence.
 
 ## Headline and range
 

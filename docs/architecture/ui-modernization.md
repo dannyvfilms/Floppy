@@ -102,12 +102,24 @@ surface that is not ported.
 
 Finished ports render in place: `ButtonSlot` in the Settings save bar and Library
 actions, `SettingsCardSlot` on Settings, `MediaCardSlot` on Home, Discover and
-Library, `RatingSlot` on Detail, and `RailsSlot` on Home and Discover. The screens
-use realistic labels and demo content only where a finished screen would show it.
-Unported surfaces remain `Note` entries with `surface.id`, `surface.title`,
-`surface.where` and `surface.status`; they are not replaced by fake controls or a
-gallery. The stack screens are intentionally not tabs: Settings navigation rows and
-a card press reach them, and no tab is added for an unfinished surface.
+Library, `RatingSlot` on Detail, `RailsSlot` on Home and Discover, `SearchSlot` on
+Home, Discover, Library and Search, `FiltersSlot` on Library, `ProgressSlot` on
+Detail, and `DateTimeSlot` on Calendar. The screens use realistic labels and demo
+content only where a finished screen would show it. Unported surfaces remain
+`Note` entries with `surface.id`, `surface.title`, `surface.where` and
+`surface.status`; they are not replaced by fake controls or a gallery. The stack
+screens (Detail, Lists, History, Statistics and Search) are intentionally not tabs:
+Settings rows, a card press or a search suggestion reach them, and pages without
+ported controls (release calendar, lists/tiers, history, statistics, detail
+metadata/children, search results, tables and settings navigation) stay as notes
+until their controls are ported.
+
+Recorded runtime evidence is deliberately narrow. The Android 15 Pixel 7 AVD
+reached Home, Library, Calendar, Settings and Detail and rendered the shared search,
+filters, media cards, settings card/chip, buttons, rating chip, progress card and
+date-time field; Android demo images did not load. The iOS 17.2 simulator rendered
+Home with search, cards and rails. Neither pass included VoiceOver/TalkBack or a
+full interaction pass, and each registry entry carries that limit separately.
 
 The Django esbuild configuration aliases `react-native` to React Native Web; the
 shell's Metro configuration resolves shared imports to the app's single React and
@@ -120,13 +132,13 @@ writes the web export under the ignored `src/static/native-proof/`; that directo
 and `native-proof/` stay outside Docker's build context. `npm audit --audit-level=high`
 runs in CI; the Expo dependency tree currently has five moderate advisories.
 
-The next gate is runtime evidence on both iOS and Android for each ported component
-(interaction, accessibility, themes and responsive sizing), then the remaining action
-adapters (media-card popups, bulk selection, progress and date-time controls).
-`controls.jsx` remains a migration source, not a universal dependency: DOM events,
-focus, popups, CSS variables and server-owned interactions still need platform
-contracts. Translate semantic theme tokens at each platform boundary; never pass
-browser CSS values, HTML or stored credentials as native props.
+The next gate is interaction and accessibility evidence on both iOS and Android
+for each ported component, then the remaining action adapters (media-card popups,
+bulk selection, search results, lists, history and detail). `controls.jsx` remains
+a migration source, not a universal dependency: DOM events, focus, popups, CSS
+variables and server-owned interactions still need platform contracts. Translate
+semantic theme tokens at each platform boundary; never pass browser CSS values,
+HTML or stored credentials as native props.
 
 ### Adding the next port
 
@@ -163,9 +175,12 @@ Every change updates the component register and source map for each affected
 surface, including ownership state, remaining legacy consumers and retirement
 conditions. Browser and actual iOS/Android verification remain separate. Shared
 controls with recorded iOS and Android runtime evidence include Spinner, Badge and
-ProgressChanger; the Button, SettingsCard/Chip, MediaCardView, RatingChip and Rail
-ports in the native shell remain runtime-unverified. Native products remain
-separately scoped.
+ProgressChanger. The second wave adds render-only evidence on Android for
+GlobalSearch, FilterBar, MediaCardView, ProgressCard/ProgressBar, DateTimePicker,
+Button, RatingChip and SettingsCard/Chip, and on iOS for GlobalSearch, MediaCardView
+and Rail; MediaCardActions, MediaCardActionHost, ProgressBreakdown and RatingStars
+remain unverified. Render evidence is not an interaction or accessibility pass.
+Native products remain separately scoped.
 The migration unit is the reusable component, not a provider or page. Use the
 [shared controls](../ui/react-components.md) as the starting point for fields,
 selects, buttons, chips, tabs, dialogs and card layouts; migrate a touched legacy
