@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
-import { inspectUniversal, inspectWebAdapter, legacyStatements, validateRegistry } from './check_ui_architecture.mjs';
+import { inspectUniversal, inspectWebAdapter, isNativeAppShellPresentation, legacyStatements, validateRegistry } from './check_ui_architecture.mjs';
 
 const native = "import React from 'react'; import {View, Text} from 'react-native'; export function Card(){ return <View><Text>ok</Text></View>; }";
 const evidence = Object.fromEntries(['web', 'ios', 'android'].map(p => [p, { status: 'unverified', evidence: 'Not exercised.' }]));
@@ -120,4 +120,15 @@ test('a legacy re-export through a web adapter must lead to the registered compo
   assert.equal(run('import {Spinner as Shared} from "./Shared"; export function Spinner(){return <Shared/>}'), '');
   assert.match(run('export function Spinner(){return <Other/>}'), /legacy declaration changed/);
   assert.match(run('import {Spinner as Shared} from "./Shared"; export function Spinner(){return <div/>}'), /cannot define HTML/);
+});
+
+
+test('native application shell screens are allowed outside frontend but still checked', () => {
+  assert.equal(isNativeAppShellPresentation('native-proof/app/screens/HomeScreen.jsx'), true);
+  assert.equal(isNativeAppShellPresentation('native-proof/app/components/Note.tsx'), true);
+  assert.equal(isNativeAppShellPresentation('native-proof/App.js'), false);
+  assert.equal(isNativeAppShellPresentation('src/HomeScreen.jsx'), false);
+  assert.deepEqual(inspectUniversal(native, 'native-proof/app/screens/HomeScreen.jsx', { nativeAdapter: true, shell: true }), []);
+  assert.deepEqual(inspectUniversal("import React from 'react'; import {Screen} from './Screen'; export default function Home(){return <Screen/>}", 'native-proof/app/screens/HomeScreen.jsx', { nativeAdapter: true, shell: true }), []);
+  assert.ok(inspectUniversal(`${native}; <div/>`, 'native-proof/app/screens/HomeScreen.jsx', { nativeAdapter: true, shell: true }).length);
 });

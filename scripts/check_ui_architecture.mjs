@@ -10,6 +10,9 @@ const registryPath = 'docs/ui/architecture-registry.json';
 const forbiddenGlobals = new Set(['window', 'document', 'navigator', 'location', 'localStorage', 'sessionStorage', 'htmx', 'Alpine', 'fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'globalThis', 'global', 'self', 'eval', 'Function']);
 const forbiddenProps = new Set(['className', 'dangerouslySetInnerHTML', 'href', 'hrefAttrs', 'dataSet', 'onClick', 'onMouseEnter', 'onMouseLeave']);
 const sourceExtensions = ['js', 'jsx', 'ts', 'tsx', 'mjs', 'cjs', 'mts', 'cts'];
+// Application shell screens live beside the Expo project, not in the reusable
+// presentation tree. They still receive the universal AST checks below.
+export const isNativeAppShellPresentation = path => /^native-proof\/app\/.+\.(jsx|tsx)$/.test(path);
 const hasEvidence = verification => ['web', 'ios', 'android'].every(platform => {
   const item = verification?.[platform];
   return item && ['verified', 'unverified'].includes(item.status) && typeof item.evidence === 'string' && item.evidence.trim().length > 0;
@@ -38,7 +41,7 @@ export function legacyStatements(source) {
 }
 
 // The parser examines actual syntax, not comments or substrings in identifiers.
-export function inspectUniversal(source, file = 'component.jsx', { nativeAdapter = false, logic = false, adapter = false, dataLayer = false } = {}) {
+export function inspectUniversal(source, file = 'component.jsx', { nativeAdapter = false, logic = false, adapter = false, dataLayer = false, shell = false } = {}) {
   const errors = [];
   let ast;
   try { ast = parse(source, { sourceType: 'module', plugins: ['jsx', 'typescript'] }); }
@@ -81,7 +84,7 @@ export function inspectUniversal(source, file = 'component.jsx', { nativeAdapter
     }
   }
   walk(ast.program);
-  if (!logic && !adapter && !nativeImport) errors.push(`${file}: universal presentation must import React Native primitives`);
+  if (!logic && !adapter && !shell && !nativeImport) errors.push(`${file}: universal presentation must import React Native primitives`);
   if (!logic && !adapter && !rendersElement) errors.push(`${file}: native presentation must render an element; empty placeholders are not accepted`);
   return errors;
 }
@@ -279,7 +282,12 @@ function main() {
   errors.push(...inspectUniversal(readFileSync(resolve(root, 'native-proof/mediaClient.js'), 'utf8'), 'native-proof/mediaClient.js', { logic: true, dataLayer: true }));
   const repositoryFiles = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: root, encoding: 'utf8' }).split('\0');
   for (const path of repositoryFiles) {
-    if (/\.(jsx|tsx)$/.test(path) && !path.startsWith('frontend/')) errors.push(`${path}: place React presentation in frontend/ so it is registered and checked`);
+    if (!/\.(jsx|tsx)$/.test(path) || path.startsWith('frontend/')) continue;
+    if (isNativeAppShellPresentation(path)) {
+      errors.push(...inspectUniversal(readFileSync(resolve(root, path), 'utf8'), path, { nativeAdapter: true, shell: true }));
+      continue;
+    }
+    errors.push(`${path}: place React presentation in frontend/ so it is registered and checked`);
   }
   if (base && files.some(path => (registry.universal?.[path] || registry.platform?.[path] || registry.web_adapters?.[path] || registry.legacy?.[path]) && readFileSync(resolve(root, path), 'utf8') !== readBase(path))) {
     for (const doc of ['docs/ui/component-register.md', 'docs/ui/source-map.md']) {
