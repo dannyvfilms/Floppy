@@ -5,6 +5,7 @@ export const surface = {
   id: 'RAILS',
   title: 'Horizontal shelves and load more',
   where: 'Home rails, Discover, cast and recommendations',
+  status: 'in_progress',
   note: 'The shared rail owns horizontal scrolling, arrows, touch scrolling and bounded load-more once the media card can render items.',
 };
 
