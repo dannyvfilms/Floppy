@@ -15,7 +15,10 @@ const tables = {
 
 export default function LibraryScreen({ navigate }) {
   return <Screen title="Library" subtitle="Everything you track, filtered the way you left it">
-    <SearchSlot onOpenSearch={() => navigate('Search')} />
+    <SearchSlot
+      onOpenSearch={params => navigate('Search', params)}
+      onOpenSuggestion={item => navigate('Detail', { item })}
+    />
     <FiltersSlot />
     <Section title="Movies and shows">
       <MediaCardSlot onOpenDetail={() => navigate('Detail')} />

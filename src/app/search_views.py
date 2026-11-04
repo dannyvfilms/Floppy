@@ -5,6 +5,7 @@ from dataclasses import replace
 from django.conf import settings
 from django.contrib import messages
 from django.db.models import Exists, OuterRef, Q
+from django.http import JsonResponse
 from django.shortcuts import render
 from django.utils.translation import gettext
 from django.views.decorators.http import require_GET
@@ -34,6 +35,7 @@ from app.models import (
 from app.providers import services
 from app.services import metadata_resolution
 from app.templatetags.app_tags import (
+    image_url,
     media_type_readable,
     media_type_readable_plural,
     media_url,
@@ -815,17 +817,34 @@ def get_saved_suggestions(user, media_type, query, limit=8):
     return suggestions
 
 
+def _suggestion_json(suggestions):
+    """Map saved-library suggestions to the universal autocomplete contract."""
+    return [
+        {
+            "id": str(index),
+            "title": suggestion["title"],
+            "subtitle": suggestion["subtitle"],
+            "image": image_url(suggestion["image"]) if suggestion["image"] else None,
+            "url": suggestion["url"],
+        }
+        for index, suggestion in enumerate(suggestions)
+    ]
+
+
 @require_GET
 def search_suggestions(request):
-    """Return the autocomplete dropdown fragment for the global search bar."""
+    """Return suggestions as an HTML fragment or the JSON presentation contract."""
     query = request.GET.get("q", "").strip()
     media_type = request.GET.get("media_type", "")
+    wants_json = request.GET.get("format") == "json"
 
     if (
         not request.user.is_authenticated
         or len(query) < MIN_SUGGESTION_QUERY_LENGTH
         or media_type not in {*MediaTypes.values, ALL_SEARCH_TYPE}
     ):
+        if wants_json:
+            return JsonResponse({"suggestions": []})
         return render(request, "app/components/search_suggestions.html")
 
     try:
@@ -833,6 +852,9 @@ def search_suggestions(request):
     except Exception as exc:  # pragma: no cover - defensive
         logger.debug("Suggestion search failed: %s", exception_summary(exc))
         suggestions = []
+
+    if wants_json:
+        return JsonResponse({"suggestions": _suggestion_json(suggestions)})
 
     return render(
         request,

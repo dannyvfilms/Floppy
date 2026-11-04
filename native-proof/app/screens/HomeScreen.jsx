@@ -14,7 +14,10 @@ const activity = {
 
 export default function HomeScreen({ navigate }) {
   return <Screen title="Home" subtitle="Your next episodes, progress and shelves">
-    <SearchSlot onOpenSearch={() => navigate('Search')} />
+    <SearchSlot
+      onOpenSearch={params => navigate('Search', params)}
+      onOpenSuggestion={item => navigate('Detail', { item })}
+    />
     <Section title="Continue watching" copy="Cards and quick progress in their real Home rail.">
       <MediaCardSlot onOpenDetail={() => navigate('Detail')} />
     </Section>

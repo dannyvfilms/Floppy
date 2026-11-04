@@ -141,6 +141,26 @@
         }
       }
     },
+    "frontend/ui/GlobalSearch.jsx": {
+      "components": [
+        "GlobalSearch"
+      ],
+      "register": "SEARCH",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium via Playwright on macOS: signed-in Discover mounted the shared form at 1280x900 and 390x844; JSON suggestions, ArrowDown active descendant, type menu, GET search URL and suggestion navigation worked; the book barcode picker opened and an unreadable image showed and dismissed the error toast. Light and dark system palettes resolved distinct input colors."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the native shell that renders the demo search; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the native shell that renders the demo search; no emulator run was performed."
+        }
+      }
+    },
     "frontend/settings/Chip.jsx": {
       "components": [
         "Chip"
@@ -391,16 +411,6 @@
         "17ad8375523261cef95a2496efd97e6156fe6d5d49f32a59da8d82b863bac881",
         "8cb6a35c72ec63d82d38ebc247bd65ed1fc89315a98e2e3a541a55abdc739762",
         "40682162811e6234e4f7ed4832802a890a109ad03697bba2a328d8f548d4eee0"
-      ]
-    },
-    "frontend/ui/GlobalSearch.jsx": {
-      "sha256": "72a261276d7a528a8211f8a30b383cdcd9ef1c33bf5dfb2cfb1c146f1dfde7fc",
-      "statements": [
-        "46056659fd109f22317f1cc82577cb4d798dd3263024368a8a655690803e65c2",
-        "f4c82ccc51af434333d565a636b226d83fa2cd6f7619e1f6f7bfd8e6694bda77",
-        "f20631fe3b902b9350f85e09af041dc18b7c25b4aa7e384df88d6e7dc3e236d6",
-        "7d6d48d9191e09d0ab64012ae310ed8a632646975dcd7ec4625b5cf3dfecd14a",
-        "aa896d2673e825fdf72bfb568403ed36a1a2170afa2d077a9e249b5d192ac0f9"
       ]
     },
     "frontend/ui/Icon.jsx": {
@@ -704,8 +714,12 @@
       "purpose": "Django/browser integration for the registered surface."
     },
     "frontend/ui/mountGlobalSearch.jsx": {
-      "register": "SHELL",
-      "purpose": "Django/browser integration for the registered surface."
+      "register": "SEARCH",
+      "purpose": "Django/browser integration for the registered search form."
+    },
+    "frontend/ui/GlobalSearch.web.jsx": {
+      "register": "SEARCH",
+      "purpose": "Resolve theme values, fetch JSON suggestions, keep GET search navigation and run the browser barcode file picker for the shared search form."
     },
     "frontend/ui/mountSpinner.jsx": {
       "register": "SPINNER",

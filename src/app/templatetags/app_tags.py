@@ -2384,6 +2384,32 @@ def global_search_react(context, search_type):
                 ),
                 "barcodeFailed": str(_("Error scanning barcode: ")),
                 "tryAgain": str(_("Please try again.")),
+                "barcodeUnavailable": str(
+                    _("Barcode scanning is not available on this device. Enter an ISBN instead."),
+                ),
+                "suggestions": str(_("Search suggestions")),
+                "suggestionsLoading": str(_("Loading suggestions…")),
+                "suggestionsError": str(
+                    _("Suggestions could not load. Keep typing or press Enter."),
+                ),
+                "suggestionsSeeAll": str(
+                    _("See all library results for “%(query)s”"),
+                ),
+                "suggestionsSearchOnline": str(
+                    _("Search online for “%(query)s”"),
+                ),
+                "suggestionsEmptyAll": str(
+                    _(
+                        "Nothing in your library matches “%(query)s”. "
+                        "Pick a media type to search online.",
+                    ),
+                ),
+                "suggestionsEmptyType": str(
+                    _(
+                        "Nothing saved matches “%(query)s”. "
+                        "Keep typing and press Enter to search online.",
+                    ),
+                ),
             },
         },
     }
