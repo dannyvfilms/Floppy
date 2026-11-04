@@ -16,9 +16,12 @@ from app.providers import credentials
 from app.tests.live_server import SerialStaticLiveServerTestCase
 from integrations.models import AudiobookshelfAccount, ImportRun
 
-# The header search form, the sidebar and the popup host are React islands on every signed-in
-# page, so the card counts below leave them out.
-MOUNTED_ISLANDS = '[data-react-mounted="true"]:not([data-global-search-root]):not([data-sidebar-root]):not([data-modal-host-root])'
+# The header search form, the sidebar, the popup host and the bulk-actions dock are React islands
+# on every signed-in page, so the card counts below leave them out.
+MOUNTED_ISLANDS = (
+    '[data-react-mounted="true"]:not([data-global-search-root]):not([data-sidebar-root])'
+    ":not([data-modal-host-root]):not([data-bulk-actions-root])"
+)
 
 
 @tag("slow", "playwright")
