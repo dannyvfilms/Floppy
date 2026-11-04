@@ -4,6 +4,7 @@ import { Note } from '../components/Note';
 
 const history = {
   id: 'HISTORY',
+  status: 'in_progress',
   title: 'History feed and activity',
   where: 'History screen and per-item activity dialog',
   note: 'Bounded day groups, edits, deletes and session history will replace this note.',
