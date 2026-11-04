@@ -3,6 +3,7 @@
 
 {% load app_tags %}
 {% load user_tags %}
+{% load ui_tags %}
 {% load humanize %}
 {% load static %}
 
@@ -58,7 +59,8 @@
               <div id="video-synopsis-content">{% include "app/components/detail_synopsis.html" %}</div>
               {% if media.source == 'youtube' %}<div hx-get="{{ request.path }}?fragment=video-metadata" hx-trigger="load" hx-swap="none"></div>{% endif %}
             {% else %}
-              {% include "app/components/detail_synopsis.html" %}
+              <div data-detail-composition-legacy="synopsis">{% include "app/components/detail_synopsis.html" %}</div>
+              {% detail_composition "synopsis" %}
             {% endif %}
           </div>
         </div>
@@ -74,7 +76,8 @@
           <div class="detail-flat-top__info md:w-3/4">
             <div class="detail-flat-top__title">{% include "app/components/detail_title_block.html" %}{% include "app/components/detail_mobile_meta.html" %}</div>
             {% include "app/components/detail_score_and_actions.html" %}
-            {% include "app/components/detail_synopsis.html" %}
+            <div data-detail-composition-legacy="synopsis">{% include "app/components/detail_synopsis.html" %}</div>
+            {% detail_composition "synopsis" %}
           </div>
         </div>
       {% endif %}

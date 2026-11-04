@@ -1,15 +1,10 @@
 import React from 'react';
 import { Screen, Section } from '../components/Screen';
 import { Note } from '../components/Note';
+import DetailSlot from '../surfaces/DetailSlot';
 import ProgressSlot from '../surfaces/ProgressSlot';
 import RatingSlot from '../surfaces/RatingSlot';
 
-const detail = {
-  id: 'DETAIL',
-  title: 'Detail composition and metadata',
-  where: 'Film, show, game, book, music and podcast detail pages',
-  note: 'Artwork, title facts, synopsis, sections and actions will replace this note. The shared rating input below is already in its detail position.',
-};
 const children = {
   id: 'CHILDREN',
   title: 'Seasons, episodes and issue rows',
@@ -20,9 +15,7 @@ const children = {
 export default function DetailScreen({ params, onBack }) {
   const title = params?.item?.title || 'Detail';
   return <Screen title={title} subtitle="Detail, tracking and rating" onBack={onBack}>
-    <Section title="Metadata">
-      <Note surface={detail} />
-    </Section>
+    <DetailSlot />
     <Section title="Your score">
       <RatingSlot />
     </Section>

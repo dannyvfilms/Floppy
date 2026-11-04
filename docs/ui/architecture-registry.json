@@ -62,6 +62,30 @@
         }
       }
     },
+    "frontend/ui/DetailComposition.jsx": {
+      "components": [
+        "DetailComposition",
+        "DetailHeader",
+        "DetailSynopsis",
+        "DetailActions",
+        "DetailSection"
+      ],
+      "register": "DETAIL",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The browser adapter mounts the shared synopsis over the server-rendered detail fallback; build and targeted Django tests only, no browser pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Detail screen; not exercised on a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Detail screen; not exercised on an emulator."
+        }
+      }
+    },
     "frontend/ui/Spinner.jsx": {
       "components": [
         "Spinner"
@@ -1046,6 +1070,14 @@
     "frontend/ui/mountRatingStars.jsx": {
       "register": "RATING",
       "purpose": "Django/browser integration for the shared star row."
+    },
+    "frontend/ui/DetailCompositionTheme.web.jsx": {
+      "register": "DETAIL",
+      "purpose": "Resolve the browser theme and hide the legacy synopsis fallback while the shared DetailSynopsis owns the block; title facts, actions, artwork and lazy sections stay server-owned."
+    },
+    "frontend/ui/mountDetailComposition.jsx": {
+      "register": "DETAIL",
+      "purpose": "Django/browser integration for the shared detail synopsis block."
     },
     "frontend/ui/mountFilterBar.jsx": {
       "register": "FILTERS",
