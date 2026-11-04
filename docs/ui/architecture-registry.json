@@ -708,6 +708,28 @@
           "evidence": "Compiled by the Expo export through the native Statistics screen; the summary, highlights, controls and states were not exercised on an emulator or device."
         }
       }
+    },
+    "frontend/ui/BulkActions.jsx": {
+      "components": [
+        "BulkToolbar",
+        "BulkActionDialog",
+        "BulkOptionRow"
+      ],
+      "register": "BULK_ACTIONS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the existing Alpine selection store, React toolbar and dialogs remain the browser implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared bulk toolbar and dialogs through the native Library slot; no simulator run or interaction pass."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared bulk toolbar and dialogs through the native Library slot; no emulator run or TalkBack interaction pass."
+        }
+      }
     }
   },
   "legacy": {

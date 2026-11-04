@@ -904,8 +904,10 @@ stay legacy until a native chart renderer is chosen.
 
 ## BULK_ACTIONS
 
-- `frontend/ui/mountBulkActions.jsx`
-- `frontend/ui/mountBulkToolbar.jsx`
+- `frontend/ui/BulkActions.jsx` (universal `BulkToolbar`, `BulkActionDialog`, `BulkOptionRow`)
+- `frontend/ui/mountBulkActions.jsx` (web job dialog and dock, legacy)
+- `frontend/ui/mountBulkToolbar.jsx` (web toolbar, legacy)
+- `native-proof/app/surfaces/BulkSlot.jsx` (native Library selection, cards, toolbar and dialogs)
 - `src/templates/base.html` (dock mount)
 - `src/app/bulk_action_views.py`
 - `src/app/services/bulk_show_plays.py`
