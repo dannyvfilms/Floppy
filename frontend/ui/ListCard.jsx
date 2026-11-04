@@ -12,13 +12,12 @@ export function ListCard({ list, palette, width = 240, onOpen, onAction }) {
     shape: 'landscape',
     video: false,
     href: list.href,
-    statusChip: list.isSmart ? { kind: 'status', status: 'Smart', label: 'Smart' } : null,
-    cornerChips: [
-      ...(list.isSmart ? [{ kind: 'runtime', text: '⚡ Smart' }] : []),
-      ...(list.visibility ? [{ kind: 'collected', text: list.visibility }] : []),
-      ...(list.role ? [{ kind: 'collected', text: list.role }] : []),
-      ...(list.memberCount > 1 ? [{ kind: 'collected', text: `${list.memberCount} members` }] : []),
-    ],
+    statusChip: list.isSmart
+      ? { kind: 'status', status: 'Smart', label: 'Smart' }
+      : list.visibility
+        ? { kind: 'status', status: list.visibility, label: list.visibility }
+        : null,
+    cornerChips: [],
     lines: [
       {
         join: 'plain',
@@ -29,6 +28,16 @@ export function ListCard({ list, palette, width = 240, onOpen, onAction }) {
             : []),
         ],
       },
+      ...((list.role || list.memberCount > 1)
+        ? [{
+            join: 'plain',
+            parts: [
+              ...(list.role ? [{ text: list.role }] : []),
+              ...(list.role && list.memberCount > 1 ? [{ text: ' • ', muted: true }] : []),
+              ...(list.memberCount > 1 ? [{ text: `${list.memberCount} members`, muted: true }] : []),
+            ],
+          }]
+        : []),
     ],
     rating: list.rating,
     actions: list.canEdit
