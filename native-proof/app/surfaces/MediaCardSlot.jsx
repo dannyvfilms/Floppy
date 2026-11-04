@@ -9,6 +9,7 @@ export const surface = {
   id: 'MEDIA-CARD',
   title: 'Media card',
   where: 'Home rails, Discover, Library, Search and List results',
+  status: 'in_progress',
   note: 'The card artwork, title, status chip, rating and actions will replace this note. The shared badge and quick progress controls already render where the card will put them.',
 };
 
