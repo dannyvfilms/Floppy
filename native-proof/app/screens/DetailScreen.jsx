@@ -1,6 +1,7 @@
 import React from 'react';
 import { Screen, Section } from '../components/Screen';
 import { Note } from '../components/Note';
+import ProgressSlot from '../surfaces/ProgressSlot';
 import RatingSlot from '../surfaces/RatingSlot';
 
 const detail = {
@@ -24,6 +25,9 @@ export default function DetailScreen({ params, onBack }) {
     </Section>
     <Section title="Your score">
       <RatingSlot />
+    </Section>
+    <Section title="Your progress">
+      <ProgressSlot />
     </Section>
     <Section title="Episodes and issues">
       <Note surface={children} />
