@@ -246,26 +246,6 @@
         }
       }
     },
-    "frontend/ui/ReleaseCalendar.jsx": {
-      "components": [
-        "ReleaseCalendar"
-      ],
-      "register": "RELEASE-CALENDAR",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Mounted over the Django calendar fallback through mountReleaseCalendar and built by npm run build:ui; not exercised in a browser."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiles the shared calendar in the native shell; no simulator run was performed."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiles the shared calendar in the native shell; no simulator run was performed."
-        }
-      }
-    },
     "frontend/ui/Button.jsx": {
       "register": "BUTTON",
       "components": [
@@ -466,6 +446,52 @@
         }
       }
     },
+    "frontend/ui/ListResults.jsx": {
+      "components": [
+        "ListResults",
+        "ListResultGrid",
+        "ListResultTable",
+        "ListBulkBar",
+        "ListEmptyState"
+      ],
+      "register": "LISTS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted on the Django list detail page; the server-rendered grid, table and bulk toolbar remain the active web consumers."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export only; the list results grid, table and bulk bar have not been exercised on a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export only; the list results grid, table and bulk bar have not been exercised on an emulator."
+        }
+      }
+    },
+    "frontend/ui/ListMembership.jsx": {
+      "components": [
+        "ListMembershipPopup",
+        "ListMembershipSection",
+        "ListShareLinks"
+      ],
+      "register": "LISTS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted on the Django list detail page; the existing server list form remains the active web consumer."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export only; the membership and visibility popup has not been exercised on a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export only; the membership and visibility popup has not been exercised on an emulator."
+        }
+      }
+    },
     "frontend/ui/HistoryFeed.jsx": {
       "components": [
         "HistoryFeed",
@@ -489,6 +515,26 @@
         "android": {
           "status": "verified",
           "evidence": "Android 15 Pixel 7 AVD: rendered the shared History feed; no edit/delete, filter, lazy-day or TalkBack interaction; demo images did not load."
+        }
+      }
+    },
+    "frontend/ui/ReleaseCalendar.jsx": {
+      "components": [
+        "ReleaseCalendar"
+      ],
+      "register": "RELEASE-CALENDAR",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Mounted over the Django calendar fallback through mountReleaseCalendar and built by npm run build:ui; not exercised in a browser."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the shared calendar in the native shell; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the shared calendar in the native shell; no simulator run was performed."
         }
       }
     },
@@ -1158,9 +1204,9 @@
       "register": "SHELL",
       "purpose": "Django/browser integration for the registered surface."
     },
-    "frontend/ui/mountReleaseCalendar.jsx": {
+    "frontend/ui/mountCalendarMenu.jsx": {
       "register": "RELEASE-CALENDAR",
-      "purpose": "Django/browser integration for the shared release calendar: read saved filters, navigate month/view/release links, persist filter choices and keep the existing fetch, download and week-start actions."
+      "purpose": "Django/browser integration for the registered surface."
     },
     "frontend/providers/mount.jsx": {
       "register": "SET-PROVIDERS",
@@ -1225,6 +1271,10 @@
     "frontend/ui/mountHistoryFeed.jsx": {
       "register": "HISTORY",
       "purpose": "Browser intent bridge for the shared History feed: delegate month/pagination navigation to existing History URLs, load bounded day fragments and edits through htmx, delete through the existing DELETE route, and save/apply filters through the existing history and saved-view endpoints."
+    },
+    "frontend/ui/mountReleaseCalendar.jsx": {
+      "register": "RELEASE-CALENDAR",
+      "purpose": "Django/browser integration for the shared release calendar: read saved filters, navigate month/view/release links, persist filter choices and keep the existing fetch, download and week-start actions."
     },
     "frontend/ui/ListsForm.web.jsx": {
       "register": "MEDIA-CARD",

@@ -20,9 +20,10 @@ const defaultPalette = {
 
 const defaultLabels = {
   addItem: 'Add New Item',
-  more: 'More',
+  more: 'Members',
   exportCsv: 'Export as CSV',
   public: 'Public',
+  smart: 'Smart',
   collaborators: 'collaborators',
 };
 
@@ -37,6 +38,7 @@ export function ListHeader({
 }) {
   const colors = { ...defaultPalette, ...palette };
   const text = { ...defaultLabels, ...labels };
+  const nestedList = list.isSmart || (list.source && list.source !== 'local');
   return (
     <View style={styles.header}>
       <View style={styles.titleRow}>
@@ -58,6 +60,27 @@ export function ListHeader({
             palette={{ outline: { borderColor: colors.border, color: colors.textSecondary } }}
           />
         )}
+        {list.isSmart && (
+          <Badge
+            label={text.smart}
+            tone="outline"
+            palette={{ outline: { borderColor: colors.border, color: colors.textSecondary } }}
+          />
+        )}
+        {list.source && list.source !== 'local' && (
+          <Badge
+            label={list.sourceLabel || list.source}
+            tone="outline"
+            palette={{ outline: { borderColor: colors.border, color: colors.textSecondary } }}
+          />
+        )}
+        {list.role && (
+          <Badge
+            label={list.role}
+            tone="outline"
+            palette={{ outline: { borderColor: colors.border, color: colors.textSecondary } }}
+          />
+        )}
         {list.memberCount > 1 && (
           <Badge
             label={`${list.memberCount} ${text.collaborators}`}
@@ -69,11 +92,16 @@ export function ListHeader({
       <View style={styles.actions}>
         {list.canEdit ? (
           <>
-            <Button label={text.addItem} tone="primary" onPress={onAddItem} />
+            {!nestedList && (
+              <Button label={text.addItem} tone="primary" onPress={onAddItem} />
+            )}
             <Button label={text.more} tone="surface" onPress={onMore} />
           </>
         ) : (
-          <Button label={text.exportCsv} tone="primary" onPress={onExport} />
+          <>
+            <Button label={text.exportCsv} tone="primary" onPress={onExport} />
+            <Button label={text.more} tone="surface" onPress={onMore} />
+          </>
         )}
       </View>
     </View>
