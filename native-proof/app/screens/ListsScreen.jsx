@@ -6,6 +6,7 @@ const lists = {
   id: 'LISTS',
   title: 'Custom and smart lists',
   where: 'Lists hub, list detail and public profiles',
+  status: 'in_progress',
   note: 'List cards, membership popups, visibility controls and the list table will replace this note.',
 };
 const tiers = {
