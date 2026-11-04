@@ -221,8 +221,11 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.page.get_by_role("button", name="Options for test", exact=True).click()
         self.page.get_by_role("button", name="Settings", exact=True).click()
         expect(self.page.locator("#lists-grid")).to_contain_text("Edit List")
-        self.page.locator("#id_1_name").click()
-        self.page.locator("#id_1_name").fill("test rename")
+        # The id embeds the list's primary key, which depends on which tests ran
+        # before in the same database; find the field by what it holds instead.
+        name_field = self.page.locator('input[name="name"][value="test"]')
+        name_field.click()
+        name_field.fill("test rename")
         self.page.get_by_role("button", name="Save").click()
 
     def test_list_toggle_refreshes_header_count_once_desktop_and_mobile(self):
