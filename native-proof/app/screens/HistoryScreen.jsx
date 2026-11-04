@@ -5,7 +5,7 @@ import { historyPalette } from '../theme';
 
 export const surface = {
   id: 'HISTORY',
-  status: 'ported',
+  status: 'in_progress',
   title: 'History feed and activity',
   where: 'History screen and per-item activity dialog',
   note: 'Bounded day groups, watched/read/played rows, month and filter controls, edit/delete actions, day summaries, lazy days, load more and loading/empty/error states use the shared React feed. The web History page keeps its server-rendered bounded fragments, cache refresh and Alpine filters as the fallback.',
