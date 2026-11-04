@@ -57,7 +57,7 @@ def clear_url_derived_titles(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("app", "0216_reliable_sync_contract"),
+        ("app", "0222_playbackprogress_last_event_at"),
     ]
 
     operations = [

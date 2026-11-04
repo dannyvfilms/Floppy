@@ -22,7 +22,7 @@ class PodcastShowTitleMigrationTests(TransactionTestCase):
         executor = MigrationExecutor(connection)
         after = executor.loader.graph.leaf_nodes()
         before = [node for node in after if node[0] != "app"] + [
-            ("app", "0216_reliable_sync_contract")
+            ("app", "0222_playbackprogress_last_event_at")
         ]
         executor.migrate(before)
         try:
@@ -75,7 +75,7 @@ class PodcastShowTitleMigrationAliasTests(SimpleTestCase):
 
     def test_reads_and_writes_use_the_schema_editor_alias(self):
         migration = importlib.import_module(
-            "app.migrations.0217_podcast_show_url_derived_titles"
+            "app.migrations.0223_podcast_show_url_derived_titles"
         )
         derived = slugify(FEED.lower())
         show = SimpleNamespace(
