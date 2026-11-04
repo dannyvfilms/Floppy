@@ -1284,10 +1284,6 @@
       "register": "SHELL",
       "purpose": "Django/browser integration for the registered surface."
     },
-    "frontend/ui/mountCalendarMenu.jsx": {
-      "register": "RELEASE-CALENDAR",
-      "purpose": "Django/browser integration for the registered surface."
-    },
     "frontend/providers/mount.jsx": {
       "register": "SET-PROVIDERS",
       "purpose": "Django/browser integration for the registered surface."
