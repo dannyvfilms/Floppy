@@ -7,6 +7,14 @@ import { Button } from '../../../frontend/ui/Button';
 import { Badge } from '../../../frontend/ui/Badge';
 import { palette, spacing } from '../theme';
 
+export const surface = {
+  id: 'LISTS',
+  status: 'in_progress',
+  title: 'Lists hub, list forms and add/recommend flows',
+  where: 'Lists screen cards, create/edit list form, item search/preview, recommendations approval and deny',
+  note: 'The list hub cards are ported. The create/edit list form, add-item search and preview, recommend flow and recommendations approval/deny are being migrated to shared React Native presentation; tiers and smart-rule editing remain legacy.',
+};
+
 const tiers = {
   id: 'TIERS',
   title: 'Tier boards',
