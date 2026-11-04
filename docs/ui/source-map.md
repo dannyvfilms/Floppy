@@ -665,7 +665,13 @@ by `src/static/js/date-range.js`.
 
 ## SET-PREFERENCES
 
+- `frontend/ui/PreferencesForm.jsx`
+- `frontend/ui/SelectField.jsx`
+- `frontend/ui/ToggleChip.jsx`
+- `frontend/ui/FormSaveBar.jsx`
+- `native-proof/app/surfaces/PreferencesSlot.jsx`
 - `src/templates/users/preferences.html`
+- `src/templates/users/components/form_save_bar.html`
 
 ## SET-APPEARANCE
 

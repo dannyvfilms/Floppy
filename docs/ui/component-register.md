@@ -685,12 +685,13 @@ templates are compatibility/composition sources, not equally active parallel pag
 
 ### SET-PREFERENCES — Preferences and save states
 
-- Purpose/usage: locale/date/time/title/region/general behavior settings.
-- Implementation: `src/templates/users/preferences.html`, inline selectors/help, shared save bar.
-- Contract: unsaved/disabled/selected/error states, validation, dirty tracking and polite announcements.
-- Data: preferences handler in `src/users/views.py`, `src/users/forms.py` and user fields.
-- Reuse/blockers: fields/selection/save model shared; repeated dropdowns consolidate when feasible. Mobile preferences parity unverified.
-- Validation targets: `src/users/tests/views/test_preferences.py`.
+- Purpose/usage: theme, logo, date/time, currency, grid, title/talent, locale, region, week start, tracking and automation preferences with their dirty/save state.
+- Implementation: native `frontend/ui/PreferencesForm.jsx` composes the shared `frontend/ui/SelectField.jsx`, `frontend/ui/ToggleChip.jsx` and `frontend/ui/FormSaveBar.jsx`; `native-proof/app/surfaces/PreferencesSlot.jsx` places the card on Settings with local field state. The browser page remains `src/templates/users/preferences.html` with its Alpine selectors and `src/templates/users/components/form_save_bar.html`; `frontend/ui/controls.jsx` remains the frozen web-only `SelectField`/`ToggleChip` migration source and is not imported by universal code.
+- Contract: selected, disabled, dirty, saving, saved and validation-error states; polite status announcements; one preference per named field with the existing option values. `PreferencesForm` accepts `values`, `initialValues`, `validate`, `onSave({ values, csrf })`, field errors and a save error. Server validation remains authoritative in `src/users/views.py`; native transport, CSRF and server persistence still need a platform data adapter.
+- Data: preferences handler in `src/users/views.py` and user fields; provider-region and metadata-language choices are supplied by `tmdb` in that handler. `src/users/forms.py` has no preference form.
+- Reuse/blockers: web remains server-owned and unchanged, so the shared form is not mounted in the browser bundle and browser parity relies on the existing Django/Alpine page and `users.tests.views.test_preferences`. Native runtime interaction and accessibility were not exercised; Expo export is a build check only. The legacy `controls.jsx` consumers retire when those controls migrate to the universal contracts.
+- Status: `Partial / coexisting`. Native placement is `ported` in `native-proof/app/surfaces/PreferencesSlot.jsx` for the preferences family and save bar; the web page is still legacy, and native server submission/credential transport remains unimplemented.
+- Validation targets: `src/users/tests/views/test_preferences.py`, `src/users/tests/views/test_statistics.py` (shared week-start and statistics preference endpoint).
 
 ### SET-APPEARANCE — Theme and detail layout editor
 

@@ -346,6 +346,86 @@
         }
       }
     },
+    "frontend/ui/SelectField.jsx": {
+      "components": [
+        "SelectField"
+      ],
+      "register": "SET-PREFERENCES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the Django/Alpine preferences selectors and the legacy controls.jsx SelectField remain the browser implementations."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared field through the native Settings preferences slot; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared field through the native Settings preferences slot; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/ui/ToggleChip.jsx": {
+      "components": [
+        "ToggleChip"
+      ],
+      "register": "SET-PREFERENCES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the legacy controls.jsx ToggleChip remains the browser implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared chip through the native Settings preferences slot; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared chip through the native Settings preferences slot; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/ui/FormSaveBar.jsx": {
+      "components": [
+        "FormSaveBar"
+      ],
+      "register": "SET-PREFERENCES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the Django form_save_bar and Alpine dirty tracker remain the browser implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared save bar through the native Settings preferences slot; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared save bar through the native Settings preferences slot; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/ui/PreferencesForm.jsx": {
+      "components": [
+        "PreferencesForm"
+      ],
+      "register": "SET-PREFERENCES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the server-rendered preferences page, Alpine selectors and form_save_bar remain the browser implementation and regression target."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared form through the native Settings preferences slot; no simulator run or accessibility pass was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared form through the native Settings preferences slot; no emulator run or accessibility pass was performed."
+        }
+      }
+    },
     "frontend/ui/RatingStars.jsx": {
       "components": [
         "RatingStars"

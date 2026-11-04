@@ -1,17 +1,9 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Screen, Section } from '../components/Screen';
-import { Note } from '../components/Note';
-import ButtonSlot from '../surfaces/ButtonSlot';
+import PreferencesSlot from '../surfaces/PreferencesSlot';
 import SettingsCardSlot from '../surfaces/SettingsCardSlot';
 import { palette, radius, spacing } from '../theme';
-
-const settingsNav = {
-  id: 'SET-NAV',
-  title: 'Settings navigation',
-  where: 'Settings sidebar and mobile menu',
-  note: 'The settings sections will use the shared navigation model. The rows below are shell navigation to unfinished screens.',
-};
 
 function NavigationRow({ label, onPress }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress}
@@ -30,12 +22,7 @@ export default function SettingsScreen({ navigate }) {
       <NavigationRow label="Statistics" onPress={() => navigate('Statistics')} />
       <NavigationRow label="Search" onPress={() => navigate('Search')} />
     </Section>
-    <Section title="Save bar">
-      <ButtonSlot />
-    </Section>
-    <Section title="Settings layout">
-      <Note surface={settingsNav} />
-    </Section>
+    <PreferencesSlot />
   </Screen>;
 }
 
