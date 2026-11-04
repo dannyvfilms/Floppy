@@ -595,7 +595,7 @@ def build_listening_session_entry(session):
     return entry
 
 
-def build_book_page_entries(books, start=None, end=None):
+def build_book_page_entries(books, start=None, end=None, history_rows=None):
     """Build one entry per day a page-based book's progress rose.
 
     ``books`` are Book rows with ``item`` loaded. The first change-log row of a
@@ -603,6 +603,10 @@ def build_book_page_entries(books, start=None, end=None):
     book with a single row, or only a current page, yields no entries. A day
     with several saves is one entry holding the pages gained and where reading
     stopped. Audiobooks are skipped: their progress is minutes.
+
+    ``history_rows`` are those books' ``(id, progress, history_date)`` change
+    rows, in ``id, history_date, history_id`` order, when the caller has loaded
+    them for a whole span of days; otherwise they are read here.
     """
     books = {
         book.id: book
@@ -611,12 +615,15 @@ def build_book_page_entries(books, start=None, end=None):
     }
     if not books:
         return []
-    HistoricalBook = apps.get_model("app", "HistoricalBook")
-    rows = (
-        HistoricalBook.objects.filter(id__in=books, history_type__in=("+", "~"))
-        .order_by("id", "history_date", "history_id")
-        .values_list("id", "progress", "history_date")
-    )
+    if history_rows is not None:
+        rows = history_rows
+    else:
+        HistoricalBook = apps.get_model("app", "HistoricalBook")
+        rows = (
+            HistoricalBook.objects.filter(id__in=books, history_type__in=("+", "~"))
+            .order_by("id", "history_date", "history_id")
+            .values_list("id", "progress", "history_date")
+        )
     previous = {}
     days = {}
     for book_id, row_progress, history_date in rows:
