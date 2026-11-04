@@ -6,6 +6,7 @@ import RatingSlot from '../surfaces/RatingSlot';
 
 const detail = {
   id: 'DETAIL',
+  status: 'in_progress',
   title: 'Detail composition and metadata',
   where: 'Film, show, game, book, music and podcast detail pages',
   note: 'Artwork, title facts, synopsis, sections and actions will replace this note. The shared rating input below is already in its detail position.',
