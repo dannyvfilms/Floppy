@@ -1,8 +1,17 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ListsForm } from '../../../frontend/ui/ListsFormView';
 import { MediaCardActionHost } from '../../../frontend/ui/MediaCardActionHost';
 import { MediaCardView } from '../../../frontend/ui/MediaCardView';
+import { TrackForm } from '../../../frontend/ui/TrackForm';
 import { RatingStars } from '../../../frontend/ui/RatingStars';
+import {
+  applyListToggle,
+  initialTrackValues,
+  listsMembership,
+  normalizeListsModel,
+  normalizeTrackForm,
+} from '../../../frontend/ui/mediaCardForms';
 import { mediaCardPalette, spacing } from '../theme';
 
 export const surface = {
@@ -10,7 +19,7 @@ export const surface = {
   title: 'Media card',
   where: 'Home rails, Discover, Library, Search and List results',
   status: 'in_progress',
-  note: 'Poster, square, landscape and row cards render the shared model with artwork fallback, chips, progress, rating, action overlay, touch/hover reveal and read-only/selectable states. The native action host is wired to explicit callbacks; the server Track and Lists forms, Discover writes, bulk selection store and runtime evidence are still outstanding.',
+  note: 'Poster, square, landscape and row cards render the shared model with artwork fallback, chips, progress, rating, action overlay, touch/hover reveal and read-only/selectable states. The native action host is wired to explicit callbacks and is being extended with the shared Track and Lists form bodies; Discover writes, bulk selection store and runtime evidence are still outstanding.',
 };
 
 const labels = {
@@ -167,13 +176,170 @@ function renderActionIcon(action) {
   return <Text accessible={false} style={styles.actionGlyph}>{actionGlyph(action)}</Text>;
 }
 
-function ActionBody({ action }) {
+const listLabels = {
+  title: 'Lists',
+  close: 'Close',
+  loading: 'Loading',
+  loadFailed: "Couldn't load your lists.",
+  retry: 'Try again',
+  filterByTag: 'Filter by tag',
+  allLists: 'All lists',
+  countOne: 'On %s list',
+  countMany: 'On %s lists',
+  add: 'Add',
+  remove: 'Remove',
+  addTo: 'Add item to %s',
+  removeFrom: 'Remove item from %s',
+  emptyTag: 'No lists with this tag.',
+  emptyLists: "You haven't created any lists yet.",
+  toggleFailed: "Couldn't update this list. Please try again.",
+};
+
+const trackLabels = {
+  title: 'Tracking',
+  close: 'Close',
+  loading: 'Loading',
+  loadFailed: "Couldn't load this form.",
+  retry: 'Try again',
+  save: 'Save',
+  saving: 'Saving',
+  delete: 'Delete',
+  required: '%s is required.',
+  invalidNumber: 'Enter a number.',
+  minimum: 'Must be at least %s.',
+  maximum: 'Must be at most %s.',
+  dateOrder: 'End date must be on or after the start date.',
+  dateTime: {},
+};
+
+const formPalette = {
+  ...mediaCardPalette,
+  textSecondary: mediaCardPalette.textSecondary,
+  surfaceStrong: '#3f3f46',
+  surfaceMuted: '#52525b',
+  accent: '#6366f1',
+  accentContrast: '#ffffff',
+  danger: '#f87171',
+  radius: 8,
+  focusStyle: {},
+  dateTime: mediaCardPalette,
+};
+
+const demoLists = {
+  itemId: 1,
+  title: 'The Quiet Orbit',
+  lists: [
+    { id: '1', name: 'Weekend queue', hasItem: true, tags: ['Sci-fi'] },
+    { id: '2', name: 'Comfort watches', hasItem: false, tags: ['Comfort'] },
+    { id: '3', name: 'With friends', hasItem: false, tags: [] },
+  ],
+  tags: ['Comfort', 'Sci-fi'],
+  toggleUrl: '/demo/lists/toggle',
+  csrfToken: 'demo',
+};
+
+const demoTrack = {
+  title: 'The Quiet Orbit',
+  titleSubtitle: 'S1 E6 · The Long Night',
+  mediaType: 'tv',
+  action: '/demo/track',
+  deleteAction: '/demo/track/delete',
+  csrfToken: 'demo',
+  submitLabel: 'Save',
+  deleteLabel: 'Delete',
+  fields: [
+    {
+      name: 'status',
+      label: 'Status',
+      type: 'select',
+      value: 'In progress',
+      required: true,
+      options: [
+        { value: 'Planning', label: 'Planning' },
+        { value: 'In progress', label: 'In progress' },
+        { value: 'Paused', label: 'Paused' },
+        { value: 'Completed', label: 'Completed' },
+        { value: 'Dropped', label: 'Dropped' },
+      ],
+    },
+    { name: 'score', label: 'Score', type: 'number', value: '8', min: 0, max: 10 },
+    { name: 'progress', label: 'Progress', type: 'number', value: '6', min: 0, max: 10, help: 'Episodes watched' },
+    { name: 'start_date', label: 'Start date', type: 'date', value: '2026-10-01' },
+    { name: 'end_date', label: 'End date', type: 'date', value: '' },
+  ],
+  notes: { value: 'Watching with the family.', label: 'Notes' },
+  labels: trackLabels,
+  trackTime: false,
+};
+
+function ActionBody({ action, onClose }) {
+  const [listsModel] = useState(() => normalizeListsModel(demoLists));
+  const [membership, setMembership] = useState(() => listsMembership(listsModel));
+  const [tag, setTag] = useState('');
+  const [pending, setPending] = useState({});
+  const [listErrors, setListErrors] = useState({});
+  const [listStatus, setListStatus] = useState('ready');
+  const [trackModel] = useState(() => normalizeTrackForm(demoTrack));
+  const [trackValues, setTrackValues] = useState(() => initialTrackValues(trackModel));
+  const [trackErrors, setTrackErrors] = useState({});
+  const [trackStatus, setTrackStatus] = useState('ready');
+  const [trackBusy, setTrackBusy] = useState(false);
+  const [trackServerError, setTrackServerError] = useState('');
+
   if (!action) return null;
-  if (action.modal === 'track') {
-    return <Text style={styles.hostBody}>The native tracking form and its save transport are not ported yet. This host uses the same action contract as the web popup.</Text>;
-  }
   if (action.modal === 'lists') {
-    return <Text style={styles.hostBody}>List membership uses the shared popup contract. The native list transport is not ported yet.</Text>;
+    return <ListsForm
+      model={listsModel}
+      membership={membership}
+      tag={tag}
+      status={listStatus}
+      pending={pending}
+      errors={listErrors}
+      labels={listLabels}
+      palette={formPalette}
+      showHeader={false}
+      onTagChange={setTag}
+      onRetry={() => setListStatus('ready')}
+      onClose={onClose}
+      onToggle={list => {
+        if (pending[list.id]) return;
+        setPending(current => ({ ...current, [list.id]: true }));
+        setListErrors(current => ({ ...current, [list.id]: '' }));
+        setTimeout(() => {
+          setMembership(current => applyListToggle(current, list.id, !current[list.id]));
+          setPending(current => ({ ...current, [list.id]: false }));
+        }, 350);
+      }} />;
+  }
+  if (action.modal === 'track') {
+    return <TrackForm
+      model={trackModel}
+      values={trackValues}
+      errors={trackErrors}
+      status={trackStatus}
+      serverError={trackServerError}
+      busy={trackBusy}
+      labels={trackLabels}
+      palette={formPalette}
+      showHeader={false}
+      onChange={(name, value) => {
+        setTrackValues(current => ({ ...current, [name]: value }));
+        setTrackErrors(current => ({ ...current, [name]: '' }));
+      }}
+      onRetry={() => {
+        setTrackStatus('ready');
+        setTrackServerError('');
+      }}
+      onDelete={() => setTrackServerError('Delete is not available in this demo.')}
+      onClose={onClose}
+      onSubmit={() => {
+        setTrackBusy(true);
+        setTrackServerError('');
+        setTimeout(() => {
+          setTrackBusy(false);
+          onClose?.();
+        }, 600);
+      }} />;
   }
   if (action.kind === 'post') {
     return <Text style={styles.hostBody}>Discover plan and hide use the existing server POST contract. The native write adapter is not ported yet.</Text>;
@@ -213,7 +379,8 @@ export default function MediaCardSlot({ onOpenDetail }) {
     </View>
     <MediaCardActionHost action={pendingAction} open={!!pendingAction} labels={labels}
       palette={mediaCardPalette} onClose={() => setPendingAction(null)}>
-      <ActionBody action={pendingAction} />
+      <ActionBody key={pendingAction?.target || 'closed'} action={pendingAction}
+        onClose={() => setPendingAction(null)} />
     </MediaCardActionHost>
   </>;
 }

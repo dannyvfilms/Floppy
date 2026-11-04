@@ -471,6 +471,71 @@
           "evidence": "Android 15 Pixel 7 AVD: rendered the shared History feed; no edit/delete, filter, lazy-day or TalkBack interaction; demo images did not load."
         }
       }
+    },
+    "frontend/ui/MediaCardFormControls.jsx": {
+      "components": [
+        "FormHeader",
+        "FormField",
+        "FormTextField",
+        "FormSelect",
+        "FormStatus",
+        "FormError"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Compiled into the web bundle through the Lists form adapter; not exercised in a browser during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the MediaCardSlot native placement; not exercised on iOS."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the MediaCardSlot native placement; not exercised on Android."
+        }
+      }
+    },
+    "frontend/ui/ListsFormView.jsx": {
+      "components": [
+        "ListsForm"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Rendered by the Lists web adapter inside the existing React ModalHost; the web bundle builds, but no browser interaction pass was run during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the MediaCardSlot native placement; no runtime interaction pass."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the MediaCardSlot native placement; no runtime interaction pass."
+        }
+      }
+    },
+    "frontend/ui/TrackForm.jsx": {
+      "components": [
+        "TrackForm"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not rendered by the web bundle; the existing server-rendered Track popup remains the browser path."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the MediaCardSlot native placement; no runtime interaction pass."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the MediaCardSlot native placement; no runtime interaction pass."
+        }
+      }
     }
   },
   "legacy": {
@@ -866,6 +931,34 @@
           "evidence": "Imported by the date-time field rendered on the Android Calendar screen; no picker interaction or timezone pass."
         }
       }
+    },
+    "frontend/ui/mediaCardForms.js": {
+      "components": [
+        "normalizeListsModel",
+        "listsMembership",
+        "listsCount",
+        "listsCountLabel",
+        "visibleLists",
+        "applyListToggle",
+        "normalizeTrackForm",
+        "initialTrackValues",
+        "validateTrackValues"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Pure shared form-model logic consumed by the web Lists adapter; not a renderer."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Pure shared form-model logic consumed by the native placement; not a renderer."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Pure shared form-model logic consumed by the native placement; not a renderer."
+        }
+      }
     }
   },
   "platform": {
@@ -1086,6 +1179,10 @@
     "frontend/ui/mountHistoryFeed.jsx": {
       "register": "HISTORY",
       "purpose": "Browser intent bridge for the shared History feed: delegate month/pagination navigation to existing History URLs, load bounded day fragments and edits through htmx, delete through the existing DELETE route, and save/apply filters through the existing history and saved-view endpoints."
+    },
+    "frontend/ui/ListsForm.web.jsx": {
+      "register": "MEDIA-CARD",
+      "purpose": "Fetch the lists form model, toggle membership with CSRF, and render the shared Lists form on the web."
     }
   }
 }

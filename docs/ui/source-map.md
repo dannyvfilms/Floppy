@@ -67,7 +67,7 @@ PY
 - `src/templates/base.html`
 - `frontend/ui/Sidebar.jsx`, `frontend/ui/mountSidebar.jsx`, `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html`; the onboarding banner stays a server slot)
 - `frontend/ui/Icon.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
-- `frontend/ui/ModalHost.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted from `base.html`; the card hover buttons and the legacy Add-to-lists buttons open it through `floppy-open-modal`; the Add-to-lists body is React in `frontend/ui/ListsForm.jsx` with `modal-forms.css`; the Track body is still the server form, see POPUP-HOST in the register)
+- `frontend/ui/ModalHost.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted from `base.html`; the card hover buttons and the legacy Add-to-lists buttons open it through `floppy-open-modal`; the Add-to-lists body is shared presentation in `frontend/ui/ListsFormView.jsx` through the `frontend/ui/ListsForm.web.jsx` adapter with `modal-forms.css`; the Track body is still the server form, see POPUP-HOST in the register)
 - `src/app/card_events.py` (the floppyCardUpdate event sent by `media_save` and the score views so React cards refresh their status chip and rating)
 - `frontend/ui/mountFilterChips.jsx`, `ScrollRow` and `FilterChips` in `frontend/ui/controls.jsx` (Discover media-type row; `Tabs` shares `ScrollRow`)
 - `src/templates/base_public.html`
@@ -191,6 +191,11 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 - `frontend/ui/MediaCardView.jsx` (universal native card shell: layouts, artwork fallback, chips, progress, title/lines, rating affordance and read-only/selectable states; presentation only)
 - `frontend/ui/MediaCardActions.jsx` (universal action overlay, row buttons and list-reorder controls; explicit action/reorder/reveal callbacks, no transport)
 - `frontend/ui/MediaCardActionHost.jsx` (universal popup shell for the card action callback contract; the browser ModalHost remains the web host)
+- `frontend/ui/MediaCardFormControls.jsx` (`FormHeader`, `FormField`, `FormTextField`, `FormSelect`, `FormStatus` and `FormError` for the shared action forms; presentation only)
+- `frontend/ui/ListsFormView.jsx` (universal `ListsForm`: tag filter, count, Add/Remove rows, loading/error/empty states and accessible header; presentation only)
+- `frontend/ui/ListsForm.web.jsx` (browser transport adapter: JSON list model, CSRF toggle, `floppy-list-toggled` event and errors for the shared `ListsForm`)
+- `frontend/ui/TrackForm.jsx` (universal `TrackForm`: General tab fields, date-time fields, notes, validation and save/delete states; presentation only)
+- `frontend/ui/mediaCardForms.js` (shared lists/track form models, membership helpers, initial values and validation)
 - `native-proof/app/surfaces/MediaCardSlot.jsx` (native placement with demo library items, action callbacks and popup host on Home, Discover and Library)
 - `src/templates/app/components/card_lines.html`
 - `src/templates/app/components/media_card.html` (shell: wrapper classes, props script and first-paint poster and title; React replaces it on mount)
@@ -200,9 +205,11 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 
 The existing web `MediaCard.jsx`, `mountMediaCard.jsx` and `ModalHost.jsx` remain the active
 browser adapter and popup host; `MediaCardView` and `MediaCardActions` are the native candidates
-and do not yet replace that DOM card. The native forms, write transports, bulk-selection store
-and full interaction/accessibility pass remain outstanding; runtime render evidence is recorded
-in the register.
+and do not yet replace that DOM card. `ListsFormView` is used on web through `ListsForm.web.jsx`
+and on native through the media-card slot. `TrackForm` renders in the native action host; the web
+Track popup and its remaining tabs, Discover plan/hide and list-reorder writes, the bulk-selection
+store and the full interaction/accessibility pass remain outstanding. Runtime render evidence is
+recorded in the register.
 
 ## RATING
 
