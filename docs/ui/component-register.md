@@ -558,11 +558,13 @@ can inform a focused completion pass.
 
 ### HISTORY — Feed, edits and activity dialog
 
-- Purpose/usage: global history and per-item sessions/repeats.
-- Implementation: `src/templates/app/history.html`, history day/card/edit and session modal/day/row fragments, `src/static/js/sessionHistory.js`.
-- Contract: filters/modes/days, bounded fragments/refresh notice, edit/delete/units, marked dates/day jumps, close-button focus and nested refresh.
+- Purpose/usage: global history feed and per-item sessions/repeats.
+- Implementation: universal `frontend/ui/HistoryFeed.jsx` (`HistoryFeed`, `HistoryDayGroup`, `HistoryEntryRow`, `HistoryDaySummary`, `HistoryActivitySummary`, `HistoryFilterPanel`, `HistoryState`); browser intent bridge `frontend/ui/mountHistoryFeed.jsx`; server page `src/templates/app/history.html`, history day/card/edit and session modal/day/row fragments; `src/static/js/sessionHistory.js`.
+- Contract: the shared feed renders bounded day groups with weekday/date headers and item/runtime day summaries; watched/read/played rows use the shared `MediaCardView` row with score, status, runtime and note expansion; edit/delete actions, lazy days, load-more with remaining count, month navigation, filter sheets with the shared `DateTimePicker`, the activity summary, refresh notice, pagination and loading/empty/error states are all presentation. It receives a model and emits navigation, load, open, edit, delete, filter and save-view intents; it does not parse URLs or own transport. The existing server contract keeps filters/modes/days, bounded fragments/refresh notice, edit/delete/units, marked dates/day jumps, close-button focus and nested refresh.
 - Data: `src/app/history_views.py`, `src/events/history_feed.py`; [memory contract](../architecture/history-memory.md).
-- Reuse/blockers: day/session values shared; date/filter dependencies. Never client-load whole history.
+- Status: `Partial / coexisting`. The shared feed is rendered on the native History screen with realistic demo days. The web History page remains server/Alpine-owned: bounded day fragments, lazy days, cache refresh, filters and the per-item session dialog keep their existing behavior and server fallback. The `mountHistoryFeed` browser adapter maps feed intents to the existing History URLs, htmx fragments, DELETE route and saved-view endpoint, but it is not mounted, so browser parity is not proven.
+- Reuse/blockers: reuses `MEDIA-CARD` row, `BADGE`, `BUTTON` and `DATE-TIME`; never client-load whole history. Retirement requires a bounded JSON day-fragment path or an adapter that consumes the server fragments, a browser pass for lazy days/load-more/refresh/filters/session dialog, then removing the Alpine day list while retaining the server fallback.
+- Verification: `npm run check:ui-architecture`, `npm run build:ui` and Expo export `--platform all` compile the shared feed; no browser interaction or simulator/emulator run was performed. Django regressions: `app.tests.views.test_history`, `app.tests.test_history_item_projection`, `app.tests.test_history_day_cache_lifecycle`.
 - Validation targets: `src/app/tests/views/test_history.py`, `src/app/tests/test_history_item_projection.py`, `test_history_day_cache_lifecycle.py`.
 
 ### STATISTICS — Dashboard, charts and taste/talent

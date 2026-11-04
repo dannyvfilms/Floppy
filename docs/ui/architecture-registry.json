@@ -361,6 +361,32 @@
           "evidence": "Expo export --platform all compiles the picker in the Calendar screen; no emulator run was performed."
         }
       }
+    },
+    "frontend/ui/HistoryFeed.jsx": {
+      "components": [
+        "HistoryFeed",
+        "HistoryDayGroup",
+        "HistoryEntryRow",
+        "HistoryDaySummary",
+        "HistoryActivitySummary",
+        "HistoryFilterPanel",
+        "HistoryState"
+      ],
+      "register": "HISTORY",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Compiled by the web bundle through the browser intent adapter; the adapter is not mounted yet, so the existing server-rendered History page remains the browser owner and no browser interaction pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native History screen; day groups, filters, edit/delete actions and states were not exercised on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native History screen; day groups, filters, edit/delete actions and states were not exercised on an emulator or device."
+        }
+      }
     }
   },
   "legacy": {
@@ -956,6 +982,10 @@
     "frontend/ui/mountFilterBar.jsx": {
       "register": "FILTERS",
       "purpose": "Django/browser integration for the shared filter bar: mirror the page Alpine filter state, write filter intents into the existing form, and refresh through the existing htmx/URL boundary."
+    },
+    "frontend/ui/mountHistoryFeed.jsx": {
+      "register": "HISTORY",
+      "purpose": "Browser intent bridge for the shared History feed: delegate month/pagination navigation to existing History URLs, load bounded day fragments and edits through htmx, delete through the existing DELETE route, and save/apply filters through the existing history and saved-view endpoints."
     }
   }
 }
