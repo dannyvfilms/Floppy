@@ -246,6 +246,26 @@
         }
       }
     },
+    "frontend/ui/ReleaseCalendar.jsx": {
+      "components": [
+        "ReleaseCalendar"
+      ],
+      "register": "RELEASE-CALENDAR",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Mounted over the Django calendar fallback through mountReleaseCalendar and built by npm run build:ui; not exercised in a browser."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the shared calendar in the native shell; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the shared calendar in the native shell; no simulator run was performed."
+        }
+      }
+    },
     "frontend/ui/Button.jsx": {
       "register": "BUTTON",
       "components": [
@@ -1019,9 +1039,9 @@
       "register": "SHELL",
       "purpose": "Django/browser integration for the registered surface."
     },
-    "frontend/ui/mountCalendarMenu.jsx": {
+    "frontend/ui/mountReleaseCalendar.jsx": {
       "register": "RELEASE-CALENDAR",
-      "purpose": "Django/browser integration for the registered surface."
+      "purpose": "Django/browser integration for the shared release calendar: read saved filters, navigate month/view/release links, persist filter choices and keep the existing fetch, download and week-start actions."
     },
     "frontend/providers/mount.jsx": {
       "register": "SET-PROVIDERS",

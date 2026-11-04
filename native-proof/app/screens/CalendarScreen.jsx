@@ -3,10 +3,10 @@ import { Screen, Section } from '../components/Screen';
 import CalendarSlot from '../surfaces/CalendarSlot';
 import DateTimeSlot from '../surfaces/DateTimeSlot';
 
-export default function CalendarScreen() {
+export default function CalendarScreen({ navigate }) {
   return <Screen title="Calendar" subtitle="Upcoming releases and what lands next">
     <Section title="This month">
-      <CalendarSlot />
+      <CalendarSlot onOpenRelease={() => navigate('Detail')} />
     </Section>
     <Section title="Tracking dates">
       <DateTimeSlot />

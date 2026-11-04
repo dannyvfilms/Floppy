@@ -21,6 +21,13 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from app import backdrops
 from app.icon_specs import file_icon
 from app.models import Item, MediaTypes, PodcastEpisode, Status
+from app.templatetags.app_tags import (
+    image_url,
+    media_status_readable,
+    media_type_readable,
+    media_type_readable_plural,
+    user_event_time,
+)
 from events import tasks
 from events.history_feed import (
     DEFAULT_MEDIA_TYPES,
@@ -29,6 +36,8 @@ from events.history_feed import (
     selected_history_media_types,
 )
 from events.models import INACTIVE_TRACKING_STATUSES, Event, ReleaseTypes
+from events.templatetags.events_tags import calendar_event_url
+from users.card_metadata import card_lines
 from users.models import User, WeekStartDayChoices
 
 logger = logging.getLogger(__name__)
@@ -310,6 +319,7 @@ def calendar(request):
         "weekday_headers": weekday_headers,
         "calendar_menu": _calendar_menu_props(request, today),
     }
+    context["calendar_props"] = _release_calendar_props(request, context)
     return render(request, "events/calendar.html", context)
 
 
@@ -342,6 +352,160 @@ def _calendar_menu_props(request, today):
             "download": reverse("download_calendar", kwargs={"token": request.user.token}),
             "preferences": reverse("update_statistics_preferences"),
         },
+    }
+
+
+def _release_calendar_props(request, context):
+    """Return the serialisable props for the shared release calendar."""
+    month = context["month"]
+    year = context["year"]
+    release_dict = context["release_dict"]
+    release_type_choices = context["release_type_choices"]
+    available_statuses = context["available_statuses_by_type"]
+    calendar_url = reverse("calendar")
+
+    releases = {
+        str(day): [_release_props(request, release) for release in day_releases]
+        for day, day_releases in release_dict.items()
+    }
+    statuses_by_type = {
+        media_type: [
+            {
+                "value": status,
+                "label": media_status_readable(status),
+                "inMonth": status in available_statuses.get(media_type, []),
+            }
+            for status in statuses
+        ]
+        for media_type, statuses in context["filter_statuses_by_type"].items()
+    }
+    return {
+        "month": month,
+        "year": year,
+        "monthName": context["month_name"],
+        "weekdayHeaders": context["weekday_headers"],
+        "weeks": context["calendar"],
+        "daysInMonth": list(context["days_in_month"]),
+        "dayLabels": {
+            str(day): formats.date_format(
+                date(year, month, day),
+                "l",
+            )
+            for day in context["days_in_month"]
+        },
+        "today": {
+            "day": context["today"].day,
+            "month": context["today"].month,
+            "year": context["today"].year,
+        },
+        "selectedDay": context["selected_day"],
+        "view": "list" if context["view_type"] == "list" else "grid",
+        "releases": releases,
+        "mediaTypes": [
+            {
+                "value": media_type,
+                "label": media_type_readable_plural(media_type),
+                "shortLabel": media_type_readable(media_type),
+            }
+            for media_type in context["filter_media_types"]
+        ],
+        "releaseTypes": [
+            {"value": value, "label": label}
+            for value, label in release_type_choices
+        ],
+        "statusesByType": statuses_by_type,
+        "initialFilters": {
+            "selectedTypes": list(context["filter_media_types"]),
+            "selectedStatusesByType": {
+                media_type: [status["value"] for status in statuses]
+                for media_type, statuses in statuses_by_type.items()
+            },
+            "selectedReleaseTypes": [
+                value for value, _label in release_type_choices
+            ],
+        },
+        "navigation": {
+            "previous": (
+                f"{calendar_url}?month={context['prev_month']}"
+                f"&year={context['prev_year']}"
+            ),
+            "next": (
+                f"{calendar_url}?month={context['next_month']}"
+                f"&year={context['next_year']}"
+            ),
+            "today": (
+                f"{calendar_url}?month={context['today'].month}"
+                f"&year={context['today'].year}"
+            ),
+            "views": {
+                "grid": f"{calendar_url}?view=grid&month={month}&year={year}",
+                "list": f"{calendar_url}?view=list&month={month}&year={year}",
+            },
+        },
+        "menu": context["calendar_menu"],
+        "filterStorageKey": f"yamtrack.calendar.filters.{request.user.id}",
+        "labels": {
+            "filters": gettext("Filters"),
+            "all": gettext("All"),
+            "none": gettext("None"),
+            "mediaTypes": gettext("Media Types"),
+            "status": gettext("Status"),
+            "movieReleaseDates": gettext("Movie Release Dates"),
+            "clearAll": gettext("Clear all filters"),
+            "close": gettext("Close"),
+            "agenda": gettext("Agenda"),
+            "closeDay": gettext("Close day details"),
+            "noDayReleases": gettext("No releases scheduled for this day."),
+            "noFilteredReleases": gettext("No releases for selected media types."),
+            "today": gettext("Today"),
+            "release": gettext("release"),
+            "releases": gettext("releases"),
+            "viewMonth": gettext("Month"),
+            "viewList": gettext("List"),
+            "previousMonth": gettext("Previous month"),
+            "nextMonth": gettext("Next month"),
+            "filterCalendar": gettext("Filter calendar by media type"),
+        },
+    }
+
+
+def _release_props(request, release):
+    """Return one release as serialisable presentation data."""
+    item = release.item
+    event_time = user_event_time(release, request.user)
+    episode_label = release.season_episode_label or ""
+    release_type_label = (
+        release.get_release_type_display() if release.release_type else ""
+    )
+    if episode_label:
+        subtitle = episode_label
+    elif release_type_label:
+        subtitle = f"{release_type_label} {gettext('release')}"
+    else:
+        subtitle = ""
+    if event_time:
+        subtitle = f"{subtitle} {event_time}".strip()
+    elif not episode_label and not release_type_label:
+        subtitle = gettext("Time unknown")
+
+    image = release.calendar_backdrop or item.image
+    return {
+        "id": release.id,
+        "mediaType": item.media_type,
+        "mediaLabel": media_type_readable(item.media_type),
+        "releaseType": release.release_type or "",
+        "status": release.status or "",
+        "title": release.calendar_title,
+        "href": calendar_event_url(release),
+        "image": image_url(image),
+        "subtitle": subtitle,
+        "unknownTime": release.is_sentinel_time,
+        "sortTime": 0 if release.is_sentinel_time else int(release.datetime.timestamp()),
+        "cardLines": [
+            line["text"]
+            for line in card_lines(request.user, item.media_type, item)
+            if line.get("text")
+        ],
     }
 
 
