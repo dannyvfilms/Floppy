@@ -600,6 +600,10 @@ by `src/static/js/date-range.js`.
 
 ## LISTS
 
+- `frontend/ui/ListCard.jsx`
+- `frontend/ui/ListHeader.jsx`
+- `native-proof/app/screens/ListsScreen.jsx`
+- `native-proof/app/screens/ListDetailScreen.jsx`
 - `src/templates/lists/components/fill_lists.html`
 - `src/templates/lists/components/list_cover_image.html`
 - `src/templates/lists/components/list_form.html`
