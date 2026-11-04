@@ -9,7 +9,7 @@ const listDetail = {
   title: 'List detail',
   where: 'List detail page',
   status: 'in_progress',
-  note: 'The result grid will land here after the header and actions are ported.',
+  note: 'The result grid, table and membership/visibility popup are being ported; this screen still renders only the header.',
 };
 
 export default function ListDetailScreen({ params, onBack }) {
