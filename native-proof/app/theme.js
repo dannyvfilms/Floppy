@@ -42,3 +42,32 @@ export const ratingPalette = {
   unlit: palette.surfaceMuted,
   muted: palette.textMuted,
 };
+
+export const mediaCardPalette = {
+  card: palette.surface,
+  text: palette.text,
+  textSecondary: palette.textSecondary,
+  textMuted: palette.textMuted,
+  border: palette.border,
+  link: '#818cf8',
+  star: palette.warning,
+  chipBackground: 'rgba(24, 24, 27, 0.92)',
+  chipText: '#ffffff',
+  placeholder: palette.surfaceStrong,
+  progressTrack: 'rgba(24, 24, 27, 0.6)',
+  progressFill: palette.accent,
+  progressPaused: 'rgba(99, 102, 241, 0.4)',
+  local: {
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    color: '#fde68a',
+  },
+  statusColors: {
+    Completed: palette.success,
+    'In progress': palette.accent,
+    Paused: palette.warning,
+    Planning: '#38bdf8',
+    Dropped: palette.danger,
+  },
+  rating: { ...ratingPalette, focusStyle: {} },
+};

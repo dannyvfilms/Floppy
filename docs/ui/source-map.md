@@ -181,6 +181,8 @@ Shared `Button` lives in `frontend/ui/controls.jsx` and `controls.css` (FORM-CON
 
 ## MEDIA-CARD
 
+- `frontend/ui/MediaCardView.jsx` (universal native card shell: layouts, artwork fallback, chips, progress, title/lines, rating affordance and read-only/selectable states; presentation only)
+- `native-proof/app/surfaces/MediaCardSlot.jsx` (native placement with demo library items on Home, Discover and Library)
 - `frontend/ui/NativeProofCard.jsx`
 
 The experimental read-only label and card are consumed only by `native-proof/App.js`,
@@ -190,6 +192,9 @@ whose proof data adapter is `native-proof/mediaClient.js`; they have no producti
 - `frontend/ui/MediaCard.jsx`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/ModalHost.jsx`, `frontend/ui/media-card.css`, `src/app/media_card_model.py`, `src/app/card_surfaces.py` (the whole card is React on every surface: body, status chip, rating, hover buttons, popups host, touch reveal and bulk-select checkbox)
 - `src/templates/app/components/media_card_list.html`
 - `src/templates/app/components/media_card_status_chip.html` (out-of-band save fragment only; no card renders it)
+
+The existing web `MediaCard.jsx` and `mountMediaCard.jsx` remain the active adapter for
+the action layer; `MediaCardView` is the native candidate and does not yet replace that DOM card.
 
 ## RATING
 
