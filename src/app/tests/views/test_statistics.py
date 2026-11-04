@@ -2194,6 +2194,74 @@ class StatisticsViewTests(TestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.statistics_compare_mode, "previous_period")
 
+    def test_statistics_view_uses_saved_media_type_preference(self):
+        """The statistics filter starts from the user's last saved selection."""
+        self.user.statistics_default_media_types = "game,movie"
+        self.user.save(update_fields=["statistics_default_media_types"])
+
+        response = self.client.get(reverse("statistics"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["selected_media_types"], "movie,game")
+        self.assertContains(response, "initialSelectedMediaTypes: 'movie,game'")
+
+    def test_statistics_view_ignores_invalid_saved_media_types(self):
+        """Unknown or non-statistics types in the preference are dropped."""
+        self.user.statistics_default_media_types = "movie,bogus,season"
+        self.user.save(update_fields=["statistics_default_media_types"])
+
+        response = self.client.get(reverse("statistics"))
+
+        self.assertEqual(response.context["selected_media_types"], "movie")
+
+    def test_update_statistics_media_types_updates_preference(self):
+        """Statistics media-type autosave should persist the canonical order."""
+        self.user.statistics_default_media_types = ""
+        self.user.save(update_fields=["statistics_default_media_types"])
+
+        response = self.client.post(
+            reverse("update_statistics_media_types"),
+            {"media_types": "game,movie"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["success"])
+        self.assertTrue(payload["changed"])
+        self.assertEqual(payload["media_types"], "movie,game")
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.statistics_default_media_types, "movie,game")
+
+    def test_update_statistics_media_types_can_clear_the_preference(self):
+        """Selecting All media should clear the saved media-type filter."""
+        self.user.statistics_default_media_types = "movie,game"
+        self.user.save(update_fields=["statistics_default_media_types"])
+
+        response = self.client.post(
+            reverse("update_statistics_media_types"),
+            {"media_types": ""},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["media_types"], "")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.statistics_default_media_types, "")
+
+    def test_update_statistics_media_types_rejects_invalid_value(self):
+        """Statistics media-type autosave should reject values the page cannot show."""
+        self.user.statistics_default_media_types = "movie"
+        self.user.save(update_fields=["statistics_default_media_types"])
+
+        response = self.client.post(
+            reverse("update_statistics_media_types"),
+            {"media_types": "movie,bogus"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.statistics_default_media_types, "movie")
+
     def test_statistics_view_cached_render_avoids_n_plus_one_item_queries(self):
         """Warmed statistics cache should not fetch Item rows one-by-one during render."""
         cache.clear()

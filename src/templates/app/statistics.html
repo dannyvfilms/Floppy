@@ -839,8 +839,10 @@
     initialCompareMode: '{{ selected_compare_mode|default:"previous_period"|escapejs }}',
     refreshUrl: '{% url "refresh_statistics" %}',
     compareModeUpdateUrl: '{% url "update_statistics_compare_mode" %}',
+    mediaTypesUpdateUrl: '{% url "update_statistics_media_types" %}',
     csrfToken: '{{ csrf_token }}',
     ratingScaleMax: {{ user|rating_scale_max }},
+    initialSelectedMediaTypes: '{{ selected_media_types|default:""|escapejs }}',
     initialMediaTypeOptions: [
       {value: 'all', label: 'All media'},
       {value: 'tv', label: 'TV Shows'},
@@ -2427,6 +2429,17 @@
     {% endif %}
   {% endif %}
 
+  {% if selected_media_types %}
+    <script>
+      (function () {
+        const url = new URL(window.location.href);
+        if (!url.searchParams.has("media-type")) {
+          url.searchParams.set("media-type", "{{ selected_media_types|escapejs }}");
+          window.history.replaceState({}, "", url.toString());
+        }
+      })();
+    </script>
+  {% endif %}
   <script src="{% static 'js/statistics-charts.js' %}{% get_static_file_mtime 'js/statistics-charts.js' %}"></script>
   <script src="{% static 'js/cache-updater.js' %}"></script>
   {% include "app/components/_scrollable_row_js.html" %}

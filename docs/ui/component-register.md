@@ -572,6 +572,11 @@ can inform a focused completion pass.
 - Contract: media/range/comparison, dates/units, charts/heatmaps/order, refresh/errors and teardown; avoid drift in server/JS media visual mappings.
 - Data: `src/app/statistics_views.py`, snapshots/[statistics sync](../architecture/statistics-sync.md).
 - Reuse/blockers: transforms/tokens shared; canvas needs native renderer. Keep expensive computation server-owned.
+- Media-type filter: the Alpine dropdown in `date-range.js` is multi-select like History's and now autosaves the ticked types through `update_statistics_media_types` into `statistics_default_media_types`. The next visit without a `media-type` query starts from that preference (and seeds the URL so charts and the dropdown agree); an explicit link still wins until the user changes the filter. Clearing to All media saves an empty preference.
+- Status: `Existing` legacy Django/Alpine/HTMX. This preference change does not migrate the toolbar or dashboard.
+- Verification: `app.tests.views.test_statistics` covers the saved/invalid preference and endpoint, `app.tests.test_statistics_media_merge_js` passes under Node, and `app.tests.test_statistics_media_type_browser` passes its 4 Chromium tests on macOS (including selecting, reloading, and clearing the remembered filter). iOS and Android not verified.
+- Related work: [#1841](https://github.com/dannyvfilms/Floppy/issues/1841) (remember the statistics media-type filter); [#1317](https://github.com/dannyvfilms/Floppy/issues/1317) (multi-select).
+- Deferrals: the toolbar, charts and dashboard stay legacy until their server fragments and canvas charts have a shared presentation; reopen when Statistics gets a React-owned surface.
 - Validation targets: `src/app/tests/views/test_statistics.py`, `src/app/tests/test_statistics_sync.py`, `test_statistics_media_merge_js.py`; browser layout checks are slow.
 
 ### RELEASE-CALENDAR — Upcoming releases and subscriptions

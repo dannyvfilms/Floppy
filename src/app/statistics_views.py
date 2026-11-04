@@ -24,6 +24,7 @@ from app.statistics_talent import (
     _aggregate_top_talent,
     _normalize_talent_media_types,
 )
+from app.stats_utils import MEDIA_TYPE_HOURS_ORDER
 from app.templatetags import app_tags
 from users.models import (
     ActivityHistoryViewChoices,
@@ -296,6 +297,14 @@ def _parse_statistics_total_display_to_minutes(value):
     return (hours * 60) + minutes
 
 
+def _normalize_statistics_media_types(raw, allowed=None):
+    """Return the stats media types in ``raw`` in the chart order."""
+    tokens = {token.strip() for token in str(raw or "").split(",") if token.strip()}
+    if allowed is not None:
+        tokens.intersection_update(allowed)
+    return [media_type for media_type in MEDIA_TYPE_HOURS_ORDER if media_type in tokens]
+
+
 def _get_statistics_minutes_by_type(statistics_data):
     if not isinstance(statistics_data, dict):
         return {}
@@ -475,6 +484,19 @@ def statistics(request):
                 "statistics_default_range", selected_range_name
             )
 
+        selected_media_types = ",".join(
+            _normalize_statistics_media_types(
+                getattr(request.user, "statistics_default_media_types", ""),
+                allowed=set(request.user.get_enabled_media_types())
+                | {
+                    MediaTypes.TV.value,
+                    MediaTypes.MOVIE.value,
+                    MediaTypes.ANIME.value,
+                    MediaTypes.GAME.value,
+                },
+            )
+        )
+
         statistics_data = statistics_cache.get_statistics_data(
             request.user,
             start_date,
@@ -621,6 +643,7 @@ def statistics(request):
             "start_date_str": start_date_str_for_url,
             "end_date_str": end_date_str_for_url,
             "selected_range_name": selected_range_name,
+            "selected_media_types": selected_media_types,
             "statistics_building": statistics_building,
             "statistics_built_at": statistics_built_at,
             "selected_range_dates_label": selected_range_dates_label,
@@ -780,6 +803,18 @@ def statistics(request):
             "start_date_str": start_date_str,
             "end_date_str": end_date_str,
             "selected_range_name": selected_range_name,
+            "selected_media_types": ",".join(
+                _normalize_statistics_media_types(
+                    getattr(request.user, "statistics_default_media_types", ""),
+                    allowed=set(request.user.get_enabled_media_types())
+                    | {
+                        MediaTypes.TV.value,
+                        MediaTypes.MOVIE.value,
+                        MediaTypes.ANIME.value,
+                        MediaTypes.GAME.value,
+                    },
+                )
+            ),
             "selected_range_dates_label": _get_statistics_card_range_label(
                 request.user,
                 selected_range_name,
@@ -1639,6 +1674,35 @@ def update_statistics_compare_mode(request):
             "changed": previous_mode != updated_mode,
             "compare_mode": updated_mode,
         },
+    )
+
+
+@require_POST
+def update_statistics_media_types(request):
+    """Autosave the media types ticked in the statistics filter."""
+    raw = request.POST.get("media_types", "")
+    tokens = [token.strip() for token in raw.split(",") if token.strip()]
+    if any(token not in MEDIA_TYPE_HOURS_ORDER for token in tokens):
+        return JsonResponse(
+            {
+                "error": "Invalid media_types",
+                "valid_values": list(MEDIA_TYPE_HOURS_ORDER),
+            },
+            status=400,
+        )
+
+    normalized = ",".join(_normalize_statistics_media_types(raw))
+    previous = request.user.statistics_default_media_types
+    updated = request.user.update_preference(
+        "statistics_default_media_types", normalized
+    )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "changed": previous != updated,
+            "media_types": updated,
+        }
     )
 
 

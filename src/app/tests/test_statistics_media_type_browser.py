@@ -121,3 +121,21 @@ class StatisticsMediaTypeSelectionTests(SerialStaticLiveServerTestCase):
         page = self.open_statistics("?media-type=game")
         expect(self.trigger(page)).to_have_text("Games")
         expect(page.locator(".stats-hero-title").nth(1)).to_contain_text("1 games")
+
+    def test_selection_is_remembered_for_the_next_visit(self):
+        page = self.open_statistics()
+        with page.expect_response("**/statistics/media-types") as saved:
+            self.pick(page, "Movies")
+        self.assertTrue(saved.value.ok)
+        expect(self.trigger(page)).to_have_text("Movies")
+
+        page.goto(f"{self.live_server_url}/statistics")
+        expect(self.trigger(page)).to_have_text("Movies")
+        expect(page.locator(".stats-hero-title").nth(1)).to_contain_text("2 films")
+        self.assertIn("media-type=movie", page.url)
+
+        with page.expect_response("**/statistics/media-types"):
+            self.pick(page, "All media")
+        page.goto(f"{self.live_server_url}/statistics")
+        expect(self.trigger(page)).to_have_text("All media")
+        self.assertNotIn("media-type", page.url)

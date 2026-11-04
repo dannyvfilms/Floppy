@@ -551,6 +551,11 @@ modal is shared React presentation on mount, with the server markup as fallback.
 
 ## STATISTICS
 
+Memory for the media-type filter is user data, not a new presentation owner:
+`statistics_default_media_types` in `src/users/models.py` and
+`update_statistics_media_types` in `src/app/statistics_views.py`, read and written
+by `src/static/js/date-range.js`.
+
 - `src/static/js/date-range.js`
 - `src/static/js/libraries/chartjs-4.4.9.min.js`
 - `src/static/js/libraries/chartjs-datalabels-2.0.0.min.js`
