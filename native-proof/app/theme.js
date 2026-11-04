@@ -150,6 +150,26 @@ export const railPalette = {
   focus: palette.accent,
 };
 
+export const statisticsPalette = {
+  background: palette.background,
+  surface: palette.surface,
+  surfaceStrong: palette.surfaceStrong,
+  surfaceMuted: palette.surfaceMuted,
+  border: palette.border,
+  text: palette.text,
+  textSecondary: palette.textSecondary,
+  textMuted: palette.textMuted,
+  accent: palette.accent,
+  accentStrong: palette.accentStrong,
+  accentContrast: '#ffffff',
+  link: '#818cf8',
+  danger: palette.danger,
+  warning: palette.warning,
+  success: palette.success,
+  radius: radius.md,
+  radiusSmall: radius.sm,
+};
+
 export const dateTimePalette = {
   text: palette.text,
   textSecondary: palette.textSecondary,
