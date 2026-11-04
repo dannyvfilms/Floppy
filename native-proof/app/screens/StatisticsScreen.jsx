@@ -6,7 +6,8 @@ const statistics = {
   id: 'STATISTICS',
   title: 'Statistics dashboard',
   where: 'Statistics, comparison and taste screens',
-  note: 'Charts, ranges, highlights and featured repeats will replace this note after a native chart renderer is chosen.',
+  status: 'in_progress',
+  note: 'The summary cards, activity overview, highlights, states and range/media-type controls are being ported; chart canvases and the comparison/taste views remain legacy.',
 };
 
 export default function StatisticsScreen({ onBack }) {
