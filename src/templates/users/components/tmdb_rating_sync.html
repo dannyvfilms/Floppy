@@ -1,4 +1,4 @@
-{% load i18n %}
+{% load i18n ui_tags %}
 {# Body of the TMDb modal; the shell is outbound_service_modal.html. #}
 <p class="text-sm text-[var(--color-text-muted)]">
   {% translate "Send your movie, show and episode ratings to your TMDb account. Season ratings stay in Floppy." %}
@@ -25,7 +25,7 @@
       {% translate "Automatically send my rating edits from Floppy" %}
     </label>
     <p class="text-xs text-[var(--color-text-muted)]">{% translate "Floppy replaces existing TMDb ratings. Imported ratings are only sent when you export them." %}</p>
-    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm cursor-pointer">{% translate "Save" %}</button>
+    {% button _("Save") "primary" "sm" "full" submit=True %}
   </form>
   {% if tmdb_rating_sync.enabled %}
     <form method="post" action="{% url 'tmdb_export_ratings' %}" class="space-y-2">

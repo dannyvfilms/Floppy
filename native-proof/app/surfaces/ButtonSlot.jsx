@@ -7,8 +7,8 @@ export const surface = {
   id: 'BUTTON',
   title: 'Primary, surface and danger actions',
   where: 'Save bars, Load more, provider actions and confirmations',
-  status: 'ported',
-  note: 'The shared action button renders here with the primary save, surface load-more and solid danger tones.',
+  status: 'in_progress',
+  note: 'The primary save, surface load-more and solid danger tones render here; the remaining hand-written and controls.jsx consumers are still migrating.',
 };
 
 const buttonPalette = {
@@ -21,12 +21,18 @@ const buttonPalette = {
 
 export default function ButtonSlot() {
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   function save() {
     setSaving(true);
     setStatus('Settings saved');
     setTimeout(() => setSaving(false), 600);
+  }
+  function sync() {
+    setSyncing(true);
+    setStatus('Sync started');
+    setTimeout(() => setSyncing(false), 600);
   }
   return <View style={styles.group}>
     <Button label="Save settings" width="full" busy={saving}
@@ -36,6 +42,12 @@ export default function ButtonSlot() {
         onPress={() => setPage(value => value + 1)} palette={buttonPalette} />
       <Button label="Delete list" tone="danger-solid"
         onPress={() => setStatus('Deleting needs confirmation on the list screen')} palette={buttonPalette} />
+    </View>
+    <View style={styles.row}>
+      <Button label="Sync now" tone="surface" busy={syncing}
+        onPress={sync} palette={buttonPalette} />
+      <Button label="Disconnect" tone="danger-solid"
+        onPress={() => setStatus('Disconnecting needs confirmation on the provider screen')} palette={buttonPalette} />
     </View>
     {status ? <Text style={styles.status}>{status}</Text> : null}
   </View>;
