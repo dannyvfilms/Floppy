@@ -10,7 +10,8 @@
       {% else %}{% translate "Not connected" as badge %}{% firstof "neutral" as tone %}{% endif %}
       {% settings_card title=title tone=tone badge=badge %}
         {% if account_connection.description %}<p>{{ account_connection.description }}</p>{% endif %}
-        {% if account_connection.summary %}<div class="ui-account-summary">{% if account_connection.summary.url %}<p class="provider-small">{{ account_connection.summary.url }}{% if account_connection.summary.lastSync %} • {{ account_connection.summary.lastSync }}{% endif %}</p>{% endif %}{% if account_connection.summary.error %}<p class="provider-small" role="alert">{{ account_connection.summary.error }}</p>{% endif %}</div>{% endif %}
+        {% if account_connection.badges %}<div class="ui-account-badges">{% for badge in account_connection.badges %}<span class="settings-chip" data-tone="{{ badge.tone }}" title="{{ badge.tooltip }}"><span class="provider-media-chip">{{ badge.label }}</span></span>{% endfor %}</div>{% endif %}
+        {% if account_connection.summary %}<div class="ui-account-summary">{% if account_connection.summary.url or account_connection.summary.lastSync %}<p class="provider-small">{{ account_connection.summary.url }}{% if account_connection.summary.url and account_connection.summary.lastSync %} • {% endif %}{{ account_connection.summary.lastSync }}</p>{% endif %}{% if account_connection.summary.error %}<p class="provider-small" role="alert">{{ account_connection.summary.error }}</p>{% endif %}</div>{% endif %}
         {% if account_connection.instances %}
           {% for instance in account_connection.instances %}<div class="ui-instance-row">
             <div class="ui-heading"><strong>{{ instance.name }}</strong><span class="settings-chip" data-tone="{% if instance.connected %}success{% else %}neutral{% endif %}"><span class="provider-media-chip">{% if instance.connected %}{% translate "Connected" %}{% else %}{% translate "Disconnected" %}{% endif %}</span></span></div>
@@ -26,6 +27,7 @@
             <button class="ui-button" type="submit">{{ account_connection.submitLabel }}</button>
           </form>{% endif %}
         {% elif account_connection.connected %}<p>{{ account_connection.messages.connected }}</p>
+          {% if account_connection.attention and account_connection.connectUrl %}<form class="ui-form" method="post" action="{{ account_connection.connectUrl }}">{% csrf_token %}<input type="hidden" name="next" value="{{ account_connection.next }}"><button class="ui-button" type="submit">{{ account_connection.submitLabel }}</button></form>{% endif %}
         {% else %}
           <p>{% if account_connection.attention %}{{ account_connection.messages.attention }}{% else %}{{ account_connection.messages.disconnected }}{% endif %}</p>
           {% if account_connection.connectUrl %}<form class="ui-form" method="post" action="{{ account_connection.connectUrl }}">

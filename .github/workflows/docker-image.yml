@@ -22,10 +22,11 @@ on:
 # A push to latest must not be overtaken by an older build that started later
 # because runners were queued. Keep one publish per ref in flight and let the
 # newest pending run replace intermediate commits without cancelling the run
-# currently publishing.
+# currently publishing. Pull request runs publish nothing, so a newer push to
+# the same PR cancels the older run outright.
 concurrency:
   group: docker-image-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

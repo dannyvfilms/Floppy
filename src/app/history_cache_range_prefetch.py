@@ -279,19 +279,40 @@ class HistoryRangePrefetch:
         album_ids = {r["album_id"] for r in records if r["album_id"]}
         track_ids = {r["track_id"] for r in records if r["track_id"]}
         music_ids = {r["id"] for r in records if r["id"]}
-        self.album_map = {
-            a.id: a
-            for a in Album.objects.filter(id__in=album_ids).select_related("artist")
-        } if album_ids else {}
-        self.track_map = {
-            t.id: t for t in Track.objects.filter(id__in=track_ids)
-        } if track_ids else {}
+
         self.music_map = {
-            m.id: m
-            for m in Music.objects.filter(id__in=music_ids, user=self.user)
-            .select_related("item", "album", "track")
+            music.id: music
+            for music in Music.objects.filter(
+                id__in=music_ids, user=self.user
+            )
+            .select_related("item", "album", "album__artist", "track")
             .defer(*history_deferred_item_fields("item"))
         } if music_ids else {}
+
+        # Prefer current Music relationships over stale snapshots.
+        album_ids.update(
+            music.album_id
+            for music in self.music_map.values()
+            if music.album_id
+        )
+        track_ids.update(
+            music.track_id
+            for music in self.music_map.values()
+            if music.track_id
+        )
+
+        self.album_map = {
+            album.id: album
+            for album in Album.objects.filter(
+                id__in=album_ids
+            ).select_related("artist")
+        } if album_ids else {}
+
+        self.track_map = {
+            track.id: track
+            for track in Track.objects.filter(id__in=track_ids)
+        } if track_ids else {}
+
         self.track_durations = {}
         self.album_scores = {}
         if album_ids:

@@ -3282,8 +3282,12 @@ class JellyfinWebhookTests(TestCase):
         self.assertEqual(state["episode_title"], 'Café de Paris & "Co"')
         self.assertEqual(state["series_title"], "Café Society")
 
+    @patch("app.live_playback._attach_resolved_image")
+    @patch.object(JellyfinWebhookProcessor, "_process_media", return_value=None)
     @patch("app.providers.tmdb.find")
-    def test_pause_and_stop_events_update_live_playback_state(self, mock_find):
+    def test_pause_and_stop_events_update_live_playback_state(
+        self, mock_find, mock_process_media, mock_resolve_image
+    ):
         """Pause should keep card state; stop should transition to stopped."""
         mock_find.return_value = {
             "tv_episode_results": [
@@ -3387,7 +3391,88 @@ class JellyfinWebhookTests(TestCase):
             stopped_state["status"],
             live_playback.PLAYBACK_STATUS_STOPPED,
         )
+        mock_process_media.assert_called()
+        mock_resolve_image.assert_called()
 
+
+    @patch("app.live_playback._attach_resolved_image")
+    @patch.object(JellyfinWebhookProcessor, "_process_media", return_value=None)
+    @patch("app.providers.tmdb.find")
+    def test_incomplete_stop_keeps_live_playback_grace_state(
+        self, mock_find, mock_process_media, mock_resolve_image
+    ):
+        """An ordinary incomplete stop remains briefly as stopped."""
+        mock_find.return_value = {
+            "tv_episode_results": [
+                {
+                    "show_id": 1668,
+                    "season_number": 1,
+                    "episode_number": 1,
+                },
+            ],
+            "tv_results": [],
+        }
+
+        play_payload = {
+            "Event": "Play",
+            "Item": {
+                "Type": "Episode",
+                "Name": "The One Where Monica Gets a Roommate",
+                "Id": "jf-episode-incomplete",
+                "SeriesName": "Friends",
+                "ParentIndexNumber": 1,
+                "IndexNumber": 1,
+                "RunTimeTicks": 26660000000,
+                "ProviderIds": {
+                    "Tvdb": "303821",
+                    "Imdb": "tt0583459",
+                },
+                "UserData": {"Played": False},
+            },
+            "PlaybackPositionTicks": 6000000000,
+        }
+        stop_payload = {
+            "Event": "Stop",
+            "Item": {
+                "Type": "Episode",
+                "Name": "The One Where Monica Gets a Roommate",
+                "Id": "jf-episode-incomplete",
+                "SeriesName": "Friends",
+                "ParentIndexNumber": 1,
+                "IndexNumber": 1,
+                "RunTimeTicks": 26660000000,
+                "ProviderIds": {
+                    "Tvdb": "303821",
+                    "Imdb": "tt0583459",
+                },
+                "UserData": {"Played": False},
+            },
+            "PlaybackPositionTicks": 7000000000,
+        }
+
+        play_response = self.client.post(
+            self.url,
+            data=json.dumps(play_payload),
+            content_type="application/json",
+        )
+        self.assertEqual(play_response.status_code, 200)
+
+        stop_response = self.client.post(
+            self.url,
+            data=json.dumps(stop_payload),
+            content_type="application/json",
+        )
+        self.assertEqual(stop_response.status_code, 200)
+
+        stopped_state = live_playback.get_user_playback_state(self.user.id)
+        self.assertIsNotNone(stopped_state)
+        self.assertEqual(
+            stopped_state["status"],
+            live_playback.PLAYBACK_STATUS_STOPPED,
+        )
+        self.assertEqual(stopped_state["view_offset_seconds"], 700)
+        mock_process_media.assert_called()
+        mock_resolve_image.assert_called()
 
 MATRIX_METADATA = {
     "title": "The Matrix",

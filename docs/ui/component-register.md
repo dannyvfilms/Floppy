@@ -160,11 +160,15 @@ can inform a focused completion pass.
 ### RATING — Score display and picker
 
 - Purpose/usage: cards, details, children and music scores.
-- Implementation: `src/templates/app/components/rating_picker.html`, `media_card_rating.html`, `media_card_rate_button.html`, OOB/score-chip/derived-TV fragments.
+- Status: `Partial / coexisting`. The star-row picker is React-owned on every consumer; chips, card rate buttons, popup wrappers and derived-TV fragments remain legacy Alpine/HTMX. Browser verification: see below. Native iOS and Android: not verified.
+- Implementation: shared RNW `frontend/ui/RatingStars.jsx` with the `mountRatingStars.jsx` web adapter, the `rating_stars` tag (`users/templatetags/ui_tags.py`) and `rating_picker.html` (Alpine wrapper). Legacy: `media_card_rating.html`, `media_card_rate_button.html`, OOB/score-chip/derived-TV fragments.
+- Picker consumers: detail score chip (podcast shows, movies, TV, etc.), media card rate button, episode/track/row rating buttons, music artist/album pages, comic issue page. The adapter publishes writes through `htmx.ajax` so server OOB chip/card swaps still apply, and signals the Alpine wrapper with `rating-select`. Alpine publishes the current score through the wrapper's `data-rating`.
+- Podcasts rate per show: chip and list cards post to `update_podcast_show_score` (tracker id), not `update_media_score` (episode plays) (#1830).
+- Retirement: the Alpine popup wrappers and direct-rating stars in `detail_score_chip.html` retire when the chip and card rate button are ported with a portal/focus proof.
 - Contract: viewer scale, empty/read-only states, hover preview, toggle-to-clear, CSRF writes, teleported popup and OOB/events; derived score/coverage differs from direct score.
 - Data: `src/app/score_views.py` and server score projections.
 - Reuse/blockers: read-only presentation recommended first proof; interactive picker needs later portal/focus/write proof. Do not infer keyboard support from pointer behavior.
-- Validation targets: `src/app/tests/views/test_score_views.py`, `src/app/tests/test_derived_tv_ratings.py`, card contract tests.
+- Validation targets: `src/app/tests/views/test_score_views.py`, `src/app/tests/test_podcast_show_rating.py`, `src/app/tests/test_derived_tv_ratings.py`, card contract tests.
 
 ### LIBRARY — Result composition and media grouping
 
@@ -305,7 +309,9 @@ can inform a focused completion pass.
 - Data: `src/app/media_details_views.py`, `season_details_views.py`, detail builders and user layout configuration.
 - Reuse/blockers: share typed sections while preserving medium composition and swaps; template contexts are not portable APIs.
 - Validation targets: `src/app/tests/views/test_media_details.py`, `test_save_response_fragments.py`, `src/app/tests/views/test_trakt_series_graph.py`, `src/app/tests/test_detail_builders.py`.
-- Book format links: an "Other Formats" fact (eBook, Audiobook, each a link) in the Details card of Book pages, shown only when the viewer tracks another format of the same work. Status: legacy, not migrated. Blocker: the Details card is a server-rendered fact list with no shared React equivalent, and porting it is a whole-card migration, not part of this change. Reopen when the DETAIL sidebar facts get a shared React component; this row moves with it. Data: `build_other_book_formats` (ISBN, or title plus author, among the viewer's own tracked books; never merges Items). Verification: browser only; no iOS/Android.
+- Book format links: a "Format" fact in the Details card of Book pages that joins the formats the viewer tracks, e.g. "Book, Audiobook", each name a link except the page being viewed. It replaces the provider's own Format fact when the viewer tracks another format of the same work; several audiobooks are told apart by narrator. Status: legacy, not migrated. Blocker: the Details card is a server-rendered fact list with no shared React equivalent, and porting it is a whole-card migration, not part of this change. Reopen when the DETAIL sidebar facts get a shared React component; this row moves with it. Data: `build_book_formats` (ISBN, or title plus author, among the viewer's own tracked books; never merges Items). Verification: browser only; no iOS/Android.
+- Book narrator: a "Narrator" fact in the same Details card for Audiobookshelf audiobooks (`Item.narrators`, filled by the ABS importer, carried in the generic details payload). Status: legacy, same blocker and reopening condition as Book format links. Verification: browser only; no iOS/Android.
+- Audiobook listening sessions: each Audiobookshelf listening session is a dated entry (date, time, duration, and where listening stopped) in the activity history modal and the History page, through the existing `session_history_row.html` row (one new "stopped at" fragment in that legacy template), so no new component. Status: legacy row, coexisting; the row has no shared React counterpart yet, and it moves when the history rows do. Data: `BookListeningSession` rows written by the Audiobookshelf importer, emitted by `history_cache_day_builder` and indexed by `history_cache_index`. Not yet counted in Statistics. Verification: browser only; no iOS/Android.
 
 ### CHILDREN — Seasons, episodes and issue rows
 
@@ -597,8 +603,12 @@ templates are compatibility/composition sources, not equally active parallel pag
   serialized). Small integration settings forms use `SettingsForm.jsx` (`provider_forms.py`:
   Plex usernames and mark-watched, Jellyfin webhook events, Seerr automation and connection, KOReader
   connect and settings). Hardcover sync, KOReader (Connection tab) and MDBList (Connection tab) now use `SettingsForm.jsx`/
-  `FileImport.jsx` inline instead of a modal. Remaining legacy, each with a concrete blocker: Plex
-  libraries picker and webhook sharing (live library fetch, per-share Alpine state); Jellyfin account/push controls (conditional per-tab
+  `FileImport.jsx` inline instead of a modal. Plex's Connection tab is now the shared webhook card (`SetupGuide.jsx` with a primary copy
+  field, status badge/tooltip and collapsed steps; `provider_guides._plex_webhook_badge`) above the shared account
+  card (`AccountConnection.jsx` with badges and a single full-width card); the "Set up account access here /
+  Open connection setup" header and button no longer render on provider pages. Remaining legacy, each with a
+  concrete blocker: Plex libraries picker and webhook sharing (Tracking/Import tabs; live library fetch,
+  per-share Alpine state); Jellyfin account/push controls (conditional per-tab
   states); Stremio addon catalog grants (htmx status); the same-tab modal copies of upload and connection forms used outside provider pages. Retire each by moving it to a `provider_forms` or
   `provider_guides` entry. Masked credential previews are not serialized to React; the fallback still
   shows them.

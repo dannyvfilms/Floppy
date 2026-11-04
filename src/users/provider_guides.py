@@ -53,6 +53,17 @@ def _copy(key):
     return ("copy", key)
 
 
+def _primary(guide, label, key="webhook", sentence=None):
+    """Show the copy value above the steps and shorten the step that only repeated it."""
+    guide["primary"] = {"label": _(label), "key": key}
+    replacement = [_t(sentence or "Set the webhook URL to the one shown above.")]
+    guide["steps"] = [
+        replacement if isinstance(step, list) and step[-1:] == [("copy", key)] and all(part[0] == "t" for part in step[:-1]) else step
+        for step in guide["steps"]
+    ]
+    return guide
+
+
 def _guide(title, description, steps, copy, warning=None, notes=()):
     return {
         "title": title, "description": description, "steps": steps, "warning": warning, "notes": list(notes),
@@ -111,6 +122,28 @@ def setup_guide(request, slug):
     return None, {}
 
 
+def _plex_webhook_badge(user, context):
+    """Summarise the webhook's health as a badge, with the detail in a tooltip."""
+    from users.templatetags.user_tags import user_datetime_format
+
+    def when(value):
+        return user_datetime_format(value, user)
+
+    if context.get("plex_webhook_needs_update"):
+        return {"label": _("Needs update"), "tone": "warning", "summary": _("Webhook URL needs updating."),
+                "tooltip": _("You regenerated your API token on %(when)s. Plex webhooks using the old token will be rejected with a 401. Update the Plex webhook URL to the one shown here.") % {"when": when(user.plex_webhook_token_rotated_at)}}
+    if user.plex_webhook_last_error:
+        detail = user.plex_webhook_last_error
+        if user.plex_webhook_last_error_at:
+            detail = f"{detail} ({when(user.plex_webhook_last_error_at)})"
+        return {"label": _("Webhook error"), "tone": "warning", "summary": _("Last webhook error."), "tooltip": detail}
+    if user.plex_webhook_last_received_at:
+        return {"label": _("Receiving"), "tone": "success", "summary": _("Last webhook received %(when)s.") % {"when": when(user.plex_webhook_last_received_at)},
+                "tooltip": _("Last webhook received %(when)s.") % {"when": when(user.plex_webhook_last_received_at)}}
+    return {"label": _("Not received yet"), "tone": "neutral", "summary": _("No Plex webhooks received yet."),
+            "tooltip": _("If you expect automatic logging, confirm webhooks are enabled in Plex and that the URL includes your current API token.")}
+
+
 def setup_guides(request, slug, context):
     """Return ([guide models], {copy key: value}); a provider can show several guides."""
     if slug == "jellyfin":
@@ -148,6 +181,8 @@ def setup_guides(request, slug, context):
                 ]},
                 [_t("Set the webhook URL to:"), _copy("webhook")],
             ], {"webhook": url})
+        _primary(official, "Webhook URL")
+        _primary(unofficial, "Webhook URL")
         return [official, unofficial], {"webhook": url}
     if slug == "seerr":
         url = app_helpers.build_absolute_app_url(request, reverse("jellyseerr_webhook", args=[request.user.token]))
@@ -162,6 +197,7 @@ def setup_guides(request, slug, context):
                  _code("unsupported media_type='{media_type}'"), _t(", Seerr is sending the literal template (it was pasted/escaped incorrectly).")],
                 [_t("Select the notification types you want (commonly request/approval events).")],
             ], copy)[0]]
+        _primary(guides[0], "Webhook URL")
         if context.get("seerr_global_webhook_enabled"):
             copy["global"] = app_helpers.build_absolute_app_url(request, reverse("seerr_global_webhook"))
             guides.append(_guide(
@@ -174,7 +210,21 @@ def setup_guides(request, slug, context):
                      _t("with the value your administrator configured in"), _code("SEERR_GLOBAL_WEBHOOK_SECRET"), _t(":"),
                      _pre(SEERR_TEMPLATE.replace('"{{requestedBy_username}}"', '"{{requestedBy_username}}",\n  "secret": "REPLACE_WITH_SHARED_SECRET"'))],
                 ], copy)[0])
+            _primary(guides[1], "Global webhook URL", "global")
         return guides, copy
+    if slug == "plex":
+        user = request.user
+        url = app_helpers.build_absolute_app_url(request, reverse("plex_webhook", args=[user.token]))
+        guide, _copy_values = _guide(
+            _("Plex webhook"), _("Plex sends what you watch to this URL. Webhooks need a Plex Pass subscription."), [
+                [_t("In Plex, go to"), _b("Settings > Server > Network"), _t("and enable Webhooks.")],
+                [_t("Go to"), _a("Settings > Webhooks", "https://app.plex.tv/desktop/#!/settings/webhooks"), _t("and click"), _b("Add Webhook"),
+                 _t(", then enter the URL above.")],
+            ], {"webhook": url})
+        guide["primary"] = {"label": _("Webhook URL"), "key": "webhook"}
+        guide["collapsed"] = True
+        guide["badge"] = _plex_webhook_badge(user, context)
+        return [guide], {"webhook": url}
     if slug == "stremio":
         grants = context.get("catalog_grants")
         credential = grants[0].token if grants else request.user.token
@@ -193,4 +243,6 @@ def setup_guides(request, slug, context):
         guide["bare"] = True
         return [guide], {"webhook": addon, "configure": configure}
     guide, copy = setup_guide(request, slug)
+    if guide and slug in {"emby", "kodi"}:
+        _primary(guide, "Webhook URL")
     return ([guide] if guide else []), copy

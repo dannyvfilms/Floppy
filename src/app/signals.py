@@ -32,6 +32,7 @@ from app.models import (
     ArtistTracker,
     BoardGame,
     Book,
+    BookListeningSession,
     CollectionEntry,
     Comic,
     ComicIssue,
@@ -1183,22 +1184,32 @@ def schedule_credits_backfill_on_movie_play(sender, instance, **kwargs):
 
 @receiver([post_save, post_delete], sender=Music)
 def refresh_history_cache_on_music_change(sender, instance, **kwargs):
-    """Schedule history cache refresh when music activity changes.
-
-    We schedule a refresh but don't delete the cache immediately,
-    so users can see the old data with a notification while refresh happens.
-    """
+    """Schedule history cache refresh after the music write commits."""
     if kwargs.get("raw"):
         return
+    if (
+        media_cache_change_signals_suppressed()
+        or media_change_side_effects_suppressed()
+    ):
+        return
+
     user_id = getattr(instance, "user_id", None)
     day_key = history_cache.history_day_key(getattr(instance, "end_date", None))
-    _handle_media_cache_change(
-        user_id,
-        MediaTypes.MUSIC.value,
-        reason="music_change",
-        history_specs=[([day_key] if day_key else [], ("sessions", "repeats"))],
-        statistics_day_values=[day_key] if day_key else [],
-        history_dates_may_have_moved=_history_dates_may_have_moved(instance, kwargs),
+    history_dates_may_have_moved = _history_dates_may_have_moved(instance, kwargs)
+
+    def _refresh_after_commit():
+        _handle_media_cache_change(
+            user_id,
+            MediaTypes.MUSIC.value,
+            reason="music_change",
+            history_specs=[([day_key] if day_key else [], ("sessions", "repeats"))],
+            statistics_day_values=[day_key] if day_key else [],
+            history_dates_may_have_moved=history_dates_may_have_moved,
+        )
+
+    transaction.on_commit(
+        _refresh_after_commit,
+        using=kwargs.get("using"),
     )
 
 
@@ -1231,6 +1242,29 @@ def refresh_history_cache_on_podcast_change(sender, instance, **kwargs):
         history_specs=history_specs,
         statistics_day_values=[day_key] if day_key else [],
         history_dates_may_have_moved=_history_dates_may_have_moved(instance, kwargs),
+    )
+
+
+@receiver([post_save, post_delete], sender=BookListeningSession)
+def refresh_history_cache_on_book_listening_session_change(
+    sender,
+    instance,
+    **kwargs,
+):
+    """Rebuild the history day a listening session lands on."""
+    if kwargs.get("raw"):
+        return
+    try:
+        user_id = instance.book.user_id
+    except Book.DoesNotExist:
+        return
+    day_key = history_cache.history_day_key(instance.started_at)
+    _handle_media_cache_change(
+        user_id,
+        MediaTypes.BOOK.value,
+        reason="book_listening_session_change",
+        history_specs=[([day_key] if day_key else [], ("sessions", "repeats"))],
+        statistics_day_values=[],
     )
 
 

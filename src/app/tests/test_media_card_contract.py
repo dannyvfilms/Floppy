@@ -235,7 +235,7 @@ class MediaCardSurfaceContractTest(TestCase):
                 content = self.render_card(surface)
                 rate_button = not flags.is_recommend_mode and not flags.rating_read_only
                 self.assertEqual("media-card-rate-button" in content, rate_button)
-                self.assertEqual(f'hx-post="{rate_url}"' in content, rate_button)
+                self.assertEqual(f'"postUrl": "{rate_url}"' in content, rate_button)
 
     def test_rating_is_read_only_where_the_viewer_cannot_rate(self):
         """Public pages and untracked items keep the plain rating, with no button."""
@@ -276,7 +276,7 @@ class MediaCardSurfaceContractTest(TestCase):
                 self.user.rating_scale = scale
                 self.user.save()
                 content = self.render_card("library")
-                self.assertEqual(content.count('"toggle": true'), stars)
+                self.assertIn(f'"scaleMax": {stars}', content)
 
     def test_status_chip_follows_the_surface_table(self):
         """The status chip shows exactly where the surface declares it."""
@@ -406,7 +406,7 @@ class MusicGridRatingTest(TestCase):
         content = self.render_grid("app/components/artist_grid_items.html", tracker)
         self.assertIn("media-card-rate-button", content)
         self.assertIn(
-            f'hx-post="{reverse("update_artist_score", args=[self.artist.id])}"',
+            f'"postUrl": "{reverse("update_artist_score", args=[self.artist.id])}"',
             content,
         )
 
@@ -420,7 +420,7 @@ class MusicGridRatingTest(TestCase):
         content = self.render_grid("app/components/album_list_grid_items.html", tracker)
         self.assertIn("rating: 6", content)
         self.assertIn(
-            f'hx-post="{reverse("update_album_score", args=[self.album.id])}"',
+            f'"postUrl": "{reverse("update_album_score", args=[self.album.id])}"',
             content,
         )
 
