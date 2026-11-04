@@ -7,8 +7,8 @@ export const surface = {
   id: 'RELEASE-CALENDAR',
   title: 'Release calendar',
   where: 'Calendar month, agenda and list views',
-  status: 'ported',
-  note: 'The shared calendar renders the server-owned month grid, agenda and list with media/status/release/tag filters, month/view toolbar and the calendar actions menu. Server queries, week start and the ICS subscription links stay authoritative.',
+  status: 'in_progress',
+  note: 'The links panel, subscriptions and calendar actions move to shared React. The shared calendar renders the server-owned month grid, agenda and list with media/status/release/tag filters, month/view toolbar and the calendar actions menu. Server queries, week start and the ICS subscription links stay authoritative.',
 };
 
 const WEEKDAYS = [
