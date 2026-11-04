@@ -12,11 +12,53 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export only; no runtime exercised."
+          "evidence": "Expo export only; the action overlay and popup host were not exercised on a runtime."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export only; no runtime exercised."
+          "evidence": "Expo export only; the action overlay and popup host were not exercised on a runtime."
+        }
+      }
+    },
+    "frontend/ui/MediaCardActions.jsx": {
+      "components": [
+        "MediaCardActions",
+        "MediaCardActionRow",
+        "MediaCardActionButton"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not rendered by the web bundle; the existing web MediaCard action adapter remains active. Shared presentation is planned for a browser adapter."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native card slot; no action overlay or reorder control was exercised at runtime."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native card slot; no action overlay or reorder control was exercised at runtime."
+        }
+      }
+    },
+    "frontend/ui/MediaCardActionHost.jsx": {
+      "components": [
+        "MediaCardActionHost"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not rendered by the web bundle; the existing ModalHost remains the browser popup host."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native card slot; the host was not exercised at runtime."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native card slot; the host was not exercised at runtime."
         }
       }
     },
