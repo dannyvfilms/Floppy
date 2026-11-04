@@ -548,6 +548,8 @@ modal is shared React presentation on mount, with the server markup as fallback.
 
 ## HISTORY
 
+- `frontend/ui/HistoryFeed.jsx`
+- `frontend/ui/mountHistoryFeed.jsx`
 - `src/static/js/sessionHistory.js`
 - `src/templates/app/components/fill_history.html`
 - `src/templates/app/components/history_card.html`

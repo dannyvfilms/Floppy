@@ -115,6 +115,27 @@ export const mediaCardPalette = {
   rating: { ...ratingPalette, focusStyle: {} },
 };
 
+export const historyPalette = {
+  background: palette.background,
+  surface: palette.surface,
+  surfaceStrong: palette.surfaceStrong,
+  surfaceMuted: palette.surfaceMuted,
+  border: palette.border,
+  text: palette.text,
+  textSecondary: palette.textSecondary,
+  textMuted: palette.textMuted,
+  accent: palette.accent,
+  accentStrong: palette.accentStrong,
+  accentContrast: '#ffffff',
+  link: '#818cf8',
+  danger: palette.danger,
+  success: palette.success,
+  warning: palette.warning,
+  radius: radius.md,
+  radiusSmall: radius.sm,
+  mediaCard: mediaCardPalette,
+};
+
 export const railPalette = {
   text: palette.text,
   textSecondary: palette.textSecondary,
