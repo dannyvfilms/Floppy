@@ -7,6 +7,7 @@ import RatingSlot from '../surfaces/RatingSlot';
 
 const children = {
   id: 'CHILDREN',
+  status: 'in_progress',
   title: 'Seasons, episodes and issue rows',
   where: 'Show, season, podcast and comic detail pages',
   note: 'Episode and issue rows, watched controls and history links will replace this note.',
