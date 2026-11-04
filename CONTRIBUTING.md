@@ -14,6 +14,7 @@ Our bar is practical: **make changes clean, minimal, safe, and well-understood.*
 | **PR Template** | Use every section; write in plain language first | [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md) |
 | **Python Tooling** | Python 3.12 + `uv` | `uv sync --locked` |
 | **Tailwind CSS** | Pinned repo CLI output to `src/static/css/main.css` | `npx @tailwindcss/cli -i ./src/static/css/input.css -o ./src/static/css/main.css` |
+| **Shared React UI** | Incremental components; committed Django static bundles | `npm ci --ignore-scripts`, `npm run build:ui`, `npm run check:ui`; [settings-card pattern](docs/ui/settings-cards.md) |
 | **Fast Tests** | Targeted test runner | `SECRET=test-only scripts/test.sh <dotted.path>` |
 | **Faster Tests** | Skip the 141s migration replay while iterating (not for migration changes) | `FLOPPY_TEST_FAST_DB=1 SECRET=test-only scripts/test.sh <dotted.path>` |
 | **Lint / Style** | Ruff (line length 88, migrations excluded) | `uv run --no-sync ruff check src` |
@@ -47,6 +48,17 @@ PYTHONPATH=src uv run --no-sync celery -A config worker --queues celery --beat -
 ```bash
 npx @tailwindcss/cli -i ./src/static/css/input.css -o ./src/static/css/main.css --watch
 ```
+
+React UI assets are committed, so running the app does not require Node. When editing
+`frontend/`, install the locked dependencies with `npm ci --ignore-scripts`, run
+`npm run build:ui`, and reload the browser. Commit the generated `src/static/ui/`
+output with the source; `npm run check:ui` verifies it. Meaningful component redesigns
+should include an incremental React port where bounded, following the
+[shared card and ownership pattern](docs/ui/settings-cards.md). Django routes and
+server permission checks remain authoritative; native verification is separate.
+Adopt by reusable component, not by provider or page. Reuse the
+[shared controls](docs/ui/react-components.md) when reworking fields, selects,
+buttons, chips, tabs, dialogs or card layouts; keep feature behavior in the consumer.
 
 Visit `http://localhost:8000`. For a shared demo login, set `DEMO_ACCOUNT_ENABLED=True` before the first start; provisioning is otherwise off by default.
 

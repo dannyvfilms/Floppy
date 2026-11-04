@@ -47,6 +47,9 @@
         {% elif entry.runtime_display %}
           · {{ entry.runtime_display }}
         {% endif %}
+        {% if entry.position_display %}
+          · {% if entry.position_unit == "page" %}{% if entry.position_total_display %}{% blocktranslate trimmed with position=entry.position_display total=entry.position_total_display %}at page {{ position }} / {{ total }}{% endblocktranslate %}{% else %}{% blocktranslate trimmed with position=entry.position_display %}at page {{ position }}{% endblocktranslate %}{% endif %}{% elif entry.position_total_display %}{% blocktranslate trimmed with position=entry.position_display total=entry.position_total_display %}stopped at {{ position }} / {{ total }}{% endblocktranslate %}{% else %}{% blocktranslate trimmed with position=entry.position_display %}stopped at {{ position }}{% endblocktranslate %}{% endif %}
+        {% endif %}
         {% if entry.entry_source %}
           · {% blocktranslate trimmed with source=entry.entry_source|entry_source_label %}via {{ source }}{% endblocktranslate %}
         {% endif %}

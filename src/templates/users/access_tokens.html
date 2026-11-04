@@ -1,0 +1,11 @@
+{% extends "users/base.html" %}
+{% load i18n %}
+{% block title %}{% translate "Access & Tokens - Floppy" %}{% endblock title %}
+{% block settings_content %}
+  <div class="space-y-6">
+    <h2 class="text-xl font-semibold">{% translate "Access & Tokens" %}</h2>
+    <p class="text-sm text-[var(--color-text-muted)]">{% translate "Manage credentials and applications allowed to access your Floppy account." %}</p>
+    <a class="text-[var(--color-link)] underline" href="{% url 'oauth_applications' %}">{% translate "Authorized applications" %}</a>
+    {% include "users/providers/access_tokens.html" %}
+  </div>
+{% endblock settings_content %}

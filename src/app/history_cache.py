@@ -111,6 +111,8 @@ from app.history_entry_builders import (  # noqa: F401
     _serialize_album,
     _serialize_item,
     _serialize_show,
+    build_book_page_entries,
+    build_listening_session_entry,
     flat_anime_episode_entries,
     flat_anime_episode_watches,
 )
@@ -120,6 +122,7 @@ from app.models import (
     Anime,
     BoardGame,
     Book,
+    BookListeningSession,
     Comic,
     CreditRoleType,
     Episode,
@@ -557,6 +560,55 @@ def _build_reading_entries(
                 )
             else:
                 entries.append(entry)
+
+    if not media_type_filter or MediaTypes.BOOK.value in media_type_filter:
+        sessions = BookListeningSession.objects.filter(book__user=user)
+        if credited_reading_item_ids is not None:
+            sessions = sessions.filter(book__item_id__in=credited_reading_item_ids)
+        if (
+            target_media_id
+            and target_source
+            and MediaTypes.BOOK.value in media_type_filter
+        ):
+            sessions = sessions.filter(
+                book__item__media_id=target_media_id,
+                book__item__source=target_source,
+            )
+        if start_date:
+            sessions = sessions.filter(started_at__gte=start_date)
+        if end_date:
+            sessions = sessions.filter(started_at__lte=end_date)
+        for session in sessions.select_related("book__item").defer(
+            *history_deferred_item_fields("book__item"),
+        ):
+            if genre_filters and not {
+                str(g).lower() for g in _resolve_genres(session.book.item)
+            } & set(genre_filters):
+                continue
+            entries.append(build_listening_session_entry(session))
+
+        page_books = Book.objects.filter(user=user).select_related("item").defer(
+            *history_deferred_item_fields("item"),
+        )
+        if credited_reading_item_ids is not None:
+            page_books = page_books.filter(item_id__in=credited_reading_item_ids)
+        if (
+            target_media_id
+            and target_source
+            and MediaTypes.BOOK.value in media_type_filter
+        ):
+            page_books = page_books.filter(
+                item__media_id=target_media_id,
+                item__source=target_source,
+            )
+        if genre_filters:
+            page_books = [
+                book
+                for book in page_books
+                if {str(g).lower() for g in _resolve_genres(book.item)}
+                & set(genre_filters)
+            ]
+        entries.extend(build_book_page_entries(page_books, start_date, end_date))
 
     return entries
 

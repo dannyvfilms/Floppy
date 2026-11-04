@@ -139,6 +139,11 @@ urlpatterns = [
         name="media_details",
     ),
     path(
+        "podcast/show-tracker/<int:tracker_id>/update-score/",
+        views.update_podcast_show_score,
+        name="update_podcast_show_score",
+    ),
+    path(
         "update-score/<media_type:media_type>/<int:instance_id>",
         views.update_media_score,
         name="update_media_score",
@@ -586,6 +591,16 @@ urlpatterns = [
         "bulk/status",
         views.bulk_status_update,
         name="bulk_status_update",
+    ),
+    path(
+        "bulk/plays",
+        views.bulk_show_plays_start,
+        name="bulk_show_plays_start",
+    ),
+    path(
+        "bulk/plays/<str:operation_id>",
+        views.bulk_show_plays_status,
+        name="bulk_show_plays_status",
     ),
     path(
         "bulk/collection",

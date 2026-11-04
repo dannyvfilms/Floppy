@@ -24,6 +24,19 @@ A template renders the card with the tag, never with `{% include %}`:
 - A value not declared in either list raises `TypeError`, and an undeclared surface raises
   `ValueError`. A new flag goes into the module with its reason, not onto one call site.
 
+## Who draws the card
+
+The shared React component (`frontend/ui/MediaCard.jsx`) draws every card: artwork, chips,
+status, rating, hover buttons, popups and bulk-select checkbox. The server sends the card
+wrapper, a props `<script>` built by `app/media_card_model.py`, and a first-paint poster and
+title link that React replaces on mount. The card's popups open in the shared host: the
+Add-to-lists form is React (a JSON form model from `lists_modal?format=json`), the Track form
+is still the server-rendered form (see POPUP-HOST in `docs/ui/component-register.md`). Tests that care about a chip, rating or button read the
+model with `app.tests.card_props.card_model`, not the markup. History and the Search list row use
+the same component. `MediaCardInventoryTest` fails if a surface opts out, the template regrows a
+legacy body, or a template draws `media-card` markup that is neither the tag nor listed in its
+`DOCUMENTED_EXCEPTIONS`.
+
 ## What `media` must be
 
 `media` is the viewer's tracking row for the item, or `None` when they do not track it.
@@ -55,12 +68,11 @@ Thumbnail dimensions do not classify a video as a Short.
 
 ## Rating from the card
 
-A tracked card's rating is a button (`media_card_rate_button.html`): the filled star and score,
-or, when unrated, an empty star that shows while the card is hovered. It opens the same picker
-as the details pages, `rating_picker.html`, which is the one copy of the star row. The popup is
-teleported to `<body>` because the card clips its overflow. Public pages, modal search cards
-and untracked items keep the plain read-only rating. `update_media_score` returns
-`media_card_rating_oob.html`, which swaps the card's rating after a change.
+A tracked card's rating is a button: the filled star and score, or, when unrated, an empty star
+that shows while the card is hovered. It opens the shared star row (`RatingStars.jsx`) in a popup
+teleported to `<body>` because the card clips its overflow. Public pages, modal search cards and
+untracked items keep the plain read-only rating. The score and save responses send a
+`floppyCardUpdate` event that refreshes the card's rating and status chip.
 
 ## Surfaces
 

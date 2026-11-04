@@ -38,6 +38,7 @@ from app.models import (
     Video,
 )
 from app.templatetags import app_tags
+from app.tests.card_props import card_models
 from events.models import Event
 
 
@@ -537,7 +538,12 @@ class MediaListViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["media_list"].paginator.count, 1)
-        self.assertContains(response, "Rick Astley · 3:33")
+        lines = [
+            " · ".join(part["text"] for part in line["parts"])
+            for model in card_models(response.content)
+            for line in model["lines"]
+        ]
+        self.assertIn("Rick Astley · 3:33", lines)
         self.assertContains(response, 'class="media-grid media-grid-video"')
 
     def test_season_media_list_with_status_filter_does_not_500(self):
@@ -1667,8 +1673,8 @@ class MediaListViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'data-status-label="no-status"')
-        self.assertContains(response, "No Status")
+        chips = [m["statusChip"] for m in card_models(response.content)]
+        self.assertIn("no-status", [chip and chip["kind"] for chip in chips])
 
     def test_no_status_card_add_to_tracker_opens_modal(self):
         """Regression for #1376: the card sent instance_id="None" and the modal 500ed."""
@@ -3593,7 +3599,10 @@ class MediaListViewTests(TestCase):
             response,
             "layoutHref(nextLayout) { return buildMediaListHref(this.mediaListUrl, document.getElementById('filter-form'), { layout: nextLayout }); }",
         )
-        self.assertContains(response, '@click="open = false"')
+        self.assertContains(
+            response,
+            '@click="$el.href = layoutHref(layout === \'grid\' ? \'table\' : \'grid\'); open = false"',
+        )
         self.assertNotContains(
             response, "layout = layout === 'grid' ? 'table' : 'grid'"
         )
@@ -3725,12 +3734,11 @@ class MediaListViewTests(TestCase):
             html=False,
         )
         grid_html = grid_page.content.decode()
-        # x-cloak has to be on the modal so it can't flash before Alpine
-        # initialises, but it need not be the very next attribute: #1016
-        # inserted @mousedown.self between the two on the track modal, and an
-        # adjacency-pinned regex turned that into a red suite on latest.
-        self.assertRegex(grid_html, r'x-show="trackOpen"[^>]*\sx-cloak\b')
-        self.assertRegex(grid_html, r'x-show="listsOpen"[^>]*\sx-cloak\b')
+        # Grid cards open their track and lists popups from the shared React
+        # host, so the page no longer carries a hidden popup per card.
+        self.assertContains(grid_page, "data-media-card-root")
+        self.assertNotContains(grid_page, 'x-show="trackOpen"')
+        self.assertNotContains(grid_page, 'x-show="listsOpen"')
 
         first_page = self.client.get(
             reverse("medialist", args=[MediaTypes.MOVIE.value])

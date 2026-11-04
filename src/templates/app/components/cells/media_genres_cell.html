@@ -1,12 +1,13 @@
+{% load ui_tags %}
 {% if media.item.genres %}
   {% with genre_media_type=media_type|default:media.item.media_type %}
+    {% url 'medialist' genre_media_type as genre_list_url %}
     <div class="flex flex-wrap gap-1.5">
       {% for genre in media.item.genres %}
         {% if genre_media_type %}
-          <a href="{% url 'medialist' genre_media_type %}?genre={{ genre|urlencode }}"
-             class="inline-flex items-center whitespace-nowrap rounded-full border border-[var(--color-genre-badge-border)] bg-[var(--color-genre-badge-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-genre-badge-text)] transition-colors duration-200 hover:bg-[var(--color-genre-badge-hover-bg)]">{{ genre }}</a>
+          {% with genre_q=genre|urlencode %}{% badge genre "sm" "genre" href=genre_list_url|add:"?genre="|add:genre_q nowrap=True %}{% endwith %}
         {% else %}
-          <span class="inline-flex items-center whitespace-nowrap rounded-full border border-[var(--color-genre-badge-border)] bg-[var(--color-genre-badge-bg)] px-2 py-0.5 text-xs font-medium text-[var(--color-genre-badge-text)]">{{ genre }}</span>
+          {% badge genre "sm" "genre" nowrap=True %}
         {% endif %}
       {% endfor %}
     </div>

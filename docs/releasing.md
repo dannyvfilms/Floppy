@@ -96,6 +96,14 @@ Carry these points into the actual release notes before publication:
    Record digest/run evidence with the release. Digest pinning fixes bytes;
    unsigned BuildKit metadata does not establish a trusted signer identity.
 
+The `verify-image` job in `docker-image.yml` now automates steps 5 and 6 on every
+publishing event, in both package namespaces: it checks that the SBOM and
+provenance subjects are the platform digests of the pushed index, then scans the
+amd64 and arm64 digests with a pinned Trivy (HIGH/CRITICAL with a fix fails the
+job; DB older than 48h fails; scanner errors fail). Reviewed exceptions go in
+`.trivyignore.yaml` with a reason and expiry. Signing is not adopted: no
+identity-bound signature exists, so trust still rests on GHCR plus digest pinning.
+
 Publication currently rebuilds after smoke rather than promoting the tested
 digest. Post-publication verification therefore matters. If verification fails,
 stop promotion and follow the operator's backup/rollback plan; an older image

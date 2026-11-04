@@ -187,6 +187,7 @@ if [ -z "$DB_HOST" ]; then
             esac
             # The container stays up while it is parked, so "exec" can attach.
             echo "[entrypoint] ${PREFLIGHT_HINT_EXEC}" >&2
+            echo "[entrypoint] To fix: https://github.com/dannyvfilms/Floppy/blob/latest/docs/sqlite-startup-recovery.md (docker exec <container> python manage.py sqlite_startup --prepare-migrations)" >&2
             decision_file="${DB_FILE}.integrity.decision"
             # The check above consumes a choice it can act on. Anything left is
             # stale, and a stale file would defeat the parking guard below and

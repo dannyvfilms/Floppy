@@ -17,6 +17,9 @@ from app.providers import credentials, services
 logger = logging.getLogger(__name__)
 base_url = "https://api.igdb.com/v4"
 IGDB_SEARCH_CACHE_VERSION = "v5"
+STEAM_APPDETAILS_URL = "https://store.steampowered.com/api/appdetails"
+STEAM_DLC_LIMIT = 24
+STEAM_DLC_CACHE_SECONDS = 7 * 24 * 60 * 60
 TOKENIZED_SEARCH_MIN_TERMS = 2
 
 
@@ -429,7 +432,7 @@ def game(media_id):
             "Non-numeric IDs cannot be looked up directly on IGDB."
         )
         raise ValueError(message)
-    cache_key = f"{Sources.IGDB.value}_{MediaTypes.GAME.value}_v3_{media_id}"
+    cache_key = f"{Sources.IGDB.value}_{MediaTypes.GAME.value}_v4_{media_id}"
     data = cache.get(cache_key)
     if data is None:
         access_token = get_access_token()
@@ -546,8 +549,54 @@ def game(media_id):
         external_ids = get_external_ids(response, hltb_url)
         if external_ids:
             data["external_ids"] = external_ids
+        steam_app_id = external_ids.get("steam_app_id")
+        if steam_app_id and not data["related"]["dlcs"]:
+            steam_dlcs = get_steam_dlcs(steam_app_id)
+            if steam_dlcs:
+                data["steam_dlcs"] = steam_dlcs
         cache.set(cache_key, data)
     return data
+
+
+def get_steam_dlcs(steam_app_id):
+    """Return display-only DLC entries from Steam when IGDB lists none.
+
+    Steam DLCs have no IGDB id, so they cannot be tracked. Failures return an
+    empty list so the game page still renders.
+    """
+    cache_key = f"steam_dlcs_v1_{steam_app_id}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    def app_details(app_id):
+        response = requests.get(
+            STEAM_APPDETAILS_URL,
+            params={"appids": app_id, "filters": "basic", "l": "english"},
+            timeout=5,
+        )
+        response.raise_for_status()
+        entry = response.json().get(str(app_id)) or {}
+        return entry.get("data") if entry.get("success") else None
+
+    dlcs = []
+    try:
+        base = app_details(steam_app_id) or {}
+        for dlc_id in (base.get("dlc") or [])[:STEAM_DLC_LIMIT]:
+            details = app_details(dlc_id)
+            if details and details.get("name"):
+                dlcs.append(
+                    {
+                        "title": details["name"],
+                        "image": details.get("header_image") or "",
+                        "url": f"https://store.steampowered.com/app/{dlc_id}/",
+                    },
+                )
+    except (requests.exceptions.RequestException, ValueError):
+        logger.warning("Steam DLC lookup failed for app %s", steam_app_id)
+        return dlcs
+    cache.set(cache_key, dlcs, STEAM_DLC_CACHE_SECONDS)
+    return dlcs
 
 
 def company_profile(company_id):

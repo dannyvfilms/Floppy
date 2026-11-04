@@ -1,0 +1,133 @@
+{% load i18n app_tags user_tags %}
+      <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6" x-data="{ open: false, confirmOpen: false, selectedMediaType: '', selectedMediaLabel: gettext('Choose a media type...'), deleteConfirmation: '', deleteMetadata: false, options: [
+        {% for media_type in media_types %}
+          { value: '{{ media_type|escapejs }}', label: '{{ media_type|media_type_readable_plural|escapejs }}' }
+          {% if not forloop.last %},{% endif %}
+
+        {% endfor %}
+        ] }">
+        <div class="flex items-center mb-3">
+          {% include "app/icons/warning.svg" with classes="w-5 h-5 text-[var(--color-error-text)] mr-2" %}
+          <h3 class="text-base font-medium text-[var(--color-error-text)]">{% translate "Danger Zone" %}</h3>
+        </div>
+        <p class="text-[var(--color-text-muted)] mb-4 text-sm">
+          {% translate "Permanently delete every tracked entry for one media type in your account, including its progress, ratings, notes, and history. This cannot be undone." %}
+        </p>
+
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div class="relative flex-1">
+            <label class="block text-[var(--color-text-secondary)] text-sm font-medium mb-2">{% translate "Media type to delete" %}</label>
+            <button type="button"
+                    @click="open = !open"
+                    @click.outside="open = false"
+                    class="flex items-center justify-between w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
+              <span x-text="selectedMediaLabel"></span>
+              <svg xmlns="http://www.w3.org/2000/svg"
+                   width="24"
+                   height="24"
+                   viewBox="0 0 24 24"
+                   fill="none"
+                   stroke="currentColor"
+                   stroke-width="2"
+                   stroke-linecap="round"
+                   stroke-linejoin="round"
+                   class="w-4 h-4 text-[var(--color-text-muted)]">
+                <path d="m6 9 6 6 6-6"></path>
+              </svg>
+            </button>
+            <div x-show="open"
+                 x-transition:enter="transition ease-out duration-100"
+                 x-transition:enter-start="transform opacity-0 scale-95"
+                 x-transition:enter-end="opacity-100 scale-100"
+                 x-transition:leave="transition ease-in duration-75"
+                 x-transition:leave-start="transform opacity-100 scale-100"
+                 x-transition:leave-end="transform opacity-0 scale-95"
+                 class="absolute left-0 right-0 mt-2 py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-hidden z-10 border border-gray-600">
+              <template x-for="option in options" :key="option.value">
+                <button type="button"
+                        @click="selectedMediaType = option.value; selectedMediaLabel = option.label; open = false"
+                        class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]"
+                        x-text="option.label"></button>
+              </template>
+            </div>
+          </div>
+          <button type="button"
+                  @click="deleteConfirmation = ''; confirmOpen = true; open = false"
+                  :disabled="!selectedMediaType"
+                  :class="selectedMediaType ? 'bg-red-600 text-white hover:bg-red-700 cursor-pointer' : 'bg-red-900/40 text-red-200/50 cursor-not-allowed'"
+                  class="flex items-center justify-center px-4 py-2 text-sm rounded-md transition-colors whitespace-nowrap">
+            {% include "app/icons/trashcan.svg" with classes="w-4 h-4 mr-2" %}
+            {% translate "Delete Selected Type" %}
+          </button>
+        </div>
+
+        <form id="delete-media-type-form"
+              method="post"
+              action="{% url 'bulk_delete_by_media_type' %}"
+              class="hidden">
+          {% csrf_token %}
+          <input type="hidden" name="media_type" x-bind:value="selectedMediaType">
+          <input type="hidden" name="delete_metadata" x-bind:value="deleteMetadata">
+        </form>
+
+        <template x-teleport="body">
+          <div x-show="confirmOpen"
+               x-cloak
+               @keydown.escape.window="confirmOpen = false; deleteConfirmation = ''"
+               class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+               @mousedown.self="confirmOpen = false; deleteConfirmation = ''">
+            <div class="w-full max-w-md bg-[var(--color-surface)] rounded-lg shadow-xl">
+              <div class="p-6">
+                <div class="flex items-center gap-2 mb-3">
+                  {% include "app/icons/warning.svg" with classes="w-5 h-5 text-[var(--color-error-text)] shrink-0" %}
+                  <h3 class="text-lg font-semibold text-[var(--color-error-text)]">{% translate "Are you sure?" %}</h3>
+                </div>
+                <p class="text-sm text-[var(--color-text-secondary)] mb-3">
+                  {% translate "You are about to permanently delete every tracked" %}
+                  <strong x-text="selectedMediaLabel.toLowerCase()"></strong>
+                  {% translate "entry in your account. This removes its progress, ratings, notes, and history." %}
+                </p>
+                <p x-show="selectedMediaType === 'music'"
+                   x-cloak
+                   class="text-sm text-[var(--color-text-secondary)] mb-3">
+                  {% translate "For music this covers your whole library page: the followed artists and albums as well as the individual tracks and their play counts." %}
+                </p>
+                <label class="flex items-center justify-between p-3 mb-3 bg-[var(--color-panel)] rounded-md cursor-pointer">
+                  <span class="text-sm text-[var(--color-text-secondary)] pr-3">
+                    {% translate "Also delete cached metadata (posters, cast/crew, and for music, artists & albums) with no remaining tracked entries." %}
+                  </span>
+                  <span class="relative inline-flex items-center shrink-0">
+                    <input class="sr-only peer" type="checkbox" x-model="deleteMetadata">
+                    <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
+                    </div>
+                  </span>
+                </label>
+                <p x-show="deleteMetadata" x-cloak class="text-sm text-[var(--color-error-text)] mb-3">
+                  {% translate "Metadata deletion also removes any custom list entries, collections, or calendar events still pointing at that now-untracked media." %}
+                </p>
+                <p class="text-sm text-[var(--color-error-text)] font-medium mb-4">{% translate "This action cannot be undone." %}</p>
+                <label class="block text-sm text-[var(--color-text-secondary)] mb-2">
+                  {% translate "Type" %} <strong>DELETE</strong> {% translate "to confirm." %}
+                </label>
+                <input type="text"
+                       x-model="deleteConfirmation"
+                       autocomplete="off"
+                       class="w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text)] text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent mb-5">
+                <div class="flex justify-end gap-2">
+                  <button type="button"
+                          @click="confirmOpen = false; deleteConfirmation = ''"
+                          class="px-4 py-2 text-sm rounded-md border border-gray-600 hover:border-gray-500 cursor-pointer">
+                    {% translate "Cancel" %}
+                  </button>
+                  <button type="button"
+                          :disabled="deleteConfirmation !== 'DELETE'"
+                          @click="document.getElementById('delete-media-type-form').submit()"
+                          :class="deleteConfirmation === 'DELETE' ? 'bg-red-700 text-white hover:bg-red-800 cursor-pointer' : 'bg-red-900/40 text-red-200/50 cursor-not-allowed'"
+                          class="px-4 py-2 text-sm rounded-md transition-colors">{% translate "Permanently Delete" %}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+

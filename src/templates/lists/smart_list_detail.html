@@ -2,14 +2,18 @@
 {% load i18n %}
 
 {% load static %}
-{% load app_tags %}
+{% load app_tags alphabet_tags %}
+{% load ui_tags %}
 
 {% block title %}
   {{ custom_list }} - Floppy
 {% endblock title %}
 
 {# djlint:off #}
+{% block alphabet_filter %}{% alphabet_filter "smart-filter-form" %}{% endblock alphabet_filter %}
+
 {% block content %}
+  <div class="alphabet-surface">
   {# Form CSS lives in the content block so boosted navigation keeps it #}
   {% if form %}{{ form.media.css }}{% endif %}
 
@@ -510,7 +514,9 @@
          class="{% if current_layout|default:'grid' == 'grid' %}media-grid{% endif %}"
          hx-history="false"
          :class="{ 'media-grid': renderedLayout === 'grid' }">
-      {% if current_layout == 'table' %}
+      {% if not items and request.GET.initial|alphabet_initial %}
+        {% alphabet_filter "smart-filter-form" "empty" %}
+      {% elif current_layout == 'table' %}
         {% include "lists/components/list_table.html" %}
       {% else %}
         {% include "lists/components/media_grid.html" %}
@@ -519,12 +525,13 @@
 
     <div id="loading-indicator" class="htmx-indicator text-center pt-8">
       <div class="inline-flex justify-center items-center">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+        {% spinner 32 %}
       </div>
     </div>
     {% if can_edit %}
       </div>
     {% endif %}
+  </div>
   </div>
 {% endblock content %}
 {# djlint:on #}

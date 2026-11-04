@@ -100,6 +100,15 @@ def mark_watched_importer(library, user, mode):
         since=previous,
     )
     result = plex_importer.import_data()
+    logger.info(
+        "Plex watched-mark poll user_id=%s since=%s libraries=%s counts=%s "
+        "warnings=%s",
+        user.id,
+        previous.isoformat(),
+        library,
+        dict(plex_importer.summary_counts),
+        plex_importer.warnings[:5],
+    )
 
     checkpoint = poll_started - MARK_WATCHED_OVERLAP
     failed_at = plex_importer.oldest_failed_viewed_at
@@ -1563,7 +1572,12 @@ class PlexHistoryImporter:
             tmdb_id,
             reference=reference,
         )
-        if not self._should_process_media(MediaTypes.MOVIE.value, tmdb_id):
+        # skip_existing=False: a movie already tracked (Planning, In progress)
+        # must not drop a new watch of it; exact duplicates are still filtered
+        # by _should_skip_movie_record.
+        if not self._should_process_media(
+            MediaTypes.MOVIE.value, tmdb_id, skip_existing=False
+        ):
             self.summary_counts["skipped_existing"] += 1
             return True
 
@@ -2453,6 +2467,15 @@ class PlexHistoryImporter:
                 actual_tmdb_id,
             )
             if existing and self.mode == "new":
+                if existing.status != Status.COMPLETED.value:
+                    # Tracked but not watched yet (Planning, In progress): the
+                    # play is what finishes it, e.g. a movie marked watched in
+                    # Plex after being added to Floppy.
+                    existing.status = Status.COMPLETED.value
+                    existing.end_date = record["watched_at"]
+                    existing._history_date = record["watched_at"]
+                    existing.save()
+                    self.summary_counts["updated"] += 1
                 self.media_instances[MediaTypes.MOVIE.value][actual_tmdb_id] = [
                     existing
                 ]

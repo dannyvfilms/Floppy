@@ -1,5 +1,6 @@
 
 {% load i18n %}
+{% load ui_tags %}
 {% load app_tags %}
 {% load user_tags %}
 {% load humanize %}
@@ -204,24 +205,11 @@
           </div>
         </div>
 
-        <div x-data="{ listsOpen: false }">
+        <div>
           <button class="size-11 inline-flex items-center justify-center shrink-0 rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer"
                   title="{% translate "Add to custom lists" %}"
-                  hx-get="{% media_view_url 'lists_modal' media %}"
-                  hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
-                  hx-target="#{% component_id 'lists' media %}"
-                  hx-trigger="click once"
-                  @click="listsOpen = true">{% include "app/icons/list-add.svg" with classes="w-4 h-4" %}</button>
+                  {% lists_modal_click media request.get_full_path %}>{% include "app/icons/list-add.svg" with classes="w-4 h-4" %}</button>
 
-          <div x-show="listsOpen"
-          @mousedown.self="listsOpen = false"
-               x-cloak
-               @keydown.escape.window="listsOpen = false"
-               class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div class="w-96 max-h-[90dvh] px-4 md:px-0 relative z-60">
-              <div id="{% component_id 'lists' media %}"></div>
-            </div>
-          </div>
         </div>
 
         {% for action in detail_secondary_actions %}
@@ -311,7 +299,7 @@
       <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
         <div class="flex flex-wrap gap-2 justify-center md:justify-start">
           {% for genre in album_genres %}
-            <span class="inline-flex h-6 items-center rounded-full border border-[var(--color-genre-badge-border)] bg-[var(--color-genre-badge-bg)] px-2.5 text-xs font-medium text-[var(--color-genre-badge-text)]">{{ genre }}</span>
+            {% badge genre "tag" "genre" %}
           {% endfor %}
         </div>
       </div>

@@ -11,8 +11,9 @@ from django.utils.dateparse import parse_datetime
 from django.utils.module_loading import import_string
 from simple_history.models import HistoricalRecords
 
-from app import cache_safety
+from app import cache_safety, live_playback
 from app.log_safety import mapping_keys
+from app.providers import credentials
 from app.providers.services import ProviderAPIError
 from integrations import anime_mapping
 from integrations.models import PlexWebhookShare
@@ -89,7 +90,11 @@ def _log_webhook_finished(
 
 
 def _received_at_details(received_at):
-    """Return (queue delay in ms, event epoch seconds) for a receipt timestamp."""
+    """Return (queue delay in ms, event epoch seconds) for a receipt timestamp.
+
+    The epoch keeps its fraction: two events received in the same second must
+    still order correctly when a backlog processes them in reverse.
+    """
     if not received_at:
         return None, None
     try:
@@ -101,7 +106,7 @@ def _received_at_details(received_at):
     if timezone.is_naive(received):
         received = timezone.make_aware(received)
     delay_ms = max(0, int((timezone.now() - received).total_seconds() * 1000))
-    return delay_ms, int(received.timestamp())
+    return delay_ms, received.timestamp()
 
 
 @contextmanager
@@ -243,7 +248,11 @@ def _process_webhook(
     logger.info("Webhook received provider=%s keys=%s", provider, mapping_keys(payload))
 
     try:
-        with _webhook_history_user(user):
+        with (
+            _webhook_history_user(user),
+            credentials.current_user_scope(user),
+            live_playback.webhook_event_time(event_ts),
+        ):
             if share is None:
                 result = processor.process_payload(payload, user)
             else:

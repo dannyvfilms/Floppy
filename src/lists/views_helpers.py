@@ -6,6 +6,7 @@ pure helpers called by views in views.py (and its submodules).
 """
 
 import logging
+from dataclasses import replace
 
 from django.apps import apps
 from django.conf import settings
@@ -682,6 +683,9 @@ def paginate_list_items(
     page,
     page_size=16,
     media_types=None,
+    initial="",
+    title_user=None,
+    include_alphabet=False,
 ):
     """Order and paginate a list's items with the library-query engine.
 
@@ -693,6 +697,11 @@ def paginate_list_items(
     ``candidates``. Returns ``(items_page, filtered_count)``.
     """
     from app.library_query import LibraryQuery, LibraryQueryExecutor, SortSpec
+    from app.library_query.alphabet import (
+        initial_condition,
+        normalize_initial,
+        query_other_initial,
+    )
     from app.library_query.spec import ROUTING_MODEL
 
     if media_types is None:
@@ -713,6 +722,11 @@ def paginate_list_items(
         provider_region=str(getattr(media_user, "watch_provider_region", "") or ""),
         pinned_providers=tuple(getattr(media_user, "pinned_watch_providers", None) or ()),
     )
+    other_initial = query_other_initial(media_user, query, display_user=title_user) if include_alphabet else None
+    if normalize_initial(initial):
+        query = replace(query, within=Item.objects.filter(pk__in=candidates).filter(
+            initial_condition(initial, title_user or media_user)
+        ).values("pk"))
     executor = LibraryQueryExecutor(media_user, query)
     total = executor.count()
     items_page = Paginator(range(total), page_size).get_page(page)
@@ -728,6 +742,7 @@ def paginate_list_items(
     for item in items:
         item.list_date_added, item.list_rank = added.get(item.pk, (None, None))
     items_page.object_list = items
+    items_page.alphabet_other_initial = other_initial
     _attach_media_with_aggregation(items_page, media_user)
     return items_page, total
 

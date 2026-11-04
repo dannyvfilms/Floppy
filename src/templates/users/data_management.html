@@ -1,0 +1,18 @@
+{% extends "users/base.html" %}
+{% load i18n %}
+{% block title %}{% translate "Data Management - Floppy" %}{% endblock title %}
+{% block settings_content %}
+  <div class="space-y-6">
+    <h2 class="text-xl font-semibold">{% translate "Data Management" %}</h2>
+    {% include "users/components/export_controls.html" %}
+    <section class="bg-[var(--color-surface)] rounded-lg p-6 space-y-4">
+      <h3 class="text-lg font-semibold">{% translate "Restore a Floppy backup" %}</h3>
+      {% include "users/components/provider_import.html" %}
+    </section>
+    <p><a class="text-[var(--color-link)] underline" href="{% url 'rss_settings' %}">{% translate "RSS feeds" %}</a></p>
+    <p><a class="text-[var(--color-link)] underline" href="{% url 'import_template_csv' %}">{% translate "Download an import template" %}</a></p>
+    {% include "users/components/metadata_library_repair.html" %}
+    {% include "users/components/import_source_cleanup.html" %}
+    {% include "users/components/library_danger_zone.html" with media_types=deletable_media_types %}
+  </div>
+{% endblock settings_content %}

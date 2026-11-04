@@ -3,6 +3,7 @@
 from django.db import transaction
 
 from app import fork_services_play_dedupe as play_dedupe
+from app import live_playback
 from app.models import Episode
 from integrations.external_references import save_observation
 
@@ -107,3 +108,5 @@ def apply_targets(user, targets, *, watched_at=None, unplayed=False):
                     related_season=season_for_target(user, item),
                     end_date=watched_at,
                 )
+            else:
+                live_playback.close_resume_point_without_play(user.id, item.id)

@@ -1,0 +1,29 @@
+{% load i18n app_tags user_tags %}
+{% if import_source_media %}
+  {# Bulk Delete by Import Source #}
+  <div class="{% if not provider_navigation %}bg-[var(--color-surface)] rounded-lg p-6{% endif %}">
+    <div class="flex items-center mb-4">
+      {% include "app/icons/trashcan.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
+      <h2 class="text-xl font-semibold">{% translate "Imported Media by Source" %}</h2>
+    </div>
+    <p class="text-[var(--color-text-muted)] mb-5 text-sm">
+      {% translate "Permanently delete everything of a media type imported from one source, e.g. before re-importing from a different source." %}
+    </p>
+    <div class="space-y-3">
+      {% for row in import_source_media %}
+        <div class="bg-[var(--color-surface-strong)] rounded-lg p-4 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            {% source_display row.source %}
+            <span class="text-sm text-[var(--color-text-secondary)]">{% with media_type=row.media_type|media_type_readable %}{% blocktranslate count count=row.count %}{{ media_type }} · {{ count }} item{% plural %}{{ media_type }} · {{ count }} items{% endblocktranslate %}{% endwith %}</span>
+          </div>
+          <form action="{% url 'bulk_delete_by_import_source' row.media_type row.source %}"
+                method="post"
+                onsubmit="return confirm(interpolate(gettext('Permanently delete all %s items imported from this source?'), ['{{ row.media_type|escapejs }}']){% if row.media_type == 'music' %} + ' ' + gettext('Artists and albums left with no tracks are removed from your library too.'){% endif %} + ' ' + gettext('This cannot be undone.'));">
+            {% csrf_token %}
+            <button class="text-xs text-red-400 hover:text-red-300 transition-colors cursor-pointer">{% translate "Delete all" %}</button>
+          </form>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}

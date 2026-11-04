@@ -1,0 +1,17 @@
+{% load i18n %}
+{# Standalone settings form: props id form-<key>; the fallback is a plain form that posts the same fields. #}
+{% if form_model %}
+  {{ form_model|json_script:form_props_id }}
+  <div data-settings-form-root data-props-id="{{ form_props_id }}" x-ignore hx-disable>
+    <form class="ui-form" method="post" action="{{ form_model.action }}">
+      {% csrf_token %}<input type="hidden" name="next" value="{{ form_model.next }}">
+      {% for name, value in form_model.hidden.items %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+      {% for field in form_model.fields %}
+        {% if field.type == 'toggle' %}<div class="ui-field"><label><input type="checkbox" name="{{ field.name }}"{% if field.value %} checked{% endif %}> {{ field.label }}</label></div>
+        {% elif field.type == 'select' %}<div class="ui-field"><label for="fb-{{ field.name }}">{{ field.label }}</label><select id="fb-{{ field.name }}" name="{{ field.name }}">{% for option in field.options %}<option value="{{ option.value }}"{% if option.value == field.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}</select></div>
+        {% else %}<div class="ui-field"><label for="fb-{{ field.name }}">{{ field.label }}</label><input id="fb-{{ field.name }}" type="{{ field.type }}" name="{{ field.name }}" value="{{ field.value|default:'' }}" placeholder="{{ field.placeholder }}"{% if field.required %} required{% endif %}></div>{% endif %}
+      {% endfor %}
+      <button class="ui-button" type="submit">{{ form_model.submit }}</button>
+    </form>
+  </div>
+{% endif %}

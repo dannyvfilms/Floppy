@@ -1,3 +1,4 @@
+(() => {
 // Mirrors app/config.py's MEDIA_TYPE_CONFIG stats_color + svg_icon fields so
 // the Average Rating card's icons match the rest of the app without a round
 // trip to the server for markup that's identical across every user.
@@ -43,6 +44,9 @@ const MEDIA_TYPE_VISUALS = {
     icon: '<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="23"/><line x1="8" x2="16" y1="23" y2="23"/>',
   },
 };
+// statistics-charts.js reads this by bare name, so it must stay global
+// even though this file is wrapped in an IIFE.
+window.MEDIA_TYPE_VISUALS = MEDIA_TYPE_VISUALS;
 
 // Icon shapes for the combined "Consumption" card's primary/secondary metrics,
 // rendered via x-html the same way MEDIA_TYPE_VISUALS.icon is above.
@@ -965,3 +969,5 @@ if (typeof window !== "undefined") {
   // The separate asset is loaded outside the inline Alpine scope.
   window.dateRangePicker = dateRangePicker;
 }
+
+})();

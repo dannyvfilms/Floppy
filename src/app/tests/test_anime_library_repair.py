@@ -429,16 +429,31 @@ class AnimeShapeConversionPromptTests(TestCase):
 
         response = self.client.post(
             reverse("set_media_type_provider", args=[MediaTypes.ANIME.value]),
-            {"source": Sources.TMDB.value},
+            {
+                "source": Sources.TMDB.value,
+                "next": reverse("provider_detail", args=["tmdb"]) + "?tab=metadata",
+            },
             follow=True,
         )
 
-        self.assertContains(response, "still in the other format")
+        anime_source = next(
+            source for source in response.context["provider_page"]["metadata"]["sources"]
+            if source["key"] == "anime"
+        )
+        self.assertEqual(anime_source["existingCount"], 1)
+        self.assertEqual(anime_source["moveAction"], reverse("convert_anime_library"))
         self.assertContains(response, "Convert existing anime")
         self.assertContains(response, reverse("convert_anime_library"))
 
-        again = self.client.get(reverse("metadata_settings"))
-        self.assertContains(again, "still in the other format")
+        again = self.client.get(
+            reverse("provider_detail", args=["tmdb"]) + "?tab=metadata",
+        )
+        anime_source = next(
+            source for source in again.context["provider_page"]["metadata"]["sources"]
+            if source["key"] == "anime"
+        )
+        self.assertEqual(anime_source["existingCount"], 1)
+        self.assertEqual(anime_source["moveAction"], reverse("convert_anime_library"))
 
     def test_no_conversion_notice_when_the_library_matches_the_provider(self):
         """A library already in the preferred shape needs no action."""
@@ -446,7 +461,10 @@ class AnimeShapeConversionPromptTests(TestCase):
 
         response = self.client.post(
             reverse("set_media_type_provider", args=[MediaTypes.ANIME.value]),
-            {"source": Sources.MAL.value},
+            {
+                "source": Sources.MAL.value,
+                "next": reverse("provider_detail", args=["tmdb"]) + "?tab=metadata",
+            },
             follow=True,
         )
 
@@ -467,7 +485,7 @@ class AnimeShapeConversionPromptTests(TestCase):
         mock_delay.assert_called_once_with(user_id=self.user.id)
 
     def test_duplicate_card_appears_with_a_repair_action(self):
-        """An affected user sees the repair option on the metadata page."""
+        """An affected user sees the repair option in Data Management."""
         from django.urls import reverse
 
         tv_item = Item.objects.create(
@@ -484,7 +502,7 @@ class AnimeShapeConversionPromptTests(TestCase):
             status=Status.IN_PROGRESS.value,
         )
 
-        response = self.client.get(reverse("metadata_settings"))
+        response = self.client.get(reverse("data_management"))
 
         self.assertContains(response, "Duplicate anime libraries")
         self.assertContains(response, reverse("repair_duplicate_anime_libraries"))

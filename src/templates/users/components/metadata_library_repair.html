@@ -1,0 +1,20 @@
+{% load i18n app_tags user_tags %}
+    {% if duplicate_anime_count %}
+      <div class="bg-[var(--color-surface)] rounded-lg p-6">
+        <h2 class="text-xl font-semibold mb-1">{% translate "Duplicate anime libraries" %}</h2>
+        <p class="text-[var(--color-text-muted)] text-sm mb-4">
+          {% blocktranslate count count=duplicate_anime_count %}One show is tracked in both Anime and TV Shows. Repair folds the two entries together and keeps your history.{% plural %}{{ count }} shows are tracked in both Anime and TV Shows. Repair folds each pair together and keeps your history.{% endblocktranslate %}
+        </p>
+        <form method="post" action="{% url 'repair_duplicate_anime_libraries' %}">
+          {% csrf_token %}
+                      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <button type="submit"
+                  class="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500">
+            {% translate "Repair duplicates" %}
+          </button>
+        </form>
+        <p class="mt-2 text-xs text-[var(--color-text-muted)]">
+          {% translate "Shows that cannot be merged safely are left untouched. Re-running is safe." %}
+        </p>
+      </div>
+    {% endif %}

@@ -153,6 +153,9 @@ function trackModalGetStateKeyFromExpression(expression) {
   if (expression.includes("trackOpen")) {
     return "trackOpen";
   }
+  if (expression.includes("historyOpen")) {
+    return "historyOpen";
+  }
 
   return null;
 }
@@ -202,6 +205,9 @@ function trackModalFindStateTarget(target) {
           }
           if (Object.prototype.hasOwnProperty.call(data, "trackOpen")) {
             return { host: node, stateKey: "trackOpen" };
+          }
+          if (Object.prototype.hasOwnProperty.call(data, "historyOpen")) {
+            return { host: node, stateKey: "historyOpen" };
           }
         }
       } catch {

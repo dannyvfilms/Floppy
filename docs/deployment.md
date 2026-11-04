@@ -102,6 +102,43 @@ The examples above set `DEMO_ACCOUNT_ENABLED=False` for clarity; it is also the 
 That's the whole install. `SECRET` is the only variable you truly must set; `TMDB_API` is what makes movie and TV metadata work, and every other API key is optional until you want that media type. Everything else — Postgres, reverse proxies, the full environment variable list, Docker Run, Portainer specifics — follows below.
 
 
+## Backups and restore rehearsal
+
+This is the canonical backup guide; other pages link here.
+
+| Artifact | Where | What it is |
+| --- | --- | --- |
+| Raw SQLite snapshot | `BACKUP_DIR/database/*.sqlite3`, mode 0600 | Verified, atomically published copy of the live database. A same-host recovery point only. SQLite only. |
+| CSV export | `BACKUP_DIR/<username>/floppy_*.csv` | Portable media, ratings and lists. Not accounts, credentials or settings. |
+| PostgreSQL | operator-managed | Floppy does not back up PostgreSQL. Use `pg_dump` or your platform's backup. |
+
+**Freshness is not liveness.** A running web process, or a dispatched beat
+task, does not mean a backup was published. Floppy records the last
+successful run, last failure and their ages for the raw snapshot and for
+scheduled CSV exports (hidden `.status-*.json` files in `BACKUP_DIR`), and
+Settings → Export reports them with whether `BACKUP_DIR` is writable and how
+much space is free. That check says a write could succeed now; it does not
+certify that any backup is current. A disabled snapshot schedule and a
+PostgreSQL deployment are reported as such rather than as healthy. CSVs are
+written to a hidden staging file and renamed only when complete, so an
+interrupted export never leaves a partial `floppy_*.csv`; stale staging files
+are removed on the next export.
+
+**Off-host and encrypted copies.** Copy `BACKUP_DIR` off the machine on your
+own schedule (restic, borg, rclone to storage you control) with encryption
+you hold the key for. Floppy adds no cloud service or automatic restore.
+
+**Rehearse a restore** on a scratch instance, never over production:
+
+1. Restore the database: copy a snapshot to a new `FLOPPY_DB_PATH` (SQLite),
+   or `pg_restore` into a new database (PostgreSQL).
+2. Restore the stable signing key (`SECRET`, `SECRET_FILE` or the generated
+   `secret_key` in `FLOPPY_DATA_DIR`) and your environment configuration.
+   Without the original key, sessions and encrypted integration credentials
+   do not carry over.
+3. Start Floppy, run `python src/manage.py floppy_preflight`, sign in, and
+   confirm a known title, rating and list are present.
+
 ## SQLite data paths
 
 Floppy uses these rules when `DB_HOST` is not set:
@@ -438,6 +475,7 @@ The only universally required variable is `SECRET`. For Docker installs you shou
 - `HARDCOVER_API` - Hardcover book metadata/imports. **Required to use Hardcover** ([generate a token](https://hardcover.app/account/api)); Hardcover meters its free tier per account (5000 requests/day), so Floppy ships no shared default and book search falls back to Open Library without one. Individual users can also set a personal token in their own settings.
 - `GOOGLE_BOOKS_API_KEY` - optional Google Books book metadata ([Google Books API](https://developers.google.com/books/docs/v1/using)); supports `GOOGLE_BOOKS_API_KEY_FILE` for Docker secrets
 - `OPENCRITIC_API_KEY` - optional OpenCritic critic scores for games, from a [RapidAPI key](https://rapidapi.com/opencritic-opencritic-default/api/opencritic-api). The free plan (25 searches and 200 requests a day) is enough: a score is fetched when a game page is opened, and quota left over in the hour before the daily reset fills in tracked games. Supports `OPENCRITIC_API_KEY_FILE`; can also be set in Settings > Metadata
+- `PODCASTINDEX_API_KEY` and `PODCASTINDEX_API_SECRET` - optional [Podcast Index](https://api.podcastindex.org/signup) podcast search (free, both are needed). Supports `_FILE` variants; can also be set in Settings > Metadata
 - `COMICVINE_API` - comic metadata
 - `MANGABAKA_NSFW` - optional, set to `true` to include erotica and pornographic series in [MangaBaka](https://mangabaka.org/) manga search results. MangaBaka needs no API key and is available as a manga source next to MyAnimeList and MangaUpdates; light novels are left out
 - `GCD_USERNAME` / `GCD_PASSWORD` - optional [Grand Comics Database](https://www.comics.org/) comic metadata, as a second comic source next to Comic Vine. Use a free GCD account: GCD limits anonymous API access to 30 requests an hour, so Floppy ships no shared default and the source stays hidden until a login is set. Support `GCD_USERNAME_FILE` / `GCD_PASSWORD_FILE` for Docker secrets; can also be set in Settings > Metadata, then chosen as the default comic source there

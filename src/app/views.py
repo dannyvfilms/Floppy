@@ -74,7 +74,12 @@ from app.activity_builders import (
     _queue_game_lengths_refresh,
     _should_queue_game_lengths_refresh,
 )
-from app.bulk_action_views import bulk_collection_quick_add, bulk_status_update
+from app.bulk_action_views import (
+    bulk_collection_quick_add,
+    bulk_show_plays_start,
+    bulk_show_plays_status,
+    bulk_status_update,
+)
 from app.collection_views import (
     _build_collection_episode_audit_entries,
     _build_collection_season_audit_entries,
@@ -311,6 +316,7 @@ from app.score_views import (
     update_artist_score,
     update_episode_score,
     update_media_score,
+    update_podcast_show_score,
     update_track_score,
 )
 from app.search_views import (
@@ -530,7 +536,7 @@ def home(request):
             "user": request.user,
             "home_groups": home_groups,
             "items_limit": items_limit,
-            "active_playback_card": live_playback.build_home_playback_card(
+            "active_playback_cards": live_playback.build_home_playback_cards(
                 request.user
             ),
             "MediaTypes": MediaTypes,
@@ -547,7 +553,7 @@ def home(request):
             "home_groups": [],
             "items_limit": 14,
             "database_error": True,
-            "active_playback_card": None,
+            "active_playback_cards": [],
             "MediaTypes": MediaTypes,
             "IMG_NONE": settings.IMG_NONE,
             "defer_remaining_groups": False,
@@ -815,15 +821,15 @@ def trakt_series_graph_fragment(request, source, media_id):
 
 
 def active_playback_fragment(request):
-    """HTMX fragment: return the active playback card or empty response."""
-    card = live_playback.build_home_playback_card(request.user)
-    if not card:
+    """HTMX fragment: return the active playback cards or empty response."""
+    cards = live_playback.build_home_playback_cards(request.user)
+    if not cards:
         return HttpResponse("")
     return render(
         request,
-        "app/components/active_playback_card.html",
+        "app/components/active_playback_cards.html",
         {
-            "active_playback_card": card,
+            "active_playback_cards": cards,
         },
     )
 
@@ -2280,6 +2286,8 @@ __all__ = [
     "bulk_collection_quick_add",
     "bulk_episode_tracking",
     "bulk_music_tracking",
+    "bulk_show_plays_start",
+    "bulk_show_plays_status",
     "bulk_status_update",
     "calendar",
     "collection_add",
@@ -2410,6 +2418,7 @@ __all__ = [
     "update_media_score",
     "update_metadata_language_preference",
     "update_metadata_provider_preference",
+    "update_podcast_show_score",
     "update_statistics_compare_mode",
     "update_statistics_preferences",
     "update_studio_sort",

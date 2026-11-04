@@ -41,6 +41,8 @@ from app.providers import (
     musicbrainz,
     openlibrary,
     pocketcasts,
+    podcast_links,
+    podcastindex,
     tmdb,
     tvdb,
 )
@@ -146,6 +148,7 @@ def _audiobookshelf_book(media_id):
     image = item.image if item and item.image else settings.IMG_NONE
     runtime_minutes = item.runtime_minutes if item else None
     authors = item.authors if item else []
+    narrators = item.narrators if item else []
     isbn = item.isbn if item else []
     genres = item.genres if item else []
     publishers = item.publishers if item else ""
@@ -168,6 +171,7 @@ def _audiobookshelf_book(media_id):
         "related": {},
         "details": {
             "author": authors,
+            "narrator": narrators,
             "isbn": isbn,
             "publisher": publishers,
             "publish_date": publish_date,
@@ -650,14 +654,20 @@ def raise_not_found_error(provider, media_id, media_type="item", *, confirmed_ab
     raise error
 
 
+# Versioned with the selection policy: the pre-superuser key may still hold an
+# ordinary user's proxy in a warm cache after upgrade, so it is never read.
+TMDB_PROXY_CACHE_KEY = "tmdb_proxy_url:superuser"
+
+
 def _get_tmdb_proxy_url():
     """Return the configured TMDB outbound proxy URL, if any.
 
-    The setting is stored per-user (Settings > Advanced UI), but applied
-    instance-wide: the first user with one configured wins. Cached briefly
-    since api_request is on the hot path for search and metadata backfill.
+    The setting is stored on a user (Settings > Advanced UI), but applied
+    instance-wide, so only superusers' values count: the lowest-pk superuser
+    with one configured wins. Cached briefly since api_request is on the hot
+    path for search and metadata backfill.
     """
-    cached = cache.get("tmdb_proxy_url")
+    cached = cache.get(TMDB_PROXY_CACHE_KEY)
     if cached is not None:
         return cached or None
 
@@ -665,12 +675,14 @@ def _get_tmdb_proxy_url():
     from users.models import User
 
     encrypted = (
-        User.objects.exclude(tmdb_proxy_url="")
+        User.objects.filter(is_superuser=True)
+        .exclude(tmdb_proxy_url="")
+        .order_by("pk")
         .values_list("tmdb_proxy_url", flat=True)
         .first()
     )
     proxy_url = decrypt(encrypted) if encrypted else ""
-    cache.set("tmdb_proxy_url", proxy_url, 60)
+    cache.set(TMDB_PROXY_CACHE_KEY, proxy_url, 60)
     return proxy_url or None
 
 
@@ -1735,6 +1747,53 @@ def search_by_id(media_type, query, source=None, user=None):
     return helpers.format_search_response(1, 1, 1, [result])
 
 
+# Modules rather than functions, so each search is looked up when it runs.
+_PODCAST_SEARCHERS = {
+    Sources.POCKETCASTS.value: pocketcasts,
+    Sources.GPODDER.value: gpodder,
+    Sources.PODCASTINDEX.value: podcastindex,
+}
+
+
+def _search_podcasts(query, page, source):
+    """Search podcasts, resolving pasted links and falling back across sources.
+
+    A pasted Apple Podcasts link or RSS feed address names one show, so it is
+    answered directly whichever source tab is selected. A name that the chosen
+    source cannot find is retried on the other sources, and the response says
+    which one answered so the page can explain why the tab differs.
+    """
+    if page == 1:
+        linked = podcast_links.resolve(query)
+        if linked is not None:
+            return linked
+
+    search_module = _PODCAST_SEARCHERS.get(source)
+    response = search_module.search(query, page) if search_module else None
+    if response is not None and (response["results"] or page != 1):
+        return response
+    if not query.strip():
+        return response
+
+    for fallback_source, fallback_module in _PODCAST_SEARCHERS.items():
+        if fallback_source == source:
+            continue
+        if fallback_source == Sources.PODCASTINDEX.value and not podcastindex.enabled():
+            continue
+        try:
+            fallback = fallback_module.search(query, page)
+        except ProviderAPIError as exc:
+            logger.debug(
+                "Podcast fallback search failed: %s",
+                exception_summary(exc),
+            )
+            continue
+        if fallback["results"]:
+            fallback["fallback_source"] = fallback_source
+            return fallback
+    return response
+
+
 def search(
     media_type,
     query,
@@ -1831,13 +1890,7 @@ def search(
         ),
         MediaTypes.BOARDGAME.value: lambda: bgg.search(query, page),
         MediaTypes.MUSIC.value: lambda: musicbrainz.search_combined(query, page),
-        MediaTypes.PODCAST.value: lambda: (
-            pocketcasts.search(query, page)
-            if source == Sources.POCKETCASTS.value
-            else gpodder.search(query, page)
-            if source == Sources.GPODDER.value
-            else None
-        ),
+        MediaTypes.PODCAST.value: lambda: _search_podcasts(query, page, source),
         # Videos arrive from clients, so there is no provider to search.
         MediaTypes.VIDEO.value: lambda: None,
     }

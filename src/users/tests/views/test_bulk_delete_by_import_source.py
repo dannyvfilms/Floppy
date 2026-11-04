@@ -77,7 +77,7 @@ class BulkDeleteByImportSourceTests(TestCase):
             ),
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         self.assertFalse(Movie.objects.filter(id=trakt_movie.id).exists())
         self.assertTrue(Movie.objects.filter(id=simkl_movie.id).exists())
         self.assertTrue(Movie.objects.filter(id=manual_movie.id).exists())
@@ -94,7 +94,7 @@ class BulkDeleteByImportSourceTests(TestCase):
             reverse("bulk_delete_by_import_source", args=["not-a-real-type", "trakt"]),
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         messages = list(get_messages(response.wsgi_request))
         self.assertIn("Unknown media type", str(messages[0]))
 
@@ -109,7 +109,7 @@ class BulkDeleteByImportSourceTests(TestCase):
             ),
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         self.assertTrue(Movie.objects.filter(id=movie.id).exists())
         messages = list(get_messages(response.wsgi_request))
         self.assertIn("Unknown import source", str(messages[0]))
@@ -134,7 +134,7 @@ class BulkDeleteByImportSourceTests(TestCase):
             ),
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         self.assertFalse(Music.objects.filter(id=music.id).exists())
 
     def _music(self, media_id, user, import_run, artist=None, album=None):
@@ -174,7 +174,7 @@ class BulkDeleteByImportSourceTests(TestCase):
             ),
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         self.assertFalse(Music.objects.filter(id=music.id).exists())
         self.assertFalse(ArtistTracker.objects.filter(id=artist_tracker.id).exists())
         self.assertFalse(AlbumTracker.objects.filter(id=album_tracker.id).exists())
@@ -197,7 +197,7 @@ class BulkDeleteByImportSourceTests(TestCase):
             ),
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         self.assertFalse(Music.objects.filter(id=lastfm_music.id).exists())
         self.assertTrue(Music.objects.filter(id=koito_music.id).exists())
         self.assertTrue(ArtistTracker.objects.filter(id=artist_tracker.id).exists())
@@ -226,7 +226,7 @@ class BulkDeleteByImportSourceTests(TestCase):
             ),
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         self.assertFalse(
             ArtistTracker.objects.filter(
                 user=self.user,
@@ -252,7 +252,7 @@ class BulkDeleteByImportSourceTests(TestCase):
                 ),
             )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         self.assertFalse(ArtistTracker.objects.filter(user=self.user).exists())
 
     def test_music_sweep_reaches_artists_only_linked_through_the_album(self):
@@ -276,7 +276,7 @@ class BulkDeleteByImportSourceTests(TestCase):
             ),
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         self.assertFalse(AlbumTracker.objects.filter(id=album_tracker.id).exists())
         self.assertFalse(ArtistTracker.objects.filter(id=artist_tracker.id).exists())
 
@@ -303,7 +303,7 @@ class BulkDeleteByImportSourceTests(TestCase):
             ),
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         self.assertTrue(Music.objects.filter(id=music.id).exists())
         self.assertTrue(ArtistTracker.objects.filter(id=tracker.id).exists())
         message = str(next(iter(get_messages(response.wsgi_request))))

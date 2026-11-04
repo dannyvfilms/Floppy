@@ -5,12 +5,12 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, tag
-from django.utils import timezone
 
 from app.models import (
     TV,
     MediaTypes,
     Movie,
+    MoviePlay,
     Status,
 )
 from integrations.imports import (
@@ -48,12 +48,10 @@ class ImportIMDB(TestCase):
 
         movie_1 = Movie.objects.get(item__title="The Shawshank Redemption")
         self.assertEqual(movie_1.score, 9)
-        self.assertEqual(movie_1.status, Status.COMPLETED.value)
-        self.assertEqual(movie_1.progress, 1)
-        self.assertEqual(
-            movie_1.end_date,
-            datetime(2025, 2, 3, tzinfo=timezone.get_current_timezone()),
-        )
+        self.assertIsNone(movie_1.status)
+        self.assertEqual(movie_1.progress, 0)
+        self.assertIsNone(movie_1.end_date)
+        self.assertFalse(MoviePlay.objects.filter(movie=movie_1).exists())
 
         game_of_thrones = TV.objects.get(item__title="Game of Thrones")
         self.assertEqual(game_of_thrones.status, Status.PLANNING.value)
@@ -163,6 +161,128 @@ class IMDBStreamingTests(TestCase):
     def upload(self, rows):
         """Build a valid CSV with a multiline title."""
         return BytesIO(("Const,Title,Title Type,Created,Your Rating\n" + rows).encode())
+
+    def test_rating_does_not_create_a_watch_or_episode_progress(self):
+        """IMDb ratings are not evidence of watched films or series."""
+        counts, _ = imdb.importer(
+            self.upload(
+                "tt1,Film,Movie,2025-01-01,8\n"
+                "tt2,Series,TV Series,2025-01-02,7\n"
+                "tt3,Watchlist,Movie,2025-01-03,\n"
+            ),
+            self.user,
+            "new",
+        )
+        self.assertEqual(counts, {MediaTypes.MOVIE: 2, MediaTypes.TV: 1})
+
+        film = Movie.objects.get(item__media_id="1")
+        self.assertEqual(film.score, 8)
+        self.assertIsNone(film.status)
+        self.assertEqual(film.progress, 0)
+        self.assertIsNone(film.start_date)
+        self.assertIsNone(film.end_date)
+        self.assertFalse(MoviePlay.objects.filter(movie=film).exists())
+
+        series = TV.objects.get(item__media_id="2")
+        self.assertEqual(series.score, 7)
+        self.assertIsNone(series.status)
+        self.assertIsNone(series.start_date)
+        self.assertIsNone(series.end_date)
+        self.assertFalse(series.seasons.exists())
+
+        watchlist = Movie.objects.get(item__media_id="3")
+        self.assertEqual(watchlist.status, Status.PLANNING.value)
+        self.assertIsNone(watchlist.score)
+
+    def test_overwrite_updates_rating_without_deleting_watches(self):
+        """Re-importing a rating must preserve an existing play and its date."""
+        imdb.importer(self.upload("tt1,Film,Movie,2025-01-01,\n"), self.user, "new")
+        film = Movie.objects.get(item__media_id="1")
+        watched_at = datetime(2024, 5, 12, 20, 0, tzinfo=UTC)
+        Movie.objects.filter(pk=film.pk).update(
+            status=Status.COMPLETED.value, progress=1, end_date=watched_at
+        )
+        play = MoviePlay.objects.create(movie=film, end_date=watched_at)
+
+        imdb.importer(
+            self.upload("tt1,Film,Movie,2025-06-01,9\n"), self.user, "overwrite"
+        )
+        film.refresh_from_db()
+        self.assertEqual(Movie.objects.filter(item=film.item).count(), 1)
+        self.assertEqual(film.score, 9)
+        self.assertIsNotNone(film.scored_at)
+        self.assertEqual(film.status, Status.COMPLETED.value)
+        self.assertEqual(film.progress, 1)
+        self.assertEqual(film.end_date, watched_at)
+        self.assertTrue(MoviePlay.objects.filter(pk=play.pk).exists())
+        self.assertEqual(play.end_date, watched_at)
+
+    def test_overwrite_prefers_existing_rating_only_row(self):
+        """Scores must not be pushed onto a different, legitimately watched row."""
+        imdb.importer(self.upload("tt1,Film,Movie,2025-01-01,8\n"), self.user, "new")
+        rating = Movie.objects.get(item__media_id="1")
+        watched_at = datetime(2026, 1, 10, 19, 0, tzinfo=UTC)
+        watch = Movie.objects.create(
+            item=rating.item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=1,
+            end_date=watched_at,
+            score=6,
+        )
+        imdb.importer(
+            self.upload("tt1,Film,Movie,2026-02-01,9\n"), self.user, "overwrite"
+        )
+        rating.refresh_from_db()
+        watch.refresh_from_db()
+        self.assertEqual(Movie.objects.filter(item=rating.item).count(), 2)
+        self.assertIsNone(rating.status)
+        self.assertEqual(rating.score, 9)
+        self.assertEqual(watch.score, 6)
+        self.assertEqual(watch.end_date, watched_at)
+
+    def test_overwrite_preserves_existing_series_status_and_progress(self):
+        """A score update must not reset a show's tracking state."""
+        imdb.importer(
+            self.upload("tt2,Series,TV Series,2025-01-01,6\n"),
+            self.user,
+            "new",
+        )
+        series = TV.objects.get(item__media_id="2")
+        TV.objects.filter(pk=series.pk).update(status=Status.PLANNING.value)
+
+        imdb.importer(
+            self.upload("tt2,Series,TV Series,2025-02-01,9\n"),
+            self.user,
+            "overwrite",
+        )
+        series.refresh_from_db()
+        self.assertEqual(TV.objects.filter(item=series.item).count(), 1)
+        self.assertEqual(series.status, Status.PLANNING.value)
+        self.assertEqual(series.score, 9)
+        self.assertIsNotNone(series.scored_at)
+        self.assertFalse(series.seasons.exists())
+
+    def test_unrated_overwrite_keeps_existing_rating_and_status(self):
+        """An unrated IMDb list row is not a request to erase a saved rating."""
+        imdb.importer(self.upload("tt1,Film,Movie,2025-01-01,8\n"), self.user, "new")
+        imdb.importer(
+            self.upload("tt1,Film,Movie,2025-02-01,\n"),
+            self.user,
+            "overwrite",
+        )
+        film = Movie.objects.get(item__media_id="1")
+        self.assertIsNone(film.status)
+        self.assertEqual(film.score, 8)
+        self.assertEqual(Movie.objects.count(), 1)
+
+    def test_rated_entry_without_dates_does_not_fabricate_completion(self):
+        """A missing IMDb date is valid; it must not become a watch today."""
+        imdb.importer(self.upload("tt1,Film,Movie,,8\n"), self.user, "new")
+        film = Movie.objects.get(item__media_id="1")
+        self.assertEqual(film.score, 8)
+        self.assertIsNone(film.status)
+        self.assertIsNone(film.end_date)
 
     def test_duplicate_validation_precedes_overwrite(self):
         """Duplicates spanning the file never delete existing tracking."""

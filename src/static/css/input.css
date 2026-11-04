@@ -1,4 +1,5 @@
 @import "tailwindcss" source("../../");
+@source not "../ui";
 
 @theme {
   --breakpoint-xs: 30rem;
@@ -745,6 +746,18 @@ html:is(.glass, .custom) [class*="bg-[var(--color-panel)]"] {
       transparent);
   backdrop-filter: blur(var(--theme-blur)) saturate(145%);
   -webkit-backdrop-filter: blur(var(--theme-blur)) saturate(145%);
+}
+
+/*
+ * Floating menus and suggestion lists sit over page content, so under glass and
+ * custom themes they stay solid: a translucent panel lets the text behind it
+ * show through and hurts readability.
+ */
+html:is(.glass, .custom) [class*="bg-[var(--color-surface)]"][class~="z-50"],
+html:is(.glass, .custom) [class*="bg-[var(--color-panel)]"][class~="z-50"] {
+  background-color: var(--color-surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 html.glass [class*="bg-[var(--color-sidebar)]"] {
@@ -2274,18 +2287,18 @@ html.light .theme-toggle-icon-moon {
 
   /* Reveal-on-hover only where there is a real hover; a tap leaves :hover stuck on touch. */
   @media (hover: hover) {
-    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:hover,
-    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:focus-within {
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover,
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within {
       grid-template-rows: 1.5rem 1.25rem 1rem;
     }
 
-    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:hover .detail-provider-score-card__graph,
-    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:focus-within .detail-provider-score-card__graph {
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover .detail-provider-score-card__graph,
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within .detail-provider-score-card__graph {
       grid-template-rows: 1.5rem 1.25rem 1rem;
     }
 
-    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:hover .detail-provider-score-card__prompt,
-    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:focus-within .detail-provider-score-card__prompt {
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover .detail-provider-score-card__prompt,
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within .detail-provider-score-card__prompt {
       max-height: 1rem;
       opacity: 1;
       transform: translateY(0);
@@ -2835,8 +2848,8 @@ html.light .theme-toggle-icon-moon {
     transition: grid-template-rows 180ms ease;
   }
 
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:hover,
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:focus-within {
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within {
     grid-template-rows: 1.5rem 1.25rem 1rem;
   }
 
@@ -2878,8 +2891,8 @@ html.light .theme-toggle-icon-moon {
     transition: grid-template-rows 180ms ease;
   }
 
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:hover .detail-provider-score-card__graph,
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:focus-within .detail-provider-score-card__graph {
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover .detail-provider-score-card__graph,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within .detail-provider-score-card__graph {
     grid-template-rows: 1.5rem 1.25rem 1rem;
   }
 
@@ -2914,8 +2927,8 @@ html.light .theme-toggle-icon-moon {
     pointer-events: none;
   }
 
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:hover .detail-provider-score-card__prompt,
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:focus-within .detail-provider-score-card__prompt {
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover .detail-provider-score-card__prompt,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within .detail-provider-score-card__prompt {
     max-height: 1rem;
     opacity: 1;
     transform: translateY(0);
@@ -4434,6 +4447,13 @@ html.light .theme-toggle-icon-moon {
   justify-self: end;
 }
 
+/* Centered under the text on mobile only; right-aligned from the md breakpoint. */
+@media (min-width: 768px) {
+  .episode-card-actions {
+    justify-self: end;
+  }
+}
+
 .media-card-rate-empty .media-card-rate-star svg {
   fill: none;
 }
@@ -4536,11 +4556,20 @@ button.tier-label:focus-visible .tier-label-edit {
   padding: 0.375rem;
 }
 
+/* Every title rests on one line so all tiles share a baseline; hover lets a long
+   title wrap. The line height matches .media-card-title below. */
 .tier-tile .search-result-card .media-card-title-row,
 .tier-tile .search-result-card:hover .media-card-title-row {
   flex-wrap: wrap;
   gap: 0 0.25rem;
-  max-height: none;
+}
+
+.tier-tile .search-result-card .media-card-title-row {
+  max-height: calc(var(--card-title-rest-lines, 1) * 1.2 * 0.6875rem);
+}
+
+.tier-tile .search-result-card:hover .media-card-title-row {
+  max-height: calc(var(--card-title-hover-lines, 3) * 1.2 * 0.6875rem);
 }
 
 .tier-tile .media-card-title {

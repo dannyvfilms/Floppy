@@ -22,7 +22,7 @@ import app
 from app import providers
 from app.db_retry import run_retryable_db_operation
 from app.history_cache_utils import history_deferred_item_fields
-from app.models import Episode, MediaTypes, Status
+from app.models import Episode, MediaTypes, Sources, Status
 from app.models.tv import _UNSET_END_DATE
 from app.services.completion import normalize_completed_entries
 from app.services.watch_state import (
@@ -1002,7 +1002,21 @@ def bulk_create_media(bulk_media_list, user, *, backfill_completed=True, prepare
         )
         _project_season_episodes(bulk_seasons)
     project_imported_watch_state(user, projected_item_ids)
+    _warm_imported_game_artwork(bulk_media_list)
     return warnings
+
+
+def _warm_imported_game_artwork(bulk_media_list):
+    """Prefetch artwork for imported IGDB games in the background."""
+    from app.carousel import schedule_game_artwork_warm
+
+    media_ids = {
+        game.item.media_id
+        for game in bulk_media_list.get(MediaTypes.GAME.value) or ()
+        if game.item.source == Sources.IGDB.value
+    }
+    if media_ids:
+        schedule_game_artwork_warm(media_ids)
 
 
 def _item_key(spec):
@@ -1267,6 +1281,17 @@ def encrypt(value):
 def decrypt(token):
     """Decrypt value that was encrypted with `encrypt`."""
     return fernet().decrypt(token.encode()).decode()
+
+
+def stamp_entry_source(media, label):
+    """Record where an entry came from when nothing is recorded yet.
+
+    A value the user typed, or one an earlier sync set, is never replaced.
+    """
+    if label and not media.entry_source:
+        media.entry_source = label
+        media.save(update_fields=["entry_source"])
+    return media
 
 
 def decrypt_or_raise(token):

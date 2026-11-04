@@ -23,6 +23,7 @@ from app.columns import (
     resolve_default_column_config,
 )
 from app.library_query import FilterValues
+from app.library_query.alphabet import normalize_initial
 from app.library_query.spec import STATUS_MATCH_ANY
 from app.models import Item, MediaTypes
 from app.release_years import prefill_display_release_years
@@ -210,6 +211,9 @@ def _smart_list_detail_response(
         custom_list=custom_list,
         media_user=media_user,
         candidates=matched_items,
+        initial=request.GET.get("initial"),
+        title_user=request.user,
+        include_alphabet=not helpers.is_htmx_fragment(request),
         media_types=filtered_media_types,
         filters=FilterValues(status_match=STATUS_MATCH_ANY),
         sort_by=sort_by,
@@ -306,6 +310,7 @@ def _smart_list_detail_response(
         "user": request.user,
         "custom_list": custom_list,
         "items": items_page,
+        "alphabet_other_initial": items_page.alphabet_other_initial,
         "has_next": items_page.has_next(),
         "next_page_number": items_page.next_page_number()
         if items_page.has_next()
@@ -409,6 +414,9 @@ def _smart_list_detail_response(
         else:
             template_name = "lists/components/media_grid.html"
 
+        if normalize_initial(request.GET.get("initial")) and not items_page and not is_pagination:
+            template_name = "app/components/alphabet_results_empty.html"
+            context["alphabet_form_id"] = "smart-filter-form"
         response = render(request, template_name, context)
         response["HX-Trigger"] = json.dumps(
             _build_list_count_trigger(total_items_count),

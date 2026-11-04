@@ -1,4 +1,5 @@
 from importlib import import_module
+from pathlib import Path
 
 from celery import shared_task
 from django.contrib.auth import get_user_model
@@ -194,16 +195,22 @@ def scheduled_backup_export(
     include_collection=True,
 ):
     """Celery task for exporting a CSV backup to the backup directory."""
+    from app import backup_status
     from integrations import exports
 
     user_model = get_user_model()
     user = user_model.objects.get(id=user_id)
-    filepath = exports.write_backup(
-        user,
-        media_types=media_types,
-        include_lists=include_lists,
-        include_collection=include_collection,
-    )
+    try:
+        filepath = exports.write_backup(
+            user,
+            media_types=media_types,
+            include_lists=include_lists,
+            include_collection=include_collection,
+        )
+    except Exception as error:
+        backup_status.record_failure(backup_status.CSV_EXPORT, error)
+        raise
+    backup_status.record_success(backup_status.CSV_EXPORT, Path(filepath).name)
     return f"Backup saved to {filepath}"
 
 

@@ -1,0 +1,33 @@
+{% load i18n %}
+{% translate selected_label as translated_selected_label %}
+<div class="relative filter-control"
+     x-data="{ open: false, label: '{{ translated_selected_label|escapejs }}' }"
+     @keydown.escape.prevent.stop="open = false; $refs.trigger.focus()">
+  <button class="h-10 flex items-center gap-2 px-4 bg-[var(--color-surface-strong)] rounded-md hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+          @click="open = !open"
+          @keydown.arrow-down.prevent="open = true; $nextTick(() => $refs.options.querySelector('button').focus())"
+          :aria-expanded="open"
+          aria-controls="provider-{{ field }}-options"
+          aria-label="{% translate filter_label %}"
+          x-ref="trigger"
+          type="button">
+    {% include "app/icons/funnel.svg" with classes="w-4 h-4" %}
+    <span class="text-sm" x-text="label">{% translate selected_label %}</span>
+    {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
+  </button>
+  <div id="provider-{{ field }}-options"
+       class="absolute right-0 mt-2 py-1 w-48 max-h-80 overflow-y-auto bg-[var(--color-surface-strong)] rounded-md shadow-lg z-50 border border-gray-700"
+       x-cloak x-show="open" x-ref="options"
+       @click.outside="open = false"
+       @keydown.arrow-down.prevent="$event.target.nextElementSibling?.focus()"
+       @keydown.arrow-up.prevent="$event.target.previousElementSibling?.focus()">
+    {% for option in options %}
+      {% translate option.label as translated_option_label %}
+      <button type="button"
+              class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
+              :class="{{ field }} === '{{ option.key|escapejs }}' ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
+              :aria-pressed="{{ field }} === '{{ option.key|escapejs }}'"
+              @click="{{ field }} = '{{ option.key|escapejs }}'; label = '{{ translated_option_label|escapejs }}'; open = false; $nextTick(() => $el.closest('form').requestSubmit())">{% translate option.label %}</button>
+    {% endfor %}
+  </div>
+</div>

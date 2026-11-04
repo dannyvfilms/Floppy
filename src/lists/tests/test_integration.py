@@ -128,6 +128,10 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         lists modal flow, not the overlay's hit-testing, so address the button
         directly and keep the assertions below meaningful.
         """
+        # The shared React card replaces the server overlay once it mounts.
+        expect(
+            self.page.locator('[data-media-card-root][data-react-mounted="true"]').first,
+        ).to_be_attached()
         button = (
             self.page.locator(".media-card-overlay")
             .first.locator(".relative > button:nth-child(2)")
@@ -174,7 +178,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
     def test_blank_modal(self):
         """Test the blank modal for creating a list."""
         self.page.get_by_role("button", name="TV Shows").click()
-        self.page.locator("li").filter(has_text=re.compile(r"^Anime$")).click()
+        self.page.locator("form[action='/search'] li").filter(has_text=re.compile(r"^Anime$")).click()
         self.search_and_submit("perfect blue")
         self.click_card_lists_action()
         expect(self.page.locator('[id^="lists-anime-437-"]')).to_contain_text(
@@ -201,11 +205,11 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
         # Add item to list
         self.page.get_by_role("button", name="TV Shows").click()
-        self.page.locator("li").filter(has_text=re.compile(r"^Anime$")).click()
+        self.page.locator("form[action='/search'] li").filter(has_text=re.compile(r"^Anime$")).click()
         self.search_and_submit("perfect blue")
         self.click_card_lists_action()
-        expect(self.page.locator('[id^="lists-anime-437-"]')).to_contain_text("Lists test Add")
-        self.wait_for_htmx_settle(self.page.locator('[id^="lists-anime-437-"]'))
+        expect(self.page.locator('[id^="lists-anime-437-"]')).to_contain_text("Lists")
+        expect(self.page.locator('[id^="lists-anime-437-"]')).to_contain_text("test")
         self.page.get_by_role("button", name="Add item to test", exact=True).click()
         expect(self.page.locator('[id^="lists-anime-437-"]')).to_contain_text("Remove")
         self.page.locator('[id^="lists-anime-437-"]').get_by_role("button").first.click()
@@ -217,8 +221,11 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.page.get_by_role("button", name="Options for test", exact=True).click()
         self.page.get_by_role("button", name="Settings", exact=True).click()
         expect(self.page.locator("#lists-grid")).to_contain_text("Edit List")
-        self.page.locator("#id_1_name").click()
-        self.page.locator("#id_1_name").fill("test rename")
+        # The id embeds the list's primary key, which depends on which tests ran
+        # before in the same database; find the field by what it holds instead.
+        name_field = self.page.locator('input[name="name"][value="test"]')
+        name_field.click()
+        name_field.fill("test rename")
         self.page.get_by_role("button", name="Save").click()
 
     def test_list_toggle_refreshes_header_count_once_desktop_and_mobile(self):
@@ -231,12 +238,24 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             image=PERFECT_BLUE_SEARCH_RESULT["image"],
         )
 
-        for index, viewport in enumerate(
-            (
-                {"width": 1280, "height": 800},
-                {"width": 390, "height": 844},
-            ),
-        ):
+        viewports = (
+            {"width": 1280, "height": 800},
+            {"width": 390, "height": 844},
+        )
+        # The live server shares the test's one in-memory SQLite connection, so
+        # every write happens before any page opens; a write from this thread
+        # while a page is requesting raised "database table is locked".
+        custom_lists = []
+        for index in range(len(viewports)):
+            custom_list = CustomList.objects.create(
+                name=f"count-test-{index}",
+                owner=self.user,
+            )
+            CustomListItem.objects.create(custom_list=custom_list, item=item)
+            custom_lists.append(custom_list)
+
+        for index, viewport in enumerate(viewports):
+            custom_list = custom_lists[index]
             page = self.context.new_page()
             self.addCleanup(page.close)
             refresh_requests = []
@@ -268,11 +287,6 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             page.on("response", record_toggle_response)
             self.addCleanup(page.remove_listener, "response", record_toggle_response)
 
-            custom_list = CustomList.objects.create(
-                name=f"count-test-{index}",
-                owner=self.user,
-            )
-            CustomListItem.objects.create(custom_list=custom_list, item=item)
             list_url = (
                 f"{self.live_server_url}"
                 f"{reverse('list_detail', args=[custom_list.public_reference])}"
@@ -303,22 +317,12 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                 f'button[aria-label="Remove item from {custom_list.name}"]'
             )
             expect(toggle_button).to_be_visible()
-            toggle_button.evaluate(
-                """
-                async (element) => {
-                    await htmx.ajax('POST', element.getAttribute('hx-post'), {
-                        source: element,
-                        target: element,
-                        swap: 'outerHTML',
-                        values: JSON.parse(element.getAttribute('hx-vals')),
-                        headers: JSON.parse(element.getAttribute('hx-headers')),
-                    });
-                }
-                """,
-            )
+            with page.expect_response(lambda r: "list_item_toggle" in r.url):
+                toggle_button.click()
 
             self.assertEqual(len(toggle_requests), 1)
             self.assertEqual(toggle_statuses, [200])
+            page.wait_for_function("window.__listCountUpdates >= 1")
             self.assertEqual(len(refresh_requests), 1)
             # listCountUpdated fires when the refresh response is swapped in,
             # which is after the request this assertion follows. Reading the
@@ -328,6 +332,13 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             page.wait_for_function("window.__listCountUpdates >= 1")
             expect(count).to_have_text("0 items")
             self.assertEqual(page.evaluate("window.__listCountUpdates"), 1)
+            # The live server shares the test's one in-memory SQLite
+            # connection. A page left open keeps issuing requests (polling,
+            # service worker), and the next pass writes a list from this
+            # thread, which intermittently failed with "database table is
+            # locked". Let the page go quiet and close it before looping on.
+            page.wait_for_load_state("networkidle")
+            page.close()
 
     def test_ticking_a_card_checkbox_selects_the_item(self):
         """In Select Items mode the card's own checkbox selects the item."""

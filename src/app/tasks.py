@@ -159,8 +159,10 @@ from app.tasks_backfill_state import (  # noqa: E402
     is_terminal_backfill_error,
 )
 from app.tasks_bulk_plays import (  # noqa: E402
+    bulk_consumption_batch_task,
     bulk_episode_plays_task,
     bulk_music_plays_task,
+    bulk_show_plays_task,
 )
 from app.tasks_credits import (  # noqa: E402
     CREDITS_BACKFILL_ITEMS_QUEUE_KEY,
@@ -1420,8 +1422,10 @@ __all__ = [
     "backfill_podcast_show_websites",
     "backfill_user_watch_state",
     "backfill_watch_state",
+    "bulk_consumption_batch_task",
     "bulk_episode_plays_task",
     "bulk_music_plays_task",
+    "bulk_show_plays_task",
     "convert_anime_library_shape_task",
     "count_igdb_rating_backfill_items",
     "enqueue_due_external_ids_backfill_retries",

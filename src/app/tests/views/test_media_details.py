@@ -62,6 +62,7 @@ from app.models import (
 from app.providers import services, tmdb
 from app.services import game_lengths as game_length_services
 from app.services.metadata_resolution import AnimeTMDBIdentity, MetadataResolutionResult
+from app.tests.card_props import card_models
 from events.calendar.helpers import date_parser
 from integrations.models import PlexAccount
 from lists.models import CustomList, CustomListItem
@@ -82,6 +83,14 @@ def _record_sleep_threads(mock_sleep):
 
 
 class MediaDetailsViewTests(TestCase):
+
+    @staticmethod
+    def _card_titles(response):
+        """Return every title and title link the page's cards show."""
+        models = card_models(response.content)
+        return {m["title"] for m in models} | {
+            link["label"] for m in models for link in m["titleLinks"]
+        }
     """Test the media details views."""
 
     def setUp(self):
@@ -5016,6 +5025,72 @@ class MediaDetailsViewTests(TestCase):
             "Progress: 5h 58min/16h 06min",
             "2026-03-01 - 2026-03-12",
         )
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_audiobook_page_lists_formats_and_narrator(
+        self,
+        mock_get_metadata,
+    ):
+        """The Details card joins Book and Audiobook and shows the narrator."""
+        mock_get_metadata.return_value = {
+            "media_id": "abs-2",
+            "title": "Project Hail Mary",
+            "media_type": MediaTypes.BOOK.value,
+            "source": Sources.AUDIOBOOKSHELF.value,
+            "image": "http://example.com/cover.jpg",
+            "max_progress": 966,
+            "details": {
+                "format": "audiobook",
+                "author": ["Andy Weir"],
+                "narrator": ["Ray Porter"],
+            },
+            "related": {},
+        }
+        ebook = Item.objects.create(
+            media_id="OL-phm",
+            source=Sources.OPENLIBRARY.value,
+            media_type=MediaTypes.BOOK.value,
+            title="Project Hail Mary",
+            authors=["Andy Weir"],
+        )
+        audio = Item.objects.create(
+            media_id="abs-2",
+            source=Sources.AUDIOBOOKSHELF.value,
+            media_type=MediaTypes.BOOK.value,
+            title="Project Hail Mary",
+            authors=["Andy Weir"],
+            format="audiobook",
+            narrators=["Ray Porter"],
+        )
+        Book.objects.create(item=ebook, user=self.user, status=Status.PLANNING.value)
+        Book.objects.create(
+            item=audio, user=self.user, status=Status.IN_PROGRESS.value, progress=10,
+        )
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.AUDIOBOOKSHELF.value,
+                    "media_type": MediaTypes.BOOK.value,
+                    "media_id": "abs-2",
+                    "title": "project-hail-mary",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        soup = BeautifulSoup(response.content, "html.parser")
+        facts = {
+            fact.h3.get_text(strip=True): fact
+            for fact in soup.select(".detail-sidebar-fact")
+            if fact.h3
+        }
+        self.assertEqual(
+            facts["Format"].p.get_text(" ", strip=True).replace(" ,", ","),
+            "Book, Audiobook",
+        )
+        self.assertIn("OL-phm", facts["Format"].a["href"])
+        self.assertEqual(facts["Narrator"].get_text(" ", strip=True), "Narrator Ray Porter")
 
     @patch("app.providers.services.get_media_metadata")
     def test_game_media_details_renders_activity_subtitle_without_stats_cards(
@@ -10491,8 +10566,9 @@ class MediaDetailsViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["current_instance"].end_date, watched_special)
         self.assertEqual(response.context["current_instance"].progress, 12)
-        self.assertContains(response, 'title="Specials">Specials</a>', html=False)
-        self.assertContains(response, 'title="Season 1">Season 1</a>', html=False)
+        titles = self._card_titles(response)
+        self.assertIn("Specials", titles)
+        self.assertIn("Season 1", titles)
 
     @patch("app.providers.services.get_media_metadata")
     def test_anime_details_view_renders_named_season_card_titles(
@@ -10580,16 +10656,9 @@ class MediaDetailsViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(
-            response,
-            'title="Indigo League">Indigo League</a>',
-            html=False,
-        )
-        self.assertContains(
-            response,
-            'title="Orange Islands">Orange Islands</a>',
-            html=False,
-        )
+        titles = self._card_titles(response)
+        self.assertIn("Indigo League", titles)
+        self.assertIn("Orange Islands", titles)
 
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_backfills_author_credits_and_renders_links(

@@ -80,6 +80,23 @@ def confirmed_empty(media_type, source, media_id, *, season_number=None) -> bool
     )
 
 
+def schedule_game_artwork_warm(media_ids):
+    """Queue background carousel lookups so imported games open fully laid out.
+
+    Without it the first visit to each game pays the provider round trips and
+    the page reflows when the lazy carousel arrives. Runs on the default
+    queue: no page waits on it.
+    """
+    from app.tasks_backdrops import GAME_ARTWORK_WARM_CHUNK, warm_game_artwork_task
+
+    if not credentials.is_configured(Sources.IGDB.value):
+        return 0
+    ids = sorted({str(media_id) for media_id in media_ids})
+    for start in range(0, len(ids), GAME_ARTWORK_WARM_CHUNK):
+        warm_game_artwork_task.delay(ids[start : start + GAME_ARTWORK_WARM_CHUNK])
+    return len(ids)
+
+
 def resolve_carousel_media(
     media_type, source, media_id, *, season_number=None, cached_only=False
 ) -> dict | None:
@@ -189,7 +206,7 @@ def resolve_carousel_media(
                 # source image's real aspect ratio for the main pane/lightbox.
                 "url": rewrite_image_url(_igdb_image_url(image_id)),
                 "thumb_url": rewrite_image_url(
-                    f"https://images.igdb.com/igdb/image/upload/t_screenshot_big_2x/{image_id}.jpg"
+                    f"https://images.igdb.com/igdb/image/upload/t_screenshot_med/{image_id}.jpg"
                 ),
             }
             for image_id in data["photos"]

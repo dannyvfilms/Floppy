@@ -1,3 +1,4 @@
+{% load ui_tags %}
 {% load i18n %}
 {% load app_tags %}
 {% comment %}
@@ -36,6 +37,7 @@
       {% if entry.configurable %}
         <form method="post" action="{% url 'set_media_type_provider' entry.media_type %}" class="space-y-3">
           {% csrf_token %}
+          {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.get_full_path }}">{% endif %}
           <div>
             <label class="block text-[var(--color-text-secondary)] text-xs font-medium mb-2">{% translate "Provider for new titles" %}</label>
             <div class="relative" x-data="{ open: false, selectedValue: '{{ entry.current_provider }}', selectedLabel: '', options: [
@@ -133,10 +135,7 @@
             </div>
           {% endif %}
 
-          <button type="submit"
-                  class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-            {% translate "Save" %}
-          </button>
+          {% button _("Save") "primary" "sm" "full" submit=True %}
         </form>
       {% else %}
         <div class="space-y-2">

@@ -300,6 +300,25 @@ class TrackModalViewTests(TestCase):
         self.assertContains(response, "No Status")
         self.assertEqual(response.context["status_changes"][0]["new"], None)
 
+    def test_enter_key_default_button_is_not_delete(self):
+        """Enter submits via the first submit button, which must not be Delete (#1795)."""
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "238",
+                },
+            )
+            + "?return_url=/home",
+        )
+
+        content = response.content.decode()
+        form_html = content[content.index("<form") :]
+        first_submit = form_html[form_html.index('type="submit"') :][:200]
+        self.assertNotIn("formaction", first_submit)
+
     def test_track_modal_view_existing_media(self):
         """Test the track modal view for existing media."""
         response = self.client.get(
@@ -1716,13 +1735,58 @@ class TrackModalViewTests(TestCase):
         # / Release Date shortcuts are scoped to their own field via
         # quick_action_mode, on both the General tab's start/end pickers and
         # the Episode Plays bulk-range start/end pickers.
-        self.assertContains(response, "Release Date", count=4)
+        self.assertContains(response, "Release Date", count=5)
         self.assertEqual(
             response.context["episode_plays_domain"]["seasonEpisodeMap"]["1"][0][
                 "runtime_minutes"
             ],
             24,
         )
+
+    @patch("app.views.metadata_resolution.resolve_detail_metadata")
+    @patch("app.providers.services.get_media_metadata")
+    def test_season_track_modal_scopes_episode_plays_to_season(
+        self,
+        mock_get_metadata,
+        mock_resolve_detail_metadata,
+    ):
+        payload = _tv_with_seasons_payload("1396", Sources.TMDB.value)
+        season_two = dict(payload["related"]["seasons"][0], season_number=2)
+        payload["related"]["seasons"].append(season_two)
+        payload["season/2"] = dict(payload["season/1"], season_number=2)
+        mock_get_metadata.side_effect = lambda media_type, *_args, **_kwargs: (
+            payload["season/2"] if media_type == "season" else payload
+        )
+        mock_resolve_detail_metadata.return_value = MetadataResolutionResult(
+            display_provider=Sources.TMDB.value,
+            identity_provider=Sources.TMDB.value,
+            mapping_status="identity",
+            header_metadata=payload,
+            grouped_preview=None,
+            provider_media_id="1396",
+        )
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.SEASON.value,
+                    "media_id": "1396",
+                    "season_number": 2,
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Episode Plays")
+        domain = response.context["episode_plays_domain"]
+        self.assertEqual(list(domain["seasonEpisodeMap"]), ["2"])
+        self.assertEqual(domain["lockedSeasonNumber"], 2)
+        form = response.context["episode_plays_form"]
+        self.assertEqual(form.initial["media_type"], MediaTypes.TV.value)
+        self.assertEqual(form.initial["first_season_number"], 2)
+        self.assertEqual(form.initial["last_season_number"], 2)
 
     @patch("app.views.metadata_resolution.resolve_detail_metadata")
     @patch("app.providers.services.get_media_metadata")

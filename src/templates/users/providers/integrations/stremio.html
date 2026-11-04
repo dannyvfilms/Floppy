@@ -1,0 +1,44 @@
+{% load i18n static app_tags user_tags %}
+    {# Stremio #}
+    <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
+         x-show="activeIntegration === 'all' || activeIntegration === 'stremio'"
+         x-transition.opacity.duration.150ms>
+      <div class="flex items-center mb-3">
+        {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
+        <h3 class="text-base font-medium">{% translate "Stremio Integration" %}</h3>
+      </div>
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">
+        {% translate "Install the Floppy Scrobbler addon in Stremio to mark movies and episodes as in progress the moment playback starts. Pair it with the Stremio import on the" %} <a href="{% url 'provider_detail' 'stremio' %}?tab=import" class="text-[var(--color-link)] hover:underline">{% translate "Import tab" %}</a>{% translate ", which syncs watched state from your Stremio library every 2 hours." %}
+      </p>
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
+        {% if setup_guides %}{% include "users/providers/setup_guide.html" %}{% else %}
+<h4 class="text-sm font-medium mb-3">{% translate "Setup Instructions" %}</h4>
+        {% if catalog_grants %}{% firstof catalog_grants.0.token request.user.token as stremio_addon_credential %}{% else %}{% firstof request.user.token as stremio_addon_credential %}{% endif %}
+        {% url 'stremio_addon_manifest' stremio_addon_credential as stremio_addon_path %}
+        {% absolute_app_url stremio_addon_path as stremio_addon_url %}
+        <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
+          <li>
+            {% translate "Copy your personal addon URL:" %}
+            {# djlint:off #}
+            <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
+              <input readonly id="stremio-addon-url" class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{{ stremio_addon_url }}">
+              <span class="flex items-center cursor-pointer group" title="{% translate "Copy" %}" data-copy-target="#stremio-addon-url">
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
+              </span>
+            </div>
+            {# djlint:on #}
+          </li>
+          <li>
+            {% translate "Optional:" %} <a href="{% url 'stremio_addon_configure' request.user.token %}" class="text-[var(--color-link)] hover:underline" target="_blank" rel="noopener">{% translate "choose which catalogs" %}</a> {% translate "the addon publishes, then use the URL it gives you in place of the one above." %}
+          </li>
+          <li>{% translate "In Stremio, open" %} <strong>{% translate "Addons" %}</strong>{% translate ", paste the URL into the search box at the top, and click" %} <strong>{% translate "Install" %}</strong>.</li>
+          <li>{% translate "Floppy must be reachable from your Stremio device over" %} <strong>HTTPS</strong> {% translate "(plain HTTP only works for localhost)." %}</li>
+          <li>{% translate "Playback start marks the item in progress; the recurring library import marks items watched." %}</li>
+        </ol>
+        {% endif %}
+        {% include "users/components/catalog_grants.html" %}
+      </div>
+      {# Counting publishable titles reads the whole library, so it loads after the page paints. #}
+      <div hx-get="{% url 'stremio_catalog_status' %}" hx-trigger="load" hx-swap="outerHTML"></div>
+    </div>
+

@@ -1,4 +1,5 @@
 {% load i18n %}
+{% load ui_tags %}
 {% url 'list_detail' custom_list.public_reference as list_filter_endpoint %}
 {% include "app/components/filter_form.html" with filter_show_completed_date=True filter_form_id="smart-filter-form" filter_search_name="q" filter_show_ranges=True filter_platform_multi=False filter_show_media_types=True filter_data=smart_filter_data filter_edit_smart_rules=can_edit %}
 
@@ -20,7 +21,7 @@
     {% include "app/icons/magnifying-glass.svg" with classes="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] w-5 h-5" %}
     <div id="search-indicator-mobile"
          class="htmx-indicator absolute right-3 top-1/2 transform -translate-y-1/2">
-      <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-500"></div>
+      {% spinner 16 %}
     </div>
   </div>
 
@@ -55,7 +56,7 @@
         {% include "app/icons/magnifying-glass.svg" with classes="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] w-5 h-5" %}
         <div id="search-indicator-desktop"
              class="htmx-indicator absolute right-3 top-1/2 transform -translate-y-1/2">
-          <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-500"></div>
+          {% spinner 16 %}
         </div>
       </div>
     </div>

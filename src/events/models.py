@@ -511,6 +511,18 @@ class Event(models.Model):
         )
 
     @property
+    def season_episode_label(self):
+        """Return "S02E05" for a season's episode, else the plain episode number."""
+        item = self.item
+        if (
+            item.media_type == "season"
+            and item.season_number is not None
+            and self.content_number is not None
+        ):
+            return f"S{item.season_number:02d}E{self.content_number:02d}"
+        return self.readable_content_number
+
+    @property
     def is_sentinel_time(self):
         """Check if the event time is sentinel time."""
         return (

@@ -41,5 +41,11 @@ jobs:
       - name: Dependency vulnerabilities
         run: scripts/audit_dependencies.sh
 
+      - name: Install locked frontend dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Verify committed UI bundles
+        run: npm run check:ui
+
       - name: Audit frontend build dependencies
         run: npm audit --ignore-scripts

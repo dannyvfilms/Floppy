@@ -5,10 +5,6 @@ if (!window.__floppyBulkSelectionBound) {
     Alpine.data("bulkSelection", (configId, refreshId) => ({
       selectMode: false,
       selectedItemIds: [],
-      bulkLoading: false,
-      bulkStatuses: [],
-      bulkTags: [],
-      bulkLists: [],
       config: {},
 
       init() {
@@ -20,9 +16,6 @@ if (!window.__floppyBulkSelectionBound) {
             console.error("Failed to load bulk-action configuration", error);
           }
         }
-        this.bulkStatuses = this.config.statuses || [];
-        this.bulkTags = this.config.tags || [];
-        this.bulkLists = this.config.lists || [];
       },
 
       toggleSelectMode() {
@@ -49,73 +42,11 @@ if (!window.__floppyBulkSelectionBound) {
         this.selectedItemIds = [];
       },
 
-      notify(message, type = "success") {
-        if (message && typeof window.showTrackToast === "function") {
-          window.showTrackToast({ message, type });
-        }
-      },
-
       refresh() {
         const refreshButton = document.getElementById(refreshId);
         if (refreshButton && window.htmx) {
           htmx.trigger(refreshButton, "click");
         }
-      },
-
-      async submitBulkAction(url, fields) {
-        if (!this.selectedItemIds.length || this.bulkLoading || !url) {
-          return;
-        }
-
-        this.bulkLoading = true;
-        const body = new URLSearchParams();
-        this.selectedItemIds.forEach((id) => body.append("item_ids", id));
-        Object.entries(fields || {}).forEach(([key, value]) => body.append(key, value));
-
-        try {
-          const response = await fetch(url, {
-            method: "POST",
-            headers: { "X-CSRFToken": this.config.csrfToken },
-            body,
-          });
-          let data = {};
-          try {
-            data = await response.json();
-          } catch (error) {
-            // The status code below still determines whether the request failed.
-          }
-          if (!response.ok || data.success === false) {
-            throw new Error(data.error || gettext("The bulk action failed."));
-          }
-          this.notify(data.message || gettext("Bulk action completed."));
-          this.toggleSelectMode();
-          this.refresh();
-        } catch (error) {
-          this.notify(error.message || gettext("The bulk action failed."), "error");
-        } finally {
-          this.bulkLoading = false;
-        }
-      },
-
-      bulkTagAction(tagName, action) {
-        return this.submitBulkAction(this.config.tagUrl, {
-          tag_name: tagName,
-          action,
-        });
-      },
-
-      bulkStatusAction(status) {
-        return this.submitBulkAction(this.config.statusUrl, { status });
-      },
-
-      bulkListAction(customListId) {
-        return this.submitBulkAction(this.config.listUrl, {
-          custom_list_id: customListId,
-        });
-      },
-
-      bulkCollectionAction() {
-        return this.submitBulkAction(this.config.collectionUrl, {});
       },
     }));
   });

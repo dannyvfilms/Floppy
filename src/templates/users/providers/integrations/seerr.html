@@ -1,0 +1,340 @@
+{% load i18n static app_tags user_tags %}
+    {# Seerr #}
+    <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
+         x-show="activeIntegration === 'all' || activeIntegration === 'seerr'"
+         x-transition.opacity.duration.150ms>
+      <div class="flex items-center mb-3">
+        {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
+        <h3 class="text-base font-medium">{% translate "Seerr Integration" %}</h3>
+      </div>
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">{% translate "Use a Seerr webhook to automatically add requested/approved media into Floppy." %}</p>
+
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4">
+        <h4 class="text-sm font-medium mb-3">{% translate "Seerr Settings" %}</h4>
+        {# kept: jellyseerr_* form fields map to unrenamed User model fields #}
+        {% if provider_forms.seerr_settings %}{{ provider_forms.seerr_settings|json_script:"form-seerr_settings" }}<div data-settings-form-root data-props-id="form-seerr_settings" x-ignore hx-disable>{% endif %}<form method="post" action="{% url 'update_jellyseerr_settings' %}" class="space-y-3">
+          {% csrf_token %}
+          {% if provider_slug %}<input type="hidden" name="next" value="{{ request.get_full_path }}">{% endif %}
+
+{% if not provider_tab or provider_tab == 'tracking' %}
+          <div>
+            <label for="jellyseerr_enabled" class="block text-[var(--color-text-secondary)] text-sm font-medium mb-1">
+              {% translate "Auto-add requested media" %}
+            </label>
+            <p class="text-[var(--color-text-muted)] text-sm mb-2">
+              {% translate "Controls whether Seerr webhooks are allowed to add items to your Floppy list." %}
+            </p>
+
+            <div class="relative"
+                x-data="{
+                  open: false,
+                  selectedValue: '{{ request.user.jellyseerr_enabled|yesno:'enabled,disabled' }}',
+                  selectedLabel: gettext('{{ request.user.jellyseerr_enabled|yesno:"Enabled - Allow Seerr to automatically add media,Disabled - Do not allow Seerr to add media"|escapejs }}')
+                }">
+              <button type="button"
+                      @click="open = !open"
+                      @click.outside="open = false"
+                      class="flex items-center justify-between w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
+                <span x-text="selectedLabel"></span>
+                <svg xmlns="http://www.w3.org/2000/svg"
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="w-4 h-4 text-[var(--color-text-muted)]">
+                  <path d="m6 9 6 6 6-6"></path>
+                </svg>
+              </button>
+
+              <div x-show="open"
+                  x-transition:enter="transition ease-out duration-100"
+                  x-transition:enter-start="transform opacity-0 scale-95"
+                  x-transition:enter-end="transform opacity-100 scale-100"
+                  x-transition:leave="transition ease-in duration-75"
+                  x-transition:leave-start="transform opacity-100 scale-100"
+                  x-transition:leave-end="transform opacity-0 scale-95"
+                  class="absolute left-0 right-0 mt-2 py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-hidden z-10 border border-gray-600">
+                <button type="button"
+                        @click="selectedValue = 'enabled'; selectedLabel = gettext('Enabled - Allow Seerr to automatically add media'); open = false"
+                        class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
+                  {% translate "Enabled - Allow Seerr to automatically add media" %}
+                </button>
+                <button type="button"
+                        @click="selectedValue = 'disabled'; selectedLabel = gettext('Disabled - Do not allow Seerr to add media'); open = false"
+                        class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
+                  {% translate "Disabled - Do not allow Seerr to add media" %}
+                </button>
+              </div>
+
+              <input type="hidden"
+                    id="jellyseerr_enabled"
+                    name="jellyseerr_enabled"
+                    x-bind:value="selectedValue === 'enabled' ? '1' : '0'">
+            </div>
+          </div>
+
+          <div>
+            <label for="jellyseerr_trigger_statuses" class="block text-[var(--color-text-secondary)] text-sm font-medium mb-1">
+              {% translate "Trigger statuses (comma-separated)" %}
+            </label>
+            <p class="text-[var(--color-text-muted)] text-sm mb-2 break-words">
+              {% translate "Examples: PENDING,PROCESSING,PARTIALLY_AVAILABLE,AVAILABLE. Leave blank for default behaviour (UNKNOWN is ignored)." %}
+            </p>
+            <input
+              id="jellyseerr_trigger_statuses"
+              name="jellyseerr_trigger_statuses"
+              class="w-full py-2 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+              type="text"
+              placeholder="{% translate "PENDING,PROCESSING,PARTIALLY_AVAILABLE,AVAILABLE" %}"
+              value="{{ request.user.jellyseerr_trigger_statuses }}"
+            >
+          </div>
+
+          <div>
+            <label for="jellyseerr_allowed_usernames" class="block text-[var(--color-text-secondary)] text-sm font-medium mb-1">
+              {% translate "Allowed Seerr usernames (comma-separated)" %}
+            </label>
+            <p class="text-[var(--color-text-muted)] text-sm mb-2">
+              {% translate "Leave blank to allow any requester. If set, only those usernames can trigger adds." %}
+            </p>
+            <input
+              id="jellyseerr_allowed_usernames"
+              name="jellyseerr_allowed_usernames"
+              class="w-full py-2 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+              type="text"
+              placeholder="{% translate "john, someoneelse" %}"
+              value="{{ request.user.jellyseerr_allowed_usernames }}"
+            >
+          </div>
+
+          <div>
+            <label for="jellyseerr_default_added_status" class="block text-[var(--color-text-secondary)] text-sm font-medium mb-1">
+              {% translate "Default Floppy status for added items" %}
+            </label>
+            <div class="relative" x-data="{ open: false, selectedValue: '{{ request.user.jellyseerr_default_added_status|default:"Planning" }}', selectedLabel: gettext('{{ request.user.jellyseerr_default_added_status|default:"Planning"|escapejs }}') }">
+              <button type="button"
+                      @click="open = !open"
+                      @click.outside="open = false"
+                      class="flex items-center justify-between w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
+                <span x-text="selectedLabel"></span>
+                <svg xmlns="http://www.w3.org/2000/svg"
+                     width="24"
+                     height="24"
+                     viewBox="0 0 24 24"
+                     fill="none"
+                     stroke="currentColor"
+                     stroke-width="2"
+                     stroke-linecap="round"
+                     stroke-linejoin="round"
+                     class="w-4 h-4 text-[var(--color-text-muted)]">
+                  <path d="m6 9 6 6 6-6"></path>
+                </svg>
+              </button>
+              <div x-show="open"
+                   x-transition:enter="transition ease-out duration-100"
+                   x-transition:enter-start="transform opacity-0 scale-95"
+                   x-transition:enter-end="transform opacity-100 scale-100"
+                   x-transition:leave="transition ease-in duration-75"
+                   x-transition:leave-start="transform opacity-100 scale-100"
+                   x-transition:leave-end="transform opacity-0 scale-95"
+                   class="absolute left-0 right-0 mt-2 py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-hidden z-10 border border-gray-600">
+                <button type="button"
+                        @click="selectedValue = 'Planning'; selectedLabel = gettext('Planning'); open = false"
+                        class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
+                  {% translate "Planning" %}
+                </button>
+                <button type="button"
+                        @click="selectedValue = 'In progress'; selectedLabel = gettext('In progress'); open = false"
+                        class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
+                  {% translate "In progress" %}
+                </button>
+              </div>
+              <input type="hidden" name="jellyseerr_default_added_status" x-bind:value="selectedValue">
+            </div>
+          </div>
+
+{% else %}
+<input type="hidden" name="jellyseerr_enabled" value="{{ user.jellyseerr_enabled|yesno:'1,0' }}">
+<input type="hidden" name="jellyseerr_trigger_statuses" value="{{ user.jellyseerr_trigger_statuses }}">
+<input type="hidden" name="jellyseerr_allowed_usernames" value="{{ user.jellyseerr_allowed_usernames }}">
+<input type="hidden" name="jellyseerr_default_added_status" value="{{ user.jellyseerr_default_added_status }}">
+{% endif %}
+{% if not provider_tab or provider_tab == 'connection' %}
+          <div class="border-t border-[var(--color-surface-border)] pt-3">
+            <p class="text-[var(--color-text-muted)] text-sm mb-3">
+              {% translate "Connect Seerr to request movies and shows from their Floppy page." %}
+            </p>
+            <label for="seerr_url" class="block text-[var(--color-text-secondary)] text-sm font-medium mb-1">
+              {% translate "Seerr URL" %}
+            </label>
+            <input type="url"
+                   id="seerr_url"
+                   name="seerr_url"
+                   placeholder="http://192.168.1.10:5055"
+                   value="{{ request.user.seerr_url }}"
+                   class="w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+          </div>
+
+          <div>
+            <label for="seerr_api_key" class="block text-[var(--color-text-secondary)] text-sm font-medium mb-1">
+              {% translate "Seerr API key" %}
+            </label>
+            <input type="password"
+                   id="seerr_api_key"
+                   name="seerr_api_key"
+                   autocomplete="off"
+                   placeholder="{% if request.user.seerr_api_key %}{% translate "Saved - leave blank to keep" %}{% else %}{% translate "Settings > General > API Key" %}{% endif %}"
+                   class="w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+          </div>
+
+          <div>
+            <label for="seerr_username" class="block text-[var(--color-text-secondary)] text-sm font-medium mb-1">
+              {% translate "Seerr username" %}
+            </label>
+            <input type="text"
+                   id="seerr_username"
+                   name="seerr_username"
+                   autocomplete="off"
+                   value="{{ request.user.seerr_username }}"
+                   class="w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+            <p class="text-[var(--color-text-muted)] text-xs mt-1">
+              {% translate "Required. The username or email you sign in to Seerr with (Plex and Jellyfin logins work too). Requests are made as this user, with their permissions, quotas and approval rules." %}
+            </p>
+          </div>
+
+{% else %}
+<input type="hidden" name="seerr_url" value="{{ user.seerr_url }}">
+<input type="hidden" name="seerr_username" value="{{ user.seerr_username }}">
+{% endif %}
+          <div class="pt-2">
+            <button type="submit"
+                    class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
+              {% include "app/icons/save.svg" with classes="w-4 h-4 mr-2" %}
+              {% translate "Save Changes" %}
+            </button>
+          </div>
+        </form>{% if provider_forms.seerr_settings %}</div>{% endif %}
+      </div>
+
+{% if not setup_guides %}
+{% if not provider_tab or provider_tab == 'connection' %}
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
+        <h4 class="text-sm font-medium mb-3">{% translate "Setup Instructions" %}</h4>
+        <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
+          <li>{% translate "In Seerr, go to" %} <strong>{% translate "Settings > Notifications > Webhook" %}</strong>.</li>
+          <li>{% translate "Create a webhook with method" %} <strong>POST</strong> {% translate "and content type" %} <strong>{% translate "application/json" %}</strong>.</li>
+          <li>
+            {% translate "Set the webhook URL to:" %}
+            {# djlint:off #}
+            {# kept: URL name unchanged to avoid breaking configured webhook URLs #}
+            <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
+              <input readonly
+                     id="seerr-webhook-url"
+                     class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono"
+                     type="text"
+                     value="{% url 'jellyseerr_webhook' request.user.token as jellyseerr_webhook_path %}{% absolute_app_url jellyseerr_webhook_path %}">
+              <span class="flex items-center cursor-pointer group"
+                    title="{% translate "Copy" %}"
+                    data-copy-target="#seerr-webhook-url">
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
+              </span>
+            </div>
+            {# djlint:on #}
+          </li>
+          <li>
+            {% translate "Paste this" %} <strong>{% translate "JSON Payload" %}</strong> {% translate "template into Seerr:" %}
+            <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg mt-2">
+              <div class="flex items-center justify-end mb-2">
+                <span class="flex items-center cursor-pointer group"
+                      title="{% translate "Copy" %}"
+                      role="button"
+                      aria-label="{% translate "Copy JSON template" %}"
+                      data-copy-target="#seerr-json-template">
+                  {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
+                </span>
+              </div>
+              <textarea readonly
+                        id="seerr-json-template"
+                        class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-secondary)] text-sm border-0 focus:ring-0 outline-none font-mono p-3 resize-none overflow-auto max-h-72"
+                        rows="7">{% verbatim %}
+{
+  "media_type": "{{media_type}}",
+  "media_tmdbid": "{{media_tmdbid}}",
+  "media_status": "{{media_status}}",
+  "requestedBy_username": "{{requestedBy_username}}"
+}
+{% endverbatim %}</textarea>
+              <p class="text-[var(--color-text-muted)] text-sm mt-3">
+                {% translate "Important: Seerr's default payload will not work with Floppy. You must use the template above. If you see logs like" %} <code class="px-1 rounded bg-[var(--color-surface-muted)]">unsupported media_type='{media_type}'</code>{% translate ", Seerr is sending the literal template (it was pasted/escaped incorrectly)." %}
+              </p>
+            </div>
+          </li>
+          <li>{% translate "Select the notification types you want (commonly request/approval events)." %}</li>
+        </ol>
+      </div>
+
+      {% if seerr_global_webhook_enabled %}
+        <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mt-4">
+          <h4 class="text-sm font-medium mb-3">{% translate "Global Webhook (multi-user households)" %}</h4>
+          <p class="text-[var(--color-text-muted)] mb-3 text-sm">
+            {% translate "Seerr only supports one webhook per instance. If multiple Floppy users share the same Seerr/Overseerr instance, point Seerr at this single global URL instead of a per-user one. Floppy matches each incoming request's requester username against every user's" %}
+            <strong>{% translate "Allowed Seerr usernames" %}</strong> {% blocktranslate %}on the Tracking tab, so each user must still enable "Auto-add requested media" and list their own Seerr username there.{% endblocktranslate %}
+          </p>
+          <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
+            <li>{% translate "In Seerr, go to" %} <strong>{% translate "Settings > Notifications > Webhook" %}</strong>.</li>
+            <li>{% translate "Create a webhook with method" %} <strong>POST</strong> {% translate "and content type" %} <strong>{% translate "application/json" %}</strong>.</li>
+            <li>
+              {% translate "Set the webhook URL to:" %}
+              {# djlint:off #}
+              <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
+                <input readonly
+                       id="seerr-global-webhook-url"
+                       class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono"
+                       type="text"
+                       value="{% url 'seerr_global_webhook' as seerr_global_webhook_path %}{% absolute_app_url seerr_global_webhook_path %}">
+                <span class="flex items-center cursor-pointer group"
+                      title="{% translate "Copy" %}"
+                      data-copy-target="#seerr-global-webhook-url">
+                  {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
+                </span>
+              </div>
+              {# djlint:on #}
+            </li>
+            <li>
+              {% translate "Paste this" %} <strong>{% translate "JSON Payload" %}</strong> {% translate "template into Seerr, replacing" %}
+              <code class="px-1 rounded bg-[var(--color-surface-muted)]">REPLACE_WITH_SHARED_SECRET</code> {% translate "with the value your administrator configured in" %} <code class="px-1 rounded bg-[var(--color-surface-muted)]">SEERR_GLOBAL_WEBHOOK_SECRET</code>:
+              <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg mt-2">
+                <div class="flex items-center justify-end mb-2">
+                  <span class="flex items-center cursor-pointer group"
+                        title="{% translate "Copy" %}"
+                        role="button"
+                        aria-label="{% translate "Copy JSON template" %}"
+                        data-copy-target="#seerr-global-json-template">
+                    {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
+                  </span>
+                </div>
+                <textarea readonly
+                          id="seerr-global-json-template"
+                          class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-secondary)] text-sm border-0 focus:ring-0 outline-none font-mono p-3 resize-none overflow-auto max-h-72"
+                          rows="8">{% verbatim %}
+{
+  "media_type": "{{media_type}}",
+  "media_tmdbid": "{{media_tmdbid}}",
+  "media_status": "{{media_status}}",
+  "requestedBy_username": "{{requestedBy_username}}",
+  "secret": "REPLACE_WITH_SHARED_SECRET"
+}
+{% endverbatim %}</textarea>
+              </div>
+            </li>
+          </ol>
+        </div>
+      {% endif %}
+{% endif %}
+{% endif %}
+    </div>
+

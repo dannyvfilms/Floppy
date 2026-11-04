@@ -177,6 +177,9 @@ class NextEpisodeSerializer(serializers.Serializer):
     image = serializers.CharField(allow_null=True, allow_blank=True)
     ids = serializers.DictField(child=serializers.CharField())
     url = serializers.CharField(allow_null=True)
+    is_rewatch = serializers.BooleanField(
+        help_text="True when this episode belongs to an open rewatch pass.",
+    )
 
 
 class ShowSerializer(serializers.Serializer):
