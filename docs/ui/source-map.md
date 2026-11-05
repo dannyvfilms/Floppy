@@ -68,6 +68,7 @@ PY
 - `src/templates/base.html`
 - `frontend/ui/Shell.jsx` (`Shell`, `TopBar`, `MobileNav`), `frontend/ui/mountShell.jsx`, the `shell_topbar_react` tag and `src/templates/base.html` / `base_public.html` (signed-in and public top bars plus the mobile navigation overlay; both templates keep their server fallback)
 - `frontend/ui/Sidebar.jsx` (`Sidebar`) shared React Native presentation, `frontend/ui/mountSidebar.jsx` browser adapter (theme tokens, `floppy:sidebar-pins`/`floppy:sidebar-lists`/`floppy:saved-views-open` storage, HTMX-boosted anchors, Sortable reorder, delete/logout forms, onboarding node slot and mobile aside state), `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html`; shared saved-view rows keep `aria-current` on the active view; the Alpine markup inside the host remains the no-React fallback; nav padding, link width, label size and theme-radius rows match the server sidebar; the Explore slot and server fallback reserve their height so pin/list hydration does not move the footer)
+- `frontend/ui/Reveal.jsx`, `frontend/ui/Reveal.web.jsx`, `frontend/ui/Reveal.native.jsx` (sidebar Explore reveal: native mount contract plus the browser's release-height animation)
 - `frontend/ui/Icon.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
 - `frontend/ui/ModalHost.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted from `base.html`; the card hover buttons and the legacy Add-to-lists buttons open it through `floppy-open-modal`; the Add-to-lists body is shared presentation in `frontend/ui/ListsFormView.jsx` through the `frontend/ui/ListsForm.web.jsx` adapter with `modal-forms.css`; the Track body opens the shared `TrackDialog` for every available tab, with Metadata/Collection/Episode plays still server-owned inside it, see POPUP-HOST in the register)
 - `src/app/card_events.py` (the floppyCardUpdate event sent by `media_save` and the score views so React cards refresh their status chip and rating)
@@ -1003,6 +1004,10 @@ server-owned.
 - `src/templates/users/providers.html`
 
 ## SET-METADATA
+
+Provider setup-hint copy is owned by `src/app/providers/credentials.py`
+(`ProviderCredentialSpec.setup_hint`) and rendered by the connection setup
+dialog, the credential modal and `frontend/providers/Credentials.jsx`.
 
 - `src/templates/users/components/media_type_provider_modal.html`
 - `src/templates/users/components/metadata_admin_notice.html`
