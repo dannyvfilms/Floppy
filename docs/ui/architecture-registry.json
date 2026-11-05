@@ -167,7 +167,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted in the browser; the existing server/HTMX episode, issue and season rows remain the web owner. No browser pass was performed."
+          "evidence": "The browser adapter mounts the shared comic-issue rows over the secondary-content server fallback; build, targeted Django tests and static checks only, no browser pass during this change."
         },
         "ios": {
           "status": "unverified",
@@ -2959,6 +2959,14 @@
     "frontend/ui/mountShell.jsx": {
       "register": "SHELL",
       "purpose": "Django/browser integration for the shared shell top bar and mobile navigation: resolve theme tokens, bridge the existing sidebar open state, lift the HTMX-boosted search island into the shared bar, keep public sign-in link semantics and render the overlay while the server fallback remains."
+    },
+    "frontend/ui/DetailChildrenTheme.web.jsx": {
+      "register": "CHILDREN",
+      "purpose": "Resolve browser theme tokens and route shared child-row opens, track/lists/history intents and episode/issue score writes to the existing navigation, hidden server controls and score endpoint; the server rows remain the fallback and source of permissions."
+    },
+    "frontend/ui/mountDetailChildren.jsx": {
+      "register": "CHILDREN",
+      "purpose": "Django/browser integration that mounts the shared comic-issue rows inside the secondary-content host and hides the server row fallback while mounted."
     }
   }
 }

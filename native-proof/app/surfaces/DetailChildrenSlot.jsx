@@ -9,10 +9,10 @@ import { palette, spacing } from '../theme';
 
 export const surface = {
   id: 'CHILDREN',
-  status: 'ported',
+  status: 'in_progress',
   title: 'Seasons, episodes and issue rows',
   where: 'Show, season, podcast and comic detail pages',
-  note: 'Season rows, episode and issue rows, scores, watch/unwatch/drop/check-in actions, a Track action that opens the shared tracking dialog, spoiler reveal, ordering and history links use the shared React Native presentation. The web detail and episode pages keep their server-rendered rows, htmx actions and permissions.',
+  note: 'Season rows, episode and issue rows, scores, watch/unwatch/drop/check-in actions, a Track action that opens the shared tracking dialog, spoiler reveal, ordering and history links use the shared React Native presentation. On the web, comic volume issue cards mount the shared rows with their server list view and htmx actions as the fallback; episode and season rows stay server-owned until their rich cards, modals and polling have an equivalent shared presentation.',
 };
 
 const childrenPalette = {

@@ -609,7 +609,9 @@ def detail_composition(context, part="synopsis"):
         release_year,
     )
 
-    media = context.get("media") or {}
+    media = context.get("media")
+    if not isinstance(media, dict):
+        return None
     media_type = context.get("media_type") or media.get("media_type")
     user = context.get("user")
     public_view = bool(context.get("public_view"))
@@ -1181,3 +1183,125 @@ class PeopleExtrasNode(template.Node):
             },
             self.body.render(context),
         )
+
+
+def _detail_children_issue_props(context):
+    """Build the shared comic-issue row model, or None for other media types."""
+    from django.middleware.csrf import get_token
+    from django.utils.text import slugify
+    from django.utils.translation import gettext as _
+
+    from app.models import MediaTypes, Status
+    from app.templatetags.app_tags import image_url
+
+    media = context.get("media")
+    if not isinstance(media, dict):
+        return None
+    media_type = context.get("media_type") or media.get("media_type")
+    if media_type != MediaTypes.COMIC.value:
+        return None
+    issues = media.get("episodes") or []
+    if not issues:
+        return None
+
+    request = context.get("request")
+    user = getattr(request, "user", None)
+    authenticated = bool(user and user.is_authenticated)
+    public_view = bool(context.get("public_view"))
+    ratings_enabled = getattr(user, "ratings_enabled", False)
+    scale_max = getattr(user, "rating_scale_max", 10)
+
+    labels = {
+        "seasons": str(_("Seasons")),
+        "episodes": str(_("Episodes")),
+        "issues": str(_("Issues")),
+        "season": str(_("Season")),
+        "dropped": str(_("Dropped")),
+        "watched": str(_("Watched")),
+        "unwatched": str(_("Unwatched")),
+        "read": str(_("Read")),
+        "unread": str(_("Unread")),
+        "collected": str(_("Collected")),
+        "notAired": str(_("Not aired yet")),
+        "history": str(_("History")),
+        "noHistory": str(_("No activity recorded yet.")),
+        "noChildren": str(_("Nothing to show yet.")),
+        "toggleOrder": str(_("Toggle row order")),
+        "oldestFirst": str(_("Oldest first")),
+        "newestFirst": str(_("Newest first")),
+        "showAllThumbnails": str(_("Show all thumbnails")),
+        "hideUnseenThumbnails": str(_("Hide unseen thumbnails")),
+        "revealThumbnail": str(_("Reveal thumbnail")),
+        "hiddenThumbnail": str(_("Thumbnail hidden")),
+        "rate": str(_("Rate")),
+        "close": str(_("Close")),
+        "track": str(_("Track")),
+        "lists": str(_("Lists")),
+        "collection": str(_("Collection")),
+    }
+
+    rows = []
+    for issue in issues:
+        media_id = str(issue.get("media_id") or "")
+        history = issue.get("history") or []
+        latest = history[0] if history else None
+        score = getattr(latest, "score", None) if latest else None
+        if score is not None and authenticated:
+            score = user.format_score_for_display(score)
+        actions = []
+        if authenticated and not public_view:
+            actions.append({"key": "track", "label": labels["track"]})
+            actions.append({"key": "lists", "label": labels["lists"]})
+            if history:
+                actions.append({"key": "history", "label": labels["history"]})
+        number = issue.get("issue_number")
+        title = issue.get("title") or str(_("Unknown"))
+        href = ""
+        source = issue.get("source")
+        if source and media_id:
+            href = reverse(
+                "media_details",
+                kwargs={
+                    "source": source,
+                    "media_type": issue.get("media_type") or MediaTypes.COMIC_ISSUE.value,
+                    "media_id": media_id,
+                    "title": slugify(title or str(number or media_id)),
+                },
+            )
+        rows.append({
+            "key": media_id,
+            "number": number,
+            "code": str(_("Issue #%(number)s") % {"number": number}) if number else "",
+            "title": title,
+            "dateLabel": issue.get("cover_date") or "",
+            "image": {"src": image_url(issue.get("image") or ""), "fallback": ""},
+            "overview": "",
+            "watched": bool(history),
+            "dropped": bool(latest and getattr(latest, "status", "") == Status.DROPPED.value),
+            "score": score,
+            "scaleMax": scale_max,
+            "canRate": bool(authenticated and not public_view and ratings_enabled and history),
+            "rateLabel": labels["rate"],
+            "rateUrl": (
+                reverse("update_media_score", args=[MediaTypes.COMIC_ISSUE.value, latest.id])
+                if authenticated and not public_view and ratings_enabled and latest
+                else ""
+            ),
+            "href": href,
+            "obfuscated": False,
+            "unreleased": False,
+            "actions": actions,
+        })
+
+    props = {
+        "model": {"kind": "comic", "issues": rows, "obfuscation": {}},
+        "labels": labels,
+        "csrfToken": get_token(request) if request is not None else "",
+    }
+    return {"props": props, "props_id": f"detail-children-{uuid4().hex}"}
+
+
+@register.simple_tag(takes_context=True)
+def detail_children_props(context):
+    """Return the shared child-row model for a surface that has one."""
+    return _detail_children_issue_props(context)

@@ -504,7 +504,15 @@ Server-owned data and legacy consumers retained behind the fallback:
 Shared React Native presentation and native placement:
 
 - `frontend/ui/DetailChildren.jsx`
+- `frontend/ui/DetailChildrenTheme.web.jsx` (browser theme, child-row navigation, hidden server-control delegation and score writes for the adopted comic issue rows)
+- `frontend/ui/mountDetailChildren.jsx`
 - `native-proof/app/surfaces/DetailChildrenSlot.jsx` (native children on the Detail screen)
+
+Web host and server-owned data boundary:
+
+- `src/templates/app/components/detail_secondary_content.html` (comic issue-list host and server fallback)
+- `src/users/templatetags/ui_tags.py` (`detail_children_props`)
+- `src/app/media_details_views.py` (`_enrich_comic_issues`)
 
 Server-owned rows retained behind the web fallback:
 

@@ -397,6 +397,7 @@
               <div class="flex items-center gap-1">
                 {% if media_type != MediaTypes.PODCAST.value %}
                   <button @click="setLayout('grid')"
+                          data-children-layout="grid"
                           :class="epLayout === 'grid' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'"
                           class="p-1.5 rounded transition-colors cursor-pointer"
                           title="{% translate "Card view" %}"
@@ -406,6 +407,7 @@
                     </svg>
                   </button>
                   <button @click="setLayout('list')"
+                          data-children-layout="list"
                           :class="epLayout === 'list' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'"
                           class="p-1.5 rounded transition-colors cursor-pointer"
                           title="{% translate "List view" %}"
@@ -438,7 +440,15 @@
                   {# Use fragment for podcasts to enable infinite scroll #}
                   {% include "app/components/podcast_episode_list.html" with episodes=paginated_episodes|default:media.episodes user=user show=podcast_show IMG_NONE=IMG_NONE TRACK_TIME=TRACK_TIME has_more=has_more|default:has_more_episodes|default:False next_page=next_page|default:2 show_id=show_id request=request csrf_token=csrf_token only %}
                 {% else %}
+                {% detail_children_props as children_props %}
+                {% if children_props %}
+                <div class="space-y-6" id="episodes-batch" data-detail-children-root data-props-id="{{ children_props.props_id }}">
+                  {{ children_props.props|json_script:children_props.props_id }}
+                  <div data-detail-children-react></div>
+                  <div data-detail-children-legacy>
+                {% else %}
                 <div class="space-y-6" id="episodes-batch">
+                {% endif %}
                   {% for episode in media.episodes %}
                     {% if media_type == MediaTypes.COMIC.value %}
                       {% url 'media_details' source=episode.source media_type=episode.media_type media_id=episode.media_id title=episode.title|default:episode.issue_number|slug as ep_detail_url %}
@@ -460,7 +470,12 @@
                       </a>
                     </div>
                   {% endif %}
+                {% if children_props %}
+                  </div>
                 </div>
+                {% else %}
+                </div>
+                {% endif %}
                 {% endif %}
               </div>
             </div>
