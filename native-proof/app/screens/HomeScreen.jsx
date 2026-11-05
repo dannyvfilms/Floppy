@@ -5,6 +5,14 @@ import MediaCardSlot from '../surfaces/MediaCardSlot';
 import RailsSlot from '../surfaces/RailsSlot';
 import SearchSlot from '../surfaces/SearchSlot';
 
+export const surface = {
+  id: 'HOME',
+  status: 'in_progress',
+  title: 'Home shelves, deferred groups and cover refresh',
+  where: 'Home screen shelves, media-type sections, deferred rows and coalesced artwork polling',
+  note: 'Porting Home composition to shared React Native presentation. The native screen still renders demo shelves while the shared composition and transport are wired.',
+};
+
 const activity = {
   id: 'HISTORY',
   title: 'Recent activity',
