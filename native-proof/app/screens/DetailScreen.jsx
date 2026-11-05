@@ -3,6 +3,7 @@ import { Screen, Section } from '../components/Screen';
 import DetailChildrenSlot from '../surfaces/DetailChildrenSlot';
 import DetailSlot from '../surfaces/DetailSlot';
 import DetailTrackingSlot from '../surfaces/DetailTrackingSlot';
+import { CheckInStateSlot } from '../surfaces/PlaybackSlot';
 import ProgressSlot from '../surfaces/ProgressSlot';
 import RatingSlot from '../surfaces/RatingSlot';
 
@@ -16,6 +17,9 @@ export default function DetailScreen({ params, onBack }) {
     </Section>
     <Section title="Your progress">
       <ProgressSlot />
+    </Section>
+    <Section title="Check-in">
+      <CheckInStateSlot />
     </Section>
     <Section title="Tracking">
       <DetailTrackingSlot target={trackTarget} onOpen={setTrackTarget}

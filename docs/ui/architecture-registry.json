@@ -48,47 +48,6 @@
         }
       }
     },
-    "frontend/ui/MediaTable.jsx": {
-      "components": [
-        "MediaTable",
-        "MediaTableCell"
-      ],
-      "register": "TABLES",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "MountMediaTable compiles the shared table over the server projection; no browser interaction pass was performed and the server table remains the fallback."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the file through TableSlot and ListResults; no simulator pass was performed."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the file through TableSlot and ListResults; no emulator pass was performed."
-        }
-      }
-    },
-    "frontend/ui/ColumnMenu.jsx": {
-      "components": [
-        "MediaColumnMenu"
-      ],
-      "register": "TABLES",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "MountMediaTable compiles the shared column menu over the existing preference endpoint; no browser interaction pass was performed."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the file through TableSlot and ListResults; no simulator pass was performed."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the file through TableSlot and ListResults; no emulator pass was performed."
-        }
-      }
-    },
     "frontend/ui/MediaCardView.jsx": {
       "components": [
         "MediaCardView"
@@ -1747,6 +1706,68 @@
         }
       }
     },
+    "frontend/ui/PlaybackCard.jsx": {
+      "components": [
+        "PlaybackCard",
+        "CheckInState"
+      ],
+      "register": "PLAYBACK",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Compiled into the web bundle through mountPlaybackCard and mountCheckInState; the Home card and detail check-in state were not exercised in a browser in this change. The server fallback remains the progressive-enhancement path."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared card and detail check-in state into the native shell; no iOS simulator run or interaction pass was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared card and detail check-in state into the native shell; no Android emulator run or interaction pass was performed."
+        }
+      }
+    },
+    "frontend/ui/MediaTable.jsx": {
+      "components": [
+        "MediaTable",
+        "MediaTableCell"
+      ],
+      "register": "TABLES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "MountMediaTable compiles the shared table over the server projection; no browser interaction pass was performed and the server table remains the fallback."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the file through TableSlot and ListResults; no simulator pass was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the file through TableSlot and ListResults; no emulator pass was performed."
+        }
+      }
+    },
+    "frontend/ui/ColumnMenu.jsx": {
+      "components": [
+        "MediaColumnMenu"
+      ],
+      "register": "TABLES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "MountMediaTable compiles the shared column menu over the existing preference endpoint; no browser interaction pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the file through TableSlot and ListResults; no simulator pass was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the file through TableSlot and ListResults; no emulator pass was performed."
+        }
+      }
+    },
     "frontend/discover/DiscoverScreen.jsx": {
       "components": [
         "DiscoverScreen",
@@ -2565,10 +2586,6 @@
       "register": "SETTINGS-CARD",
       "purpose": "Django/browser integration for the registered surface."
     },
-    "frontend/ui/mountMediaTable.jsx": {
-      "register": "TABLES",
-      "purpose": "Mounts the shared media table and column menu over the server row projection, posts order/hidden to the existing column preference endpoint and reads bounded table JSON pages."
-    },
     "frontend/ui/mountMediaCard.jsx": {
       "register": "MEDIA-CARD",
       "purpose": "Django/browser integration for the registered surface."
@@ -2673,10 +2690,6 @@
       "register": "RAILS",
       "purpose": "Preserve browser pointer drag, click suppression, keyboard arrows and focus behavior for the shared rail."
     },
-    "frontend/ui/mountRails.jsx": {
-      "register": "RAILS",
-      "purpose": "Mount the shared rail over the server-rendered scrollable row: keep its cards as item slots, resolve theme tokens, preserve heading links, sorting, collapse persistence, artwork anchors, bounded fragment load-more and HTMX row replacement."
-    },
     "frontend/ui/mountDateTimePicker.jsx": {
       "register": "DATE-TIME",
       "purpose": "Mount the shared picker on the browser field and keep the hidden input, htmx events, status autofill, paired dates, copy and clear behavior."
@@ -2764,6 +2777,26 @@
     "frontend/ui/mountMusicAlbums.jsx": {
       "register": "MUSIC",
       "purpose": "Maps server-shaped artist discography album rows into the shared music album grid and owns browser navigation for the card link; the server album grid inside the host remains the no-React fallback."
+    },
+    "frontend/ui/PlaybackTheme.web.jsx": {
+      "register": "PLAYBACK",
+      "purpose": "Resolve browser theme tokens and hand the shared Now Playing card and detail check-in state their stop/cancel and action intents while htmx owns the server fragments."
+    },
+    "frontend/ui/mountPlaybackCard.jsx": {
+      "register": "PLAYBACK",
+      "purpose": "Mount the shared Now Playing card over the server-rendered Home card fallback."
+    },
+    "frontend/ui/mountCheckInState.jsx": {
+      "register": "PLAYBACK",
+      "purpose": "Mount the shared detail check-in state over the server-rendered tracking split-button fallback."
+    },
+    "frontend/ui/mountMediaTable.jsx": {
+      "register": "TABLES",
+      "purpose": "Mounts the shared media table and column menu over the server row projection, posts order/hidden to the existing column preference endpoint and reads bounded table JSON pages."
+    },
+    "frontend/ui/mountRails.jsx": {
+      "register": "RAILS",
+      "purpose": "Mount the shared rail over the server-rendered scrollable row: keep its cards as item slots, resolve theme tokens, preserve heading links, sorting, collapse persistence, artwork anchors, bounded fragment load-more and HTMX row replacement."
     },
     "frontend/discover/mountDiscover.jsx": {
       "register": "DISCOVER",

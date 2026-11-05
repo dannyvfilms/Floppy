@@ -1,0 +1,1 @@
+import{b as e}from"./chunk-QCRKMAAA.js";import"./chunk-BB2TEKVQ.js";import"./chunk-2R3NOBVT.js";import{a as f,c as m,d as r}from"./chunk-RU43FRVD.js";import{b as o}from"./chunk-SQE76S5B.js";var c=o(f());var n=o(r());function a(t,p){return m(t,(0,n.jsx)(e,{host:t,props:p}))}export{a as mountCheckInState};

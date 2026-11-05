@@ -22,7 +22,15 @@ from django.utils.translation import (
 from django.utils.translation import gettext as _
 from unidecode import unidecode
 
-from app import card_surfaces, checkin, config, helpers, image_cache, track_actions
+from app import (
+    card_surfaces,
+    checkin,
+    config,
+    helpers,
+    image_cache,
+    live_playback,
+    track_actions,
+)
 from app import entry_sources as entry_sources_module
 from app.models import Item, MediaTypes, Sources, Status
 from app.providers import tmdb
@@ -2905,6 +2913,18 @@ def media_track_actions(context, media_type, instance):
     request = context.get("request")
     phase = checkin.phase(request.user, instance) if request and instance else None
     reload_in = phase["reload_in"] if phase else None
+    checkin_state = None
+    if phase and phase.get("phase") in (
+        checkin.PHASE_ACTIVE,
+        checkin.PHASE_FINISHABLE,
+        checkin.PHASE_PAUSED,
+        "session",
+    ):
+        checkin_state = {
+            "phase": phase["phase"],
+            "code": phase.get("code", ""),
+            "started_at_ts": phase.get("started_at_ts"),
+        }
     # Grouped anime (TMDB/TVDB) is stored as a TV show, which holds one tracker,
     # so the stored type decides the actions, not the route type.
     item = getattr(instance, "item", None)
@@ -2918,6 +2938,109 @@ def media_track_actions(context, media_type, instance):
         "reload_ms": max(1, reload_in + checkin.SETTLE_DELAY_SECONDS) * 1000
         if reload_in is not None
         else None,
+        "checkin_state": checkin_state,
+    }
+
+
+@register.simple_tag(takes_context=True)
+def playback_card_react(context, card):
+    """Return the shared Now Playing card props for one server-built card."""
+    control = card.get("checkin_control")
+    model = {
+        "title": card.get("title") or "",
+        "episodeCode": card.get("episode_code") or "",
+        "episodeTitle": card.get("episode_title") or "",
+        "subtitleLine": "",
+        "href": card.get("details_url") or "",
+        "image": {
+            "src": image_url(card.get("image")) or "",
+            "alt": card.get("title") or "",
+        },
+        "status": card.get("status") or live_playback.PLAYBACK_STATUS_PLAYING,
+        "offsetSeconds": max(0, int(card.get("offset_seconds") or 0)),
+        "durationSeconds": max(0, int(card.get("duration_seconds") or 0)),
+        "updatedAtSeconds": max(0, int(card.get("updated_at_ts") or 0)),
+        "progressPercent": card.get("progress_percent") or 0,
+        "staleAfterSeconds": (
+            live_playback.PLAYBACK_PAUSE_STALE_SECONDS
+            if card.get("status") in (
+                live_playback.PLAYBACK_STATUS_PAUSED,
+                live_playback.PLAYBACK_STATUS_STOPPED,
+            )
+            else live_playback.PLAYBACK_HARD_STALE_SECONDS
+        ),
+        "checkin": bool(control),
+    }
+    props = {
+        "model": model,
+        "control": None,
+        "labels": {
+            "nowPlaying": str(_("Now Playing")),
+            "playing": str(_("Playing")),
+            "paused": str(_("Paused")),
+            "stale": str(_("Last updated")),
+            "openDetails": str(_("Open details")),
+        },
+    }
+    if control:
+        props["labels"]["stopCheckIn"] = str(_("Stop check-in"))
+        props["labels"]["cancelCheckIn"] = str(_("Cancel check-in"))
+        url = media_view_url("checkin_action", {
+            "source": control.get("source"),
+            "media_type": control.get("media_type"),
+            "media_id": control.get("media_id"),
+        })
+        props["control"] = {
+            "token": control.get("token"),
+            "stop": {
+                "url": url,
+                "action": control.get("action"),
+                "token": control.get("token"),
+            },
+            "cancel": {
+                "url": url,
+                "action": "cancel",
+                "token": control.get("token"),
+            },
+        }
+    return {
+        "id": f"playback-card-{uuid4().hex}",
+        "props": props,
+    }
+
+
+@register.simple_tag
+def checkin_state_react(media, media_type, track):
+    """Return the shared detail check-in state props while a check-in is running."""
+    state = (track or {}).get("checkin_state")
+    if not state:
+        return {"id": "", "props": None}
+    return {
+        "id": f"checkin-state-{uuid4().hex}",
+        "props": {
+            "model": {
+                "phase": state.get("phase"),
+                "code": state.get("code") or "",
+                "startedAtSeconds": state.get("started_at_ts"),
+                "title": str(
+                    getattr(media, "title", None)
+                    or (media.get("title") if isinstance(media, dict) else "")
+                    or "",
+                ),
+            },
+            "actions": [
+                {"key": action["key"], "label": action["label"]}
+                for action in (track or {}).get("actions", [])
+            ],
+            "labels": {
+                "checkIn": str(_("Check-in")),
+                "active": str(_("Check-in running")),
+                "finishable": str(_("Ready to finish")),
+                "pausedState": str(_("Check-in paused")),
+                "session": str(_("Check-in running")),
+                "elapsed": str(_("elapsed")),
+            },
+        },
     }
 
 
