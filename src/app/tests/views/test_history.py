@@ -1294,7 +1294,74 @@ class HistoryMonthViewTests(TestCase):
             {f"Large History {index:03d}" for index in range(30, 35)},
         )
         self.assertNotContains(response, "Large History Music")
-        self.assertNotContains(response, "Load more")
+        self.assertFalse(day["has_more"])
+
+    def test_history_page_embeds_a_bounded_feed_model(self):
+        """The shared feed receives page metadata and bounded first slices."""
+        day_key, total_entries = self._cache_large_history_day()
+
+        response = self.client.get(reverse("history"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "data-history-feed-root")
+        self.assertContains(response, "history-feed-props")
+        model = response.context["history_feed"]
+        self.assertEqual(model["mode"], "activity")
+        day = next(day for day in model["days"] if day["key"] == day_key)
+        self.assertEqual(day["entryCount"], total_entries)
+        self.assertEqual(
+            len(day["entries"]),
+            history_cache.HISTORY_ENTRIES_PER_DAY_PAGE,
+        )
+        self.assertTrue(day["hasMore"])
+        self.assertTrue(day["entries"][0]["canEdit"])
+        self.assertFalse(day["entries"][0]["canDelete"])
+        self.assertIn("format=json", day["nextUrl"])
+
+    def test_history_day_fragment_json_returns_the_next_bounded_slice(self):
+        """The browser feed loads one JSON day slice without whole-history payloads."""
+        day_key, _total_entries = self._cache_large_history_day()
+        offset = history_cache.HISTORY_ENTRIES_PER_DAY_PAGE
+
+        response = self.client.get(
+            reverse("history_day_fragment", kwargs={"day_key": day_key}),
+            {"format": "json", "entry_offset": offset},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        day = response.json()["day"]
+        self.assertEqual(day["key"], day_key)
+        self.assertEqual(day["offset"], offset)
+        self.assertFalse(day["hasMore"])
+        self.assertIn("Large History 034", {entry["title"] for entry in day["entries"]})
+        self.assertNotIn("Large History 000", {entry["title"] for entry in day["entries"]})
+        self.assertIsNone(day["nextUrl"])
+
+    def test_history_day_fragment_json_keeps_filters_and_bounds(self):
+        """JSON day slices filter before pagination, like the server fragment."""
+        day_key, _total_entries = self._cache_large_history_day(
+            keep_count=5,
+            total_count=history_cache.HISTORY_ENTRIES_PER_DAY_PAGE + 5,
+        )
+
+        response = self.client.get(
+            reverse("history_day_fragment", kwargs={"day_key": day_key}),
+            {
+                "format": "json",
+                "genre": "keep",
+                "media_type": MediaTypes.MOVIE.value,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        day = response.json()["day"]
+        self.assertEqual(day["entryCount"], 5)
+        self.assertEqual(len(day["entries"]), 5)
+        self.assertFalse(day["hasMore"])
+        self.assertEqual(
+            {entry["title"] for entry in day["entries"]},
+            {f"Large History {index:03d}" for index in range(30, 35)},
+        )
 
     def test_history_day_fragment_rejects_invalid_day_and_offset(self):
         invalid_day = self.client.get(

@@ -596,9 +596,11 @@ modal is shared React presentation on mount, with the server markup as fallback.
 
 The feed and its activity, edit and delete dialogs are shared presentation in
 `frontend/ui/HistoryFeed.jsx` and are composed by the native History screen.
-The browser History page remains server/Alpine-owned and keeps its bounded day
-fragments, cache refresh, filters and session fragments; the intent adapter is
-registered but not mounted.
+The browser History page mounts the shared feed over its day list through
+`frontend/ui/mountHistoryFeed.jsx`; lazy and load-more slices come from the
+bounded `history_day_fragment?format=json` contract. The server template keeps
+the day-list fallback and still owns month navigation, the Alpine filter sheet,
+the cache-refresh banner, pagination and the per-item session dialog.
 
 - `frontend/ui/HistoryFeed.jsx`
 - `frontend/ui/mountHistoryFeed.jsx`

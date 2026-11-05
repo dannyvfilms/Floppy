@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
 import { HistoryFeed } from './HistoryFeed';
+import { openModal } from './ModalHost';
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;
@@ -36,6 +37,10 @@ function readPalette() {
     accentContrast: '#ffffff',
     link: color('--color-link', '#818cf8'),
     danger: color('--color-danger', '#ef4444'),
+    warning: '#f59e0b',
+    success: '#10b981',
+    radius: 8,
+    radiusSmall: 6,
     mediaCard: {
       card: color('--color-surface', '#27272a'),
       text: color('--color-text', '#fafafa'),
@@ -58,15 +63,6 @@ function assign(url) {
   if (url) window.location.assign(url);
 }
 
-function htmxGet(url, target, values) {
-  if (!url) return;
-  if (window.htmx?.ajax) {
-    window.htmx.ajax('GET', url, { target, values, swap: 'innerHTML' });
-    return;
-  }
-  assign(url);
-}
-
 function historyUrl(state, props) {
   const params = new URLSearchParams();
   if (state.from) params.set('start-date', state.from);
@@ -79,8 +75,13 @@ function historyUrl(state, props) {
   return `${props.baseUrl || window.location.pathname}${query ? `?${query}` : ''}`;
 }
 
+function replaceDay(days, key, update) {
+  return days.map(day => (day.key === key ? update(day) : day));
+}
+
 function Adapter({ host, props }) {
   const [palette, setPalette] = useState(readPalette);
+  const [model, setModel] = useState(() => props.model || { days: [] });
 
   useEffect(() => {
     const update = () => setPalette(readPalette());
@@ -94,16 +95,65 @@ function Adapter({ host, props }) {
     };
   }, []);
 
+  function updateDay(day, update) {
+    setModel(current => ({
+      ...current,
+      days: replaceDay(current.days || [], day.key, currentDay => (
+        typeof update === 'function' ? update(currentDay) : update
+      )),
+    }));
+  }
+
+  async function fetchDay(day, url, append) {
+    if (!url) return;
+    updateDay(day, current => ({
+      ...current,
+      loading: !append,
+      loadingMore: append,
+      error: false,
+    }));
+    try {
+      const response = await window.fetch(url, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) throw new Error(`History day failed: ${response.status}`);
+      const payload = await response.json();
+      const next = payload.day;
+      if (!next) throw new Error('History day response is missing its day.');
+      updateDay(day, current => (append ? {
+        ...current,
+        ...next,
+        entries: [...(current.entries || []), ...(next.entries || [])],
+        loading: false,
+        loadingMore: false,
+        error: false,
+      } : {
+        ...next,
+        loading: false,
+        loadingMore: false,
+        error: false,
+      }));
+    } catch (error) {
+      updateDay(day, current => ({
+        ...current,
+        loading: false,
+        loadingMore: false,
+        error: true,
+      }));
+    }
+  }
+
   function navigate(intent) {
     if (intent?.url) assign(intent.url);
   }
 
   function loadMore(day) {
-    htmxGet(day.nextUrl, day.nextTarget || host.closest('.history-day'));
+    fetchDay(day, day.nextUrl, true);
   }
 
   function loadDay(day) {
-    htmxGet(day.loadUrl, day.loadTarget || host.closest('.history-day'));
+    fetchDay(day, day.loadUrl, false);
   }
 
   function openEntry(entry) {
@@ -111,26 +161,38 @@ function Adapter({ host, props }) {
   }
 
   function openActivity(entry) {
-    if (entry.activityUrl && entry.activityTarget) {
-      htmxGet(entry.activityUrl, entry.activityTarget, entry.activityVals || {});
+    if (entry?.activityUrl && entry.activityTarget && window.htmx?.ajax) {
+      window.htmx.ajax('GET', entry.activityUrl, {
+        target: entry.activityTarget,
+        swap: 'innerHTML',
+      });
+      window.dispatchEvent(new CustomEvent('open-session-history'));
       return;
     }
     openEntry(entry);
   }
 
   function editEntry(entry) {
-    if (entry.editUrl && entry.editTarget) {
-      htmxGet(entry.editUrl, entry.editTarget, entry.editVals || {});
+    if (!entry.editUrl || !entry.editTarget) {
+      openEntry(entry);
       return;
     }
-    assign(entry.editUrl || entry.href);
+    openModal({
+      modal: 'track',
+      url: entry.editUrl,
+      target: entry.editTarget,
+      vals: {
+        ...(entry.editVals || {}),
+        return_url: window.location.pathname + window.location.search,
+      },
+    });
   }
 
   function deleteEntry(entry) {
     if (!entry.deleteUrl) return;
     window.fetch(entry.deleteUrl, {
       method: 'DELETE',
-      headers: { 'X-CSRFToken': props.model?.csrfToken || '' },
+      headers: { 'X-CSRFToken': props.csrfToken || '' },
     }).then(response => {
       if (!response.ok) throw new Error(`History delete failed: ${response.status}`);
       window.dispatchEvent(new CustomEvent('history-refresh-start'));
@@ -154,7 +216,7 @@ function Adapter({ host, props }) {
     body.set('query', historyUrl(state, { baseUrl: '' }).replace(/^\?/, ''));
     window.fetch(props.saveViewUrl || '/saved-views/create/', {
       method: 'POST',
-      headers: { 'X-CSRFToken': props.model?.csrfToken || '' },
+      headers: { 'X-CSRFToken': props.csrfToken || '' },
       body,
     }).then(response => response.json())
       .then(data => { if (data.url) window.location.assign(data.url); })
@@ -162,9 +224,10 @@ function Adapter({ host, props }) {
   }
 
   return <HistoryFeed
-    model={props.model}
+    model={model}
     labels={props.labels}
     palette={palette}
+    chrome={props.chrome !== false}
     onNavigate={navigate}
     onLoadMore={loadMore}
     onLoadDay={loadDay}
