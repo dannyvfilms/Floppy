@@ -709,6 +709,19 @@ modal is shared React presentation on mount, with the server markup as fallback.
 
 ## METADATA-REVIEW
 
+The chooser/review, provider-move confirmation and remap/library-move result
+choices are shared React Native presentation mounted over their server fallbacks.
+The browser adapter posts the existing Django actions with CSRF and keeps the
+library-move HTMX target replacement; the native shell composes a demo screen.
+The server templates and the Alpine episode-order script remain the
+no-React/chunk-failure fallback until a browser interaction pass retires them.
+
+- `frontend/ui/MetadataReview.jsx`
+- `frontend/ui/mountMetadataReview.jsx`
+- `native-proof/app/screens/MetadataReviewScreen.jsx`
+- `native-proof/app/surfaces/MetadataReviewSlot.jsx`
+- `src/app/episode_order_views.py`
+- `src/app/metadata_sync_views.py`
 - `src/static/js/episodeOrderReview.js`
 - `src/templates/app/components/library_move_results.html`
 - `src/templates/app/components/remap_search_results.html`
