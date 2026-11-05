@@ -195,7 +195,7 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 - `frontend/ui/ListsFormView.jsx` (universal `ListsForm`: tag filter, count, Add/Remove rows, loading/error/empty states and accessible header; presentation only)
 - `frontend/ui/ListsForm.web.jsx` (browser transport adapter: JSON list model, CSRF toggle, `floppy-list-toggled` event and errors for the shared `ListsForm`)
 - `frontend/ui/TrackForm.jsx` (universal `TrackForm`: General tab fields, date-time fields, notes, validation, tab host and save/delete states; presentation only)
-- `frontend/ui/TrackFormTabs.jsx` (universal `TrackTabs`: General, Tags, Metadata, Collection, Plays/Episode plays, Status history and Discover tab strip and bodies with loading, error, retry, empty and pending states; presentation only)
+- `frontend/ui/TrackFormTabs.jsx` (universal `TrackTabs`: General, Tags, Metadata, Collection, Plays/Episode plays, Status history and Discover tab strip and bodies with loading, error, retry, empty and pending states; supplied labels drive the tabs and add/remove actions; presentation only)
 - `frontend/ui/mediaCardForms.js` (shared lists/track form models, membership helpers, initial values and validation)
 - `native-proof/app/surfaces/MediaCardSlot.jsx` (native placement with demo library items, action callbacks and popup host on Home, Discover and Library)
 - `src/templates/app/components/card_lines.html`
