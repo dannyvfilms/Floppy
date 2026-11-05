@@ -1161,10 +1161,16 @@ Shared `AuthEntrance`, `SocialProviders` and `AuthNotice` own entrance, social-p
 
 ## DEVICE-CONNECT
 
+- `frontend/ui/DeviceConnect.jsx` (`DeviceConnectCard`)
+- `frontend/ui/mountDeviceConnect.jsx`
+- `native-proof/app/screens/ConnectionsScreen.jsx`
 - `src/templates/integrations/trakt_device_code.html`
 
 ## STREMIO
 
+- `frontend/ui/StremioConfigurator.jsx` (`StremioAddonConfigurator`)
+- `frontend/ui/mountStremioConfig.jsx`
+- `native-proof/app/screens/ConnectionsScreen.jsx`
 - `src/templates/integrations/stremio_configure.html`
 - `src/templates/app/components/session_history_row.html` (audiobook "stopped at" and book "at page" fragments)
 - `src/templates/app/components/reading_consumption_section.html` (Books "Listening Time" card)

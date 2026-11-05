@@ -4,6 +4,7 @@ import CollectionScreen from './screens/CollectionScreen';
 import TagsScreen from './screens/TagsScreen';
 import OnboardingScreen from './screens/OnboardingScreen';
 import IntegrationsScreen from './screens/IntegrationsScreen';
+import ConnectionsScreen from './screens/ConnectionsScreen';
 import SettingsAdvancedScreen from './screens/SettingsAdvancedScreen';
 import ErrorDocsScreen from './screens/ErrorDocsScreen';
 import WebUtilitiesScreen from './screens/WebUtilitiesScreen';
@@ -19,6 +20,7 @@ export const EXTRA_SCREENS = {
   Tags: TagsScreen,
   Onboarding: OnboardingScreen,
   Integrations: IntegrationsScreen,
+  Connections: ConnectionsScreen,
   SettingsAdvanced: SettingsAdvancedScreen,
   ErrorDocs: ErrorDocsScreen,
   WebUtilities: WebUtilitiesScreen,
@@ -32,6 +34,7 @@ export const EXTRA_LABELS = {
   Tags: 'Tags',
   Onboarding: 'Onboarding',
   Integrations: 'Library and request panels',
+  Connections: 'Device connections and Stremio catalogs',
   SettingsAdvanced: 'Advanced and About',
   ErrorDocs: 'Errors and API docs',
   WebUtilities: 'Clipboard and install',

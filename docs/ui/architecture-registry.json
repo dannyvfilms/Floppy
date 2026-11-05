@@ -1897,6 +1897,46 @@
           "evidence": "Shared top bar and mobile navigation render in the Expo shell; no Android runtime was exercised."
         }
       }
+    },
+    "frontend/ui/DeviceConnect.jsx": {
+      "components": [
+        "DeviceConnectCard"
+      ],
+      "register": "DEVICE-CONNECT",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "First commit: mounted by the device-connect web adapter; no browser pass yet."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "First commit: placed on the native Connections screen; Expo export and simulator interaction not run yet."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "First commit: placed on the native Connections screen; Expo export and emulator interaction not run yet."
+        }
+      }
+    },
+    "frontend/ui/StremioConfigurator.jsx": {
+      "components": [
+        "StremioAddonConfigurator"
+      ],
+      "register": "STREMIO",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "First commit: mounted by the Stremio configure adapter; no browser pass yet."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "First commit: placed on the native Connections screen; Expo export and simulator interaction not run yet."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "First commit: placed on the native Connections screen; Expo export and emulator interaction not run yet."
+        }
+      }
     }
   },
   "legacy": {
@@ -2964,6 +3004,14 @@
     "frontend/ui/mountShell.jsx": {
       "register": "SHELL",
       "purpose": "Django/browser integration for the shared shell top bar and mobile navigation: resolve theme tokens, bridge the existing sidebar open state, lift the HTMX-boosted search island into the shared bar, keep public sign-in link semantics and render the overlay while the server fallback remains."
+    },
+    "frontend/ui/mountDeviceConnect.jsx": {
+      "register": "DEVICE-CONNECT",
+      "purpose": "Django/browser integration for the shared device-code card: poll the existing Trakt endpoint, follow its HTMX redirect, copy the code and open the activation page."
+    },
+    "frontend/ui/mountStremioConfig.jsx": {
+      "register": "STREMIO",
+      "purpose": "Standalone Stremio configure-page adapter: resolve the install base URL, copy the generated configuration and hand the install URL to the Stremio deep link."
     }
   }
 }
