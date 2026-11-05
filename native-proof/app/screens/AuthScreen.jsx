@@ -20,7 +20,7 @@ export const surface = {
   status: 'in_progress',
   title: 'Account and authentication',
   where: 'Login, signup, social, password, TOTP, recovery, connections and deletion guards',
-  note: 'Auth presentation is unchanged. The native auth boundary now supports server URL and credential entry, token and session login, secure credential storage through Expo SecureStore, CSRF refresh, connection tests and expiry/revocation states. This screen still shows demo values and is not wired to that boundary; iOS and Android runtime remain unverified.',
+  note: 'Auth finishing pass in progress: wiring the shared entrance and account-security presentation to the authenticated transport (server URL, sign-in, session lifecycle, redirect intents and account actions). iOS and Android runtime remain unverified.',
 };
 
 const authPalette = {
