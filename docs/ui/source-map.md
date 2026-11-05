@@ -225,7 +225,9 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 
 ## MEDIA-CARD
 
-- `frontend/ui/MediaCard.jsx` (universal card shell: layouts, `ArtworkImage` fallback/lazy loading, chips at the retired card's inset/padding/glyph size, progress, title/lines, rating affordance, explicit read-only mode and selectable states; presentation only)
+- `frontend/ui/MediaCard.jsx` (universal React Native card shell for native and shared React Native surfaces: layouts, `ArtworkImage` fallback/lazy loading, chips, progress, title/lines and rating overlay on the artwork bottom for poster layouts, explicit read-only mode and selectable states; presentation only)
+- `frontend/ui/MediaCard.web.jsx` (browser implementation for every surface: established DOM classes, theme rules, artwork, status/corner chips, progress, rating popup, faded title/rating/subtitle overlay on the poster bottom, and hover/touch action overlay; presentation only)
+- `frontend/ui/MediaCard.native.jsx` (native implementation entry that delegates to the universal `MediaCard` React Native card)
 - `frontend/ui/MediaCardActions.jsx` (universal action overlay, row buttons and list-reorder controls; native drag gesture with an `adjustable` value, hint and accessibility actions, explicit action/reorder/reorder-drag/reveal callbacks, no transport)
 - `frontend/ui/MediaCardActionHost.jsx` (universal popup shell for the card action callback contract; the browser ModalHost remains the web host)
 - `frontend/ui/MediaCardFormControls.jsx` (`FormHeader`, `FormField`, `FormTextField`, `FormSelect`, `FormStatus` and `FormError` for the shared action forms; presentation only)
@@ -239,13 +241,15 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 - `native-proof/app/surfaces/mediaCardEvents.js` (native-only card-change event bus used by the card, Track, Discover and bulk selection; not presentation)
 - `src/templates/app/components/card_lines.html`
 - `src/templates/app/components/media_card.html` (shell: wrapper classes, props script and first-paint poster and title; React replaces it on mount)
-- `frontend/ui/MediaCard.jsx`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/ModalHost.jsx`, `frontend/ui/media-card.css`, `src/app/media_card_model.py`, `src/app/card_surfaces.py` (the whole card is one shared React card on every surface: body, status chip, rating, hover buttons, popups host, touch reveal and bulk-select checkbox)
+- `frontend/ui/MediaCard.jsx`, `frontend/ui/MediaCard.web.jsx`, `frontend/ui/MediaCard.native.jsx`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/ModalHost.jsx`, `frontend/ui/media-card.css`, `src/app/media_card_model.py`, `src/app/card_surfaces.py` (the whole card is one React component on every surface: the browser implementation everywhere on web and the React Native implementation on native; body, status chip, rating, hover buttons, popups host, touch reveal and bulk-select checkbox)
 - `src/templates/app/components/media_card_list.html`
 - `src/templates/app/components/media_card_status_chip.html` (out-of-band save fragment only; no card renders it)
 
-The retired DOM card is gone. `MediaCard.jsx` is the one shared card; `mountMediaCard.jsx` is
-its browser adapter and `ModalHost.jsx` is the popup host. `MediaCardActions` supplies the
-action overlay on both platforms. `ListsFormView` is used on web through `ListsForm.web.jsx`
+`MediaCard.web.jsx` is the browser implementation on every web surface;
+`MediaCard.native.jsx` selects the universal React Native card on native.
+`mountMediaCard.jsx` mounts the DOM card on browser surfaces and `ModalHost.jsx` is
+the popup host. `MediaCardActions` supplies the action overlay on native and the
+shared React Native surfaces. `ListsFormView` is used on web through `ListsForm.web.jsx`
 and on native through the media-card slot. `TrackForm` and `TrackTabs` render in the native action
 host; the native shell's `native-proof/app/surfaces/mediaCardTransport.js` owns the `/api/v1`
 transport and CSRF boundary for those forms and is not imported by universal presentation. It

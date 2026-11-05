@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { mountRoot } from '../settings/root';
 import { CollectionBrowser } from './CollectionBrowser';
-import { MediaCardWeb } from './mountMediaCard';
+import { MediaCard } from './MediaCard.web';
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;
@@ -177,8 +177,7 @@ function Adapter({ host, props }) {
     onOpenCopy={item => assign(item.href)}
     onLoadMore={loadMore}
     onLoadMoreGroup={loadMoreGroup}
-    renderCard={item => <MediaCardWeb host={host} model={item.card} labels={props.labels}
-      width={164} onOpen={() => assign(item.href || item.card?.href)} />} />;
+    renderCard={item => <MediaCard model={item.card} labels={props.labels} host={host} standalone />} />;
 }
 
 export function mountCollectionBrowser(host, props) {

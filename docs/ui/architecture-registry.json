@@ -1886,7 +1886,7 @@
       "verification": {
         "web": {
           "status": "verified",
-          "evidence": "Headless Chromium rendered the shared card on Home shelves, Discover rows, History and the library table; the retired DOM card no longer appears."
+          "evidence": "Compiled for native presentation. Browser surfaces resolve the MediaCard.web.jsx implementation through the same MediaCard import; native and the shared React Native surfaces keep this implementation."
         },
         "ios": {
           "status": "verified",
@@ -2799,6 +2799,50 @@
         "android": {
           "status": "unverified",
           "evidence": "Compiled by the Expo export through the native notes slot and music editors; no emulator interaction pass."
+        }
+      }
+    },
+    "frontend/ui/MediaCard.web.jsx": {
+      "kind": "presentation",
+      "register": "MEDIA-CARD",
+      "components": [
+        "MediaCard"
+      ],
+      "purpose": "Render the shared media card on every browser surface with the established DOM classes, hover/touch actions, rating popup, status and corner chips, faded in-card metadata overlay and theme rules. Home, library/search/discover/history/detail/list and collection surfaces all resolve this implementation through the same MediaCard import.",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Headless Chromium rendered Home, Collection, Discover, History and library surfaces through the shared browser card; poster metadata overlays the artwork bottom with the faded gradient, and hover action buttons appeared."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to this browser implementation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to this browser implementation."
+        }
+      }
+    },
+    "frontend/ui/MediaCard.native.jsx": {
+      "kind": "presentation",
+      "register": "MEDIA-CARD",
+      "components": [
+        "MediaCard"
+      ],
+      "purpose": "Keep the native side of the shared MediaCard contract by delegating to the universal React Native implementation.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not applicable to this native counterpart."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the universal MediaCard; no simulator pass in this change."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the universal MediaCard; no emulator pass in this change."
         }
       }
     },

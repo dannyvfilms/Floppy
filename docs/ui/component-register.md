@@ -251,11 +251,26 @@ can inform a focused completion pass.
 
 ### MEDIA-CARD — Canonical card and metadata lines
 
-- Implementation: `frontend/ui/MediaCard.jsx` is the one shared card, web and native. Artwork uses `frontend/ui/ArtworkImage.jsx` (with its web/native adapters) for the fallback chain, lazy loading and the unavailable/stale states; the web status and corner chips keep the retired card's 8px inset, 8/4px padding and 16px status glyph so the unified card does not shrink them; do not replace it with a bare React Native `Image`, which regresses loaded posters to placeholder titles:
+- Implementation: `frontend/ui/MediaCard` is the one shared card component.
+  `frontend/ui/MediaCard.web.jsx` is the browser implementation used by every
+  browser surface (Home, library/search/discover/history/detail/list and the
+  collection browser), so the DOM classes, theme rules, hover/touch action
+  overlay, rating popup, status/corner chips and faded in-card metadata overlay
+  are identical everywhere. Its title, rating and subtitle lines overlay the
+  poster's bottom edge instead of rendering in a separate body below the image.
+  `frontend/ui/MediaCard.native.jsx` delegates to the universal
+  `frontend/ui/MediaCard.jsx` React Native implementation for native screens.
+  Artwork uses
+  `frontend/ui/ArtworkImage.jsx` (with its web/native adapters) for the fallback
+  chain, lazy loading and the unavailable/stale states; do not replace the web
+  card with a bare React Native `Image`, which regresses loaded posters to
+  placeholder titles. Both cards cover:
   poster, square, landscape and row layouts, artwork with a fallback chain, status
   and media-type chips, corner chips, progress, title and alternative title,
   subtitle lines, score and a rating affordance, plus read-only and selectable
-  states. `MediaCardActions` adds the action overlay and row buttons (track,
+  states. Poster layouts overlay the title, rating and subtitle lines on the
+  artwork's bottom edge; the row layout keeps metadata beside the artwork.
+  `MediaCardActions` adds the action overlay and row buttons (track,
   lists, history, Discover plan/hide action specs and list reorder controls) with
   explicit `onAction`, `onReorder`, `onReorderDrag` and reveal callbacks;
   `MediaCardActionRow` and `MediaCardActionButton` are its named exports. The
@@ -293,7 +308,7 @@ can inform a focused completion pass.
   `PUT /api/v1/lists/{id}/items/order/`, and Discover planning/dismiss sends the
   full candidate payload to `discover/action`. Transport is not imported by
   universal presentation.
-- Native status: `ported`. `frontend/ui/MediaCard.jsx` now serves both web and native; the retired DOM card and its `MediaCardView` name are gone. `mountMediaCard.jsx` is the browser adapter, and `ModalHost.jsx` is the popup host. The universal action presentation and callback contract are in
+- Native status: `ported`. Every browser surface resolves `MediaCard.web.jsx` through the shared `MediaCard` import; `frontend/ui/MediaCard.jsx` serves native through `MediaCard.native.jsx`. `mountMediaCard.jsx` is the browser adapter, and `ModalHost.jsx` is the popup host. The universal action presentation and callback contract are in
   place, including touch/hover reveal, explicit read-only mode and selection
   rendering. Link actions now route through the platform navigation callback
   instead of opening an empty popup, and reorder results, move failures and
@@ -329,7 +344,7 @@ can inform a focused completion pass.
 - Contract: declared surface/tag, viewer rating/status, aspect ratios, obfuscation, hover/touch actions, public/read-only/bulk states and stable OOB status wrappers.
 - Data: `media_list_entries_for_items`, surface flags, card configuration and server projections.
 - Reuse/blockers: highest leverage; [media-card contract](../architecture/media-card.md) authoritative. Replace consumers and response slots, never create an unrelated second card system.
-- Status: `React-owned` for every card the `media_card` tag, `history_card_react` and `media_row_react` render. All 14 surfaces in `card_surfaces.py` set `react_card=True`; History (`history_card.html`) and the Search list row (`media_card_list.html`) use the same `MediaCard.jsx` (poster, square, landscape and `layout: row`). The artwork link, corner chips, progress bar, title and alternate-title tooltip, subtitle lines (including a credit's role line), status chip, rating button with its star popup, hover buttons (track, lists, history, Discover plan and hide, list reorder and drag handle), touch tap-to-reveal and bulk-select checkbox are all React (`MediaCard.jsx`, `mountMediaCard.jsx`, model in `media_card_model.py`). The track and lists popups open in the page's one React host (`ModalHost.jsx`); the cards carry no Alpine and no popup markup. `media_card.html` is now a shell: the card wrapper classes (themes and title settings still key off them), the props `<script>`, and a first-paint poster and title link inside the React host that React replaces on mount. The legacy server body, its Alpine fallback and the empty status, overlay and rating slots are deleted. `app.tests.test_media_card_contract.MediaCardInventoryTest` fails if a surface opts out of React, if the template regrows a legacy body, or if any template draws `media-card` markup that is neither the tag nor a documented exception.
+- Status: `React-owned` for every card the `media_card` tag, `history_card_react` and `media_row_react` render. All 14 surfaces in `card_surfaces.py` set `react_card=True`; every browser surface resolves `MediaCard.web.jsx`, while native resolves `MediaCard.native.jsx`. The artwork link, corner chips, progress bar, title and alternate-title tooltip, subtitle lines (including a credit's role line), status chip, rating button with its star popup, hover buttons (track, lists, history, Discover plan and hide, list reorder and drag handle), touch tap-to-reveal and bulk-select checkbox are React across both (`MediaCard.web.jsx`, `MediaCard.native.jsx`, `mountMediaCard.jsx`, model in `media_card_model.py`). The track and lists popups open in the page's one React host (`ModalHost.jsx`); the cards carry no Alpine and no popup markup. `media_card.html` is now a shell: the card wrapper classes (themes and title settings still key off them), the props `<script>`, and a first-paint poster and title link inside the React host that React replaces on mount. The legacy server body, its Alpine fallback and the empty status, overlay and rating slots are deleted. `app.tests.test_media_card_contract.MediaCardInventoryTest` fails if a surface opts out of React, if the template regrows a legacy body, or if any template draws `media-card` markup that is neither the tag nor a documented exception.
 - Remaining consumers and retirement: (1) Bulk select is still read from the page's Alpine scope (`selectMode`, `isItemSelected`, `toggleItemSelected`) by `mountMediaCard.jsx`. It retires when the Library bulk toolbar (`bulkSelection.js`, `mountBulkToolbar.jsx`, owned by another change in flight) publishes selection through a shared store; reopen then. (2) The save and score responses still send server fragments out of band (`media_card_status_chip.html`, `media_card_rating_oob.html`) for pages that render those slots; a React card ignores the swap (`data-react-owned`) and updates from `floppyCardUpdate`. They retire with the detail-page chips. (3) Documented exceptions that are different kinds of card, not this one: person and cast cards, Statistics highlights and the repeat-player strip, Now Playing, list index cards, and the music album and artist grids (they need an Album or Artist, not an Item). They are listed with reasons in `DOCUMENTED_EXCEPTIONS` in the contract test; reopen if a media item is ever drawn there. (4) The Search list row keeps its `meta` slot (server-rendered per-type metadata) inside the React host.
 - Native blockers: the action presentation, Lists form, tabbed Track body,
   song/episode variants, link routing, drag reorder, read-only/selection states

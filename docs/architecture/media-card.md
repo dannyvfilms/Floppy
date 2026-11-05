@@ -26,26 +26,36 @@ A template renders the card with the tag, never with `{% include %}`:
 
 ## Who draws the card
 
-The shared React component (`frontend/ui/MediaCard.jsx`) draws every card: artwork, chips,
-status, rating, hover buttons, popups and bulk-select checkbox. The server sends the card
-wrapper, a props `<script>` built by `app/media_card_model.py`, and a first-paint poster and
-title link that React replaces on mount. The card's popups open in the shared host: the
-Add-to-lists form is React (a JSON form model from `lists_modal?format=json`), and the Track
-popup opens the shared Track dialog for every available tab, with Metadata, Collection and
-Episode plays still server-owned inside it (see POPUP-HOST in
-`docs/ui/component-register.md`). Tests that care about a chip, rating or button read the
-model with `app.tests.card_props.card_model`, not the markup. History and the Search list row use
-the same component. `MediaCardInventoryTest` fails if a surface opts out, the template regrows a
-legacy body, or a template draws `media-card` markup that is neither the tag nor listed in its
-`DOCUMENTED_EXCEPTIONS`.
+The shared `MediaCard` import resolves to `frontend/ui/MediaCard.web.jsx` on the
+browser and to the React Native implementation through
+`frontend/ui/MediaCard.native.jsx` on native. The browser implementation draws every
+browser surface — Home, library/search/discover/history/detail/list and the collection
+browser — with artwork, chips, status, rating, hover buttons, popups and the
+bulk-select checkbox. The title, rating and subtitle lines overlay the poster's bottom
+edge over the faded `bg-card-body` gradient, so the text is part of the card rather
+than a separate block below it. It keeps the established DOM classes so themes, title
+settings and hover rules still apply. The server sends the card wrapper, a props
+`<script>` built by `app/media_card_model.py`, and a first-paint poster and title link
+that React replaces on mount. The card's popups open in the shared host: the
+Add-to-lists form is React (a JSON form model from `lists_modal?format=json`), and the
+Track popup opens the shared Track dialog for every available tab, with Metadata,
+Collection and Episode plays still server-owned inside it (see POPUP-HOST in
+`docs/ui/component-register.md`). Tests that care about a chip, rating or
+button read the model with `app.tests.card_props.card_model`, not the markup.
+`MediaCardInventoryTest` fails if a surface opts out, the template regrows a
+legacy body, or a template draws `media-card` markup that is neither the tag nor
+listed in its `DOCUMENTED_EXCEPTIONS`.
 
 ## Native card
 
-`frontend/ui/MediaCard.jsx` is the one shared React card and React Native shell for the same
-`card_model`: poster, square, landscape and row layouts, artwork fallback, status
+`frontend/ui/MediaCard.jsx` is the shared React Native card for native and the
+shared React Native surfaces over the same `card_model`: poster, square, landscape
+and row layouts, artwork fallback, status
 and media-type chips, corner chips, progress, title and alternative title,
 subtitle lines, score and the rating affordance, plus read-only and selectable
-states. `frontend/ui/MediaCardActions.jsx` renders the action overlay, row buttons
+states. Poster layouts overlay the title, rating and subtitle lines on the
+artwork's bottom edge; the row layout keeps metadata beside the artwork.
+`frontend/ui/MediaCardActions.jsx` renders the action overlay, row buttons
 and list-reorder controls from the same action specs, with explicit `onAction`,
 `onReorder` and reveal callbacks; touch reveals the buttons and hover reveals them
 where the platform reports hover. It never posts, fetches or opens a popup itself.
@@ -54,8 +64,11 @@ while the browser keeps `ModalHost.jsx`. `native-proof/app/surfaces/MediaCardSlo
 renders the card and the callback contract on Home, Discover and Library with demo
 library items.
 
-The retired DOM card is gone. `mountMediaCard.jsx` is now the web adapter over the shared
-card and keeps web consumers, themes, popups and server writes. The native action
+`MediaCard.web.jsx` is the browser implementation and `mountMediaCard.jsx` is its
+server adapter; both keep web consumers, themes, popups and server writes. Every
+browser route must resolve this implementation through the shared `MediaCard` import;
+using the React Native shell on the browser regresses the established hover action
+overlay, faded metadata gradient, rating popup and chip appearance. The native action
 presentation owns Track and Add-to-lists form bodies, the song and episode Track
 variants, Discover plan/hide, list reorder and the shared card-change event. Link
 actions route through the platform navigation callback instead of opening an empty
