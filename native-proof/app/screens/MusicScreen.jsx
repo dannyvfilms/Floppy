@@ -27,7 +27,7 @@ const surface = {
   status: 'in_progress',
   title: 'Music and podcasts',
   where: 'Artist, album, track and podcast detail',
-  note: 'Artist relations, discography, album tracks, per-track notes, scores and play history, show/episode filtering, pagination, repeats and podcast tracking use the shared React Native presentation. The native feature boundary now maps the music and podcast REST endpoints, and the web artist relation grids adopt the same shared cards over their server fallback. The remaining music and podcast web controls stay server-owned with their permissions, feed and RSS refresh, tracking writes and progressive fallback, so the surface stays in progress.',
+  note: 'Finishing the native music and podcast transport: authenticated session requests, track and episode note writes, history deletion, artist membership and album metadata sync. Artist relations, discography, album tracks, per-track notes, scores and play history, show/episode filtering, pagination, repeats and podcast tracking use the shared React Native presentation. The remaining music and podcast web controls stay server-owned with their permissions, feed and RSS refresh, tracking writes and progressive fallback, so the surface stays in progress.',
 };
 
 const TABS = [
