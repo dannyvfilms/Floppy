@@ -993,11 +993,13 @@ templates are compatibility/composition sources, not equally active parallel pag
 ### AUTH — Authentication and account security
 
 - Purpose/usage: login/signup/social/password/TOTP/recovery/deletion.
-- Implementation: `src/templates/account/`, `allauth/`, `socialaccount/`, `users/account.html`, `password_recover.html`; allauth/inline password visibility.
-- Contract: errors/redirects/social connections, password/QR/recovery codes, identity-confirmed deletion/demo/last-superuser guards; no email/SMS recovery implied.
-- Data: allauth, `src/users/forms.py`, signup/account/recovery handlers.
-- Reuse/blockers: accessible fields shared; browser sessions/CSRF/allauth do not establish native auth.
-- Validation targets: `src/users/tests/views/test_signup.py`, `src/users/tests/test_delete_account.py`, `test_demo_account_guard.py`.
+- Implementation: shared presentation `frontend/auth/AuthEntrance.jsx` (`AuthEntrance`, `SocialProviders`, `AuthNotice`) and `frontend/auth/AccountSecurity.jsx` (`ProfileCard`, `AccountTypeCard`, `PasswordCard`, `AuthenticatorCard`, `RecoveryCodesCard`, `ConnectionsCard`, `DeleteAccountCard`) reuse `TextField`, `Button`, `Chip`, `ToggleChip`, `SettingsCard` and `ConfirmDialog`. The browser remains the server-rendered `src/templates/account/`, `allauth/`, `socialaccount/`, `users/account.html` and `password_recover.html`; no auth web adapter is mounted.
+- Contract: login/signup/recovery modes, social provider actions, field and non-field errors, success/redirect notices, password and authenticator setup, recovery-code display/regeneration, connection management, and identity-confirmed deletion with demo and last-superuser guards. Sessions, CSRF, allauth redirects, QR secrets and credential storage stay in platform adapters; universal props carry presentation data and intents only. No email/SMS recovery is implied.
+- Data: allauth, `src/users/forms.py`, signup/account/recovery handlers; native callers supply values, errors and actions from their adapter.
+- Reuse/blockers: shared fields/buttons/dialog and the QR/manual-secret slots keep credentials at the platform boundary; browser sessions/CSRF/allauth do not establish native auth. Initial native demo placement is `native-proof/app/screens/AuthScreen.jsx` with guard-state chips.
+- Status: `Partial / coexisting`. The native shell renders finished login, signup, recovery and account-security demo states from shared React Native presentation. The Django entrance, account and recovery pages stay server-owned and keep their fallback. Native session transport, secure credential storage, provider redirects and live TOTP/QR delivery are not implemented.
+- Verification: Expo export is a compile check only; no browser, iOS or Android runtime pass was performed for these shared components.
+- Validation targets: `src/users/tests/views/test_signup.py`, `src/users/tests/views/test_profile.py`, `src/users/tests/views/test_password_recovery.py`, `src/users/tests/test_delete_account.py`, `test_demo_account_guard.py`.
 
 ### SET-NOTIFICATIONS — Notification preferences/exclusions
 
