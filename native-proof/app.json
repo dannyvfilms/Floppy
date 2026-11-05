@@ -7,6 +7,18 @@
       "baseUrl": "/static/native-proof"
     },
     "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Floppy to scan book barcodes."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Floppy to read an ISBN barcode from a photo."
+        }
+      ],
       "expo-secure-store"
     ]
   }

@@ -2110,7 +2110,7 @@
       "components": [
         "requestBarcode"
       ],
-      "purpose": "Native barcode entry boundary; reports unavailable until a camera/barcode module can decode book barcodes on both platforms.",
+      "purpose": "Decode EAN/ISBN barcodes from a picked photo through expo-camera, normalise ISBN-10/13 check digits, and expose the shared requestBarcode contract while the native scanner sheet owns the live camera, permission, error and manual states.",
       "verification": {
         "web": {
           "status": "unverified",
@@ -2118,11 +2118,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export compile only; no camera or barcode runtime was exercised."
+          "evidence": "Expo export --platform all compiled the adapter and scanner sheet; expo-camera scanFromURLAsync documents QR-only photo decoding on iOS. No simulator camera, photo or manual-entry pass was performed."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export compile only; no camera or barcode runtime was exercised."
+          "evidence": "Expo export --platform all compiled the adapter and scanner sheet; no emulator camera, photo or manual-entry pass was performed."
         }
       }
     },

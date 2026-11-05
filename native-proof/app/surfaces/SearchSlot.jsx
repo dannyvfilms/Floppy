@@ -1,6 +1,6 @@
-import React, { useCallback } from 'react';
-import { requestBarcode } from '../../../frontend/ui/barcodeEntry';
+import React, { useCallback, useRef, useState } from 'react';
 import { GlobalSearch } from '../../../frontend/ui/GlobalSearch';
+import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import { palette, radius } from '../theme';
 
 export const surface = {
@@ -8,7 +8,7 @@ export const surface = {
   title: 'Global search and suggestions',
   where: 'Header on Home, Discover and Library, and the Search screen',
   status: 'in_progress',
-  note: 'The shared search field, media-type menu, suggestion list and result links render here. The Search screen adds paged results, source scope, empty/loading/error states, parent TV/season and music album pickers, and the barcode adapter boundary; native camera scanning still needs a barcode module and reports unavailable. The web create-entry parent TV/season fields now use the shared ParentPicker; the server parent-search fragments and fallback remain web consumers, so this stays in progress.',
+  note: 'The shared search field, media-type menu, suggestions, paged results, source scope, empty/loading/error states, parent TV/season and music album pickers, and the Expo camera/photo/manual barcode sheet render here. The web parent picker and pager bundles are React-owned, with their server markup kept as the no-JS fallback. This stays in progress because native results and parent rows use local demo data, and camera, photo, permission, manual-ISBN and accessibility paths have not been exercised on iOS or Android; Expo export is compile-only evidence.',
 };
 
 const mediaTypes = [
@@ -49,7 +49,23 @@ const labels = {
   suggestionsSearchOnline: 'Search online for “%(query)s”',
   suggestionsEmptyAll: 'Nothing in your library matches “%(query)s”. Pick a media type to search online.',
   suggestionsEmptyType: 'Nothing saved matches “%(query)s”. Keep typing and press Enter to search online.',
-  barcodeUnavailable: 'Camera barcode scanning is not wired in this preview. Enter an ISBN instead.',
+  barcodeUnavailable: 'Barcode scanning is not available on this device. Enter an ISBN instead.',
+  barcodeTitle: 'Scan a book barcode',
+  barcodeHelp: 'Point the camera at the ISBN barcode, or choose a photo. You can also type the ISBN.',
+  barcodePermissionTitle: 'Camera access needed',
+  barcodePermissionBody: 'Allow camera access to scan the barcode, or choose a photo or type the ISBN below.',
+  barcodeAllowCamera: 'Allow camera',
+  barcodeOpenSettings: 'Open Settings',
+  barcodeChoosePhoto: 'Choose photo',
+  barcodeManualLabel: 'ISBN',
+  barcodeManualPlaceholder: 'Type an ISBN-10 or ISBN-13',
+  barcodeManualAction: 'Use ISBN',
+  barcodeCancel: 'Cancel',
+  barcodeChecking: 'Reading barcode…',
+  barcodeInvalidManual: 'Enter a valid ISBN-10 or ISBN-13.',
+  barcodeNotIsbn: 'That barcode is not an ISBN. Try a book barcode.',
+  barcodePhotoUnreadable: 'Could not read a barcode from that photo. Try again or type the ISBN.',
+  barcodeCameraError: 'The camera could not start. Choose a photo or type the ISBN.',
 };
 
 const searchPalette = {
@@ -78,6 +94,21 @@ export default function SearchSlot({
   onSubmit,
 }) {
   const selectedType = mediaTypes.find(option => option.value === initialMediaType) || mediaTypes[0];
+  const [scannerVisible, setScannerVisible] = useState(false);
+  const pendingBarcode = useRef(null);
+
+  const requestBarcode = useCallback(() => new Promise(resolve => {
+    pendingBarcode.current = resolve;
+    setScannerVisible(true);
+  }), []);
+
+  const closeScanner = useCallback((result) => {
+    const resolve = pendingBarcode.current;
+    pendingBarcode.current = null;
+    setScannerVisible(false);
+    resolve?.(result);
+  }, []);
+
   const loadSuggestions = useCallback(async ({ query, mediaType }) => {
     await wait(180);
     const needle = query.toLowerCase();
@@ -99,17 +130,42 @@ export default function SearchSlot({
     else onOpenSearch?.({ query: suggestion.title, mediaType: initialMediaType });
   }
 
-  return <GlobalSearch
-    expanded={expanded}
-    query={initialQuery}
-    selectedType={selectedType}
-    mediaTypes={mediaTypes}
-    barcodeTypes={['book', 'manga', 'comic', 'comicissue']}
-    labels={labels}
-    palette={searchPalette}
-    onLoadSuggestions={loadSuggestions}
-    onSubmit={onSubmit || onOpenSearch}
-    onSelectSuggestion={openSuggestion}
-    onBarcodeRequest={() => requestBarcode({ labels })}
-  />;
+  return <>
+    <GlobalSearch
+      expanded={expanded}
+      query={initialQuery}
+      selectedType={selectedType}
+      mediaTypes={mediaTypes}
+      barcodeTypes={['book', 'manga', 'comic', 'comicissue']}
+      labels={labels}
+      palette={searchPalette}
+      onLoadSuggestions={loadSuggestions}
+      onSubmit={onSubmit || onOpenSearch}
+      onSelectSuggestion={openSuggestion}
+      onBarcodeRequest={requestBarcode}
+    />
+    <BarcodeScannerModal
+      visible={scannerVisible}
+      labels={{
+        title: labels.barcodeTitle,
+        help: labels.barcodeHelp,
+        cameraPermissionTitle: labels.barcodePermissionTitle,
+        cameraPermissionBody: labels.barcodePermissionBody,
+        allowCamera: labels.barcodeAllowCamera,
+        openSettings: labels.barcodeOpenSettings,
+        choosePhoto: labels.barcodeChoosePhoto,
+        manualLabel: labels.barcodeManualLabel,
+        manualPlaceholder: labels.barcodeManualPlaceholder,
+        manualAction: labels.barcodeManualAction,
+        cancel: labels.barcodeCancel,
+        checking: labels.barcodeChecking,
+        invalidManual: labels.barcodeInvalidManual,
+        notIsbn: labels.barcodeNotIsbn,
+        unreadable: labels.barcodePhotoUnreadable,
+        cameraError: labels.barcodeCameraError,
+      }}
+      onCancel={() => closeScanner({ status: 'cancelled' })}
+      onDecoded={isbn => closeScanner({ status: 'decoded', isbn })}
+    />
+  </>;
 }
