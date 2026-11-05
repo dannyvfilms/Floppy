@@ -110,6 +110,14 @@ function Adapter({ host, props }) {
     assign(entry.href);
   }
 
+  function openActivity(entry) {
+    if (entry.activityUrl && entry.activityTarget) {
+      htmxGet(entry.activityUrl, entry.activityTarget, entry.activityVals || {});
+      return;
+    }
+    openEntry(entry);
+  }
+
   function editEntry(entry) {
     if (entry.editUrl && entry.editTarget) {
       htmxGet(entry.editUrl, entry.editTarget, entry.editVals || {});
@@ -161,12 +169,15 @@ function Adapter({ host, props }) {
     onLoadMore={loadMore}
     onLoadDay={loadDay}
     onOpenEntry={openEntry}
+    onOpenActivity={openActivity}
     onEditEntry={editEntry}
     onDeleteEntry={deleteEntry}
     onApplyFilters={applyFilters}
     onClearFilters={clearFilters}
     onSaveView={saveView}
-    onRetry={() => assign(props.baseUrl || window.location.pathname)} />;
+    onRetry={() => assign(props.baseUrl || window.location.pathname)}
+    onRetryDay={loadDay}
+    onRefresh={() => assign(props.baseUrl || window.location.pathname)} />;
 }
 
 export function mountHistoryFeed(host, props) {

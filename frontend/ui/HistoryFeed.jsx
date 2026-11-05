@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { DateTimePicker } from './DateTimePicker';
 import { MediaCardView } from './MediaCardView';
+import { RatingStars } from './RatingStars';
 
 const DEFAULT_PALETTE = {
   background: '#18181b',
@@ -65,9 +66,13 @@ const DEFAULT_LABELS = {
   dateRange: 'Date range',
   refreshing: 'Refreshing history in background...',
   dismiss: 'Dismiss refresh notice',
+  refreshFailed: 'History could not be refreshed. Showing saved activity.',
+  retryRefresh: 'Try again',
   loadMore: 'Load more',
   loadDay: 'Load this day',
   loadingDay: 'Loading this day...',
+  loadDayError: 'This day could not be loaded.',
+  retryDay: 'Retry day',
   noHistory: 'No watch history yet',
   noHistoryCopy: 'Start tracking movies and episodes to see them here.',
   loadError: 'History could not be loaded.',
@@ -79,7 +84,26 @@ const DEFAULT_LABELS = {
   showLess: 'Show less',
   status: 'Status',
   rate: 'Rate',
+  score: 'Score',
   close: 'Close',
+  viewActivity: 'Activity',
+  activityHistory: 'Activity history',
+  activityCopy: 'Every session and repeat for this item.',
+  jumpToDay: 'Jump to a session day',
+  allDays: 'All days',
+  noSessions: 'No sessions recorded for this entry.',
+  sessions: 'Sessions',
+  firstSession: 'First session',
+  lastSession: 'Last session',
+  averageSession: 'Average session',
+  editHistory: 'Edit history entry',
+  editHistoryCopy: 'Change the date, score or status for this entry.',
+  editDate: 'Date',
+  deleteHistory: 'Delete history entry',
+  deleteConfirm: 'Delete this entry from your history? This cannot be undone.',
+  save: 'Save',
+  cancel: 'Cancel',
+  clearDay: 'Show all days',
   altTitle: 'Show alternative title',
   nextEpisode: 'Jump to next episode',
   noStatus: 'No Status',
@@ -199,6 +223,21 @@ function truncatedNote(note, expanded) {
   return expanded || note.length <= 140 ? note : `${note.slice(0, 140).trimEnd()}…`;
 }
 
+function minutesFromRuntime(value) {
+  if (typeof value === 'number') return value;
+  const match = /^(?:(\d+)h)?\s*(?:(\d+)min)?$/.exec(String(value || '').trim());
+  if (!match) return 0;
+  return (Number(match[1]) || 0) * 60 + (Number(match[2]) || 0);
+}
+
+function durationLabel(minutes) {
+  if (!minutes) return '';
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (!hours) return `${rest}min`;
+  return rest ? `${hours}h ${rest}min` : `${hours}h`;
+}
+
 function rowModel(entry, labels) {
   const parts = [];
   if (entry.verb) parts.push({ text: entry.verb, link: true });
@@ -242,6 +281,7 @@ export function HistoryEntryRow({
   palette,
   first = false,
   onOpen,
+  onOpenActivity,
   onEdit,
   onDelete,
 }) {
@@ -264,10 +304,12 @@ export function HistoryEntryRow({
         <Text style={[styles.noteToggleText, { color: colors.link }]}>{noteOpen ? copy.showLess : copy.showMore}</Text>
       </Pressable> : null}
     </View> : null}
-    {entry.canEdit || entry.canDelete ? <View style={styles.entryActions}>
+    <View style={styles.entryActions}>
+      <Button label={copy.viewActivity} size="sm" tone="surface"
+        onPress={() => onOpenActivity?.(entry)} palette={buttonPalette(colors)} />
       {entry.canEdit ? <Button label={copy.edit} size="sm" onPress={() => onEdit?.(entry)} palette={buttonPalette(colors)} /> : null}
       {entry.canDelete ? <Button label={copy.delete} size="sm" tone="ghost-danger" onPress={() => onDelete?.(entry)} palette={buttonPalette(colors)} /> : null}
-    </View> : null}
+    </View>
   </View>;
 }
 
@@ -277,10 +319,12 @@ export function HistoryDayGroup({
   labels,
   palette,
   onOpenEntry,
+  onOpenActivity,
   onEditEntry,
   onDeleteEntry,
   onLoadMore,
   onLoadDay,
+  onRetryDay,
 }) {
   const copy = mergeLabels(labels);
   const colors = mergePalette(palette);
@@ -294,16 +338,25 @@ export function HistoryDayGroup({
       <HistoryDaySummary day={day} mode={mode} labels={copy} palette={colors} />
     </View>
     {day.lazy ? <View style={[styles.lazyDay, { borderColor: colors.border }]}>
-      <Text style={[styles.lazyText, { color: colors.textMuted }]}>{copy.loadingDay}</Text>
-      <Button label={copy.loadDay} size="sm" tone="surface" palette={buttonPalette(colors)}
-        onPress={() => onLoadDay?.(day)} />
+      {day.error ? <>
+        <Text style={[styles.lazyText, { color: colors.danger }]}>{copy.loadDayError}</Text>
+        <Button label={copy.retryDay} size="sm" tone="surface" palette={buttonPalette(colors)}
+          onPress={() => onRetryDay?.(day)} />
+      </> : <>
+        {day.loading ? <Text accessibilityLiveRegion="polite" style={[styles.lazyText, { color: colors.textMuted }]}>
+          {copy.loadingDay}
+        </Text> : null}
+        <Button label={copy.loadDay} size="sm" tone="surface" palette={buttonPalette(colors)}
+          disabled={day.loading} busy={day.loading} onPress={() => onLoadDay?.(day)} />
+      </>}
     </View> : <>
       {entries.map((entry, index) => <HistoryEntryRow key={entry.key} entry={entry} labels={copy}
-        palette={colors} first={index === 0} onOpen={onOpenEntry} onEdit={onEditEntry}
-        onDelete={onDeleteEntry} />)}
+        palette={colors} first={index === 0} onOpen={onOpenEntry} onOpenActivity={onOpenActivity}
+        onEdit={onEditEntry} onDelete={onDeleteEntry} />)}
       {day.hasMore ? <View style={styles.loadMore}>
         <Button label={day.remaining ? `${copy.loadMore} (${day.remaining})` : copy.loadMore}
-          size="sm" tone="surface" palette={buttonPalette(colors)} onPress={() => onLoadMore?.(day)} />
+          size="sm" tone="surface" palette={buttonPalette(colors)} disabled={day.loadingMore}
+          busy={day.loadingMore} onPress={() => onLoadMore?.(day)} />
       </View> : null}
     </>}
   </View>;
@@ -409,8 +462,8 @@ export function HistoryFilterPanel({
     <View style={styles.filterActions}>
       <Button label={copy.clearFilters} size="sm" tone="surface" palette={buttonPalette(colors)}
         onPress={() => { onClear?.(); }} />
-      <Button label={copy.saveView} size="sm" tone="surface" palette={buttonPalette(colors)}
-        onPress={() => { onSaveView?.(state); }} />
+      {onSaveView ? <Button label={copy.saveView} size="sm" tone="surface" palette={buttonPalette(colors)}
+        onPress={() => { onSaveView(state); }} /> : null}
       <Button label={copy.apply} size="sm" palette={buttonPalette(colors)}
         onPress={() => { onApply?.(state); }} />
     </View>
@@ -439,6 +492,190 @@ export function HistoryState({ kind = 'empty', labels, palette, onRetry, onPress
   </View>;
 }
 
+function DialogShell({ title, closeLabel, onClose, colors, children }) {
+  return <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+    <View style={styles.dialogBackdrop}>
+      <View accessibilityViewIsModal role="dialog" accessibilityLabel={title}
+        style={[styles.dialog, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={styles.dialogHeader}>
+          <Text accessibilityRole="header" style={[styles.dialogTitle, { color: colors.text }]}>{title}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel={closeLabel} onPress={onClose}
+            style={styles.dialogClose}>
+            <Text style={[styles.dialogCloseText, { color: colors.textMuted }]}>✕</Text>
+          </Pressable>
+        </View>
+        {children}
+      </View>
+    </View>
+  </Modal>;
+}
+
+function ratingPalette(palette) {
+  return {
+    lit: palette.warning,
+    unlit: palette.surfaceMuted,
+    muted: palette.textMuted,
+    text: palette.text,
+    textSecondary: palette.textSecondary,
+    surface: palette.surface,
+    border: palette.border,
+    focusStyle: {},
+  };
+}
+
+function ScoreStars({ entry, copy, colors, onSelect }) {
+  const value = entry.score === null || entry.score === undefined || entry.score === '' ? null : Number(entry.score);
+  return <View style={styles.scoreBlock}>
+    <Text style={[styles.dialogLabel, { color: colors.textMuted }]}>{copy.score}</Text>
+    <RatingStars scaleMax={10} value={value} label={copy.rate}
+      palette={ratingPalette(colors)}
+      renderStar={lit => <Text style={[styles.scoreStar, { color: lit ? colors.warning : colors.surfaceMuted }]}>★</Text>}
+      onSelect={onSelect} />
+  </View>;
+}
+
+export function HistoryActivityDialog({
+  entry,
+  labels,
+  palette,
+  onClose,
+  onEdit,
+  onDelete,
+  onSelectScore,
+}) {
+  const copy = mergeLabels(labels);
+  const colors = mergePalette(palette);
+  const [selectedDay, setSelectedDay] = useState('');
+  useEffect(() => { setSelectedDay(''); }, [entry?.key]);
+  if (!entry) return null;
+  const sessions = entry.sessions?.length
+    ? entry.sessions
+    : [{ date: entry.date, when: entry.when, runtime: entry.runtime, note: entry.note, score: entry.score }];
+  const markerDays = sessions.map(session => session.date).filter(Boolean);
+  const visible = selectedDay ? sessions.filter(session => session.date === selectedDay) : sessions;
+  const totalMinutes = sessions.reduce((sum, session) => sum + minutesFromRuntime(session.runtimeMinutes ?? session.runtime), 0);
+  const stats = [
+    { label: copy.sessions, value: String(sessions.length) },
+    { label: copy.trackedTime, value: durationLabel(totalMinutes) || '—' },
+    { label: copy.firstSession, value: sessions[0]?.when || sessions[0]?.date || '—' },
+    { label: copy.lastSession, value: sessions[sessions.length - 1]?.when || sessions[sessions.length - 1]?.date || '—' },
+    { label: copy.averageSession, value: durationLabel(Math.round(totalMinutes / Math.max(sessions.length, 1))) || '—' },
+  ];
+  return <DialogShell title={copy.activityHistory} closeLabel={copy.close} onClose={onClose} colors={colors}>
+    <ScrollView contentContainerStyle={styles.dialogBody} style={styles.dialogScroll}>
+      <View style={styles.dialogItem}>
+        <Text style={[styles.dialogItemTitle, { color: colors.text }]}>{entry.title}</Text>
+        <Text style={[styles.dialogItemCopy, { color: colors.textMuted }]}>
+          {[entry.subtitle, entry.verb, entry.runtime].filter(Boolean).join(' · ')}
+        </Text>
+      </View>
+      <HistoryActivitySummary stats={stats} labels={copy} palette={colors} />
+      {entry.canEdit ? <ScoreStars entry={entry} copy={copy} colors={colors} onSelect={onSelectScore} /> : null}
+      <View>
+        <Text style={[styles.dialogLabel, { color: colors.textMuted }]}>{copy.jumpToDay}</Text>
+        <View style={styles.dayPickerRow}>
+          <View style={styles.dayPickerField}>
+            <DateTimePicker value={selectedDay} trackTime={false} markerDays={markerDays}
+              labels={{ field: copy.jumpToDay }} palette={dateTimePalette(colors)}
+              onChange={next => setSelectedDay(next || '')} />
+          </View>
+          {selectedDay ? <Button label={copy.clearDay} size="sm" tone="surface"
+            palette={buttonPalette(colors)} onPress={() => setSelectedDay('')} /> : null}
+        </View>
+      </View>
+      <View style={styles.sessionList}>
+        {visible.length ? visible.map((session, index) => <View key={session.key || `${session.date}-${index}`}
+          style={[styles.sessionRow, { borderColor: colors.border }]}>
+          <View style={styles.sessionText}>
+            <Text style={[styles.sessionWhen, { color: colors.text }]}>{session.when || session.date}</Text>
+            <Text style={[styles.sessionMeta, { color: colors.textMuted }]}>
+              {[session.label, session.runtime].filter(Boolean).join(' · ') || copy.sessions}
+            </Text>
+            {session.note ? <Text style={[styles.sessionNote, { color: colors.textSecondary }]}>{session.note}</Text> : null}
+          </View>
+          {session.score !== null && session.score !== undefined
+            ? <Text style={[styles.sessionScore, { color: colors.warning }]}>★ {session.score}</Text>
+            : null}
+        </View>) : <Text style={[styles.dialogEmpty, { color: colors.textMuted }]}>{copy.noSessions}</Text>}
+      </View>
+      {entry.canEdit || entry.canDelete ? <View style={styles.dialogActions}>
+        {entry.canDelete ? <Button label={copy.delete} size="sm" tone="ghost-danger"
+          palette={buttonPalette(colors)} onPress={() => onDelete?.(entry)} /> : null}
+        {entry.canEdit ? <Button label={copy.edit} size="sm" tone="surface"
+          palette={buttonPalette(colors)} onPress={() => onEdit?.(entry)} /> : null}
+        <View style={styles.dialogSpacer} />
+        <Button label={copy.close} size="sm" palette={buttonPalette(colors)} onPress={onClose} />
+      </View> : null}
+    </ScrollView>
+  </DialogShell>;
+}
+
+const EDIT_STATUSES = ['Completed', 'In progress', 'Paused', 'Planning', 'Dropped'];
+
+export function HistoryEditDialog({ entry, labels, palette, onClose, onSave, onDelete }) {
+  const copy = mergeLabels(labels);
+  const colors = mergePalette(palette);
+  const [value, setValue] = useState('');
+  const [score, setScore] = useState(null);
+  const [status, setStatus] = useState('');
+  useEffect(() => {
+    setValue(entry?.whenValue || '');
+    setScore(entry?.score === null || entry?.score === undefined || entry?.score === '' ? null : Number(entry.score));
+    setStatus(entry?.status || '');
+  }, [entry?.key]);
+  if (!entry) return null;
+  return <DialogShell title={copy.editHistory} closeLabel={copy.close} onClose={onClose} colors={colors}>
+    <ScrollView contentContainerStyle={styles.dialogBody} style={styles.dialogScroll}>
+      <View style={styles.dialogItem}>
+        <Text style={[styles.dialogItemTitle, { color: colors.text }]}>{entry.title}</Text>
+        <Text style={[styles.dialogItemCopy, { color: colors.textMuted }]}>{copy.editHistoryCopy}</Text>
+      </View>
+      <View>
+        <Text style={[styles.dialogLabel, { color: colors.textMuted }]}>{copy.editDate}</Text>
+        <DateTimePicker value={value} trackTime labels={{ field: copy.editDate }}
+          palette={dateTimePalette(colors)} onChange={next => setValue(next)} />
+      </View>
+      <ScoreStars entry={{ ...entry, score }} copy={copy} colors={colors} onSelect={setScore} />
+      <View>
+        <Text style={[styles.dialogLabel, { color: colors.textMuted }]}>{copy.status}</Text>
+        <View style={styles.chipRow}>
+          {EDIT_STATUSES.map(item => <Badge key={item} label={item} size="sm"
+            tone={status === item ? 'indigo' : 'outline'} palette={chipPalette(colors)}
+            accessibilityLabel={item}
+            onPress={() => setStatus(current => current === item ? '' : item)} />)}
+        </View>
+      </View>
+      <View style={styles.dialogActions}>
+        {entry.canDelete ? <Button label={copy.delete} size="sm" tone="ghost-danger"
+          palette={buttonPalette(colors)} onPress={() => onDelete?.(entry)} /> : null}
+        <View style={styles.dialogSpacer} />
+        <Button label={copy.cancel} size="sm" tone="surface" palette={buttonPalette(colors)} onPress={onClose} />
+        <Button label={copy.save} size="sm" palette={buttonPalette(colors)}
+          onPress={() => onSave?.(entry, { value, score, status })} />
+      </View>
+    </ScrollView>
+  </DialogShell>;
+}
+
+export function HistoryDeleteDialog({ entry, labels, palette, onClose, onConfirm }) {
+  const copy = mergeLabels(labels);
+  const colors = mergePalette(palette);
+  if (!entry) return null;
+  return <DialogShell title={copy.deleteHistory} closeLabel={copy.close} onClose={onClose} colors={colors}>
+    <View style={styles.dialogBody}>
+      <View style={styles.dialogItem}>
+        <Text style={[styles.dialogItemTitle, { color: colors.text }]}>{entry.title}</Text>
+        <Text style={[styles.dialogItemCopy, { color: colors.textMuted }]}>{copy.deleteConfirm}</Text>
+      </View>
+      <View style={styles.dialogActions}>
+        <Button label={copy.cancel} size="sm" tone="surface" palette={buttonPalette(colors)} onPress={onClose} />
+        <Button label={copy.delete} size="sm" tone="danger-solid" palette={buttonPalette(colors)}
+          onPress={() => onConfirm?.(entry)} />
+      </View>
+    </View>
+  </DialogShell>;
+}
+
 export function HistoryFeed({
   model = {},
   labels,
@@ -447,18 +684,22 @@ export function HistoryFeed({
   onLoadMore,
   onLoadDay,
   onOpenEntry,
+  onOpenActivity,
   onEditEntry,
   onDeleteEntry,
   onApplyFilters,
   onClearFilters,
   onSaveView,
   onRetry,
+  onRetryDay,
+  onRefresh,
   onDismissRefresh,
 }) {
   const copy = mergeLabels(labels);
   const colors = mergePalette(palette);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [refreshDismissed, setRefreshDismissed] = useState(false);
+  useEffect(() => { if (model.refreshing) setRefreshDismissed(false); }, [model.refreshing]);
   const mode = model.mode || 'activity';
   const days = model.days || [];
   const nav = model.nav || {};
@@ -469,11 +710,16 @@ export function HistoryFeed({
 
   return <View style={styles.feed}>
     {showRefresh ? <View style={[styles.refresh, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
-      <Text style={[styles.refreshText, { color: colors.text }]}>{copy.refreshing}</Text>
+      <Text accessibilityLiveRegion="polite" style={[styles.refreshText, { color: colors.text }]}>{copy.refreshing}</Text>
       <Pressable accessibilityRole="button" accessibilityLabel={copy.dismiss}
         onPress={() => { setRefreshDismissed(true); onDismissRefresh?.(); }}>
         <Text style={[styles.refreshClose, { color: colors.textMuted }]}>✕</Text>
       </Pressable>
+    </View> : null}
+    {model.refreshError ? <View style={[styles.refresh, { backgroundColor: colors.surface, borderColor: colors.danger }]}>
+      <Text accessibilityLiveRegion="polite" style={[styles.refreshText, { color: colors.text }]}>{copy.refreshFailed}</Text>
+      <Button label={copy.retryRefresh} size="sm" tone="surface" palette={buttonPalette(colors)}
+        onPress={() => onRefresh?.()} />
     </View> : null}
 
     {nav.monthLabel ? <View style={styles.monthNav}>
@@ -523,8 +769,9 @@ export function HistoryFeed({
       : null}
 
     {days.map(day => <HistoryDayGroup key={day.key} day={day} mode={mode} labels={copy}
-      palette={colors} onOpenEntry={onOpenEntry} onEditEntry={onEditEntry}
-      onDeleteEntry={onDeleteEntry} onLoadMore={onLoadMore} onLoadDay={onLoadDay} />)}
+      palette={colors} onOpenEntry={onOpenEntry} onOpenActivity={onOpenActivity}
+      onEditEntry={onEditEntry} onDeleteEntry={onDeleteEntry} onLoadMore={onLoadMore}
+      onLoadDay={onLoadDay} onRetryDay={onRetryDay} />)}
 
     {model.pagination && model.pagination.pageCount > 1 ? <View style={styles.pagination}>
       <Button label={copy.previousPage} size="sm" tone="surface" palette={buttonPalette(colors)}
@@ -585,4 +832,30 @@ const styles = StyleSheet.create({
   stateAction: { marginTop: 6 },
   pagination: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, paddingTop: 4 },
   pageLabel: { fontSize: 12 },
+  dialogBackdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.6)', alignItems: 'center', justifyContent: 'center', padding: 16 },
+  dialog: { width: '100%', maxWidth: 520, maxHeight: '90%', borderWidth: 1, borderRadius: 12, padding: 16, gap: 12 },
+  dialogHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  dialogTitle: { flex: 1, fontSize: 18, fontWeight: '700' },
+  dialogClose: { padding: 4 },
+  dialogCloseText: { fontSize: 16, fontWeight: '700' },
+  dialogScroll: { flexGrow: 0 },
+  dialogBody: { gap: 14, paddingBottom: 4 },
+  dialogItem: { gap: 2 },
+  dialogItemTitle: { fontSize: 16, fontWeight: '600' },
+  dialogItemCopy: { fontSize: 12 },
+  dialogLabel: { fontSize: 11, marginBottom: 4 },
+  dialogActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingTop: 4 },
+  dialogSpacer: { flex: 1 },
+  dialogEmpty: { fontSize: 12, paddingVertical: 8 },
+  scoreBlock: { gap: 2 },
+  scoreStar: { fontSize: 20 },
+  dayPickerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  dayPickerField: { flex: 1, minWidth: 0 },
+  sessionList: { gap: 8 },
+  sessionRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderWidth: 1, borderRadius: 8, padding: 10 },
+  sessionText: { flex: 1, gap: 2 },
+  sessionWhen: { fontSize: 13, fontWeight: '600' },
+  sessionMeta: { fontSize: 12 },
+  sessionNote: { fontSize: 12, lineHeight: 18 },
+  sessionScore: { fontSize: 12, fontWeight: '600' },
 });

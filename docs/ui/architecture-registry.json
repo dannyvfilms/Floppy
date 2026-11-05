@@ -625,7 +625,10 @@
         "HistoryDaySummary",
         "HistoryActivitySummary",
         "HistoryFilterPanel",
-        "HistoryState"
+        "HistoryState",
+        "HistoryActivityDialog",
+        "HistoryEditDialog",
+        "HistoryDeleteDialog"
       ],
       "register": "HISTORY",
       "verification": {
@@ -639,7 +642,7 @@
         },
         "android": {
           "status": "verified",
-          "evidence": "Android 15 Pixel 7 AVD: rendered the shared History feed; no edit/delete, filter, lazy-day or TalkBack interaction; demo images did not load."
+          "evidence": "Android 15 Pixel 7 AVD: rendered the earlier shared History feed; the activity, edit and delete dialogs, filters, lazy-day and TalkBack interaction were not exercised; demo images did not load."
         }
       }
     },
