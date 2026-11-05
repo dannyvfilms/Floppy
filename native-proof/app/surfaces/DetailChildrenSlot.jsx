@@ -12,7 +12,7 @@ export const surface = {
   status: 'ported',
   title: 'Seasons, episodes and issue rows',
   where: 'Show, season, podcast and comic detail pages',
-  note: 'Season rows, episode and issue rows, scores, watch/unwatch/drop/check-in actions, spoiler reveal, ordering and history links use the shared React Native presentation. The web detail and episode pages keep their server-rendered rows, htmx actions and permissions.',
+  note: 'Season rows, episode and issue rows, scores, watch/unwatch/drop/check-in actions, a Track action that opens the shared tracking dialog, spoiler reveal, ordering and history links use the shared React Native presentation. The web detail and episode pages keep their server-rendered rows, htmx actions and permissions.',
 };
 
 const childrenPalette = {
@@ -236,6 +236,7 @@ function episodeActions(item) {
       ? { key: 'unwatch', label: 'Unwatch' }
       : { key: 'watch', label: 'Watch' },
   ];
+  actions.push({ key: 'track', label: 'Track' });
   actions.push({ key: 'history', label: 'History' });
   if (!item.watched) {
     actions.push(item.dropped
@@ -254,6 +255,7 @@ function issueActions(item) {
     item.checkedIn
       ? { key: 'stop', label: 'Stop check-in' }
       : { key: 'checkin', label: 'Check in' },
+    { key: 'track', label: 'Track' },
     { key: 'history', label: 'History' },
   ];
   if (!item.watched) {
@@ -264,7 +266,7 @@ function issueActions(item) {
   return actions;
 }
 
-export default function DetailChildrenSlot() {
+export default function DetailChildrenSlot({ onTrack }) {
   const [episodes, setEpisodes] = useState(initialEpisodes);
   const [issues, setIssues] = useState(initialIssues);
   const [seasonState, setSeasonState] = useState(seasons);
@@ -283,6 +285,10 @@ export default function DetailChildrenSlot() {
   }
 
   function handleEpisodeAction(key, target) {
+    if (key === 'track') {
+      onTrack?.({ kind: 'episode', item: target });
+      return;
+    }
     updateEpisode(target, item => {
       if (key === 'watch') {
         return { ...item, watched: true, dropped: false, history: { summary: 'Watched today' } };
@@ -301,6 +307,10 @@ export default function DetailChildrenSlot() {
   }
 
   function handleIssueAction(key, target) {
+    if (key === 'track') {
+      onTrack?.({ kind: 'issue', item: target });
+      return;
+    }
     updateIssue(target, item => {
       if (key === 'read') {
         return { ...item, watched: true, dropped: false, history: { summary: 'Read today' } };

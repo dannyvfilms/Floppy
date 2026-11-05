@@ -436,6 +436,15 @@ Server-owned rows retained behind the web fallback:
 
 ## TRACKING
 
+Shared React Native dialog and native placement:
+
+- `frontend/ui/TrackDialog.jsx` (universal tracking dialog: General, Tags, Metadata, Collection, Episode plays and Status history tabs, date/status/progress coupling, notes, delete, repeat actions, validation and busy/error states)
+- `frontend/ui/TrackForm.jsx` (reused General fields, rating fields, notes, tabs and save/delete/secondary actions)
+- `frontend/ui/TrackFormTabs.jsx` (reused Tags, Metadata, Collection, Episode plays and Status history bodies)
+- `native-proof/app/surfaces/DetailTrackingSlot.jsx` (native Detail actions and episode/issue row Track actions with demo data)
+
+Server-owned web path retained behind the fallback:
+
 - `src/static/js/episodeBulkTrackForm.js`
 - `src/static/js/mediaStatusDateHandler.js`
 - `src/templates/app/components/album_track_modal.html`

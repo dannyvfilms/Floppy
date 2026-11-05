@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Button } from './Button';
 import { DateTimePicker } from './DateTimePicker';
 import {
@@ -10,6 +10,7 @@ import {
   FormStatus,
   FormTextField,
 } from './MediaCardFormControls';
+import { RatingStars } from './RatingStars';
 import { TrackTabs } from './TrackFormTabs';
 import { validateTrackValues } from './mediaCardForms';
 
@@ -43,6 +44,12 @@ const DEFAULT_PALETTE = {
   radius: 8,
   focusStyle: {},
   dateTime: {},
+  rating: {
+    lit: '#f59e0b',
+    unlit: '#52525b',
+    muted: '#a1a1aa',
+    focusStyle: {},
+  },
 };
 
 function fieldType(field) {
@@ -50,6 +57,7 @@ function fieldType(field) {
   if (field.type === 'date' || field.name === 'start_date' || field.name === 'end_date') return 'date';
   if (field.type === 'textarea') return 'textarea';
   if (field.type === 'number') return 'number';
+  if (field.type === 'rating') return 'rating';
   return 'text';
 }
 
@@ -78,9 +86,11 @@ export function TrackForm({
   onTagCreate,
   onArtworkSave,
   onDiscoverToggle,
+  secondaryActions = [],
 }) {
   const labels = { ...DEFAULT_LABELS, ...(suppliedLabels || {}) };
   const palette = { ...DEFAULT_PALETTE, ...(suppliedPalette || {}) };
+  const ratingPalette = { ...DEFAULT_PALETTE.rating, ...(palette.rating || {}) };
   const { height } = useWindowDimensions();
   const [localErrors, setLocalErrors] = useState({});
   const [localTab, setLocalTab] = useState('general');
@@ -97,11 +107,20 @@ export function TrackForm({
     onChange?.(name, value);
   }
 
-  function submit() {
+  function validate() {
     const next = validateTrackValues(model, values, labels);
     setLocalErrors(next);
-    if (Object.keys(next).length) return;
+    return Object.keys(next).length === 0;
+  }
+
+  function submit() {
+    if (!validate()) return;
     onSubmit?.(values);
+  }
+
+  function runSecondary(action) {
+    if (!validate()) return;
+    action.onPress?.(values);
   }
 
   const generalBody = <View style={styles.stack}>
@@ -122,6 +141,19 @@ export function TrackForm({
             palette={palette.dateTime || {}} />
         </FormField>;
       }
+      if (type === 'rating') {
+        const scaleMax = Math.max(1, Number(field.max) || 10);
+        const numeric = value === '' ? null : Number(value);
+        return <FormField key={field.name} label={field.label} required={field.required}
+          help={field.help} error={fieldErrors[field.name]} palette={palette}>
+          <RatingStars scaleMax={scaleMax} value={Number.isFinite(numeric) ? numeric : null}
+            label={field.label} palette={ratingPalette}
+            onSelect={next => change(field.name, next == null ? '' : String(next))}
+            renderStar={lit => <Text style={[styles.ratingStar, {
+              color: lit ? ratingPalette.lit : ratingPalette.unlit,
+            }]}>★</Text>} />
+        </FormField>;
+      }
       return <FormTextField key={field.name} label={field.label} value={value}
         onChangeText={next => change(field.name, next)} required={field.required}
         help={field.help} error={fieldErrors[field.name]} placeholder={field.placeholder}
@@ -137,6 +169,9 @@ export function TrackForm({
         onPress={submit} palette={palette} />
       {model?.deleteAction && onDelete ? <Button label={labels.delete} tone="danger-solid"
         disabled={busy} onPress={() => onDelete(values)} palette={palette} /> : null}
+      {secondaryActions.map(action => <Button key={action.key} label={action.label}
+        tone={action.tone || 'surface'} disabled={busy || action.disabled} palette={palette}
+        onPress={() => runSecondary(action)} />)}
     </View>
   </View>;
 
@@ -170,5 +205,6 @@ const styles = StyleSheet.create({
   scroll: { flexGrow: 0 },
   stack: { gap: 14 },
   subtitleWrap: { marginTop: -4 },
+  ratingStar: { fontSize: 18 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginTop: 4 },
 });
