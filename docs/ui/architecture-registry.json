@@ -708,6 +708,35 @@
           "evidence": "Compiled by the Expo export through the native Statistics screen; the summary, highlights, controls and states were not exercised on an emulator or device."
         }
       }
+    },
+    "frontend/ui/StatisticsCharts.jsx": {
+      "components": [
+        "StatisticsCharts",
+        "StatisticsRhythmChart",
+        "StatisticsHeatmapChart",
+        "StatisticsHoursByMediaTypeChart",
+        "StatisticsHoursChart",
+        "StatisticsStatusCompositionChart",
+        "StatisticsRatingDistributionChart",
+        "StatisticsStatusBreakdownChart",
+        "StatisticsCompletionChart",
+        "StatisticsFeaturedRepeat"
+      ],
+      "register": "STATISTICS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The native chart renderer is not mounted in the browser; the existing Chart.js canvases, statistics-charts.js and server fragments remain the web owner and no browser pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Statistics screen; no chart family, media-type filter, state or accessibility pass was exercised on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Statistics screen; no chart family, media-type filter, state or accessibility pass was exercised on an emulator or device."
+        }
+      }
     }
   },
   "legacy": {
