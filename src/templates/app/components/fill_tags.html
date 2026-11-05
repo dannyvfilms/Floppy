@@ -1,7 +1,9 @@
 {% load i18n %}
 
 {% if tag_surface == 'track' %}
-  <div class="tag-modal-shell">
+  {{ tag_assignment_data|json_script:"tag-assignment-props" }}
+  <div data-tag-assignment-root data-props-id="tag-assignment-props" data-tag-surface="track">
+    <div class="tag-modal-shell">
     <input type="hidden"
            name="preview_genres_json"
            value="{{ preview_genres_json|default:'[]'|escape }}">
@@ -59,6 +61,7 @@
         {% translate "Add" %}
       </button>
     </form>
+    </div>
   </div>
 {% else %}
   {{ tag_assignment_data|json_script:"tag-assignment-props" }}

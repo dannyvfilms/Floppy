@@ -3,6 +3,7 @@ import { mountRoot } from '../settings/root';
 import { Button, Dialog, Field, SelectField } from './controls';
 import { BulkActionDialog, BulkActionRow, BulkFieldRow, BulkJobCard, BulkJobMessage, BulkJobProblems, BulkJobProgress, BulkJobSummary, BulkNote } from './BulkActions';
 import { BulkJobDock } from './BulkJobDock';
+import { TagBulkDialog } from './TagManagement';
 
 // Mounted once in the base layout. The toolbar (mountBulkToolbar.jsx) opens a
 // short dialog with `bulk-actions-open`. Anything slow then runs as a "job" in a
@@ -212,6 +213,45 @@ function PlaysDialog({ request, close, start }) {
   </Dialog>;
 }
 
+function TagDialog({ request, close, palette }) {
+  const [selectedTag, setSelectedTag] = useState('');
+  const [action, setAction] = useState('add');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function apply() {
+    if (!selectedTag || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const data = new URLSearchParams({ tag_name: selectedTag, action });
+      request.itemIds.forEach(id => data.append('item_ids', id));
+      await post(request.tagUrl, request.csrfToken, data);
+      notify(`Tag "${selectedTag}" ${action === 'add' ? 'added to' : 'removed from'} ${plural(request.itemIds.length, 'item')}.`);
+      finished();
+      close();
+    } catch (failure) {
+      setError(failure.message || 'The bulk tag action failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <TagBulkDialog
+    open
+    itemCount={request.itemIds.length}
+    tags={request.tags || []}
+    selectedTag={selectedTag}
+    action={action}
+    busy={busy}
+    error={error}
+    palette={palette}
+    onSelectTag={setSelectedTag}
+    onActionChange={setAction}
+    onApply={apply}
+    onClose={close} />;
+}
+
 function Adapter({ config }) {
   const [request, setRequest] = useState(null);
   const [palette] = useState(readPalette);
@@ -240,6 +280,8 @@ function Adapter({ config }) {
   return <>
     {request?.kind === 'status' && <StatusDialog request={request} palette={palette} close={() => setRequest(null)}
       start={() => runStatus(config, newJob({ kind: 'status', phase: 'working', status: request.status, statusLabel: request.statusLabel }))} />}
+    {request?.kind === 'tag' && <TagDialog request={request} palette={palette}
+      close={() => setRequest(null)} />}
     {request?.kind === 'plays' && <PlaysDialog request={request} close={() => setRequest(null)}
       start={form => startPlays(config, newJob({ kind: 'plays', phase: 'starting', form }), true)} />}
     {all.length > 0 && <BulkJobDock label="Bulk jobs">{all.map(job => <JobCard key={job.id} config={config} job={job} palette={palette} />)}</BulkJobDock>}

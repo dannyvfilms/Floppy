@@ -163,6 +163,8 @@ class TagItemToggleViewTest(TestCase):
         self.assertContains(response, 'hx-swap-oob="outerHTML"')
         self.assertContains(response, 'id="tag-preview-movie-278"')
         self.assertContains(response, 'data-has-preview="true"')
+        self.assertContains(response, "data-tag-preview-root")
+        self.assertContains(response, 'data-preview-id="tag-preview-movie-278"')
         self.assertContains(response, "Genres")
         self.assertContains(response, "Drama")
         self.assertContains(response, "Tags")
@@ -248,7 +250,8 @@ class TagCreateViewTest(TestCase):
         self.assertContains(response, 'name="tag_surface"')
         self.assertContains(response, 'value="track"')
         self.assertNotContains(response, "tagsOpen = false")
-        self.assertNotContains(response, "data-tag-assignment-root")
+        self.assertContains(response, "data-tag-assignment-root")
+        self.assertContains(response, 'data-tag-surface="track"')
         self.assertContains(response, "New Tag")
 
     def test_create_returns_oob_preview_refresh(self):

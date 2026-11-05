@@ -57,9 +57,12 @@ function Toolbar({ config }) {
     { key: 'collection', icon: 'collection', label: 'Add to Collection',
       onSelect: () => run(config.collectionUrl, {}) },
     { key: 'tag', icon: 'tag', label: 'Apply Tag', empty: 'No tags yet.',
-      items: config.tags.map(tag => ({ label: tag, actions: [
-        { label: 'Add', onSelect: () => run(config.tagUrl, { tag_name: tag, action: 'add' }) },
-        { label: 'Remove', onSelect: () => run(config.tagUrl, { tag_name: tag, action: 'remove' }) }] })) },
+      onSelect: () => open({
+        kind: 'tag',
+        tagUrl: config.tagUrl,
+        csrfToken: config.csrfToken,
+        tags: config.tagOptions || config.tags.map(name => ({ id: name, name })),
+      }) },
     { key: 'more', icon: 'more', label: 'More actions', align: 'end',
       items: [{ label: 'Add Plays to History', onSelect: () => open({ kind: 'plays' }) }] },
   ];

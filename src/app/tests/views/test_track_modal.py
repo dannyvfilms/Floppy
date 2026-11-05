@@ -396,10 +396,13 @@ class TrackModalViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.context["tags_tab_available"])
+        self.assertEqual(response.context["tag_assignment_data"]["item"]["id"], self.item.id)
         self.assertContains(response, "@click=\"activeTab = 'tags'\"")
         self.assertContains(response, "Favourite")
         self.assertContains(response, 'name="tag_surface"')
         self.assertContains(response, 'value="track"')
+        self.assertContains(response, "data-tag-assignment-root")
+        self.assertContains(response, 'data-tag-surface="track"')
         self.assertNotContains(response, "tagsOpen = false")
 
     @patch("app.providers.services.get_media_metadata")

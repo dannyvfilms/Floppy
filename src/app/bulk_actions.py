@@ -6,6 +6,7 @@ import logging
 
 from django.apps import apps
 from django.db import transaction
+from django.db.models import Count
 from django.middleware.csrf import get_token
 
 from app.models import Item, Media, Status, Tag
@@ -56,6 +57,15 @@ def build_bulk_action_data(
             for value, label in Status.choices
         ],
         "tags": list(Tag.objects.filter(user=user).order_by("name").values_list("name", flat=True)),
+        "tagOptions": [
+            {"id": tag_id, "name": name, "count": count}
+            for tag_id, name, count in (
+                Tag.objects.filter(user=user)
+                .annotate(item_count=Count("item_tags"))
+                .order_by("name")
+                .values_list("id", "name", "item_count")
+            )
+        ],
         # Names and ids only. get_user_lists prefetches every Item in every
         # list so the list pages can render their contents; this dropdown
         # renders neither, and on a large library that prefetch was 4,683

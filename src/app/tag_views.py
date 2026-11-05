@@ -101,6 +101,8 @@ def _build_detail_tag_sections(
         sections.append(
             {
                 "title": "Genres",
+                "title_label": gettext("Genres"),
+                "tone": "violet",
                 "entries": [
                     {
                         "label": genre,
@@ -125,6 +127,8 @@ def _build_detail_tag_sections(
         sections.append(
             {
                 "title": "Implied Genres",
+                "title_label": gettext("Implied Genres"),
+                "tone": "slate",
                 "entries": [
                     {
                         "label": genre,
@@ -147,6 +151,8 @@ def _build_detail_tag_sections(
         sections.append(
             {
                 "title": "Themes",
+                "title_label": gettext("Themes"),
+                "tone": "sky",
                 "entries": [
                     {
                         "label": theme,
@@ -170,6 +176,8 @@ def _build_detail_tag_sections(
     if is_authenticated_user:
         tag_section = {
             "title": "Tags",
+            "title_label": gettext("Tags"),
+            "tone": "slate",
             "entries": [
                 {
                     "label": tag_name,

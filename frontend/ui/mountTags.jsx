@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { mountRoot } from '../settings/root';
 import {
   TagAssignmentDialog,
   TagIndex,
   TagMediaFilter,
+  TagPreview,
 } from './TagManagement';
 
 const palette = {
@@ -46,11 +47,31 @@ function body(values) {
   return params;
 }
 
+function readPreviewSections(parsed, node) {
+  const root = node.querySelector('[data-tag-preview-root]');
+  const script = root?.dataset.propsId ? parsed.getElementById(root.dataset.propsId) : null;
+  if (!script) return null;
+  try {
+    return JSON.parse(script.textContent);
+  } catch {
+    return null;
+  }
+}
+
 function applyPreviewRefresh(html) {
   const parsed = new DOMParser().parseFromString(html, 'text/html');
   parsed.querySelectorAll('[hx-swap-oob="outerHTML"]').forEach((node) => {
     const target = node.id ? document.getElementById(node.id) : null;
     if (!target) return;
+    const sections = readPreviewSections(parsed, node);
+    const mountedRoot = target.querySelector('[data-tag-preview-root]');
+    if (sections && mountedRoot?.dataset.reactMounted === 'true') {
+      if (node.dataset.hasPreview) target.dataset.hasPreview = node.dataset.hasPreview;
+      window.dispatchEvent(new CustomEvent('tag-preview-update', {
+        detail: { id: node.id, sections },
+      }));
+      return;
+    }
     node.removeAttribute('hx-swap-oob');
     target.replaceWith(node);
   });
@@ -127,6 +148,7 @@ function TagAssignmentAdapter({ host, props }) {
   function previewFields() {
     return {
       item_id: props.item.id,
+      tag_surface: host.dataset.tagSurface || 'modal',
       preview_genres_json: props.previewGenresJson,
       preview_implied_genres_json: props.previewImpliedGenresJson,
     };
@@ -195,6 +217,8 @@ function TagAssignmentAdapter({ host, props }) {
   return <TagAssignmentDialog
     open
     embedded
+    showClose={host.dataset.tagSurface !== 'track'}
+    item={props.item}
     tags={tags}
     palette={palette}
     busy={busy}
@@ -227,6 +251,34 @@ function TagMediaFilterAdapter({ host, props }) {
     onSelect={select} />;
 }
 
+function TagPreviewAdapter({ host, props }) {
+  const [sections, setSections] = useState(Array.isArray(props) ? props : []);
+
+  useEffect(() => {
+    const previewId = host.dataset.previewId || host.id;
+    const update = (event) => {
+      if (event.detail?.id !== previewId) return;
+      setSections(event.detail.sections || []);
+    };
+    window.addEventListener('tag-preview-update', update);
+    return () => window.removeEventListener('tag-preview-update', update);
+  }, [host]);
+
+  function openEntry(entry) {
+    if (entry.url) window.location.assign(entry.url);
+  }
+
+  function openEditor() {
+    host.dispatchEvent(new CustomEvent('tag-preview-open', { bubbles: true }));
+  }
+
+  return <TagPreview
+    sections={sections}
+    palette={palette}
+    onOpenEntry={openEntry}
+    onOpen={openEditor} />;
+}
+
 export function mountTagIndex(host, props) {
   return mountRoot(host, <TagIndexAdapter props={props} />);
 }
@@ -237,4 +289,8 @@ export function mountTagAssignment(host, props) {
 
 export function mountTagMediaFilter(host, props) {
   return mountRoot(host, <TagMediaFilterAdapter host={host} props={props} />);
+}
+
+export function mountTagPreview(host, props) {
+  return mountRoot(host, <TagPreviewAdapter host={host} props={props} />);
 }
