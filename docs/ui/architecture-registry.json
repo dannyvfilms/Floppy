@@ -646,6 +646,26 @@
         }
       }
     },
+    "frontend/ui/CalendarLinks.jsx": {
+      "components": [
+        "CalendarLinks"
+      ],
+      "register": "RELEASE-CALENDAR",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Mounted by mountCalendarLinks over the Django server fallback; npm run build:ui compiles it, but no browser interaction pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles CalendarLinks in the native Calendar screen; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles CalendarLinks in the native Calendar screen; no simulator run was performed."
+        }
+      }
+    },
     "frontend/ui/ReleaseCalendar.jsx": {
       "components": [
         "ReleaseCalendar"
@@ -1575,6 +1595,10 @@
     "frontend/ui/mountReleaseCalendar.jsx": {
       "register": "RELEASE-CALENDAR",
       "purpose": "Django/browser integration for the shared release calendar: read saved filters, navigate month/view/release links, persist filter choices and keep the existing fetch, download and week-start actions."
+    },
+    "frontend/ui/mountCalendarLinks.jsx": {
+      "register": "RELEASE-CALENDAR",
+      "purpose": "Django/browser integration for the shared calendar links: read theme tokens, copy the subscription URL and open the filtered ICS download; the server keeps tokens, defaults and feed semantics."
     },
     "frontend/ui/ListsForm.web.jsx": {
       "register": "MEDIA-CARD",

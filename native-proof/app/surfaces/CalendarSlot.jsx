@@ -6,9 +6,9 @@ import { palette, spacing } from '../theme';
 export const surface = {
   id: 'RELEASE-CALENDAR',
   title: 'Release calendar',
-  where: 'Calendar month, agenda and list views',
+  where: 'Calendar month, agenda, list and subscription links',
   status: 'ported',
-  note: 'The shared calendar renders the server-owned month grid, agenda and list with media/status/release/tag filters, month/view toolbar and the calendar actions menu. Server queries, week start and the ICS subscription links stay authoritative.',
+  note: 'The shared calendar renders the server-owned month grid, agenda and list with media/status/release/tag filters, month/view toolbar and the calendar actions menu. The Calendar screen adds the shared calendar-links panel with release/history feeds, switchable filters, subscription URL and copy/download actions. Server queries, week start, calendar tokens and ICS delivery stay authoritative; runtime was not exercised.',
 };
 
 const WEEKDAYS = [
@@ -212,7 +212,7 @@ const statusesByType = {
   ],
 };
 
-const initialFilters = {
+const defaultFilters = {
   selectedTypes: mediaTypes.map((item) => item.value),
   selectedStatusesByType: Object.fromEntries(
     Object.entries(statusesByType).map(([type, statuses]) => [
@@ -270,7 +270,7 @@ const navigation = {
   },
 };
 
-export default function CalendarSlot({ onOpenRelease }) {
+export default function CalendarSlot({ onOpenRelease, onMenuAction, onFiltersChange, initialFilters, weekStart }) {
   return <View style={styles.wrapper}>
     <ReleaseCalendar
       month={11}
@@ -294,11 +294,13 @@ export default function CalendarSlot({ onOpenRelease }) {
       mediaTypes={mediaTypes}
       releaseTypes={releaseTypes}
       statusesByType={statusesByType}
-      initialFilters={initialFilters}
+      initialFilters={initialFilters || defaultFilters}
       navigation={navigation}
-      menu={menu}
+      menu={{ ...menu, weekStart: weekStart || menu.weekStart }}
       palette={calendarPalette}
-      onOpenRelease={onOpenRelease} />
+      onOpenRelease={onOpenRelease}
+      onFiltersChange={onFiltersChange}
+      onMenuAction={onMenuAction} />
   </View>;
 }
 

@@ -320,6 +320,7 @@ def calendar(request):
         "calendar_menu": _calendar_menu_props(request, today),
     }
     context["calendar_props"] = _release_calendar_props(request, context)
+    context["calendar_links_props"] = _calendar_links_props(request, context)
     return render(request, "events/calendar.html", context)
 
 
@@ -351,6 +352,85 @@ def _calendar_menu_props(request, today):
             "fetch": reverse("reload_calendar"),
             "download": reverse("download_calendar", kwargs={"token": request.user.token}),
             "preferences": reverse("update_statistics_preferences"),
+        },
+    }
+
+
+def _calendar_links_props(request, context):
+    """Return the serialisable props for the shared calendar links panel."""
+    media_types = context["media_types"]
+    enabled_media_types = set(request.user.get_enabled_media_types())
+    release_type_choices = context["release_type_choices"]
+    return {
+        "releaseBaseUrl": request.build_absolute_uri(
+            reverse("download_calendar", kwargs={"token": request.user.token}),
+        ),
+        "historyBaseUrl": request.build_absolute_uri(
+            reverse("download_history_calendar", kwargs={"token": request.user.token}),
+        ),
+        "releaseMediaTypes": [
+            {
+                "value": media_type,
+                "label": media_type_readable_plural(media_type),
+            }
+            for media_type in media_types
+        ],
+        "historyMediaTypes": [
+            {
+                "value": media_type,
+                "label": media_type_readable_plural(media_type),
+            }
+            for media_type in HISTORY_MEDIA_TYPES
+        ],
+        "statuses": [
+            {
+                "value": status,
+                "label": media_status_readable(status),
+            }
+            for status in context["event_statuses"]
+        ],
+        "releaseTypes": [
+            {"value": value, "label": label}
+            for value, label in release_type_choices
+        ],
+        "initialFeed": "releases",
+        "initialReleaseMediaTypes": [
+            media_type for media_type in media_types if media_type in enabled_media_types
+        ],
+        "initialHistoryMediaTypes": list(DEFAULT_MEDIA_TYPES),
+        "initialStatuses": list(context["event_statuses"]),
+        "initialReleaseTypes": [value for value, _label in release_type_choices],
+        "labels": {
+            "title": gettext("Calendar links"),
+            "releasesHelp": gettext(
+                "Add this link to any calendar app to see upcoming releases there.",
+            ),
+            "historyHelp": gettext(
+                "Add this link to any calendar app to see what you watched, read and played, on the day you logged it.",
+            ),
+            "releasesTab": gettext("Upcoming releases"),
+            "historyTab": gettext("Watch history"),
+            "mediaTypes": gettext("Media Types"),
+            "status": gettext("Status"),
+            "releaseDates": gettext("Movie Release Dates"),
+            "releaseMediaHelp": gettext(
+                "Choose which media types to include in this calendar URL.",
+            ),
+            "historyMediaHelp": gettext(
+                "Music, podcasts and videos start off because they add many entries.",
+            ),
+            "statusHelp": gettext(
+                "Choose which statuses to include in this calendar URL.",
+            ),
+            "releaseDatesHelp": gettext(
+                "Choose which digital and physical release dates to include in this calendar URL.",
+            ),
+            "subscription": gettext("Subscription link"),
+            "ics": gettext("ICS"),
+            "copy": gettext("Copy link"),
+            "copied": gettext("Copied"),
+            "download": gettext("Download calendar"),
+            "unavailable": gettext("No calendar link is available."),
         },
     }
 
