@@ -14,11 +14,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the component through the native Auth screen; no simulator run or accessibility pass was performed."
+          "evidence": "Expo export --platform all compiled the wired native Auth screen; server URL, sign-in, session, account-security and redirect-intent paths were not exercised in a simulator."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the component through the native Auth screen; no emulator run or accessibility pass was performed."
+          "evidence": "Expo export --platform all compiled the wired native Auth screen; server URL, sign-in, session, account-security and redirect-intent paths were not exercised on an emulator."
         }
       }
     },
@@ -40,11 +40,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the component through the native Auth screen; no simulator run or accessibility pass was performed."
+          "evidence": "Expo export --platform all compiled the wired native Auth screen; server URL, sign-in, session, account-security and redirect-intent paths were not exercised in a simulator."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the component through the native Auth screen; no emulator run or accessibility pass was performed."
+          "evidence": "Expo export --platform all compiled the wired native Auth screen; server URL, sign-in, session, account-security and redirect-intent paths were not exercised on an emulator."
         }
       }
     },

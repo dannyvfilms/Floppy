@@ -72,6 +72,7 @@ const defaultLabels = {
   connectionsTitle: 'Third-Party Connections',
   connectionsCopy: 'Manage your connected third-party accounts for easier sign-in.',
   manageConnections: 'Manage Account Connections',
+  approveDevice: 'Approve a Device Sign-in',
   deleteTitle: 'Delete Account',
   deleteCopy: 'This permanently removes your account, tracking history, lists, tags, integrations, API tokens and scheduled syncs. It cannot be undone. Other users are not affected.',
   deletePassword: 'Current Password',
@@ -295,14 +296,19 @@ export function ConnectionsCard({
   buttonPalette = {},
   labels = {},
   onManageConnections,
+  onApproveDevice,
 }) {
   const colors = { ...defaultPalette, ...palette };
   const buttons = { ...defaultButtonPalette, ...buttonPalette };
   const copy = { ...defaultLabels, ...labels };
   return <SettingsCard title={copy.connectionsTitle} palette={colors}>
     <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.connectionsCopy}</Text>
-    <Button label={copy.manageConnections} tone="primary" disabled={disabled}
-      onPress={onManageConnections} palette={buttons} />
+    <View style={styles.actionRow}>
+      <Button label={copy.manageConnections} tone="primary" disabled={disabled}
+        onPress={onManageConnections} palette={buttons} />
+      <Button label={copy.approveDevice} tone="surface" disabled={disabled}
+        onPress={onApproveDevice} palette={buttons} />
+    </View>
     <Text style={[styles.help, { color: colors.textMuted }]}>
       {`${providerCount} connected provider${providerCount === 1 ? '' : 's'} available.`}
     </Text>

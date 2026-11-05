@@ -74,6 +74,11 @@ const defaultLabels = {
   busyRecovery: 'Resetting password…',
   redirecting: 'Signed in. Continue to Floppy.',
   continue: 'Continue',
+  serverAddress: 'Server address',
+  serverPlaceholder: 'floppy.example.com',
+  checkServer: 'Check server',
+  checkingServer: 'Checking server…',
+  serverReady: 'Server found. Choose a sign-in method below.',
 };
 
 function Notice({ tone = 'info', title, children, palette }) {
@@ -136,6 +141,13 @@ export function AuthEntrance({
   registrationEnabled = true,
   socialOnly = false,
   providers = [],
+  serverUrl = '',
+  serverError,
+  serverHelp,
+  serverBusy = false,
+  serverChecked = false,
+  onServerChange,
+  onCheckServer,
   values = {},
   errors = {},
   error,
@@ -173,6 +185,19 @@ export function AuthEntrance({
       <Text role="heading" aria-level={2} style={[styles.title, { color: colors.text }]}>{title}</Text>
       {mode === 'recovery' ? <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.recoveryNotice}</Text> : null}
       {mode === 'signup' ? <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.authenticatorWarning}</Text> : null}
+    </View>
+
+    <View style={styles.fields}>
+      <TextField id="auth-server" name="serverUrl" label={copy.serverAddress} type="url"
+        value={serverUrl} placeholder={copy.serverPlaceholder} autoComplete="url"
+        disabled={busy || serverBusy} error={serverError} help={serverHelp}
+        palette={colors} onChangeText={value => onServerChange?.(value)} />
+      <View style={styles.formActions}>
+        <Button label={serverBusy ? copy.checkingServer : copy.checkServer} tone="surface"
+          busy={serverBusy} disabled={busy || serverBusy} onPress={onCheckServer}
+          palette={buttons} />
+        {serverChecked ? <Text style={[styles.help, { color: colors.success }]}>{copy.serverReady}</Text> : null}
+      </View>
     </View>
 
     {error ? <Notice tone="error" title={copy.errorsTitle} palette={colors}>{error}</Notice> : null}
