@@ -6,7 +6,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -14,6 +13,8 @@ import { Badge } from '../../../frontend/ui/Badge';
 import { Button } from '../../../frontend/ui/Button';
 import { DateTimePicker } from '../../../frontend/ui/DateTimePicker';
 import { MediaCardView } from '../../../frontend/ui/MediaCardView';
+import { MarkdownNotes } from '../../../frontend/ui/MarkdownNotes';
+import { MarkdownPreview } from '../../../frontend/ui/MarkdownPreview';
 import { MusicAlbumGrid } from '../../../frontend/ui/MusicAlbumCard';
 import { MusicRelationCard } from '../../../frontend/ui/MusicRelationCard';
 import { ProgressBar } from '../../../frontend/ui/ProgressBar';
@@ -49,6 +50,36 @@ const statusPalette = STATUS_OPTIONS.reduce((result, option) => {
 
 const outlinePalette = {
   outline: { color: palette.textSecondary, borderColor: palette.surfaceMuted, borderWidth: 1 },
+};
+
+const markdownPalette = {
+  background: palette.background,
+  surface: palette.surface,
+  surfaceStrong: palette.surfaceStrong,
+  border: palette.border,
+  text: palette.text,
+  textSecondary: palette.textSecondary,
+  textMuted: palette.textMuted,
+  accent: palette.accent,
+  link: palette.accent,
+  danger: palette.danger,
+  codeBackground: palette.background,
+  codeText: palette.text,
+};
+
+const markdownLabels = {
+  write: 'Write',
+  preview: 'Preview',
+  hint: 'Markdown supported',
+  heading: 'Heading',
+  bold: 'Bold',
+  italic: 'Italic',
+  code: 'Code',
+  link: 'Link',
+  quote: 'Quote',
+  bulletedList: 'Bulleted list',
+  numberedList: 'Numbered list',
+  emptyPreview: 'Nothing to preview yet.',
 };
 
 export const dateTimeLabels = {
@@ -523,15 +554,17 @@ export function TrackPage({ album, track, onBack, onRate, onAddListen, onOpenNot
 
     <View style={styles.panel}>
       <SectionHeading title="Notes" copy="Private notes stay attached to this track and never create a listen." />
-      <TextInput
+      <MarkdownNotes
         value={notes}
         onChangeText={value => { setNotes(value); setSaved(''); }}
-        multiline
-        numberOfLines={5}
+        label="Track notes"
+        labelHidden
+        hint="Markdown supported"
         placeholder="What do you want to remember about this track?"
-        placeholderTextColor={palette.textMuted}
         accessibilityLabel="Track notes"
-        style={styles.notesInput} />
+        labels={markdownLabels}
+        palette={markdownPalette}
+        Preview={MarkdownPreview} />
       <View style={styles.inlineEnd}>
         {saved ? <Text style={styles.savedText}>{saved}</Text> : null}
         <Button label="Save notes" onPress={() => { onSaveNotes(notes); setSaved('Notes saved'); }} />
@@ -710,9 +743,16 @@ export function TrackingModal({ open, title, subtitle, status, score, notes, onC
       palette={ratingPalette} renderStar={lit => star(lit, 28)}
       onSelect={value => setDraft(current => ({ ...current, score: value }))} />
     <Text style={styles.fieldLabel}>Notes</Text>
-    <TextInput value={draft.notes} onChangeText={value => setDraft(current => ({ ...current, notes: value }))}
-      multiline numberOfLines={4} placeholder="Add a private note"
-      placeholderTextColor={palette.textMuted} accessibilityLabel="Tracking notes" style={styles.notesInput} />
+    <MarkdownNotes value={draft.notes}
+      onChangeText={value => setDraft(current => ({ ...current, notes: value }))}
+      label="Tracking notes"
+      labelHidden
+      hint="Markdown supported"
+      placeholder="Add a private note"
+      accessibilityLabel="Tracking notes"
+      labels={markdownLabels}
+      palette={markdownPalette}
+      Preview={MarkdownPreview} />
     <View style={styles.modalActions}>
       <Button label="Cancel" tone="surface" onPress={onClose} />
       <Button label="Save" onPress={() => onSave(draft)} />
@@ -720,14 +760,20 @@ export function TrackingModal({ open, title, subtitle, status, score, notes, onC
   </SheetModal>;
 }
 
-export function NotesModal({ open, title, subtitle, value, onClose, onSave }) {
+export function NotesModal({ open, title, subtitle, value, error, onClose, onSave }) {
   const [draft, setDraft] = useState(value);
   useEffect(() => { if (open) setDraft(value); }, [open, value]);
   return <SheetModal open={open} title={title} subtitle={subtitle} onClose={onClose}>
-    <TextInput value={draft} onChangeText={setDraft} multiline numberOfLines={6}
+    <MarkdownNotes
+      value={draft}
+      onChangeText={setDraft}
+      label="Notes"
+      hint="Markdown supported"
       placeholder="What do you want to remember?"
-      placeholderTextColor={palette.textMuted}
-      accessibilityLabel="Notes" style={styles.notesInput} />
+      error={error}
+      labels={markdownLabels}
+      palette={markdownPalette}
+      Preview={MarkdownPreview} />
     <View style={styles.modalActions}>
       <Button label="Cancel" tone="surface" onPress={onClose} />
       <Button label="Save notes" onPress={() => onSave(draft)} />
@@ -793,7 +839,6 @@ const styles = StyleSheet.create({
   inlineNav: { flexDirection: 'row', justifyContent: 'flex-start' },
   inlineEnd: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: spacing.md },
   metaText: { color: palette.textMuted, fontSize: 12 },
-  notesInput: { minHeight: 96, borderWidth: 1, borderColor: palette.border, borderRadius: radius.sm, backgroundColor: palette.background, color: palette.text, padding: spacing.md, fontSize: 13, lineHeight: 19, textAlignVertical: 'top' },
   savedText: { color: palette.success, fontSize: 12 },
   historyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, borderWidth: 1, borderColor: palette.border, borderRadius: radius.md, backgroundColor: palette.surface, padding: spacing.md },
   historyCopy: { gap: 2, flexShrink: 1 },
