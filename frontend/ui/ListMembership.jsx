@@ -23,12 +23,15 @@ const defaultLabels = {
   close: 'Close',
   visibility: 'Visibility',
   public: 'Public',
+  unlisted: 'Unlisted',
   private: 'Private',
-  publicHelp: 'Anyone with the link can view this list.',
-  privateHelp: 'Only the owner and collaborators can view this list.',
+  publicHelp: 'Listed on your profile. Anyone with the link can view this list.',
+  unlistedHelp: 'Only people with the link can view it. It is not listed on your profile.',
+  privateHelp: 'Only the owner and the people they share it with can view this list.',
   members: 'Members',
   owner: 'Owner',
   collaborator: 'Collaborator',
+  viewer: 'Viewer',
   addCollaborator: 'Add collaborator',
   everyoneIsMember: 'Everyone available is already a member.',
   remove: 'Remove',
@@ -42,6 +45,7 @@ const defaultLabels = {
 
 const VISIBILITY_OPTIONS = [
   { value: 'public', label: 'public' },
+  { value: 'unlisted', label: 'unlisted' },
   { value: 'private', label: 'private' },
 ];
 
@@ -64,8 +68,9 @@ function badgePalette(colors) {
 
 function visibilityLabel(visibility, copy) {
   return visibility === 'public' ? copy.public
-    : visibility === 'private' ? copy.private
-      : visibility;
+    : visibility === 'unlisted' ? copy.unlisted
+      : visibility === 'private' ? copy.private
+        : visibility;
 }
 
 export function ListMembershipSection({
@@ -101,7 +106,9 @@ export function ListMembershipSection({
       <Badge label={visibilityLabel(list.visibility, copy)} tone="outline" palette={badges} />
     </View>}
     <Text style={[styles.help, { color: colors.textMuted }]}>
-      {list.visibility === 'public' ? copy.publicHelp : copy.privateHelp}
+      {list.visibility === 'public'
+        ? copy.publicHelp
+        : list.visibility === 'unlisted' ? copy.unlistedHelp : copy.privateHelp}
     </Text>
 
     <Text style={[styles.heading, { color: colors.textSecondary, marginTop: 4 }]}>{copy.members}</Text>
@@ -113,7 +120,9 @@ export function ListMembershipSection({
         </Text> : null}
       </View>
       <Badge
-        label={member.role === 'owner' ? copy.owner : copy.collaborator}
+        label={member.role === 'owner'
+          ? copy.owner
+          : member.role === 'viewer' ? copy.viewer : copy.collaborator}
         tone={member.role === 'owner' ? 'indigo' : 'outline'}
         palette={badges} />
       {canEdit && isOwner && member.role !== 'owner' ? <Button

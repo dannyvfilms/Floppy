@@ -368,9 +368,12 @@ paths:
                       - image
                       - owner
                       - collaborators
+                      - viewers
                       - items_count
                       - latest_update
+                      - visibility
                       - is_public
+                      - is_unlisted
                       - public_slug
                       - allow_recommendations
                       properties:
@@ -391,13 +394,26 @@ paths:
                           items:
                             type: object
                             additionalProperties: true
+                        viewers:
+                          type: array
+                          items:
+                            type: object
+                            additionalProperties: true
                         items_count:
                           type: integer
                         latest_update:
                           type: string
                           format: date-time
                           nullable: true
+                        visibility:
+                          type: string
+                          enum:
+                          - public
+                          - unlisted
+                          - private
                         is_public:
+                          type: boolean
+                        is_unlisted:
                           type: boolean
                         public_slug:
                           type: string
@@ -469,9 +485,12 @@ paths:
                 - image
                 - owner
                 - collaborators
+                - viewers
                 - items_count
                 - latest_update
+                - visibility
                 - is_public
+                - is_unlisted
                 - public_slug
                 - allow_recommendations
                 properties:
@@ -492,13 +511,26 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+                  viewers:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
                   items_count:
                     type: integer
                   latest_update:
                     type: string
                     format: date-time
                     nullable: true
+                  visibility:
+                    type: string
+                    enum:
+                    - public
+                    - unlisted
+                    - private
                   is_public:
+                    type: boolean
+                  is_unlisted:
                     type: boolean
                   public_slug:
                     type: string
@@ -578,9 +610,12 @@ paths:
                 - image
                 - owner
                 - collaborators
+                - viewers
                 - items_count
                 - latest_update
+                - visibility
                 - is_public
+                - is_unlisted
                 - public_slug
                 - allow_recommendations
                 properties:
@@ -601,13 +636,26 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+                  viewers:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
                   items_count:
                     type: integer
                   latest_update:
                     type: string
                     format: date-time
                     nullable: true
+                  visibility:
+                    type: string
+                    enum:
+                    - public
+                    - unlisted
+                    - private
                   is_public:
+                    type: boolean
+                  is_unlisted:
                     type: boolean
                   public_slug:
                     type: string

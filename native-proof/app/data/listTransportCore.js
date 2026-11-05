@@ -10,9 +10,9 @@ const apiMediaPath = item => (
   + `${encodeURIComponent(item.mediaId)}/`
 );
 
-function collaboratorIds(members) {
+function memberIds(members, role) {
   return members
-    .filter(member => member.role !== 'owner')
+    .filter(member => member.role === role)
     .map(member => member.id);
 }
 
@@ -22,13 +22,16 @@ export function createRemoteListActions(request) {
     updateVisibility({ listId, visibility }) {
       return request(listPath(listId), {
         method: 'PATCH',
-        json: { is_public: visibility === 'public' },
+        json: { visibility },
       });
     },
     setCollaborators({ listId, members }) {
       return request(listPath(listId), {
         method: 'PATCH',
-        json: { collaborators: collaboratorIds(members) },
+        json: {
+          collaborators: memberIds(members, 'collaborator'),
+          viewers: memberIds(members, 'viewer'),
+        },
       });
     },
     removeItem({ listId, itemId }) {

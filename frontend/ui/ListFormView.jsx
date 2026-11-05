@@ -28,10 +28,12 @@ const DEFAULT_LABELS = {
   nameRequired: 'Enter a list name.',
   description: 'Description',
   visibility: 'Visibility',
-  public: 'Public (read-only access)',
+  public: 'Public',
+  unlisted: 'Unlisted',
   private: 'Private',
-  publicHelp: 'Anyone with the link can view this list.',
-  privateHelp: 'Only the owner and collaborators can view this list.',
+  publicHelp: 'Listed on your profile. Anyone with the link can view this list.',
+  unlistedHelp: 'Only people with the link can view it. It is not listed on your profile.',
+  privateHelp: 'Only the owner and the people they share it with can view this list.',
   publicSlug: 'Custom URL',
   publicSlugHelp: 'Lowercase letters, numbers, dashes and underscores. Leave blank to keep the numeric URL.',
   currentUrl: 'Current URL:',
@@ -47,10 +49,14 @@ const DEFAULT_LABELS = {
   tagSuggestions: 'Suggested tags',
   collaborators: 'Collaborators',
   collaboratorsHelp: 'People who can view and edit this list.',
+  viewers: 'Shared with (view only)',
+  viewersHelp: 'People who can open and browse this list, but cannot change it.',
   addCollaborator: 'Add collaborator',
+  addViewer: 'Add viewer',
   everyoneIsMember: 'Everyone available is already a member.',
   owner: 'Owner',
   collaborator: 'Collaborator',
+  viewer: 'Viewer',
   remove: 'Remove',
   submitCreate: 'Create List',
   submitEdit: 'Save',
@@ -144,7 +150,9 @@ export function ListForm({
   const badges = badgePalette(colors);
   const [name, setName] = useState(list.name || '');
   const [description, setDescription] = useState(list.description || '');
-  const [visibility, setVisibility] = useState(list.visibility === 'public' ? 'public' : 'private');
+  const [visibility, setVisibility] = useState(
+    ['public', 'unlisted', 'private'].includes(list.visibility) ? list.visibility : 'private',
+  );
   const [publicSlug, setPublicSlug] = useState(list.publicSlug || '');
   const [includeNotes, setIncludeNotes] = useState(!!list.includeNotes);
   const [allowRecommendations, setAllowRecommendations] = useState(!!list.allowRecommendations);
@@ -154,6 +162,7 @@ export function ListForm({
   const [members, setMembers] = useState(list.members || []);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const isPublic = visibility === 'public';
+  const isLinkVisible = visibility === 'public' || visibility === 'unlisted';
   const isEdit = mode === 'edit';
   const urlPrefix = list.urlPrefix || 'https://floppy.example/lists/';
   const listReference = slugPreview(publicSlug) || list.id || '';
@@ -165,7 +174,7 @@ export function ListForm({
       description,
       visibility,
       publicSlug,
-      includeNotes: isPublic ? includeNotes : false,
+      includeNotes: isLinkVisible ? includeNotes : false,
       allowRecommendations: isPublic ? allowRecommendations : false,
       isSmart,
       tags,
@@ -181,11 +190,11 @@ export function ListForm({
     setMembers(current => current.filter(member => member.id !== id));
   }
 
-  function addMember(name) {
+  function addMember(name, role = 'collaborator') {
     const id = name.toLowerCase();
     setMembers(current => current.some(member => member.id === id)
       ? current
-      : [...current, { id, name, handle: `@${id}`, role: 'collaborator' }]);
+      : [...current, { id, name, handle: `@${id}`, role }]);
   }
 
   const availableTags = uniqueTags(tagSuggestions).filter(tag => !tags.includes(tag));
@@ -210,12 +219,15 @@ export function ListForm({
           <FormSelect label={copy.visibility} value={visibility} palette={colors}
             options={[
               { value: 'public', label: copy.public },
+              { value: 'unlisted', label: copy.unlisted },
               { value: 'private', label: copy.private },
             ]}
             onChange={value => setVisibility(value)}
-            help={isPublic ? copy.publicHelp : copy.privateHelp} />
+            help={visibility === 'public'
+              ? copy.publicHelp
+              : visibility === 'unlisted' ? copy.unlistedHelp : copy.privateHelp} />
 
-          {isPublic ? <View style={[styles.panel, { backgroundColor: colors.surfaceStrong }]}>
+          {isLinkVisible ? <View style={[styles.panel, { backgroundColor: colors.surfaceStrong }]}>
             <FormTextField label={copy.publicSlug} value={publicSlug} onChangeText={setPublicSlug}
               error={errors.publicSlug} help={copy.publicSlugHelp} palette={colors} />
             <Text style={[styles.help, { color: colors.textMuted }]}>
@@ -226,7 +238,7 @@ export function ListForm({
 
           <View style={styles.toggleGroup}>
             <ToggleRow label={copy.includeNotes} help={copy.includeNotesHelp}
-              checked={includeNotes} disabled={!isPublic} onChange={setIncludeNotes}
+              checked={includeNotes} disabled={!isLinkVisible} onChange={setIncludeNotes}
               colors={colors} labels={copy} />
             <ToggleRow label={copy.allowRecommendations} help={copy.allowRecommendationsHelp}
               checked={allowRecommendations} disabled={!isPublic} onChange={setAllowRecommendations}
@@ -253,12 +265,14 @@ export function ListForm({
           <View style={styles.field}>
             <Text style={[styles.groupLabel, { color: colors.textMuted }]}>{copy.collaborators}</Text>
             <Text style={[styles.help, { color: colors.textMuted }]}>{copy.collaboratorsHelp}</Text>
-            {members.map(member => <View key={member.id} style={[styles.memberRow, { borderColor: colors.border }]}>
+            {members.filter(member => member.role !== 'viewer').map(member => <View key={member.id} style={[styles.memberRow, { borderColor: colors.border }]}>
               <View style={styles.memberCopy}>
                 <Text style={[styles.memberName, { color: colors.text }]}>{member.name}</Text>
                 {member.handle ? <Text style={[styles.help, { color: colors.textMuted }]}>{member.handle}</Text> : null}
               </View>
-              <Badge label={member.role === 'owner' ? copy.owner : copy.collaborator}
+              <Badge label={member.role === 'owner'
+                ? copy.owner
+                : member.role === 'viewer' ? copy.viewer : copy.collaborator}
                 tone={member.role === 'owner' ? 'indigo' : 'outline'} palette={badges} />
               {member.role !== 'owner' ? <Button label={copy.remove} tone="ghost-danger"
                 onPress={() => removeMember(member.id)} palette={colors} /> : null}
@@ -270,6 +284,25 @@ export function ListForm({
                   tone="outline" palette={badges} onPress={() => addMember(person.name)} />)}
               </View>
             </View> : <Text style={[styles.help, { color: colors.textMuted }]}>{copy.everyoneIsMember}</Text>}
+          </View>
+
+          <View style={styles.field}>
+            <Text style={[styles.groupLabel, { color: colors.textMuted }]}>{copy.viewers}</Text>
+            <Text style={[styles.help, { color: colors.textMuted }]}>{copy.viewersHelp}</Text>
+            {members.filter(member => member.role === 'viewer').map(member =>
+              <View key={member.id} style={[styles.memberRow, { borderColor: colors.border }]}>
+                <View style={styles.memberCopy}>
+                  <Text style={[styles.memberName, { color: colors.text }]}>{member.name}</Text>
+                  {member.handle ? <Text style={[styles.help, { color: colors.textMuted }]}>{member.handle}</Text> : null}
+                </View>
+                <Badge label={copy.viewer} tone="outline" palette={badges} />
+                <Button label={copy.remove} tone="ghost-danger"
+                  onPress={() => removeMember(member.id)} palette={colors} />
+              </View>)}
+            {availablePeople.length ? <View style={styles.chipRow}>
+              {availablePeople.map(person => <Badge key={`view-${person.id}`} label={`+ ${person.name}`}
+                tone="outline" palette={badges} onPress={() => addMember(person.name, 'viewer')} />)}
+            </View> : null}
           </View>
 
           <FormError message={errors.form} palette={colors} />

@@ -66,7 +66,7 @@
           {% endif %}
         </div>
       </div>
-      {% if custom_list.visibility == "public" or collaborators_count > 1 %}
+      {% if custom_list.visibility != "private" or collaborators_count > 1 or viewers_count %}
         <div class="mb-5 flex w-full flex-nowrap items-center gap-2 overflow-x-auto pb-1 pr-2 text-sm sm:flex-wrap sm:overflow-visible sm:pb-0 sm:pr-0">
           {% include "lists/components/list_visibility_chips.html" %}
         </div>

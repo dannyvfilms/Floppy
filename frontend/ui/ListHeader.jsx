@@ -23,6 +23,7 @@ const defaultLabels = {
   more: 'Members',
   exportCsv: 'Export as CSV',
   public: 'Public',
+  unlisted: 'Unlisted',
   smart: 'Smart',
   collaborators: 'collaborators',
 };
@@ -53,9 +54,9 @@ export function ListHeader({
             • {list.completionPercent}% complete
           </Text>
         )}
-        {list.visibility === 'public' && (
+        {(list.visibility === 'public' || list.visibility === 'unlisted') && (
           <Badge
-            label={text.public}
+            label={list.visibility === 'unlisted' ? text.unlisted : text.public}
             tone="outline"
             palette={{ outline: { borderColor: colors.border, color: colors.textSecondary } }}
           />

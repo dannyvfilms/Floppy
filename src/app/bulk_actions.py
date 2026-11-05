@@ -63,7 +63,7 @@ def build_bulk_action_data(
         # prefetches and selecting two columns asks for what is actually used.
         "lists": [
             {"id": list_id, "label": name}
-            for list_id, name in CustomList.objects.get_user_lists(user)
+            for list_id, name in CustomList.objects.get_editable_lists(user)
             .filter(is_smart=False)
             .prefetch_related(None)
             .order_by("name")

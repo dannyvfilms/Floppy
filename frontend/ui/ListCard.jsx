@@ -32,7 +32,7 @@ export function ListCard({ list, palette, width = 240, onOpen, onAction }) {
               ...(list.isSmart && (list.source && list.source !== 'local') ? [{ text: ' • ', muted: true }] : []),
               ...(list.source && list.source !== 'local' ? [{ text: list.sourceLabel || list.source, muted: true }] : []),
               ...((list.isSmart || (list.source && list.source !== 'local')) && (list.visibility || list.role || list.memberCount > 1) ? [{ text: ' • ', muted: true }] : []),
-              ...(list.visibility ? [{ text: list.visibilityLabel || (list.visibility === 'public' ? 'Public' : list.visibility === 'private' ? 'Private' : list.visibility) }] : []),
+              ...(list.visibility ? [{ text: list.visibilityLabel || (list.visibility === 'public' ? 'Public' : list.visibility === 'unlisted' ? 'Unlisted' : list.visibility === 'private' ? 'Private' : list.visibility) }] : []),
               ...(list.visibility && (list.role || list.memberCount > 1) ? [{ text: ' • ', muted: true }] : []),
               ...(list.role ? [{ text: list.role }] : []),
               ...(list.role && list.memberCount > 1 ? [{ text: ' • ', muted: true }] : []),

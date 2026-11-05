@@ -345,6 +345,7 @@ def _smart_list_detail_response(
         ),
         "list_ordering_enabled": can_edit and sort_by == ListDetailSortChoices.CUSTOM,
         "is_public_view": is_public_view,
+        "list_user_role": custom_list.user_role(request.user),
         "recommendation_count": recommendation_count,
         "base_template": "base_public.html" if public_view else "base.html",
         "is_partial": is_partial,
@@ -360,6 +361,7 @@ def _smart_list_detail_response(
         "has_media_type_filter": bool(active_rules["media_types"]),
         "has_active_filters": has_active_filters,
         "collaborators_count": custom_list.collaborators.count() + 1,
+        "viewers_count": custom_list.viewers.count(),
         "column_config": resolve_column_config(
             current_media_type,
             sort_by,

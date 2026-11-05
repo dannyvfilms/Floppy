@@ -137,15 +137,13 @@ def list_detail(request, list_reference):
             ),
         )
 
-    # Determine if this is a public view (anonymous user viewing public list)
+    # Anyone who can open the list without editing sees the owner's view of it.
     can_edit = custom_list.user_can_edit(request.user)
-    is_public_view = custom_list.visibility == "public" and not can_edit
+    is_public_view = not can_edit
     public_view = (
-        not request.user.is_authenticated and custom_list.visibility == "public"
+        not request.user.is_authenticated and custom_list.is_viewable_by_link
     )
 
-    # Determine which user's data to use for media queries
-    # For public views, use owner's data; otherwise use request.user
     media_user = custom_list.owner if is_public_view else request.user
 
     if custom_list.is_smart:
@@ -377,6 +375,7 @@ def list_detail(request, list_reference):
         "list_ordering_enabled": can_edit
         and params["sort_by"] == ListDetailSortChoices.CUSTOM,
         "is_public_view": is_public_view,
+        "list_user_role": custom_list.user_role(request.user),
         "recommendation_count": recommendation_count,
         "base_template": "base_public.html" if public_view else "base.html",
         "is_partial": is_partial,
@@ -465,6 +464,7 @@ def list_detail(request, list_reference):
                     MediaTypes.values, key=lambda v: MediaTypes(v).label
                 ),
                 "collaborators_count": custom_list.collaborators.count() + 1,
+                "viewers_count": custom_list.viewers.count(),
                 "completion_percent": completion_percent,
                 "completed_count": completed_count,
                 "media_type_breakdown": media_type_breakdown,

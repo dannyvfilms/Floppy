@@ -380,14 +380,16 @@ function normalizeSlug(value) {
 }
 
 function currentUrlFor(list) {
-  if (!list || list.visibility !== 'public') {
+  if (!list || !['public', 'unlisted'].includes(list.visibility)) {
     return '';
   }
   return `${URL_PREFIX}${list.publicSlug || list.id}`;
 }
 
 function visibilityLabel(visibility) {
-  return visibility === 'public' ? 'Public' : 'Private';
+  if (visibility === 'public') return 'Public';
+  if (visibility === 'unlisted') return 'Unlisted';
+  return 'Private';
 }
 
 function ListTools({ list, approvals, onEdit, onAdd, onRecommend, onApprovals }) {
@@ -554,7 +556,7 @@ export default function ListsScreen({ onBack, navigate }) {
       errors.name = 'Enter a list name.';
     }
     const slug = normalizeSlug(values.publicSlug);
-    if (values.visibility === 'public' && slug) {
+    if (['public', 'unlisted'].includes(values.visibility) && slug) {
       if (/^\d+$/.test(slug)) {
         errors.publicSlug = 'Custom list URLs cannot be only numbers.';
       } else if (RESERVED_SLUGS.includes(slug)) {
@@ -573,8 +575,9 @@ export default function ListsScreen({ onBack, navigate }) {
       return;
     }
     const isPublic = values.visibility === 'public';
+    const isLinkVisible = values.visibility === 'public' || values.visibility === 'unlisted';
     const allowRecommendations = isPublic && values.allowRecommendations;
-    const includeNotes = isPublic && values.includeNotes;
+    const includeNotes = isLinkVisible && values.includeNotes;
 
     if (form.mode === 'edit') {
       setLists(current => current.map(list => list.id === form.listId

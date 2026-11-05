@@ -177,3 +177,50 @@ class CustomListFormTest(TestCase):
         self.assertEqual(saved_list.smart_media_types, [])
         self.assertEqual(saved_list.smart_excluded_media_types, [])
         self.assertEqual(saved_list.smart_filters, {})
+
+    def test_custom_list_form_unlisted_visibility_and_viewers(self):
+        """Unlisted lists keep a link, a slug and read-only viewers."""
+        viewer = get_user_model().objects.create_user(
+            username="viewer",
+            password="12345",
+        )
+        form = CustomListForm(
+            data={
+                "name": "Shared Planning",
+                "visibility": "unlisted",
+                "public_slug": "Shared Planning",
+                "viewers": [viewer.id],
+            },
+            user=self.user,
+        )
+
+        self.assertTrue(form.is_valid())
+        custom_list = form.save(commit=False)
+        custom_list.owner = self.user
+        custom_list.save()
+        form.save_m2m()
+        self.assertEqual(custom_list.visibility, "unlisted")
+        self.assertTrue(custom_list.is_viewable_by_link)
+        self.assertFalse(custom_list.is_public)
+        self.assertEqual(custom_list.public_reference, "shared-planning")
+        self.assertIn(viewer, custom_list.viewers.all())
+        self.assertFalse(custom_list.user_can_edit(viewer))
+        self.assertTrue(custom_list.user_can_view(viewer))
+
+    def test_custom_list_form_unlisted_disables_recommendations(self):
+        """Recommendations stay a public-list feature."""
+        form = CustomListForm(
+            data={
+                "name": "Link only",
+                "visibility": "unlisted",
+                "allow_recommendations": "on",
+            },
+            user=self.user,
+        )
+
+        self.assertTrue(form.is_valid())
+        custom_list = form.save(commit=False)
+        custom_list.owner = self.user
+        custom_list.save()
+        form.save_m2m()
+        self.assertFalse(custom_list.allow_recommendations)

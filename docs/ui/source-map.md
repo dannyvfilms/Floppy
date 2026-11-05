@@ -175,6 +175,16 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 
 ## WEB-UTILITIES
 
+- `frontend/ui/CopyField.jsx`
+- `frontend/ui/InstallPromptCard.jsx`
+- `frontend/ui/CacheStatusCard.jsx`
+- `frontend/ui/clipboard.web.js`
+- `frontend/ui/clipboard.native.js`
+- `frontend/ui/installPrompt.web.js`
+- `frontend/ui/installPrompt.native.js`
+- `frontend/ui/serviceWorkerStatus.web.js`
+- `frontend/ui/serviceWorkerStatus.native.js`
+- `native-proof/app/screens/WebUtilitiesScreen.jsx`
 - `src/static/js/copy-item.js`
 - `src/static/js/serviceworker.js`
 
