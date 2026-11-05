@@ -14,6 +14,7 @@ import { Badge } from '../../../frontend/ui/Badge';
 import { Button } from '../../../frontend/ui/Button';
 import { DateTimePicker } from '../../../frontend/ui/DateTimePicker';
 import { MediaCardView } from '../../../frontend/ui/MediaCardView';
+import { MusicRelationCard } from '../../../frontend/ui/MusicRelationCard';
 import { ProgressBar } from '../../../frontend/ui/ProgressBar';
 import { RatingChip } from '../../../frontend/ui/RatingChip';
 import { RatingStars } from '../../../frontend/ui/RatingStars';
@@ -267,32 +268,6 @@ function MusicRatingPicker({ value, label, scaleMax, palette: colors, onSelect }
     }]}>★</Text>} />;
 }
 
-export function ArtistRelationCard({ relation, width }) {
-  const model = {
-    mediaType: 'music',
-    shape: 'poster',
-    image: { src: relation.image, fallback: '', source: 'primary' },
-    title: relation.name,
-    altTitle: null,
-    cornerChips: relation.current ? [] : [{ kind: 'queue', text: 'Former' }],
-    lines: [{
-      join: 'dot',
-      parts: [
-        { text: relation.role },
-        ...(relation.status ? [{ text: relation.status, muted: true }] : []),
-      ],
-    }],
-    rating: relation.score == null ? null : {
-      label: String(relation.score),
-      value: relation.score,
-      scaleMax: 10,
-      rateLabel: 'Rate',
-    },
-    ratingEditable: false,
-  };
-  return <MediaCardView model={model} labels={{ rate: 'Rate', close: 'Close' }}
-    palette={mediaCardPalette} width={width} />;
-}
 
 export function AlbumCard({ album, width, onOpen }) {
   const latest = album.tracks.length ? album.tracks.length : 0;
@@ -470,7 +445,7 @@ export function ArtistPage({ artist, albums, onOpenAlbum, onTrack, onHistory, on
       ? <View style={styles.section}>
         <SectionHeading title="Members" meta={String(artist.relations.members.length)} />
         <MusicCardGrid items={artist.relations.members}
-          renderItem={(relation, width) => <ArtistRelationCard key={relation.id} relation={relation} width={width} />} />
+          renderItem={(relation, width) => <MusicRelationCard key={relation.id} relation={relation} width={width} />} />
       </View>
       : null}
 
@@ -478,7 +453,7 @@ export function ArtistPage({ artist, albums, onOpenAlbum, onTrack, onHistory, on
       ? <View style={styles.section}>
         <SectionHeading title="Also In" meta={String(artist.relations.alsoIn.length)} />
         <MusicCardGrid items={artist.relations.alsoIn}
-          renderItem={(relation, width) => <ArtistRelationCard key={relation.id} relation={relation} width={width} />} />
+          renderItem={(relation, width) => <MusicRelationCard key={relation.id} relation={relation} width={width} />} />
       </View>
       : null}
 

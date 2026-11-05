@@ -3,7 +3,10 @@
 {% load app_tags %}
 {% load user_tags %}
 {# Shared card grid for band members / "also in" related artists. #}
-<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+{% music_relations_react relations as relations_react %}
+{{ relations_react.props|json_script:relations_react.id }}
+<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4"
+     data-music-relations-root data-props-id="{{ relations_react.id }}" x-ignore>
   {% for relation in relations %}
     <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card{% card_subtitle_class 'music' %}{% card_title_classes 'music' %}"
          data-media-type="{{ MediaTypes.MUSIC.value }}">

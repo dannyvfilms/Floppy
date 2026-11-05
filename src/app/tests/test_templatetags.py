@@ -2278,3 +2278,72 @@ class DetailActionRowTests(SimpleTestCase):
                         "overflow"
                     ]
                     self.assertTrue(set(overflow) <= {"history", "seerr", "sync"})
+
+
+class MusicRelationsReactPropsTests(SimpleTestCase):
+    """The shared artist relation grid receives plain, linkable rows."""
+
+    def test_relation_rows_carry_status_score_and_href(self):
+        member = SimpleNamespace(
+            id=7,
+            name="Elva Run",
+            image="https://example.com/elva.jpg",
+        )
+        tracker = SimpleNamespace(status=Status.IN_PROGRESS.value, score=8.5)
+        result = app_tags.music_relations_react(
+            {},
+            [
+                {
+                    "artist": member,
+                    "role": "Vocals",
+                    "is_current": False,
+                    "tracker": tracker,
+                },
+                {"artist": None, "role": "Skipped", "is_current": True, "tracker": None},
+            ],
+        )
+
+        self.assertEqual(result["props"]["labels"]["former"], "Former")
+        self.assertEqual(
+            result["props"]["relations"],
+            [
+                {
+                    "id": 7,
+                    "name": "Elva Run",
+                    "image": "https://example.com/elva.jpg",
+                    "href": reverse(
+                        "music_artist_details",
+                        kwargs={"artist_id": 7, "artist_slug": "elva-run"},
+                    ),
+                    "role": "Vocals",
+                    "current": False,
+                    "status": Status.IN_PROGRESS.value,
+                    "score": 8.5,
+                },
+            ],
+        )
+
+
+class MusicRelationGridTemplateTests(SimpleTestCase):
+    """The relation grid keeps its server fallback and mounts shared cards."""
+
+    def test_grid_mounts_with_server_fallback(self):
+        member = SimpleNamespace(id=7, name="Grid Member", image="")
+        html = render_to_string(
+            "app/components/artist_relation_grid.html",
+            {
+                "relations": [
+                    {
+                        "artist": member,
+                        "role": "Drums",
+                        "is_current": True,
+                        "tracker": None,
+                    },
+                ],
+            },
+        )
+
+        self.assertIn("data-music-relations-root", html)
+        self.assertIn("Grid Member", html)
+        self.assertIn("Drums", html)
+        self.assertIn("Former", html)
