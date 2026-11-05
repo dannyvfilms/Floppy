@@ -354,6 +354,99 @@ def _decorate_collection_entries(user, entries):
             entry.completeness = badge_completeness_map.get(entry.item_id)
 
 
+_COLLECTION_MEDIA_COLORS = {
+    MediaTypes.MOVIE.value: "#6366f1",
+    MediaTypes.TV.value: "#0ea5e9",
+    MediaTypes.BOOK.value: "#d946ef",
+    MediaTypes.COMIC.value: "#f59e0b",
+    MediaTypes.GAME.value: "#10b981",
+    MediaTypes.MUSIC.value: "#ec4899",
+    MediaTypes.PODCAST.value: "#8b5cf6",
+    MediaTypes.VIDEO.value: "#f97316",
+}
+
+
+def _collection_browser_item(entry, user):
+    """Return one collection entry as plain data for the shared browser."""
+    from app.card_surfaces import _card_render_context
+    from app.media_card_model import card_model
+
+    item = entry.item
+    ctx = {
+        "user": user,
+        "item": item,
+        "media": getattr(entry, "media", None),
+        "card_media_type": item.media_type,
+        "collection_completeness": getattr(entry, "completeness", None),
+        "subtitle_override": getattr(entry, "copy_label", ""),
+    }
+    ctx.update(_card_render_context(ctx))
+    card = card_model(ctx)
+    return {
+        "id": entry.id,
+        "href": card.get("href", ""),
+        "title": card.get("title", ""),
+        "mediaType": item.media_type,
+        "mediaTypeLabel": str(app_tags.media_type_readable_plural(item.media_type)),
+        "mediaTypeColor": _COLLECTION_MEDIA_COLORS.get(item.media_type, "#6366f1"),
+        "card": card,
+    }
+
+
+def _collection_browser_next_url(request, page_obj):
+    """Return the JSON URL for the next slice, or an empty string."""
+    if page_obj is None or not page_obj.has_next():
+        return ""
+    params = request.GET.copy()
+    params["page"] = str(page_obj.next_page_number())
+    params["json"] = "1"
+    return f"{request.path}?{params.urlencode()}"
+
+
+def _collection_browser_model(request, context, entries, total_count, page_obj):
+    """Return the shared collection browser's props for the current page."""
+    return {
+        "items": [_collection_browser_item(entry, request.user) for entry in entries],
+        "filters": {
+            "type": context["media_type"] or "all",
+            "format": context["format_filter"] or "all",
+            "resolution": context["resolution_filter"] or "all",
+            "hdr": context["hdr_filter"] or "all",
+            "location": context["location_filter"] or "all",
+            "rating": context["rating_filter"],
+            "completeness": context["completeness_filter"],
+            "customFilter": context["custom_filter_field"],
+            "customValue": context["custom_filter_value"],
+            "query": context["search_query"],
+            "sort": context["sort_by"],
+            "direction": context["direction"],
+            "view": "grid",
+        },
+        "options": {
+            "mediaTypes": [
+                {"value": media_type, "label": str(app_tags.media_type_readable_plural(media_type))}
+                for media_type in context["media_types"]
+            ],
+            "formats": [
+                {"value": value, "label": value} for value in context["available_formats"]
+            ],
+            "resolutions": [
+                {"value": value, "label": value} for value in context["available_resolutions"]
+            ],
+            "hdrs": [{"value": value, "label": value} for value in context["available_hdr"]],
+            "locations": [
+                {"value": value, "label": value} for value in context["available_locations"]
+            ],
+            "sorts": [
+                {"value": value, "label": str(label)}
+                for value, label in context["sort_choices"]
+            ],
+        },
+        "resultCount": total_count,
+        "nextUrl": _collection_browser_next_url(request, page_obj),
+    }
+
+
 def _ordered_collection_slice(collection, sort_by, direction, custom_field, offset):
     """Return one batch of entries in the selected sort order."""
     end = offset + COLLECTION_ROW_BATCH
@@ -684,6 +777,31 @@ def collection_list(request, media_type=None):
         "search_query": search_query,
         "is_pagination": is_fragment and page_number > 1,
     }
+
+    if request.GET.get("json") == "1":
+        browser = _collection_browser_model(
+            request,
+            context,
+            list(page_obj.object_list),
+            page_obj.paginator.count,
+            page_obj,
+        )
+        return JsonResponse(
+            {
+                "items": browser["items"],
+                "nextUrl": browser["nextUrl"],
+                "resultCount": browser["resultCount"],
+            },
+        )
+
+    if not group_by_type and layout == "grid":
+        context["collection_browser_props"] = _collection_browser_model(
+            request,
+            context,
+            list(page_obj.object_list),
+            page_obj.paginator.count,
+            page_obj,
+        )
 
     if is_fragment:
         return render(request, "app/components/collection_items.html", context)

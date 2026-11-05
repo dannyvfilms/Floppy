@@ -537,7 +537,8 @@ modal is shared React presentation on mount, with the server markup as fallback.
 
 ## OWNERSHIP
 
-- `frontend/ui/CollectionBrowser.jsx`
+- `frontend/ui/CollectionBrowser.jsx` (universal grid, rows, table, filters and card model)
+- `frontend/ui/mountCollectionBrowser.jsx` (browser grid adapter, existing `MediaCard` rendering and bounded JSON load-more)
 - `frontend/ui/CollectionCopies.jsx`
 - `native-proof/app/screens/CollectionScreen.jsx` (native placement)
 - `src/templates/app/collection_list.html`

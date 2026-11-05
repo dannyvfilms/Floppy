@@ -61,6 +61,78 @@ class CollectionListViewTest(TestCase):
                     rf'id="collection-view"[^>]*\sclass="{expected}"',
                 )
 
+    def test_grid_embeds_shared_browser_props(self):
+        """The web grid receives the shared browser's card models, not re-derived fields."""
+        Movie.objects.create(
+            item=self.item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=1,
+            score=8.5,
+        )
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=self.item,
+            media_type="Blu-ray",
+            resolution="1080p",
+            purchase_location="Shelf A",
+        )
+        self.client.login(**self.credentials)
+
+        response = self.client.get(reverse("collection_list"))
+
+        self.assertContains(response, "data-collection-browser-root")
+        props = response.context["collection_browser_props"]
+        self.assertEqual(props["resultCount"], 1)
+        self.assertEqual(props["nextUrl"], "")
+        item = props["items"][0]
+        self.assertEqual(item["title"], "Test Movie")
+        self.assertEqual(item["mediaType"], MediaTypes.MOVIE.value)
+        self.assertEqual(item["card"]["statusChip"]["kind"], "status")
+        self.assertEqual(item["card"]["rating"]["label"], "8.5")
+        self.assertIn("actions", item["card"])
+
+    def test_table_layout_keeps_the_server_fallback(self):
+        """The shared grid mount is not emitted for the server-owned table layout."""
+        CollectionEntry.objects.create(user=self.user, item=self.item)
+        self.client.login(**self.credentials)
+
+        response = self.client.get(reverse("collection_list"), {"layout": "table"})
+
+        self.assertNotContains(response, "data-collection-browser-root")
+        self.assertNotIn("collection_browser_props", response.context)
+
+    def test_grouped_view_keeps_the_server_rows(self):
+        """Grouped scrolling rows stay server-owned until per-row loading is shared."""
+        CollectionEntry.objects.create(user=self.user, item=self.item)
+        self.client.login(**self.credentials)
+
+        response = self.client.get(reverse("collection_list"), {"group": "type"})
+
+        self.assertNotContains(response, "data-collection-browser-root")
+        self.assertNotIn("collection_browser_props", response.context)
+
+    def test_json_page_returns_the_next_browser_url(self):
+        """Browser load-more pages use the JSON contract and stop at the last page."""
+        CollectionEntry.objects.bulk_create(
+            [CollectionEntry(user=self.user, item=self.item) for _ in range(21)],
+        )
+        self.client.login(**self.credentials)
+
+        response = self.client.get(reverse("collection_list"), {"json": "1"})
+
+        payload = response.json()
+        self.assertEqual(len(payload["items"]), 20)
+        self.assertEqual(payload["resultCount"], 21)
+        self.assertIn("page=2", payload["nextUrl"])
+        self.assertIn("json=1", payload["nextUrl"])
+
+        response = self.client.get(payload["nextUrl"])
+
+        payload = response.json()
+        self.assertEqual(len(payload["items"]), 1)
+        self.assertEqual(payload["nextUrl"], "")
+
     def test_collection_list_unauthenticated(self):
         """Test unauthenticated user is redirected to login."""
         response = self.client.get(reverse("collection_list"))

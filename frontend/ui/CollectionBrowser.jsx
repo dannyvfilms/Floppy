@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Badge } from './Badge';
+import { Button } from './Button';
 import { FilterBar } from './FilterBar';
 import { MediaCardView } from './MediaCardView';
 
@@ -47,6 +48,7 @@ const DEFAULT_LABELS = {
   table: 'Table',
   empty: 'No copies match these filters.',
   emptyHint: 'Try adjusting the collection filters.',
+  loadMore: 'Load more',
   editCopies: 'Open copies',
   copy: 'copy',
   copies: 'copies',
@@ -96,6 +98,7 @@ function copyLine(item) {
 }
 
 function cardModel(item) {
+  if (item.card) return item.card;
   const completeness = item.completeness;
   const corner = [];
   if (completeness && completeness.total) {
@@ -220,20 +223,20 @@ function TableView({ items, labels, palette, onOpenCopy }) {
   </View>;
 }
 
-function GridView({ items, labels, palette, onOpenCopy }) {
+function GridView({ items, labels, palette, onOpenCopy, renderCard }) {
   return <View style={styles.grid}>
     {items.map(item => <View key={item.id} style={styles.gridItem}>
-      <MediaCardView model={cardModel(item)} width={164} palette={{
+      {renderCard ? renderCard(item) : <MediaCardView model={cardModel(item)} width={164} palette={{
         ...palette,
         card: palette.surface,
         link: '#818cf8',
         star: '#facc15',
-      }} labels={labels} onOpen={() => onOpenCopy?.(item)} />
+      }} labels={labels} onOpen={() => onOpenCopy?.(item)} />}
     </View>)}
   </View>;
 }
 
-function RowView({ items, labels, palette, onOpenCopy }) {
+function RowView({ items, labels, palette, onOpenCopy, renderCard }) {
   const groups = useMemo(() => {
     const byType = new Map();
     items.forEach(item => {
@@ -255,12 +258,12 @@ function RowView({ items, labels, palette, onOpenCopy }) {
       <ScrollView horizontal showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.rowScroll}>
         {group.rows.map(item => <View key={item.id} style={styles.rowCard}>
-          <MediaCardView model={cardModel(item)} width={164} palette={{
+          {renderCard ? renderCard(item) : <MediaCardView model={cardModel(item)} width={164} palette={{
             ...palette,
             card: palette.surface,
             link: '#818cf8',
             star: '#facc15',
-          }} labels={labels} onOpen={() => onOpenCopy?.(item)} />
+          }} labels={labels} onOpen={() => onOpenCopy?.(item)} />}
         </View>)}
       </ScrollView>
     </View>)}
@@ -274,9 +277,14 @@ export function CollectionBrowser({
   labels: suppliedLabels,
   palette: suppliedPalette,
   busy = false,
+  chrome = true,
   resultCount,
+  hasMore = false,
+  loadingMore = false,
   onFilterChange,
   onOpenCopy,
+  onLoadMore,
+  renderCard,
 }) {
   const labels = mergeLabels(suppliedLabels);
   const palette = mergePalette(suppliedPalette);
@@ -370,7 +378,7 @@ export function CollectionBrowser({
   }
 
   return <View style={styles.root}>
-    <View style={[styles.searchRow, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+    {chrome ? <View style={[styles.searchRow, { borderColor: palette.border, backgroundColor: palette.surface }]}>
       <Text style={[styles.searchGlyph, { color: palette.textMuted }]}>⌕</Text>
       <TextInput
         accessibilityLabel={labels.search}
@@ -384,9 +392,9 @@ export function CollectionBrowser({
         onPress={() => onFilterChange?.({ type: 'set', key: 'query', value: '' })}>
         <Text style={[styles.searchClear, { color: palette.textMuted }]}>×</Text>
       </Pressable> : null}
-    </View>
+    </View> : null}
 
-    <FilterBar filters={barFilters} options={barOptions} labels={{
+    {chrome ? <FilterBar filters={barFilters} options={barOptions} labels={{
       filters: labels.filters,
       allTypes: labels.allTypes,
       mediaType: labels.type,
@@ -406,9 +414,9 @@ export function CollectionBrowser({
       accentText: palette.accentContrast,
       disabled: palette.textMuted,
     }} busy={busy} resultCount={typeof resultCount === 'number' ? resultCount : items.length}
-      onChange={handleFilterIntent} />
+      onChange={handleFilterIntent} /> : null}
 
-    {secondary.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false}
+    {chrome && secondary.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.chipRow}>
       {secondary.map(entry => {
         const selected = entry.value && entry.value !== 'all'
@@ -447,8 +455,13 @@ export function CollectionBrowser({
     </View> : view === 'table'
       ? <TableView items={items} labels={labels} palette={palette} onOpenCopy={onOpenCopy} />
       : view === 'rows'
-        ? <RowView items={items} labels={labels} palette={palette} onOpenCopy={onOpenCopy} />
-        : <GridView items={items} labels={labels} palette={palette} onOpenCopy={onOpenCopy} />}
+        ? <RowView items={items} labels={labels} palette={palette} onOpenCopy={onOpenCopy} renderCard={renderCard} />
+        : <GridView items={items} labels={labels} palette={palette} onOpenCopy={onOpenCopy} renderCard={renderCard} />}
+
+    {hasMore || loadingMore ? <View style={styles.loadMore} testID="collection-load-more">
+      <Button label={labels.loadMore} tone="surface" palette={palette}
+        busy={loadingMore} disabled={loadingMore} onPress={onLoadMore} />
+    </View> : null}
 
     <FilterMenu menu={menu} labels={labels} palette={palette}
       onChoose={chooseSecondary} onClose={() => setMenu(null)} />
@@ -482,6 +495,7 @@ const styles = StyleSheet.create({
   empty: { borderWidth: 1, borderRadius: 10, padding: 24, gap: 6, alignItems: 'center' },
   emptyTitle: { fontSize: 16, fontWeight: '700' },
   emptyHint: { fontSize: 13, textAlign: 'center' },
+  loadMore: { alignItems: 'center', paddingVertical: 14 },
   overlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
   sheet: { width: '100%', maxWidth: 380, maxHeight: '70%', borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 10 },

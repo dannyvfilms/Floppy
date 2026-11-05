@@ -1607,7 +1607,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The shared browser is compiled by the UI build and Expo web export; it is not mounted in the Django collection page, which keeps the server-rendered collection and filter fallback."
+          "evidence": "The browser adapter mounts the shared grid over the Django collection results and loads later JSON pages; the server toolbar, grouped rows, table layout and card-host fallback remain server-owned. The web build compiles it, but grid mounting, load-more and card parity were not exercised in a browser."
         },
         "ios": {
           "status": "unverified",
@@ -2584,6 +2584,10 @@
     "frontend/ui/mountFilterBar.jsx": {
       "register": "FILTERS",
       "purpose": "Django/browser integration for the shared filter bar: mirror the page Alpine filter state, write filter intents into the existing form, and refresh through the existing htmx/URL boundary."
+    },
+    "frontend/ui/mountCollectionBrowser.jsx": {
+      "register": "OWNERSHIP",
+      "purpose": "Browser adapter for the shared collection grid: read the server-built item/card model, render the grid without duplicating the server toolbar, open existing item links, and append bounded JSON pages with nextUrl; grouped rows, table layout, filters, search and the copy/custom-field modal remain server-owned."
     },
     "frontend/ui/mountHistoryFeed.jsx": {
       "register": "HISTORY",
