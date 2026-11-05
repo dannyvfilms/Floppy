@@ -23,6 +23,7 @@ from django.shortcuts import render
 from django.urls import reverse
 from django.utils import formats, timezone
 from django.utils.dateparse import parse_date
+from django.utils.html import strip_tags
 from django.utils.translation import gettext as _
 from django.utils.translation import gettext_noop
 from django.views.decorators.http import require_GET, require_http_methods
@@ -51,6 +52,7 @@ logger = logging.getLogger(__name__)
 
 MONTHS_PER_YEAR = 12
 SESSION_HISTORY_MAX_DAYS = 400
+HISTORY_PAGE_RADIUS = 2
 
 _MONTH_CACHE_UNSUPPORTED_FILTER_KEYS = frozenset(
     {
@@ -883,6 +885,42 @@ def _build_session_history_stats(history_days):
     ]
 
 
+def _history_feed_sessions(history_days, user):
+    """Return the activity dialog's bounded session list."""
+    from users.templatetags import user_tags
+
+    sessions = []
+    for day in history_days:
+        day_date = day.get("date")
+        for entry in day.get("entries", []):
+            played_at = entry.get("played_at_local")
+            date_key = (
+                played_at.date().isoformat()
+                if hasattr(played_at, "date")
+                else str(day_date) if day_date else ""
+            )
+            when = (
+                user_tags.user_datetime_format(played_at, user)
+                if played_at
+                else ""
+            )
+            sessions.append(
+                {
+                    "key": entry.get("entry_key") or f"session-{len(sessions)}",
+                    "date": date_key,
+                    "when": when,
+                    "label": _history_feed_verb(entry),
+                    "runtime": entry.get("runtime_display")
+                    or entry.get("progress_display")
+                    or "",
+                    "runtimeMinutes": entry.get("runtime_minutes") or 0,
+                    "score": entry.get("score"),
+                    "note": strip_tags(entry.get("notes") or "").strip(),
+                },
+            )
+    return sessions
+
+
 @require_GET
 def activity_sessions_modal(request):
     """Return the in-place, date-grouped activity history for one media item."""
@@ -917,6 +955,16 @@ def activity_sessions_modal(request):
     visible_marker_days = sorted(
         {day["date"].isoformat() for day in visible_days if day.get("date")},
     )
+    if request.GET.get("format") == "json":
+        return JsonResponse(
+            {
+                "sessions": _history_feed_sessions(visible_days, request.user),
+                "stats": [
+                    {"label": _(stat["label"]), "value": stat["value"]}
+                    for stat in session_history_stats
+                ],
+            },
+        )
     return render(
         request,
         "app/components/session_history_modal.html",
@@ -1127,6 +1175,186 @@ def _history_feed_labels():
         "previousPage": _("Previous page"),
         "nextPage": _("Next page"),
         "page": _("Page"),
+        "activityHistory": _("Activity history"),
+        "jumpToDay": _("Jump to a session day"),
+        "allDays": _("All days"),
+        "noSessions": _("No sessions recorded for this entry."),
+        "sessions": _("Sessions"),
+        "firstSession": _("First session"),
+        "lastSession": _("Last session"),
+        "averageSession": _("Average session"),
+        "editHistory": _("Edit history entry"),
+        "editHistoryCopy": _("Change the date, score or status for this entry."),
+        "editDate": _("Date"),
+        "deleteHistory": _("Delete history entry"),
+        "deleteConfirm": _("Delete this entry from your history? This cannot be undone."),
+        "save": _("Save"),
+        "cancel": _("Cancel"),
+        "clearDay": _("Show all days"),
+    }
+
+
+HISTORY_FEED_MEDIA_TYPE_LABELS = (
+    (MediaTypes.TV.value, "TV Show"),
+    (MediaTypes.MOVIE.value, "Movie"),
+    (MediaTypes.ANIME.value, "Anime"),
+    (MediaTypes.GAME.value, "Game"),
+    (MediaTypes.MUSIC.value, "Music"),
+    (MediaTypes.BOOK.value, "Book"),
+    (MediaTypes.MANGA.value, "Manga"),
+    (MediaTypes.COMIC.value, "Comic"),
+    (MediaTypes.PODCAST.value, "Podcast"),
+    (MediaTypes.VIDEO.value, "Video"),
+    (MediaTypes.BOARDGAME.value, "Board Game"),
+)
+
+
+def _split_filter_values(value):
+    """Return a comma filter as the list the shared feed edits."""
+    return [part.strip() for part in str(value or "").split(",") if part.strip()]
+
+
+def _history_feed_url(request, *, page=None, **updates):
+    """Build a History URL from the current query and overrides."""
+    query = request.GET.copy()
+    query.pop("entry_offset", None)
+    if page is None:
+        query.pop("page", None)
+    else:
+        query["page"] = str(page)
+    for key, value in updates.items():
+        if value is None:
+            query.pop(key, None)
+        else:
+            query[key] = str(value)
+    encoded = query.urlencode()
+    return f"{request.path}?{encoded}" if encoded else request.path
+
+
+def _history_feed_filters(context):
+    """Return the filter state the shared feed edits."""
+    active = context.get("active_filters") or {}
+    media_types = _split_filter_values(active.get("media_type"))
+    genres = _split_filter_values(active.get("genre"))
+    implied_genres = _split_filter_values(active.get("implied_genre"))
+    date_from = active.get("start-date") or ""
+    date_to = active.get("end-date") or ""
+    mode = context.get("history_mode") or "activity"
+    active_count = sum(
+        (
+            bool(date_from),
+            bool(date_to),
+            bool(media_types),
+            bool(genres),
+            bool(implied_genres),
+            mode != "activity",
+        ),
+    )
+    range_label = None
+    if date_from or date_to:
+        range_label = f"{date_from or 'earliest'} - {date_to or 'today'}"
+    return {
+        "from": date_from,
+        "to": date_to,
+        "mediaTypes": media_types,
+        "genres": genres,
+        "impliedGenres": implied_genres,
+        "mode": mode,
+        "activeCount": active_count,
+        "rangeLabel": range_label,
+    }
+
+
+def _history_feed_options():
+    """Return the shared filter options the server owns."""
+    return {
+        "mediaTypes": [
+            {"value": value, "label": _(label)}
+            for value, label in HISTORY_FEED_MEDIA_TYPE_LABELS
+        ],
+    }
+
+
+def _history_feed_nav(request, context):
+    """Return month navigation as feed intents, not template links."""
+    if not context.get("use_month_view"):
+        return {}
+    view_year = context.get("view_year")
+    view_month = context.get("view_month")
+    if not view_year or not view_month:
+        return {}
+    previous_year = context.get("prev_year")
+    previous_month = context.get("prev_month")
+    next_year = context.get("next_year")
+    next_month = context.get("next_month")
+    current_year = context.get("current_year")
+    current_month = context.get("current_month_num")
+    nav = {
+        "monthLabel": context.get("month_name") or "",
+        "previousYear": {
+            "label": str(view_year - 1),
+            "url": _history_feed_url(request, year=view_year - 1, m=view_month),
+        },
+        "previousMonth": {
+            "label": context.get("prev_month_name") or "",
+            "url": _history_feed_url(
+                request,
+                year=previous_year,
+                m=previous_month,
+            ),
+        },
+        "currentMonth": {
+            "label": str(current_year),
+            "url": _history_feed_url(
+                request,
+                year=current_year,
+                m=current_month,
+            ),
+            "disabled": bool(context.get("is_current_month")),
+        },
+    }
+    nav["nextMonth"] = {
+        "label": context.get("next_month_name") or "",
+        "url": _history_feed_url(request, year=next_year, m=next_month),
+        "disabled": not context.get("show_next_month"),
+    }
+    return nav
+
+
+def _history_feed_pagination(request, context):
+    """Return the filtered-view page controls as feed intents."""
+    if context.get("use_month_view"):
+        return None
+    total_pages = int(context.get("total_pages") or 0)
+    current_page = int(context.get("current_page") or 1)
+    if total_pages <= 1:
+        return None
+
+    def page_item(number):
+        return {
+            "number": number,
+            "url": _history_feed_url(request, page=number),
+            "current": number == current_page,
+        }
+
+    pages = []
+    previous = None
+    for number in range(1, total_pages + 1):
+        if number in {1, total_pages} or abs(number - current_page) <= HISTORY_PAGE_RADIUS:
+            if previous is not None and number - previous > 1:
+                pages.append(None)
+            pages.append(page_item(number))
+            previous = number
+    return {
+        "page": current_page,
+        "pageCount": total_pages,
+        "previousUrl": _history_feed_url(request, page=current_page - 1)
+        if current_page > 1
+        else None,
+        "nextUrl": _history_feed_url(request, page=current_page + 1)
+        if current_page < total_pages
+        else None,
+        "pages": pages,
     }
 
 
@@ -1268,12 +1496,15 @@ def _history_feed_entry(entry, history_mode, user, request, index=0):
 def _history_feed_day(day, history_mode, user, request):
     """Convert one prepared history day into the shared feed day contract."""
     day_key = day.get("day_key") or _history_day_key(day)
-    entries = [
+    lazy = bool(day.get("lazy"))
+    # Do not convert a lazy day's entries at all: the browser fetches the
+    # bounded slice when the day is requested.
+    entries = [] if lazy else [
         _history_feed_entry(entry, history_mode, user, request, index)
         for index, entry in enumerate(day.get("entries", []))
     ]
-    entry_count = day.get("entry_count", len(entries))
-    next_offset = day.get("next_entry_offset", len(entries))
+    entry_count = day.get("entry_count", len(day.get("entries", [])))
+    next_offset = day.get("next_entry_offset", len(day.get("entries", [])))
     return {
         "key": day_key,
         "weekday": day.get("weekday", ""),
@@ -1286,7 +1517,7 @@ def _history_feed_day(day, history_mode, user, request):
         "runtimeLabel": day.get("total_runtime_display", "")
         if history_mode != "release"
         else "",
-        "lazy": bool(day.get("lazy")),
+        "lazy": lazy,
         "loading": False,
         "loadingMore": False,
         "hasMore": bool(day.get("has_more")),
@@ -1313,10 +1544,10 @@ def _history_feed_model(request, context):
             _history_feed_day(day, history_mode, user, request)
             for day in history_days
         ],
-        "filters": {},
-        "options": {},
-        "nav": {},
-        "pagination": None,
+        "filters": _history_feed_filters(context),
+        "options": _history_feed_options(),
+        "nav": _history_feed_nav(request, context),
+        "pagination": _history_feed_pagination(request, context),
     }
 
 
@@ -1622,8 +1853,9 @@ def history(request):
         context["history_feed_props"] = {
             "model": context["history_feed"],
             "labels": _history_feed_labels(),
-            "chrome": False,
+            "chrome": True,
             "baseUrl": request.path,
+            "filterOptionsUrl": reverse("history_genres"),
             "saveViewUrl": reverse("saved_view_create"),
             "saveViewPrompt": _("Name this view"),
             "csrfToken": get_token(request),

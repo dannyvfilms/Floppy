@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import {
   HistoryActivityDialog,
   HistoryDeleteDialog,
@@ -6,6 +7,7 @@ import {
   HistoryFeed,
 } from '../../../frontend/ui/HistoryFeed';
 import { Screen } from '../components/Screen';
+import { createHistoryTransport, historyEntriesFromPayload } from '../data/historyTransport';
 import { historyPalette } from '../theme';
 
 export const surface = {
@@ -13,7 +15,7 @@ export const surface = {
   status: 'in_progress',
   title: 'History feed and activity',
   where: 'History screen and per-item activity dialog',
-  note: 'Bounded day groups, lazy days, bounded load-more, filters and date ranges, session/activity, edit and delete dialogs, refresh/stale notices and loading/empty/error states use the shared React feed. The native shell runs these interactions against realistic demo data because it has no transport yet. The web History page mounts the same feed over a bounded JSON day contract; its month navigation, Alpine filter sheet, cache-refresh banner and per-item session dialog remain server-owned, so the surface stays in progress.',
+  note: 'Bounded day groups, lazy days, bounded load-more, filters and date ranges, session/activity, edit and delete dialogs, refresh/stale notices and loading/empty/error states use the shared React feed. Month navigation, filters, the cache banner, pagination and the activity dialog are adopted on the web, and the native screen loads bounded server days through historyTransport when signed in. Native edit, score and delete writes still use local demo state because the track-write contract is not mapped, so the surface stays in progress.',
 };
 
 const TODAY = '2026-11-04';
@@ -368,10 +370,12 @@ function buildSummary(entries, mode) {
   ];
 }
 
-export default function HistoryScreen({ navigate, onBack }) {
+export default function HistoryScreen({ navigate, onBack, transport: injectedTransport }) {
+  const [transport] = useState(() => injectedTransport || createHistoryTransport());
+  const [transportError, setTransportError] = useState('');
   const [entries, setEntries] = useState(demoEntries);
   const [monthIndex, setMonthIndex] = useState(CURRENT_MONTH_INDEX);
-  const [filters, setFilters] = useState({ mode: 'activity', mediaTypes: [], genre: '', impliedGenre: '', activeCount: 0 });
+  const [filters, setFilters] = useState({ mode: 'activity', mediaTypes: [], genres: [], impliedGenres: [], activeCount: 0 });
   const [revealedLazy, setRevealedLazy] = useState(() => new Set());
   const [loadingDays, setLoadingDays] = useState(() => new Set());
   const [visibleCounts, setVisibleCounts] = useState({});
@@ -385,6 +389,26 @@ export default function HistoryScreen({ navigate, onBack }) {
     const timer = setTimeout(() => setRefreshing(false), 900);
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (transport.mode !== 'server') return undefined;
+    let active = true;
+    transport.load({ limit: 30, maxEntriesPerDay: 10 })
+      .then(payload => {
+        if (!active) return;
+        const loaded = historyEntriesFromPayload(payload);
+        if (loaded.length) {
+          setEntries(loaded);
+          setRefreshing(false);
+        }
+      })
+      .catch(error => {
+        if (active) {
+          setTransportError(error?.message || 'History could not be loaded from the server.');
+        }
+      });
+    return () => { active = false; };
+  }, [transport]);
 
   function beginRefresh() {
     setRefreshing(true);
@@ -409,8 +433,8 @@ export default function HistoryScreen({ navigate, onBack }) {
         return false;
       }
       if (filters.mediaTypes?.length && !matchesType(entry, filters.mediaTypes)) return false;
-      if (filters.genre && !(entry.genres || []).includes(filters.genre)) return false;
-      if (filters.impliedGenre && !(entry.genres || []).includes(filters.impliedGenre)) return false;
+      if (filters.genres?.length && !filters.genres.some(genre => (entry.genres || []).includes(genre))) return false;
+      if (filters.impliedGenres?.length && !filters.impliedGenres.some(genre => (entry.genres || []).includes(genre))) return false;
       return true;
     });
   }, [entries, filters, monthIndex, mode, from, to]);
@@ -509,8 +533,8 @@ export default function HistoryScreen({ navigate, onBack }) {
 
   function applyFilters(state) {
     const activeCount = (state.from ? 1 : 0) + (state.to ? 1 : 0)
-      + (state.mediaTypes?.length ? 1 : 0) + (state.genre ? 1 : 0)
-      + (state.impliedGenre ? 1 : 0) + (state.mode !== 'activity' ? 1 : 0);
+      + (state.mediaTypes?.length ? 1 : 0) + (state.genres?.length ? 1 : 0)
+      + (state.impliedGenres?.length ? 1 : 0) + (state.mode !== 'activity' ? 1 : 0);
     setFilters({ ...state, activeCount });
     setVisibleCounts({});
     setRevealedLazy(new Set());
@@ -518,7 +542,7 @@ export default function HistoryScreen({ navigate, onBack }) {
   }
 
   function clearFilters() {
-    setFilters({ mode: 'activity', mediaTypes: [], genre: '', impliedGenre: '', activeCount: 0 });
+    setFilters({ mode: 'activity', mediaTypes: [], genres: [], impliedGenres: [], activeCount: 0 });
     setVisibleCounts({});
     setRevealedLazy(new Set());
     beginRefresh();
@@ -573,10 +597,23 @@ export default function HistoryScreen({ navigate, onBack }) {
   function deleteEntry(entry) {
     setEntries(current => current.filter(item => item.key !== entry.key));
     setDeletingEntry(null);
+    if (transport.mode === 'server' && entry.historyId != null && entry.mediaType) {
+      transport.deleteRecord({
+        mediaType: entry.mediaType,
+        historyId: entry.historyId,
+      }).catch(error => {
+        setTransportError(error?.message || 'The server rejected the history change.');
+      });
+    }
     beginRefresh();
   }
 
   return <Screen title="History" subtitle="Everything you have watched, read and played" onBack={onBack}>
+    {transportError
+      ? <View style={styles.notice}>
+        <Text accessibilityLiveRegion="polite" style={styles.noticeText}>{transportError}</Text>
+      </View>
+      : null}
     <HistoryFeed
       model={model}
       labels={labels}
@@ -615,3 +652,15 @@ export default function HistoryScreen({ navigate, onBack }) {
       onConfirm={deleteEntry} />
   </Screen>;
 }
+
+const styles = StyleSheet.create({
+  notice: {
+    borderWidth: 1,
+    borderColor: 'rgba(248, 113, 113, 0.4)',
+    borderRadius: 8,
+    backgroundColor: 'rgba(248, 113, 113, 0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  noticeText: { color: '#f87171', fontSize: 13 },
+});

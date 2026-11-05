@@ -645,14 +645,18 @@ modal is shared React presentation on mount, with the server markup as fallback.
 The feed and its activity, edit and delete dialogs are shared presentation in
 `frontend/ui/HistoryFeed.jsx` and are composed by the native History screen.
 The browser History page mounts the shared feed over its day list through
-`frontend/ui/mountHistoryFeed.jsx`; lazy and load-more slices come from the
-bounded `history_day_fragment?format=json` contract. The server template keeps
-the day-list fallback and still owns month navigation, the Alpine filter sheet,
-the cache-refresh banner, pagination and the per-item session dialog.
+`frontend/ui/mountHistoryFeed.jsx`; month navigation, filters, the cache banner,
+pagination and the activity dialog are feed presentation. Lazy and load-more
+slices come from the bounded `history_day_fragment?format=json` contract and
+activity sessions from `activity_sessions_modal?format=json`. The server
+template keeps the day list and its chrome as the no-JS/chunk-failure fallback.
+The native read transport maps the bounded `/api/v1/history/` route.
 
 - `frontend/ui/HistoryFeed.jsx`
 - `frontend/ui/mountHistoryFeed.jsx`
 - `native-proof/app/screens/HistoryScreen.jsx`
+- `native-proof/app/data/historyTransport.js`
+- `native-proof/app/data/historyTransportCore.js`
 - `src/static/js/sessionHistory.js`
 - `src/templates/app/components/fill_history.html`
 - `src/templates/app/components/history_card.html`

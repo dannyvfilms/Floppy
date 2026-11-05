@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
-import { HistoryFeed } from './HistoryFeed';
+import { HistoryActivityDialog, HistoryFeed } from './HistoryFeed';
 import { openModal } from './ModalHost';
 
 const canvas = document.createElement('canvas');
@@ -63,14 +63,35 @@ function assign(url) {
   if (url) window.location.assign(url);
 }
 
-function historyUrl(state, props) {
+const MANAGED_QUERY_KEYS = [
+  'start-date', 'end-date', 'media_type', 'genre', 'implied_genre',
+  'history_mode', 'page', 'entry_offset',
+];
+
+function filterList(state, key, legacyKey) {
+  if (Array.isArray(state[key])) return state[key];
+  if (Array.isArray(state[legacyKey])) return state[legacyKey];
+  const legacy = state[legacyKey];
+  return legacy ? [legacy] : [];
+}
+
+function filterQuery(state) {
   const params = new URLSearchParams();
   if (state.from) params.set('start-date', state.from);
   if (state.to) params.set('end-date', state.to);
   if (state.mediaTypes?.length) params.set('media_type', state.mediaTypes.join(','));
-  if (state.genre) params.set('genre', state.genre);
-  if (state.impliedGenre) params.set('implied_genre', state.impliedGenre);
+  const genres = filterList(state, 'genres', 'genre');
+  const impliedGenres = filterList(state, 'impliedGenres', 'impliedGenre');
+  if (genres.length) params.set('genre', genres.join(','));
+  if (impliedGenres.length) params.set('implied_genre', impliedGenres.join(','));
   if (state.mode && state.mode !== 'activity') params.set('history_mode', state.mode);
+  return params;
+}
+
+function historyUrl(state, props) {
+  const params = new URLSearchParams(window.location.search);
+  MANAGED_QUERY_KEYS.forEach(key => params.delete(key));
+  filterQuery(state).forEach((value, key) => params.set(key, value));
   const query = params.toString();
   return `${props.baseUrl || window.location.pathname}${query ? `?${query}` : ''}`;
 }
@@ -82,6 +103,15 @@ function replaceDay(days, key, update) {
 function Adapter({ host, props }) {
   const [palette, setPalette] = useState(readPalette);
   const [model, setModel] = useState(() => props.model || { days: [] });
+  const [activityEntry, setActivityEntry] = useState(null);
+  const [optionsLoaded, setOptionsLoaded] = useState(false);
+
+  useEffect(() => {
+    const nodes = Array.from(document.querySelectorAll('[data-history-legacy-chrome]'));
+    const previous = nodes.map(node => node.style.display);
+    nodes.forEach(node => { node.style.display = 'none'; });
+    return () => nodes.forEach((node, index) => { node.style.display = previous[index]; });
+  }, []);
 
   useEffect(() => {
     const update = () => setPalette(readPalette());
@@ -160,19 +190,32 @@ function Adapter({ host, props }) {
     assign(entry.href);
   }
 
-  function openActivity(entry) {
-    if (entry?.activityUrl && entry.activityTarget && window.htmx?.ajax) {
-      window.htmx.ajax('GET', entry.activityUrl, {
-        target: entry.activityTarget,
-        swap: 'innerHTML',
-      });
-      window.dispatchEvent(new CustomEvent('open-session-history'));
+  async function openActivity(entry) {
+    if (!entry?.activityUrl) {
+      openEntry(entry);
       return;
     }
-    openEntry(entry);
+    try {
+      const url = new URL(entry.activityUrl, window.location.origin);
+      url.searchParams.set('format', 'json');
+      const response = await window.fetch(url, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) throw new Error(`History activity failed: ${response.status}`);
+      const payload = await response.json();
+      setActivityEntry({
+        ...entry,
+        sessions: payload.sessions || [],
+        sessionStats: payload.stats || [],
+      });
+    } catch (error) {
+      openEntry(entry);
+    }
   }
 
   function editEntry(entry) {
+    setActivityEntry(null);
     if (!entry.editUrl || !entry.editTarget) {
       openEntry(entry);
       return;
@@ -204,7 +247,33 @@ function Adapter({ host, props }) {
   }
 
   function clearFilters() {
-    assign(props.baseUrl || window.location.pathname);
+    const params = new URLSearchParams(window.location.search);
+    MANAGED_QUERY_KEYS.forEach(key => params.delete(key));
+    const query = params.toString();
+    assign(`${props.baseUrl || window.location.pathname}${query ? `?${query}` : ''}`);
+  }
+
+  async function loadFilterOptions() {
+    if (optionsLoaded || !props.filterOptionsUrl) return;
+    setOptionsLoaded(true);
+    try {
+      const response = await window.fetch(props.filterOptionsUrl, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) throw new Error(`History genres failed: ${response.status}`);
+      const payload = await response.json();
+      setModel(current => ({
+        ...current,
+        options: {
+          ...(current.options || {}),
+          genres: payload.genres || [],
+          impliedGenres: payload.implied_genres || [],
+        },
+      }));
+    } catch (error) {
+      setOptionsLoaded(false);
+    }
   }
 
   function saveView(state) {
@@ -213,7 +282,7 @@ function Adapter({ host, props }) {
     const body = new URLSearchParams();
     body.set('media_type', 'history');
     body.set('name', name.trim());
-    body.set('query', historyUrl(state, { baseUrl: '' }).replace(/^\?/, ''));
+    body.set('query', filterQuery(state).toString());
     window.fetch(props.saveViewUrl || '/saved-views/create/', {
       method: 'POST',
       headers: { 'X-CSRFToken': props.csrfToken || '' },
@@ -223,24 +292,35 @@ function Adapter({ host, props }) {
       .catch(() => {});
   }
 
-  return <HistoryFeed
-    model={model}
-    labels={props.labels}
-    palette={palette}
-    chrome={props.chrome !== false}
-    onNavigate={navigate}
-    onLoadMore={loadMore}
-    onLoadDay={loadDay}
-    onOpenEntry={openEntry}
-    onOpenActivity={openActivity}
-    onEditEntry={editEntry}
-    onDeleteEntry={deleteEntry}
-    onApplyFilters={applyFilters}
-    onClearFilters={clearFilters}
-    onSaveView={saveView}
-    onRetry={() => assign(props.baseUrl || window.location.pathname)}
-    onRetryDay={loadDay}
-    onRefresh={() => assign(props.baseUrl || window.location.pathname)} />;
+  return <>
+    <HistoryFeed
+      model={model}
+      labels={props.labels}
+      palette={palette}
+      chrome={props.chrome !== false}
+      onNavigate={navigate}
+      onLoadMore={loadMore}
+      onLoadDay={loadDay}
+      onOpenEntry={openEntry}
+      onOpenActivity={openActivity}
+      onEditEntry={editEntry}
+      onDeleteEntry={deleteEntry}
+      onApplyFilters={applyFilters}
+      onClearFilters={clearFilters}
+      onSaveView={saveView}
+      onRequestOptions={loadFilterOptions}
+      onRetry={() => assign(props.baseUrl || window.location.pathname)}
+      onRetryDay={loadDay}
+      onRefresh={() => assign(props.baseUrl || window.location.pathname)}
+      onDismissRefresh={() => window.dispatchEvent(new CustomEvent('history-refresh-dismiss'))} />
+    <HistoryActivityDialog
+      entry={activityEntry}
+      labels={props.labels}
+      palette={palette}
+      onClose={() => setActivityEntry(null)}
+      onEdit={editEntry}
+      onDelete={deleteEntry} />
+  </>;
 }
 
 export function mountHistoryFeed(host, props) {

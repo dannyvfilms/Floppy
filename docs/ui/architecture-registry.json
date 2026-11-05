@@ -782,16 +782,16 @@
       "register": "HISTORY",
       "verification": {
         "web": {
-          "status": "verified",
-          "evidence": "Chromium (local gunicorn, seeded manual movies, 1280x900): the browser adapter mounted into data-history-feed-root, rendered the seeded day rows with Activity and Edit actions, and logged no console errors. Lazy days, load-more, the activity/edit dialogs, filters, cache refresh and accessibility behaviour were not exercised."
+          "status": "unverified",
+          "evidence": "The adapter and feed compiled in npm run build:ui; node checks cover the bounded model and transport. The prior Chromium pass covered only the day rows. Month navigation, filters, cache banner, lazy days, load-more, pagination and the shared activity dialog were not exercised in a browser in this pass."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Not exercised; the iOS pass rendered Home only."
+          "evidence": "Not exercised in this pass; no iOS runtime was started."
         },
         "android": {
-          "status": "verified",
-          "evidence": "Android 15 Pixel 7 AVD: rendered the earlier shared History feed; the activity, edit and delete dialogs, filters, lazy-day and TalkBack interaction were not exercised; demo images did not load."
+          "status": "unverified",
+          "evidence": "Not exercised in this pass. The earlier Android pass rendered only the earlier shared feed; the new chrome, activity dialog and transport were not run."
         }
       }
     },
@@ -2580,7 +2580,7 @@
     },
     "frontend/ui/mountHistoryFeed.jsx": {
       "register": "HISTORY",
-      "purpose": "Browser feed adapter for the shared History feed: read the bounded initial model and JSON day slices, load lazy/load-more days, open the existing track modal through ModalHost, open the server activity-session dialog, delete through the existing route, and keep filter/save-view URLs; month navigation, the Alpine filter sheet, cache banner and pagination remain server-owned."
+      "purpose": "Browser feed adapter for the shared History feed: read the bounded initial model, JSON day slices and bounded activity sessions, load lazy/load-more days, own month navigation, filters and lazy genre options, dismiss/reload the cache banner, page filtered views, open edits through ModalHost, and keep filter/save-view URLs while the server template keeps its no-JS fallback and detail-page session modal."
     },
     "frontend/ui/mountReleaseCalendar.jsx": {
       "register": "RELEASE-CALENDAR",
