@@ -4,6 +4,7 @@ import { Note } from '../components/Note';
 
 const surface = {
   id: 'TAGS',
+  status: 'in_progress',
   title: 'Tags',
   where: 'Tag index and assignment',
   note: 'Tag search, assignment, bulk tagging and library-wide deletion will replace this note.',
