@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
-import { PersonHero, StudioHero } from './People';
+import { MediumExtras, PersonCard, PersonHero, StudioHero } from './People';
+import { Rail } from './Rail';
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;
@@ -35,6 +36,10 @@ function readPalette() {
     accentStrong: color('--color-accent-strong', '#4f46e5'),
     accentContrast: '#ffffff',
     link: color('--color-link', '#818cf8'),
+    star: '#facc15',
+    placeholder: color('--color-surface-strong', '#3f3f46'),
+    chipBackground: 'rgba(24, 24, 27, 0.92)',
+    chipText: '#ffffff',
     radius: 8,
     radiusSmall: 6,
   };
@@ -55,6 +60,46 @@ function openExternal(url) {
   if (url) window.open(url, '_blank', 'noopener,noreferrer');
 }
 
+function openInternal(url) {
+  if (url) window.location.assign(url);
+}
+
+function readCollapsed(key) {
+  if (!key) return false;
+  try {
+    return window.localStorage.getItem(key) === 'false';
+  } catch (_) {
+    return false;
+  }
+}
+
+function CastRail({ props, palette }) {
+  const [collapsed, setCollapsed] = useState(() => readCollapsed(props.collapseKey));
+  useEffect(() => {
+    if (!props.collapseKey) return;
+    try {
+      window.localStorage.setItem(props.collapseKey, collapsed ? 'false' : 'true');
+    } catch (_) {}
+  }, [props.collapseKey, collapsed]);
+  const viewAll = props.viewAll ? {
+    label: props.viewAll.label,
+    onPress: () => openInternal(props.viewAll.href),
+  } : undefined;
+  return <Rail items={props.items} title={props.title}
+    palette={{
+      ...palette,
+      surfaceHover: palette.surfaceStrong,
+      arrow: palette.textSecondary,
+      arrowDisabled: palette.surfaceMuted,
+      loading: palette.accent,
+    }}
+    renderItem={person => <PersonCard person={person} labels={props.labels}
+      palette={palette} onOpen={entry => openInternal(entry.href)} />}
+    itemWidth={132} viewAll={viewAll}
+    collapsible={Boolean(props.collapseKey)} collapsed={props.collapseKey ? collapsed : undefined}
+    onCollapsedChange={props.collapseKey ? setCollapsed : undefined} />;
+}
+
 function Adapter({ props }) {
   const [palette, setPalette] = useState(readPalette);
 
@@ -69,6 +114,15 @@ function Adapter({ props }) {
       scheme.removeEventListener('change', update);
     };
   }, []);
+
+  if (props.kind === 'cast') {
+    return <CastRail props={props} palette={palette} />;
+  }
+
+  if (props.kind === 'extras') {
+    return <MediumExtras gameLengths={props.gameLengths} youtubeWatch={props.youtubeWatch}
+      labels={props.labels} palette={palette} onOpenSource={openExternal} />;
+  }
 
   if (props.kind === 'studio') {
     return <StudioHero
