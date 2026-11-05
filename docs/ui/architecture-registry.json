@@ -1,27 +1,5 @@
 {
   "universal": {
-    "frontend/ui/MetadataReview.jsx": {
-      "components": [
-        "EpisodeOrdering",
-        "TvProviderSwitch",
-        "MetadataMatchResults"
-      ],
-      "register": "METADATA-REVIEW",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Mount adapters compile the chooser, review, provider-move confirmation and match-result choices into the settings-islands bundle. No browser interaction pass was performed for this port."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared components through the native MetadataReview screen; ordering choices, provider move and remap interactions were not exercised on a simulator or device."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared components through the native MetadataReview screen; ordering choices, provider move and remap interactions were not exercised on an emulator or device."
-        }
-      }
-    },
     "frontend/auth/AuthEntrance.jsx": {
       "components": [
         "AuthEntrance",
@@ -318,26 +296,6 @@
         "android": {
           "status": "unverified",
           "evidence": "Compiled in the native shell but not opened on Android; no breakdown interaction."
-        }
-      }
-    },
-    "frontend/ui/ProgressDialog.jsx": {
-      "components": [
-        "ProgressDialog"
-      ],
-      "register": "PROGRESS",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Mounted through the browser detail adapter and compiled into the web bundles; dialog opening, Escape and focus were not exercised in a browser during this change."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Not exercised."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native progress slot; no emulator dialog pass was performed."
         }
       }
     },
@@ -1115,26 +1073,6 @@
         "android": {
           "status": "unverified",
           "evidence": "Compiled by the Expo export through the MediaCardSlot native placement; no tab interaction pass."
-        }
-      }
-    },
-    "frontend/ui/BulkEpisodeForm.jsx": {
-      "components": [
-        "BulkEpisodeForm"
-      ],
-      "register": "TRACKING",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Rendered by mountBulkEpisodeForm inside the server Episode Plays tab for TV, anime, season, podcast-show and music album range saves; the web bundle builds and the track-modal/bulk Django tests pass, but no browser interaction pass was run."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Not placed in the native shell; the native media-card Track body keeps its per-item General form and consumption history."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Not placed in the native shell; the native media-card Track body keeps its per-item General form and consumption history."
         }
       }
     },
@@ -1960,6 +1898,108 @@
         }
       }
     },
+    "frontend/ui/DeviceConnect.jsx": {
+      "components": [
+        "DeviceConnectCard"
+      ],
+      "register": "DEVICE-CONNECT",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Mounted by the device-connect web adapter over the server fallback; no browser pass was run."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by Expo export --platform all through the native Connections screen; no simulator interaction or VoiceOver pass was run."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by Expo export --platform all through the native Connections screen; no emulator interaction or TalkBack pass was run."
+        }
+      }
+    },
+    "frontend/ui/StremioConfigurator.jsx": {
+      "components": [
+        "StremioAddonConfigurator"
+      ],
+      "register": "STREMIO",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Mounted by the Stremio configure-page adapter over the server fallback; no browser pass was run."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by Expo export --platform all through the native Connections screen; no simulator interaction or VoiceOver pass was run."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by Expo export --platform all through the native Connections screen; no emulator interaction or TalkBack pass was run."
+        }
+      }
+    },
+    "frontend/ui/MetadataReview.jsx": {
+      "components": [
+        "EpisodeOrdering",
+        "TvProviderSwitch",
+        "MetadataMatchResults"
+      ],
+      "register": "METADATA-REVIEW",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Mount adapters compile the chooser, review, provider-move confirmation and match-result choices into the settings-islands bundle. No browser interaction pass was performed for this port."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared components through the native MetadataReview screen; ordering choices, provider move and remap interactions were not exercised on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared components through the native MetadataReview screen; ordering choices, provider move and remap interactions were not exercised on an emulator or device."
+        }
+      }
+    },
+    "frontend/ui/ProgressDialog.jsx": {
+      "components": [
+        "ProgressDialog"
+      ],
+      "register": "PROGRESS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Mounted through the browser detail adapter and compiled into the web bundles; dialog opening, Escape and focus were not exercised in a browser during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native progress slot; no emulator dialog pass was performed."
+        }
+      }
+    },
+    "frontend/ui/BulkEpisodeForm.jsx": {
+      "components": [
+        "BulkEpisodeForm"
+      ],
+      "register": "TRACKING",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Rendered by mountBulkEpisodeForm inside the server Episode Plays tab for TV, anime, season, podcast-show and music album range saves; the web bundle builds and the track-modal/bulk Django tests pass, but no browser interaction pass was run."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not placed in the native shell; the native media-card Track body keeps its per-item General form and consumption history."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not placed in the native shell; the native media-card Track body keeps its per-item General form and consumption history."
+        }
+      }
+    },
     "frontend/ui/Sidebar.jsx": {
       "components": [
         "Sidebar"
@@ -2446,50 +2486,6 @@
         }
       }
     },
-    "frontend/ui/ProgressCard.web.jsx": {
-      "kind": "presentation",
-      "register": "PROGRESS",
-      "components": [
-        "ProgressCard"
-      ],
-      "purpose": "Render the shared ProgressCard contract with the established detail-chip markup, watched-once bar, current-pass glow and teleported info tip so the phone card row keeps its CSS geometry.",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Compiled into the web bundle through the detail progress adapter; the card was not compared in a browser during this change."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Not applicable to this web implementation."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Not applicable to this web implementation."
-        }
-      }
-    },
-    "frontend/ui/ProgressCard.native.jsx": {
-      "kind": "presentation",
-      "register": "PROGRESS",
-      "components": [
-        "ProgressCard"
-      ],
-      "purpose": "Render the shared ProgressCard with React Native primitives on iOS and Android.",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Not applicable to this native implementation."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native progress slot; no simulator run was performed."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native progress slot; the wrapper itself was not exercised on an emulator during this change."
-        }
-      }
-    },
     "frontend/ui/RatingStarIcon.web.jsx": {
       "kind": "presentation",
       "components": [
@@ -2803,13 +2799,53 @@
           "evidence": "Compiled by the Expo export through the native notes slot and music editors; no emulator interaction pass."
         }
       }
+    },
+    "frontend/ui/ProgressCard.web.jsx": {
+      "kind": "presentation",
+      "register": "PROGRESS",
+      "components": [
+        "ProgressCard"
+      ],
+      "purpose": "Render the shared ProgressCard contract with the established detail-chip markup, watched-once bar, current-pass glow and teleported info tip so the phone card row keeps its CSS geometry.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Compiled into the web bundle through the detail progress adapter; the card was not compared in a browser during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to this web implementation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to this web implementation."
+        }
+      }
+    },
+    "frontend/ui/ProgressCard.native.jsx": {
+      "kind": "presentation",
+      "register": "PROGRESS",
+      "components": [
+        "ProgressCard"
+      ],
+      "purpose": "Render the shared ProgressCard with React Native primitives on iOS and Android.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not applicable to this native implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native progress slot; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native progress slot; the wrapper itself was not exercised on an emulator during this change."
+        }
+      }
     }
   },
   "web_adapters": {
-    "frontend/ui/mountMetadataReview.jsx": {
-      "register": "METADATA-REVIEW",
-      "purpose": "Browser adapter for the shared episode-order chooser/review, TV provider-move confirmation and remap/library-move result choices: post the existing Django actions with CSRF, keep HTMX result replacement for library moves, navigate existing item and detail URLs, and retain the server-rendered fallback."
-    },
     "frontend/settings/Chip.web.jsx": {
       "register": "SETTINGS-CARD",
       "purpose": "Browser link adapter for the shared chip: supplies anchor navigation and new-tab attributes, honors a caller-supplied palette for React-owned cards and falls back to the scoped web CSS-variable palette for server wrappers while the shared chip owns hover and focus."
@@ -2829,10 +2865,6 @@
     "frontend/ui/mountTrackForm.jsx": {
       "register": "TRACKING",
       "purpose": "Browser adapter for the shared Track dialog: read the serialized model and tab list, render General through TrackForm, Tags through TagAssignmentDialog, Status history and Discover through TrackTabs, move the server-owned Metadata/Collection/Episode plays sections into the dialog, keep the legacy shell as the no-JavaScript fallback, and submit, delete and rewatch through htmx so OOB fragments, HX-Trigger close/toast events, CSRF, permissions and repeat routes stay server-owned."
-    },
-    "frontend/ui/mountBulkEpisodeForm.jsx": {
-      "register": "TRACKING",
-      "purpose": "Browser adapter for the shared bulk episode/track range form: read the server serialized form model, hide the legacy form only when htmx is available, mirror the season/episode selection and date shortcuts, and post the same fields through htmx so Django validation, queued saves, close/toast triggers, CSRF and permissions stay server-owned."
     },
     "frontend/ui/mountModalHost.jsx": {
       "register": "SHELL",
@@ -2925,14 +2957,6 @@
     "frontend/ui/mountProgressBreakdown.jsx": {
       "register": "PROGRESS",
       "purpose": "Mount the shared progress breakdown into the fallback Alpine modal body and hide its server markup."
-    },
-    "frontend/ui/ProgressDetailTheme.web.jsx": {
-      "register": "PROGRESS",
-      "purpose": "Resolve document theme and mount the shared progress card and dialog over the existing htmx breakdown endpoint, cancel write, out-of-band card refresh and rewatch events while the Alpine card and modal stay as the server fallback."
-    },
-    "frontend/ui/mountProgressDetail.jsx": {
-      "register": "PROGRESS",
-      "purpose": "Mount the shared progress card and dialog into the detail card slot."
     },
     "frontend/ui/Rail.web.jsx": {
       "register": "RAILS",
@@ -3081,6 +3105,30 @@
     "frontend/ui/mountShell.jsx": {
       "register": "SHELL",
       "purpose": "Django/browser integration for the shared shell top bar and mobile navigation: resolve theme tokens, bridge the existing sidebar open state, lift the HTMX-boosted search island into the shared bar, keep public sign-in link semantics and render the overlay while the server fallback remains."
+    },
+    "frontend/ui/mountDeviceConnect.jsx": {
+      "register": "DEVICE-CONNECT",
+      "purpose": "Django/browser integration for the shared device-code card: poll the existing Trakt endpoint, follow its HTMX redirect, copy the code and open the activation page."
+    },
+    "frontend/ui/mountStremioConfig.jsx": {
+      "register": "STREMIO",
+      "purpose": "Standalone Stremio configure-page adapter: resolve the install base URL, copy the generated configuration and hand the install URL to the Stremio deep link."
+    },
+    "frontend/ui/mountMetadataReview.jsx": {
+      "register": "METADATA-REVIEW",
+      "purpose": "Browser adapter for the shared episode-order chooser/review, TV provider-move confirmation and remap/library-move result choices: post the existing Django actions with CSRF, keep HTMX result replacement for library moves, navigate existing item and detail URLs, and retain the server-rendered fallback."
+    },
+    "frontend/ui/mountBulkEpisodeForm.jsx": {
+      "register": "TRACKING",
+      "purpose": "Browser adapter for the shared bulk episode/track range form: read the server serialized form model, hide the legacy form only when htmx is available, mirror the season/episode selection and date shortcuts, and post the same fields through htmx so Django validation, queued saves, close/toast triggers, CSRF and permissions stay server-owned."
+    },
+    "frontend/ui/ProgressDetailTheme.web.jsx": {
+      "register": "PROGRESS",
+      "purpose": "Resolve document theme and mount the shared progress card and dialog over the existing htmx breakdown endpoint, cancel write, out-of-band card refresh and rewatch events while the Alpine card and modal stay as the server fallback."
+    },
+    "frontend/ui/mountProgressDetail.jsx": {
+      "register": "PROGRESS",
+      "purpose": "Mount the shared progress card and dialog into the detail card slot."
     },
     "frontend/ui/DetailChildrenTheme.web.jsx": {
       "register": "CHILDREN",
