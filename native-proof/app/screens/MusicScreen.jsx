@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import { DetailHistoryDialog } from '../../../frontend/ui/DetailChildren';
 import { Screen } from '../components/Screen';
 import {
@@ -18,6 +19,7 @@ import {
   findTrack,
   flattenAlbums,
 } from '../data/musicDemo';
+import { createMusicTransport } from '../data/musicTransport';
 import { palette } from '../theme';
 
 const surface = {
@@ -25,7 +27,7 @@ const surface = {
   status: 'in_progress',
   title: 'Music and podcasts',
   where: 'Artist, album, track and podcast detail',
-  note: 'Artist relations, discography, album tracks, per-track notes, scores and play history, show/episode filtering, pagination, repeats and podcast tracking now use the shared React Native presentation with realistic demo data. The web artist, album, track and podcast pages remain server-owned and keep their permissions, feed and RSS refresh, tracking writes and progressive fallback, so the surface stays in progress until transport and the remaining web controls are mapped.',
+  note: 'Artist relations, discography, album tracks, per-track notes, scores and play history, show/episode filtering, pagination, repeats and podcast tracking use the shared React Native presentation. The native feature boundary now maps the music and podcast REST endpoints, and the web artist relation grids adopt the same shared cards over their server fallback. The remaining music and podcast web controls stay server-owned with their permissions, feed and RSS refresh, tracking writes and progressive fallback, so the surface stays in progress.',
 };
 
 const TABS = [
@@ -35,6 +37,11 @@ const TABS = [
 ];
 
 const EMPTY_DIALOG = null;
+
+function remoteId(value) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : null;
+}
 
 function sortDescending(entries) {
   return [...entries].sort((left, right) => (
@@ -94,7 +101,9 @@ function showHistoryRows(episodes) {
   })));
 }
 
-export default function MusicScreen({ onBack }) {
+export default function MusicScreen({ onBack, transport: injectedTransport }) {
+  const [transport] = useState(() => injectedTransport || createMusicTransport());
+  const [transportError, setTransportError] = useState('');
   const [library, setLibrary] = useState(createMusicLibrary);
   const [tab, setTab] = useState('artist');
   const [selectedAlbumId, setSelectedAlbumId] = useState(() => flattenAlbums(createMusicLibrary().artist)[0].id);
@@ -106,6 +115,14 @@ export default function MusicScreen({ onBack }) {
 
   const artist = library.artist;
   const albums = flattenAlbums(artist);
+
+  function persist(action, payload) {
+    if (transport.mode !== 'server') return;
+    setTransportError('');
+    transport[action](payload).catch(error => {
+      setTransportError(error?.message || 'The server rejected the music change.');
+    });
+  }
   const album = findAlbum(library, selectedAlbumId) || albums[0];
   const selected = selectedTrackId ? findTrack(library, selectedTrackId) : null;
   const show = library.show;
@@ -188,6 +205,10 @@ export default function MusicScreen({ onBack }) {
           repeat: track.listens.length > 0,
         }, ...track.listens],
       }));
+      const found = findTrack(library, dialog.id);
+      const albumId = remoteId(found?.album?.albumId ?? found?.album?.id);
+      const trackId = remoteId(found?.track?.trackId ?? found?.track?.id);
+      if (albumId) persist('addListen', { albumId, trackId, endDate: `${date}T${time}:00` });
     } else {
       updateEpisode(dialog.id, episode => ({
         ...episode,
@@ -200,6 +221,9 @@ export default function MusicScreen({ onBack }) {
           repeat: episode.plays.length > 0,
         }, ...episode.plays],
       }));
+      const showId = remoteId(show.showId ?? show.id);
+      const episodeId = remoteId(dialog.id);
+      if (showId) persist('addEpisodePlay', { showId, episodeId, endDate: `${date}T${time}:00` });
     }
     setDialog(EMPTY_DIALOG);
   }
@@ -220,10 +244,16 @@ export default function MusicScreen({ onBack }) {
     if (!dialog) return;
     if (dialog.target === 'artist') {
       updateArtist(current => ({ ...current, status: draft.status, score: draft.score, notes: draft.notes }));
+      const artistId = remoteId(artist.artistId ?? artist.id);
+      if (artistId) persist('saveArtist', { artistId, ...draft });
     } else if (dialog.target === 'album') {
       updateAlbum(dialog.id, current => ({ ...current, status: draft.status, score: draft.score, notes: draft.notes }));
+      const albumId = remoteId(album.albumId ?? album.id);
+      if (albumId) persist('saveAlbum', { albumId, ...draft });
     } else {
       updateShow(current => ({ ...current, status: draft.status, score: draft.score, notes: draft.notes }));
+      const showId = remoteId(show.showId ?? show.id);
+      if (showId) persist('saveShow', { showId, ...draft });
     }
     setDialog(EMPTY_DIALOG);
   }
@@ -240,14 +270,20 @@ export default function MusicScreen({ onBack }) {
 
   function rateArtist(score) {
     updateArtist(current => ({ ...current, score }));
+    const artistId = remoteId(artist.artistId ?? artist.id);
+    if (artistId) persist('saveArtist', { artistId, score });
   }
 
   function rateAlbum(score) {
     updateAlbum(album.id, current => ({ ...current, score }));
+    const albumId = remoteId(album.albumId ?? album.id);
+    if (albumId) persist('saveAlbum', { albumId, score });
   }
 
   function rateTrack(track, score) {
     updateTrack(track.id, current => ({ ...current, score }));
+    const musicId = remoteId(track.musicId);
+    if (musicId) persist('rateTrack', { musicId, score });
   }
 
   function rateEpisode(episode, score) {
@@ -298,6 +334,11 @@ export default function MusicScreen({ onBack }) {
   }[dialog.target] : null;
 
   return <Screen title="Music" subtitle="Artist, album and podcast detail" onBack={onBack}>
+    {transportError
+      ? <View style={styles.notice}>
+        <Text accessibilityLiveRegion="polite" style={styles.noticeText}>{transportError}</Text>
+      </View>
+      : null}
     <MusicTabs tabs={TABS} active={tab} onChange={changeTab} />
 
     {tab === 'artist'
@@ -377,3 +418,15 @@ export default function MusicScreen({ onBack }) {
       onClose={() => setDialog(EMPTY_DIALOG)} />
   </Screen>;
 }
+
+const styles = StyleSheet.create({
+  notice: {
+    borderWidth: 1,
+    borderColor: 'rgba(248, 113, 113, 0.4)',
+    borderRadius: 8,
+    backgroundColor: 'rgba(248, 113, 113, 0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  noticeText: { color: palette.danger, fontSize: 13 },
+});

@@ -2503,6 +2503,45 @@ def filter_chips_react(options, label):
     }
 
 
+@register.simple_tag(takes_context=True)
+def music_relations_react(context, relations):
+    """Return the shared relation-card grid props for an artist page."""
+    items = []
+    for relation in relations or []:
+        artist = relation.get("artist")
+        if artist is None:
+            continue
+        tracker = relation.get("tracker")
+        image = artist.image or ""
+        if image == settings.IMG_NONE:
+            image = ""
+        items.append(
+            {
+                "id": artist.id,
+                "name": artist.name,
+                "image": image_cache.rewrite_image_url(image) if image else "",
+                "href": music_artist_url(artist),
+                "role": relation.get("role") or "",
+                "current": bool(relation.get("is_current")),
+                "status": tracker.status if tracker else None,
+                "score": float(tracker.score)
+                if tracker and tracker.score is not None
+                else None,
+            }
+        )
+    return {
+        "id": f"music-relations-{uuid4().hex[:8]}",
+        "props": {
+            "relations": items,
+            "labels": {
+                "former": str(_("Former")),
+                "rate": str(_("Rate")),
+                "close": str(_("Close")),
+            },
+        },
+    }
+
+
 # Icons the detail action row may hold, in display order. Below 400px wide the
 # row keeps this many cells (the More menu is one of them) so each stays tappable.
 DETAIL_ROW_PHONE_CAP = 5
