@@ -49,7 +49,7 @@ function readPalette() {
 function runAction(model, action) {
   if (!action) return;
   if (action.kind === 'link') {
-    window.location.assign(action.href);
+    if (action.href) window.location.assign(action.href);
     return;
   }
   if (action.kind === 'post') {
@@ -94,9 +94,9 @@ function Adapter({ props }) {
     model={props.model}
     labels={props.labels}
     palette={palette}
-    onOpen={model => window.location.assign(model.href)}
-    onOpenLink={href => window.location.assign(href)}
-    onOpenExternal={url => window.open(url, '_blank', 'noopener,noreferrer')}
+    onOpen={model => { if (model?.href) window.location.assign(model.href); }}
+    onOpenLink={href => { if (href) window.location.assign(href); }}
+    onOpenExternal={url => { if (url) window.open(url, '_blank', 'noopener,noreferrer'); }}
     onAction={runAction}
     onRate={rate}
     renderActionIcon={action => <Icon spec={action.icon} />} />;

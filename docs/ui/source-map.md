@@ -445,7 +445,7 @@ Server-owned detail composition retained behind the fallback:
 Shared React Native presentation, native placement and browser adapter:
 
 - `frontend/ui/DetailRelated.jsx` (related sections, media cards, show-more, Steam DLC links and empty/loading states)
-- `frontend/ui/DetailRelatedTheme.web.jsx`
+- `frontend/ui/DetailRelatedTheme.web.jsx` (theme tokens, card actions, rating writes and external store navigation only)
 - `frontend/ui/mountDetailRelated.jsx`
 - `native-proof/app/surfaces/DetailRelatedSlot.jsx` (native related media on the Detail screen)
 - `src/templates/app/components/detail_related.html` (server fallback and island host)
