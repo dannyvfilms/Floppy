@@ -1,6 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { StatisticsSummary } from '../../../frontend/ui/StatisticsSummary';
 import { StatisticsCharts } from '../../../frontend/ui/StatisticsCharts';
+import {
+  StatisticsComparison,
+  StatisticsMediaTypeOverviews,
+  StatisticsTalentSection,
+} from '../../../frontend/ui/StatisticsSections';
 import { Screen, Section } from '../components/Screen';
 import { statisticsPalette } from '../theme';
 
@@ -9,7 +14,7 @@ export const surface = {
   status: 'in_progress',
   title: 'Statistics summary, charts, talent and per-media overviews',
   where: 'Statistics screen summary cards, highlights, controls, charts, comparison, taste/talent, role/studio leaders and per-media-type overviews',
-  note: 'The summary hero, highlight cards, five summary cards, activity comparison, chart families and featured repeat use the shared React Native presentation. Porting comparison controls, taste/talent signals, role/studio leaders and per-media-type overviews.',
+  note: 'The summary, charts, featured repeat, comparison, taste/talent signals, role/studio leaders and per-media-type overviews render with shared React Native presentation and demo data. Remaining: production data transport and permissions, the person media strip, and the reading release/completed-length and game daily-average detail charts. iOS and Android runtime are unverified.',
 };
 
 const charts = {
@@ -709,6 +714,542 @@ function demoChartsFor(types) {
   };
 }
 
+const comparisonOptions = [
+  { value: 'previous_period', label: 'Previous period' },
+  { value: 'last_year', label: 'Last year' },
+  { value: 'none', label: 'No comparison' },
+];
+
+const comparisonRows = {
+  previous_period: [
+    { key: 'tv', type: 'tv', label: 'TV Shows', color: '#10b981', currentLabel: '318h', comparisonLabel: '286h', deltaLabel: '+11%', state: 'up' },
+    { key: 'movie', type: 'movie', label: 'Movies', color: '#f97316', currentLabel: '162h', comparisonLabel: '151h', deltaLabel: '+7%', state: 'up' },
+    { key: 'anime', type: 'anime', label: 'Anime', color: '#3b82f6', currentLabel: '96h', comparisonLabel: '79h', deltaLabel: '+22%', state: 'up' },
+    { key: 'game', type: 'game', label: 'Games', color: '#eab308', currentLabel: '104h', comparisonLabel: '108h', deltaLabel: '-4%', state: 'down' },
+    { key: 'music', type: 'music', label: 'Music', color: '#fb7185', currentLabel: '34h', comparisonLabel: '33h', deltaLabel: '+3%', state: 'up' },
+    { key: 'podcast', type: 'podcast', label: 'Podcasts', color: '#a855f7', currentLabel: '42h', comparisonLabel: '39h', deltaLabel: '+9%', state: 'up' },
+    { key: 'book', type: 'book', label: 'Books', color: '#d946ef', currentLabel: '58h', comparisonLabel: '55h', deltaLabel: '+5%', state: 'up' },
+    { key: 'comic', type: 'comic', label: 'Comics', color: '#06b6d4', currentLabel: '12h', comparisonLabel: '12h', deltaLabel: '0%', state: 'neutral' },
+  ],
+  last_year: [
+    { key: 'tv', type: 'tv', label: 'TV Shows', color: '#10b981', currentLabel: '318h', comparisonLabel: '244h', deltaLabel: '+30%', state: 'up' },
+    { key: 'movie', type: 'movie', label: 'Movies', color: '#f97316', currentLabel: '162h', comparisonLabel: '138h', deltaLabel: '+17%', state: 'up' },
+    { key: 'anime', type: 'anime', label: 'Anime', color: '#3b82f6', currentLabel: '96h', comparisonLabel: '74h', deltaLabel: '+30%', state: 'up' },
+    { key: 'game', type: 'game', label: 'Games', color: '#eab308', currentLabel: '104h', comparisonLabel: '92h', deltaLabel: '+13%', state: 'up' },
+    { key: 'music', type: 'music', label: 'Music', color: '#fb7185', currentLabel: '34h', comparisonLabel: '29h', deltaLabel: '+17%', state: 'up' },
+    { key: 'podcast', type: 'podcast', label: 'Podcasts', color: '#a855f7', currentLabel: '42h', comparisonLabel: '31h', deltaLabel: '+35%', state: 'up' },
+    { key: 'book', type: 'book', label: 'Books', color: '#d946ef', currentLabel: '58h', comparisonLabel: '47h', deltaLabel: '+23%', state: 'up' },
+    { key: 'comic', type: 'comic', label: 'Comics', color: '#06b6d4', currentLabel: '12h', comparisonLabel: '16h', deltaLabel: '-25%', state: 'down' },
+  ],
+  none: [
+    { key: 'tv', type: 'tv', label: 'TV Shows', color: '#10b981', currentLabel: '318h' },
+    { key: 'movie', type: 'movie', label: 'Movies', color: '#f97316', currentLabel: '162h' },
+    { key: 'anime', type: 'anime', label: 'Anime', color: '#3b82f6', currentLabel: '96h' },
+    { key: 'game', type: 'game', label: 'Games', color: '#eab308', currentLabel: '104h' },
+    { key: 'music', type: 'music', label: 'Music', color: '#fb7185', currentLabel: '34h' },
+    { key: 'podcast', type: 'podcast', label: 'Podcasts', color: '#a855f7', currentLabel: '42h' },
+    { key: 'book', type: 'book', label: 'Books', color: '#d946ef', currentLabel: '58h' },
+    { key: 'comic', type: 'comic', label: 'Comics', color: '#06b6d4', currentLabel: '12h' },
+  ],
+};
+
+function demoComparisonFor(mode, types) {
+  const rows = comparisonRows[mode] || comparisonRows.previous_period;
+  const filtered = types.length ? rows.filter(row => types.includes(row.type)) : rows;
+  const label = (comparisonOptions.find(option => option.value === mode) || comparisonOptions[0]).label;
+  return {
+    title: 'Comparison',
+    copy: mode === 'none'
+      ? 'Hours in this range. Choose a period to compare.'
+      : `Hours in this range compared with ${label.toLowerCase()}.`,
+    selected: mode,
+    options: comparisonOptions,
+    rows: filtered,
+  };
+}
+
+const roleLeaderBuckets = [
+  {
+    bucket: 'actors',
+    label: 'Actors',
+    color: '#60a5fa',
+    people: [
+      { id: 'maya-chen', name: 'Maya Chen', source: 'tmdb', personId: 'maya-chen', plays: 18, time: '42h 10m', titles: 9 },
+      { id: 'owen-park', name: 'Owen Park', source: 'tmdb', personId: 'owen-park', plays: 15, time: '36h 24m', titles: 8 },
+      { id: 'theo-brooks', name: 'Theo Brooks', source: 'tmdb', personId: 'theo-brooks', plays: 12, time: '28h 05m', titles: 7 },
+    ],
+  },
+  {
+    bucket: 'actresses',
+    label: 'Actresses',
+    color: '#c084fc',
+    people: [
+      { id: 'lena-ortiz', name: 'Lena Ortiz', source: 'tmdb', personId: 'lena-ortiz', plays: 16, time: '38h 40m', titles: 8 },
+      { id: 'ada-quinn', name: 'Ada Quinn', source: 'tmdb', personId: 'ada-quinn', plays: 13, time: '31h 12m', titles: 6 },
+      { id: 'rae-mitchell', name: 'Rae Mitchell', source: 'tmdb', personId: 'rae-mitchell', plays: 11, time: '26h 48m', titles: 6 },
+    ],
+  },
+  {
+    bucket: 'directors',
+    label: 'Directors',
+    color: '#fb923c',
+    people: [
+      { id: 'reed-mason', name: 'Reed Mason', source: 'tmdb', personId: 'reed-mason', plays: 9, time: '22h 16m', titles: 5 },
+      { id: 'ines-hart', name: 'Ines Hart', source: 'tmdb', personId: 'ines-hart', plays: 7, time: '17h 32m', titles: 4 },
+      { id: 'jules-ward', name: 'Jules Ward', source: 'tmdb', personId: 'jules-ward', plays: 6, time: '14h 05m', titles: 3 },
+    ],
+  },
+  {
+    bucket: 'writers',
+    label: 'Writers',
+    color: '#34d399',
+    people: [
+      { id: 'ana-silva', name: 'Ana Silva', source: 'tmdb', personId: 'ana-silva', plays: 12, time: '27h 30m', titles: 7 },
+      { id: 'noah-vance', name: 'Noah Vance', source: 'tmdb', personId: 'noah-vance', plays: 9, time: '21h 18m', titles: 5 },
+      { id: 'clara-bell', name: 'Clara Bell', source: 'tmdb', personId: 'clara-bell', plays: 8, time: '19h 02m', titles: 4 },
+    ],
+  },
+];
+
+function demoRoleLeadersFor(sort, selectedKey) {
+  const metric = entry => sort === 'time'
+    ? entry.time
+    : sort === 'titles'
+      ? entry.titles
+      : entry.plays;
+  return {
+    title: 'Role Leaders',
+    copy: 'The actors, directors and writers you return to most.',
+    selected: sort,
+    sortOptions: [
+      { value: 'plays', label: 'Plays' },
+      { value: 'time', label: 'Time' },
+      { value: 'titles', label: 'Titles' },
+    ],
+    columns: roleLeaderBuckets.map(bucket => ({
+      ...bucket,
+      entries: bucket.people.map(person => ({
+        ...person,
+        selected: `${person.source}:${person.personId}` === selectedKey,
+        displayMetric: metric(person),
+      })),
+    })),
+  };
+}
+
+const studioRows = {
+  plays: [
+    { name: 'A24', plays: 24, pct: 18, metricLabel: '24 plays' },
+    { name: 'HBO', plays: 21, pct: 16, metricLabel: '21 plays' },
+    { name: 'Netflix', plays: 18, pct: 14, metricLabel: '18 plays' },
+    { name: 'Studio Trigger', plays: 13, pct: 10, metricLabel: '13 plays' },
+    { name: 'Larian Studios', plays: 9, pct: 7, metricLabel: '9 plays' },
+  ],
+  time: [
+    { name: 'HBO', time: '68h 12m', pct: 20, metricLabel: '68h 12m' },
+    { name: 'A24', time: '52h 40m', pct: 16, metricLabel: '52h 40m' },
+    { name: 'Netflix', time: '44h 15m', pct: 13, metricLabel: '44h 15m' },
+    { name: 'Studio Trigger', time: '32h 08m', pct: 10, metricLabel: '32h 08m' },
+    { name: 'Larian Studios', time: '28h 24m', pct: 9, metricLabel: '28h 24m' },
+  ],
+};
+
+function demoStudioFootprintFor(sort) {
+  return {
+    title: 'Studio Footprint',
+    copy: 'Studios that appear most often.',
+    selected: sort,
+    sortOptions: [
+      { value: 'plays', label: 'Plays' },
+      { value: 'time', label: 'Time' },
+    ],
+    delta: { label: '+6.4%', copy: 'studio appearances vs previous period', state: 'up' },
+    studios: studioRows[sort] || studioRows.plays,
+  };
+}
+
+const tasteSignals = {
+  time: {
+    genres: [
+      { name: 'Drama', formattedDuration: '182h', pct: 31, color: '#3b82f6' },
+      { name: 'Science Fiction', formattedDuration: '126h', pct: 22, color: '#8b5cf6' },
+      { name: 'Comedy', formattedDuration: '94h', pct: 16, color: '#f59e0b' },
+      { name: 'Thriller', formattedDuration: '78h', pct: 13, color: '#ef4444' },
+      { name: 'Documentary', formattedDuration: '52h', pct: 9, color: '#10b981' },
+    ],
+    eras: [
+      { label: '2020s', formattedDuration: '214h', pct: 38 },
+      { label: '2010s', formattedDuration: '158h', pct: 28 },
+      { label: '1990s', formattedDuration: '92h', pct: 16 },
+      { label: '2000s', formattedDuration: '64h', pct: 11 },
+      { label: '1980s', formattedDuration: '38h', pct: 7 },
+    ],
+  },
+  plays: {
+    genres: [
+      { name: 'Drama', plays: 84, pct: 29, color: '#3b82f6' },
+      { name: 'Science Fiction', plays: 66, pct: 23, color: '#8b5cf6' },
+      { name: 'Comedy', plays: 49, pct: 17, color: '#f59e0b' },
+      { name: 'Thriller', plays: 38, pct: 13, color: '#ef4444' },
+      { name: 'Documentary', plays: 24, pct: 8, color: '#10b981' },
+    ],
+    eras: [
+      { label: '2020s', plays: 96, pct: 36 },
+      { label: '2010s', plays: 74, pct: 28 },
+      { label: '1990s', plays: 46, pct: 17 },
+      { label: '2000s', plays: 32, pct: 12 },
+      { label: '1980s', plays: 18, pct: 7 },
+    ],
+  },
+};
+
+function demoTasteSignalsFor(sort) {
+  const selected = tasteSignals[sort] || tasteSignals.time;
+  return {
+    title: 'Taste Signals',
+    copy: 'What your library says about your taste.',
+    selected: sort,
+    sortOptions: [
+      { value: 'time', label: 'Time' },
+      { value: 'plays', label: 'Plays' },
+    ],
+    genres: selected.genres,
+    eras: selected.eras,
+  };
+}
+
+function overviewItem(title, subtitle, seed, value) {
+  return {
+    key: seed,
+    title,
+    subtitle,
+    value,
+    image: `https://picsum.photos/seed/floppy-${seed}/120/120`,
+  };
+}
+
+const mediaOverviews = [
+  {
+    id: 'tv',
+    typeValue: 'tv',
+    typeLabel: 'TV Shows',
+    title: 'Activity Overview',
+    charts: [
+      { key: 'tv-year', title: 'Episode Plays by Year', labels: ['2022', '2023', '2024', '2025', '2026'], data: [420, 486, 512, 548, 96], color: '#10b981' },
+    ],
+    panels: [
+      {
+        key: 'tv-most-played',
+        title: 'Most Played',
+        items: [
+          overviewItem('The Quiet Orbit', '38h 12m · 48 episodes', 'tv-orbit', '9.1'),
+          overviewItem('Harbour Lights', '29h 40m · 36 episodes', 'tv-harbour', '8.8'),
+          overviewItem('Northbound', '24h 05m · 28 episodes', 'tv-north', '8.6'),
+        ],
+      },
+      {
+        key: 'tv-top-rated',
+        title: 'Top Rated',
+        items: [
+          overviewItem('The Quiet Orbit', 'Drama · 2024', 'tv-orbit', '9.1'),
+          overviewItem('Harbour Lights', 'Mystery · 2023', 'tv-harbour', '8.8'),
+          overviewItem('Northbound', 'Adventure · 2025', 'tv-north', '8.6'),
+        ],
+      },
+    ],
+  },
+  {
+    id: 'movie',
+    typeValue: 'movie',
+    typeLabel: 'Movies',
+    title: 'Activity Overview',
+    charts: [
+      { key: 'movie-year', title: 'Movie Plays by Year', labels: ['2022', '2023', '2024', '2025', '2026'], data: [38, 42, 47, 51, 12], color: '#f97316' },
+    ],
+    panels: [
+      {
+        key: 'movie-most-played',
+        title: 'Most Played',
+        items: [
+          overviewItem('Dune: Part Two', '2h 46m · 4 plays', 'movie-dune', '4'),
+          overviewItem('Arrival', '1h 56m · 3 plays', 'movie-arrival', '3'),
+          overviewItem('The Batman', '2h 56m · 2 plays', 'movie-batman', '2'),
+        ],
+      },
+      {
+        key: 'movie-top-rated',
+        title: 'Top Rated',
+        items: [
+          overviewItem('Dune: Part Two', 'Science Fiction · 2024', 'movie-dune', '9.2'),
+          overviewItem('Arrival', 'Science Fiction · 2016', 'movie-arrival', '9.0'),
+          overviewItem('Past Lives', 'Drama · 2023', 'movie-past-lives', '8.8'),
+        ],
+      },
+    ],
+  },
+  {
+    id: 'anime',
+    typeValue: 'anime',
+    typeLabel: 'Anime',
+    title: 'Activity Overview',
+    charts: [
+      { key: 'anime-year', title: 'Episode Plays by Year', labels: ['2022', '2023', '2024', '2025', '2026'], data: [96, 118, 132, 146, 38], color: '#3b82f6' },
+    ],
+    panels: [
+      {
+        key: 'anime-most-played',
+        title: 'Most Played',
+        items: [
+          overviewItem('Frieren: Beyond Journey’s End', '18h 20m · 28 episodes', 'anime-frieren', '28'),
+          overviewItem('The Apothecary Diaries', '14h 05m · 24 episodes', 'anime-apothecary', '24'),
+          overviewItem('Vinland Saga', '11h 36m · 24 episodes', 'anime-vinland', '24'),
+        ],
+      },
+      {
+        key: 'anime-top-rated',
+        title: 'Top Rated',
+        items: [
+          overviewItem('Frieren: Beyond Journey’s End', 'Fantasy · 2024', 'anime-frieren', '9.4'),
+          overviewItem('The Apothecary Diaries', 'Mystery · 2024', 'anime-apothecary', '9.1'),
+          overviewItem('Vinland Saga', 'Action · 2023', 'anime-vinland', '8.9'),
+        ],
+      },
+    ],
+  },
+  {
+    id: 'game',
+    typeValue: 'game',
+    typeLabel: 'Video Games',
+    title: 'Activity Overview',
+    charts: [
+      { key: 'game-year', title: 'Game Hours by Year', labels: ['2022', '2023', '2024', '2025', '2026'], data: [48, 73, 92, 104, 64], color: '#eab308' },
+      { key: 'game-month', title: 'Game Hours by Month', labels: ['Jul', 'Aug', 'Sep', 'Oct', 'Nov'], data: [6, 9, 8, 12, 5], color: '#eab308' },
+    ],
+    panels: [
+      {
+        key: 'game-most-played',
+        title: 'Most Played',
+        items: [
+          overviewItem('Hades II', '28h 14m this range', 'game-hades', '28h'),
+          overviewItem('Balatro', '19h 40m this range', 'game-balatro', '19h'),
+          overviewItem('Elden Ring', '16h 05m this range', 'game-elden', '16h'),
+        ],
+      },
+      {
+        key: 'game-platforms',
+        title: 'Top Platforms',
+        items: [
+          overviewItem('PC', '42h · 8 games', 'game-pc', '42h'),
+          overviewItem('Nintendo Switch', '26h · 5 games', 'game-switch', '26h'),
+          overviewItem('PlayStation 5', '18h · 3 games', 'game-ps5', '18h'),
+        ],
+      },
+    ],
+  },
+  {
+    id: 'music',
+    typeValue: 'music',
+    typeLabel: 'Music',
+    title: 'Activity Overview',
+    charts: [
+      { key: 'music-year', title: 'Music Plays by Year', labels: ['2022', '2023', '2024', '2025', '2026'], data: [148, 184, 212, 236, 62], color: '#fb7185' },
+    ],
+    panels: [
+      {
+        key: 'music-artists',
+        title: 'Top Artists',
+        roundImages: true,
+        items: [
+          overviewItem('Maya Chen', '6h 20m · 48 plays', 'music-maya', '48'),
+          overviewItem('Low Tide', '4h 12m · 32 plays', 'music-low-tide', '32'),
+          overviewItem('Northbound', '3h 48m · 26 plays', 'music-northbound', '26'),
+        ],
+      },
+      {
+        key: 'music-albums',
+        title: 'Top Albums',
+        items: [
+          overviewItem('Afterglow', '3h 18m · 24 plays', 'music-afterglow', '24'),
+          overviewItem('Night Water', '2h 44m · 19 plays', 'music-night-water', '19'),
+          overviewItem('Signal Fires', '2h 05m · 16 plays', 'music-signal-fires', '16'),
+        ],
+      },
+      {
+        key: 'music-tracks',
+        title: 'Top Tracks',
+        items: [
+          overviewItem('Quiet Cities', '42m · 12 plays', 'music-quiet-cities', '12'),
+          overviewItem('Paper Moons', '36m · 10 plays', 'music-paper-moons', '10'),
+          overviewItem('Half Light', '31m · 9 plays', 'music-half-light', '9'),
+        ],
+      },
+      {
+        key: 'music-decades',
+        title: 'Top Decades',
+        items: [
+          overviewItem('2020s', '34h 12m · 84 plays', 'music-2020s', '84'),
+          overviewItem('2010s', '18h 40m · 52 plays', 'music-2010s', '52'),
+          overviewItem('1990s', '9h 06m · 24 plays', 'music-1990s', '24'),
+        ],
+      },
+      {
+        key: 'music-countries',
+        title: 'Top Countries',
+        items: [
+          overviewItem('United States', '26h 18m · 68 plays', 'music-us', '68'),
+          overviewItem('United Kingdom', '14h 42m · 44 plays', 'music-uk', '44'),
+          overviewItem('Japan', '8h 12m · 22 plays', 'music-japan', '22'),
+        ],
+      },
+    ],
+  },
+  {
+    id: 'podcast',
+    typeValue: 'podcast',
+    typeLabel: 'Podcasts',
+    title: 'Activity Overview',
+    charts: [
+      { key: 'podcast-year', title: 'Podcast Plays by Year', labels: ['2022', '2023', '2024', '2025', '2026'], data: [96, 124, 148, 172, 42], color: '#a855f7' },
+    ],
+    panels: [
+      {
+        key: 'podcast-most-played',
+        title: 'Most Played',
+        items: [
+          overviewItem('The Long View', '8 plays', 'podcast-long-view', '8'),
+          overviewItem('Design Notes', '7 plays', 'podcast-design-notes', '7'),
+          overviewItem('Field Recordings', '5 plays', 'podcast-field', '5'),
+        ],
+      },
+      {
+        key: 'podcast-most-listened',
+        title: 'Most Listened',
+        items: [
+          overviewItem('The Long View', '9h 12m · 8 plays', 'podcast-long-view', '9h'),
+          overviewItem('Design Notes', '7h 40m · 7 plays', 'podcast-design-notes', '7h'),
+          overviewItem('Field Recordings', '6h 05m · 5 plays', 'podcast-field', '6h'),
+        ],
+      },
+      {
+        key: 'podcast-longest',
+        title: 'Longest Episodes',
+        items: [
+          overviewItem('The Long View', '1h 48m', 'podcast-long-view', '1h 48m'),
+          overviewItem('Design Notes', '1h 22m', 'podcast-design-notes', '1h 22m'),
+          overviewItem('Field Recordings', '1h 05m', 'podcast-field', '1h 05m'),
+        ],
+      },
+    ],
+  },
+  {
+    id: 'book',
+    typeValue: 'book',
+    typeLabel: 'Books',
+    title: 'Activity Overview',
+    facts: [
+      { key: 'book-listening', label: 'Listening Time', value: '42h 18m', copy: 'Audiobook sessions in this range' },
+    ],
+    charts: [
+      { key: 'book-year', title: 'Books Completed by Year', labels: ['2022', '2023', '2024', '2025', '2026'], data: [12, 16, 18, 22, 6], color: '#d946ef' },
+    ],
+    panels: [
+      {
+        key: 'book-most-read',
+        title: 'Most Read',
+        items: [
+          overviewItem('The Lantern Keeper', 'Chapter 18 · 32m today', 'book-lantern', '18'),
+          overviewItem('A Map of Small Things', '412 pages · 14 sessions', 'book-map', '412'),
+          overviewItem('The Glass Archive', '328 pages · 9 sessions', 'book-glass', '328'),
+        ],
+      },
+      {
+        key: 'book-authors',
+        title: 'Top Authors',
+        roundImages: true,
+        items: [
+          overviewItem('Iris Vale', '3 books · 1,120 pages', 'book-iris', '3'),
+          overviewItem('Jon Bell', '2 books · 780 pages', 'book-jon', '2'),
+          overviewItem('Mira Sol', '2 books · 640 pages', 'book-mira', '2'),
+        ],
+      },
+      {
+        key: 'book-genres',
+        title: 'Top Genres',
+        items: [
+          overviewItem('Fantasy', '4 books · 1,280 pages', 'book-fantasy', '4'),
+          overviewItem('Literary Fiction', '3 books · 920 pages', 'book-literary', '3'),
+          overviewItem('Mystery', '2 books · 610 pages', 'book-mystery', '2'),
+        ],
+      },
+      {
+        key: 'book-top-rated',
+        title: 'Top Rated',
+        items: [
+          overviewItem('The Lantern Keeper', 'Fantasy · 2025', 'book-lantern', '9.2'),
+          overviewItem('A Map of Small Things', 'Literary Fiction · 2024', 'book-map', '8.9'),
+          overviewItem('The Glass Archive', 'Mystery · 2023', 'book-glass', '8.7'),
+        ],
+      },
+    ],
+  },
+  {
+    id: 'comic',
+    typeValue: 'comic',
+    typeLabel: 'Comics',
+    title: 'Activity Overview',
+    charts: [
+      { key: 'comic-year', title: 'Comics Finished by Year', labels: ['2022', '2023', '2024', '2025', '2026'], data: [6, 8, 10, 12, 4], color: '#06b6d4' },
+    ],
+    panels: [
+      {
+        key: 'comic-most-read',
+        title: 'Most Read',
+        items: [
+          overviewItem('Nova Drift', '12 issues', 'comic-nova', '12'),
+          overviewItem('The Quiet Ward', '8 issues', 'comic-quiet-ward', '8'),
+          overviewItem('Paper Kingdom', '6 issues', 'comic-paper', '6'),
+        ],
+      },
+      {
+        key: 'comic-genres',
+        title: 'Top Genres',
+        items: [
+          overviewItem('Science Fiction', '3 series · 22 issues', 'comic-scifi', '22'),
+          overviewItem('Fantasy', '2 series · 14 issues', 'comic-fantasy', '14'),
+          overviewItem('Mystery', '1 series · 8 issues', 'comic-mystery', '8'),
+        ],
+      },
+      {
+        key: 'comic-top-rated',
+        title: 'Top Rated',
+        items: [
+          overviewItem('Nova Drift', 'Science Fiction · 2025', 'comic-nova', '9.1'),
+          overviewItem('The Quiet Ward', 'Mystery · 2024', 'comic-quiet-ward', '8.8'),
+          overviewItem('Paper Kingdom', 'Fantasy · 2023', 'comic-paper', '8.5'),
+        ],
+      },
+    ],
+  },
+  {
+    id: 'video',
+    typeValue: 'video',
+    typeLabel: 'Video',
+    title: 'Activity Overview',
+    charts: [
+      { key: 'video-year', title: 'Video Plays by Year', labels: ['2022', '2023', '2024', '2025', '2026'], data: [18, 24, 31, 38, 9], color: '#818cf8' },
+    ],
+    panels: [],
+  },
+];
+
+function demoMediaOverviewsFor(types, rangeLabel) {
+  const selected = types.length ? new Set(types) : null;
+  return mediaOverviews
+    .filter(overview => !selected || selected.has(overview.typeValue))
+    .map(overview => ({ ...overview, rangeLabel }));
+}
+
+
 export default function StatisticsScreen({ navigate, onBack }) {
   const [range, setRange] = useState({
     selected: 'Last 12 Months',
@@ -720,6 +1261,11 @@ export default function StatisticsScreen({ navigate, onBack }) {
   const [selectedTypes, setSelectedTypes] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [updatedLabel, setUpdatedLabel] = useState('12 minutes ago');
+  const [compareMode, setCompareMode] = useState('previous_period');
+  const [roleSort, setRoleSort] = useState('plays');
+  const [studioSort, setStudioSort] = useState('plays');
+  const [tasteSort, setTasteSort] = useState('time');
+  const [selectedPersonKey, setSelectedPersonKey] = useState('tmdb:maya-chen');
 
   const model = useMemo(() => ({
     range: { ...range, options: ranges },
@@ -732,6 +1278,19 @@ export default function StatisticsScreen({ navigate, onBack }) {
   }), [range, selectedTypes, refreshing, updatedLabel]);
 
   const chartModel = useMemo(() => demoChartsFor(selectedTypes), [selectedTypes]);
+  const comparisonModel = useMemo(
+    () => demoComparisonFor(compareMode, selectedTypes),
+    [compareMode, selectedTypes],
+  );
+  const talentModel = useMemo(() => ({
+    roleLeaders: demoRoleLeadersFor(roleSort, selectedPersonKey),
+    studioFootprint: demoStudioFootprintFor(studioSort),
+    tasteSignals: demoTasteSignalsFor(tasteSort),
+  }), [roleSort, selectedPersonKey, studioSort, tasteSort]);
+  const mediaOverviewModel = useMemo(
+    () => ({ items: demoMediaOverviewsFor(selectedTypes, range.label) }),
+    [selectedTypes, range.label],
+  );
 
   function refresh() {
     setRefreshing(true);
@@ -747,8 +1306,23 @@ export default function StatisticsScreen({ navigate, onBack }) {
       onRefresh={refresh}
       onSelectHighlight={item => navigate('Detail', { item })}
       onRetry={refresh} />
+    <Section title="Range comparison">
+      <StatisticsComparison model={comparisonModel} palette={statisticsPalette}
+        onCompareMode={setCompareMode} />
+    </Section>
     <Section title="Charts and featured repeats">
       <StatisticsCharts model={chartModel} palette={statisticsPalette} />
+    </Section>
+    <Section title="Talent and taste">
+      <StatisticsTalentSection model={talentModel} palette={statisticsPalette}
+        onRoleSortChange={setRoleSort}
+        onStudioSortChange={setStudioSort}
+        onTasteSortChange={setTasteSort}
+        onSelectPerson={entry => setSelectedPersonKey(`${entry.source}:${entry.personId}`)} />
+    </Section>
+    <Section title="Per-media activity overviews">
+      <StatisticsMediaTypeOverviews model={mediaOverviewModel} palette={statisticsPalette}
+        onSelectItem={item => navigate('Detail', { item })} />
     </Section>
   </Screen>;
 }
