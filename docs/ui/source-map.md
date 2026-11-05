@@ -963,6 +963,8 @@ remain the web owner until a browser adapter mounts the shared sections.
 
 ## INTEGRATION-PANELS
 
+- `frontend/ui/IntegrationPanels.jsx` (universal Arr library, Seerr request/status panels and request dialog)
+- `native-proof/app/screens/IntegrationsScreen.jsx` (native show, season and episode panel placement)
 - `src/templates/integrations/library_panel.html`
 - `src/templates/integrations/seerr_request.html`
 - `src/templates/integrations/seerr_status.html`
