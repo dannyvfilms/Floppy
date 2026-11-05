@@ -63,7 +63,10 @@
     {% endif %}
   </div>
 
+  {{ calendar_links_props|json_script:"calendar-links-props" }}
   <div class="bg-[var(--color-surface)] p-5 rounded-lg mb-6"
+       data-calendar-links-root
+       data-props-id="calendar-links-props"
        x-data="{
          selectedMediaTypes: [
            {% for media_type in media_types %}
