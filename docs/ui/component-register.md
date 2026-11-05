@@ -602,20 +602,26 @@ can inform a focused completion pass.
 ### OWNERSHIP — Collection browser and copy editor
 
 - Purpose/usage: collection page, detail/tracking ownership controls.
-- Implementation: `src/templates/app/collection_list.html`, collection modal/form/summary/grid/row fragments.
-- Contract: grid/row/table/filter/sort, completeness, multiple copies/labels, medium fields, season cascades and owner-only mutation.
-- Data: `src/app/collection_views.py`, forms/models; canonical collection card surface.
-- Reuse/blockers: copy editor/summaries shared; collection ownership differs from list membership. Depends on cards/filters/fields.
-- Validation targets: `src/app/tests/views/test_collection.py`, `test_collection_copy_labels.py`, `src/app/tests/test_collection_season_cascade.py`.
+- Implementation: universal `frontend/ui/CollectionBrowser.jsx` (`CollectionBrowser`) and `frontend/ui/CollectionCopies.jsx` (`CollectionCopySummary`, `CollectionCopyEditor`, `CollectionSeasonCascade`, `CollectionCopyDialog`), rendered by `native-proof/app/screens/CollectionScreen.jsx`. The web keeps `src/templates/app/collection_list.html`, collection modal/form/summary/grid/row fragments, `collectionCustomFields.js` and the Django/HTMX ownership routes.
+- Contract: grid/row/table/filter/sort, completeness, multiple copies/labels, medium fields, season cascades and owner-only mutation. `CollectionBrowser` receives filtered item descriptions, filter state/options and intents; it reuses `FilterBar`, `MediaCardView` and `Badge`, and does not parse URLs, own transport or write collection rows. `CollectionCopyDialog` receives copy values, medium-field descriptors, scope/seasons, validation errors and explicit save/edit/remove intents; it renders read-only when the caller lacks owner permission. Django forms, permissions, season expansion and redirects remain authoritative on the web.
+- Data: `src/app/collection_views.py`, forms/models and the canonical collection card surface. Copy labels, completeness and custom values travel as plain descriptors; credentials and raw server HTML do not.
+- Reuse/blockers: copy editor/summaries are shared; collection ownership differs from list membership. Depends on cards/filters/fields. The browser adapter is not mounted, so the server template remains the fallback.
+- Status: `Partial / coexisting`. The native Collection screen renders the full demo browser in grid, grouped rows and table views with the shared filter bar, copy summaries, medium fields, season scope and owner/read-only states. The Django collection page and its tracking-modal copy editor remain the web owner and keep their permissions, HTMX swaps, custom-field saves and no-JS fallback.
+- Native placement: `native-proof/app/screens/CollectionScreen.jsx`; URL-driven paging, live HTMX swaps and runtime interaction remain unverified.
+- Verification: `npm run check:ui-architecture` and `npm run test:ui-architecture` pass; `npm run build:ui` compiles with the pre-existing missing `frontend/users/UsersManagement.jsx` supplied temporarily, while a clean `npm run check:ui` is blocked by that unrelated baseline. Targeted collection and copy-label Django tests pass with `FLOPPY_TEST_FAST_DB=1`, and the Expo web/iOS/Android export compiles. No browser, simulator, device, VoiceOver or TalkBack pass was performed for this change.
+- Validation targets: `src/app/tests/views/test_collection.py`, `test_collection_copy_labels.py`, `src/app/tests/test_collection_season_cascade.py`, `src/app/tests/test_collection_forms.py`.
 
 ### CUSTOM-FIELDS — Collection definitions and values
 
 - Purpose/usage: collection editor, summaries, filters/sort.
-- Implementation: collection custom-fields/inputs fragments, `src/static/js/collectionCustomFields.js`, SortableJS.
-- Contract: type/options/edit/delete/order, JSON saves, typed values/errors; do not duplicate importer resolution rules in UI.
-- Data: collection definitions/values and endpoints in `src/app/collection_views.py`.
-- Reuse/blockers: schema/field rendering shareable; native reorder and persisted ownership validation required.
-- Validation targets: `src/app/tests/views/test_collection_custom_fields.py`, `src/app/tests/test_collection_custom_field_values.py`.
+- Implementation: universal `frontend/ui/CollectionCustomFields.jsx` (`CollectionFieldValueInputs`, `CollectionFieldManager`), rendered by `native-proof/app/screens/CollectionScreen.jsx`. The web keeps `src/templates/app/components/collection_custom_fields.html`, `collection_custom_field_inputs.html`, `src/static/js/collectionCustomFields.js`, SortableJS and the JSON save endpoint.
+- Contract: type/options/edit/delete/order, JSON saves, typed values/errors; do not duplicate importer resolution rules in UI. The shared value inputs render text, number, date, select and checkbox fields for the fields applicable to the item media type. The manager edits group/field names, types, options, media types and order through explicit intents and exposes up/down move controls as the native reorder affordance; it hides mutation and shows an owner-only notice when the caller lacks permission. Django still validates required names, at least one media type, select options, field/group ids and ownership on save.
+- Data: collection definitions/values and endpoints in `src/app/collection_views.py`, `collection_fields.py`; the shared components receive plain groups, values, field-type/media-type choices and validation errors.
+- Reuse/blockers: schema/field rendering is shared; the browser adapter and native drag reorder remain unimplemented. Do not duplicate importer resolution rules in UI.
+- Status: `Partial / coexisting`. Native values and definitions render against realistic demo data with local save/validation feedback; the Django modal, `collectionCustomFields.js` JSON save and SortableJS remain the web owner.
+- Native placement: `native-proof/app/screens/CollectionScreen.jsx`; persisted ownership validation and runtime reorder are unverified.
+- Verification: `npm run check:ui-architecture` and `npm run test:ui-architecture` pass; `npm run build:ui` compiles with the pre-existing missing `frontend/users/UsersManagement.jsx` supplied temporarily, while a clean `npm run check:ui` is blocked by that unrelated baseline. Targeted custom-field validation/value Django tests pass with `FLOPPY_TEST_FAST_DB=1`, and the Expo web/iOS/Android export compiles. No browser, simulator, device or assistive-technology pass was performed for this change.
+- Validation targets: `src/app/tests/views/test_collection_custom_fields.py`, `src/app/tests/test_collection_custom_field_values.py`, `src/app/tests/test_collection_field_import.py`.
 
 ### ARTWORK — Cover and edition selection
 
