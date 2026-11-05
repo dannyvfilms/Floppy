@@ -973,6 +973,8 @@ class MediaDetailsViewTests(TestCase):
             ),
         )
         self.assertContains(response, 'x-data="{ trackOpen: false }"', count=2)
+        self.assertContains(response, "data-detail-children-root")
+        self.assertContains(response, "data-detail-children-legacy")
         self.assertContains(
             response,
             'class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"',

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { MediaCardActionHost } from './MediaCardActionHost';
@@ -45,6 +45,12 @@ const DEFAULT_PALETTE = {
     fill: '#10b981',
     text: '#fafafa',
     textMuted: '#a1a1aa',
+  },
+  rating: {
+    lit: '#facc15',
+    unlit: '#52525b',
+    muted: '#a1a1aa',
+    focusStyle: {},
   },
   button: {
     radius: 6,
@@ -96,15 +102,21 @@ const DEFAULT_LABELS = {
   hiddenThumbnail: 'Thumbnail hidden',
   rate: 'Rate',
   close: 'Close',
+  track: 'Track',
+  lists: 'Lists',
+  collection: 'Collection',
 };
 
 const BUTTON_TONES = {
   watch: 'primary',
   read: 'primary',
   checkin: 'primary',
+  track: 'primary',
   unwatch: 'surface',
   unread: 'surface',
   history: 'surface',
+  lists: 'surface',
+  collection: 'surface',
   reveal: 'surface',
   drop: 'ghost-danger',
   restore: 'surface',
@@ -114,9 +126,12 @@ const ACTION_GLYPHS = {
   watch: '✓',
   read: '✓',
   checkin: '▶',
+  track: '▶',
   unwatch: '↺',
   unread: '↺',
   history: '◷',
+  lists: '☰',
+  collection: '▣',
   reveal: '◉',
   drop: '✕',
   restore: '↺',
@@ -128,6 +143,7 @@ function mergePalette(palette) {
     ...(palette || {}),
     mediaCard: { ...DEFAULT_PALETTE.mediaCard, ...(palette?.mediaCard || {}) },
     progress: { ...DEFAULT_PALETTE.progress, ...(palette?.progress || {}) },
+    rating: { ...DEFAULT_PALETTE.rating, ...(palette?.rating || {}) },
     button: {
       ...DEFAULT_PALETTE.button,
       ...(palette?.button || {}),
@@ -203,7 +219,28 @@ function cardPalette(palette) {
   };
 }
 
-function DetailChildRow({
+function lineText(line) {
+  if (!line) return null;
+  return line.parts.map(part => part.text).join(line.join === 'dot' ? ' · ' : ' ');
+}
+
+function runChildAction(action, item, { onOpenHistory, onAction, onReveal }) {
+  if (action.key === 'reveal') {
+    onReveal?.();
+    return;
+  }
+  if (action.key === 'history') {
+    onOpenHistory?.(item);
+    return;
+  }
+  onAction?.(action.key, item);
+}
+
+function actionTone(action) {
+  return action.tone || BUTTON_TONES[action.key] || 'surface';
+}
+
+function DetailChildCard({
   item,
   kind,
   labels,
@@ -216,6 +253,107 @@ function DetailChildRow({
   onAction,
   onReveal,
 }) {
+  const { width } = useWindowDimensions();
+  const wide = width >= 768;
+  const obscured = Boolean(item.obfuscated) && !revealed;
+  const [ratingOpen, setRatingOpen] = useState(false);
+  const actions = [...(item.actions || [])];
+  if (item.obfuscated && !revealed) {
+    actions.unshift({ key: 'reveal', label: labels.revealThumbnail });
+  }
+  const imageSource = !obscured && item.image?.src ? { uri: item.image.src } : null;
+  const overview = obscured ? labels.hiddenThumbnail : item.overview;
+  const ratingPalette = palette.rating;
+
+  return <View style={[styles.detailCard, {
+    backgroundColor: item.unreleased ? palette.surfaceStrong : palette.surface,
+    borderColor: palette.surfaceBorder,
+  }, wide ? styles.detailWide : styles.detailNarrow]}>
+    <View style={wide ? (kind === 'issue' ? styles.detailArtworkIssue : styles.detailArtworkEpisode) : styles.detailArtworkNarrow}>
+      <Pressable accessibilityRole={onOpen ? 'link' : undefined}
+        accessibilityLabel={item.title} disabled={!onOpen} onPress={() => onOpen?.(item)}
+        style={[styles.detailArtwork, {
+          backgroundColor: palette.surfaceStrong,
+          borderColor: palette.surfaceBorder,
+          aspectRatio: wide ? undefined : 16 / 9,
+          height: wide ? 144 : undefined,
+        }]}>
+        {imageSource ? <Image source={imageSource} resizeMode="cover" style={styles.detailImage} /> : null}
+      </Pressable>
+      {item.obfuscated && !revealed ? <View style={styles.detailReveal}>
+        <Button label={labels.revealThumbnail} tone="surface" size="sm"
+          palette={palette.button} onPress={() => onReveal?.()} />
+      </View> : null}
+    </View>
+    <View style={styles.detailBody}>
+      <View style={styles.detailHeader}>
+        <Pressable accessibilityRole={onOpen ? 'link' : undefined}
+          accessibilityLabel={item.title} disabled={!onOpen} onPress={() => onOpen?.(item)}
+          style={styles.detailTitleWrap}>
+          <Text numberOfLines={2} style={[styles.detailTitle, { color: palette.text }]}>{item.title}</Text>
+        </Pressable>
+        {item.canRate ? <Pressable accessibilityRole="button"
+          accessibilityLabel={item.rateLabel || labels.rate} accessibilityState={{ expanded: ratingOpen }}
+          onPress={() => setRatingOpen(current => !current)}
+          style={[styles.detailScore, { backgroundColor: palette.surfaceStrong, borderColor: palette.surfaceBorder }]}>
+          <Text style={[styles.detailScoreText, { color: item.score == null ? palette.textMuted : palette.warning }]}>
+            {item.score == null ? `☆ ${item.rateLabel || labels.rate}` : `★ ${item.score}`}
+          </Text>
+        </Pressable> : null}
+      </View>
+      {lineText(metaLine(item, labels)) ? <Text style={[styles.detailMeta, { color: palette.textMuted }]}>
+        {lineText(metaLine(item, labels))}
+      </Text> : null}
+      {overview ? <Text numberOfLines={3}
+        style={[styles.detailOverview, { color: palette.textSecondary }]}>{overview}</Text> : null}
+      {lineText(historyLine(item, labels)) ? <Text style={[styles.detailHistory, { color: palette.textMuted }]}>
+        {lineText(historyLine(item, labels))}
+      </Text> : null}
+      {ratingOpen && item.canRate && renderRating ? <View style={[styles.detailRating, {
+        backgroundColor: palette.surfaceStrong,
+        borderColor: palette.surfaceBorder,
+      }]}>
+        {renderRating({
+          value: item.score == null ? null : item.score,
+          label: item.rateLabel || labels.rate,
+          scaleMax: item.scaleMax || 10,
+          palette: ratingPalette,
+          onSelect: score => {
+            setRatingOpen(false);
+            onRate?.(item, score);
+          },
+        })}
+      </View> : null}
+      {actions.length ? <View style={styles.detailActions}>
+        {actions.map(action => <Button key={action.key} label={action.label}
+          tone={actionTone(action)} size="sm" disabled={Boolean(action.disabled)}
+          palette={palette.button}
+          onPress={() => runChildAction(action, item, { onOpenHistory, onAction, onReveal })} />)}
+      </View> : null}
+    </View>
+  </View>;
+}
+
+function DetailChildRow({
+  item,
+  kind,
+  labels,
+  palette,
+  variant,
+  revealed = false,
+  renderRating,
+  onOpen,
+  onOpenHistory,
+  onRate,
+  onAction,
+  onReveal,
+}) {
+  if (variant === 'detail') {
+    return <DetailChildCard item={item} kind={kind} labels={labels} palette={palette}
+      revealed={revealed} renderRating={renderRating} onOpen={onOpen}
+      onOpenHistory={onOpenHistory} onRate={onRate} onAction={onAction}
+      onReveal={onReveal} />;
+  }
   const obscured = Boolean(item.obfuscated) && !revealed;
   const actions = [...(item.actions || [])];
   if (item.obfuscated && !revealed) {
@@ -240,25 +378,14 @@ function DetailChildRow({
     actions: actionRow({ ...item, actions }, palette),
   };
 
-  function handleAction(action) {
-    if (action.key === 'reveal') {
-      onReveal?.();
-      return;
-    }
-    if (action.key === 'history') {
-      onOpenHistory?.(item);
-      return;
-    }
-    onAction?.(action.key, item);
-  }
-
   return <View style={[styles.child, {
     backgroundColor: item.unreleased ? palette.surfaceStrong : palette.surface,
     borderColor: palette.surfaceBorder,
   }]}>
     <MediaCardView model={model} labels={labels} palette={cardPalette(palette)}
       selection={undefined} actions={model.actions} onOpen={() => onOpen?.(item)}
-      onAction={handleAction} onRate={score => onRate?.(item, score)}
+      onAction={action => runChildAction(action, item, { onOpenHistory, onAction, onReveal })}
+      onRate={score => onRate?.(item, score)}
       renderRating={renderRating} />
   </View>;
 }
@@ -322,6 +449,8 @@ export function DetailChildren({
   labels,
   palette,
   order,
+  variant,
+  showHeading = true,
   onOrderChange,
   onOpenSeason,
   onOpenChild,
@@ -351,7 +480,7 @@ export function DetailChildren({
     <DetailSeasonList seasons={seasons} order={order} labels={copy} palette={colors}
       onOpenSeason={onOpenSeason} onAction={onAction} />
     <View style={styles.section}>
-      <View style={styles.toolbar}>
+      {showHeading ? <View style={styles.toolbar}>
         <View style={styles.headingWrap}>
           <Text style={[styles.heading, { color: colors.text }]}>{rowLabel}</Text>
           <Text style={[styles.count, { color: colors.textMuted }]}>{rows.length}</Text>
@@ -366,12 +495,12 @@ export function DetailChildren({
             tone="surface" size="sm" palette={colors.button}
             onPress={() => onToggleObfuscation?.(!obfuscation.active)} /> : null}
         </View>
-      </View>
+      </View> : null}
       {rows.length ? rows.map((item, index) => {
         const key = item.key || item.number || index;
         const Row = kind === 'issue' ? DetailIssueRow : DetailEpisodeRow;
         return <Row key={key} item={item} kind={kind} labels={copy} palette={colors}
-          revealed={Boolean(revealed[key])} renderRating={renderRating}
+          variant={variant} revealed={Boolean(revealed[key])} renderRating={renderRating}
           onOpen={onOpenChild} onOpenHistory={onOpenHistory} onRate={onRate}
           onAction={onAction} onReveal={() => reveal(item)} />;
       }) : <Text style={[styles.empty, { color: colors.textMuted, borderColor: colors.surfaceBorder }]}>
@@ -435,4 +564,24 @@ const styles = StyleSheet.create({
   historyAction: { fontSize: 12 },
   historyScore: { fontSize: 12, fontWeight: '600' },
   historyNote: { fontSize: 12, lineHeight: 17 },
+  detailCard: { borderWidth: 1, borderRadius: 10, overflow: 'hidden' },
+  detailWide: { flexDirection: 'row' },
+  detailNarrow: { flexDirection: 'column' },
+  detailArtworkIssue: { width: 256 },
+  detailArtworkEpisode: { width: 224 },
+  detailArtworkNarrow: { width: '100%' },
+  detailArtwork: { width: '100%', overflow: 'hidden' },
+  detailImage: { width: '100%', height: '100%' },
+  detailReveal: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, alignItems: 'center', justifyContent: 'center' },
+  detailBody: { flex: 1, minWidth: 0, padding: 12, gap: 6 },
+  detailHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  detailTitleWrap: { flex: 1, minWidth: 0 },
+  detailTitle: { fontSize: 18, fontWeight: '600' },
+  detailScore: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, flexShrink: 0 },
+  detailScoreText: { fontSize: 12, fontWeight: '600' },
+  detailMeta: { fontSize: 13 },
+  detailOverview: { fontSize: 13, lineHeight: 19 },
+  detailHistory: { fontSize: 12 },
+  detailRating: { borderWidth: 1, borderRadius: 8, padding: 10 },
+  detailActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 },
 });
