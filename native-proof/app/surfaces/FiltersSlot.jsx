@@ -7,7 +7,7 @@ export const surface = {
   id: 'FILTERS',
   title: 'Filter toolbar and saved views',
   where: 'Library, lists, History and Calendar',
-  status: 'ported',
+  status: 'in_progress',
   note: 'The shared filter bar renders media type, status, sort, view and range controls with local selection, busy feedback, clear defaults and accessible labels.',
 };
 
