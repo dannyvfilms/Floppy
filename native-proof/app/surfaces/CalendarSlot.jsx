@@ -7,8 +7,8 @@ export const surface = {
   id: 'RELEASE-CALENDAR',
   title: 'Release calendar',
   where: 'Calendar month, agenda, list and subscription links',
-  status: 'ported',
-  note: 'The shared calendar renders the server-owned month grid, agenda and list with media/status/release/tag filters, month/view toolbar and the calendar actions menu. The Calendar screen adds the shared calendar-links panel with release/history feeds, switchable filters, subscription URL and copy/download actions. Server queries, week start, calendar tokens and ICS delivery stay authoritative; runtime was not exercised.',
+  status: 'in_progress',
+  note: 'The shared calendar renders the server-owned month grid, agenda and list with media/status/release/tag filters, month/view toolbar and the calendar actions menu. The Calendar screen adds the shared calendar-links panel with release/history feeds, switchable filters, subscription URL and copy/download actions. Server queries, week start, calendar tokens and ICS delivery stay authoritative; durable native filter and week-start persistence is still being added, and runtime was not exercised.',
 };
 
 const WEEKDAYS = [
