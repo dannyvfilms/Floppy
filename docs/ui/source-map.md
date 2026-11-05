@@ -188,6 +188,9 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 - `frontend/ui/installPrompt.native.js`
 - `frontend/ui/serviceWorkerStatus.web.js`
 - `frontend/ui/serviceWorkerStatus.native.js`
+- `frontend/ui/mountCopyField.jsx` (browser mount over the Navidrome and Stremio URL fallbacks)
+- `frontend/ui/mountCacheStatus.jsx` (browser mount over the About static-cache fallback)
+- `frontend/settings/mountAbout.jsx` (browser mount for the About install card)
 - `native-proof/app/screens/WebUtilitiesScreen.jsx`
 - `src/static/js/copy-item.js`
 - `src/static/js/serviceworker.js`
@@ -197,6 +200,7 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 - `frontend/errors/ErrorRecovery.jsx` (universal error status selector, recovery hero, quick checks, provider support note, actions, report panel and safe copyable traceback; presentation only)
 - `frontend/errors/ApiDocs.jsx` (universal API task index, first-request/workflow commands, cheat sheet, status/media vocabularies, glossary and schema links; presentation only)
 - `frontend/ui/CopyBlock.jsx` (universal copyable report/command block with copy intent and copied feedback; presentation only)
+- `frontend/errors/mountErrorRecovery.jsx` (browser mount over the 400/403/CSRF/404/500 server fallbacks; `ApiDocs` stays server-only because `/api/docs/` forbids scripts)
 - `native-proof/app/screens/ErrorDocsScreen.jsx` (native placement for the five error variants and the API documentation index; status `ported`)
 - `frontend/settings/SettingsCard.jsx` (`SettingsCard`, existing shared card used by the error and API sections)
 - `frontend/settings/Chip.jsx` (`Chip`, existing shared chip used by status selection, tasks and vocabularies)

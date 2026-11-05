@@ -1329,7 +1329,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; src/static/js/copy-item.js remains the browser copy control. No browser pass during this change."
+          "evidence": "Mounted by frontend/ui/mountCopyField.jsx over the Navidrome ListenBrainz URL and Stremio addon URL server fallbacks; build and targeted Django tests only, no browser copy or recovery-dialog pass during this change."
         },
         "ios": {
           "status": "unverified",
@@ -1349,7 +1349,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the About page install control in users/about.html remains the browser implementation. No browser pass during this change."
+          "evidence": "Mounted by frontend/settings/mountAbout.jsx over the About install fallback; the Playwright About install suite passed for availability, accepted/dismissed/failed outcomes, standalone and appinstalled states, and platform narrowing."
         },
         "ios": {
           "status": "unverified",
@@ -1369,7 +1369,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; base.html still registers the service worker and the About page does not show cache status. No browser pass during this change."
+          "evidence": "Mounted by frontend/ui/mountCacheStatus.jsx over the About static-cache fallback; build and targeted Django tests only, no browser service-worker status pass during this change."
         },
         "ios": {
           "status": "unverified",
@@ -1389,7 +1389,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "No web adapter mounts the shared block; the Django error copy buttons and API command blocks remain the browser implementation."
+          "evidence": "Mounted through frontend/errors/mountErrorRecovery.jsx on the 400/403/CSRF/404/500 pages; build and targeted Django tests only, no browser copy-feedback pass during this change."
         },
         "ios": {
           "status": "unverified",
@@ -1411,7 +1411,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted on the web; the Django 400/403/CSRF/404/500 templates and their server fallback remain authoritative."
+          "evidence": "Mounted by frontend/errors/mountErrorRecovery.jsx over the server-rendered 400/403/CSRF/404/500 fallbacks; build and targeted Django tests only, no browser recovery-action or copy pass during this change."
         },
         "ios": {
           "status": "unverified",
@@ -1435,7 +1435,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted on the web; src/templates/api/docs.html remains the offline API reference and browser fallback."
+          "evidence": "Not mounted on the web: the public /api/docs/ page contract forbids script tags (app.tests.test_api_contracts.OfflineAPIDocsTests.test_docs_have_no_swagger_or_executable_request_ui), so the server-rendered offline reference remains authoritative."
         },
         "ios": {
           "status": "unverified",
@@ -2487,7 +2487,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; existing copy controls still use src/static/js/copy-item.js. No browser pass during this change."
+          "evidence": "Used by the error recovery and copy-field web mounts; build and targeted Django tests only, no browser clipboard or fallback pass during this change."
         },
         "ios": {
           "status": "unverified",
@@ -2534,7 +2534,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the About page Alpine install control remains the active browser consumer. No browser pass during this change."
+          "evidence": "Used by the About install card; the Playwright About install suite passed for prompt availability, accepted/dismissed/failed outcomes, standalone and appinstalled states."
         },
         "ios": {
           "status": "unverified",
@@ -2581,7 +2581,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; base.html still owns registration and no browser pass read registration or cache state during this change."
+          "evidence": "Used by the About static-cache card; build and targeted Django tests only, no browser registration or cache read pass during this change."
         },
         "ios": {
           "status": "unverified",
@@ -2791,7 +2791,7 @@
     },
     "frontend/settings/mountAbout.jsx": {
       "register": "SET-SYSTEM",
-      "purpose": "Browser adapter for the shared About cards: supplies theme tokens, loads release notes from the fragment endpoint, owns the update-banner dismissal, PWA install prompt and platform narrowing, and dispatches API preview/download and project, attribution, licence and guide link intents while retaining the server fallback."
+      "purpose": "Browser adapter for the shared About cards: supplies theme tokens, loads release notes from the fragment endpoint, owns the update-banner dismissal, mounts the shared InstallPromptCard over the install fallback with the browser install adapter, and dispatches API preview/download and project, attribution, licence and guide link intents while retaining the server fallback."
     },
     "frontend/ui/SpinnerTheme.web.jsx": {
       "register": "SPINNER",
@@ -2964,6 +2964,18 @@
     "frontend/ui/mountShell.jsx": {
       "register": "SHELL",
       "purpose": "Django/browser integration for the shared shell top bar and mobile navigation: resolve theme tokens, bridge the existing sidebar open state, lift the HTMX-boosted search island into the shared bar, keep public sign-in link semantics and render the overlay while the server fallback remains."
+    },
+    "frontend/errors/mountErrorRecovery.jsx": {
+      "register": "ERRORS-DOCS",
+      "purpose": "Mount the shared error recovery presentation over the server-rendered 400/403/CSRF/404/500 fallback: resolve theme tokens, copy the safe diagnostic report through the browser clipboard adapter, and keep report-issue, retry, login and home navigation as browser intents."
+    },
+    "frontend/ui/mountCopyField.jsx": {
+      "register": "WEB-UTILITIES",
+      "purpose": "Mount the shared copy field over the server-rendered provider URL fallback: resolve theme tokens and copy through the browser clipboard adapter while the server input and copy control remain the no-JavaScript fallback."
+    },
+    "frontend/ui/mountCacheStatus.jsx": {
+      "register": "WEB-UTILITIES",
+      "purpose": "Mount the shared static-cache card over the About page fallback: read the browser service-worker registration, controller, scope and floppy cache names through the platform adapter and refresh on request."
     }
   }
 }

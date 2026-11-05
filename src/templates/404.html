@@ -15,7 +15,8 @@
 
 {% block body %}
   <div class="min-h-screen bg-[var(--color-page-bg)] flex flex-col items-center justify-center text-[var(--color-text)] p-4">
-    <div class="text-center max-w-md">
+    {{ error_recovery_props|json_script:"error-recovery-props" }}
+    <div class="text-center max-w-md" data-error-recovery-root data-props-id="error-recovery-props">
       <div class="mb-6">
         <div class="text-9xl font-bold text-indigo-500">{{ error_status_code|default:"404" }}</div>
         <h1 class="text-3xl font-bold mt-4 mb-2">{% translate error_heading|default:_("Page Not Found") %}</h1>

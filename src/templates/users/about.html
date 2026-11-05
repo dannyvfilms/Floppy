@@ -225,6 +225,25 @@
       </section>
       </div>
 
+      {{ about_props.cache|json_script:"about-cache-props" }}
+      <div data-cache-status-root data-props-id="about-cache-props" x-ignore>
+      {# Static cache #}
+      <section aria-labelledby="about-cache-heading" class="space-y-3">
+        <div class="flex items-center gap-2 text-lg font-medium text-[var(--color-text-secondary)]">
+          {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)]" %}
+          <h3 id="about-cache-heading">{% translate "Static cache" %}</h3>
+        </div>
+        <div class="space-y-3 pl-7">
+          <p class="text-[var(--color-text-secondary)] leading-relaxed">
+            {% translate "Service workers and the static cache belong to the browser app. They keep static assets available when the network is slow; tracking data still needs your Floppy server." %}
+          </p>
+          <p class="text-[var(--color-text-muted)] text-sm leading-relaxed">
+            {% translate "Service worker status is available when JavaScript is enabled." %}
+          </p>
+        </div>
+      </section>
+      </div>
+
       {{ about_props.resources|json_script:"about-resources-props" }}
       <div data-about-card-root data-props-id="about-resources-props" x-ignore>
       {# Project Resources Table #}

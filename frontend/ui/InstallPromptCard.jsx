@@ -112,10 +112,14 @@ export function InstallPromptCard({
       <Button label={text.installLabel} busy={pending || busy} onPress={install} palette={buttons} />
     </View> : null}
     {message ? <Text accessibilityLiveRegion="polite" style={[styles.status, { color: tone }]}>{message}</Text> : null}
-    <View style={[styles.steps, { borderColor: colors.border, backgroundColor: colors.surfaceStrong }]}>
+    {platform === 'desktop' && text.guideNote ? <Text style={[styles.copy, { color: colors.textMuted }]}>
+      {text.guideNote.prefix}{' '}
+      <Text accessibilityRole="link" onPress={onOpenGuide} style={[styles.inlineLink, { color: colors.accent }]}>{text.guideNote.linkLabel}</Text>{' '}
+      {text.guideNote.suffix}
+    </Text> : <View style={[styles.steps, { borderColor: colors.border, backgroundColor: colors.surfaceStrong }]}>
       <Text role="heading" aria-level={5} style={[styles.stepsTitle, { color: colors.text }]}>{steps.title}</Text>
       {steps.items.map((item, index) => <Text key={`${steps.title}-${index}`} style={[styles.step, { color: colors.textMuted }]}>{`${index + 1}. ${item}`}</Text>)}
-    </View>
+    </View>}
     <Text style={[styles.copy, { color: colors.textMuted }]}>{text.noControl}</Text>
     {onOpenGuide ? <View style={styles.action}>
       <Button label={text.guideLabel} tone="surface" onPress={onOpenGuide} palette={buttons} />
@@ -130,4 +134,5 @@ const styles = StyleSheet.create({
   steps: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 4 },
   stepsTitle: { fontSize: 13, fontWeight: '600' },
   step: { fontSize: 12, lineHeight: 18 },
+  inlineLink: { textDecorationLine: 'underline' },
 });

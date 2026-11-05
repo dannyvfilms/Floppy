@@ -116,6 +116,7 @@ export function ErrorRecovery({
   onRetry,
   onLogin,
   onGoHome,
+  statusSize = 56,
 }) {
   const copy = { ...defaultLabels, ...labels };
   const buttons = actionPalette(palette);
@@ -123,7 +124,11 @@ export function ErrorRecovery({
 
   return <View style={styles.stack}>
     <View style={styles.hero}>
-      <Text style={[styles.status, { color: statusColors[status] || palette.accent }]}>{status}</Text>
+      <Text style={[styles.status, {
+        color: statusColors[status] || palette.accent,
+        fontSize: statusSize,
+        lineHeight: statusSize + 4,
+      }]}>{status}</Text>
       <Text role="heading" aria-level={2} style={[styles.heading, { color: palette.text }]}>{heading}</Text>
       <Text style={[styles.message, { color: palette.textMuted }]}>{message}</Text>
     </View>
@@ -153,7 +158,7 @@ export function ErrorRecovery({
 
     {actions ? <View style={styles.actionRow}>
       {onRetry ? <Button label={copy.retry} onPress={onRetry} palette={buttons} /> : null}
-      {onLogin ? <Button label={copy.login} tone="surface" onPress={onLogin} palette={buttons} /> : null}
+      {onLogin ? <Button label={copy.login} onPress={onLogin} palette={buttons} /> : null}
       {onGoHome ? <Button label={copy.home} tone={actions > 1 ? 'surface' : 'primary'} onPress={onGoHome} palette={buttons} /> : null}
     </View> : null}
   </View>;
