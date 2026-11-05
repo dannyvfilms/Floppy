@@ -907,32 +907,6 @@
         }
       }
     },
-    "frontend/ui/StatisticsSections.jsx": {
-      "components": [
-        "StatisticsComparison",
-        "StatisticsRoleLeaders",
-        "StatisticsStudioFootprint",
-        "StatisticsTasteSignals",
-        "StatisticsTalentSection",
-        "StatisticsMediaTypeOverview",
-        "StatisticsMediaTypeOverviews"
-      ],
-      "register": "STATISTICS",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "The shared comparison, taste/talent, role/studio leader and per-media overview presentation is not mounted in the browser; the existing server/Alpine Statistics page remains the web owner and no browser pass was performed."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Statistics screen; no comparison mode, sort control, person selection, media-type filter or empty state was exercised on a simulator or device."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Statistics screen; no comparison mode, sort control, person selection, media-type filter or empty state was exercised on an emulator or device."
-        }
-      }
-    },
     "frontend/ui/ListFormView.jsx": {
       "components": [
         "ListForm"
@@ -1033,6 +1007,92 @@
         "android": {
           "status": "unverified",
           "evidence": "Expo export --platform all compiled the shared bulk toolbar and dialogs through the native Library slot; no emulator run or TalkBack interaction pass."
+        }
+      }
+    },
+    "frontend/settings/AppearanceEditor.jsx": {
+      "components": [
+        "AppearanceEditor"
+      ],
+      "register": "SET-APPEARANCE",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The appearance page remains the Django/Alpine editor; this shared editor is not mounted in the browser bundle during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Settings screen; theme selection, custom palette, detail reorder and save states were not exercised at runtime."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Settings screen; theme selection, custom palette, detail reorder and save states were not exercised at runtime."
+        }
+      }
+    },
+    "frontend/settings/CardsEditor.jsx": {
+      "components": [
+        "CardsEditor"
+      ],
+      "register": "SET-CARDS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The cards page remains the Django/Alpine editor; this shared editor is not mounted in the browser bundle during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Settings screen; per-type lines, field order, preview and save states were not exercised at runtime."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Settings screen; per-type lines, field order, preview and save states were not exercised at runtime."
+        }
+      }
+    },
+    "frontend/settings/HomeScreenEditor.jsx": {
+      "components": [
+        "HomeScreenEditor"
+      ],
+      "register": "SET-HOME",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The Home screen page remains the Django/Alpine/SortableJS editor; this shared editor is not mounted in the browser bundle during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Settings screen; section, row, filter and sort interactions were not exercised at runtime."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Settings screen; section, row, filter and sort interactions were not exercised at runtime."
+        }
+      }
+    },
+    "frontend/ui/StatisticsSections.jsx": {
+      "components": [
+        "StatisticsComparison",
+        "StatisticsRoleLeaders",
+        "StatisticsStudioFootprint",
+        "StatisticsTasteSignals",
+        "StatisticsTalentSection",
+        "StatisticsMediaTypeOverview",
+        "StatisticsMediaTypeOverviews"
+      ],
+      "register": "STATISTICS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The shared comparison, taste/talent, role/studio leader and per-media overview presentation is not mounted in the browser; the existing server/Alpine Statistics page remains the web owner and no browser pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Statistics screen; no comparison mode, sort control, person selection, media-type filter or empty state was exercised on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Statistics screen; no comparison mode, sort control, person selection, media-type filter or empty state was exercised on an emulator or device."
         }
       }
     },
@@ -1414,6 +1474,18 @@
         "f0fd9c861bd6574c56d07a98ff73b1c45dbfe52dbe41748a2d2f96b08de480de",
         "2268081f449b894930b6c5eaa5522b73f3a9a6845e3e3dc02b7ce69bb8801e12",
         "c9f7ce3a68103e095a1f59be63bc1e0d9af18e168d55fef9a26d313ef1104ee2"
+      ]
+    },
+    "frontend/ui/mountBulkToolbar.jsx": {
+      "sha256": "be2487cdead2871b88da2d74dbd4fad8efeb2b757ca63d4268866342bf5053df",
+      "statements": [
+        "f7b494e855841f7fe02d727adf5848286ef531e2d7bc1a5d7a740299317e149f",
+        "1ac8024a5891f369f598688152a2626d6a6d490b3b6446a8cd992ca0d6f2d178",
+        "1877ac5600f36653521b37bb0fce4eea4bf46030b90bf63f25d540ce355805b7",
+        "6afa3d56e771fa058db62d481f5eb8be1d1e3bbdccebdbcd9c8be31947fc7485",
+        "ce2dcc592a5c8de4494c163727f82abf9107570f2b5c3e138f1e9a4dbf832faa",
+        "26a5cbe8cd06ac37b62289cdbf26b25fdf7fa14c15dedcd18dee9bb0f453bd11",
+        "e2be3e5558f69134d4a5d426e88c0ac081e4b11ba49ec53acde39cb5fb60ac3c"
       ]
     }
   },

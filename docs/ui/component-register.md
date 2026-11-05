@@ -832,28 +832,31 @@ templates are compatibility/composition sources, not equally active parallel pag
 ### SET-APPEARANCE — Theme and detail layout editor
 
 - Purpose/usage: swatches/custom effects and detail-family section enable/order.
-- Implementation: `src/templates/users/appearance.html`, inline `appearanceEditor()`/JSON-script config.
-- Contract: selection/custom validation, tabs/zones/order and persisted settings.
-- Data: `src/users/appearance.py`, appearance handler in `src/users/views.py`.
-- Reuse/blockers: tokens/editor state shared; CSS runtime/reorder need platform implementations.
+- Implementation: shared `frontend/settings/AppearanceEditor.jsx` renders theme presets, custom palette/effect steppers and detail-family enable/order through the shared select and toggle controls; `native-proof/app/surfaces/AppearanceSettingsSlot.jsx` places it on native Settings with demo state. The browser page remains `src/templates/users/appearance.html` with inline `appearanceEditor()` and JSON-script config.
+- Contract: selection/custom validation, family/zone enable and order, and persisted settings. The shared editor owns local validation errors, dirty detection and saving/error presentation; the caller owns the values, save transport and server response.
+- Data: `src/users/appearance.py`, appearance handler in `src/users/views.py`; the native slot supplies demo presets, palette defaults and layout families. Server validation remains authoritative.
+- Reuse/blockers: theme tokens and editor state are shared. Native rendering replaces range and drag affordances with steppers and move buttons; web remains unchanged. Native persistence, browser mounting and runtime interaction evidence remain open.
+- Status: `Partial / coexisting`. Native placement is `in_progress` until the shared editor is mounted in a browser adapter and native runtime interaction is verified.
 - Validation targets: `src/users/tests/views/test_appearance.py`, `src/app/tests/test_theme_tokens.py`.
 
 ### SET-CARDS — Card configuration and preview
 
 - Purpose/usage: per-media line selection/reorder/live preview.
-- Implementation: `src/templates/users/cards.html`, `cards_preview.html`, inline `cardsEditor()`.
-- Contract: per-type values/default/order and previews consistent with canonical projection.
-- Data: `src/users/card_metadata.py`, card settings/preview handlers.
-- Reuse/blockers: shared schema/state with card; server preview HTML needs adapter.
+- Implementation: shared `frontend/settings/CardsEditor.jsx` renders per-type selects, title/rating options, line and field ordering, add/remove controls and a data-driven native preview; `native-proof/app/surfaces/CardsSettingsSlot.jsx` places it on native Settings with demo profiles. The browser page remains `src/templates/users/cards.html` and `cards_preview.html` with inline `cardsEditor()`.
+- Contract: per-type values, defaults, line display and order, title/rating options, and a live preview. Save emits the existing `{ version: 1, types }` card-metadata payload. Native preview is drawn from the same profile rather than server HTML.
+- Data: `src/users/card_metadata.py`, card settings/preview handlers; the native slot supplies a demo catalog and saved profiles. Server normalization remains authoritative.
+- Reuse/blockers: shared card schema/state. The browser preview remains server-rendered HTML, so the native preview is an equivalent projection, not the server response. Drag ordering is replaced by move buttons. Native persistence and runtime evidence remain open.
+- Status: `Partial / coexisting`. Native placement is `in_progress` until a browser adapter and native runtime interactions are verified.
 - Validation targets: `src/users/tests/views/test_cards.py`, `src/users/tests/test_card_metadata.py`.
 
 ### SET-HOME — Home section/shelf editor
 
 - Purpose/usage: Home rows/filter/sort/list-backed sections.
-- Implementation: `src/templates/users/home_screen.html`, inline `homeScreenSettings()`, Alpine/SortableJS.
-- Contract: nested order/labels/colors/collapse/menus, owned/collaborator/smart-list search, validation and payload.
-- Data: `src/users/home_screen.py`, Home config/search/filter handlers.
-- Reuse/blockers: editor model/filters shared; native reorder/drag-versus-click need proof.
+- Implementation: shared `frontend/settings/HomeScreenEditor.jsx` renders Home sections, row editing, filter fields, status, sort/direction, list selection and global header/label options; `native-proof/app/surfaces/HomeSettingsSlot.jsx` places it on native Settings with demo sections and list choices. The browser page remains `src/templates/users/home_screen.html` with inline `homeScreenSettings()` and Alpine/SortableJS.
+- Contract: nested order/labels/colors/collapse, library filters, status and sort, owned/collaborator/smart-list selection, validation and the existing Home settings payload. Save emits the same `{ media_type, rows }` section array. The shared editor owns local validation and dirty/saving/error presentation; the caller owns list results, transport and persistence.
+- Data: `src/users/home_screen.py`, Home config/search/filter handlers; the native slot supplies demo sections, filter fields and list choices. Server validation remains authoritative.
+- Reuse/blockers: editor model and filter values are shared. Native ordering uses move buttons instead of drag; list search is caller-supplied rather than fetched in presentation. Native persistence, browser mounting and runtime interaction evidence remain open.
+- Status: `Partial / coexisting`. Native placement is `in_progress` until a browser adapter and native runtime interactions are verified.
 - Validation targets: `src/users/tests/views/test_home_screen.py`, `test_home_screen_menus.py`.
 
 ### SET-PROVIDERS — Catalog and capability tabs
