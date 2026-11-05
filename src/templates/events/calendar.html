@@ -66,216 +66,25 @@
   {{ calendar_links_props|json_script:"calendar-links-props" }}
   <div class="bg-[var(--color-surface)] p-5 rounded-lg mb-6"
        data-calendar-links-root
-       data-props-id="calendar-links-props"
-       x-data="{
-         selectedMediaTypes: [
-           {% for media_type in media_types %}
-             {% with enabled_field=media_type|add:'_enabled' %}
-               {% if user|get_attr:enabled_field %}'{{ media_type }}',{% endif %}
-             {% endwith %}
-           {% endfor %}
-         ],
-         selectedStatuses: [
-           {% for status in event_statuses %}
-             '{{ status }}',
-           {% endfor %}
-         ],
-         selectedReleaseTypes: [
-           {% for value, label in release_type_choices %}
-             '{{ value }}',
-           {% endfor %}
-         ],
-         releaseTypeCount: {{ release_type_choices|length }},
-         feed: 'releases',
-         historyMediaTypes: [
-           {% for media_type in history_default_media_types %}'{{ media_type }}',{% endfor %}
-         ],
-         calendarBaseUrl: '{{ request.scheme }}://{{ request.get_host }}{% url 'download_calendar' token=user.token %}',
-         historyBaseUrl: '{{ request.scheme }}://{{ request.get_host }}{% url 'download_history_calendar' token=user.token %}',
-         get calendarExportUrl() {
-           if (this.feed === 'history') {
-             const historyParams = new URLSearchParams();
-             this.historyMediaTypes.forEach((mediaType) => {
-               historyParams.append('media_types', mediaType);
-             });
-             // Sent when every switch is off, so the link stays empty instead of using the defaults.
-             if (!this.historyMediaTypes.length) {
-               historyParams.append('media_types', 'none');
-             }
-             return `${this.historyBaseUrl}?${historyParams.toString()}`;
-           }
-           const params = new URLSearchParams();
-           this.selectedMediaTypes.forEach((mediaType) => {
-             params.append('media_types', mediaType);
-           });
-           this.selectedStatuses.forEach((status) => {
-             params.append('status', status);
-           });
-           // Left out when every release date is shown, the feed's default.
-           if (this.selectedReleaseTypes.length < this.releaseTypeCount) {
-             this.selectedReleaseTypes.forEach((releaseType) => {
-               params.append('release_types', releaseType);
-             });
-             if (!this.selectedReleaseTypes.length) {
-               params.append('release_types', 'none');
-             }
-           }
-           const query = params.toString();
-           return query ? `${this.calendarBaseUrl}?${query}` : this.calendarBaseUrl;
-         }
-       }">
+       data-props-id="calendar-links-props">
     <div class="flex items-center mb-3">
       {% include "app/icons/link.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
       <h3 class="text-base font-medium">{% translate "Calendar links" %}</h3>
     </div>
-    <p class="text-[var(--color-text-muted)] mb-3 text-sm" x-show="feed === 'releases'">
+    <p class="text-[var(--color-text-muted)] mb-3 text-sm">
       {% translate "Add this link to any calendar app to see upcoming releases there." %}
     </p>
-    <p class="text-[var(--color-text-muted)] mb-3 text-sm" x-cloak x-show="feed === 'history'">
-      {% translate "Add this link to any calendar app to see what you watched, read and played, on the day you logged it." %}
-    </p>
-
-    <div class="inline-flex bg-[var(--color-surface-strong)] rounded-md p-1 mb-4 text-sm" role="tablist">
-      <button type="button"
-              role="tab"
-              :aria-selected="feed === 'releases'"
-              class="px-3 py-1.5 rounded-md transition-colors cursor-pointer"
-              :class="feed === 'releases' ? 'bg-indigo-600 text-white' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'"
-              @click="feed = 'releases'">
-        {% translate "Upcoming releases" %}
-      </button>
-      <button type="button"
-              role="tab"
-              :aria-selected="feed === 'history'"
-              class="px-3 py-1.5 rounded-md transition-colors cursor-pointer"
-              :class="feed === 'history' ? 'bg-indigo-600 text-white' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'"
-              @click="feed = 'history'">
-        {% translate "Watch history" %}
-      </button>
-    </div>
-
-    <div x-cloak x-show="feed === 'history'">
-      <div class="mb-4">
-        <div class="flex items-center mb-3">
-          {% include "app/icons/four-square.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-          <h4 class="text-sm font-semibold">{% translate "Media Types" %}</h4>
-        </div>
-        <p class="text-[var(--color-text-muted)] mb-3 text-xs">
-          {% translate "Music, podcasts and videos start off because they add many entries." %}
-        </p>
-        <div class="grid gap-3 md:grid-cols-3">
-          {% for media_type in history_media_types %}
-            <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
-              <div class="flex items-center text-[var(--color-text-muted)]">
-                {% icon media_type is_active=False %}
-                <span class="text-[var(--color-text-secondary)] text-sm ml-2">{{ media_type|media_type_readable_plural }}</span>
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input class="sr-only peer"
-                       type="checkbox"
-                       value="{{ media_type }}"
-                       x-model="historyMediaTypes">
-                <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
-                </div>
-              </label>
-            </div>
-          {% endfor %}
-        </div>
+    <div class="grid gap-3 md:grid-cols-2">
+      <div class="min-w-0 bg-[var(--color-surface-dim)] p-3 rounded-md">
+        <p class="mb-2 text-sm font-semibold text-[var(--color-text-secondary)]">{% translate "Upcoming releases" %}</p>
+        <a class="break-all font-mono text-sm text-[var(--color-link)]"
+           href="{{ calendar_links_props.releaseBaseUrl }}">{{ calendar_links_props.releaseBaseUrl }}</a>
       </div>
-    </div>
-
-    <div x-show="feed === 'releases'">
-
-    <div class="mb-4">
-      <div class="flex items-center mb-3">
-        {% include "app/icons/four-square.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-        <h4 class="text-sm font-semibold">{% translate "Media Types" %}</h4>
+      <div class="min-w-0 bg-[var(--color-surface-dim)] p-3 rounded-md">
+        <p class="mb-2 text-sm font-semibold text-[var(--color-text-secondary)]">{% translate "Watch history" %}</p>
+        <a class="break-all font-mono text-sm text-[var(--color-link)]"
+           href="{{ calendar_links_props.historyBaseUrl }}">{{ calendar_links_props.historyBaseUrl }}</a>
       </div>
-      <p class="text-[var(--color-text-muted)] mb-3 text-xs">
-        {% translate "Choose which media types to include in this calendar URL." %}
-      </p>
-      <div class="grid gap-3 md:grid-cols-3">
-        {% for media_type in media_types %}
-          <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
-            <div class="flex items-center text-[var(--color-text-muted)]">
-              {% icon media_type is_active=False %}
-              <span class="text-[var(--color-text-secondary)] text-sm ml-2">{{ media_type|media_type_readable_plural }}</span>
-            </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              {% with enabled_field=media_type|add:"_enabled" %}
-                <input class="sr-only peer"
-                       type="checkbox"
-                       value="{{ media_type }}"
-                       x-model="selectedMediaTypes"
-                       {% if user|get_attr:enabled_field %}checked{% endif %}>
-              {% endwith %}
-              <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
-              </div>
-            </label>
-          </div>
-        {% endfor %}
-      </div>
-    </div>
-
-    <div class="mb-4">
-      <div class="flex items-center mb-3">
-        {% include "app/icons/circle-check.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-        <h4 class="text-sm font-semibold">{% translate "Status" %}</h4>
-      </div>
-      <p class="text-[var(--color-text-muted)] mb-3 text-xs">
-        {% translate "Choose which statuses to include in this calendar URL." %}
-      </p>
-      <div class="grid gap-3 md:grid-cols-3">
-        {% for status in event_statuses %}
-          <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
-            <span class="text-[var(--color-text-secondary)] text-sm">{{ status|media_status_readable }}</span>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input class="sr-only peer"
-                     type="checkbox"
-                     value="{{ status }}"
-                     x-model="selectedStatuses"
-                     checked>
-              <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
-              </div>
-            </label>
-          </div>
-        {% endfor %}
-      </div>
-    </div>
-
-    <div class="mb-4">
-      <div class="flex items-center mb-3">
-        {% include "app/icons/calendar.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-        <h4 class="text-sm font-semibold">{% translate "Movie Release Dates" %}</h4>
-      </div>
-      <p class="text-[var(--color-text-muted)] mb-3 text-xs">
-        {% translate "Choose which digital and physical release dates to include in this calendar URL." %}
-      </p>
-      <div class="grid gap-3 md:grid-cols-3">
-        {% for value, label in release_type_choices %}
-          <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
-            <span class="text-[var(--color-text-secondary)] text-sm">{{ label }}</span>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input class="sr-only peer"
-                     type="checkbox"
-                     value="{{ value }}"
-                     x-model="selectedReleaseTypes"
-                     checked>
-              <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
-              </div>
-            </label>
-          </div>
-        {% endfor %}
-      </div>
-    </div>
-
-    </div>
-
-    <div class="bg-[var(--color-surface-dim)] p-3 rounded-md mb-4">
-      <input readonly=""
-             class="w-full py-2 px-3 bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-secondary)] text-sm border-0 focus:ring-0 outline-none font-mono"
-             type="text"
-             x-bind:value="calendarExportUrl">
     </div>
   </div>
 {% endblock content %}

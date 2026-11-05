@@ -650,6 +650,8 @@ presentation.
 - `frontend/ui/CalendarLinks.jsx` (shared release/history subscription panel)
 - `frontend/ui/mountReleaseCalendar.jsx`
 - `frontend/ui/mountCalendarLinks.jsx`
+- `native-proof/app/data/calendarPreferences.js` (native filter/week-start persistence with the document file system)
+- `native-proof/app/data/calendarPreferences.web.js` (browser filter/week-start persistence with localStorage)
 - `native-proof/app/surfaces/CalendarSlot.jsx`
 - `native-proof/app/screens/CalendarScreen.jsx`
 - `src/templates/events/calendar.html`

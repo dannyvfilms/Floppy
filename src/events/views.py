@@ -480,6 +480,11 @@ def _release_calendar_props(request, context):
         },
         "selectedDay": context["selected_day"],
         "view": "list" if context["view_type"] == "list" else "grid",
+        "regionUnset": context["region_unset"],
+        "regionNotice": gettext(
+            "Set your watch provider region in Preferences to see digital and physical dates.",
+        ),
+        "preferencesUrl": reverse("preferences"),
         "releases": releases,
         "mediaTypes": [
             {

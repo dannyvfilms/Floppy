@@ -428,6 +428,17 @@ class CalendarViewTests(TestCase):
         self.assertEqual(response.context["calendar_menu"]["weekStart"], "sunday")
         self.assertEqual(response.context["weekday_headers"][0], "Sun")
 
+    def test_calendar_links_fallback_keeps_static_subscription_links(self):
+        """The no-JS links fallback exposes both feeds without Alpine state."""
+        with patch("events.models.Event.objects.get_user_events", return_value=[]):
+            response = self.client.get(reverse("calendar"))
+
+        links = response.context["calendar_links_props"]
+        self.assertContains(response, "data-calendar-links-root")
+        self.assertContains(response, links["releaseBaseUrl"])
+        self.assertContains(response, links["historyBaseUrl"])
+        self.assertNotContains(response, "calendarExportUrl")
+
     @patch("events.models.Event.objects.get_user_events")
     @patch.object(get_user_model(), "update_preference")
     def test_calendar_list_uses_podcast_show_image_when_item_image_missing(

@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { CalendarLinks } from '../../../frontend/ui/CalendarLinks';
 import { Screen, Section } from '../components/Screen';
+import { readCalendarPreferences, writeCalendarPreferences } from '../data/calendarPreferences';
 import CalendarSlot from '../surfaces/CalendarSlot';
 import DateTimeSlot from '../surfaces/DateTimeSlot';
 import { palette, spacing } from '../theme';
 
-let savedFilters = null;
-let savedWeekStart = 'monday';
+const defaultWeekStart = 'monday';
 
 const releaseMediaTypes = [
   { value: 'tv', label: 'TV Shows' },
@@ -58,17 +58,47 @@ const calendarLinkPalette = {
 };
 
 export default function CalendarScreen({ navigate }) {
-  const [weekStart, setWeekStart] = useState(savedWeekStart);
+  const preferences = useRef({ filters: null, weekStart: defaultWeekStart });
+  const [filters, setFilters] = useState(null);
+  const [weekStart, setWeekStart] = useState(defaultWeekStart);
+  const [hydrated, setHydrated] = useState(false);
   const [actionNote, setActionNote] = useState('');
 
+  useEffect(() => {
+    let active = true;
+    readCalendarPreferences().then((stored) => {
+      if (!active) {
+        return;
+      }
+      const next = {
+        filters: stored?.filters || null,
+        weekStart: stored?.weekStart === 'sunday' ? 'sunday' : defaultWeekStart,
+      };
+      preferences.current = next;
+      setFilters(next.filters);
+      setWeekStart(next.weekStart);
+      setHydrated(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  function savePreferences(patch) {
+    const next = { ...preferences.current, ...patch };
+    preferences.current = next;
+    writeCalendarPreferences(next);
+  }
+
   function handleFiltersChange(next) {
-    savedFilters = next;
+    setFilters(next);
+    savePreferences({ filters: next });
   }
 
   function handleMenuAction({ key, value }) {
     if (key === 'weekStart') {
-      savedWeekStart = value;
       setWeekStart(value);
+      savePreferences({ weekStart: value });
       setActionNote(`Week starts on ${value === 'sunday' ? 'Sunday' : 'Monday'}.`);
       return;
     }
@@ -83,12 +113,12 @@ export default function CalendarScreen({ navigate }) {
 
   return <Screen title="Calendar" subtitle="Upcoming releases and what lands next">
     <Section title="This month">
-      <CalendarSlot
-        initialFilters={savedFilters || undefined}
+      {hydrated ? <CalendarSlot
+        initialFilters={filters || undefined}
         weekStart={weekStart}
         onFiltersChange={handleFiltersChange}
         onMenuAction={handleMenuAction}
-        onOpenRelease={() => navigate('Detail')} />
+        onOpenRelease={() => navigate('Detail')} /> : null}
       {actionNote ? <Text style={styles.note}>{actionNote}</Text> : null}
     </Section>
     <Section title="Calendar links">
