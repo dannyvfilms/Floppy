@@ -10,6 +10,7 @@ const tables = {
   id: 'TABLES',
   title: 'Table view and columns',
   where: 'Library and list table layouts',
+  status: 'in_progress',
   note: 'The configurable table, column menu and row cells will replace the card notes for table mode.',
 };
 
