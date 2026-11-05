@@ -6,6 +6,7 @@ const surface = {
   id: 'ONBOARDING',
   title: 'Onboarding',
   where: 'First-run media, metadata, services and connection steps',
+  status: 'in_progress',
   note: 'The resumable onboarding wizard and connection/import variants will replace this note.',
 };
 
