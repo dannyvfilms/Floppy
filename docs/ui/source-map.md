@@ -982,6 +982,8 @@ remain the web owner until a browser adapter mounts the shared sections.
 - `src/templates/users/components/server_port.html`
 - `src/templates/users/components/update_banner.html`
 - `src/templates/users/components/whats_new.html`
+- `frontend/settings/AdvancedSettings.jsx`
+- `frontend/settings/AboutSettings.jsx`
 
 ## MATCH-REVIEW
 
