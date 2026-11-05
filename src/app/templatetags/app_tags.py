@@ -2284,6 +2284,89 @@ def card_title_classes(context, media_type=None):
     return " " + " ".join(classes)
 
 
+def _as_int(value, default=0):
+    """Coerce a row count/seed to int without trusting template data."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+@register.simple_tag(takes_context=True)
+def rails_row_props(context, row):
+    """Return the shared Rail's props beside a server-rendered scrollable row.
+
+    The fallback row keeps its cards and HTMX attributes. The browser adapter
+    reads those cards as item slots, so this only carries row-level values.
+    """
+    if not isinstance(row, dict) or not row.get("row_id"):
+        return {}
+
+    row_id = row["row_id"]
+    title = str(row.get("title_main") or row.get("title") or "")
+    title_main = str(_(title))
+    title_detail = str(row.get("title_detail") or "")
+    if title_detail:
+        title_detail = str(_(title_detail))
+    summary_inline = str(row.get("summary_inline") or "")
+    loaded = _as_int(row.get("loaded_count"))
+    total = _as_int(row.get("total"))
+
+    sort_url = ""
+    if summary_inline:
+        try:
+            sort_url = reverse("toggle_home_screen_row_direction", args=[row_id])
+        except Exception:
+            sort_url = ""
+
+    if sort_url:
+        sort_label = str(_("Toggle sort direction for %(title)s") % {"title": title_main})
+    else:
+        sort_label = ""
+
+    view_all = None
+    if row.get("view_all_url") and row.get("view_all_text"):
+        view_all = {
+            "label": str(row["view_all_text"]),
+            "href": str(row["view_all_url"]),
+            "external": not bool(row.get("view_all_internal")),
+        }
+
+    return {
+        "id": f"rails-row-{uuid4().hex[:8]}",
+        "props": {
+            "rowId": str(row_id),
+            "title": title_main,
+            "titleDetail": title_detail,
+            "summary": str(row.get("summary") or ""),
+            "summaryInline": summary_inline,
+            "direction": str(row.get("direction") or "desc"),
+            "total": total,
+            "loadedCount": loaded,
+            "hasMore": loaded < total,
+            "seed": _as_int(row.get("seed")),
+            "hxUrl": str(
+                context.get("hx_url")
+                or f"{reverse('home')}?load_row={row_id}"
+            ),
+            "sortUrl": sort_url,
+            "sortLabel": sort_label,
+            "csrfToken": str(context.get("csrf_token") or ""),
+            "titleHref": str(row.get("url") or ""),
+            "viewAll": view_all,
+            "hideHeading": bool(context.get("hide_heading")),
+            "collapseKey": str(context.get("collapse_key") or ""),
+            "collapseDefault": "true" if context.get("collapse_default") in {True, "true", "True"} else "false",
+            "labels": {
+                "scrollLeft": str(_("Scroll left")),
+                "scrollRight": str(_("Scroll right")),
+                "toggleSection": str(_("Toggle section")),
+                "loadingMore": str(_("Loading more")),
+            },
+        },
+    }
+
+
 @register.inclusion_tag("app/components/card_lines.html", takes_context=True)
 def card_lines(context, media_type, item=None, media=None):
     """Render the enabled subtitle lines for one card."""

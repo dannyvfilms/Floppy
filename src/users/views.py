@@ -1312,6 +1312,7 @@ def toggle_home_screen_row_direction(request, row_id: int):
             "user": request.user,
             "MediaTypes": MediaTypes,
             "IMG_NONE": settings.IMG_NONE,
+            "rails_mount": True,
         },
     )
 

@@ -287,7 +287,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not exercised in a browser. The Expo web export compiles the native shell that renders the demo rail; no runtime browser pass was performed."
+          "evidence": "The Home and detail-recommendation mounts compile through the UI build and architecture checks; no browser interaction or runtime pass was performed."
         },
         "ios": {
           "status": "verified",
@@ -2627,6 +2627,10 @@
     "frontend/ui/Rail.web.jsx": {
       "register": "RAILS",
       "purpose": "Preserve browser pointer drag, click suppression, keyboard arrows and focus behavior for the shared rail."
+    },
+    "frontend/ui/mountRails.jsx": {
+      "register": "RAILS",
+      "purpose": "Mount the shared rail over the server-rendered scrollable row: keep its cards as item slots, resolve theme tokens, preserve heading links, sorting, collapse persistence, artwork anchors, bounded fragment load-more and HTMX row replacement."
     },
     "frontend/ui/mountDateTimePicker.jsx": {
       "register": "DATE-TIME",

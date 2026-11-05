@@ -618,6 +618,7 @@ def home_row_fragment(request, row_id: int):
             "MediaTypes": MediaTypes,
             "IMG_NONE": settings.IMG_NONE,
             "return_url": reverse("home"),
+            "rails_mount": True,
         },
     )
 
@@ -685,6 +686,7 @@ def home_rows_artwork_refresh(request):
                 "IMG_NONE": settings.IMG_NONE,
                 "force_artwork_anchor": True,
                 "oob_swap": True,
+                "rails_mount": True,
             },
             request=request,
         )
@@ -734,6 +736,7 @@ def home_row_artwork_refresh(request, row_id: int):
             "MediaTypes": MediaTypes,
             "IMG_NONE": settings.IMG_NONE,
             "force_artwork_anchor": True,
+            "rails_mount": True,
         },
     )
 
