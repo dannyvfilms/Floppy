@@ -339,7 +339,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Imported by the shared SearchResults and covered by the UI architecture and build checks; not exercised in a browser."
+          "evidence": "The browser adapter mounts the shared picker on the create-entry parent TV and season fields and reads rows from the existing htmx endpoints; build and architecture checks only, no browser runtime pass."
         },
         "ios": {
           "status": "unverified",
@@ -1888,9 +1888,17 @@
       "register": "SEARCH",
       "purpose": "Resolve theme colors and keep the existing search URLs, card actions, rating writes and navigation for the shared results surface."
     },
+    "frontend/ui/ParentPicker.web.jsx": {
+      "register": "SEARCH",
+      "purpose": "Resolve theme values, request parent rows through the existing htmx endpoints, write the hidden parent input and let the shared ParentPicker close on selection."
+    },
     "frontend/ui/mountSearchResults.jsx": {
       "register": "SEARCH",
       "purpose": "Django/browser integration for the shared search results surface."
+    },
+    "frontend/ui/mountParentPicker.jsx": {
+      "register": "SEARCH",
+      "purpose": "Django/browser integration for the shared parent picker on the create-entry form."
     },
     "frontend/ui/mountSpinner.jsx": {
       "register": "SPINNER",

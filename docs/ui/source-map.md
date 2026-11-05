@@ -331,6 +331,8 @@ transport and publishes them to matching cards. Runtime render evidence is recor
 - `frontend/ui/GlobalSearch.web.jsx`
 - `frontend/ui/mountGlobalSearch.jsx`
 - `frontend/ui/ParentPicker.jsx`
+- `frontend/ui/ParentPicker.web.jsx`
+- `frontend/ui/mountParentPicker.jsx`
 - `frontend/ui/SearchResults.jsx`
 - `frontend/ui/SearchResults.web.jsx`
 - `frontend/ui/mountSearchResults.jsx`
@@ -344,6 +346,7 @@ transport and publishes them to matching cards. Runtime render evidence is recor
 - `src/static/js/barcode-scanner.selfcheck.mjs`
 - `src/static/js/libraries/zxing-library-0.21.3.min.js`
 - `src/static/js/searchAutocomplete.js`
+- `src/static/js/searchParentFallback.js`
 - `src/static/js/searchShortcut.js`
 - `src/templates/app/components/search_local_album_cards.html`
 - `src/templates/app/components/search_parent_season.html`

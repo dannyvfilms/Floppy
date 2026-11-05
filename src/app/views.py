@@ -1422,11 +1422,21 @@ def create_entry(request):
 
 
 @require_GET
+def _parent_picker_payload(request, query, rows):
+    """Return JSON rows for the shared parent picker."""
+    if request.GET.get("format") != "json":
+        return None
+    return JsonResponse({"query": query, "results": rows})
+
+
 def search_parent_tv(request):
     """Return the search results for parent TV shows."""
     query = request.GET.get("q", "").strip()
 
     if len(query) <= 1:
+        payload = _parent_picker_payload(request, query, [])
+        if payload is not None:
+            return payload
         return render(request, "app/components/search_parent_tv.html")
 
     logger.debug(
@@ -1442,6 +1452,21 @@ def search_parent_tv(request):
         item__title__icontains=query,
     )[:5]
 
+    payload = _parent_picker_payload(
+        request,
+        query,
+        [
+            {
+                "id": parent_tv.id,
+                "title": parent_tv.item.title,
+                "label": parent_tv.item.title,
+            }
+            for parent_tv in parent_tvs
+        ],
+    )
+    if payload is not None:
+        return payload
+
     return render(
         request,
         "app/components/search_parent_tv.html",
@@ -1455,6 +1480,9 @@ def search_parent_season(request):
     query = request.GET.get("q", "").strip()
 
     if len(query) <= 1:
+        payload = _parent_picker_payload(request, query, [])
+        if payload is not None:
+            return payload
         return render(request, "app/components/search_parent_tv.html")
 
     logger.debug(
@@ -1469,6 +1497,23 @@ def search_parent_season(request):
         item__media_type=MediaTypes.SEASON.value,
         item__title__icontains=query,
     )[:5]
+
+    payload = _parent_picker_payload(
+        request,
+        query,
+        [
+            {
+                "id": season.id,
+                "title": gettext("%(title)s - Season %(number)s")
+                % {"title": season.item.title, "number": season.item.season_number},
+                "label": gettext("Season %(number)s of %(title)s")
+                % {"title": season.item.title, "number": season.item.season_number},
+            }
+            for season in parent_seasons
+        ],
+    )
+    if payload is not None:
+        return payload
 
     return render(
         request,
