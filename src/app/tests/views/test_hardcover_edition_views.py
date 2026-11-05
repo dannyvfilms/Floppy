@@ -57,6 +57,27 @@ class HardcoverEditionViewTests(TestCase):
         )
 
     @patch("app.metadata_sync_views.hardcover.editions")
+    def test_list_hardcover_editions_serves_json_to_the_shared_picker(self, mock_editions):
+        mock_editions.return_value = [
+            {
+                "id": "24008419",
+                "title": "Die Nadel",
+                "image": "http://example.com/de.jpg",
+                "format": "Paperback",
+                "language": "German",
+            },
+        ]
+
+        response = self.client.get(
+            reverse("list_hardcover_editions", kwargs={"media_id": "778812"}),
+            {"format": "json"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["pickerType"], "hardcover")
+        self.assertEqual(response.json()["results"][0]["title"], "Die Nadel")
+
+    @patch("app.metadata_sync_views.hardcover.editions")
     def test_list_hardcover_editions_forwards_request_user(self, mock_editions):
         mock_editions.return_value = []
 

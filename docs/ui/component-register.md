@@ -678,12 +678,19 @@ can inform a focused completion pass.
 
 ### ARTWORK — Cover and edition selection
 
-- Purpose/usage: detail/tracking image replacement and book editions.
-- Implementation: image picker/tiles/cover-change/edition/Hardcover result fragments.
-- Contract: candidate/file/URL, preview/reset/save/return, accepted formats/provider identity, authorization and safe outbound fetch.
-- Data: `src/app/cover_views.py`, edition routes; [local covers](../architecture/local-covers.md).
-- Reuse/blockers: selection state shared; file/drag/blob/camera/native caching need adapters.
-- Validation targets: `src/app/tests/test_local_covers.py`, `src/app/tests/views/test_hardcover_edition_views.py`.
+- Purpose/usage: detail/tracking image replacement and book/music editions.
+- Components: `ArtworkPicker`, `EditionPicker`.
+- Universal implementation: `frontend/ui/ArtworkPicker.jsx` owns the candidate row, selectable current/file/link preview, reset/save actions, accepted-format copy, provider identity, edition search, selected edition, loading/error/empty states and save/return intents. It uses React Native primitives and concrete theme values only.
+- Web adapters: `frontend/ui/ArtworkPicker.web.jsx`, `mountArtworkPicker.jsx` and `mountEditionPicker.jsx` mount over the existing server form and search. The Django form keeps `cover_file`/`cover_url`, CSRF, `next`, authorization and the local-cover store; the adapters read that form, fetch candidates and editions from the same authorized endpoints as JSON, and submit the unchanged server forms. The server markup remains the no-JavaScript fallback in `image_picker.html` and `edition_picker.html`.
+- Native placement: `native-proof/app/surfaces/ArtworkSlot.jsx` on the Detail screen. Photo-library and camera choices stay in the Expo image-picker adapter; native saving is demo state. The native image cache is the platform image component.
+- Contract: candidate/file/URL entry, preview/reset/save, return URL, accepted formats (JPEG, PNG, WebP, 10 MB), provider identity, authorization (tracked or collected items only) and safe outbound fetch. The browser adapter never fetches a user-supplied link; the server's `integrations.safe_fetch` boundary does. Episodes stay excluded.
+- Data: `src/app/cover_views.py`, `frontend/ui/ArtworkPicker.jsx`, `frontend/ui/ArtworkPicker.web.jsx`, `src/app/metadata_sync_views.py`, `src/app/music_album_views.py`; [local covers](../architecture/local-covers.md), [outbound fetch](../architecture/outbound-fetch.md).
+- Status: `Partial / coexisting`. The shared pickers render over the server forms on the web and in the native Detail slot; the server templates, htmx results and Alpine file/URL behavior remain the fallback. The no-JavaScript path is preserved.
+- Browser verification: not run in this pass; `npm run build:ui` and the architecture checks compile the adapters. Existing server behavior is covered by `src/app/tests/test_local_covers.py`, `src/app/tests/views/test_hardcover_edition_views.py` and `src/app/tests/views/test_music_release_views.py`.
+- iOS and Android: not exercised; Expo export is a compile check only. Photo-library, camera, edition selection, save/return and accessibility remain unverified.
+- Reuse/blockers: file/drag/blob/camera/native caching stay in adapters; provider result fetching stays server-owned. No blocked incompatibility.
+- Retirement: the server picker markup, Alpine state and htmx result fragments retire only when the browser adapters cover the same upload/link/candidate/edition behavior, local-cover security and a no-JavaScript fallback, with browser and device evidence.
+- Validation targets: `src/app/tests/test_local_covers.py`, `src/app/tests/views/test_hardcover_edition_views.py`, `src/app/tests/views/test_music_release_views.py`.
 
 ### MUSIC — Artist/album/track and podcast composition
 

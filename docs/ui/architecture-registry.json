@@ -1706,6 +1706,27 @@
         }
       }
     },
+    "frontend/ui/ArtworkPicker.jsx": {
+      "components": [
+        "ArtworkPicker",
+        "EditionPicker"
+      ],
+      "register": "ARTWORK",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "npm run build:ui compiles the shared picker into the metadata tab; the server upload, link, candidate, edition and fallback paths were not exercised in a browser in this pass."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the shared picker through the native Detail artwork slot; photo-library, camera and edition selection were not exercised in a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the shared picker through the native Detail artwork slot; no emulator pass was performed."
+        }
+      }
+    },
     "frontend/ui/MarkdownNotes.jsx": {
       "components": [
         "MarkdownNotes"
@@ -2867,6 +2888,18 @@
     "frontend/ui/mountMusicAlbums.jsx": {
       "register": "MUSIC",
       "purpose": "Maps server-shaped artist discography album rows into the shared music album grid and owns browser navigation for the card link; the server album grid inside the host remains the no-React fallback."
+    },
+    "frontend/ui/ArtworkPicker.web.jsx": {
+      "register": "ARTWORK",
+      "purpose": "Mount the shared cover picker over the existing server upload form and the shared edition picker over the existing server search: read the form, file input and hidden identifiers, fetch candidate and edition rows as JSON from the same authorized endpoints, and submit the unchanged server forms."
+    },
+    "frontend/ui/mountArtworkPicker.jsx": {
+      "register": "ARTWORK",
+      "purpose": "Browser mount for the shared cover picker over the existing upload form."
+    },
+    "frontend/ui/mountEditionPicker.jsx": {
+      "register": "ARTWORK",
+      "purpose": "Browser mount for the shared edition picker over the existing search and selection forms."
     },
     "frontend/ui/mountMarkdownIslands.jsx": {
       "register": "NOTES",

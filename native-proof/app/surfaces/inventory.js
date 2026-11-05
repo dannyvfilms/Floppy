@@ -1,4 +1,5 @@
 import { surface as bulk } from './BulkSlot';
+import { surface as artwork } from './ArtworkSlot';
 import { surface as button } from './ButtonSlot';
 import { surface as calendar } from './CalendarSlot';
 import { surface as dateTime } from './DateTimeSlot';
@@ -20,7 +21,11 @@ import { surface as users } from './UsersSlot';
 import { surface as dataAccessNotifications } from './DataAccessNotificationsSlot';
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 export const surfaces = [shell, search, mediaCard, rails, filters, rating, progress, dateTime, calendar, bulk, button, settingsCard, providerSettings, preferences, appearanceSettings, cardsSettings, homeSettings, dataAccessNotifications, users];
 =======
 export const surfaces = [search, mediaCard, playback, rails, filters, rating, progress, dateTime, calendar, bulk, button, settingsCard, providerSettings, preferences, appearanceSettings, cardsSettings, homeSettings, dataAccessNotifications, users];
 >>>>>>> native-port/playback
+=======
+export const surfaces = [artwork, search, mediaCard, rails, filters, rating, progress, dateTime, calendar, bulk, button, settingsCard, providerSettings, preferences, appearanceSettings, cardsSettings, homeSettings, dataAccessNotifications, users];
+>>>>>>> native-port/artwork

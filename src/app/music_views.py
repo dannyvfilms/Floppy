@@ -457,6 +457,10 @@ def _render_music_tracker_modal(
                 "list_music_releases",
                 kwargs={"album_id": album.id},
             ),
+            "selection_url": reverse(
+                "set_music_release",
+                kwargs={"album_id": album.id},
+            ),
         }
 
     response = render(
@@ -1252,6 +1256,10 @@ def _render_music_album_details(request, artist, album):
             "available": bool(album.musicbrainz_release_group_id),
             "list_url": reverse(
                 "list_music_releases",
+                kwargs={"album_id": album.id},
+            ),
+            "selection_url": reverse(
+                "set_music_release",
                 kwargs={"album_id": album.id},
             ),
         },
