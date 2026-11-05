@@ -2626,6 +2626,10 @@
       "register": "BULK_ACTIONS",
       "purpose": "Django/browser integration for the shared bulk actions: open the status and plays dialogs, poll Add Plays jobs and render their docked progress and results."
     },
+    "frontend/ui/mountStatisticsSections.jsx": {
+      "register": "STATISTICS",
+      "purpose": "Browser adapter for the shared Statistics studio footprint, taste signals and per-media overviews: mount server-shaped section models over the server fallback, resolve theme tokens, open item links, follow stats-media-type-changed, and persist studio/taste sort through the existing endpoints; role leaders and the featured repeat/person strip stay server-owned."
+    },
     "frontend/ui/mountCollectionFields.jsx": {
       "register": "CUSTOM-FIELDS",
       "purpose": "Browser adapter for collection custom-field values and definitions: mirror typed values into the enclosing Django form as hidden inputs, warn about unsaved definitions, and POST the existing JSON schema endpoint before adopting the returned groups. Django keeps required-name, media-type, option, id and ownership validation."

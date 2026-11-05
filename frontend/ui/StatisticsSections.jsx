@@ -74,7 +74,7 @@ function SectionCard({ title, copy, palette, headerRight, children }) {
   return <View style={[styles.card, { backgroundColor: palette.surface }]}>
     <View style={styles.cardHeader}>
       <View style={styles.cardHeaderCopy}>
-        <Text style={[styles.cardTitle, { color: palette.text }]}>{title}</Text>
+        <Text accessibilityRole="header" style={[styles.cardTitle, { color: palette.text }]}>{title}</Text>
         {copy ? <Text style={[styles.cardCopy, { color: palette.textMuted }]}>{copy}</Text> : null}
       </View>
       {headerRight}
@@ -151,7 +151,8 @@ function PanelList({ panel, palette, onSelectItem }) {
           const body = <View style={styles.mediaRow}>
             <Text style={[styles.rank, { color: palette.textMuted }]}>{item.rank || index + 1}</Text>
             {item.image
-              ? <Image source={{ uri: item.image }} accessibilityLabel={item.title}
+              ? <Image source={{ uri: item.image }} accessible accessibilityRole="image"
+                accessibilityLabel={item.title}
                 style={[styles.mediaImage, panel.roundImages && styles.mediaImageRound]} />
               : <View style={[styles.mediaImage, panel.roundImages && styles.mediaImageRound,
                 { backgroundColor: palette.surface, alignItems: 'center', justifyContent: 'center' }]}>
@@ -165,8 +166,9 @@ function PanelList({ panel, palette, onSelectItem }) {
             </View>
             {item.value ? <Text style={[styles.mediaValue, { color: palette.textSecondary }]}>{item.value}</Text> : null}
           </View>;
-          if (item.onPress && onSelectItem) {
-            return <Pressable key={item.key || item.title} accessibilityRole="button"
+          if (onSelectItem && (item.onPress || item.href)) {
+            return <Pressable key={item.key || item.title}
+              accessibilityRole={item.href ? 'link' : 'button'}
               accessibilityLabel={`${item.title}, ${item.subtitle || item.value || ''}`.trim()}
               onPress={() => onSelectItem(item)}
               style={({ pressed }) => pressed && styles.pressed}>
@@ -392,7 +394,7 @@ export function StatisticsMediaTypeOverview({
   return <View style={[styles.overviewCard, { backgroundColor: colors.surface }]}>
     <View style={styles.overviewHeader}>
       <Text style={[styles.overviewEyebrow, { color: colors.textMuted }]}>{model.typeLabel}</Text>
-      <Text style={[styles.overviewTitle, { color: colors.text }]}>{model.title || copy.overviewTitle}</Text>
+      <Text accessibilityRole="header" style={[styles.overviewTitle, { color: colors.text }]}>{model.title || copy.overviewTitle}</Text>
       {model.rangeLabel ? <Text style={[styles.overviewRange, { color: colors.textMuted }]}>{model.rangeLabel}</Text> : null}
     </View>
     {!hasContent

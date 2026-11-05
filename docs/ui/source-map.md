@@ -669,21 +669,32 @@ comparison, taste/talent signals, role/studio leaders and per-media-type overvie
 are React-owned through `frontend/ui/StatisticsSummary.jsx`,
 `frontend/ui/StatisticsCharts.jsx` and `frontend/ui/StatisticsSections.jsx` on the
 native Statistics screen, using React Native primitives instead of Chart.js or a
-WebView. The web page mounts the shared summary overview and the overview/heatmap/
-hours/status chart groups through `frontend/ui/mountStatisticsSummary.jsx` and
-`frontend/ui/mountStatisticsCharts.jsx`, keeping the server markup as fallback.
-The rest of the web Statistics page remains server/Alpine-owned; memory for the
-media-type filter is user data, not a new presentation owner:
+WebView. The web page mounts the shared summary overview, the overview/heatmap/
+hours/status chart groups, the studio footprint, taste signals and per-media
+overviews through `frontend/ui/mountStatisticsSummary.jsx`,
+`frontend/ui/mountStatisticsCharts.jsx` and
+`frontend/ui/mountStatisticsSections.jsx`, keeping the server markup as fallback.
+The web page also mounts the shared comparison rows; changing the mode saves the
+preference and reloads the current range. The native screen loads the same
+server-shaped models through `native-proof/app/data/statisticsTransport.js`
+(browser counterpart `statisticsTransport.web.js`, shared contract
+`statisticsTransportCore.js`).
+Memory for the media-type filter is user data, not a new presentation owner:
 `statistics_default_media_types` in `src/users/models.py` and
 `update_statistics_media_types` in `src/app/statistics_views.py`, read and written
-by `src/static/js/date-range.js`. The server taste/role/studio/overview fragments
-remain the web owner until a browser adapter mounts the shared sections.
+by `src/static/js/date-range.js`. The server role-leader, featured-repeat and person
+strip fragments remain the web owner, and the copied stacked-hours chart stays
+server-owned.
 
 - `frontend/ui/StatisticsSummary.jsx`
 - `frontend/ui/StatisticsCharts.jsx`
 - `frontend/ui/StatisticsSections.jsx`
 - `frontend/ui/mountStatisticsSummary.jsx`
 - `frontend/ui/mountStatisticsCharts.jsx`
+- `frontend/ui/mountStatisticsSections.jsx`
+- `native-proof/app/data/statisticsTransport.js`
+- `native-proof/app/data/statisticsTransport.web.js`
+- `native-proof/app/data/statisticsTransportCore.js`
 - `native-proof/app/screens/StatisticsScreen.jsx`
 - `src/static/js/date-range.js`
 - `src/static/js/libraries/chartjs-4.4.9.min.js`

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { StatisticsSummary } from '../../../frontend/ui/StatisticsSummary';
 import { StatisticsCharts } from '../../../frontend/ui/StatisticsCharts';
 import {
@@ -8,13 +8,17 @@ import {
 } from '../../../frontend/ui/StatisticsSections';
 import { Screen, Section } from '../components/Screen';
 import { statisticsPalette } from '../theme';
+import {
+  createStatisticsTransport,
+  flattenStatisticsModel,
+} from '../data/statisticsTransport';
 
 export const surface = {
   id: 'STATISTICS',
   status: 'in_progress',
   title: 'Statistics summary, charts, talent and per-media overviews',
   where: 'Statistics screen summary cards, highlights, controls, charts, comparison, taste/talent, role/studio leaders and per-media-type overviews',
-  note: 'The summary, charts, featured repeat, comparison, taste/talent signals, role/studio leaders and per-media-type overviews render with shared React Native presentation and demo data. Web adoption of the shared summary and chart groups is in progress behind a browser adapter; taste/talent and per-media overviews remain server-owned there. Remaining: production data transport and permissions, the person media strip, and the reading release/completed-length and game daily-average detail charts. iOS and Android runtime are unverified.',
+  note: 'Finishing pass: adopt the shared comparison, taste/talent and per-media overviews on the web page, wire the saved comparison/media-type/sort preferences through a transport boundary, and keep server values authoritative. The person media strip and featured-repeat card stay server-owned for now. iOS and Android runtime are unverified.',
 };
 
 const charts = {
@@ -38,6 +42,57 @@ const ranges = [
   { value: 'Last 12 Months', label: 'Last 12 months', dateLabel: 'Nov 5, 2025 – Nov 4, 2026' },
   { value: 'All Time', label: 'All time', dateLabel: 'Every tracked day' },
 ];
+
+function isoDay(value) {
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${value.getFullYear()}-${month}-${day}`;
+}
+
+function withRangeDates(option) {
+  if (option.startDate !== undefined) return option;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let start = new Date(today);
+  let end = new Date(today);
+  switch (option.value) {
+    case 'All Time':
+      return { ...option, startDate: 'all', endDate: 'all' };
+    case 'Yesterday':
+      start.setDate(start.getDate() - 1);
+      end = new Date(start);
+      break;
+    case 'This Week': {
+      const offset = (today.getDay() + 6) % 7;
+      start.setDate(today.getDate() - offset);
+      break;
+    }
+    case 'Last 7 Days':
+      start.setDate(today.getDate() - 6);
+      break;
+    case 'This Month':
+      start = new Date(today.getFullYear(), today.getMonth(), 1);
+      break;
+    case 'Last 30 Days':
+      start.setDate(today.getDate() - 29);
+      break;
+    case 'Last 90 Days':
+      start.setDate(today.getDate() - 89);
+      break;
+    case 'This Year':
+      start = new Date(today.getFullYear(), 0, 1);
+      break;
+    case 'Last 6 Months':
+      start.setMonth(today.getMonth() - 6);
+      break;
+    case 'Last 12 Months':
+      start.setFullYear(today.getFullYear() - 1);
+      break;
+    default:
+      break;
+  }
+  return { ...option, startDate: isoDay(start), endDate: isoDay(end) };
+}
 
 const mediaTypes = [
   { value: 'tv', label: 'TV Shows' },
@@ -1266,58 +1321,176 @@ export default function StatisticsScreen({ navigate, onBack }) {
   const [studioSort, setStudioSort] = useState('plays');
   const [tasteSort, setTasteSort] = useState('time');
   const [selectedPersonKey, setSelectedPersonKey] = useState('tmdb:maya-chen');
+  const transport = useMemo(() => createStatisticsTransport(), []);
+  const [remoteModel, setRemoteModel] = useState(null);
+  const [remoteTalent, setRemoteTalent] = useState(null);
+
+  useEffect(() => {
+    if (transport.mode !== 'server') {
+      setRemoteModel(null);
+      return undefined;
+    }
+    let cancelled = false;
+    transport.loadModel({
+      rangeName: range.selected,
+      startDate: range.startDate,
+      endDate: range.endDate,
+      compareMode,
+    }).then(data => {
+      if (!cancelled) setRemoteModel(data?.model || null);
+    }).catch(error => {
+      if (!cancelled) console.warn('Statistics model could not load', error);
+    });
+    return () => { cancelled = true; };
+  }, [transport, range.selected, range.startDate, range.endDate, compareMode]);
+
+  useEffect(() => {
+    if (transport.mode !== 'server') {
+      setRemoteTalent(null);
+      return undefined;
+    }
+    let cancelled = false;
+    transport.loadTalent({
+      rangeName: range.selected,
+      startDate: range.startDate,
+      endDate: range.endDate,
+      compareMode,
+    }).then(data => {
+      if (!cancelled) setRemoteTalent(data?.talent || null);
+    }).catch(error => {
+      if (!cancelled) console.warn('Statistics talent could not load', error);
+    });
+    return () => { cancelled = true; };
+  }, [transport, range.selected, range.startDate, range.endDate, compareMode]);
+
+  const remote = useMemo(
+    () => (remoteModel ? flattenStatisticsModel(remoteModel, selectedTypes) : null),
+    [remoteModel, selectedTypes],
+  );
 
   const model = useMemo(() => ({
     range: { ...range, options: ranges },
     mediaTypes: { selected: selectedTypes, options: mediaTypes },
-    summary: demoSummaryFor(selectedTypes),
-    highlights: selectedTypes.length === 1 ? (highlights[selectedTypes[0]] || highlights.all) : highlights.all,
-    scaleMax: 10,
+    summary: remote?.summary || demoSummaryFor(selectedTypes),
+    highlights: remote
+      ? remote.highlights || []
+      : selectedTypes.length === 1
+        ? (highlights[selectedTypes[0]] || highlights.all)
+        : highlights.all,
+    scaleMax: remote?.scaleMax || 10,
     refreshing,
-    updatedLabel,
-  }), [range, selectedTypes, refreshing, updatedLabel]);
+    updatedLabel: remote?.updatedLabel || updatedLabel,
+  }), [range, selectedTypes, remote, refreshing, updatedLabel]);
 
-  const chartModel = useMemo(() => demoChartsFor(selectedTypes), [selectedTypes]);
+  const chartModel = useMemo(() => {
+    const demo = demoChartsFor(selectedTypes);
+    if (!remote?.charts) return demo;
+    return { ...demo, ...remote.charts, featured: demo.featured };
+  }, [remote, selectedTypes]);
   const comparisonModel = useMemo(
-    () => demoComparisonFor(compareMode, selectedTypes),
-    [compareMode, selectedTypes],
+    () => (remote?.comparison?.rows?.length
+      ? remote.comparison
+      : demoComparisonFor(compareMode, selectedTypes)),
+    [remote, compareMode, selectedTypes],
   );
   const talentModel = useMemo(() => ({
-    roleLeaders: demoRoleLeadersFor(roleSort, selectedPersonKey),
-    studioFootprint: demoStudioFootprintFor(studioSort),
-    tasteSignals: demoTasteSignalsFor(tasteSort),
-  }), [roleSort, selectedPersonKey, studioSort, tasteSort]);
-  const mediaOverviewModel = useMemo(
-    () => ({ items: demoMediaOverviewsFor(selectedTypes, range.label) }),
-    [selectedTypes, range.label],
-  );
+    roleLeaders: remoteTalent?.roleLeaders || demoRoleLeadersFor(roleSort, selectedPersonKey),
+    studioFootprint: remoteTalent?.studioFootprint || demoStudioFootprintFor(studioSort),
+    tasteSignals: remoteTalent?.tasteSignals || demoTasteSignalsFor(tasteSort),
+  }), [remoteTalent, roleSort, selectedPersonKey, studioSort, tasteSort]);
+  const mediaOverviewModel = useMemo(() => {
+    if (remote?.overviews?.length) {
+      const items = selectedTypes.length
+        ? remote.overviews.filter(overview => selectedTypes.includes(overview.typeValue))
+        : remote.overviews;
+      return { items };
+    }
+    return { items: demoMediaOverviewsFor(selectedTypes, range.label) };
+  }, [remote, selectedTypes, range.label]);
+
+  const preferenceContext = useMemo(() => ({
+    rangeName: range.selected,
+    startDate: range.startDate,
+    endDate: range.endDate,
+    mediaType: selectedTypes.join(','),
+  }), [range, selectedTypes]);
+
+  function savePreference(action) {
+    Promise.resolve(action).catch(error => {
+      console.warn('Statistics preference could not be saved', error);
+    });
+  }
 
   function refresh() {
     setRefreshing(true);
     setUpdatedLabel('just now');
+    savePreference(transport.requestRefresh({ rangeName: range.selected }));
     setTimeout(() => setRefreshing(false), 900);
+  }
+
+  function changeMediaTypes(types) {
+    setSelectedTypes(types);
+    savePreference(transport.saveMediaTypes({ mediaTypes: types }));
+  }
+
+  function changeCompareMode(mode) {
+    setCompareMode(mode);
+    savePreference(transport.saveCompareMode({ compareMode: mode }));
+  }
+
+  function changeRoleSort(sortBy) {
+    setRoleSort(sortBy);
+    transport.saveTopTalentSort({ sortBy, ...preferenceContext })
+      .then(data => {
+        if (data?.role_leaders) {
+          setRemoteTalent(current => ({ ...(current || {}), roleLeaders: data.role_leaders }));
+        }
+      })
+      .catch(error => console.warn('Top talent sort could not be saved', error));
+  }
+
+  function changeStudioSort(sortBy) {
+    setStudioSort(sortBy);
+    transport.saveStudioSort({ sortBy, ...preferenceContext })
+      .then(data => {
+        if (data?.studio_footprint) {
+          setRemoteTalent(current => ({ ...(current || {}), studioFootprint: data.studio_footprint }));
+        }
+      })
+      .catch(error => console.warn('Studio sort could not be saved', error));
+  }
+
+  function changeTasteSort(sortBy) {
+    setTasteSort(sortBy);
+    transport.saveGenreSort({ sortBy, ...preferenceContext })
+      .then(data => {
+        if (data?.taste_signals) {
+          setRemoteTalent(current => ({ ...(current || {}), tasteSignals: data.taste_signals }));
+        }
+      })
+      .catch(error => console.warn('Taste sort could not be saved', error));
   }
 
   return <Screen title="Statistics" subtitle="Your viewing and reading over time" onBack={onBack}>
     <StatisticsSummary model={model}
       palette={statisticsPalette}
-      onChangeRange={next => setRange(next)}
-      onChangeMediaTypes={types => setSelectedTypes(types)}
+      onChangeRange={next => setRange(withRangeDates(next))}
+      onChangeMediaTypes={changeMediaTypes}
       onRefresh={refresh}
       onSelectHighlight={item => navigate('Detail', { item })}
       onRetry={refresh} />
     <Section title="Range comparison">
       <StatisticsComparison model={comparisonModel} palette={statisticsPalette}
-        onCompareMode={setCompareMode} />
+        onCompareMode={changeCompareMode} />
     </Section>
     <Section title="Charts and featured repeats">
       <StatisticsCharts model={chartModel} palette={statisticsPalette} />
     </Section>
     <Section title="Talent and taste">
       <StatisticsTalentSection model={talentModel} palette={statisticsPalette}
-        onRoleSortChange={setRoleSort}
-        onStudioSortChange={setStudioSort}
-        onTasteSortChange={setTasteSort}
+        onRoleSortChange={changeRoleSort}
+        onStudioSortChange={changeStudioSort}
+        onTasteSortChange={changeTasteSort}
         onSelectPerson={entry => setSelectedPersonKey(`${entry.source}:${entry.personId}`)} />
     </Section>
     <Section title="Per-media activity overviews">

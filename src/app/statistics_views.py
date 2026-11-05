@@ -2,8 +2,10 @@ import calendar as _calendar
 import logging
 import re
 from datetime import date, timedelta
+from urllib.parse import quote
 
 from dateutil.relativedelta import relativedelta
+from django.conf import settings
 from django.db.utils import OperationalError
 from django.http import JsonResponse
 from django.shortcuts import render
@@ -13,7 +15,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.utils.timesince import timesince
 from django.utils.timezone import datetime
-from django.utils.translation import gettext_noop
+from django.utils.translation import gettext, gettext_noop, ngettext
 from django.views.decorators.http import require_GET, require_POST
 
 from app import config, statistics_cache, stats_cast_crew
@@ -849,6 +851,706 @@ def _build_statistics_react_props(user, context, statistics_data):
             "scaleMax": user.rating_scale_max,
         },
         "charts": charts,
+        "sections": {
+            "comparison": _statistics_comparison_section(
+                user, context, statistics_data,
+            ),
+            "overviews": _statistics_media_overview_models(
+                context,
+                statistics_data,
+                user,
+                context.get("selected_range_dates_label") or "",
+            ),
+        },
+    }
+
+
+STATISTICS_OVERVIEW_TYPE_LABELS = {
+    "tv": gettext_noop("TV Shows"),
+    "movie": gettext_noop("Movies"),
+    "anime": gettext_noop("Anime"),
+    "game": gettext_noop("Video Games"),
+    "music": gettext_noop("Music"),
+    "podcast": gettext_noop("Podcast"),
+    "book": gettext_noop("Books"),
+    "comic": gettext_noop("Comics"),
+    "manga": gettext_noop("Manga"),
+    "video": gettext_noop("Video"),
+}
+
+
+def _statistics_media_color(context, media_type):
+    colors = context.get("media_type_colors") or {}
+    return colors.get(media_type) or "#6366f1"
+
+
+def _statistics_image(value):
+    if not value or value == getattr(settings, "IMG_NONE", None):
+        return ""
+    return app_tags.image_url(value)
+
+
+def _statistics_media_href(item):
+    return app_tags.media_url(item) if item else ""
+
+
+def _statistics_media_score(media, user):
+    if not media:
+        return ""
+    score = getattr(media, "aggregated_score", None)
+    if score is None:
+        score = getattr(media, "score", None)
+    display = app_tags.score_display(score, user)
+    return "" if display is None else str(display)
+
+
+def _statistics_plural(count, one, many):
+    return ngettext(one, many, int(count or 0)) % {"count": int(count or 0)}
+
+
+def _statistics_overview_chart(key, title, chart, color):
+    chart = chart if isinstance(chart, dict) else {}
+    datasets = chart.get("datasets") or []
+    dataset = datasets[0] if datasets else {}
+    return {
+        "key": key,
+        "title": title,
+        "labels": chart.get("labels") or [],
+        "data": dataset.get("data") or [],
+        "color": dataset.get("background_color") or color,
+    }
+
+
+def _statistics_overview_item(title, subtitle="", value="", image="", href="", key=""):
+    return {
+        "key": key or title,
+        "title": title or "",
+        "subtitle": subtitle,
+        "value": str(value) if value not in (None, "") else "",
+        "image": _statistics_image(image),
+        "href": href,
+    }
+
+
+def _statistics_overview_panel(key, title, items, round_images=False):
+    return {
+        "key": key,
+        "title": title,
+        "roundImages": round_images,
+        "items": items,
+    }
+
+
+def _statistics_top_played_panel(media_type, context, user):
+    entries = (context.get("top_played") or {}).get(media_type) or []
+    if not entries:
+        return None
+    items = []
+    for entry in entries:
+        media_entry = entry.get("media")
+        item = getattr(media_entry, "item", None)
+        if item is None:
+            continue
+        duration = entry.get("formatted_duration") or ""
+        if media_type in (MediaTypes.TV.value, MediaTypes.ANIME.value):
+            count = entry.get("episode_count") or 0
+            subtitle = f"{duration} · {_statistics_plural(count, '%(count)s episode', '%(count)s episodes')}"
+        elif media_type == MediaTypes.MOVIE.value:
+            count = entry.get("play_count") or 0
+            subtitle = f"{duration} · {_statistics_plural(count, '%(count)s play', '%(count)s plays')}"
+        else:
+            subtitle = duration
+        items.append(_statistics_overview_item(
+            item.title,
+            subtitle=subtitle,
+            image=getattr(item, "image", ""),
+            href=_statistics_media_href(item),
+            key=f"{item.source}:{item.media_id}",
+        ))
+    return _statistics_overview_panel(
+        f"{media_type}-most-played", gettext("Most Played"), items,
+    )
+
+
+def _statistics_top_rated_panel(media_type, context, user):
+    entries = context.get(f"top_rated_{media_type}") or []
+    if not entries:
+        return None
+    items = []
+    for media in entries:
+        item = getattr(media, "item", None)
+        if item is None:
+            continue
+        items.append(_statistics_overview_item(
+            item.title,
+            subtitle="",
+            value=_statistics_media_score(media, user),
+            image=getattr(item, "image", ""),
+            href=_statistics_media_href(item),
+            key=f"{item.source}:{item.media_id}",
+        ))
+    return _statistics_overview_panel(f"{media_type}-top-rated", gettext("Top Rated"), items)
+
+
+def _statistics_music_overview(consumption, context, user):
+    color = _statistics_media_color(context, MediaTypes.MUSIC.value)
+    charts = []
+    if context.get("show_year_charts"):
+        charts.append(_statistics_overview_chart(
+            "music-year",
+            gettext("Music Plays by Year"),
+            (consumption.get("charts") or {}).get("by_year"),
+            color,
+        ))
+    panels = []
+
+    def panel(key, title, rows, *, image_key, href_builder, round_images=False):
+        items = []
+        for row in rows or []:
+            count = row.get("plays") or 0
+            subtitle = row.get("formatted_duration") or ""
+            if subtitle and count:
+                subtitle = f"{subtitle} · {_statistics_plural(count, '%(count)s play', '%(count)s plays')}"
+            elif count:
+                subtitle = _statistics_plural(count, "%(count)s play", "%(count)s plays")
+            items.append(_statistics_overview_item(
+                row.get("name") or row.get("title") or row.get("label")
+                or row.get("code") or "",
+                subtitle=subtitle,
+                image=row.get(image_key) or "",
+                href=href_builder(row),
+                key=f"{key}:{row.get('id') or row.get('name') or row.get('title') or row.get('label') or row.get('code')}",
+            ))
+        if items:
+            panels.append(_statistics_overview_panel(key, title, items, round_images))
+
+    panel(
+        "music-artists", gettext("Top Artists"), consumption.get("top_artists"),
+        image_key="image", href_builder=app_tags.music_artist_url, round_images=True,
+    )
+    panel(
+        "music-albums", gettext("Top Albums"), consumption.get("top_albums"),
+        image_key="image", href_builder=app_tags.music_album_url,
+    )
+    panel(
+        "music-tracks", gettext("Top Tracks"), consumption.get("top_tracks"),
+        image_key="album_image",
+        href_builder=lambda row: (
+            app_tags.music_album_url({
+                "id": row.get("album_id"),
+                "title": row.get("album") or "",
+                "artist_id": row.get("album_artist_id"),
+                "artist_name": row.get("album_artist_name") or "",
+            })
+            if row.get("album_id") else ""
+        ),
+    )
+    panel(
+        "music-decades", gettext("Top Decades"), consumption.get("top_decades"),
+        image_key="", href_builder=lambda row: "",
+    )
+    panel(
+        "music-countries", gettext("Top Countries"), consumption.get("top_countries"),
+        image_key="", href_builder=lambda row: "",
+    )
+    return {
+        "id": "music",
+        "typeValue": "music",
+        "typeLabel": gettext(STATISTICS_OVERVIEW_TYPE_LABELS["music"]),
+        "title": gettext("Activity Overview"),
+        "charts": charts,
+        "panels": panels,
+    }
+
+
+def _statistics_podcast_href(entry):
+    from django.utils.text import slugify
+
+    show_id = entry.get("show_id")
+    podcast_uuid = entry.get("podcast_uuid")
+    if show_id and podcast_uuid:
+        title = entry.get("slug") or entry.get("title") or entry.get("show") or "podcast"
+        return reverse(
+            "media_details",
+            kwargs={
+                "source": "pocketcasts",
+                "media_type": "podcast",
+                "media_id": podcast_uuid,
+                "title": slugify(title) or "podcast",
+            },
+        )
+    if show_id:
+        return reverse("podcast_show_detail", args=[show_id])
+    return ""
+
+
+def _statistics_podcast_overview(consumption, context):
+    color = _statistics_media_color(context, MediaTypes.PODCAST.value)
+    charts = []
+    if context.get("show_year_charts"):
+        charts.append(_statistics_overview_chart(
+            "podcast-year",
+            gettext("Podcast Plays by Year"),
+            (consumption.get("charts") or {}).get("by_year"),
+            color,
+        ))
+    panels = []
+
+    def panel(key, title, rows):
+        items = []
+        for row in rows or []:
+            count = row.get("plays") or 0
+            duration = row.get("formatted_duration") or ""
+            if key == "podcast-longest":
+                subtitle = duration
+            elif duration and count:
+                subtitle = f"{duration} · {_statistics_plural(count, '%(count)s play', '%(count)s plays')}"
+            else:
+                subtitle = _statistics_plural(count, "%(count)s play", "%(count)s plays")
+            items.append(_statistics_overview_item(
+                row.get("title") or row.get("show") or "",
+                subtitle=subtitle,
+                image=row.get("image") or "",
+                href=_statistics_podcast_href(row),
+                key=f"{key}:{row.get('show_id') or row.get('episode_id') or row.get('title')}",
+            ))
+        if items:
+            panels.append(_statistics_overview_panel(key, title, items))
+
+    panel("podcast-most-played", gettext("Most Played"), consumption.get("most_played"))
+    panel("podcast-most-listened", gettext("Most Listened"), consumption.get("most_listened"))
+    panel("podcast-longest", gettext("Longest Episodes"), consumption.get("longest_episodes"))
+    return {
+        "id": "podcast",
+        "typeValue": "podcast",
+        "typeLabel": gettext(STATISTICS_OVERVIEW_TYPE_LABELS["podcast"]),
+        "title": gettext("Activity Overview"),
+        "charts": charts,
+        "panels": panels,
+    }
+
+
+def _statistics_game_overview(consumption, context, user):
+    color = _statistics_media_color(context, MediaTypes.GAME.value)
+    charts_obj = consumption.get("charts") or {}
+    charts = []
+    if context.get("show_year_charts"):
+        charts.append(_statistics_overview_chart(
+            "game-year", gettext("Game Hours by Year"), charts_obj.get("by_year"), color,
+        ))
+    charts.append(_statistics_overview_chart(
+        "game-month", gettext("Game Hours by Month"), charts_obj.get("by_month"), color,
+    ))
+    charts.append(_statistics_overview_chart(
+        "game-daily-average",
+        gettext("Average Daily Playtime"),
+        charts_obj.get("by_daily_average"),
+        color,
+    ))
+    panels = []
+    most_played = _statistics_top_played_panel(MediaTypes.GAME.value, context, user)
+    if most_played:
+        panels.append(most_played)
+    platform_items = []
+    for platform in consumption.get("platform_breakdown") or []:
+        count = platform.get("games") or 0
+        platform_items.append(_statistics_overview_item(
+            platform.get("name") or "",
+            subtitle=(
+                f"{platform.get('formatted_hours') or ''} · "
+                f"{_statistics_plural(count, '%(count)s game', '%(count)s games')}"
+            ),
+            value="",
+            key=f"platform:{platform.get('name')}",
+        ))
+    if platform_items:
+        panels.append(_statistics_overview_panel(
+            "game-platforms", gettext("Top Platforms"), platform_items,
+        ))
+    return {
+        "id": "game",
+        "typeValue": "game",
+        "typeLabel": gettext(STATISTICS_OVERVIEW_TYPE_LABELS["game"]),
+        "title": gettext("Activity Overview"),
+        "charts": [chart for chart in charts if chart["labels"]],
+        "panels": panels,
+    }
+
+
+def _statistics_reading_overview(media_type, consumption, context, user):
+    color = _statistics_media_color(context, media_type)
+    label = gettext(STATISTICS_OVERVIEW_TYPE_LABELS.get(media_type, media_type))
+    unit_name = consumption.get("unit_name") or gettext("Page")
+    facts = []
+    listening = consumption.get("listening")
+    if listening:
+        facts.append({
+            "key": f"{media_type}-listening",
+            "label": gettext("Listening Time"),
+            "value": listening.get("formatted") or "",
+            "copy": gettext("Audiobook sessions in this range"),
+        })
+    charts = []
+    completion_charts = consumption.get("completion_charts") or {}
+    if context.get("show_year_charts"):
+        charts.append(_statistics_overview_chart(
+            f"{media_type}-year",
+            gettext("%(label)s by Year") % {
+                "label": consumption.get("completion_label") or gettext("Completed"),
+            },
+            completion_charts.get("by_year"),
+            color,
+        ))
+    charts.append(_statistics_overview_chart(
+        f"{media_type}-released",
+        gettext("%(label)s Released by Year") % {"label": label},
+        consumption.get("release_chart"),
+        color,
+    ))
+    charts.append(_statistics_overview_chart(
+        f"{media_type}-completed-length",
+        gettext("Completed %(unit)ss") % {"unit": unit_name},
+        consumption.get("completed_length_chart"),
+        color,
+    ))
+    panels = []
+    items = []
+    for row in consumption.get("top_items") or []:
+        entry = row.get("media")
+        item = getattr(entry, "item", None)
+        if item is None:
+            continue
+        items.append(_statistics_overview_item(
+            item.title,
+            subtitle=row.get("formatted_units") or "",
+            image=getattr(item, "image", ""),
+            href=_statistics_media_href(item),
+            key=f"{item.source}:{item.media_id}",
+        ))
+    if items:
+        panels.append(_statistics_overview_panel(
+            f"{media_type}-most-read", gettext("Most Read"), items,
+        ))
+    if media_type == MediaTypes.BOOK.value:
+        author_items = []
+        for author in consumption.get("top_authors") or []:
+            count = author.get("titles") or 0
+            author_items.append(_statistics_overview_item(
+                author.get("name") or "",
+                subtitle=(
+                    f"{author.get('formatted_units') or ''} · "
+                    f"{_statistics_plural(count, '%(count)s book', '%(count)s books')}"
+                ),
+                image=author.get("image") or "",
+                href=(
+                    reverse(
+                        "person_detail",
+                        kwargs={
+                            "source": author.get("source"),
+                            "person_id": author.get("person_id"),
+                            "name": app_tags.slug(author.get("name") or ""),
+                        },
+                    )
+                    if author.get("source") and author.get("person_id")
+                    else ""
+                ),
+                key=f"author:{author.get('name')}",
+            ))
+        if author_items:
+            panels.append(_statistics_overview_panel(
+                f"{media_type}-authors", gettext("Top Authors"), author_items,
+                round_images=True,
+            ))
+    genre_items = []
+    genre_noun = {
+        MediaTypes.BOOK.value: ("%(count)s book", "%(count)s books"),
+        MediaTypes.COMIC.value: ("%(count)s comic", "%(count)s comics"),
+        MediaTypes.MANGA.value: ("%(count)s manga", "%(count)s manga"),
+    }.get(media_type, ("%(count)s title", "%(count)s titles"))
+    for genre in consumption.get("top_genres") or []:
+        count = genre.get("titles") or 0
+        genre_items.append(_statistics_overview_item(
+            genre.get("name") or "",
+            subtitle=(
+                f"{genre.get('formatted_units') or ''} · "
+                f"{_statistics_plural(count, *genre_noun)}"
+            ),
+            href=(
+                reverse("history")
+                + "?genre=" + quote(str(genre.get("name") or ""), safe="")
+                + f"&media_type={media_type}"
+                + (
+                    f"&start-date={context.get('start_date_str')}"
+                    if context.get("start_date_str")
+                    and context.get("start_date_str") != "all"
+                    else ""
+                )
+                + (
+                    f"&end-date={context.get('end_date_str')}"
+                    if context.get("end_date_str")
+                    and context.get("end_date_str") != "all"
+                    else ""
+                )
+            ),
+            key=f"genre:{genre.get('name')}",
+        ))
+    if genre_items:
+        panels.append(_statistics_overview_panel(
+            f"{media_type}-genres", gettext("Top Genres"), genre_items,
+        ))
+    top_rated = _statistics_top_rated_panel(media_type, context, user)
+    if top_rated:
+        panels.append(top_rated)
+    return {
+        "id": media_type,
+        "typeValue": media_type,
+        "typeLabel": label,
+        "title": gettext("Activity Overview"),
+        "facts": facts,
+        "charts": [chart for chart in charts if chart["labels"]],
+        "panels": panels,
+    }
+
+
+def _statistics_media_overview_models(context, statistics_data, user, range_label):
+    models = {}
+
+    def add(media_type, model):
+        model["rangeLabel"] = range_label
+        models[media_type] = model
+
+    for media_type in (MediaTypes.TV.value, MediaTypes.ANIME.value,
+                       MediaTypes.MOVIE.value, MediaTypes.VIDEO.value):
+        consumption = context.get(f"{media_type}_consumption") or {}
+        if not consumption.get("has_data"):
+            continue
+        color = _statistics_media_color(context, media_type)
+        charts = []
+        if context.get("show_year_charts"):
+            chart_title = {
+                MediaTypes.TV.value: gettext("Episode Plays by Year"),
+                MediaTypes.ANIME.value: gettext("Episode Plays by Year"),
+                MediaTypes.MOVIE.value: gettext("Movie Plays by Year"),
+                MediaTypes.VIDEO.value: gettext("Video Plays by Year"),
+            }[media_type]
+            charts.append(_statistics_overview_chart(
+                f"{media_type}-year",
+                chart_title,
+                (consumption.get("charts") or {}).get("by_year"),
+                color,
+            ))
+        panels = []
+        if media_type != MediaTypes.VIDEO.value:
+            most_played = _statistics_top_played_panel(media_type, context, user)
+            if most_played:
+                panels.append(most_played)
+            top_rated = _statistics_top_rated_panel(media_type, context, user)
+            if top_rated:
+                panels.append(top_rated)
+        add(media_type, {
+            "id": media_type,
+            "typeValue": media_type,
+            "typeLabel": gettext(STATISTICS_OVERVIEW_TYPE_LABELS[media_type]),
+            "title": gettext("Activity Overview"),
+            "charts": [chart for chart in charts if chart["labels"]],
+            "panels": panels,
+        })
+
+    game = context.get("game_consumption") or {}
+    if game.get("has_data"):
+        add(MediaTypes.GAME.value, _statistics_game_overview(game, context, user))
+
+    if context.get("music_consumption", {}).get("has_data"):
+        add(MediaTypes.MUSIC.value, _statistics_music_overview(
+            context["music_consumption"], context, user,
+        ))
+
+    if context.get("podcast_consumption", {}).get("has_data"):
+        add(MediaTypes.PODCAST.value, _statistics_podcast_overview(
+            context["podcast_consumption"], context,
+        ))
+
+    for media_type in (MediaTypes.BOOK.value, MediaTypes.COMIC.value,
+                       MediaTypes.MANGA.value):
+        consumption = context.get(f"{media_type}_consumption") or {}
+        if consumption.get("has_data"):
+            add(media_type, _statistics_reading_overview(
+                media_type, consumption, context, user,
+            ))
+
+    return models
+
+
+def _statistics_comparison_section(user, context, statistics_data):
+    current = _get_statistics_minutes_by_type(statistics_data)
+    comparisons = context.get("hours_per_media_type_comparison") or {}
+    selected = context.get("selected_compare_mode") or STATISTICS_COMPARE_PREVIOUS_PERIOD
+    duration_format = getattr(user, "duration_format", "hours_minutes")
+    rows = []
+    for media_type in MEDIA_TYPE_HOURS_ORDER:
+        current_total = float(current.get(media_type) or 0)
+        if current_total <= 0 and media_type not in comparisons:
+            continue
+        entry = comparisons.get(media_type) or {}
+        tooltip = entry.get("tooltip") or {}
+        state = entry.get("badge_state") or "none"
+        if state not in ("up", "down"):
+            state = "neutral"
+        rows.append({
+            "key": media_type,
+            "type": media_type,
+            "label": app_tags.media_type_readable(media_type),
+            "color": _statistics_media_color(context, media_type),
+            "currentLabel": _format_statistics_total_for_media_type(
+                media_type, current_total, duration_format,
+            ),
+            "comparisonLabel": (
+                tooltip.get("comparison_total") if selected != STATISTICS_COMPARE_NONE else ""
+            ) or "",
+            "deltaLabel": (
+                entry.get("badge_short") or entry.get("badge") or ""
+                if selected != STATISTICS_COMPARE_NONE else ""
+            ),
+            "state": state,
+        })
+    comparison_label = STATISTICS_COMPARE_LABELS.get(selected, "")
+    if selected == STATISTICS_COMPARE_NONE:
+        copy = gettext("Hours in this range. Choose a period to compare.")
+    else:
+        copy = gettext("Hours in this range compared with %(period)s.") % {
+            "period": comparison_label.lower(),
+        }
+    return {
+        "title": gettext("Comparison"),
+        "copy": copy,
+        "selected": selected,
+        "options": [
+            {"value": value, "label": gettext(label)}
+            for value, label in STATISTICS_COMPARE_LABELS.items()
+        ],
+        "rows": rows,
+    }
+
+
+def _statistics_talent_react_props(context, user):
+    role_leaders = context.get("role_leaders") or {}
+    role_sort = role_leaders.get("sort_by") or getattr(
+        user, "top_talent_sort_by", "plays",
+    )
+    columns = []
+    for column in role_leaders.get("columns") or []:
+        entries = []
+        for index, entry in enumerate(column.get("entries") or []):
+            entries.append({
+                "name": entry.get("name") or "",
+                "source": entry.get("source") or "",
+                "personId": str(entry.get("person_id") or ""),
+                "rank": index + 1,
+                "plays": entry.get("plays") or 0,
+                "titles": entry.get("unique_titles") or 0,
+                "time": entry.get("watched_time") or "",
+                "displayMetric": str(entry.get("display_metric") or ""),
+                "selected": bool(entry.get("selected")),
+            })
+        if entries:
+            columns.append({
+                "bucket": column.get("bucket") or "",
+                "label": column.get("label") or "",
+                "entries": entries,
+            })
+    role_model = {
+        "title": gettext("Role Leaders"),
+        "copy": gettext("The actors, directors and writers you return to most."),
+        "selected": role_sort,
+        "sortOptions": [
+            {"value": "plays", "label": gettext("Plays")},
+            {"value": "time", "label": gettext("Time")},
+            {"value": "titles", "label": gettext("Titles")},
+        ],
+        "columns": columns,
+    }
+
+    studio_footprint = context.get("studio_footprint") or {}
+    studio_sort = context.get("studio_sort_by") or getattr(
+        user, "studio_sort_by", "plays",
+    )
+    studios = []
+    for index, studio in enumerate(studio_footprint.get("studios") or []):
+        studios.append({
+            "name": studio.get("name") or "",
+            "pct": studio.get("pct") or 0,
+            "plays": studio.get("plays") or 0,
+            "time": studio.get("watched_time") or "",
+            "metricLabel": (
+                studio.get("watched_time") or ""
+                if studio_sort == "time"
+                else _statistics_plural(
+                    studio.get("plays") or 0, "%(count)s play", "%(count)s plays",
+                )
+            ),
+            "color": "#6366f1",
+            "rank": index + 1,
+        })
+    delta = studio_footprint.get("delta")
+    studio_model = {
+        "title": gettext("Studio Footprint"),
+        "copy": gettext("Studios that appear most often."),
+        "selected": studio_sort,
+        "sortOptions": [
+            {"value": "plays", "label": gettext("Plays")},
+            {"value": "time", "label": gettext("Time")},
+        ],
+        "delta": (
+            {
+                "label": f"{'+' if delta.get('is_positive') else ''}{delta.get('pct', 0)}%",
+                "state": "up" if delta.get("is_positive") else "down",
+                "copy": gettext("studio appearances vs previous period"),
+            }
+            if isinstance(delta, dict) else None
+        ),
+        "studios": studios,
+    }
+
+    genre_sort = context.get("genre_sort_by") or getattr(user, "genre_sort_by", "time")
+    genres = [
+        {
+            "name": genre.get("name") or "",
+            "pct": genre.get("pct") or 0,
+            "plays": genre.get("plays") or 0,
+            "formattedDuration": genre.get("formatted_duration") or "",
+            "color": genre.get("color") or "",
+        }
+        for genre in context.get("top_genres_combined") or []
+    ]
+    eras = [
+        {
+            "label": era.get("label") or "",
+            "pct": era.get("pct") or 0,
+            "plays": era.get("plays") or 0,
+            "formattedDuration": era.get("formatted_duration") or "",
+        }
+        for era in context.get("era_spotlight") or []
+    ]
+    taste_model = {
+        "title": gettext("Taste Signals"),
+        "copy": gettext("What your library says about your taste."),
+        "selected": genre_sort,
+        "sortOptions": [
+            {"value": "time", "label": gettext("Time")},
+            {"value": "plays", "label": gettext("Plays")},
+        ],
+        "genresTitle": gettext("Top Genres"),
+        "erasTitle": gettext("Era Spotlight"),
+        "genres": genres,
+        "eras": eras,
+        "genresEmpty": gettext("No genre data available for this range."),
+        "erasEmpty": gettext("No release-year data available for this range."),
+    }
+
+    return {
+        "roleLeaders": role_model,
+        "studioFootprint": studio_model,
+        "tasteSignals": taste_model,
     }
 
 
@@ -1145,6 +1847,8 @@ def statistics(request):
         context["statistics_react_props"] = _build_statistics_react_props(
             request.user, context, statistics_data
         )
+        if request.GET.get("format") == "json":
+            return JsonResponse({"model": context["statistics_react_props"]})
         return render(request, "app/statistics.html", context)
     except OperationalError:
         logger.exception("Database error in statistics view")
@@ -1299,6 +2003,8 @@ def statistics(request):
         context["statistics_react_props"] = _build_statistics_react_props(
             request.user, context, empty_statistics_data
         )
+        if request.GET.get("format") == "json":
+            return JsonResponse({"model": context["statistics_react_props"]})
         return render(request, "app/statistics.html", context)
 
 
@@ -1490,6 +2196,17 @@ def _build_talent_fragment_context(
         "start_date_str": start_date_str or "",
         "end_date_str": end_date_str or "",
         "media_count": statistics_data.get("media_count", {}),
+        "statistics_talent_props": _statistics_talent_react_props(
+            {
+                "role_leaders": role_leaders,
+                "studio_footprint": studio_footprint,
+                "studio_sort_by": active_studio_sort,
+                "top_genres_combined": top_genres_combined,
+                "era_spotlight": era_spotlight,
+                "genre_sort_by": active_genre_sort,
+            },
+            user,
+        ),
     }
 
 
@@ -1541,6 +2258,17 @@ def statistics_talent_fragment(request):
             end_date_str,
             compare_mode_param,
         )
+
+    if request.GET.get("format") == "json":
+        return JsonResponse({
+            "talent": context.get("statistics_talent_props") or {},
+            "featuredPerson": context.get("featured_person"),
+            "selectedPersonKey": (
+                f"{context['featured_person'].get('source', '')}:"
+                f"{context['featured_person'].get('person_id', '')}"
+                if context.get("featured_person") else ""
+            ),
+        })
 
     return render(
         request,
@@ -1857,6 +2585,16 @@ def update_top_talent_sort(request):
             "strip_html": strip_html,
             "selected_person_key": selected_person_key,
             "pct_of_library": pct_of_library,
+            "role_leaders": _statistics_talent_react_props(
+                {
+                    "role_leaders": role_leaders,
+                    "studio_footprint": studio_footprint,
+                    "studio_sort_by": getattr(
+                        request.user, "studio_sort_by", "plays",
+                    ),
+                },
+                request.user,
+            )["roleLeaders"],
         },
     )
 
@@ -1952,6 +2690,14 @@ def update_genre_sort(request):
             "sort_by": sort_by,
             "genres_html": genres_html,
             "decades_html": decades_html,
+            "taste_signals": _statistics_talent_react_props(
+                {
+                    "top_genres_combined": top_genres_combined,
+                    "era_spotlight": era_spotlight,
+                    "genre_sort_by": sort_by,
+                },
+                request.user,
+            )["tasteSignals"],
         },
     )
 
@@ -2017,6 +2763,13 @@ def update_studio_sort(request):
             "success": True,
             "sort_by": sort_by,
             "studio_html": studio_html,
+            "studio_footprint": _statistics_talent_react_props(
+                {
+                    "studio_footprint": studio_footprint,
+                    "studio_sort_by": sort_by,
+                },
+                request.user,
+            )["studioFootprint"],
         },
     )
 

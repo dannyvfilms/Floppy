@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createCalendarTransport } from './calendarTransport.js';
+import {
+  createStatisticsTransport,
+  flattenStatisticsModel,
+} from './statisticsTransport.js';
 import { createListTransport } from './listTransport.js';
 import { createMusicTransport } from './musicTransport.js';
 import {
@@ -141,4 +145,62 @@ test('people transport keeps the local preview without a session', async () => {
   const transport = createPeopleTransport();
   assert.equal(transport.mode, 'local');
   assert.equal((await transport.loadPerson({})).local, true);
+test('statistics transport reads and writes through the authenticated session', async () => {
+  const { calls, session } = authFixture(path => {
+    if (path.startsWith('/statistics?format=json')) return { model: { summary: {} } };
+    if (path.startsWith('/statistics/fragments/talent')) return { talent: {} };
+    return { success: true };
+  });
+  const transport = createStatisticsTransport({ auth: session });
+  assert.equal(transport.mode, 'server');
+
+  await transport.loadModel({ startDate: '2026-01-01', endDate: '2026-01-31' });
+  assert.match(calls[0].path, /^\/statistics\?format=json/);
+  assert.match(calls[0].path, /start-date=2026-01-01/);
+
+  await transport.loadTalent({ rangeName: 'This Year' });
+  assert.match(calls[1].path, /^\/statistics\/fragments\/talent\?format=json/);
+
+  await transport.saveCompareMode({ compareMode: 'last_year' });
+  assert.equal(calls[2].path, '/statistics/compare-mode');
+  assert.deepEqual(calls[2].options.form, { compare_mode: 'last_year' });
+
+  await transport.saveMediaTypes({ mediaTypes: ['movie', 'game'] });
+  assert.deepEqual(calls[3].options.form, { media_types: 'movie,game' });
+
+  await transport.saveGenreSort({ sortBy: 'plays', rangeName: 'This Year' });
+  assert.equal(calls[4].path, '/statistics/genre-sort');
+});
+
+test('statistics transport keeps the local preview without a session', async () => {
+  const transport = createStatisticsTransport();
+  assert.equal(transport.mode, 'local');
+  assert.equal(await transport.loadModel(), null);
+  assert.equal((await transport.saveCompareMode({ compareMode: 'none' })).local, true);
+});
+
+test('flattenStatisticsModel maps grouped server charts and selected types', () => {
+  const model = {
+    summary: {
+      all: { total: 4 },
+      types: { movie: { total: 2 } },
+      highlights: { all: [{ title: 'All' }], types: { movie: [{ title: 'Movie' }] } },
+      scaleMax: 10,
+    },
+    charts: {
+      overview: { all: { rhythm: { matrix: [] } }, types: { movie: { rhythm: { matrix: [[1]] } } } },
+      hours: { all: { hoursByMonth: { labels: ['Jan'] } }, types: {} },
+    },
+    sections: {
+      comparison: { rows: [{ type: 'movie' }] },
+      overviews: { movie: { typeValue: 'movie', panels: [] } },
+    },
+  };
+  const flat = flattenStatisticsModel(model, ['movie']);
+  assert.equal(flat.summary.total, 2);
+  assert.equal(flat.highlights[0].title, 'Movie');
+  assert.deepEqual(flat.charts.rhythm.matrix, [[1]]);
+  assert.equal(flat.charts.hoursByMonth.labels[0], 'Jan');
+  assert.equal(flat.comparison.rows[0].type, 'movie');
+  assert.equal(flat.overviews[0].typeValue, 'movie');
 });
