@@ -387,13 +387,9 @@ in the register.
 
 - `frontend/ui/Rail.jsx`
 - `frontend/ui/Rail.web.jsx`
-<<<<<<< HEAD
 - `frontend/ui/HomeShelves.jsx` (Home shelves on web and native)
-- `native-proof/app/surfaces/RailsSlot.jsx` (remaining demo rails on the Discover screen)
-=======
 - `frontend/ui/mountRails.jsx`
 - `native-proof/app/surfaces/RailsSlot.jsx` (native placement on the Home and Discover screens)
->>>>>>> native-port/rails-web
 - `src/static/js/horizontal-scroll.js`
 - `src/static/js/horizontal-scroll.selfcheck.mjs`
 - `src/templates/app/components/_scrollable_row.html`
