@@ -188,7 +188,10 @@ function Adapter({ host, props }) {
 
   useEffect(() => {
     const updated = event => {
-      if (Number(event.detail?.tv_id) !== Number(props.control?.tvId)) return;
+      const detail = event.detail || {};
+      const sameShow = Number(detail.tv_id) === Number(props.control?.tvId);
+      const sameSeason = props.control?.mediaType === 'season' && Number(detail.id) === Number(props.control?.instanceId);
+      if (!sameShow && !sameSeason) return;
       if (open) load();
     };
     const resolved = event => {
