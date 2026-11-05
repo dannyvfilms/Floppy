@@ -1072,12 +1072,14 @@ templates are compatibility/composition sources, not equally active parallel pag
 
 ### INTEGRATION-PANELS — Library/download and Seerr requests
 
-- Purpose/usage: detail Arr/Seerr status/request actions.
-- Implementation: `src/templates/integrations/library_panel.html`, `seerr_request.html`, `seerr_status.html`.
-- Contract: nearest-panel replacement, instance/media/season/episode, copy feedback, per-season request/status, permissions/provider errors and parent modal close state.
-- Data: `src/integrations/arr_library.py` and integration handlers.
-- Reuse/blockers: status/actions shared; parent Alpine/HTMX coupling must be removed deliberately; server capabilities required.
-- Validation targets: owning integration view tests; browser/native lifecycle unverified.
+- Purpose/usage: detail Arr/Seerr status and request actions.
+- Implementation: server-owned `src/templates/integrations/library_panel.html`, `seerr_request.html` and `seerr_status.html`; universal `frontend/ui/IntegrationPanels.jsx` (`ArrLibraryPanels`, `SeerrRequestsCard`, `SeerrStatusBadge`, `SeerrRequestDialog`); native placement in `native-proof/app/screens/IntegrationsScreen.jsx`.
+- Contract: nearest-panel replacement, instance/media/season/episode identity, status and queue detail, copy feedback, per-season request/status, permissions, provider errors and parent modal close state. The universal panels reuse the shared settings card, badge, button and modal dialog contracts; callers supply media context, panel data, labels and action callbacks.
+- Data: `src/integrations/arr_library.py`, `src/integrations/seerr_api.py` and the integration handlers. Web transport, credentials, permissions, CSRF and HTMX replacement stay server-owned; native transport and system-browser handoff remain adapters.
+- Reuse/blockers: status/actions shared; parent Alpine/HTMX coupling must be removed deliberately; server capabilities required. The native screen runs realistic show, season and episode demo data because the shell has no transport, so the live request/search/copy lifecycle is presentation-shaped but not connected.
+- Status: `Partial / coexisting`. The native Integrations slot is ported and renders show, season and episode Arr panels (has file, downloading queue, missing, activity, per-instance provider error, copy feedback), Seerr request rows and a per-season request dialog. The web detail pages still use the server-rendered htmx panels, permissions and progressive fallback.
+- Verification: shared presentation compiles through the Expo export and the UI architecture checks; targeted Django Arr/Seerr tests cover the server contract. No browser, simulator, device, VoiceOver or TalkBack interaction pass was performed for the universal panels.
+- Validation targets: `src/integrations/tests/test_arr_library.py`, `src/integrations/tests/test_seerr_request.py`; browser/native lifecycle remains unverified.
 
 ### DEVICE-CONNECT — Trakt/device-code connection
 

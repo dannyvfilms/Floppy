@@ -1030,6 +1030,29 @@
         }
       }
     },
+    "frontend/ui/IntegrationPanels.jsx": {
+      "components": [
+        "ArrLibraryPanels",
+        "SeerrRequestsCard",
+        "SeerrStatusBadge",
+        "SeerrRequestDialog"
+      ],
+      "register": "INTEGRATION-PANELS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the existing server-rendered library_panel, seerr_request and seerr_status templates keep the browser path and progressive fallback."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared Arr/Seerr panels through the native Integrations screen; no simulator run, request interaction, copy feedback or VoiceOver pass."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared Arr/Seerr panels through the native Integrations screen; no emulator run, request interaction, copy feedback or TalkBack pass."
+        }
+      }
+    },
     "frontend/settings/ConfirmDialog.jsx": {
       "components": [
         "ConfirmDialog"
