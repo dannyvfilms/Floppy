@@ -675,11 +675,31 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the MediaCardSlot native placement; no runtime interaction pass."
+          "evidence": "Compiled by the Expo export through the MediaCardSlot native placement with the tabbed body; no runtime interaction pass."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the MediaCardSlot native placement; no runtime interaction pass."
+          "evidence": "Compiled by the Expo export through the MediaCardSlot native placement with the tabbed body; no runtime interaction pass."
+        }
+      }
+    },
+    "frontend/ui/TrackFormTabs.jsx": {
+      "components": [
+        "TrackTabs"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not rendered by the web bundle; the existing server-rendered Track popup remains the browser path."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the MediaCardSlot native placement; no tab interaction pass."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the MediaCardSlot native placement; no tab interaction pass."
         }
       }
     },

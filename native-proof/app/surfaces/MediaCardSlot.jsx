@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { ListsForm } from '../../../frontend/ui/ListsFormView';
 import { MediaCardActionHost } from '../../../frontend/ui/MediaCardActionHost';
@@ -13,6 +13,19 @@ import {
   normalizeTrackForm,
 } from '../../../frontend/ui/mediaCardForms';
 import { mediaCardPalette, spacing } from '../theme';
+import {
+  createTag,
+  deleteTrack,
+  hasMediaCardTransport,
+  loadLists,
+  loadTrack,
+  loadTrackTabs,
+  saveArtwork,
+  saveTrack,
+  setDiscoverHidden,
+  setTags,
+  toggleList,
+} from './mediaCardTransport';
 
 export const surface = {
   id: 'MEDIA-CARD',
@@ -31,7 +44,7 @@ const labels = {
   open: 'Open',
 };
 
-function actionsFor(title) {
+function actionsFor(title, media) {
   return {
     href: '/demo/library',
     items: [
@@ -44,6 +57,7 @@ function actionsFor(title) {
         url: '/demo/track',
         vals: { return_url: '/demo/library' },
         target: '#track-demo',
+        media,
       },
       {
         kind: 'modal',
@@ -54,6 +68,7 @@ function actionsFor(title) {
         url: '/demo/lists',
         vals: { return_url: '/demo/library' },
         target: '#lists-demo',
+        media,
       },
       {
         kind: 'link',
@@ -61,6 +76,7 @@ function actionsFor(title) {
         title: 'View your activity history',
         glyph: '◷',
         href: '/demo/history',
+        media,
       },
     ],
     ordering: null,
@@ -68,8 +84,40 @@ function actionsFor(title) {
     csrfToken: '',
     clickable: true,
     title,
+    media,
   };
 }
+
+const demoMedia = {
+  orbit: {
+    mediaType: 'tv',
+    source: 'tmdb',
+    mediaId: '76479',
+    title: 'The Quiet Orbit',
+    subtitle: 'S1 E6 · The Long Night',
+  },
+  signal: {
+    mediaType: 'podcast',
+    source: 'pocketcasts',
+    mediaId: 'signal-and-static',
+    title: 'Signal & Static',
+    subtitle: 'Episode 3 · Carrier Wave',
+  },
+  studio: {
+    mediaType: 'movie',
+    source: 'tmdb',
+    mediaId: '603',
+    title: 'Building a Home Studio',
+    subtitle: '2024 · 12:40',
+  },
+  lanterns: {
+    mediaType: 'book',
+    source: 'openlibrary',
+    mediaId: 'OL27448W',
+    title: 'Paper Lanterns',
+    subtitle: '2022 · 320 pages',
+  },
+};
 
 const demoItems = [
   {
@@ -89,7 +137,7 @@ const demoItems = [
       lines: [{ join: 'plain', parts: [{ text: '2024' }, { text: '• 6 / 10 episodes', muted: true }] }],
       rating: { label: '8.0', value: 8, scaleMax: 10, rateLabel: 'Rate' },
       ratingEditable: true,
-      actions: actionsFor('The Quiet Orbit'),
+      actions: actionsFor('The Quiet Orbit', demoMedia.orbit),
     },
   },
   {
@@ -109,7 +157,7 @@ const demoItems = [
       lines: [{ join: 'plain', parts: [{ text: '2023' }, { text: '• 3 / 8 episodes', muted: true }] }],
       rating: { label: '4.5', value: 4.5, scaleMax: 5, rateLabel: 'Rate' },
       ratingEditable: true,
-      actions: actionsFor('Signal & Static'),
+      actions: actionsFor('Signal & Static', demoMedia.signal),
     },
   },
   {
@@ -129,7 +177,7 @@ const demoItems = [
       lines: [{ join: 'plain', parts: [{ text: '2024' }, { text: '• Watched', muted: true }] }],
       rating: null,
       ratingEditable: true,
-      actions: actionsFor('Building a Home Studio'),
+      actions: actionsFor('Building a Home Studio', demoMedia.studio),
     },
   },
   {
@@ -272,75 +320,312 @@ const demoTrack = {
   trackTime: false,
 };
 
-function ActionBody({ action, onClose }) {
-  const [listsModel] = useState(() => normalizeListsModel(demoLists));
-  const [membership, setMembership] = useState(() => listsMembership(listsModel));
+const demoTrackTabs = [
+  {
+    id: 'tags',
+    label: 'Tags',
+    kind: 'tags',
+    status: 'ready',
+    error: '',
+    tags: [
+      { id: 'comfort', name: 'Comfort watches', hasTag: true, pending: false, error: '' },
+      { id: 'sci-fi', name: 'Sci-fi', hasTag: false, pending: false, error: '' },
+      { id: 'family', name: 'Family', hasTag: false, pending: false, error: '' },
+    ],
+  },
+  {
+    id: 'metadata',
+    label: 'Metadata',
+    kind: 'metadata',
+    status: 'ready',
+    error: '',
+    fields: [
+      { label: 'Title', value: 'The Quiet Orbit' },
+      { label: 'Media type', value: 'tv' },
+      { label: 'Provider', value: 'tmdb' },
+      { label: 'Provider id', value: '76479' },
+      { label: 'Release', value: '2024-02-09' },
+      { label: 'Genres', value: 'Science Fiction, Drama' },
+      { label: 'Provider score', value: '8.1' },
+    ],
+    imageUrl: 'https://picsum.photos/seed/floppy-orbit/400/600',
+    canEditArtwork: true,
+    itemId: 'demo-orbit',
+  },
+  {
+    id: 'collection',
+    label: 'Collection',
+    kind: 'collection',
+    status: 'ready',
+    error: '',
+    entries: [
+      { id: 'copy-1', title: 'The Quiet Orbit', detail: 'Blu-ray · 1080p · HDR10', date: '2025-03-14' },
+      { id: 'copy-2', title: 'The Quiet Orbit', detail: 'Digital · 4K', date: '2025-02-02' },
+    ],
+  },
+  {
+    id: 'plays',
+    label: 'Episode plays',
+    kind: 'plays',
+    status: 'ready',
+    error: '',
+    entries: [
+      { id: 'play-1', title: 'In progress', detail: 'Episode 6 · The Long Night', date: '2026-10-12' },
+      { id: 'play-2', title: 'Completed', detail: 'Episode 5 · Drift', date: '2026-10-08' },
+    ],
+  },
+  {
+    id: 'status-history',
+    label: 'Status history',
+    kind: 'status-history',
+    status: 'ready',
+    error: '',
+    changes: [
+      { id: 'change-1', old: 'Planning', next: 'In progress', reason: 'Manual', date: '2026-10-01' },
+      { id: 'change-2', old: '', next: 'Planning', reason: 'Discover', date: '2026-09-28' },
+    ],
+  },
+  {
+    id: 'discover',
+    label: 'Discover',
+    kind: 'discover',
+    status: 'ready',
+    error: '',
+    hidden: false,
+    canToggle: true,
+    itemId: 'demo-orbit',
+  },
+];
+
+function updateTab(tabs, id, updater) {
+  return tabs.map(tab => (tab.id === id ? updater(tab) : tab));
+}
+
+function delay(milliseconds) {
+  return new Promise(resolve => setTimeout(resolve, milliseconds));
+}
+
+function ListsAction({ action, onClose }) {
+  const transportReady = hasMediaCardTransport();
+  const identity = action.media || { mediaType: 'tv', source: 'tmdb', mediaId: 'demo', title: action.title };
+  const fallback = normalizeListsModel(demoLists);
+  const [model, setModel] = useState(transportReady ? null : fallback);
+  const [status, setStatus] = useState(transportReady ? 'loading' : 'ready');
+  const [membership, setMembership] = useState(() => listsMembership(fallback));
   const [tag, setTag] = useState('');
   const [pending, setPending] = useState({});
-  const [listErrors, setListErrors] = useState({});
-  const [listStatus, setListStatus] = useState('ready');
-  const [trackModel] = useState(() => normalizeTrackForm(demoTrack));
-  const [trackValues, setTrackValues] = useState(() => initialTrackValues(trackModel));
-  const [trackErrors, setTrackErrors] = useState({});
-  const [trackStatus, setTrackStatus] = useState('ready');
-  const [trackBusy, setTrackBusy] = useState(false);
-  const [trackServerError, setTrackServerError] = useState('');
+  const [errors, setErrors] = useState({});
+  const [attempt, setAttempt] = useState(0);
 
+  useEffect(() => {
+    if (!transportReady) return undefined;
+    let alive = true;
+    setStatus('loading');
+    setErrors({});
+    loadLists(identity, action.title)
+      .then(data => {
+        if (!alive) return;
+        const next = normalizeListsModel(data);
+        setModel(next);
+        setMembership(listsMembership(next));
+        setStatus('ready');
+      })
+      .catch(() => { if (alive) setStatus('error'); });
+    return () => { alive = false; };
+  }, [attempt, transportReady, identity.mediaType, identity.source, identity.mediaId, action.title]);
+
+  async function toggle(list) {
+    if (pending[list.id]) return;
+    setPending(current => ({ ...current, [list.id]: true }));
+    setErrors(current => ({ ...current, [list.id]: '' }));
+    try {
+      const has = Boolean(membership[list.id]);
+      if (transportReady) {
+        const data = await toggleList(identity, list.id, has);
+        setMembership(current => applyListToggle(current, list.id, data.hasItem));
+      } else {
+        await delay(250);
+        setMembership(current => applyListToggle(current, list.id, !has));
+      }
+    } catch (error) {
+      setErrors(current => ({ ...current, [list.id]: error.message || listLabels.toggleFailed }));
+    } finally {
+      setPending(current => ({ ...current, [list.id]: false }));
+    }
+  }
+
+  return <ListsForm
+    model={model}
+    membership={membership}
+    tag={tag}
+    status={status}
+    pending={pending}
+    errors={errors}
+    labels={listLabels}
+    palette={formPalette}
+    showHeader={false}
+    onTagChange={setTag}
+    onRetry={() => setAttempt(current => current + 1)}
+    onClose={onClose}
+    onToggle={toggle} />;
+}
+
+function TrackAction({ action, onClose }) {
+  const transportReady = hasMediaCardTransport();
+  const identity = action.media || { mediaType: 'tv', source: 'tmdb', mediaId: 'demo', title: action.title };
+  const fallback = normalizeTrackForm(demoTrack);
+  const [model, setModel] = useState(transportReady ? null : fallback);
+  const [values, setValues] = useState(() => (transportReady ? {} : initialTrackValues(fallback)));
+  const [tabs, setTabs] = useState(transportReady ? [] : demoTrackTabs);
+  const [tracked, setTracked] = useState(false);
+  const [status, setStatus] = useState(transportReady ? 'loading' : 'ready');
+  const [busy, setBusy] = useState(false);
+  const [serverError, setServerError] = useState('');
+  const [errors, setErrors] = useState({});
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    if (!transportReady) return undefined;
+    let alive = true;
+    setStatus('loading');
+    setServerError('');
+    loadTrack(identity)
+      .then(data => {
+        if (!alive) return;
+        const next = normalizeTrackForm(data.model);
+        setModel(next);
+        setValues(initialTrackValues(next));
+        setTabs(data.tabs || []);
+        setTracked(Boolean(data.tracked));
+        setStatus('ready');
+      })
+      .catch(error => {
+        if (!alive) return;
+        setServerError(error.message || '');
+        setStatus('error');
+      });
+    return () => { alive = false; };
+  }, [attempt, transportReady, identity.mediaType, identity.source, identity.mediaId]);
+
+  function change(name, value) {
+    setValues(current => ({ ...current, [name]: value }));
+    setErrors(current => ({ ...current, [name]: '' }));
+  }
+
+  async function submit() {
+    setBusy(true);
+    setServerError('');
+    try {
+      if (transportReady) {
+        await saveTrack(identity, model, values, tracked);
+        const refreshed = await loadTrack(identity);
+        setTracked(Boolean(refreshed.tracked));
+        setTabs(refreshed.tabs || []);
+      } else {
+        await delay(500);
+      }
+      onClose?.();
+    } catch (error) {
+      setServerError(error.message || '');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    setBusy(true);
+    setServerError('');
+    try {
+      if (transportReady) await deleteTrack(identity);
+      else await delay(400);
+      onClose?.();
+    } catch (error) {
+      setServerError(error.message || '');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function retryTabs() {
+    if (!transportReady) return;
+    setTabs(current => current.map(tab => ({ ...tab, status: 'loading', error: '' })));
+    setTabs(await loadTrackTabs(identity));
+  }
+
+  async function toggleTag(tag) {
+    const tagTab = tabs.find(tab => tab.id === 'tags');
+    const applied = (tagTab?.tags || []).filter(entry => entry.hasTag).map(entry => entry.id);
+    const ids = tag.hasTag ? applied.filter(id => id !== tag.id) : [...applied, tag.id];
+    setTabs(current => updateTab(current, 'tags', tab => ({
+      ...tab,
+      tags: tab.tags.map(entry => (entry.id === tag.id ? { ...entry, pending: true, error: '' } : entry)),
+    })));
+    try {
+      if (transportReady) await setTags(identity, ids);
+      else await delay(200);
+      setTabs(current => updateTab(current, 'tags', tab => ({
+        ...tab,
+        tags: tab.tags.map(entry => (entry.id === tag.id ? { ...entry, hasTag: !tag.hasTag, pending: false } : entry)),
+      })));
+    } catch (error) {
+      setTabs(current => updateTab(current, 'tags', tab => ({
+        ...tab,
+        tags: tab.tags.map(entry => (entry.id === tag.id ? { ...entry, pending: false, error: error.message } : entry)),
+      })));
+    }
+  }
+
+  async function addTag(name) {
+    const created = transportReady ? await createTag(name) : { id: `demo-${Date.now()}`, name };
+    const tagTab = tabs.find(tab => tab.id === 'tags');
+    const applied = (tagTab?.tags || []).filter(entry => entry.hasTag).map(entry => entry.id);
+    if (transportReady) await setTags(identity, [...applied, created.id]);
+    setTabs(current => updateTab(current, 'tags', tab => ({
+      ...tab,
+      tags: [...(tab.tags || []), { id: created.id, name: created.name, hasTag: true, pending: false, error: '' }],
+    })));
+  }
+
+  async function saveArtworkUrl(imageUrl) {
+    if (!imageUrl) return;
+    if (transportReady) await saveArtwork(identity, imageUrl);
+    else await delay(200);
+    setTabs(current => updateTab(current, 'metadata', tab => ({ ...tab, imageUrl })));
+  }
+
+  async function toggleDiscover(hidden, itemId) {
+    if (transportReady) await setDiscoverHidden(itemId, hidden);
+    else await delay(200);
+    setTabs(current => updateTab(current, 'discover', tab => ({ ...tab, hidden })));
+  }
+
+  return <TrackForm
+    model={model}
+    values={values}
+    errors={errors}
+    status={status}
+    serverError={serverError}
+    busy={busy}
+    labels={trackLabels}
+    palette={formPalette}
+    showHeader={false}
+    tabs={tabs}
+    onChange={change}
+    onRetry={() => setAttempt(current => current + 1)}
+    onRetryTabs={retryTabs}
+    onDelete={remove}
+    onClose={onClose}
+    onSubmit={submit}
+    onTagToggle={toggleTag}
+    onTagCreate={addTag}
+    onArtworkSave={saveArtworkUrl}
+    onDiscoverToggle={toggleDiscover} />;
+}
+
+function ActionBody({ action, onClose }) {
   if (!action) return null;
-  if (action.modal === 'lists') {
-    return <ListsForm
-      model={listsModel}
-      membership={membership}
-      tag={tag}
-      status={listStatus}
-      pending={pending}
-      errors={listErrors}
-      labels={listLabels}
-      palette={formPalette}
-      showHeader={false}
-      onTagChange={setTag}
-      onRetry={() => setListStatus('ready')}
-      onClose={onClose}
-      onToggle={list => {
-        if (pending[list.id]) return;
-        setPending(current => ({ ...current, [list.id]: true }));
-        setListErrors(current => ({ ...current, [list.id]: '' }));
-        setTimeout(() => {
-          setMembership(current => applyListToggle(current, list.id, !current[list.id]));
-          setPending(current => ({ ...current, [list.id]: false }));
-        }, 350);
-      }} />;
-  }
-  if (action.modal === 'track') {
-    return <TrackForm
-      model={trackModel}
-      values={trackValues}
-      errors={trackErrors}
-      status={trackStatus}
-      serverError={trackServerError}
-      busy={trackBusy}
-      labels={trackLabels}
-      palette={formPalette}
-      showHeader={false}
-      onChange={(name, value) => {
-        setTrackValues(current => ({ ...current, [name]: value }));
-        setTrackErrors(current => ({ ...current, [name]: '' }));
-      }}
-      onRetry={() => {
-        setTrackStatus('ready');
-        setTrackServerError('');
-      }}
-      onDelete={() => setTrackServerError('Delete is not available in this demo.')}
-      onClose={onClose}
-      onSubmit={() => {
-        setTrackBusy(true);
-        setTrackServerError('');
-        setTimeout(() => {
-          setTrackBusy(false);
-          onClose?.();
-        }, 600);
-      }} />;
-  }
+  if (action.modal === 'lists') return <ListsAction action={action} onClose={onClose} />;
+  if (action.modal === 'track') return <TrackAction action={action} onClose={onClose} />;
   if (action.kind === 'post') {
     return <Text style={styles.hostBody}>Discover plan and hide use the existing server POST contract. The native write adapter is not ported yet.</Text>;
   }
