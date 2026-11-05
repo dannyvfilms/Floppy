@@ -948,7 +948,9 @@ presentation.
 
 - `frontend/ui/BulkActions.jsx` (universal `BulkToolbar`, `BulkActionDialog`, `BulkOptionRow`)
 - `frontend/ui/mountBulkActions.jsx` (web job dialog and dock, legacy)
-- `frontend/ui/mountBulkToolbar.jsx` (web toolbar, legacy)
+- `frontend/ui/BulkActionBar.web.jsx` (web icon toolbar)
+- `frontend/ui/BulkActionBar.native.jsx` (native icon toolbar counterpart)
+- `frontend/ui/mountBulkToolbar.jsx` (web toolbar adapter)
 - `native-proof/app/surfaces/BulkSlot.jsx` (native Library selection, cards, toolbar and dialogs)
 - `src/templates/base.html` (dock mount)
 - `src/app/bulk_action_views.py`

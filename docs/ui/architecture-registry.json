@@ -1348,18 +1348,6 @@
         "2268081f449b894930b6c5eaa5522b73f3a9a6845e3e3dc02b7ce69bb8801e12",
         "c9f7ce3a68103e095a1f59be63bc1e0d9af18e168d55fef9a26d313ef1104ee2"
       ]
-    },
-    "frontend/ui/mountBulkToolbar.jsx": {
-      "sha256": "be2487cdead2871b88da2d74dbd4fad8efeb2b757ca63d4268866342bf5053df",
-      "statements": [
-        "f7b494e855841f7fe02d727adf5848286ef531e2d7bc1a5d7a740299317e149f",
-        "1ac8024a5891f369f598688152a2626d6a6d490b3b6446a8cd992ca0d6f2d178",
-        "1877ac5600f36653521b37bb0fce4eea4bf46030b90bf63f25d540ce355805b7",
-        "6afa3d56e771fa058db62d481f5eb8be1d1e3bbdccebdbcd9c8be31947fc7485",
-        "ce2dcc592a5c8de4494c163727f82abf9107570f2b5c3e138f1e9a4dbf832faa",
-        "26a5cbe8cd06ac37b62289cdbf26b25fdf7fa14c15dedcd18dee9bb0f453bd11",
-        "e2be3e5558f69134d4a5d426e88c0ac081e4b11ba49ec53acde39cb5fb60ac3c"
-      ]
     }
   },
   "logic": {
@@ -1566,6 +1554,50 @@
           "evidence": "Rendered inside the shared rating chip on the Android Detail screen; no interaction or TalkBack pass."
         }
       }
+    },
+    "frontend/ui/BulkActionBar.web.jsx": {
+      "kind": "presentation",
+      "register": "BULK_ACTIONS",
+      "components": [
+        "BulkActionBar"
+      ],
+      "purpose": "Render the shared bulk action bar with the existing browser menus and icon buttons.",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium at 1440px on the TV Shows table: a two-item selection rendered the one-line icon bar and Deselect All, and the ellipsis opened Add Plays to History."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to this web implementation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to this web implementation."
+        }
+      }
+    },
+    "frontend/ui/BulkActionBar.native.jsx": {
+      "kind": "presentation",
+      "register": "BULK_ACTIONS",
+      "components": [
+        "BulkActionBar"
+      ],
+      "purpose": "Render the shared bulk action bar with React Native primitives on iOS and Android.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not applicable to this native implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export; not exercised on a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export; not exercised on an emulator."
+        }
+      }
     }
   },
   "web_adapters": {
@@ -1704,6 +1736,10 @@
     "frontend/ui/ListsForm.web.jsx": {
       "register": "MEDIA-CARD",
       "purpose": "Fetch the lists form model, toggle membership with CSRF, and render the shared Lists form on the web."
+    },
+    "frontend/ui/mountBulkToolbar.jsx": {
+      "register": "BULK_ACTIONS",
+      "purpose": "Django/browser integration for the shared bulk action bar: mirror the page Alpine selection, run quick bulk posts and open the status/plays dialogs."
     }
   }
 }
