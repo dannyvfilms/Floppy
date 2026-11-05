@@ -234,7 +234,7 @@ can inform a focused completion pass.
 - Data: `src/app/error_views.py`, error context and API schema routes.
 - Remaining legacy: `src/templates/400.html`, `src/templates/403.html`, `src/templates/403_csrf.html`, `src/templates/404.html`, `src/templates/500.html`, `src/templates/includes/error_report_panel.html` and `src/templates/api/docs.html` remain the browser/server fallback. The error templates now carry the React mount; `api/docs.html` remains server-only.
 - Retirement: the server error documents retire when the React mount is accepted as the no-JS fallback with equivalent safe diagnostics, CSRF/login/recovery behavior and API links. `api/docs.html` retires only if the no-script offline contract changes.
-- Validation targets: `src/app/tests/test_error_views.py`, `src/app/tests/views/test_service_worker.py`, `src/app/tests/test_api_contracts.py`, `src/api/tests/test_public_endpoints.py`, `npm run build:ui`, `npm run check:ui`, `npm run check:ui-architecture`, `npm run test:ui-architecture` and the Expo export. Browser error-recovery runtime, iOS and Android runtime parity are unverified.
+- Validation targets: `src/app/tests/test_error_views.py`, `src/app/tests/views/test_service_worker.py`, `src/app/tests/test_api_contracts.py`, `src/api/tests/test_public_endpoints.py`, `npm run build:ui`, `npm run check:ui`, `npm run check:ui-architecture`, `npm run test:ui-architecture` and the Expo export. A browser check confirmed the 404 recovery mount and report block; copy and recovery actions, iOS and Android runtime parity are unverified.
 
 ## Library, discovery and media presentation
 

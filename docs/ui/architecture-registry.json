@@ -1389,7 +1389,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Mounted through frontend/errors/mountErrorRecovery.jsx on the 400/403/CSRF/404/500 pages; build and targeted Django tests only, no browser copy-feedback pass during this change."
+          "evidence": "Mounted through frontend/errors/mountErrorRecovery.jsx on the 400/403/CSRF/404/500 pages. A browser check confirmed the 404 report block rendered; copy feedback was not exercised."
         },
         "ios": {
           "status": "unverified",
@@ -1411,7 +1411,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Mounted by frontend/errors/mountErrorRecovery.jsx over the server-rendered 400/403/CSRF/404/500 fallbacks; build and targeted Django tests only, no browser recovery-action or copy pass during this change."
+          "evidence": "Mounted by frontend/errors/mountErrorRecovery.jsx over the server-rendered 400/403/CSRF/404/500 fallbacks. A browser check confirmed the 404 mount and rendered recovery text; copy, report-issue, retry, login and home actions were not exercised."
         },
         "ios": {
           "status": "unverified",
