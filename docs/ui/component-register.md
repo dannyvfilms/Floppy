@@ -478,12 +478,14 @@ can inform a focused completion pass.
 
 ### TABLES — Configurable media tables and cells
 
-- Purpose/usage: library/list/collection tables and artist/album variants.
-- Implementation: `src/templates/app/components/table_items.html`, column menu/config scripts, `cells/`; list/collection row consumers in map.
-- Contract: selected/order/persisted columns, sort, score/status/units, responsive scrolling/actions and bounded rows.
-- Data: `src/app/columns.py`, result projections and column preference endpoints.
-- Reuse/blockers: descriptors/formatting shared; accessible desktop tables and native list presentation may remain separate. Cells are child implementations, not independent units.
-- Validation targets: `src/app/tests/test_columns.py`, `test_media_list_columns_browser.py` (slow/browser gates).
+- Purpose/usage: library/list tables and artist/album variants.
+- Implementation: universal `frontend/ui/MediaTable.jsx` (`MediaTable`, `MediaTableCell`) and `frontend/ui/ColumnMenu.jsx` (`MediaColumnMenu`); browser adapter `frontend/ui/mountMediaTable.jsx`; server projection `src/app/table_browser.py`; native placement `native-proof/app/surfaces/TableSlot.jsx` with `ListResults` list tables. Server fallbacks remain `src/templates/app/components/table_items.html`, the column menu/config scripts and `cells/`; collection tables keep their separate `CollectionBrowser` owner.
+- Contract: selected/order/persisted columns, sort, score/status/units, responsive horizontal scrolling, bounded rows and accessible desktop/native table presentation. `MediaTable` receives explicit column descriptors and row cell descriptions; `MediaTableCell` renders image/title/score/status/progress/date/tags/text cells without links, storage or transport. `MediaColumnMenu` receives ordered columns and emits order/hidden intents; the browser adapter posts them to the existing preference endpoint and reloads the server projection, while native demo state stays local. Server row filtering, column resolution, ordering, hidden columns and sort direction remain authoritative.
+- Data: `src/app/columns.py`, `src/app/table_browser.py`, media/list result projections and the existing column preference endpoints.
+- Status: `Partial / coexisting`. Web media and list tables mount the shared table and column menu over the server projection with the existing template fallback; collection tables and the per-row track-modal quick action remain server-owned. The native Library table and native list table render the shared components with local demo state. No browser or device runtime pass was performed for this change.
+- Verification: `npm run check:ui-architecture`, `npm run test:ui-architecture`, `npm run build:ui`, targeted column/list/media tests and `Expo export --platform all` only establish a build and server contract. Web behavior is unverified; iOS and Android runtime are unverified. The existing slow Playwright column checks still target the server fallback markup and were not run.
+- Reuse/blockers: descriptors, cell formatting and column menu are shared. Retire the server table fallback and per-row cell templates only after a browser interaction pass proves sort, filter/pagination, column persistence, image/title links, quick-track actions and six theme states, and native menus/rows are exercised with accessibility on both platforms.
+- Validation targets: `src/app/tests/test_columns.py`, `src/app/tests/views/test_media_list.py`, `src/lists/tests/test_views.py`, `test_media_list_columns_browser.py` (slow/browser gates).
 
 ### BULK — Multi-item selection and actions
 

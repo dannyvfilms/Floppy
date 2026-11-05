@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 <<<<<<<< HEAD:src/static/ui/mountFilterChips-JLU2HPTC.js
 import{q as s}from"./chunk-A2F7VJOZ.js";import"./chunk-EEIOSSSK.js";import"./chunk-JDUANQWZ.js";import"./chunk-ZKMQECE4.js";import"./chunk-3XWBNUZP.js";import"./chunk-FNDD4VCH.js";import{a,c as o,d as c}from"./chunk-RU43FRVD.js";import{b as r}from"./chunk-SQE76S5B.js";var i=r(a());var l=r(c());function p({host:e,props:n}){let[d,u]=(0,i.useState)(null);return(0,i.useEffect)(()=>{let t=window.Alpine;if(!t)return;let f=t.effect(()=>u(t.$data(e).selectedMedia));return()=>t.release(f)},[e]),(0,l.jsx)(s,{items:n.items,label:n.label,selected:d,onSelect:t=>window.Alpine?.$data(e).switchMedia(t)})}function C(e,n){return o(e,(0,l.jsx)(p,{host:e,props:n}))}export{C as mountFilterChips};
 ========
@@ -11,3 +12,6 @@ import{q as s}from"./chunk-GA65DAL6.js";import"./chunk-HQ2H3EJB.js";import"./chu
 import{q as s}from"./chunk-4OYINRE4.js";import"./chunk-VVHWHVH2.js";import"./chunk-EBW356G4.js";import"./chunk-I6IUKTSP.js";import"./chunk-G5VBSVI5.js";import"./chunk-2R3NOBVT.js";import{a,c as o,d as c}from"./chunk-RU43FRVD.js";import{b as r}from"./chunk-SQE76S5B.js";var i=r(a());var l=r(c());function p({host:e,props:n}){let[d,u]=(0,i.useState)(null);return(0,i.useEffect)(()=>{let t=window.Alpine;if(!t)return;let f=t.effect(()=>u(t.$data(e).selectedMedia));return()=>t.release(f)},[e]),(0,l.jsx)(s,{items:n.items,label:n.label,selected:d,onSelect:t=>window.Alpine?.$data(e).switchMedia(t)})}function C(e,n){return o(e,(0,l.jsx)(p,{host:e,props:n}))}export{C as mountFilterChips};
 >>>>>>>> native-port/filters-web:src/static/ui/mountFilterChips-OPNXNGFD.js
 >>>>>>> native-port/filters-web
+=======
+import{q as s}from"./chunk-4OYINRE4.js";import"./chunk-VVHWHVH2.js";import"./chunk-EBW356G4.js";import"./chunk-I6IUKTSP.js";import"./chunk-G5VBSVI5.js";import"./chunk-2R3NOBVT.js";import{a,c as o,d as c}from"./chunk-RU43FRVD.js";import{b as r}from"./chunk-SQE76S5B.js";var i=r(a());var l=r(c());function p({host:e,props:n}){let[d,u]=(0,i.useState)(null);return(0,i.useEffect)(()=>{let t=window.Alpine;if(!t)return;let f=t.effect(()=>u(t.$data(e).selectedMedia));return()=>t.release(f)},[e]),(0,l.jsx)(s,{items:n.items,label:n.label,selected:d,onSelect:t=>window.Alpine?.$data(e).switchMedia(t)})}function C(e,n){return o(e,(0,l.jsx)(p,{host:e,props:n}))}export{C as mountFilterChips};
+>>>>>>> native-port/tables

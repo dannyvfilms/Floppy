@@ -16,7 +16,7 @@ export const surface = {
   status: 'ported',
   title: 'List detail results, membership, bulk actions, smart rules and tiers',
   where: 'List detail page for manual, smart and source-backed lists, including the smart-rule editor and tier board',
-  note: 'Results, membership, bulk actions, smart-rule summary/editor and the tier board use shared React Native presentation. Mutations route through the list transport; native login, server selection and CSRF transport remain unconfigured, so the native adapter keeps local preview state while the browser adapter uses the same-origin session.',
+  note: 'Results, the configurable table and column menu, membership, bulk actions, smart-rule summary/editor and the tier board use shared React Native presentation. Mutations route through the list transport; native login, server selection and CSRF transport remain unconfigured, so the native adapter keeps local preview state while the browser adapter uses the same-origin session.',
 };
 
 const BULK_STATUSES = [

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -9,6 +8,8 @@ import {
 } from 'react-native';
 import { Button } from './Button';
 import { MediaCardView } from './MediaCardView';
+import { MediaTable } from './MediaTable';
+import { MediaColumnMenu } from './ColumnMenu';
 import { RatingStars } from './RatingStars';
 
 const FALLBACK_PALETTE = {
@@ -56,6 +57,14 @@ const defaultLabels = {
   progress: 'Progress',
   released: 'Released',
   added: 'Added',
+  configureColumns: 'Configure Table Columns',
+  columns: 'Columns',
+  moveUp: 'Move up',
+  moveDown: 'Move down',
+  hideColumn: 'Hide column',
+  showColumn: 'Show column',
+  resetColumns: 'Reset to defaults',
+  alwaysShown: 'Always shown',
 };
 
 const TABLE_COLUMNS = [
@@ -207,6 +216,37 @@ export function ListResultGrid({
   </View>;
 }
 
+function listTableColumns(labels) {
+  return TABLE_COLUMNS.map(column => ({
+    key: column.key,
+    label: labels[column.label] || column.key,
+    width: column.wide ? 220 : 120,
+    align: column.key === 'title' ? 'left' : 'center',
+    primary: !!column.wide,
+    fixed: false,
+  }));
+}
+
+function listTableRows(items) {
+  return items.map(item => ({
+    id: item.id,
+    title: item.title,
+    cells: {
+      title: { kind: 'title', text: item.title || '—' },
+      mediaTypeLabel: { kind: 'text', text: item.mediaTypeLabel || '—' },
+      statusLabel: { kind: 'status', text: item.statusLabel || '—', muted: !item.statusLabel },
+      score: {
+        kind: 'score',
+        rated: item.score != null,
+        text: item.score != null ? String(item.score) : '',
+      },
+      progressLabel: { kind: 'progress', text: item.progressLabel || '—' },
+      releaseLabel: { kind: 'text', text: item.releaseLabel || '—', muted: !item.releaseLabel },
+      addedLabel: { kind: 'text', text: item.addedLabel || '—', muted: !item.addedLabel },
+    },
+  }));
+}
+
 export function ListResultTable({
   items,
   palette,
@@ -218,52 +258,40 @@ export function ListResultTable({
 }) {
   const colors = mergePalette(palette);
   const copy = mergeLabels(labels);
-  return <ScrollView horizontal showsHorizontalScrollIndicator={false}
-    contentContainerStyle={styles.tableScroll}>
-    <View style={styles.table}>
-      <View style={[styles.tableRow, styles.tableHeader, { borderColor: colors.border }]}>
-        {selectMode ? <View style={styles.checkColumn}>
-          <Text style={[styles.headerCell, { color: colors.textMuted }]}> </Text>
-        </View> : null}
-        {TABLE_COLUMNS.map(column => <View key={column.key}
-          style={[styles.cell, column.wide && styles.wideCell]}>
-          <Text style={[styles.headerCell, { color: colors.textMuted }]}>
-            {copy[column.label]}
-          </Text>
-        </View>)}
-      </View>
-      {items.map(item => <Pressable key={item.id}
-        accessibilityRole="button"
-        accessibilityLabel={item.title}
-        onPress={onOpenItem ? () => onOpenItem(item) : undefined}
-        style={[styles.tableRow, { borderColor: colors.border }]}>
-        {selectMode ? <Pressable
-          accessibilityRole="checkbox"
-          accessibilityLabel={`${copy.selectItem} ${item.title}`}
-          accessibilityState={{ checked: isSelected(selectedIds, item.id) }}
-          onPress={event => {
-            event.stopPropagation?.();
-            onToggleItem?.(item.id);
-          }}
-          style={styles.checkColumn}>
-          <Text style={[styles.checkText, { color: isSelected(selectedIds, item.id) ? colors.accent : colors.textMuted }]}>
-            {isSelected(selectedIds, item.id) ? '✓' : '○'}
-          </Text>
-        </Pressable> : null}
-        {TABLE_COLUMNS.map(column => <View key={column.key}
-          style={[styles.cell, column.wide && styles.wideCell]}>
-          <Text numberOfLines={1}
-            style={[styles.cellText, {
-              color: column.key === 'title' ? colors.text : colors.textSecondary,
-            }]}>
-            {column.key === 'score'
-              ? item.score != null ? String(item.score) : '-'
-              : item[column.key] || '-'}
-          </Text>
-        </View>)}
-      </Pressable>)}
-    </View>
-  </ScrollView>;
+  const [columns, setColumns] = useState(() => listTableColumns(copy));
+  function saveColumns({ order, hidden }) {
+    const hiddenSet = new Set(hidden);
+    const byKey = new Map(columns.map(column => [column.key, column]));
+    setColumns(order.map(key => byKey.get(key)).filter(Boolean)
+      .map(column => ({ ...column, visible: !hiddenSet.has(column.key) })));
+  }
+  return <View style={styles.results}>
+    <MediaColumnMenu
+      columns={columns}
+      defaultOrder={TABLE_COLUMNS.map(column => column.key)}
+      defaultHidden={[]}
+      palette={colors}
+      labels={{
+        configure: copy.configureColumns,
+        columns: copy.columns,
+        moveUp: copy.moveUp,
+        moveDown: copy.moveDown,
+        hide: copy.hideColumn,
+        show: copy.showColumn,
+        reset: copy.resetColumns,
+        alwaysShown: copy.alwaysShown,
+      }}
+      onSave={saveColumns} />
+    <MediaTable
+      columns={columns.filter(column => column.visible !== false)}
+      rows={listTableRows(items)}
+      palette={colors}
+      labels={copy}
+      selectMode={selectMode}
+      selectedIds={selectedIds}
+      onToggleItem={onToggleItem}
+      onOpen={onOpenItem ? item => onOpenItem(items.find(entry => entry.id === item.id)) : undefined} />
+  </View>;
 }
 
 export function ListBulkBar({
