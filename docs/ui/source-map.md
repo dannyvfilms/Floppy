@@ -75,8 +75,10 @@ PY
 ## SETTINGS-CARD
 
 Shared `SettingsCard` and `Chip` use native presentation. `Chip.web.jsx` is the
-browser link and palette adapter; `controls.jsx` keeps its web wrapper and the
-server fallback classes remain in `settings-card.css`.
+browser link and palette adapter: it honors a caller-supplied palette for
+React-owned cards and falls back to the scoped CSS-variable palette for server
+wrappers; `controls.jsx` keeps its web wrapper and the server fallback classes
+remain in `settings-card.css`.
 
 - `frontend/settings/Chip.jsx`
 - `frontend/settings/Chip.web.jsx`
@@ -947,6 +949,17 @@ remain the web owner until a browser adapter mounts the shared sections.
 - `src/templates/users/onboarding/service_setup.html`
 - `src/templates/users/onboarding/services.html`
 - `src/templates/users/onboarding/services_summary.html`
+
+## SET-USERS
+
+- `frontend/users/UsersManagement.jsx`
+- `frontend/settings/index.js`
+- `frontend/settings/mount.jsx`
+- `native-proof/app/surfaces/UsersSlot.jsx`
+- `src/templates/users/manage_users.html`
+- `src/users/urls.py`
+- `src/users/views.py`
+- `src/users/tests/views/test_users_management.py`
 
 ## SET-SYSTEM
 

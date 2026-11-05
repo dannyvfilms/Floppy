@@ -2743,7 +2743,6 @@ def _managed_user_payload(member, current_user):
             else ""
         ),
         "isActive": member.is_active,
-        "isStaff": member.is_staff,
         "isSuperuser": member.is_superuser,
         "isDemo": member.is_demo,
         "isSelf": member.pk == current_user.pk,
@@ -2769,7 +2768,6 @@ def _managed_users_labels():
         "roleFilter": gettext("Role"),
         "roleAll": gettext("All roles"),
         "roleSuperuser": gettext("Superuser"),
-        "roleStaff": gettext("Staff"),
         "roleUser": gettext("User"),
         "createTitle": gettext("Add a user"),
         "createCopy": gettext(
@@ -2792,12 +2790,9 @@ def _managed_users_labels():
         "active": gettext("Active"),
         "inactive": gettext("Inactive"),
         "superuser": gettext("Superuser"),
-        "staff": gettext("Staff"),
         "thisIsYou": gettext("This is you"),
         "activate": gettext("Activate"),
         "deactivate": gettext("Deactivate"),
-        "makeStaff": gettext("Make staff"),
-        "removeStaff": gettext("Remove staff"),
         "makeSuperuser": gettext("Make superuser"),
         "removeSuperuser": gettext("Remove superuser"),
         "resetPassword": gettext("Set password"),
@@ -2946,7 +2941,7 @@ def create_managed_user(request):
 
 @require_POST
 def update_managed_user(request, user_id):
-    """Change active, staff or superuser status for one account."""
+    """Change active or superuser status for one account."""
     denied = _managed_users_json_guard(request)
     if denied is not None:
         return denied
@@ -2957,7 +2952,6 @@ def update_managed_user(request, user_id):
 
     field_map = {
         "isActive": "is_active",
-        "isStaff": "is_staff",
         "isSuperuser": "is_superuser",
     }
     updates = {
@@ -2990,8 +2984,8 @@ def update_managed_user(request, user_id):
             gettext("Promote another account before changing the last superuser.")
         )
 
-    if updates.get("is_superuser") is True:
-        updates["is_staff"] = True
+    if "is_superuser" in updates:
+        updates["is_staff"] = updates["is_superuser"]
 
     for field, value in updates.items():
         setattr(member, field, value)
