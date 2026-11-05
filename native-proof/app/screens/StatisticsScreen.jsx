@@ -1,22 +1,23 @@
 import React, { useMemo, useState } from 'react';
 import { StatisticsSummary } from '../../../frontend/ui/StatisticsSummary';
+import { StatisticsCharts } from '../../../frontend/ui/StatisticsCharts';
 import { Screen, Section } from '../components/Screen';
-import { Note } from '../components/Note';
 import { statisticsPalette } from '../theme';
 
 export const surface = {
   id: 'STATISTICS',
   status: 'ported',
-  title: 'Statistics summary and activity overview',
-  where: 'Statistics screen summary cards, highlights and range/media-type controls',
-  note: 'The summary hero, highlight cards, five summary cards, activity comparison and range/media-type controls use the shared React Native presentation. Chart canvases and the comparison/taste views stay legacy until a native chart renderer is chosen.',
+  title: 'Statistics summary, charts and activity overview',
+  where: 'Statistics screen summary cards, highlights, range/media-type controls, charts and featured repeats',
+  note: 'The summary hero, highlight cards, five summary cards, activity comparison and native chart families use the shared React Native presentation. Talent, taste signals, role leaders and studios remain legacy server fragments.',
 };
 
 const charts = {
   id: 'STATISTICS-CHARTS',
-  title: 'Charts, comparison and taste views',
-  where: 'Activity rhythm, hours charts, taste/talent and featured repeats',
-  note: 'Chart canvases keep the web Chart.js renderer. No native chart renderer is invented here; these sections remain legacy consumers.',
+  status: 'ported',
+  title: 'Statistics charts and featured repeats',
+  where: 'Activity rhythm/history, hours, status/rating/completion charts and featured repeat player',
+  note: 'The native chart renderer uses React Native primitives for every chart family. Values stay server-shaped; talent, taste signals, role leaders and studios remain legacy server fragments outside this chart port.',
 };
 
 const ranges = [
@@ -449,6 +450,265 @@ function demoSummaryFor(types) {
   };
 }
 
+const chartMediaTypes = [
+  { value: 'tv', label: 'TV Shows', color: '#10b981', seed: 3 },
+  { value: 'movie', label: 'Movies', color: '#f97316', seed: 5 },
+  { value: 'anime', label: 'Anime', color: '#3b82f6', seed: 7 },
+  { value: 'game', label: 'Games', color: '#eab308', seed: 9 },
+  { value: 'music', label: 'Music', color: '#fb7185', seed: 11 },
+  { value: 'podcast', label: 'Podcasts', color: '#a855f7', seed: 13 },
+  { value: 'book', label: 'Books', color: '#d946ef', seed: 15 },
+  { value: 'comic', label: 'Comics', color: '#06b6d4', seed: 17 },
+];
+
+const statusOrder = ['Completed', 'In progress', 'Planning', 'Paused', 'Dropped'];
+const statusColors = {
+  Completed: '#10b981',
+  'In progress': '#6366f1',
+  Planning: '#87ceeb',
+  Paused: '#f97316',
+  Dropped: '#ef4444',
+};
+
+const statusCounts = {
+  tv: { Completed: 84, 'In progress': 5, Planning: 4, Paused: 2, Dropped: 1 },
+  movie: { Completed: 68, 'In progress': 2, Planning: 2, Paused: 1, Dropped: 1 },
+  anime: { Completed: 34, 'In progress': 2, Planning: 1, Paused: 1, Dropped: 0 },
+  game: { Completed: 12, 'In progress': 3, Planning: 4, Paused: 1, Dropped: 1 },
+  music: { Completed: 58, 'In progress': 1, Planning: 2, Paused: 1, Dropped: 0 },
+  podcast: { Completed: 16, 'In progress': 1, Planning: 1, Paused: 1, Dropped: 0 },
+  book: { Completed: 18, 'In progress': 3, Planning: 4, Paused: 2, Dropped: 1 },
+  comic: { Completed: 6, 'In progress': 1, Planning: 1, Paused: 1, Dropped: 1 },
+};
+
+const ratingCounts = {
+  tv: [0, 0, 1, 2, 3, 6, 16, 28, 25, 15],
+  movie: [0, 0, 1, 2, 4, 6, 12, 20, 18, 11],
+  anime: [0, 0, 0, 1, 2, 3, 6, 10, 9, 7],
+  game: [0, 0, 0, 1, 1, 2, 3, 6, 4, 4],
+  music: [0, 1, 2, 4, 6, 8, 12, 14, 10, 5],
+  podcast: [0, 0, 0, 1, 2, 3, 4, 5, 3, 1],
+  book: [0, 0, 0, 1, 2, 4, 6, 7, 5, 3],
+  comic: [0, 0, 0, 0, 1, 2, 2, 3, 1, 1],
+};
+
+const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const monthWeights = [6, 7, 8, 7, 9, 8, 10, 9, 8, 10, 9, 9];
+const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const weekdayWeights = [16, 14, 13, 12, 13, 14, 18];
+const hourWeights = [1, 1, 1, 1, 1, 2, 3, 5, 7, 8, 9, 10, 11, 10, 9, 9, 10, 12, 14, 15, 14, 11, 9, 5];
+const hourLabels = Array.from({ length: 24 }, (_, hour) => (
+  hour === 0 ? '12am' : hour < 12 ? `${hour}am` : hour === 12 ? '12pm' : `${hour - 12}pm`
+));
+
+const featuredRepeat = {
+  name: 'Maya Chen',
+  image: 'https://picsum.photos/seed/floppy-featured/300/300',
+  uniqueTitles: 23,
+  uniqueMovies: 9,
+  uniqueGames: 2,
+  uniqueShows: 12,
+  pctOfLibrary: 18.4,
+  knownFor: [
+    { label: 'Production Design' },
+    { label: 'Drama' },
+    { label: 'Sci-Fi' },
+  ],
+};
+
+function activeChartTypes(types) {
+  return types.length ? types : chartMediaTypes.map(type => type.value);
+}
+
+function weightedSeries(total, weights) {
+  const weightTotal = weights.reduce((sum, weight) => sum + weight, 0);
+  return weights.map(weight => Math.round((total * weight / weightTotal) * 10) / 10);
+}
+
+function chartTotalHours(types) {
+  const active = activeChartTypes(types);
+  return active.reduce((sum, type) => sum + ((summaries[type] || {}).totalHours || 0), 0);
+}
+
+function rhythmFor(types) {
+  const active = activeChartTypes(types);
+  const matrix = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0));
+  active.forEach(type => {
+    const seed = (chartMediaTypes.find(entry => entry.value === type) || {}).seed || 3;
+    for (let day = 0; day < 7; day += 1) {
+      for (let hour = 0; hour < 24; hour += 1) {
+        if (hour < 6) continue;
+        const wave = Math.sin((day + 1) * (hour + 2) + seed) + 1.2;
+        const evening = hour >= 18 && hour <= 22 ? 2.1 : hour >= 12 ? 1.2 : 0.7;
+        const value = Math.round(wave * evening * seed);
+        if (value > 0) matrix[day][hour] += value;
+      }
+    }
+  });
+  return matrix;
+}
+
+function heatmapFor(types) {
+  const active = activeChartTypes(types);
+  const seed = active.reduce((sum, type) => sum + ((chartMediaTypes.find(entry => entry.value === type) || {}).seed || 1), 0);
+  const end = new Date(Date.UTC(2026, 10, 4));
+  const mondayOffset = (end.getUTCDay() + 6) % 7;
+  const lastMonday = new Date(end);
+  lastMonday.setUTCDate(end.getUTCDate() - mondayOffset);
+  const weekCount = 22;
+  const startMonday = new Date(lastMonday);
+  startMonday.setUTCDate(lastMonday.getUTCDate() - (weekCount - 1) * 7);
+  const weeks = [];
+  for (let week = 0; week < weekCount; week += 1) {
+    const days = [];
+    for (let day = 0; day < 7; day += 1) {
+      const date = new Date(startMonday);
+      date.setUTCDate(startMonday.getUTCDate() + week * 7 + day);
+      const future = date.getTime() > end.getTime();
+      const hash = (date.getUTCFullYear() * 372 + (date.getUTCMonth() + 1) * 31 + date.getUTCDate() + seed) % 11;
+      days.push({
+        key: date.toISOString().slice(0, 10),
+        level: future || hash <= 2 ? 0 : 1 + (hash % 4),
+        future,
+        month: date.getUTCMonth(),
+      });
+    }
+    weeks.push({ days });
+  }
+  const months = [];
+  weeks.forEach(week => {
+    const month = week.days[0].month;
+    const previous = months[months.length - 1];
+    if (!previous || previous.month !== month) {
+      months.push({ month, label: monthLabels[month], span: 1 });
+    } else {
+      previous.span += 1;
+    }
+  });
+  return {
+    weeks,
+    monthLabels: months,
+    weekdayLabels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    rangeLabel: 'last 22 weeks',
+  };
+}
+
+function seriesFor(types, weights) {
+  return weightedSeries(chartTotalHours(types), weights);
+}
+
+function statusCompositionFor(types) {
+  const active = activeChartTypes(types);
+  const labels = [];
+  const data = [];
+  const colors = [];
+  statusOrder.forEach(status => {
+    const value = active.reduce((sum, type) => sum + ((statusCounts[type] || {})[status] || 0), 0);
+    if (value > 0) {
+      labels.push(status);
+      data.push(value);
+      colors.push(statusColors[status]);
+    }
+  });
+  return { labels, data, colors };
+}
+
+function statusBreakdownFor(types) {
+  const active = activeChartTypes(types);
+  const rows = active.map(type => {
+    const meta = chartMediaTypes.find(entry => entry.value === type);
+    return {
+      label: meta ? meta.label : type,
+      color: meta ? meta.color : '#6366f1',
+      total: (summaries[type] || {}).total || 0,
+      statuses: statusCounts[type] || {},
+    };
+  });
+  return {
+    rows,
+    columns: statusOrder.map(status => ({
+      label: status,
+      color: statusColors[status],
+      completed: status === 'Completed',
+    })),
+  };
+}
+
+function completionFor(types) {
+  const active = activeChartTypes(types);
+  return {
+    rows: active.map(type => {
+      const meta = chartMediaTypes.find(entry => entry.value === type);
+      const summary = summaries[type] || {};
+      return {
+        label: meta ? meta.label : type,
+        color: meta ? meta.color : '#6366f1',
+        completed: summary.completed || 0,
+        total: summary.total || 0,
+      };
+    }),
+  };
+}
+
+function demoChartsFor(types) {
+  const active = activeChartTypes(types);
+  const totalHours = chartTotalHours(types);
+  const accent = types.length === 1
+    ? ((chartMediaTypes.find(entry => entry.value === types[0]) || {}).color || '#6366f1')
+    : '#6366f1';
+  const distribution = active
+    .map(type => {
+      const meta = chartMediaTypes.find(entry => entry.value === type);
+      return { label: meta ? meta.label : type, value: (summaries[type] || {}).totalHours || 0, color: meta ? meta.color : '#6366f1' };
+    })
+    .filter(entry => entry.value > 0);
+  const ratings = Array.from({ length: 10 }, (_, index) => (
+    active.reduce((sum, type) => sum + ((ratingCounts[type] || [])[index] || 0), 0)
+  ));
+  return {
+    rhythm: {
+      matrix: rhythmFor(types),
+      weekdayLabels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    },
+    heatmap: heatmapFor(types),
+    mediaTypeHours: {
+      title: 'Hours by Media Type',
+      copy: 'Where your hours go.',
+      labels: distribution.map(entry => entry.label),
+      data: distribution.map(entry => entry.value),
+      colors: distribution.map(entry => entry.color),
+      totalLabel: 'total',
+    },
+    hoursByMonth: {
+      title: 'Hours by Month',
+      labels: monthLabels,
+      data: seriesFor(types, monthWeights),
+      color: accent,
+    },
+    hoursByWeekday: {
+      title: 'Hours by Day of Week',
+      labels: weekdayLabels,
+      data: seriesFor(types, weekdayWeights),
+      color: accent,
+    },
+    hoursByTimeOfDay: {
+      title: 'Hours by Time of Day',
+      labels: hourLabels,
+      data: seriesFor(types, hourWeights),
+      color: accent,
+    },
+    statusComposition: statusCompositionFor(types),
+    ratingDistribution: {
+      labels: Array.from({ length: 10 }, (_, index) => String(index + 1)),
+      data: ratings,
+      scaleMax: 10,
+    },
+    statusBreakdown: statusBreakdownFor(types),
+    completion: completionFor(types),
+    featured: featuredRepeat,
+  };
+}
+
 export default function StatisticsScreen({ navigate, onBack }) {
   const [range, setRange] = useState({
     selected: 'Last 12 Months',
@@ -471,6 +731,8 @@ export default function StatisticsScreen({ navigate, onBack }) {
     updatedLabel,
   }), [range, selectedTypes, refreshing, updatedLabel]);
 
+  const chartModel = useMemo(() => demoChartsFor(selectedTypes), [selectedTypes]);
+
   function refresh() {
     setRefreshing(true);
     setUpdatedLabel('just now');
@@ -485,8 +747,9 @@ export default function StatisticsScreen({ navigate, onBack }) {
       onRefresh={refresh}
       onSelectHighlight={item => navigate('Detail', { item })}
       onRetry={refresh} />
-    <Section title="Charts, comparison and taste">
-      <Note surface={charts} />
+    <Section title="Charts and featured repeats">
+      <StatisticsCharts model={chartModel} palette={statisticsPalette} />
     </Section>
   </Screen>;
 }
+

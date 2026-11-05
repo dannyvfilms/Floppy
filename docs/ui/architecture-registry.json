@@ -572,67 +572,6 @@
         }
       }
     },
-    "frontend/ui/ListFormView.jsx": {
-      "components": [
-        "ListForm"
-      ],
-      "register": "LISTS",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Not mounted on the Django lists page; the existing server-rendered list form remains the active web consumer. The web bundle builds."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiles the form; not exercised in a simulator."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiles the form; not exercised on an emulator."
-        }
-      }
-    },
-    "frontend/ui/ListSearchView.jsx": {
-      "components": [
-        "ListItemSearch",
-        "ListItemPreview"
-      ],
-      "register": "LIST-CURATION",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Not mounted on the Django add/recommend pages; the existing server search and preview dialogs remain the active web consumers. The web bundle builds."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiles the search and preview views; not exercised in a simulator."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiles the search and preview views; not exercised on an emulator."
-        }
-      }
-    },
-    "frontend/ui/ListRecommendationsView.jsx": {
-      "components": [
-        "ListRecommendations"
-      ],
-      "register": "LIST-CURATION",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Not mounted on the Django recommendations page; the existing server-rendered approval page remains the active web consumer. The web bundle builds."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiles the recommendations view; not exercised in a simulator."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiles the recommendations view; not exercised on an emulator."
-        }
-      }
-    },
     "frontend/ui/HistoryFeed.jsx": {
       "components": [
         "HistoryFeed",
@@ -744,26 +683,6 @@
         }
       }
     },
-    "frontend/ui/TrackFormTabs.jsx": {
-      "components": [
-        "TrackTabs"
-      ],
-      "register": "MEDIA-CARD",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Not rendered by the web bundle; the existing server-rendered Track popup remains the browser path."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the MediaCardSlot native placement; no tab interaction pass."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the MediaCardSlot native placement; no tab interaction pass."
-        }
-      }
-    },
     "frontend/ui/StatisticsSummary.jsx": {
       "components": [
         "StatisticsSummary",
@@ -787,6 +706,116 @@
         "android": {
           "status": "unverified",
           "evidence": "Compiled by the Expo export through the native Statistics screen; the summary, highlights, controls and states were not exercised on an emulator or device."
+        }
+      }
+    },
+    "frontend/ui/StatisticsCharts.jsx": {
+      "components": [
+        "StatisticsCharts",
+        "StatisticsRhythmChart",
+        "StatisticsHeatmapChart",
+        "StatisticsHoursByMediaTypeChart",
+        "StatisticsHoursChart",
+        "StatisticsStatusCompositionChart",
+        "StatisticsRatingDistributionChart",
+        "StatisticsStatusBreakdownChart",
+        "StatisticsCompletionChart",
+        "StatisticsFeaturedRepeat"
+      ],
+      "register": "STATISTICS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The native chart renderer is not mounted in the browser; the existing Chart.js canvases, statistics-charts.js and server fragments remain the web owner and no browser pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Statistics screen; no chart family, media-type filter, state or accessibility pass was exercised on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Statistics screen; no chart family, media-type filter, state or accessibility pass was exercised on an emulator or device."
+        }
+      }
+    },
+    "frontend/ui/ListFormView.jsx": {
+      "components": [
+        "ListForm"
+      ],
+      "register": "LISTS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted on the Django lists page; the existing server-rendered list form remains the active web consumer. The web bundle builds."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the form; not exercised in a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the form; not exercised on an emulator."
+        }
+      }
+    },
+    "frontend/ui/ListSearchView.jsx": {
+      "components": [
+        "ListItemSearch",
+        "ListItemPreview"
+      ],
+      "register": "LIST-CURATION",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted on the Django add/recommend pages; the existing server search and preview dialogs remain the active web consumers. The web bundle builds."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the search and preview views; not exercised in a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the search and preview views; not exercised on an emulator."
+        }
+      }
+    },
+    "frontend/ui/ListRecommendationsView.jsx": {
+      "components": [
+        "ListRecommendations"
+      ],
+      "register": "LIST-CURATION",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted on the Django recommendations page; the existing server-rendered approval page remains the active web consumer. The web bundle builds."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the recommendations view; not exercised in a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the recommendations view; not exercised on an emulator."
+        }
+      }
+    },
+    "frontend/ui/TrackFormTabs.jsx": {
+      "components": [
+        "TrackTabs"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not rendered by the web bundle; the existing server-rendered Track popup remains the browser path."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the MediaCardSlot native placement; no tab interaction pass."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the MediaCardSlot native placement; no tab interaction pass."
         }
       }
     },

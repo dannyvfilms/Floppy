@@ -586,14 +586,19 @@ modal is shared React presentation on mount, with the server markup as fallback.
 
 The summary, activity overview, highlights, states and range/media-type controls
 are React-owned through `frontend/ui/StatisticsSummary.jsx` on the native
-Statistics screen. The web Statistics page remains server/Alpine-owned; memory
-for the media-type filter is user data, not a new presentation owner:
-`statistics_default_media_types` in `src/users/models.py` and
+Statistics screen. The activity rhythm/history, hours, status, rating,
+completion and featured-repeat charts are React-owned through
+`frontend/ui/StatisticsCharts.jsx` on the same screen, using React Native
+primitives instead of Chart.js or a WebView. The web Statistics page remains
+server/Alpine-owned; memory for the media-type filter is user data, not a new
+presentation owner: `statistics_default_media_types` in `src/users/models.py` and
 `update_statistics_media_types` in `src/app/statistics_views.py`, read and written
-by `src/static/js/date-range.js`. Chart canvases and the comparison/taste views
-stay legacy until a native chart renderer is chosen.
+by `src/static/js/date-range.js`. Talent, taste signals, role leaders, studios
+and per-media-type overview sections stay legacy until they get shared React
+presentation.
 
 - `frontend/ui/StatisticsSummary.jsx`
+- `frontend/ui/StatisticsCharts.jsx`
 - `native-proof/app/screens/StatisticsScreen.jsx`
 - `src/static/js/date-range.js`
 - `src/static/js/libraries/chartjs-4.4.9.min.js`
