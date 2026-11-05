@@ -251,7 +251,7 @@ can inform a focused completion pass.
 
 ### MEDIA-CARD — Canonical card and metadata lines
 
-- Implementation: `frontend/ui/MediaCard.jsx` is the one shared card, web and native. Artwork uses `frontend/ui/ArtworkImage.jsx` (with its web/native adapters) for the fallback chain, lazy loading and the unavailable/stale states; do not replace it with a bare React Native `Image`, which regresses loaded posters to placeholder titles:
+- Implementation: `frontend/ui/MediaCard.jsx` is the one shared card, web and native. Artwork uses `frontend/ui/ArtworkImage.jsx` (with its web/native adapters) for the fallback chain, lazy loading and the unavailable/stale states; the web status and corner chips keep the retired card's 8px inset, 8/4px padding and 16px status glyph so the unified card does not shrink them; do not replace it with a bare React Native `Image`, which regresses loaded posters to placeholder titles:
   poster, square, landscape and row layouts, artwork with a fallback chain, status
   and media-type chips, corner chips, progress, title and alternative title,
   subtitle lines, score and a rating affordance, plus read-only and selectable
