@@ -360,12 +360,15 @@ if [ -e "$BACKUP_DIR_PATH" ] && ! timeout 600 chown abc:abc -- "$BACKUP_DIR_PATH
     echo "[entrypoint] WARNING: chown of ${BACKUP_DIR_PATH} failed or timed out (stalled mount?); continuing" >&2
 fi
 # Older images or root-run maintenance commands can leave the snapshot
-# directory root-owned. Repair this one managed directory, never a symlink or
-# the whole backup tree, so the unprivileged worker can publish snapshots.
+# directories root-owned. The startup snapshot before pending migrations runs
+# before the identity switch, so its files are written as root; repairing only
+# the directory left those files unreadable to PUID on the host (#1850). Repair
+# these two managed directories and their contents, never a symlink or the
+# whole backup tree, so the unprivileged worker can publish snapshots.
 for snapshot_dir in "${BACKUP_DIR_PATH}/database" "${BACKUP_DIR_PATH}/verification"; do
     if [ -L "$snapshot_dir" ]; then
         echo "[entrypoint] WARNING: snapshot directory ${snapshot_dir} is a symlink; refusing ownership repair" >&2
-    elif [ -d "$snapshot_dir" ] && ! timeout 600 chown -h abc:abc -- "$snapshot_dir"; then
+    elif [ -d "$snapshot_dir" ] && ! timeout 600 chown -R -h abc:abc -- "$snapshot_dir"; then
         echo "[entrypoint] WARNING: chown of ${snapshot_dir} failed or timed out (stalled mount?); continuing" >&2
     fi
 done

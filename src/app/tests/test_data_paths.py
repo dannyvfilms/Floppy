@@ -557,6 +557,28 @@ fi
         self.assertNotIn("<collectstatic>", commands)
         self.assertIn("chown <-R> <abc:abc> <--> </floppy/staticfiles>", commands)
 
+    def test_snapshot_directories_are_repaired_recursively(self):
+        """Startup verification writes snapshots as root before the identity
+        switch, so repairing only the directory left those files root-owned
+        and unreadable to PUID on the host (#1850).
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir).resolve()
+            backups = root / "backups"
+            verification = backups / "verification"
+            verification.mkdir(parents=True)
+            (verification / "db-20260101T000000Z-abcdef01.sqlite3").write_text("copy")
+            database = backups / "database"
+            database.mkdir()
+            result, commands = self.run_entrypoint(
+                root, DB_HOST="fixture", BACKUP_DIR=str(backups)
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for directory in (database, verification):
+            self.assertIn(
+                f"chown <-R> <-h> <abc:abc> <--> <{directory}>", commands
+            )
+
     def test_cache_failure_uses_normal_collection_and_ownership(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             result, commands = self.run_entrypoint(

@@ -119,6 +119,7 @@ user creates a schedule.
 | Artifact | Where | What it is | When it is written |
 | --- | --- | --- | --- |
 | Raw SQLite snapshot | `BACKUP_DIR/database/*.sqlite3`, mode 0600 | Verified, atomically published copy of the live database. A same-host recovery point only. SQLite only. | Daily from Celery beat at 02:37 in `TZ` (`DB_SNAPSHOT_HOUR`, `DB_SNAPSHOT_MINUTE`), plus a startup snapshot before pending migrations. Seven completed files are kept by default (`DB_SNAPSHOT_RETENTION_COUNT`). |
+| Verification copy | `BACKUP_DIR/verification/*.sqlite3`, mode 0600 | Temporary private copy the integrity check reads instead of the live database. Same contents as a snapshot, but not a restore source; Floppy prunes it itself. | When startup takes a recovery snapshot before pending migrations, and during explicit `sqlite_startup` maintenance. Up to seven files are kept. |
 | CSV export | `BACKUP_DIR/<username>/floppy_*.csv` | Portable media, ratings and lists. Not accounts, credentials or settings. | Only when a user schedules exports in **Settings → Export**. Manual exports download in the browser and do not write here. |
 | PostgreSQL | operator-managed | Floppy does not back up PostgreSQL. Use `pg_dump` or your platform's backup. | Never. |
 
@@ -140,7 +141,9 @@ are removed on the next export.
 
 **Off-host and encrypted copies.** Copy `BACKUP_DIR` off the machine on your
 own schedule (restic, borg, rclone to storage you control) with encryption
-you hold the key for. Floppy adds no cloud service or automatic restore.
+you hold the key for. Skip `BACKUP_DIR/verification/`: those are temporary
+copies used for integrity checks and Floppy prunes them. Floppy adds no cloud
+service or automatic restore.
 
 **One directory instead of two.** The shipped examples mount `/floppy/db` and
 `/floppy/backups` separately. That separation is convenient — backups can live
