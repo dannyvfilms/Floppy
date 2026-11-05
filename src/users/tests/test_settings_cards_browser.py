@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 from unittest.mock import patch
 from urllib.parse import urlsplit
 
@@ -18,7 +19,7 @@ from integrations.models import AudiobookshelfAccount, ImportRun
 
 # The header search form, the sidebar, the popup host and the bulk dock are React
 # islands on every signed-in page, so the card counts below leave them out.
-MOUNTED_ISLANDS = '[data-react-mounted="true"]:not([data-global-search-root]):not([data-sidebar-root]):not([data-modal-host-root]):not([data-bulk-actions-root])'
+MOUNTED_ISLANDS = '[data-react-mounted="true"]:not([data-shell-root]):not([data-global-search-root]):not([data-sidebar-root]):not([data-modal-host-root]):not([data-bulk-actions-root])'
 
 
 @tag("slow", "playwright")
@@ -595,6 +596,24 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(0)
         self.assertEqual(self.errors, [])
 
+    def test_shell_topbar_and_mobile_navigation(self):
+        """The shared top bar opens and closes the React mobile overlay."""
+        self.page.set_viewport_size({"width": 390, "height": 844})
+        self.page.goto(self.live_server_url + "/")
+        expect(self.page.locator('[data-shell-root][data-react-mounted="true"]')).to_have_count(1)
+        menu = self.page.get_by_role("button", name="Toggle navigation menu")
+        expect(menu).to_be_visible()
+        menu.click()
+        expect(self.page.locator("aside")).to_have_class(re.compile("translate-x-0"))
+        expect(self.page.get_by_role("dialog")).to_be_visible()
+        self.page.get_by_role("button", name="Close navigation menu").click()
+        expect(self.page.get_by_role("dialog")).to_be_hidden()
+        menu.click()
+        expect(self.page.get_by_role("dialog")).to_be_visible()
+        self.page.keyboard.press("Escape")
+        expect(self.page.get_by_role("dialog")).to_be_hidden()
+        self.assertEqual(self.errors, [])
+
     def test_navigation_from_a_page_without_cards_lazily_loads_the_runtime(self):
         """The global loader must discover islands introduced by boosted navigation."""
         self.page.goto(f"{self.live_server_url}/settings/account")
@@ -615,7 +634,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             }
           }).observe({type: 'layout-shift', buffered: true});
           new MutationObserver(() => {
-            if (document.querySelectorAll('[data-react-mounted=true]:not([data-global-search-root]):not([data-sidebar-root]):not([data-modal-host-root]):not([data-modal-host-root])').length === 1) {
+            if (document.querySelectorAll('[data-react-mounted=true]:not([data-shell-root]):not([data-global-search-root]):not([data-sidebar-root]):not([data-modal-host-root]):not([data-modal-host-root])').length === 1) {
               cardProof.mountedAt ||= performance.now();
             }
           }).observe(document, {subtree:true, attributes:true, attributeFilter:['data-react-mounted']});

@@ -1705,6 +1705,28 @@
           "evidence": "Compiled by the Expo export through the native artist discography; the album grid was not exercised on an emulator or device."
         }
       }
+    },
+    "frontend/ui/Shell.jsx": {
+      "components": [
+        "Shell",
+        "TopBar",
+        "MobileNav"
+      ],
+      "register": "SHELL",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium via Playwright on macOS at 390x844: the signed-in top bar mounted, the hamburger opened the shared mobile overlay, the existing sidebar translated into view, and the backdrop and Escape both closed the overlay. The public header rendered through Django with its sign-in props; no public browser interaction pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Shared top bar and mobile navigation render in the Expo shell; no iOS runtime was exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Shared top bar and mobile navigation render in the Expo shell; no Android runtime was exercised."
+        }
+      }
     }
   },
   "legacy": {
@@ -2449,7 +2471,7 @@
     },
     "frontend/settings/index.js": {
       "register": "SETTINGS-CARD",
-      "purpose": "Django/browser integration for the registered surface."
+      "purpose": "Django/browser integration for the registered surfaces, including the shell, sidebar and search island loader."
     },
     "frontend/settings/webPalette.js": {
       "register": "SETTINGS-CARD",
@@ -2646,6 +2668,10 @@
     "frontend/ui/mountMusicAlbums.jsx": {
       "register": "MUSIC",
       "purpose": "Maps server-shaped artist discography album rows into the shared music album grid and owns browser navigation for the card link; the server album grid inside the host remains the no-React fallback."
+    },
+    "frontend/ui/mountShell.jsx": {
+      "register": "SHELL",
+      "purpose": "Django/browser integration for the shared shell top bar and mobile navigation: resolve theme tokens, bridge the existing sidebar open state, lift the HTMX-boosted search island into the shared bar, keep public sign-in link semantics and render the overlay while the server fallback remains."
     }
   }
 }

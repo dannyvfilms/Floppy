@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from django import template
 from django.conf import settings
+from django.templatetags.static import static
 from django.urls import reverse as _django_reverse
 from django.utils import formats, timezone
 from django.utils.dateparse import parse_date
@@ -29,7 +30,11 @@ from app.services import metadata_resolution
 from app.stats_music import COUNTRY_NAME_MAP
 from users.media_type_chips import media_type_chip_preferences
 from users.models import ALL_SEARCH_TYPE, HISTORY_VIEW_TYPE, TimeFormatChoices
-from users.templatetags.user_tags import user_date_format, user_time_format
+from users.templatetags.user_tags import (
+    is_basic_theme,
+    user_date_format,
+    user_time_format,
+)
 
 
 @lru_cache(maxsize=8192)
@@ -2337,6 +2342,88 @@ def media_row_react(context, item, media, title, matched_title):
             ),
             "labels": {"altTitle": str(_("Show alternative title"))},
         },
+    }
+
+
+
+@register.simple_tag(takes_context=True)
+def shell_topbar_react(context, public=False):
+    """Return the props the shared shell top bar needs.
+
+    Navigation values, translated labels and the public sign-in destination
+    stay server-owned. The browser adapter supplies link semantics and theme
+    tokens; the fallback top bar remains in the template.
+    """
+    from uuid import uuid4
+
+    user = context.get("user")
+    if public:
+        return {
+            "id": f"shell-{uuid4().hex[:8]}",
+            "props": {
+                "variant": "public",
+                "showMenu": False,
+                "showSearch": False,
+                "themeToggle": False,
+                "logo": _shell_logo(user),
+                "logoText": "Floppy",
+                "signIn": (
+                    {
+                        "label": str(_("Sign In")),
+                        "href": reverse("account_login"),
+                    }
+                    if settings.REGISTRATION
+                    else None
+                ),
+                "labels": _shell_labels(),
+            },
+        }
+
+    request = context.get("request")
+    if not request:
+        return {"id": f"shell-{uuid4().hex[:8]}", "props": None}
+    public_view = bool(context.get("public_view", False))
+    return {
+        "id": f"shell-{uuid4().hex[:8]}",
+        "props": {
+            "variant": "app",
+            "showMenu": not public_view,
+            "showSearch": not public_view,
+            "themeToggle": bool(
+                user
+                and user.is_authenticated
+                and is_basic_theme(user.theme),
+            ),
+            "logo": None,
+            "logoText": None,
+            "signIn": None,
+            "labels": _shell_labels(),
+        },
+    }
+
+
+def _shell_logo(user):
+    mono = bool(
+        user
+        and user.is_authenticated
+        and getattr(user, "logo_style", "") == "monochrome"
+    )
+    return {
+        "src": static(
+            "img/floppy-logo-white.png" if mono else "img/floppy-logo.png",
+        ),
+        "alt": "Floppy",
+        "mono": mono,
+    }
+
+
+def _shell_labels():
+    return {
+        "menu": str(_("Toggle navigation menu")),
+        "closeMenu": str(_("Close navigation menu")),
+        "navigation": str(_("Navigation")),
+        "toggleTheme": str(_("Toggle theme")),
+        "logo": "Floppy",
     }
 
 

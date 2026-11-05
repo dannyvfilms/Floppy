@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
 import { TabBar } from './app/components/TabBar';
+import ShellSlot from './app/surfaces/ShellSlot';
 import { EXTRA_SCREENS } from './app/extraScreens';
 import CalendarScreen from './app/screens/CalendarScreen';
 import DetailScreen from './app/screens/DetailScreen';
@@ -38,11 +39,13 @@ export default function App() {
   const [tab, setTab] = useState('home');
   const [stack, setStack] = useState([]);
   const navigate = (screen, params) => setStack(current => [...current, { screen, params }]);
+  const openTab = next => { setStack([]); setTab(next); };
   const back = () => setStack(current => current.slice(0, -1));
   const active = stack[stack.length - 1];
   const ActiveScreen = active ? STACK_SCREENS[active.screen] : TAB_SCREENS[tab];
   return <SafeAreaView style={[styles.root, { paddingTop: statusBarInset }]}>
     <StatusBar barStyle="light-content" backgroundColor={palette.background} />
+    <ShellSlot active={tab} onNavigate={openTab} />
     <View style={styles.body}>
       {active
         ? <ActiveScreen params={active.params} navigate={navigate} onBack={back} />
