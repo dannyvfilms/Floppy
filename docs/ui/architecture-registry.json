@@ -572,6 +572,67 @@
         }
       }
     },
+    "frontend/ui/ListFormView.jsx": {
+      "components": [
+        "ListForm"
+      ],
+      "register": "LISTS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted on the Django lists page; the existing server-rendered list form remains the active web consumer. The web bundle builds."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the form; not exercised in a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the form; not exercised on an emulator."
+        }
+      }
+    },
+    "frontend/ui/ListSearchView.jsx": {
+      "components": [
+        "ListItemSearch",
+        "ListItemPreview"
+      ],
+      "register": "LIST-CURATION",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted on the Django add/recommend pages; the existing server search and preview dialogs remain the active web consumers. The web bundle builds."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the search and preview views; not exercised in a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the search and preview views; not exercised on an emulator."
+        }
+      }
+    },
+    "frontend/ui/ListRecommendationsView.jsx": {
+      "components": [
+        "ListRecommendations"
+      ],
+      "register": "LIST-CURATION",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted on the Django recommendations page; the existing server-rendered approval page remains the active web consumer. The web bundle builds."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the recommendations view; not exercised in a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the recommendations view; not exercised on an emulator."
+        }
+      }
+    },
     "frontend/ui/HistoryFeed.jsx": {
       "components": [
         "HistoryFeed",
