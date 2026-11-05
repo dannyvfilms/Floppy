@@ -4,9 +4,10 @@ import { Note } from '../components/Note';
 
 const surface = {
   id: 'PEOPLE',
+  status: 'in_progress',
   title: 'People, studios and credits',
   where: 'Person, studio and cast detail',
-  note: 'Person/studio pages, credits, filmography, trailers and game extras will replace this note.',
+  note: 'Person/studio pages, credits, filmography, bounded rails, trailers, lightbox intents and medium extras are being ported to shared React Native presentation. Production transport, permissions and web mounting remain outstanding.',
 };
 
 export default function PeopleScreen({ onBack }) {
