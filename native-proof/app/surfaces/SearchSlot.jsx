@@ -7,8 +7,8 @@ export const surface = {
   id: 'SEARCH',
   title: 'Global search and suggestions',
   where: 'Header on Home, Discover and Library, and the Search screen',
-  status: 'ported',
-  note: 'The shared search field, media-type menu, suggestion list and result links render here. The Search screen adds paged results, source scope, empty/loading/error states, parent TV/season and music album pickers, and the barcode adapter boundary; native camera scanning still needs a barcode module and reports unavailable.',
+  status: 'in_progress',
+  note: 'The shared search field, media-type menu, suggestion list and result links render here. The Search screen adds paged results, source scope, empty/loading/error states, parent TV/season and music album pickers, and the barcode adapter boundary; native camera scanning still needs a barcode module and reports unavailable. The web create-entry parent fields are moving onto the shared ParentPicker.',
 };
 
 const mediaTypes = [
