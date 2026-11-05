@@ -14,7 +14,7 @@ export const surface = {
   status: 'in_progress',
   title: 'Statistics summary, charts, talent and per-media overviews',
   where: 'Statistics screen summary cards, highlights, controls, charts, comparison, taste/talent, role/studio leaders and per-media-type overviews',
-  note: 'The summary, charts, featured repeat, comparison, taste/talent signals, role/studio leaders and per-media-type overviews render with shared React Native presentation and demo data. Web adoption of the shared summary and chart groups is in progress behind a browser adapter; taste/talent and per-media overviews remain server-owned there. Remaining: production data transport and permissions, the person media strip, and the reading release/completed-length and game daily-average detail charts. iOS and Android runtime are unverified.',
+  note: 'Finishing pass: adopt the shared comparison, taste/talent and per-media overviews on the web page, wire the saved comparison/media-type/sort preferences through a transport boundary, and keep server values authoritative. The person media strip and featured-repeat card stay server-owned for now. iOS and Android runtime are unverified.',
 };
 
 const charts = {
