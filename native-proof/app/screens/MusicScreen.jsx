@@ -4,9 +4,10 @@ import { Note } from '../components/Note';
 
 const surface = {
   id: 'MUSIC',
+  status: 'in_progress',
   title: 'Music and podcasts',
   where: 'Artist, album, track and podcast detail',
-  note: 'Artist relations, discography, album tracks, show episodes and podcast tracking will replace this note.',
+  note: 'Artist relations, discography, album tracks, show episodes and podcast tracking are being ported to the shared React Native presentation.',
 };
 
 export default function MusicScreen({ onBack }) {
