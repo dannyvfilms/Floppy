@@ -1533,7 +1533,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted in the browser; the server tag index, fill_tags modal, bulk tag action and settings media-type filters remain the web fallback. No browser interaction pass was run in this change."
+          "evidence": "The tag index, item assignment dialog and settings media-type filter mount through frontend/ui/mountTags.jsx with server fallbacks; bulk quick tagging, the track-tab tag editor and the no-JS paths stay server-owned. Build and targeted tests pass, but no browser interaction pass was run."
         },
         "ios": {
           "status": "unverified",
@@ -2531,6 +2531,10 @@
     "frontend/ui/mountBulkToolbar.jsx": {
       "register": "BULK_ACTIONS",
       "purpose": "Django/browser integration for the shared bulk action bar: mirror the page Alpine selection, run quick bulk posts and open the status/plays dialogs."
+    },
+    "frontend/ui/mountTags.jsx": {
+      "register": "TAGS",
+      "purpose": "Django/browser integration for the shared tag index, item assignment dialog and settings media-type filter: keep confirmation and ownership-protected posts, refresh the detail tag preview from the server response, and forward the selected media type to the page Alpine state."
     }
   }
 }

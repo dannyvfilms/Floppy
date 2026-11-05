@@ -169,6 +169,7 @@ export function TagMediaFilter({
 
 export function TagAssignmentDialog({
   open = false,
+  embedded = false,
   item,
   tags = [],
   palette,
@@ -209,71 +210,71 @@ export function TagAssignmentDialog({
     setDeleteTarget(null);
   }
 
-  return <>
-    <Modal transparent visible={open} animationType="fade" accessibilityViewIsModal
-      onRequestClose={close}>
-      <View style={[styles.overlay, { backgroundColor: colors.overlay }]}>
-        <View style={[styles.dialog, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.dialogHead}>
-            <View style={styles.dialogHeading}>
-              <Text role="heading" aria-level={2} style={[styles.dialogTitle, { color: colors.text }]}>Tags</Text>
-              {item ? <Text numberOfLines={2} style={[styles.dialogCopy, { color: colors.textMuted }]}>
-                {item.title}{item.subtitle ? ` · ${item.subtitle}` : ''}
-              </Text> : null}
-            </View>
-            <Button label="Close" tone="surface" disabled={busy} onPress={close} palette={colors} />
-          </View>
-          <TextField
-            label="Search tags"
-            labelHidden
-            value={query}
-            placeholder="Search your tags..."
-            accessibilityLabel="Search tags"
-            onChangeText={setQuery}
-            palette={colors} />
-          <ScrollView style={styles.tagScroll} keyboardShouldPersistTaps="handled">
-            {filtered.length ? filtered.map(tag => <View key={tag.id}
-              style={[styles.assignmentRow, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
-              <View style={styles.assignmentBody}>
-                <Text numberOfLines={1} style={[styles.tagName, { color: colors.text }]}>{tag.name}</Text>
-                <Badge label={tag.hasTag ? 'Applied' : 'Not applied'} size="xs"
-                  palette={tag.hasTag
-                    ? { success: { backgroundColor: 'rgba(16, 185, 129, 0.14)', color: colors.success } }
-                    : { outline: { color: colors.textMuted, borderColor: colors.border, borderWidth: 1 } }}
-                  tone={tag.hasTag ? 'success' : 'outline'} />
-              </View>
-              <View style={styles.rowActions}>
-                <Button label={tag.hasTag ? 'Remove' : 'Add'} tone={tag.hasTag ? 'surface' : 'primary'}
-                  disabled={busy || tag.owned === false}
-                  accessibilityLabel={`${tag.hasTag ? 'Remove' : 'Add'} ${tag.name} ${tag.hasTag ? 'from' : 'to'} this item`}
-                  onPress={() => onToggle?.(tag)} palette={colors} />
-                <Button label="Delete" tone="ghost-danger" disabled={busy || tag.owned === false}
-                  accessibilityLabel={`Delete ${tag.name} tag`} onPress={() => setDeleteTarget(tag)}
-                  palette={colors} />
-              </View>
-            </View>) : <Text style={[styles.empty, { color: colors.textSecondary }]}>
-              {tags.length ? 'No tags match this search.' : 'No tags yet. Create one below.'}
-            </Text>}
-          </ScrollView>
-          <View style={[styles.createRow, { borderColor: colors.border }]}>
-            <View style={styles.createField}>
-              <TextField
-                label="New tag"
-                labelHidden
-                value={newName}
-                maxLength={50}
-                placeholder="New tag..."
-                accessibilityLabel="New tag name"
-                onChangeText={setNewName}
-                error={error}
-                disabled={busy}
-                palette={colors} />
-            </View>
-            <Button label="Add" disabled={!newName.trim() || busy} onPress={createTag} palette={colors} />
-          </View>
-        </View>
+  const panel = <View style={[styles.dialog, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    <View style={styles.dialogHead}>
+      <View style={styles.dialogHeading}>
+        <Text role="heading" aria-level={2} style={[styles.dialogTitle, { color: colors.text }]}>Tags</Text>
+        {item ? <Text numberOfLines={2} style={[styles.dialogCopy, { color: colors.textMuted }]}>
+          {item.title}{item.subtitle ? ` · ${item.subtitle}` : ''}
+        </Text> : null}
       </View>
-    </Modal>
+      <Button label="Close" tone="surface" disabled={busy} onPress={close} palette={colors} />
+    </View>
+    <TextField
+      label="Search tags"
+      labelHidden
+      value={query}
+      placeholder="Search your tags..."
+      accessibilityLabel="Search tags"
+      onChangeText={setQuery}
+      palette={colors} />
+    <ScrollView style={styles.tagScroll} keyboardShouldPersistTaps="handled">
+      {filtered.length ? filtered.map(tag => <View key={tag.id}
+        style={[styles.assignmentRow, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
+        <View style={styles.assignmentBody}>
+          <Text numberOfLines={1} style={[styles.tagName, { color: colors.text }]}>{tag.name}</Text>
+          <Badge label={tag.hasTag ? 'Applied' : 'Not applied'} size="xs"
+            palette={tag.hasTag
+              ? { success: { backgroundColor: 'rgba(16, 185, 129, 0.14)', color: colors.success } }
+              : { outline: { color: colors.textMuted, borderColor: colors.border, borderWidth: 1 } }}
+            tone={tag.hasTag ? 'success' : 'outline'} />
+        </View>
+        <View style={styles.rowActions}>
+          <Button label={tag.hasTag ? 'Remove' : 'Add'} tone={tag.hasTag ? 'surface' : 'primary'}
+            disabled={busy || tag.owned === false}
+            accessibilityLabel={`${tag.hasTag ? 'Remove' : 'Add'} ${tag.name} ${tag.hasTag ? 'from' : 'to'} this item`}
+            onPress={() => onToggle?.(tag)} palette={colors} />
+          <Button label="Delete" tone="ghost-danger" disabled={busy || tag.owned === false}
+            accessibilityLabel={`Delete ${tag.name} tag`} onPress={() => setDeleteTarget(tag)}
+            palette={colors} />
+        </View>
+      </View>) : <Text style={[styles.empty, { color: colors.textSecondary }]}>
+        {tags.length ? 'No tags match this search.' : 'No tags yet. Create one below.'}
+      </Text>}
+    </ScrollView>
+    <View style={[styles.createRow, { borderColor: colors.border }]}>
+      <View style={styles.createField}>
+        <TextField
+          label="New tag"
+          labelHidden
+          value={newName}
+          maxLength={50}
+          placeholder="New tag..."
+          accessibilityLabel="New tag name"
+          onChangeText={setNewName}
+          error={error}
+          disabled={busy}
+          palette={colors} />
+      </View>
+      <Button label="Add" disabled={!newName.trim() || busy} onPress={createTag} palette={colors} />
+    </View>
+  </View>;
+
+  return <>
+    {embedded ? panel : <Modal transparent visible={open} animationType="fade"
+      accessibilityViewIsModal onRequestClose={close}>
+      <View style={[styles.overlay, { backgroundColor: colors.overlay }]}>{panel}</View>
+    </Modal>}
     <TagDeleteDialog tag={deleteTarget} palette={colors} busy={busy}
       onCancel={() => setDeleteTarget(null)} onConfirm={confirmDelete} />
   </>;
