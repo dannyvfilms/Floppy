@@ -1705,6 +1705,27 @@
           "evidence": "Compiled by the Expo export through the native artist discography; the album grid was not exercised on an emulator or device."
         }
       }
+    },
+    "frontend/ui/PlaybackCard.jsx": {
+      "components": [
+        "PlaybackCard",
+        "CheckInState"
+      ],
+      "register": "PLAYBACK",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Compiled into the web bundle through mountPlaybackCard and mountCheckInState; the Home card and detail check-in state were not exercised in a browser in this change. The server fallback remains the progressive-enhancement path."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared card and detail check-in state into the native shell; no iOS simulator run or interaction pass was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared card and detail check-in state into the native shell; no Android emulator run or interaction pass was performed."
+        }
+      }
     }
   },
   "legacy": {
@@ -2646,6 +2667,18 @@
     "frontend/ui/mountMusicAlbums.jsx": {
       "register": "MUSIC",
       "purpose": "Maps server-shaped artist discography album rows into the shared music album grid and owns browser navigation for the card link; the server album grid inside the host remains the no-React fallback."
+    },
+    "frontend/ui/PlaybackTheme.web.jsx": {
+      "register": "PLAYBACK",
+      "purpose": "Resolve browser theme tokens and hand the shared Now Playing card and detail check-in state their stop/cancel and action intents while htmx owns the server fragments."
+    },
+    "frontend/ui/mountPlaybackCard.jsx": {
+      "register": "PLAYBACK",
+      "purpose": "Mount the shared Now Playing card over the server-rendered Home card fallback."
+    },
+    "frontend/ui/mountCheckInState.jsx": {
+      "register": "PLAYBACK",
+      "purpose": "Mount the shared detail check-in state over the server-rendered tracking split-button fallback."
     }
   }
 }

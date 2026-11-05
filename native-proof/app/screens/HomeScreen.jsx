@@ -2,6 +2,7 @@ import React from 'react';
 import { Screen, Section } from '../components/Screen';
 import { Note } from '../components/Note';
 import MediaCardSlot from '../surfaces/MediaCardSlot';
+import PlaybackSlot from '../surfaces/PlaybackSlot';
 import RailsSlot from '../surfaces/RailsSlot';
 import SearchSlot from '../surfaces/SearchSlot';
 
@@ -18,6 +19,9 @@ export default function HomeScreen({ navigate }) {
       onOpenSearch={params => navigate('Search', params)}
       onOpenSuggestion={item => navigate('Detail', { item })}
     />
+    <Section title="Now Playing" copy="Live playback and running check-ins in their Home row.">
+      <PlaybackSlot onOpenDetail={() => navigate('Detail')} />
+    </Section>
     <Section title="Continue watching" copy="Cards and quick progress in their real Home rail.">
       <MediaCardSlot onOpenDetail={() => navigate('Detail')} />
     </Section>

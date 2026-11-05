@@ -187,3 +187,23 @@ export const dateTimePalette = {
   fontSize: 14,
   smallFontSize: 12,
 };
+
+export const playbackPalette = {
+  surface: palette.surface,
+  surfaceStrong: palette.surfaceStrong,
+  surfaceHover: palette.surfaceStrong,
+  surfaceMuted: palette.surfaceMuted,
+  border: palette.border,
+  text: palette.text,
+  textSecondary: palette.textSecondary,
+  textMuted: palette.textMuted,
+  link: '#818cf8',
+  accent: palette.accent,
+  warning: palette.warning,
+  danger: palette.danger,
+  placeholder: palette.surfaceStrong,
+  progressTrack: 'rgba(24, 24, 27, 0.8)',
+  progressFill: palette.accent,
+  pausedFill: palette.warning,
+  focusStyle: {},
+};

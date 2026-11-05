@@ -400,8 +400,19 @@ in the register.
 
 ## PLAYBACK
 
+The Home Now Playing card and the detail state of a running check-in are shared
+React presentation on mount. The Home polling/fragment replacement and the
+detail tracking split button remain server/HTMX-owned fallbacks.
+
+- `frontend/ui/PlaybackCard.jsx`
+- `frontend/ui/PlaybackTheme.web.jsx`
+- `frontend/ui/mountPlaybackCard.jsx`
+- `frontend/ui/mountCheckInState.jsx`
+- `native-proof/app/surfaces/PlaybackSlot.jsx`
 - `src/templates/app/components/active_playback_card.html`
+- `src/templates/app/components/active_playback_cards.html`
 - `src/templates/app/components/detail_checkin_state.html`
+- `src/templates/app/components/detail_track_split.html`
 
 ## DISCOVER
 
