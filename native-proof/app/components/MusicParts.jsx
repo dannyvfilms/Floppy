@@ -12,7 +12,7 @@ import {
 import { Badge } from '../../../frontend/ui/Badge';
 import { Button } from '../../../frontend/ui/Button';
 import { DateTimePicker } from '../../../frontend/ui/DateTimePicker';
-import { MediaCardView } from '../../../frontend/ui/MediaCardView';
+import { MediaCard } from '../../../frontend/ui/MediaCard';
 import { MarkdownNotes } from '../../../frontend/ui/MarkdownNotes';
 import { MarkdownPreview } from '../../../frontend/ui/MarkdownPreview';
 import { MusicAlbumGrid } from '../../../frontend/ui/MusicAlbumCard';
@@ -358,7 +358,7 @@ export function TrackRow({ track, onOpen, onAction, onRate }) {
     ratingEditable: true,
     actions: trackActions(),
   };
-  return <MediaCardView model={model}
+  return <MediaCard model={model}
     labels={{ rate: 'Rate', close: 'Close' }}
     palette={mediaCardPalette}
     onOpen={() => onOpen?.(track)}
@@ -407,7 +407,7 @@ export function EpisodeRow({ episode, showImage, onOpen, onAction, onRate }) {
     ratingEditable: true,
     actions: episodeActions(),
   };
-  return <MediaCardView model={model}
+  return <MediaCard model={model}
     labels={{ rate: 'Rate', close: 'Close' }}
     palette={mediaCardPalette}
     onOpen={() => onOpen?.(episode)}

@@ -1786,62 +1786,7 @@ def _render_podcast_show_track_modal(
     response = render(
         request,
         "app/components/fill_track.html",
-<<<<<<< HEAD
         context,
-=======
-        {
-            "user": request.user,
-            "title": show.title,
-            "media_type": MediaTypes.PODCAST.value,
-            "form": form,
-            "media": tracker,
-            "return_url": return_url,
-            "metadata_tab_available": False,
-            "metadata_fields": [],
-            "general_hidden_fields": field_groups["hidden_fields"],
-            "general_fields": field_groups["general_fields"],
-            "general_submit_formaction": (
-                f"{reverse('podcast_show_save')}?next={return_url}"
-                + (f"&home_row_id={home_row_id}" if home_row_id else "")
-            ),
-            "general_delete_formaction": (
-                f"{reverse('podcast_show_delete')}?next={return_url}"
-            ),
-            "general_existing_instance": tracker,
-            "image_field": None,
-            "image_save_item_id": None,
-            "date_suggestion": _track_modal_date_suggestion("Release Date", ""),
-            "track_form_id": track_form_id,
-            "track_action_update": track_action_update,
-            "initial_active_tab": initial_active_tab,
-            "episode_plays_tab_available": episode_plays_tab_available,
-            "episode_plays_form": episode_plays_form,
-            "episode_plays_formaction": reverse("episode_bulk_save"),
-            "episode_plays_tab_label": "Episode Plays",
-            "episode_plays_submit_label": "Save plays",
-            "episode_plays_domain": _episode_domain_template_payload(
-                episode_plays_domain,
-            ),
-            "episode_plays_mode_notice": (
-                episode_plays_domain.get("mode_notice", "")
-                if episode_plays_domain
-                else ""
-            ),
-            "episode_plays_domain_script_id": f"{track_form_id}-episode-domain",
-            "episode_plays_presentation_id": (
-                f"{track_form_id}-episode-plays-props"
-            ),
-            "episode_plays_presentation": _bulk_episode_presentation(
-                request,
-                episode_plays_form,
-                episode_plays_domain,
-                track_form_id=track_form_id,
-                formaction=reverse("episode_bulk_save"),
-                return_url=return_url,
-                submit_label="Save plays",
-            ),
-        },
->>>>>>> native-port/tracking
     )
     response["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response["Pragma"] = "no-cache"

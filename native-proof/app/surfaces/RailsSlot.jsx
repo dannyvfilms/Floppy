@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { MediaCardView } from '../../../frontend/ui/MediaCardView';
+import { MediaCard } from '../../../frontend/ui/MediaCard';
 import { Rail } from '../../../frontend/ui/Rail';
 import { Note } from '../components/Note';
 import { mediaCardPalette, railPalette, spacing } from '../theme';
@@ -10,7 +10,7 @@ export const surface = {
   title: 'Horizontal shelves and load more',
   where: 'Home rails, Discover, cast and recommendations',
   status: 'ported',
-  note: 'The shared rail renders headings, collapse, arrows, horizontal scrolling, bounded load-more and item slots through renderItem. Shelves use the shared MediaCardView with demo card models until transport-backed rails are wired on the native screens.',
+  note: 'The shared rail renders headings, collapse, arrows, horizontal scrolling, bounded load-more and item slots through renderItem. Shelves use the shared MediaCard with demo card models until transport-backed rails are wired on the native screens.',
 };
 
 const shelf = [
@@ -58,7 +58,7 @@ function railModel(item) {
 }
 
 function RailCard({ item }) {
-  return <MediaCardView model={railModel(item)} palette={mediaCardPalette} width={132} readOnly />;
+  return <MediaCard model={railModel(item)} palette={mediaCardPalette} width={132} readOnly />;
 }
 
 export default function RailsSlot() {

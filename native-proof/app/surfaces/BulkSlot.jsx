@@ -3,7 +3,7 @@ import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { BulkActionDialog, BulkActionRow, BulkJobCard, BulkJobMessage, BulkJobProblems, BulkJobProgress, BulkJobSummary, BulkOptionRow, BulkToolbar } from '../../../frontend/ui/BulkActions';
 import { BulkJobDock } from '../../../frontend/ui/BulkJobDock';
 import { Button } from '../../../frontend/ui/Button';
-import { MediaCardView } from '../../../frontend/ui/MediaCardView';
+import { MediaCard } from '../../../frontend/ui/MediaCard';
 import MediaCardSlot from './MediaCardSlot';
 import { emitMediaCardChange } from './mediaCardEvents';
 import { mediaCardPalette, palette, radius, spacing } from '../theme';
@@ -327,7 +327,7 @@ export default function BulkSlot({ onOpenDetail }) {
     </View>
     {selectMode
       ? <View style={styles.grid}>
-          {CARDS.map(item => <MediaCardView key={item.id} model={item.model} labels={labels}
+          {CARDS.map(item => <MediaCard key={item.id} model={item.model} labels={labels}
             palette={mediaCardPalette} width={cardWidth}
             selection={{
               active: true,

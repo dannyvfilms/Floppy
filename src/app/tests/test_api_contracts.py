@@ -539,6 +539,11 @@ class OpenAPIArtifactTests(SimpleTestCase):
                     "name": "X-API-Key",
                 },
                 "bearerAuth": {"type": "http", "scheme": "bearer"},
+                "cookieAuth": {
+                    "type": "apiKey",
+                    "in": "cookie",
+                    "name": "sessionid",
+                },
                 "listenBrainzToken": {
                     "type": "apiKey",
                     "in": "header",

@@ -225,7 +225,7 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 
 ## MEDIA-CARD
 
-- `frontend/ui/MediaCard.jsx` (universal card shell: layouts, artwork fallback, chips, progress, title/lines, rating affordance, explicit read-only mode and selectable states; presentation only)
+- `frontend/ui/MediaCard.jsx` (universal card shell: layouts, `ArtworkImage` fallback/lazy loading, chips, progress, title/lines, rating affordance, explicit read-only mode and selectable states; presentation only)
 - `frontend/ui/MediaCardActions.jsx` (universal action overlay, row buttons and list-reorder controls; native drag gesture with an `adjustable` value, hint and accessibility actions, explicit action/reorder/reorder-drag/reveal callbacks, no transport)
 - `frontend/ui/MediaCardActionHost.jsx` (universal popup shell for the card action callback contract; the browser ModalHost remains the web host)
 - `frontend/ui/MediaCardFormControls.jsx` (`FormHeader`, `FormField`, `FormTextField`, `FormSelect`, `FormStatus` and `FormError` for the shared action forms; presentation only)

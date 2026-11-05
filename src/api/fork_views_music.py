@@ -7,6 +7,8 @@ from decimal import Decimal, InvalidOperation
 from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.conf import settings
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
@@ -313,6 +315,7 @@ class MusicArtistPlaysView(drf_views.APIView):
 class MusicArtistRelationsView(drf_views.APIView):
     """Return the artist's band members and the bands they belong to."""
 
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request, artist_id):
         """Return normalized membership relations with the caller's trackers."""
         from app.music_views import _build_artist_relations
@@ -336,6 +339,7 @@ class MusicArtistRelationsView(drf_views.APIView):
 class MusicArtistMembersSyncView(drf_views.APIView):
     """Force a band-member sync for an artist (mirrors the web lazy sync)."""
 
+    @extend_schema(request=None, responses={200: OpenApiTypes.OBJECT})
     def post(self, _request, artist_id):
         """Sync members from MusicBrainz; returns the synced member count."""
         artist = Artist.objects.filter(id=artist_id).first()
@@ -525,6 +529,7 @@ class MusicAlbumPlaysView(drf_views.APIView):
 class MusicAlbumSyncView(drf_views.APIView):
     """Force album metadata and tracklist sync (mirrors the web action)."""
 
+    @extend_schema(request=None, responses={200: OpenApiTypes.OBJECT})
     def post(self, _request, album_id):
         """Rebuild the album's metadata and tracks from MusicBrainz."""
         album = Album.objects.filter(id=album_id).first()
@@ -636,6 +641,7 @@ class MusicTrackScoreView(drf_views.APIView):
 class MusicTrackNotesView(drf_views.APIView):
     """Edit private track notes without recording a listen."""
 
+    @extend_schema(request=OpenApiTypes.OBJECT, responses={200: OpenApiTypes.OBJECT})
     def patch(self, request, track_id):
         """Save notes on the caller's Music row for the catalog track."""
         track = (

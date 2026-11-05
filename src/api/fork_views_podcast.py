@@ -5,6 +5,8 @@ import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.core.cache import cache
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
@@ -419,6 +421,7 @@ class PodcastMarkAllPlayedView(drf_views.APIView):
 class PodcastEpisodeNotesView(drf_views.APIView):
     """Edit private episode notes without recording a play."""
 
+    @extend_schema(request=OpenApiTypes.OBJECT, responses={200: OpenApiTypes.OBJECT})
     def patch(self, request, episode_id):
         """Save notes on the caller's Podcast tracker for the episode."""
         episode = (

@@ -3,7 +3,7 @@ import { AccessibilityInfo, StyleSheet, Text, useWindowDimensions, View } from '
 import { Button } from '../../../frontend/ui/Button';
 import { ListsForm } from '../../../frontend/ui/ListsFormView';
 import { MediaCardActionHost } from '../../../frontend/ui/MediaCardActionHost';
-import { MediaCardView } from '../../../frontend/ui/MediaCardView';
+import { MediaCard } from '../../../frontend/ui/MediaCard';
 import { TrackForm } from '../../../frontend/ui/TrackForm';
 import { RatingStars } from '../../../frontend/ui/RatingStars';
 import {
@@ -1111,7 +1111,7 @@ export default function MediaCardSlot({
             isDragging && styles.draggingCard,
             !isDragging && drag && drag.targetIndex === index && styles.dropTarget,
           ]}>
-          <MediaCardView model={model} labels={labels} palette={mediaCardPalette}
+          <MediaCard model={model} labels={labels} palette={mediaCardPalette}
             width={cardWidth} onOpen={onOpenDetail}
             onOpenLink={onOpenLink || onOpenDetail}
             onAction={runAction}

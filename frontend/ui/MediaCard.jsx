@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ArtworkImage } from './ArtworkImage';
 import { MediaCardActionRow, MediaCardActions } from './MediaCardActions';
 
 const ASPECT = { poster: 2 / 3, square: 1, landscape: 16 / 9 };
@@ -64,38 +65,23 @@ function Star({ size = 12, color }) {
 
 function Artwork({ model, palette, selection, onPress }) {
   const image = model.image || {};
-  const [stage, setStage] = useState(0);
-  const [loaded, setLoaded] = useState(false);
-  const sources = [image.src, image.fallback].filter(Boolean);
-  const uri = sources[stage] || null;
-
-  useEffect(() => {
-    setStage(0);
-    setLoaded(false);
-  }, [image.src, image.fallback]);
-
-  useEffect(() => {
-    setLoaded(false);
-  }, [uri]);
-
   const frame = <View style={[styles.artworkFrame, { aspectRatio: ASPECT[model.shape] || ASPECT.poster }]}
     accessible={!onPress} accessibilityLabel={onPress ? undefined : model.title}>
-    <View style={[StyleSheet.absoluteFill, { backgroundColor: palette.placeholder }]} />
-    {uri ? <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover"
-      accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
-      onLoad={() => setLoaded(true)} onError={() => setStage(current => current + 1)} /> : null}
-    {!loaded ? <Text style={[styles.artworkPlaceholder, { color: palette.textMuted }]}
-      numberOfLines={2}>{model.title}</Text> : null}
-    {selection?.active ? <Pressable accessibilityRole="checkbox"
-      accessibilityLabel={selection.label || model.title}
-      accessibilityState={{ checked: !!selection.selected }}
-      onPress={event => { event.stopPropagation?.(); selection.toggle?.(); }}
-      style={[styles.selection, {
-        backgroundColor: selection.selected ? palette.link : 'rgba(0, 0, 0, 0.55)',
-        borderColor: palette.chipText,
-      }]}>
-      {selection.selected ? <Text style={[styles.selectionCheck, { color: palette.chipText }]}>✓</Text> : null}
-    </Pressable> : null}
+    <ArtworkImage src={image.src} fallback={image.fallback} title={model.title}
+      source={image.source} variant="media-card" loading="lazy" decoding="sync"
+      fallbackOnSmall={Boolean(model.video)} stale={Boolean(image.stale)}
+      style={StyleSheet.absoluteFill} palette={palette}>
+      {selection?.active ? <Pressable accessibilityRole="checkbox"
+        accessibilityLabel={selection.label || model.title}
+        accessibilityState={{ checked: !!selection.selected }}
+        onPress={event => { event.stopPropagation?.(); selection.toggle?.(); }}
+        style={[styles.selection, {
+          backgroundColor: selection.selected ? palette.link : 'rgba(0, 0, 0, 0.55)',
+          borderColor: palette.chipText,
+        }]}>
+        {selection.selected ? <Text style={[styles.selectionCheck, { color: palette.chipText }]}>✓</Text> : null}
+      </Pressable> : null}
+    </ArtworkImage>
   </View>;
 
   if (!onPress) return frame;
