@@ -754,16 +754,16 @@
       "register": "RELEASE-CALENDAR",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "Mounted by mountCalendarLinks over the Django server fallback; npm run build:ui compiles it, but no browser interaction pass was performed."
+          "status": "verified",
+          "evidence": "Chromium on macOS at 1280x1000 on a seeded Django calendar: the links root mounted over the static server fallback, both release and history feed tabs changed the help text and subscription URL, media switches rewrote media_types, Copy link reported Copied, Download calendar produced calendar.ics, and the console was clean."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiles CalendarLinks in the native Calendar screen; no simulator run was performed."
+          "evidence": "Expo export --platform all compiles CalendarLinks with the native calendar; no iOS simulator run was performed."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiles CalendarLinks in the native Calendar screen; no simulator run was performed."
+          "evidence": "Expo export --platform all compiles CalendarLinks with the native calendar; no Android emulator run was performed."
         }
       }
     },
@@ -774,16 +774,16 @@
       "register": "RELEASE-CALENDAR",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "Mounted over the Django calendar fallback through mountReleaseCalendar and built by npm run build:ui; not exercised in a browser."
+          "status": "verified",
+          "evidence": "Chromium on macOS at 1280x1000 on a seeded Django calendar: the React root mounted over the static server fallback; month, agenda and list views rendered releases; a filter change persisted to localStorage and restored after reload; the week-start preference saved and reloaded with Sunday first; Copy link, ICS download and the fetch POST/queued message all worked; the console was clean."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiles the shared calendar in the native shell; no simulator run was performed."
+          "evidence": "Expo export --platform all compiles the shared calendar and its durable file-system preference adapter; no iOS simulator run was performed."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiles the shared calendar in the native shell; no simulator run was performed."
+          "evidence": "Expo export --platform all compiles the shared calendar and its durable file-system preference adapter; no Android emulator run was performed."
         }
       }
     },

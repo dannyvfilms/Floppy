@@ -50,6 +50,7 @@ const DEFAULT_LABELS = {
   previousMonth: 'Previous month',
   nextMonth: 'Next month',
   filterCalendar: 'Filter calendar by media type',
+  preferences: 'Preferences',
 };
 
 const MENU_LABELS = {
@@ -134,6 +135,9 @@ export function ReleaseCalendar({
   releaseTypes = [],
   statusesByType = {},
   initialFilters,
+  regionUnset = false,
+  regionNotice = '',
+  preferencesUrl = '',
   navigation = {},
   menu,
   labels,
@@ -504,6 +508,17 @@ export function ReleaseCalendar({
         </Pressable>
       </View>
     </View>
+
+    {regionUnset && regionNotice ? <View style={styles.regionNotice}>
+      <Text style={styles.regionNoticeText}>{regionNotice}</Text>
+      {preferencesUrl ? <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={copy.preferences}
+        onPress={() => navigate(preferencesUrl)}
+        style={({ pressed }) => [styles.regionNoticeLink, pressed && styles.pressed]}>
+        <Text style={styles.regionNoticeLinkText}>{copy.preferences}</Text>
+      </Pressable> : null}
+    </View> : null}
 
     <View style={styles.viewSwitch} accessibilityRole="tablist">
       {['grid', 'list'].map((item) => <Pressable
@@ -959,6 +974,20 @@ function createStyles(colors, compact) {
     },
     menuGlyph: { color: colors.textSecondary, fontSize: 16 },
     pressed: { opacity: 0.72 },
+    regionNotice: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      marginBottom: 10,
+      borderRadius: 8,
+      backgroundColor: colors.surfaceMuted,
+    },
+    regionNoticeText: { flexShrink: 1, color: colors.textMuted, fontSize: 12 },
+    regionNoticeLink: { paddingVertical: 2 },
+    regionNoticeLinkText: { color: colors.link, fontSize: 12, fontWeight: '600' },
     viewSwitch: {
       flexDirection: 'row',
       alignSelf: 'flex-start',
@@ -1170,6 +1199,7 @@ function createStyles(colors, compact) {
     },
     backdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
     sheet: {
+      position: 'relative',
       width: compact ? '100%' : 440,
       maxHeight: compact ? '82%' : '78%',
       backgroundColor: colors.surface,
@@ -1182,6 +1212,7 @@ function createStyles(colors, compact) {
       overflow: 'hidden',
     },
     menuSheet: {
+      position: 'relative',
       width: compact ? '100%' : 340,
       backgroundColor: colors.surface,
       borderWidth: 1,
