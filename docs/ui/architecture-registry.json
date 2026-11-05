@@ -852,6 +852,26 @@
         }
       }
     },
+    "frontend/ui/TrackDialog.jsx": {
+      "components": [
+        "TrackDialog"
+      ],
+      "register": "TRACKING",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted in the browser; the web detail pages keep their server-rendered htmx and OOB track modal, permissions and progressive fallback."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Detail tracking surface; the dialog, tabs, coupling, delete, repeat and validation states were not exercised on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Detail tracking surface; the dialog, tabs, coupling, delete, repeat and validation states were not exercised on an emulator or device."
+        }
+      }
+    },
     "frontend/ui/StatisticsSummary.jsx": {
       "components": [
         "StatisticsSummary",
