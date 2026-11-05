@@ -10,7 +10,7 @@ import { historyPalette } from '../theme';
 
 export const surface = {
   id: 'HISTORY',
-  status: 'ported',
+  status: 'in_progress',
   title: 'History feed and activity',
   where: 'History screen and per-item activity dialog',
   note: 'Bounded day groups, lazy days, bounded load-more, filters and date ranges, session/activity, edit and delete dialogs, refresh/stale notices and loading/empty/error states use the shared React feed. The native shell runs these interactions against realistic demo data because it has no transport yet; the web History page keeps its server-rendered bounded fragments, cache refresh and Alpine filters as the fallback.',
