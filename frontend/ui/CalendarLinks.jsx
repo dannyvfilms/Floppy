@@ -7,7 +7,7 @@ import {
   View,
 } from 'react-native';
 import { Badge } from './Badge';
-import { Button } from './Button';
+import { Button } from './Button.jsx';
 
 const FALLBACK_PALETTE = {
   surface: '#27272a',

@@ -622,7 +622,7 @@ stay legacy until a native chart renderer is chosen.
 ## RELEASE-CALENDAR
 
 - `frontend/ui/ReleaseCalendar.jsx`
-- `frontend/ui/CalendarLinks.jsx`
+- `frontend/ui/CalendarLinks.jsx` (shared release/history subscription panel)
 - `frontend/ui/mountReleaseCalendar.jsx`
 - `frontend/ui/mountCalendarLinks.jsx`
 - `native-proof/app/surfaces/CalendarSlot.jsx`
