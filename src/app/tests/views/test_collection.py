@@ -92,25 +92,48 @@ class CollectionListViewTest(TestCase):
         self.assertEqual(item["card"]["rating"]["label"], "8.5")
         self.assertIn("actions", item["card"])
 
-    def test_table_layout_keeps_the_server_fallback(self):
-        """The shared grid mount is not emitted for the server-owned table layout."""
-        CollectionEntry.objects.create(user=self.user, item=self.item)
+    def test_table_layout_uses_the_shared_browser(self):
+        """The shared browser owns the table and its paginated JSON pages."""
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=self.item,
+            media_type="Blu-ray",
+            resolution="1080p",
+        )
         self.client.login(**self.credentials)
 
         response = self.client.get(reverse("collection_list"), {"layout": "table"})
 
-        self.assertNotContains(response, "data-collection-browser-root")
-        self.assertNotIn("collection_browser_props", response.context)
+        self.assertContains(response, "data-collection-browser-root")
+        props = response.context["collection_browser_props"]
+        self.assertEqual(props["filters"]["view"], "table")
+        self.assertEqual(props["items"][0]["format"], "Blu-ray")
+        self.assertEqual(props["items"][0]["resolution"], "1080p")
 
-    def test_grouped_view_keeps_the_server_rows(self):
-        """Grouped scrolling rows stay server-owned until per-row loading is shared."""
-        CollectionEntry.objects.create(user=self.user, item=self.item)
+    def test_grouped_view_uses_the_shared_browser_rows(self):
+        """Grouped rows carry per-row loading URLs into the shared browser."""
+        CollectionEntry.objects.bulk_create(
+            [CollectionEntry(user=self.user, item=self.item) for _ in range(21)],
+        )
         self.client.login(**self.credentials)
 
         response = self.client.get(reverse("collection_list"), {"group": "type"})
 
-        self.assertNotContains(response, "data-collection-browser-root")
-        self.assertNotIn("collection_browser_props", response.context)
+        self.assertContains(response, "data-collection-browser-root")
+        props = response.context["collection_browser_props"]
+        self.assertEqual(len(props["groups"]), 1)
+        group = props["groups"][0]
+        self.assertEqual(group["key"], MediaTypes.MOVIE.value)
+        self.assertEqual(group["loadedCount"], 20)
+        self.assertEqual(group["total"], 21)
+        self.assertIn("row_type=", group["nextUrl"])
+        self.assertIn("json=1", group["nextUrl"])
+
+        response = self.client.get(group["nextUrl"])
+
+        payload = response.json()
+        self.assertEqual(len(payload["items"]), 1)
+        self.assertEqual(payload["nextUrl"], "")
 
     def test_json_page_returns_the_next_browser_url(self):
         """Browser load-more pages use the JSON contract and stop at the last page."""
@@ -962,6 +985,39 @@ class CollectionModalViewTest(TestCase):
             title="Test Movie",
             image="http://example.com/image.jpg",
         )
+
+    def test_modal_embeds_shared_copy_and_custom_field_props(self):
+        """The modal ships plain props for the shared copy and field adapters."""
+        group = CollectionFieldGroup.objects.create(user=self.user, name="Edition")
+        field = CollectionField.objects.create(
+            group=group,
+            label="Volume",
+            field_type="text",
+            media_types=[MediaTypes.MOVIE.value],
+        )
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=self.item,
+            media_type="Blu-ray",
+            custom_field_values={str(field.id): "3"},
+        )
+        self.client.login(**self.credentials)
+
+        response = self.client.get(
+            reverse(
+                "collection_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "1234",
+                },
+            ),
+        )
+
+        self.assertContains(response, "data-collection-copy-fields-root")
+        self.assertContains(response, "data-collection-fields-root")
+        self.assertContains(response, "data-collection-field-inputs-root")
+        self.assertContains(response, "Volume")
 
     def test_collection_modal_new_entry(self):
         """Test modal for new entry (no existing collection)."""

@@ -67,6 +67,7 @@ function Adapter({ host, props }) {
   const [palette, setPalette] = useState(readPalette);
   const [model, setModel] = useState(() => props.model || props || { items: [] });
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadingGroups, setLoadingGroups] = useState({});
   const loading = useRef(false);
 
   useEffect(() => {
@@ -81,17 +82,21 @@ function Adapter({ host, props }) {
     };
   }, []);
 
+  async function requestJson(url) {
+    const response = await window.fetch(url, {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) throw new Error(`Collection page failed: ${response.status}`);
+    return response.json();
+  }
+
   async function loadMore() {
     if (!model.nextUrl || loading.current) return;
     loading.current = true;
     setLoadingMore(true);
     try {
-      const response = await window.fetch(model.nextUrl, {
-        credentials: 'same-origin',
-        headers: { Accept: 'application/json' },
-      });
-      if (!response.ok) throw new Error(`Collection page failed: ${response.status}`);
-      const payload = await response.json();
+      const payload = await requestJson(model.nextUrl);
       setModel(current => ({
         ...current,
         items: [...(current.items || []), ...(payload.items || [])],
@@ -105,6 +110,40 @@ function Adapter({ host, props }) {
       setLoadingMore(false);
     }
   }
+
+  async function loadMoreGroup(group) {
+    if (!group?.nextUrl) return;
+    const key = group.key || group.type;
+    setLoadingGroups(current => ({ ...current, [key]: true }));
+    try {
+      const payload = await requestJson(group.nextUrl);
+      setModel(current => ({
+        ...current,
+        groups: (current.groups || []).map(entry => (entry.key || entry.type) === key
+          ? {
+            ...entry,
+            items: [...(entry.items || []), ...(payload.items || [])],
+            loadedCount: (entry.loadedCount ?? (entry.items || []).length) + (payload.items || []).length,
+            nextUrl: payload.nextUrl || '',
+            total: payload.resultCount ?? entry.total,
+          }
+          : entry),
+      }));
+    } catch (error) {
+      assign(group.nextUrl);
+    } finally {
+      setLoadingGroups(current => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+    }
+  }
+
+  const groups = (model.groups || []).map(group => ({
+    ...group,
+    loadingMore: !!loadingGroups[group.key || group.type],
+  }));
 
   useEffect(() => {
     if (!model.nextUrl || typeof IntersectionObserver === 'undefined') return undefined;
@@ -125,6 +164,7 @@ function Adapter({ host, props }) {
 
   return <CollectionBrowser
     items={model.items || []}
+    groups={model.groups ? groups : null}
     filters={model.filters || {}}
     options={model.options || {}}
     labels={props.labels}
@@ -133,8 +173,10 @@ function Adapter({ host, props }) {
     resultCount={model.resultCount}
     hasMore={!!model.nextUrl}
     loadingMore={loadingMore}
+    tableColumns={model.tableColumns}
     onOpenCopy={item => assign(item.href)}
     onLoadMore={loadMore}
+    onLoadMoreGroup={loadMoreGroup}
     renderCard={item => <MediaCard model={item.card} labels={props.labels} host={host} />} />;
 }
 

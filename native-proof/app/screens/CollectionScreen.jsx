@@ -17,7 +17,7 @@ export const surface = {
   status: 'in_progress',
   title: 'Collection and copies',
   where: 'Collection browser and detail ownership',
-  note: 'The collection browser, copies, labels, medium fields, season cascade, custom-field values and owner-only definitions use the shared native components with realistic demo data. Django views and forms still own the live web collection, permissions, validation and fallback, and the finish pass is wiring the grouped/table browser plus the modal copy, season and custom-field consumers; native runtime interaction has not been exercised, so this surface stays in progress.',
+  note: 'The collection browser, copies, labels, medium fields, season cascade, custom-field values and owner-only definitions use the shared native components with realistic demo data. The web now mounts the shared grid, grouped rows and table with per-row and page load-more, and the shared copy and custom-field editors inside the server forms. Django still owns the collection modal shell, season audit rows, permissions, validation and fallback; native runtime interaction has not been exercised, so this surface stays in progress.',
 };
 
 const MEDIA_LABELS = {

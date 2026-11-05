@@ -1607,7 +1607,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The browser adapter mounts the shared grid over the Django collection results and loads later JSON pages; the server toolbar, grouped rows, table layout and card-host fallback remain server-owned. The web build compiles it, but grid mounting, load-more and card parity were not exercised in a browser."
+          "evidence": "The browser adapter mounts the shared grid, grouped rows and table over the Django collection results with per-row and page JSON load-more; the server toolbar, card-host fallback and no-JS rows remain. The web build compiles it, but grid/row/table mounting and load-more were not exercised in a browser."
         },
         "ios": {
           "status": "unverified",
@@ -1630,7 +1630,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The shared copy summary, medium-field editor and duplicate dialog are compiled by the UI build and Expo web export; the Django collection modal and its HTMX forms remain the browser owner."
+          "evidence": "The shared copy editor, summaries and season cascade are compiled by the UI build and Expo web export; the copy editor adapter mirrors medium-field values into the server-owned add/edit forms, while the modal shell, season audit, permissions and validation remain Django-owned."
         },
         "ios": {
           "status": "unverified",
@@ -1651,7 +1651,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The shared value and definition editors are compiled by the UI build and Expo web export; collectionCustomFields.js, its JSON save and SortableJS remain the browser owner."
+          "evidence": "The shared value and definition editors are compiled by the UI build and Expo web export; the browser adapter mounts values into the server forms as hidden inputs and saves definitions through the existing JSON endpoint, while Django keeps ownership, required-name, media-type, option and id validation."
         },
         "ios": {
           "status": "unverified",
@@ -2583,7 +2583,7 @@
     },
     "frontend/ui/mountCollectionBrowser.jsx": {
       "register": "OWNERSHIP",
-      "purpose": "Browser adapter for the shared collection grid: read the server-built item/card model, render the grid without duplicating the server toolbar, open existing item links, and append bounded JSON pages with nextUrl; grouped rows, table layout, filters, search and the copy/custom-field modal remain server-owned."
+      "purpose": "Browser adapter for the shared collection browser: read the server-built item/card/group model, render grid, grouped rows and the table without duplicating the server toolbar, open existing item links, and append bounded JSON pages for both the grid/table and each grouped row; filters, search, copy and custom-field modal shells remain server-owned."
     },
     "frontend/ui/mountPeople.jsx": {
       "register": "PEOPLE",
@@ -2604,6 +2604,14 @@
     "frontend/ui/mountBulkActions.jsx": {
       "register": "BULK_ACTIONS",
       "purpose": "Django/browser integration for the shared bulk actions: open the status and plays dialogs, poll Add Plays jobs and render their docked progress and results."
+    },
+    "frontend/ui/mountCollectionFields.jsx": {
+      "register": "CUSTOM-FIELDS",
+      "purpose": "Browser adapter for collection custom-field values and definitions: mirror typed values into the enclosing Django form as hidden inputs, warn about unsaved definitions, and POST the existing JSON schema endpoint before adopting the returned groups. Django keeps required-name, media-type, option, id and ownership validation."
+    },
+    "frontend/ui/mountCollectionCopyFields.jsx": {
+      "register": "OWNERSHIP",
+      "purpose": "Browser adapter for the shared collection copy editor inside the server-owned add and inline edit forms: keep medium-field values in React and mirror them into the enclosing Django form so ownership, validation, redirects and no-JS fallback stay server-owned."
     }
   }
 }

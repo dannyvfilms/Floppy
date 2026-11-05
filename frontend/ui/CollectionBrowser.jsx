@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { FilterBar } from './FilterBar';
@@ -189,37 +189,65 @@ function FilterMenu({ menu, labels, palette, onChoose, onClose }) {
   </Modal>;
 }
 
-function TableView({ items, labels, palette, onOpenCopy }) {
+const DEFAULT_TABLE_COLUMNS = ['title', 'type', 'format', 'resolution', 'collected'];
+
+function tableColumnLabel(column, labels) {
+  return labels[column] || column;
+}
+
+function tableCellValue(item, column, labels) {
+  if (column === 'type') return item.mediaTypeLabel || item.mediaType || '—';
+  if (column === 'format') return item.format || '—';
+  if (column === 'resolution') return item.resolution || '—';
+  if (column === 'collected') return item.collectedAt || '—';
+  if (column === 'hdr') return item.hdr || '—';
+  if (column === 'location') return item.purchaseLocation || '—';
+  return item[column] == null ? '—' : String(item[column]);
+}
+
+function TableView({ items, labels, palette, columns, onOpenCopy }) {
+  const visibleColumns = columns?.length ? columns : DEFAULT_TABLE_COLUMNS;
   return <View style={[styles.table, { borderColor: palette.border, backgroundColor: palette.surface }]}>
     <View style={[styles.tableHeader, { borderColor: palette.border }]}>
-      {[labels.title, labels.type, labels.format, labels.resolution, labels.collected].map(column =>
-        <Text key={column} style={[styles.tableHeaderText, { color: palette.textMuted }]}>{column}</Text>)}
+      {visibleColumns.map(column =>
+        <Text key={column} style={[styles.tableHeaderText, column === 'title' ? styles.tableTitleHead : styles.tableCell, { color: palette.textMuted }]}>
+          {tableColumnLabel(column, labels)}
+        </Text>)}
     </View>
-    {items.map(item => <Pressable key={item.id} accessibilityRole="button"
-      accessibilityLabel={`${item.title} ${labels.editCopies}`}
-      onPress={() => onOpenCopy?.(item)}
-      style={({ pressed }) => [styles.tableRow, {
-        borderColor: palette.border,
-        backgroundColor: pressed ? palette.surfaceStrong : 'transparent',
-      }]}>
-      <View style={styles.tableTitleCell}>
-        <Text numberOfLines={1} style={[styles.tableTitle, { color: palette.text }]}>{item.title}</Text>
-        <View style={styles.badgeRow}>
-          {item.copyLabel ? <Badge label={item.copyLabel} size="xs" tone="outline" nowrap palette={{
-            outline: { color: palette.textSecondary, borderColor: palette.surfaceMuted, borderWidth: 1 },
-          }} /> : null}
-          {item.completeness?.isPartial ? <Badge
-            label={`${item.completeness.collected}/${item.completeness.total} · ${labels.partial}`}
-            size="xs" nowrap palette={{
-              outline: { color: palette.warning || '#fbbf24', borderColor: palette.surfaceMuted, borderWidth: 1 },
-            }} /> : null}
-        </View>
-      </View>
-      <Text numberOfLines={1} style={[styles.tableCell, { color: palette.textMuted }]}>{item.mediaTypeLabel || item.mediaType}</Text>
-      <Text numberOfLines={1} style={[styles.tableCell, { color: palette.textMuted }]}>{item.format || '—'}</Text>
-      <Text numberOfLines={1} style={[styles.tableCell, { color: palette.textMuted }]}>{item.resolution || '—'}</Text>
-      <Text numberOfLines={1} style={[styles.tableCell, { color: palette.textMuted }]}>{item.collectedAt || '—'}</Text>
-    </Pressable>)}
+    {items.map(item => {
+      const image = item.card?.image || item.image || {};
+      return <Pressable key={item.id} accessibilityRole="button"
+        accessibilityLabel={`${item.title} ${labels.editCopies}`}
+        onPress={() => onOpenCopy?.(item)}
+        style={({ pressed }) => [styles.tableRow, {
+          borderColor: palette.border,
+          backgroundColor: pressed ? palette.surfaceStrong : 'transparent',
+        }]}>
+        {visibleColumns.map(column => column === 'title'
+          ? <View key={column} style={styles.tableTitleCell}>
+            <View style={styles.tableTitleRow}>
+              {image.src ? <Image source={{ uri: image.src }} style={[styles.tableArtwork, { backgroundColor: palette.surfaceStrong }]}
+                resizeMode="cover" accessible={false} /> : null}
+              <View style={styles.tableTitleBody}>
+                <Text numberOfLines={1} style={[styles.tableTitle, { color: palette.text }]}>{item.title}</Text>
+                <View style={styles.badgeRow}>
+                  {item.copyLabel ? <Badge label={item.copyLabel} size="xs" tone="outline" nowrap palette={{
+                    outline: { color: palette.textSecondary, borderColor: palette.surfaceMuted, borderWidth: 1 },
+                  }} /> : null}
+                  {item.completeness?.isPartial ? <Badge
+                    label={`${item.completeness.collected}/${item.completeness.total} · ${labels.partial}`}
+                    size="xs" nowrap palette={{
+                      outline: { color: palette.warning || '#fbbf24', borderColor: palette.surfaceMuted, borderWidth: 1 },
+                    }} /> : null}
+                </View>
+              </View>
+            </View>
+          </View>
+          : <Text key={column} numberOfLines={1} style={[styles.tableCell, { color: palette.textMuted }]}>
+            {tableCellValue(item, column, labels)}
+          </Text>)}
+      </Pressable>;
+    })}
   </View>;
 }
 
@@ -236,8 +264,9 @@ function GridView({ items, labels, palette, onOpenCopy, renderCard }) {
   </View>;
 }
 
-function RowView({ items, labels, palette, onOpenCopy, renderCard }) {
-  const groups = useMemo(() => {
+function RowView({ items, groups, labels, palette, onOpenCopy, onLoadMoreGroup, renderCard }) {
+  const resolvedGroups = useMemo(() => {
+    if (groups?.length) return groups;
     const byType = new Map();
     items.forEach(item => {
       const key = item.mediaType || 'other';
@@ -245,33 +274,48 @@ function RowView({ items, labels, palette, onOpenCopy, renderCard }) {
       byType.get(key).push(item);
     });
     return [...byType.entries()].map(([type, rows]) => ({
-      type,
+      key: type,
       label: rows[0]?.mediaTypeLabel || type,
-      rows,
+      items: rows,
     }));
-  }, [items]);
+  }, [items, groups]);
   return <View style={styles.rows}>
-    {groups.map(group => <View key={group.type} style={styles.rowGroup}>
-      <Text style={[styles.rowHeading, { color: palette.textSecondary }]}>
-        {group.label} · {group.rows.length}
-      </Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.rowScroll}>
-        {group.rows.map(item => <View key={item.id} style={styles.rowCard}>
-          {renderCard ? renderCard(item) : <MediaCardView model={cardModel(item)} width={164} palette={{
-            ...palette,
-            card: palette.surface,
-            link: '#818cf8',
-            star: '#facc15',
-          }} labels={labels} onOpen={() => onOpenCopy?.(item)} />}
-        </View>)}
-      </ScrollView>
-    </View>)}
+    {resolvedGroups.map(group => {
+      const rows = group.items || [];
+      const loaded = group.loadedCount ?? rows.length;
+      const countLabel = group.total == null ? loaded : `${loaded}/${group.total}`;
+      return <View key={group.key || group.type} style={styles.rowGroup}>
+        <View style={styles.rowHeadingRow}>
+          <Text style={[styles.rowHeading, { color: palette.textSecondary }]}>
+            {group.label || group.type} · {countLabel}
+          </Text>
+          {group.hasMore || group.loadingMore ? <Button
+            label={labels.loadMore}
+            tone="surface"
+            palette={palette}
+            busy={group.loadingMore}
+            disabled={group.loadingMore}
+            onPress={() => onLoadMoreGroup?.(group)} /> : null}
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.rowScroll}>
+          {rows.map(item => <View key={item.id} style={styles.rowCard}>
+            {renderCard ? renderCard(item) : <MediaCardView model={cardModel(item)} width={164} palette={{
+              ...palette,
+              card: palette.surface,
+              link: '#818cf8',
+              star: '#facc15',
+            }} labels={labels} onOpen={() => onOpenCopy?.(item)} />}
+          </View>)}
+        </ScrollView>
+      </View>;
+    })}
   </View>;
 }
 
 export function CollectionBrowser({
   items = [],
+  groups = null,
   filters = {},
   options = {},
   labels: suppliedLabels,
@@ -281,9 +325,11 @@ export function CollectionBrowser({
   resultCount,
   hasMore = false,
   loadingMore = false,
+  tableColumns,
   onFilterChange,
   onOpenCopy,
   onLoadMore,
+  onLoadMoreGroup,
   renderCard,
 }) {
   const labels = mergeLabels(suppliedLabels);
@@ -449,16 +495,17 @@ export function CollectionBrowser({
       </Pressable> : null}
     </ScrollView> : null}
 
-    {items.length === 0 ? <View style={[styles.empty, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+    {items.length === 0 && !groups?.length ? <View style={[styles.empty, { borderColor: palette.border, backgroundColor: palette.surface }]}>
       <Text style={[styles.emptyTitle, { color: palette.text }]}>{labels.empty}</Text>
       <Text style={[styles.emptyHint, { color: palette.textMuted }]}>{labels.emptyHint}</Text>
     </View> : view === 'table'
-      ? <TableView items={items} labels={labels} palette={palette} onOpenCopy={onOpenCopy} />
+      ? <TableView items={items} labels={labels} palette={palette} columns={tableColumns} onOpenCopy={onOpenCopy} />
       : view === 'rows'
-        ? <RowView items={items} labels={labels} palette={palette} onOpenCopy={onOpenCopy} renderCard={renderCard} />
+        ? <RowView items={items} groups={groups} labels={labels} palette={palette}
+          onOpenCopy={onOpenCopy} onLoadMoreGroup={onLoadMoreGroup} renderCard={renderCard} />
         : <GridView items={items} labels={labels} palette={palette} onOpenCopy={onOpenCopy} renderCard={renderCard} />}
 
-    {hasMore || loadingMore ? <View style={styles.loadMore} testID="collection-load-more">
+    {!groups?.length && (hasMore || loadingMore) ? <View style={styles.loadMore} testID="collection-load-more">
       <Button label={labels.loadMore} tone="surface" palette={palette}
         busy={loadingMore} disabled={loadingMore} onPress={onLoadMore} />
     </View> : null}
@@ -481,14 +528,19 @@ const styles = StyleSheet.create({
   gridItem: { width: 164 },
   rows: { gap: 18 },
   rowGroup: { gap: 8 },
+  rowHeadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   rowHeading: { fontSize: 14, fontWeight: '700' },
   rowScroll: { flexDirection: 'row', gap: 12, paddingBottom: 4 },
   rowCard: { width: 164 },
   table: { borderWidth: 1, borderRadius: 10, overflow: 'hidden' },
   tableHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1 },
   tableHeaderText: { flex: 1, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
+  tableTitleHead: { flex: 1.6 },
   tableRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1 },
   tableTitleCell: { flex: 1.6, minWidth: 0, gap: 4 },
+  tableTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tableTitleBody: { flex: 1, minWidth: 0, gap: 4 },
+  tableArtwork: { width: 40, height: 56, borderRadius: 4 },
   tableTitle: { fontSize: 13, fontWeight: '600' },
   tableCell: { flex: 1, fontSize: 12 },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
