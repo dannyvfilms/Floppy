@@ -237,6 +237,18 @@ class HomeTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, HTTP.OK)
         self.assertIsNone(response.json()["row"])
 
+    def test_home_row_sort_hides_demo_write_for_demo_accounts(self):
+        """Demo accounts stay view-only, matching the web Home toggle."""
+        self.user1.is_demo = True
+        self.user1.save(update_fields=["is_demo"])
+        response = self.call_api(
+            "post",
+            "api_home_row_sort",
+            args=(1,),
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.FORBIDDEN)
+
     def test_home_artwork_poll_returns_rows_and_poll_ids(self):
         """The coalesced cover poll returns presentation rows and poll ids."""
         home = self.call_api(

@@ -461,6 +461,11 @@ class HomeRowDirectionView(drf_views.APIView):
 
     def post(self, request, row_id):
         """Flip the row's persisted sort direction and return it."""
+        if getattr(request.user, "is_demo", False):
+            return Response(
+                {"detail": "This section is view-only for demo accounts."},
+                status=HTTP.FORBIDDEN,
+            )
         try:
             toggle_home_row_direction(request.user, row_id)
         except HomeScreenValidationError:
