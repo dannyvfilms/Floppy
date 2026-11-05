@@ -6,6 +6,7 @@ const surface = {
   id: 'AUTH',
   title: 'Account and authentication',
   where: 'Login, signup, social, password, TOTP and recovery',
+  status: 'in_progress',
   note: 'Authentication, account security, social connections and deletion guards will replace this note.',
 };
 
