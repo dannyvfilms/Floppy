@@ -2429,6 +2429,49 @@ def search_results_react(context):
 
 
 @register.simple_tag(takes_context=True)
+def parent_picker_react(context, kind):
+    """Return the props the shared React parent picker needs."""
+    from django.utils.translation import gettext as _
+
+    pickers = {
+        "tv": {
+            "url": reverse("search_parent_tv"),
+            "placeholder": _("Search for a TV show..."),
+            "empty": _(
+                'No TV shows found matching "%(query)s". '
+                "Please try a different search term.",
+            ),
+        },
+        "season": {
+            "url": reverse("search_parent_season"),
+            "placeholder": _("Search for a season..."),
+            "empty": _(
+                'No seasons found matching "%(query)s". '
+                "Please try a different search term.",
+            ),
+        },
+    }
+    picker = pickers[kind]
+    return {
+        "id": f"parent-picker-{uuid4().hex[:8]}",
+        "props": {
+            "kind": kind,
+            "url": picker["url"],
+            "hiddenInputId": f"parent-{kind}-id",
+            "placeholder": str(picker["placeholder"]),
+            "labels": {
+                "empty": str(picker["empty"]),
+                "loading": str(_("Loading matches…")),
+                "errorTitle": str(_("Parent search could not load")),
+                "errorBody": str(_("Please try again.")),
+                "retry": str(_("Try again")),
+                "selected": str(_("Selected")),
+            },
+        },
+    }
+
+
+@register.simple_tag(takes_context=True)
 def sidebar_react(context, media_type):
     """Return the props the shared React sidebar needs."""
     from uuid import uuid4
