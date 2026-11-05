@@ -6,10 +6,10 @@ import { statisticsPalette } from '../theme';
 
 export const surface = {
   id: 'STATISTICS',
-  status: 'ported',
-  title: 'Statistics summary, charts and activity overview',
-  where: 'Statistics screen summary cards, highlights, range/media-type controls, charts and featured repeats',
-  note: 'The summary hero, highlight cards, five summary cards, activity comparison and native chart families use the shared React Native presentation. Talent, taste signals, role leaders and studios remain legacy server fragments.',
+  status: 'in_progress',
+  title: 'Statistics summary, charts, talent and per-media overviews',
+  where: 'Statistics screen summary cards, highlights, controls, charts, comparison, taste/talent, role/studio leaders and per-media-type overviews',
+  note: 'The summary hero, highlight cards, five summary cards, activity comparison, chart families and featured repeat use the shared React Native presentation. Porting comparison controls, taste/talent signals, role/studio leaders and per-media-type overviews.',
 };
 
 const charts = {
