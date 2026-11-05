@@ -1,5 +1,27 @@
 {
   "universal": {
+    "frontend/ui/MetadataReview.jsx": {
+      "components": [
+        "EpisodeOrdering",
+        "TvProviderSwitch",
+        "MetadataMatchResults"
+      ],
+      "register": "METADATA-REVIEW",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Mount adapters compile the chooser, review, provider-move confirmation and match-result choices into the settings-islands bundle. No browser interaction pass was performed for this port."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared components through the native MetadataReview screen; ordering choices, provider move and remap interactions were not exercised on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared components through the native MetadataReview screen; ordering choices, provider move and remap interactions were not exercised on an emulator or device."
+        }
+      }
+    },
     "frontend/auth/AuthEntrance.jsx": {
       "components": [
         "AuthEntrance",
@@ -2784,6 +2806,10 @@
     }
   },
   "web_adapters": {
+    "frontend/ui/mountMetadataReview.jsx": {
+      "register": "METADATA-REVIEW",
+      "purpose": "Browser adapter for the shared episode-order chooser/review, TV provider-move confirmation and remap/library-move result choices: post the existing Django actions with CSRF, keep HTMX result replacement for library moves, navigate existing item and detail URLs, and retain the server-rendered fallback."
+    },
     "frontend/settings/Chip.web.jsx": {
       "register": "SETTINGS-CARD",
       "purpose": "Browser link adapter for the shared chip: supplies anchor navigation and new-tab attributes, honors a caller-supplied palette for React-owned cards and falls back to the scoped web CSS-variable palette for server wrappers while the shared chip owns hover and focus."
