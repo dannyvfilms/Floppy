@@ -6,7 +6,7 @@ import { palette, radius, spacing } from '../theme';
 
 export const surface = {
   id: 'TRACKING',
-  status: 'ported',
+  status: 'in_progress',
   title: 'Detail tracking and edit dialogs',
   where: 'Detail actions, episode and issue rows',
   note: 'The General, Tags, Metadata, Collection, Episode plays and Status history tracking tabs run on the shared TrackForm and TrackDialog with demo detail data. Date/status/progress coupling, notes, delete, repeat identity, validation, busy and error states are presentation-owned by the shared dialog. The web detail pages keep their server-rendered htmx and OOB save path, permissions and progressive fallback.',
