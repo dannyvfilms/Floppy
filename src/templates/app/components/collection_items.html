@@ -4,7 +4,7 @@
 
 {% if collection_browser_props and not is_pagination %}
   {{ collection_browser_props|json_script:"collection-browser-props" }}
-  <div data-collection-browser-root data-props-id="collection-browser-props">
+  <div class="col-span-full" data-collection-browser-root data-props-id="collection-browser-props">
 {% endif %}
 {% if collection_rows %}
   {% include "app/components/collection_rows.html" %}

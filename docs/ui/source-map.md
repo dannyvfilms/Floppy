@@ -131,7 +131,6 @@ build artifacts. The Python composition tag is documented in the register.
 - `frontend/ui/ArtworkImage.jsx` (universal primary/fallback image, loading/unavailable/stale states and provenance input)
 - `frontend/ui/ArtworkImage.web.jsx` (browser image with lazy/deferred loading, provenance and fallback hooks)
 - `frontend/ui/ArtworkImage.native.jsx` (native image implementation)
-- `frontend/ui/MediaCardView.jsx` (shared card consumer on web islands and native)
 - `native-proof/app/surfaces/MediaCardSlot.jsx` (native media-card placement)
 - `src/static/js/artwork-loading.js`
 - `src/static/js/image-fallback.js`

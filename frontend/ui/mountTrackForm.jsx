@@ -243,15 +243,11 @@ function Adapter({ host, props }) {
       || host;
     setBusy(true);
     setServerError('');
-<<<<<<< HEAD
-    const request = ajax('POST', url, { values: payload, target: legacyForm() || host, swap: 'none' });
-=======
     const request = ajax('POST', url, {
       values: body,
       target,
       swap: model.swap || 'none',
     });
->>>>>>> native-port/tracking
     if (request?.finally) request.finally(() => setBusy(false));
     else setBusy(false);
   }
@@ -316,11 +312,8 @@ function Adapter({ host, props }) {
     onDelete={next => send(model.deleteAction, {}, next)}
     onRewatch={(action, next) => send(model.repeatIdentity?.rewatchUrl, {}, next)}
     onSaveAsNew={next => send(model.action, { save_as_new_entry: '1' }, next)}
-<<<<<<< HEAD
     onDiscoverToggle={toggleDiscover}
-=======
     onSecondaryAction={(action, next) => send(action.url, action.body || {}, next)}
->>>>>>> native-port/tracking
     onRetry={() => setServerError('')}
     onClose={() => window.closeTrackModal?.(legacyForm() || host)} />;
 }

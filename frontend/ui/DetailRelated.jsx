@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { MediaCardView } from './MediaCardView';
+import { MediaCard } from './MediaCard';
 import { RatingStars } from './RatingStars';
 
 const DEFAULT_LABELS = {
@@ -54,7 +54,7 @@ function defaultRenderRating({ value, label, scaleMax, palette, onSelect }) {
 function RelatedCard({ item, width, labels, palette, onOpen, onOpenLink, onAction, onRate, renderRating, renderActionIcon }) {
   const model = item?.model || item;
   if (!model) return null;
-  return <MediaCardView
+  return <MediaCard
     model={model}
     width={width}
     labels={labels}

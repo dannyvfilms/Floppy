@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button } from './Button';
 import { MediaCardActionHost } from './MediaCardActionHost';
-import { MediaCardView } from './MediaCardView';
+import { MediaCard } from './MediaCard';
 import { FormError, FormField, FormTextField } from './MediaCardFormControls';
 
 const DEFAULT_PALETTE = {
@@ -125,7 +125,7 @@ function nextTierId(tiers) {
 
 function TierTile({ item, tierId, canEdit, tileWidth, colors, copy, onOpen, onMove }) {
   return <View style={[styles.tile, { width: tileWidth }]}>
-    <MediaCardView model={tierCard(item)} width={tileWidth} palette={cardPalette(colors)}
+    <MediaCard model={tierCard(item)} width={tileWidth} palette={cardPalette(colors)}
       onOpen={onOpen ? () => onOpen(item) : undefined} />
     {canEdit ? <Pressable accessibilityRole="button" accessibilityLabel={`${copy.moveItem}: ${item.title}`}
       onPress={() => onMove({ item, tierId })}

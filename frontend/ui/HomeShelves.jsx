@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { MediaCardView } from './MediaCardView';
+import { MediaCard } from './MediaCard';
 import { Rail } from './Rail';
 
 const DEFAULT_PALETTE = {
@@ -64,6 +64,8 @@ function RailRow({
   loadingMore,
   renderCard,
   renderProgress,
+  renderRating,
+  renderActionIcon,
   onOpenCard,
   onOpenLink,
   onAction,
@@ -97,12 +99,14 @@ function RailRow({
     renderItem={item => <View style={styles.cardStack}>
       {renderCard
         ? renderCard(item, row)
-        : <MediaCardView model={item.card} labels={labels} palette={palette}
+        : <MediaCard model={item.card} labels={labels} palette={palette}
           width={itemWidth} readOnly={readOnly}
           onOpen={() => onOpenCard?.(item, row)}
           onOpenLink={href => onOpenLink?.(href, item, row)}
           onAction={action => onAction?.(action, item, row)}
-          onRate={score => onRate?.(score, item, row)} />}
+          onRate={score => onRate?.(score, item, row)}
+          renderRating={renderRating}
+          renderActionIcon={renderActionIcon} />}
       {item.progress && renderProgress ? <View nativeID={item.progress.target}
         style={styles.progress}>
         {renderProgress(item.progress, item, row)}
@@ -134,6 +138,8 @@ export function HomeShelves({
   deferredDelayMs = 120,
   renderCard,
   renderProgress,
+  renderRating,
+  renderActionIcon,
   onOpenCard,
   onOpenLink,
   onAction,
@@ -312,6 +318,7 @@ export function HomeShelves({
       labels={labels} palette={palette} readOnly={readOnly} itemWidth={itemWidth}
       loadingMore={!!loadingMore[rowKey(row)]}
       renderCard={renderCard} renderProgress={renderProgress}
+      renderRating={renderRating} renderActionIcon={renderActionIcon}
       onOpenCard={onOpenCard} onOpenLink={onOpenLink} onAction={onAction} onRate={onRate}
       onSortRow={onSortRow ? sortRow : undefined}
       onLoadMore={onLoadMore ? loadMore : undefined} />);

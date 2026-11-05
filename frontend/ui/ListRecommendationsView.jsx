@@ -2,7 +2,7 @@ import React from 'react';
 import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button } from './Button';
 import { FormError, FormStatus } from './MediaCardFormControls';
-import { MediaCardView } from './MediaCardView';
+import { MediaCard } from './MediaCard';
 
 const DEFAULT_PALETTE = {
   background: '#18181b',
@@ -95,7 +95,7 @@ export function ListRecommendations({
             </View>
             <View style={styles.cardBody}>
               <View style={styles.cardMedia}>
-                <MediaCardView model={rec.media} width={112} palette={colors} onOpen={() => onView?.(rec)} />
+                <MediaCard model={rec.media} width={112} palette={colors} onOpen={() => onView?.(rec)} />
               </View>
               <View style={styles.cardActions}>
                 <Button label={copy.approve} tone="primary" onPress={() => onApprove?.(rec)} palette={colors} />

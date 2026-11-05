@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
-import { MediaCardView } from './MediaCardView';
+import { MediaCard } from './MediaCard';
 
 const PALETTE = {
   card: '#27272a',
@@ -77,7 +77,7 @@ function albumModel(album, labels) {
 
 export function MusicAlbumCard({ album, width, labels, palette, onOpen }) {
   const copy = { ...DEFAULT_LABELS, ...(labels || {}) };
-  return <MediaCardView
+  return <MediaCard
     model={albumModel(album, copy)}
     labels={{ rate: copy.rate, close: copy.close }}
     palette={mergePalette(palette)}

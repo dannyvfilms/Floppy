@@ -3,7 +3,7 @@ import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View 
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { FilterBar } from './FilterBar';
-import { MediaCardView } from './MediaCardView';
+import { MediaCard } from './MediaCard';
 
 const DEFAULT_PALETTE = {
   background: '#18181b',
@@ -254,7 +254,7 @@ function TableView({ items, labels, palette, columns, onOpenCopy }) {
 function GridView({ items, labels, palette, onOpenCopy, renderCard }) {
   return <View style={styles.grid}>
     {items.map(item => <View key={item.id} style={styles.gridItem}>
-      {renderCard ? renderCard(item) : <MediaCardView model={cardModel(item)} width={164} palette={{
+      {renderCard ? renderCard(item) : <MediaCard model={cardModel(item)} width={164} palette={{
         ...palette,
         card: palette.surface,
         link: '#818cf8',
@@ -300,7 +300,7 @@ function RowView({ items, groups, labels, palette, onOpenCopy, onLoadMoreGroup, 
         <ScrollView horizontal showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.rowScroll}>
           {rows.map(item => <View key={item.id} style={styles.rowCard}>
-            {renderCard ? renderCard(item) : <MediaCardView model={cardModel(item)} width={164} palette={{
+            {renderCard ? renderCard(item) : <MediaCard model={cardModel(item)} width={164} palette={{
               ...palette,
               card: palette.surface,
               link: '#818cf8',

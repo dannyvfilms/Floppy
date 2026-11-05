@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Badge } from '../ui/Badge';
-import { MediaCardView } from '../ui/MediaCardView';
+import { MediaCard } from '../ui/MediaCard';
 import { RefreshNotice } from '../ui/RefreshNotice';
 import { Rail } from '../ui/Rail';
 
@@ -168,7 +168,7 @@ function DiscoverCard({
   renderActionIcon,
   readOnly,
 }) {
-  return <MediaCardView model={model} width={width} labels={labels} palette={palette}
+  return <MediaCard model={model} width={width} labels={labels} palette={palette}
     readOnly={readOnly}
     onOpen={() => onOpenCard?.(model.href, model)}
     onOpenLink={href => onOpenLink?.(href)}

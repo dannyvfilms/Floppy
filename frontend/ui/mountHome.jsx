@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
 import { HomeShelves } from './HomeShelves';
-import { MediaCard } from './MediaCard';
+import { Icon } from './Icon';
 import { ProgressChanger } from './ProgressChangerTheme.web';
+import { RatingStarIcon } from './RatingStarIcon.web';
+import { RatingStars } from './RatingStars';
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;
@@ -58,6 +60,15 @@ function readPalette() {
 
 function assign(url) {
   if (url) window.location.assign(url);
+}
+
+function renderActionIcon(action) {
+  return action?.icon ? <Icon spec={action.icon} /> : null;
+}
+
+function renderRating({ value, label, scaleMax, palette, onSelect }) {
+  return <RatingStars scaleMax={scaleMax} value={value} label={label}
+    onSelect={onSelect} palette={palette} renderStar={lit => RatingStarIcon(lit)} />;
 }
 
 function mergeRowPage(row, page) {
@@ -132,8 +143,34 @@ function Adapter({ host, props }) {
     return requestJson(`/api/v1/home/artwork/?${params}`);
   }
 
-  function renderCard(item) {
-    return <MediaCard model={item.card} labels={props.labels} host={host} />;
+  function runAction(action, item) {
+    if (!action) return;
+    if (action.kind === 'modal') {
+      window.dispatchEvent(new CustomEvent('floppy-open-modal', { detail: action }));
+      return;
+    }
+    if (action.kind === 'link') {
+      assign(action.href);
+      return;
+    }
+    if (action.kind === 'post') {
+      window.htmx?.ajax('POST', action.url, {
+        target: action.target,
+        swap: action.swap || 'innerHTML',
+        values: action.vals,
+        headers: { 'X-CSRFToken': action.csrfToken || item?.csrfToken || props.csrfToken || '' },
+      });
+    }
+  }
+
+  function rateCard(score, item) {
+    const rating = item?.rating;
+    if (!rating?.rateUrl) return;
+    window.htmx?.ajax('POST', rating.rateUrl, {
+      swap: 'none',
+      headers: { 'X-CSRFToken': item.csrfToken || props.csrfToken || '' },
+      values: { score: score ?? rating.value, toggle: true },
+    });
   }
 
   function renderProgress(progress) {
@@ -148,10 +185,13 @@ function Adapter({ host, props }) {
     palette={palette}
     readOnly={!!props.readOnly}
     itemWidth={176}
-    renderCard={renderCard}
     renderProgress={renderProgress}
     onOpenCard={item => assign(item.card.href)}
     onOpenLink={href => assign(href)}
+    onAction={runAction}
+    onRate={rateCard}
+    renderRating={renderRating}
+    renderActionIcon={renderActionIcon}
     onLoadRow={id => loadRow(id)}
     onLoadMore={loadMore}
     onSortRow={sortRow}

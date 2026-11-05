@@ -48,26 +48,6 @@
         }
       }
     },
-    "frontend/ui/MediaCardView.jsx": {
-      "components": [
-        "MediaCardView"
-      ],
-      "register": "MEDIA-CARD",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Compiled into the web bundle through SearchResults, HistoryFeed, ListResults, ListCard, TierBoard, CollectionBrowser and ListSearchView; the DOM MediaCard adapter remains the browser card. The explicit read-only and selection props are compiled but were not exercised in a browser."
-        },
-        "ios": {
-          "status": "verified",
-          "evidence": "iOS 17.2 simulator: rendered the shared card on Home. The link routing, read-only/selection states, drag announcements and bulk refresh were not exercised; no action overlay, rating popup or accessibility pass."
-        },
-        "android": {
-          "status": "verified",
-          "evidence": "Android 15 Pixel 7 AVD: rendered the shared card on Home and Library; demo images did not load. The link routing, read-only/selection states, drag announcements and bulk refresh were not exercised; no action overlay, rating popup or accessibility pass."
-        }
-      }
-    },
     "frontend/ui/MediaCardActions.jsx": {
       "components": [
         "MediaCardActions",
@@ -1898,6 +1878,26 @@
         }
       }
     },
+    "frontend/ui/MediaCard.jsx": {
+      "components": [
+        "MediaCard"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Headless Chromium rendered the shared card on Home shelves, Discover rows, History and the library table; the retired DOM card no longer appears."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "iOS 17.2 simulator: rendered the shared card on Home. The link routing, read-only/selection states, drag announcements and bulk refresh were not exercised; no action overlay, rating popup or accessibility pass."
+        },
+        "android": {
+          "status": "verified",
+          "evidence": "Android 15 Pixel 7 AVD: rendered the shared card on Home and Library; demo images did not load. The link routing, read-only/selection states, drag announcements and bulk refresh were not exercised; no action overlay, rating popup or accessibility pass."
+        }
+      }
+    },
     "frontend/ui/ArtworkImage.jsx": {
       "components": [
         "ArtworkImage"
@@ -2248,44 +2248,6 @@
         "e40f56369d0d606069bbda06257d0938a57e88a34c63ce4c5835f3d00f2a0bd5",
         "965a3e303e16986b23fe89c76aab0d0b2470a91a105a3f97e438ce12abb5fc8f",
         "960ba4107e451767327aefc8ff01946f9fddab16cb2433816ee075b8be599185"
-      ]
-    },
-    "frontend/ui/MediaCard.jsx": {
-      "sha256": "9e2f89493c4a15e587b36dc193b9b579e19afd0ff8cf24fc42cf7625f912e42e",
-      "statements": [
-        "672adddf32b13c956f1bb3dff412396c71a70acbbc8d3d2f58d5803e7af673da",
-        "8d277ce5917fdab1c2a67c8bf79d7c2eced62d7585458c970fd0d4a8fbaa6262",
-        "d4f206a2d3d21b9195a8595e9e397e849ed72ca297216ed66c5dd1fe96c42fc9",
-        "2167b24800beea5f7bf7a4a780977276ab9ba463d1a813d535afe988d667a9bc",
-        "f8960e1eaa0c96d9d284f09e84badf55cfa25a88d28fe54fe836c5eaef7892c6",
-        "f5f064de0b0981a83bdb1914d93e5827cc3f2a8ccd7be3e124559bceee2c1996",
-        "3a87fbd68d84f5280951c85988ca4b95c8aa7d932d693374eeeb701d156c4c6b",
-        "5fb338691d97df0040242d642009ea56638862bc16096d5cb3bc6a9ecc3f8b9f",
-        "e001f06c8d7940fcb93a23c125f3ade881be0c79960050bd7fd6637c1ab6bdef",
-        "189db82d1c9f724f646763b7bec0eab610dd17f356e06eb8bfebdbd1f68e4c9e",
-        "0da81a8efa3fe417bdcb1adeba46c6a4b869157def96ef4162e5a5c5ec2312e3",
-        "59dca08a7bc321fc0688704355006d05e2d2f69d64708c9b82f446fda717d32c",
-        "e93c6b0c8268a47590251864eccb20f30b703e95e50d06224931208af7de37c9",
-        "2d40b02dc330c661fd585bc6b93ad5a33d46bb98421fc159dda220138b11259d",
-        "754bdc8d3f7c0394e9e33568e640c4a75cf867cd12f119106227829cdd123742",
-        "3338028108985f6e781ea0510e8579f8c6cc7c701fb5500ddc1498c0e46ad085",
-        "a64f99395d7be7e027d266941f06fb21c67e9a35766f55e9dc93710f20ae6ab2",
-        "a95257e1c43aac09b6c37862900570239a0b0e356ff0b8ac61432d6552a95429",
-        "136395c4dcd059e99f4c65298ad83447686b050eee43a1ccfe6f01fb7d4aedd3",
-        "b94fca60ffa9fdfd40ba791a541c193522e074c7d55012cc950f768c4fd8f0cf",
-        "3f29f2ac82fe60b5c45b09cdb23980a514d4b96872faaa0ce17ff45e81bc8d6e",
-        "50006afb1ff5a4589c8de8d2e69a81f4b0693763758492d442121ea6ddafdf10",
-        "52850f76b262105a283bb51d71b666f9b6e97b1d9495d1d8d72c319e236d111f",
-        "0a1c6b2297dfde6fcbec9d1924809d10783c29d6251e7121e9afa508d62cc3b1",
-        "2cd4f38d74b6fb9f53ef6eb6f5f3be122e333be2ee6e9a2b0b9ded3e51d4031a",
-        "fdfa6b9f7e161a0e2ac4ff68ca558930042ab88336c0d64edf203a8ecc5836a1",
-        "4433a0e2332c68501d99d6d005fa76b42c9f2ed5f47252ff06fa18d540134c63",
-        "0850c22943fa43fb0a731b0510798f5c5a39c834989ce7a3b6ded4209036b77a",
-        "3029c3b892ff2b8e6ffeb215c65853ebcf26875641c9f30c5a1b53fca70fb55c",
-        "619f4f4bef7b13cbc998bee568b42d114ff3b4eaf83415f519c3f4cde92c1a42",
-        "bbdef4698c4086a8aa9357d39b4ea8dd145d7a2c24a82843463e332a30230be1",
-        "70c27b417106f0ea3dd1558a3be908dd6e88b6bfbe2f4f141973cf2d1daabf95",
-        "c3483bf72e4706abc0991398157ba5733cd7e19765ea4c87b8b0dbf891a85b0a"
       ]
     },
     "frontend/ui/ModalHost.jsx": {

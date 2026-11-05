@@ -1,6 +1,6 @@
 import React from 'react';
 import { View } from 'react-native';
-import { MediaCardView } from './MediaCardView';
+import { MediaCard } from './MediaCard';
 
 // Maps a list hub record onto the shared media-card model. The card keeps the
 // shared artwork, badge and action behaviour; the list-specific metadata arrives
@@ -58,7 +58,7 @@ export function ListCard({ list, palette, width = 240, onOpen, onAction }) {
   };
   return (
     <View>
-      <MediaCardView
+      <MediaCard
         model={model}
         palette={palette}
         width={width}

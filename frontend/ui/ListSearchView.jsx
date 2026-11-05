@@ -11,7 +11,7 @@ import {
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { MediaCardActionHost } from './MediaCardActionHost';
-import { MediaCardView } from './MediaCardView';
+import { MediaCard } from './MediaCard';
 import { FormError, FormSelect, FormStatus, FormTextField } from './MediaCardFormControls';
 
 const DEFAULT_PALETTE = {
@@ -168,7 +168,7 @@ export function ListItemSearch({
 
           {status === 'ready' && results.length ? <View style={styles.grid}>
             {results.map((result, index) => <View key={result.id || result.title || index} style={{ width: cardWidth }}>
-              <MediaCardView model={result.media} width={cardWidth} palette={colors}
+              <MediaCard model={result.media} width={cardWidth} palette={colors}
                 onOpen={() => onSelectResult?.(result)} />
             </View>)}
           </View> : null}

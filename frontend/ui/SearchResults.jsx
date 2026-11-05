@@ -7,7 +7,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { MediaCardView } from './MediaCardView';
+import { MediaCard } from './MediaCard';
 import { ParentPicker } from './ParentPicker';
 import { Spinner } from './Spinner';
 
@@ -70,7 +70,7 @@ function ResultCard({
   renderActionIcon,
 }) {
   const model = layout === 'row' ? { ...item, layout: 'row' } : item;
-  return <MediaCardView
+  return <MediaCard
     model={model}
     width={width}
     labels={labels}

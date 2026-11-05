@@ -7,7 +7,7 @@ import {
   View,
 } from 'react-native';
 import { Button } from './Button';
-import { MediaCardView } from './MediaCardView';
+import { MediaCard } from './MediaCard';
 import { MediaTable } from './MediaTable';
 import { MediaColumnMenu } from './ColumnMenu';
 import { RatingStars } from './RatingStars';
@@ -183,7 +183,7 @@ export function ListResultGrid({
     renderStar={lit => <Text style={[styles.pickerStar, { color: lit ? props.palette.lit : props.palette.unlit }]}>★</Text>} />);
   return <View style={styles.grid}>
     {items.map(item => <View key={item.id} style={{ width: cardWidth }}>
-      <MediaCardView
+      <MediaCard
         model={cardModel(item, sort, canEdit)}
         palette={{
           card: colors.surface,

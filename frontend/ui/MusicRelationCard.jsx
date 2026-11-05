@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
-import { MediaCardView } from './MediaCardView';
+import { MediaCard } from './MediaCard';
 
 const PALETTE = {
   card: '#27272a',
@@ -62,7 +62,7 @@ function mergePalette(palette) {
 
 export function MusicRelationCard({ relation, width, labels, palette, onOpen }) {
   const copy = { ...DEFAULT_LABELS, ...(labels || {}) };
-  return <MediaCardView
+  return <MediaCard
     model={relationModel(relation, copy)}
     labels={{ rate: copy.rate, close: copy.close }}
     palette={mergePalette(palette)}

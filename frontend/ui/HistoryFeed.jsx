@@ -3,7 +3,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { DateTimePicker } from './DateTimePicker';
-import { MediaCardView } from './MediaCardView';
+import { MediaCard } from './MediaCard';
 import { RatingStars } from './RatingStars';
 import { RefreshNotice } from './RefreshNotice';
 
@@ -292,7 +292,7 @@ export function HistoryEntryRow({
   const note = entry.note || '';
   const longNote = note.length > 140;
   return <View style={[styles.entry, !first && { borderTopWidth: 1, borderTopColor: colors.border }]}>
-    <MediaCardView
+    <MediaCard
       model={rowModel(entry, copy)}
       labels={copy}
       palette={colors.mediaCard}

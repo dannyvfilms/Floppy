@@ -1,468 +1,462 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Icon } from './Icon';
-import { openModal } from './ModalHost';
-import { RatingStars } from './RatingStars';
+import React, { useEffect, useState } from 'react';
+import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { MediaCardActionRow, MediaCardActions } from './MediaCardActions';
 
-// The shared media card body. It renders the same class names the Django card
-// used, so every existing theme and layout rule keeps applying. Only the Search
-// list row still places server DOM (its `meta` and fallback `actions` slots).
-
-const aspect = { square: 'aspect-[1/1]', poster: 'aspect-[2/3] aspect-2/3', landscape: 'aspect-[2/3] aspect-2/3' };
-const chipBase = 'absolute z-20 bg-gray-900/90 text-white text-[11px] font-medium px-2 py-1 rounded-md shadow-md';
-
-function Slot({ name, node }) {
-  const ref = useRef(null);
-  useLayoutEffect(() => {
-    if (node && ref.current && node.parentNode !== ref.current) ref.current.replaceChildren(node);
-  }, [node]);
-  return <div className="media-card-slot" data-card-slot={name} ref={ref} />;
-}
-
-const statusIcons = {
-  Completed: <><path d="M21.801 10A10 10 0 1 1 17 3.335" /><path d="m9 11 3 3L22 4" /></>,
-  'In progress': <polygon points="6 3 20 12 6 21 6 3" />,
-  Paused: <><rect x="14" y="4" width="4" height="16" rx="1" /><rect x="6" y="4" width="4" height="16" rx="1" /></>,
-  Planning: <><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" /><line x1="12" x2="12" y1="7" y2="13" /><line x1="15" x2="9" y1="10" y2="10" /></>,
-  Dropped: <><path d="m15 9-6 6" /><path d="M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z" /><path d="m9 9 6 6" /></>,
+const ASPECT = { poster: 2 / 3, square: 1, landscape: 16 / 9 };
+const STATUS_GLYPHS = {
+  Completed: '✓',
+  'In progress': '▶',
+  Paused: '❚❚',
+  Planning: '＋',
+  Dropped: '✕',
+};
+const DEFAULT_PALETTE = {
+  card: '#27272a',
+  text: '#fafafa',
+  textSecondary: '#d4d4d8',
+  textMuted: '#a1a1aa',
+  border: '#3f3f46',
+  link: '#818cf8',
+  star: '#facc15',
+  chipBackground: 'rgba(24, 24, 27, 0.92)',
+  chipText: '#ffffff',
+  placeholder: '#3f3f46',
+  progressTrack: 'rgba(24, 24, 27, 0.6)',
+  progressFill: '#6366f1',
+  progressPaused: 'rgba(99, 102, 241, 0.4)',
+  actionText: '#ffffff',
+  overlay: 'rgba(0, 0, 0, 0.5)',
+  reorder: 'rgba(79, 70, 229, 0.95)',
+  actionTones: {
+    indigo: '#4f46e5',
+    emerald: '#059669',
+    amber: '#d97706',
+    rose: '#e11d48',
+  },
+  local: {
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    color: '#fde68a',
+  },
+  statusColors: {
+    Completed: '#10b981',
+    'In progress': '#6366f1',
+    Paused: '#f97316',
+    Planning: '#38bdf8',
+    Dropped: '#ef4444',
+  },
+  rating: { lit: '#facc15', unlit: '#52525b', muted: '#a1a1aa', focusStyle: {} },
 };
 
-function MediaTypeChip({ chip }) {
-  return <div className={`media-type-chip media-type-chip--${chip.style}`} data-media-type-chip={chip.type}
-    data-media-type-chip-style={chip.style}
-    style={{ '--media-type-chip-color': chip.color, '--media-type-chip-contrast': chip.contrast }}>
-    <span>{chip.label}</span>
-  </div>;
+function resolvePalette(palette) {
+  return {
+    ...DEFAULT_PALETTE,
+    ...(palette || {}),
+    local: { ...DEFAULT_PALETTE.local, ...(palette?.local || {}) },
+    statusColors: { ...DEFAULT_PALETTE.statusColors, ...(palette?.statusColors || {}) },
+    rating: { ...DEFAULT_PALETTE.rating, ...(palette?.rating || {}) },
+  };
 }
 
-function StatusChip({ chip }) {
-  return <div className="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md">
-    <span className="sr-only">{chip.label}</span>
-    <div className={`w-4 h-4 ${chip.colorClass}`} aria-hidden="true">
-      <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-        strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">{statusIcons[chip.status]}</svg>
-    </div>
-  </div>;
+function Star({ size = 12, color }) {
+  return <Text style={{ fontSize: size, color }}>★</Text>;
 }
 
-function ChevronRight() {
-  return <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>;
-}
+function Artwork({ model, palette, selection, onPress }) {
+  const image = model.image || {};
+  const [stage, setStage] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+  const sources = [image.src, image.fallback].filter(Boolean);
+  const uri = sources[stage] || null;
 
-function CornerChip({ chip, labels }) {
-  if (chip.kind === 'runtime') {
-    return <span className="absolute bottom-3 right-2 z-10 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md shadow-md">{chip.text}</span>;
-  }
-  if (chip.kind === 'runtime-top') {
-    return <div className="absolute top-2 right-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md shadow-md">{chip.text}</div>;
-  }
-  if (chip.kind === 'local-only') {
-    return <div className="absolute bottom-2 left-2 rounded-md border border-amber-500/30 bg-amber-500/15 px-2 py-1 text-[11px] font-medium text-amber-100 shadow-md">{chip.text}</div>;
-  }
-  if (chip.kind === 'collected') {
-    return <div className="absolute bottom-2 right-2 rounded-md border border-amber-500/30 bg-amber-500/15 px-2 py-1 text-[11px] font-medium text-amber-100 shadow-md" title={chip.title}>{chip.text}</div>;
-  }
-  const inner = chip.kind === 'next-episode'
-    ? <><ChevronRight /><span>{chip.text}</span></>
-    : <><span>{chip.text}</span><ChevronRight /></>;
-  if (!chip.href) {
-    return <span className={`${chipBase} top-2 right-2`} data-episode-queue="true">{chip.text}</span>;
-  }
-  return <a href={chip.href} {...{ 'hx-disable': '' }}
-    className={`${chipBase} top-2 right-2 hover:bg-indigo-600 flex items-center gap-0.5 transition-colors`}
-    data-episode-queue={chip.kind === 'queue' ? 'true' : undefined}
-    title={labels.nextEpisode}>{inner}</a>;
-}
-
-function AltTitle({ text, label, inline }) {
-  const [open, setOpen] = useState(false);
-  const [style, setStyle] = useState(null);
-  const trigger = useRef(null);
-  const panel = useRef(null);
-  function place() {
-    const rect = trigger.current?.getBoundingClientRect();
-    if (!rect) return;
-    const width = Math.min(panel.current?.offsetWidth || 224, window.innerWidth - 32);
-    const height = panel.current?.offsetHeight || 0;
-    const left = Math.min(Math.max(16, rect.left + rect.width / 2 - width / 2), window.innerWidth - width - 16);
-    const top = rect.top >= height + 24 ? rect.top - height - 8 : rect.bottom + 8;
-    setStyle({ left, top, width });
-  }
-  useLayoutEffect(() => {
-    if (!open) return undefined;
-    place();
-    const close = () => setOpen(false);
-    const onKey = (event) => { if (event.key === 'Escape') close(); };
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('scroll', place, true);
-    window.addEventListener('resize', place);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('scroll', place, true);
-      window.removeEventListener('resize', place);
-    };
-  }, [open]);
-  return <span className={inline ? 'inline-flex items-center ml-1 align-middle relative' : 'relative shrink-0'}>
-    <button ref={trigger} type="button" aria-label={label}
-      className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center"
-      onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}
-      onFocus={() => setOpen(true)} onBlur={() => setOpen(false)}
-      onClick={(event) => { event.preventDefault(); event.stopPropagation(); setOpen((value) => !value); }}>
-      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-        strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
-      </svg>
-    </button>
-    {open && createPortal(
-      <div ref={panel} role="tooltip" className="fixed z-50 pointer-events-none rounded-lg p-3 text-xs text-white"
-        style={{ background: 'rgba(0, 0, 0, 0.85)', boxShadow: '0 4px 10px rgba(0, 0, 0, 0.3)', ...style }}>
-        <p>{text}</p>
-      </div>, document.body)}
-  </span>;
-}
-
-function Line({ line }) {
-  if (line.variant === 'provenance') {
-    return <p className="text-xs text-[var(--color-text-muted)] mt-0.5 line-clamp-1">{line.parts[0].text}</p>;
-  }
-  const className = `media-card-year text-xs text-[var(--color-text-muted)] mt-1${line.clamp ? ' line-clamp-1' : ''}${line.dormant ? ' media-card-line-dormant' : ''}`;
-  if (line.placeholderItemId) {
-    return <p className={`${className} release-year-placeholder`} data-item-id={line.placeholderItemId}
-      data-progress-text={line.progressText || undefined} />;
-  }
-  const plain = line.join === 'plain';
-  return <p className={className} title={line.tooltip}>
-    {line.parts.map((part, index) => {
-      const sep = !plain && index > 0 ? ' · ' : '';
-      if (part.score) {
-        return <React.Fragment key={index}>{sep}<span className="inline-flex items-center gap-0.5 text-yellow-300 align-middle">
-          <svg className="w-3 h-3 text-yellow-400 fill-current" viewBox="0 0 24 24" aria-hidden="true">
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-          </svg><span className="font-medium">{part.text}</span></span></React.Fragment>;
-      }
-      if (part.link) return <React.Fragment key={index}>{sep}<span className="text-[var(--color-link)] font-medium">{part.text}</span></React.Fragment>;
-      return <React.Fragment key={index}>{sep}{part.muted
-        ? <span className="ml-1 text-[var(--color-text-muted)]">{part.text}</span> : part.text}</React.Fragment>;
-    })}
-  </p>;
-}
-
-// The Search list view: the same card content laid out as a row.
-function MediaRow({ model, slots, labels }) {
-  return <div className="flex items-center p-4 gap-4">
-    <div className="shrink-0 relative">
-      <a href={model.href} {...{ 'hx-boost': 'true' }}>
-        <img data-media-artwork="" loading="lazy" decoding="sync" alt={model.title}
-          className="w-16 h-24 object-cover rounded shadow-md bg-[var(--color-surface-alt)]" src={model.image.src} />
-      </a>
-    </div>
-    <div className="flex-1 min-w-0">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <h3 className="text-lg font-semibold text-[var(--color-text)] mb-2 line-clamp-2">
-            <a href={model.href} {...{ 'hx-boost': 'true' }}
-              className="hover:text-[var(--color-link)] transition-colors">{model.title}</a>
-            {model.altTitle && <AltTitle inline text={model.altTitle} label={labels.altTitle} />}
-          </h3>
-          {model.lines.map((line, index) => <Line key={index} line={line} />)}
-          {model.matched && <p className="text-xs text-[var(--color-text-muted)] mb-2 line-clamp-1"
-            title={model.matched.title}>{model.matched.text}</p>}
-          <Slot name="meta" node={slots.meta} />
-        </div>
-        {model.actions ? <div className="relative flex items-center justify-center space-x-2.5">
-          {model.actions.items.map((action, index) => action.kind === 'link'
-            ? <a key={index} href={action.href} title={action.title} className={actionClass(action.tone)}><Icon spec={action.icon} className="w-4 h-4" /></a>
-            : <button key={index} type="button" title={action.title} className={actionClass(action.tone)} onClick={() => openModal(action)}>
-              <Icon spec={action.icon} className="w-4 h-4" /></button>)}
-        </div> : <Slot name="actions" node={slots.actions} />}
-      </div>
-    </div>
-  </div>;
-}
-
-const tones = {
-  indigo: 'bg-indigo-600 hover:bg-indigo-500 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)]',
-  emerald: 'bg-emerald-600 hover:bg-emerald-500 hover:shadow-[0_0_15px_rgba(16,185,129,0.5)]',
-  amber: 'bg-amber-600 hover:bg-amber-500 hover:shadow-[0_0_15px_rgba(245,158,11,0.5)]',
-  rose: 'bg-rose-600 hover:bg-rose-500 hover:shadow-[0_0_15px_rgba(244,63,94,0.45)]',
-};
-const actionClass = (tone) => `p-2.5 ${tones[tone]} text-white rounded-full hover:scale-110 transition-all duration-200 cursor-pointer`;
-const orderClass = 'min-w-9 h-9 px-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-500 transition-colors cursor-pointer text-sm font-semibold';
-
-// Read one value from the page's Alpine scope (list order editing, bulk select) and keep it live.
-function usePageValue(host, read) {
-  const [value, setValue] = useState(false);
   useEffect(() => {
-    const Alpine = window.Alpine;
-    if (!Alpine) return undefined;
-    const runner = Alpine.effect(() => setValue(!!read(Alpine.$data(host))));
-    return () => Alpine.release(runner);
-  }, [host]);
-  return value;
-}
+    setStage(0);
+    setLoaded(false);
+  }, [image.src, image.fallback]);
 
-// The hover buttons. Track and list popups still live in the card's Alpine scope
-// (trackOpen, listsOpen) because their server forms close themselves through it.
-function CardOverlay({ actions, host, revealed, labels }) {
-  const editing = usePageValue(host, (scope) => scope.isOrderEditing);
-
-  function run(action) {
-    if (action.kind === 'modal') {
-      openModal(action);
-    } else if (action.kind === 'post') {
-      window.htmx?.ajax('POST', action.url, {
-        target: action.target, swap: action.swap, values: action.vals, headers: { 'X-CSRFToken': actions.csrfToken },
-      });
-    }
-  }
-
-  function reorder(step) {
-    const form = document.getElementById('filter-form');
-    const values = { ...Object.fromEntries(form ? new FormData(form) : []), item_id: String(actions.ordering.itemId), action: step };
-    const indicator = document.getElementById('loading-indicator');
-    indicator?.classList.add('htmx-request');
-    window.htmx?.ajax('POST', actions.ordering.url, { swap: 'none', values, headers: { 'X-CSRFToken': actions.csrfToken } })
-      ?.then(() => window.refreshCustomListGrid?.())
-      .finally(() => indicator?.classList.remove('htmx-request'));
-  }
-
-  return <div className={`media-card-overlay absolute inset-0 flex items-center justify-center transition-opacity duration-200 ease-in-out${actions.clickable ? ' pointer-coarse:hidden' : ''}${revealed ? ' opacity-100 pointer-events-auto media-card-overlay-revealed' : ' opacity-0 pointer-events-none'}`}>
-    <div className="absolute inset-0 bg-black/50 z-0" />
-    <a href={actions.href} className="absolute inset-0 z-0" />
-    {!editing && <div className="relative z-10 flex w-full max-w-full flex-wrap items-center justify-center gap-2.5 px-2">
-      {actions.items.map((action, index) => action.kind === 'link'
-        ? <a key={index} href={action.href} title={action.title} className={actionClass(action.tone)}><Icon spec={action.icon} className="w-4 h-4" /></a>
-        : <button key={index} type="button" title={action.title} className={actionClass(action.tone)} onClick={() => run(action)}>
-          <Icon spec={action.icon} className="w-4 h-4" /></button>)}
-    </div>}
-    {editing && actions.ordering && <div className="relative z-10 flex flex-col items-center gap-2">
-      <div className="flex items-center justify-center gap-2">
-        {[['first', '<<'], ['back', '<'], ['next', '>'], ['last', '>>']].map(([step, text]) =>
-          <button key={step} type="button" title={actions.ordering.labels[step]} className={orderClass} onClick={() => reorder(step)}>{text}</button>)}
-      </div>
-      <div className="drag-handle cursor-grab px-4 py-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)] w-full flex justify-center"
-        title={actions.ordering.labels.drag}><Icon spec={actions.ordering.dragIcon} className="w-5 h-5" /></div>
-    </div>}
-  </div>;
-}
-
-// Touch screens show the hover buttons on the first tap, and follow the link on the second.
-function useTapToReveal(host, enabled, selecting) {
-  const [revealed, setRevealed] = useState(false);
-  const state = useRef({ revealed: false, selecting: false });
-  state.current = { revealed, selecting };
   useEffect(() => {
-    const card = host.closest('.media-card');
-    if (!card || !enabled) return undefined;
-    const onClick = (event) => {
-      const { revealed: open, selecting: busy } = state.current;
-      if (open) {
-        if (event.target.closest('button, a, input, select, textarea')) return;
-        const link = card.querySelector('.media-card-overlay a[href]') || card.querySelector('a.media-card-title[href]');
-        if (link) { event.preventDefault(); event.stopPropagation(); link.click(); }
-        return;
-      }
-      if (!window.matchMedia('(pointer: coarse)').matches || card.classList.contains('media-card-hide-overlay') || busy) return;
-      event.preventDefault();
-      event.stopPropagation();
-      setRevealed(true);
-      window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: card }));
-    };
-    const onOther = (event) => { if (event.detail !== card) setRevealed(false); };
-    // A popup the card opened lives outside it; using it must not hide the buttons again.
-    const onOutside = (event) => {
-      if (state.current.revealed && !card.contains(event.target) && !event.target.closest?.('[data-floppy-modal]')) setRevealed(false);
-    };
-    card.addEventListener('click', onClick, true);
-    window.addEventListener('media-card-revealed', onOther);
-    window.addEventListener('click', onOutside);
-    return () => {
-      card.removeEventListener('click', onClick, true);
-      window.removeEventListener('media-card-revealed', onOther);
-      window.removeEventListener('click', onOutside);
-    };
-  }, [host, enabled]);
-  useEffect(() => { host.closest('.media-card')?.classList.toggle('media-card-revealed', revealed); }, [host, revealed]);
-  return revealed;
+    setLoaded(false);
+  }, [uri]);
+
+  const frame = <View style={[styles.artworkFrame, { aspectRatio: ASPECT[model.shape] || ASPECT.poster }]}
+    accessible={!onPress} accessibilityLabel={onPress ? undefined : model.title}>
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: palette.placeholder }]} />
+    {uri ? <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover"
+      accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
+      onLoad={() => setLoaded(true)} onError={() => setStage(current => current + 1)} /> : null}
+    {!loaded ? <Text style={[styles.artworkPlaceholder, { color: palette.textMuted }]}
+      numberOfLines={2}>{model.title}</Text> : null}
+    {selection?.active ? <Pressable accessibilityRole="checkbox"
+      accessibilityLabel={selection.label || model.title}
+      accessibilityState={{ checked: !!selection.selected }}
+      onPress={event => { event.stopPropagation?.(); selection.toggle?.(); }}
+      style={[styles.selection, {
+        backgroundColor: selection.selected ? palette.link : 'rgba(0, 0, 0, 0.55)',
+        borderColor: palette.chipText,
+      }]}>
+      {selection.selected ? <Text style={[styles.selectionCheck, { color: palette.chipText }]}>✓</Text> : null}
+    </Pressable> : null}
+  </View>;
+
+  if (!onPress) return frame;
+  return <Pressable accessibilityRole="button" accessibilityLabel={model.title} onPress={onPress}>
+    {frame}
+  </Pressable>;
 }
 
-// The save and score responses still swap server fragments out of band for pages
-// that render them. A card React owns ignores that swap and listens for the
-// floppyCardUpdate event the same responses send.
-if (typeof window !== 'undefined' && !window.__floppyCardOobGuard) {
-  window.__floppyCardOobGuard = true;
-  document.addEventListener('htmx:oobBeforeSwap', (event) => {
-    if (event.detail?.target?.hasAttribute?.('data-react-owned')) event.preventDefault();
-  });
+function MediaTypeChip({ chip, palette }) {
+  const solid = chip.style === 'solid';
+  const soft = chip.style === 'soft';
+  const color = solid ? chip.contrast || palette.chipText : chip.color || palette.textSecondary;
+  const backgroundColor = solid ? chip.color : soft && chip.color ? `${chip.color}38` : 'transparent';
+  return <View style={[styles.chip, styles.statusChip, {
+    backgroundColor,
+    borderColor: chip.color || palette.border,
+    borderWidth: solid ? 0 : 1,
+  }]} accessible accessibilityLabel={chip.label}>
+    <Text style={[styles.mediaChipText, { color }]}>{chip.label}</Text>
+  </View>;
 }
 
-function useLiveCard(model) {
-  const [live, setLive] = useState(null);
-  useEffect(() => {
-    if (!model.cardKey) return undefined;
-    const onUpdate = (event) => { if (event.detail?.cardKey === model.cardKey) setLive(event.detail); };
-    document.addEventListener('floppyCardUpdate', onUpdate);
-    return () => document.removeEventListener('floppyCardUpdate', onUpdate);
-  }, [model.cardKey]);
-  return live;
-}
-
-function liveChip(chip, live, labels) {
-  if (!live) return chip;
-  if (live.statusless) return { kind: 'no-status', label: labels.noStatus, hideOnMobile: chip?.hideOnMobile };
-  if (live.status) {
-    if (chip?.kind === 'event') return chip;
-    return { kind: 'status', status: live.status, colorClass: live.statusColor, hideOnMobile: chip?.hideOnMobile };
-  }
-  return chip?.kind === 'event' ? chip : null;
-}
-
-const chipShell = 'media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md max-w-[calc(100%-1rem)] overflow-hidden';
-const chipLabel = 'text-xs font-medium text-white drop-shadow-sm truncate min-w-0';
-
-function CardStatusChip({ chip }) {
-  const mobile = { 'data-mobile-hide-on-mobile': chip.hideOnMobile ? 'true' : 'false' };
+function StatusChip({ chip, palette, labels }) {
+  if (!chip) return null;
   if (chip.kind === 'no-status') {
-    return <div className={chipShell} data-status-label="no-status" {...mobile}><span className={chipLabel}>{chip.label}</span></div>;
+    return <View style={[styles.chip, styles.statusChip, { backgroundColor: palette.chipBackground }]}
+      accessible accessibilityLabel={chip.label || labels.noStatus}>
+      <Text style={[styles.chipText, { color: palette.chipText }]}>{chip.label || labels.noStatus}</Text>
+    </View>;
   }
   if (chip.kind === 'event') {
-    return <div className={chipShell} {...mobile}><Icon spec={chip.icon} className="w-3.5 h-3.5 text-indigo-300" /><span className={chipLabel}>{chip.label}</span></div>;
+    return <View style={[styles.chip, styles.statusChip, { backgroundColor: palette.chipBackground }]}
+      accessible accessibilityLabel={chip.label}>
+      <Text style={[styles.chipGlyph, { color: palette.chipText }]}>◷</Text>
+      <Text style={[styles.chipText, { color: palette.chipText }]}>{chip.label}</Text>
+    </View>;
   }
-  return <div className={chipShell} {...mobile}><div className={`w-4 h-4 ${chip.colorClass}`}>
-    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-      strokeLinejoin="round" className="w-full h-full">{statusIcons[chip.status]}</svg></div></div>;
+  const status = chip.status || '';
+  const color = palette.statusColors[status] || palette.accent || palette.link;
+  return <View style={[styles.chip, styles.statusChip, { backgroundColor: palette.chipBackground }]}
+    accessible accessibilityLabel={chip.label || status}>
+    <Text style={[styles.chipGlyph, { color }]}>{STATUS_GLYPHS[status] || '•'}</Text>
+  </View>;
 }
 
-const starPalette = {
-  lit: '#facc15', unlit: '#4b5563', muted: 'var(--color-text-muted)',
-  focusStyle: { outlineStyle: 'solid', outlineWidth: 1, outlineColor: 'var(--color-accent)' },
-};
-const starShape = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"
-  stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-</svg>;
-const smallStar = (className) => <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>;
+function CornerChip({ chip, palette, labels, onOpenLink }) {
+  const local = chip.kind === 'local-only' || chip.kind === 'collected';
+  const position = chip.kind === 'local-only'
+    ? styles.bottomLeft
+    : chip.kind === 'runtime' || chip.kind === 'collected' ? styles.bottomRight : styles.topRight;
+  const text = chip.kind === 'next-episode'
+    ? `› ${chip.text}`
+    : chip.kind === 'queue' ? `${chip.text} ›` : chip.text;
+  const label = chip.kind === 'next-episode' ? labels.nextEpisode : chip.title || chip.text;
+  const appearance = [styles.cornerChip, position, local ? {
+    backgroundColor: palette.local.backgroundColor,
+    borderColor: palette.local.borderColor,
+    borderWidth: 1,
+  } : { backgroundColor: palette.chipBackground }];
+  const content = <Text style={[styles.cornerText, { color: local ? palette.local.color : palette.chipText }]}
+    numberOfLines={1}>{text}</Text>;
+  if (chip.href && onOpenLink) {
+    return <Pressable accessibilityRole="link" accessibilityLabel={label}
+      onPress={() => onOpenLink(chip.href)} style={appearance}>{content}</Pressable>;
+  }
+  return <View accessible accessibilityLabel={label} style={appearance}>{content}</View>;
+}
 
-// The rating in the title row: a button that opens the shared star row, or read-only text.
-function CardRating({ rating, csrfToken, editable }) {
-  const [value, setValue] = useState(rating.value);
-  const [label, setLabel] = useState(rating.label);
+function ProgressBar({ bar, palette }) {
+  if (!bar || bar.percent == null) return null;
+  const percent = Math.max(0, Math.min(100, bar.percent));
+  return <View accessible accessibilityRole="progressbar" accessibilityLabel={`${Math.round(percent)}%`}
+    accessibilityValue={{ min: 0, max: 100, now: Math.round(percent) }}
+    style={[styles.progressTrack, { backgroundColor: palette.progressTrack }]}>
+    <View style={[styles.progressFill, {
+      width: `${percent}%`,
+      backgroundColor: bar.paused ? palette.progressPaused : palette.progressFill,
+    }]} />
+  </View>;
+}
+
+function Line({ line, palette }) {
+  if (!line || !line.parts?.length) return null;
+  if (line.variant === 'provenance') {
+    return <Text accessibilityLabel={line.tooltip} numberOfLines={1}
+      style={[styles.provenance, { color: palette.textMuted }]}>{line.parts[0].text}</Text>;
+  }
+  const plain = line.join === 'plain';
+  return <Text accessibilityLabel={line.tooltip} numberOfLines={line.clamp ? 1 : undefined}
+    style={[styles.line, { color: palette.textMuted }]}>
+    {line.parts.map((part, index) => {
+      const separator = !plain && index > 0 ? ' · ' : '';
+      const style = part.score
+        ? { color: palette.star, fontWeight: '600' }
+        : part.link ? { color: palette.link, fontWeight: '500' }
+          : part.muted ? { color: palette.textMuted } : null;
+      return <Text key={index} style={style}>{separator}{part.score ? <Text style={{ color: palette.star }}>★ </Text> : null}{part.text}</Text>;
+    })}
+  </Text>;
+}
+
+function Title({ model, palette, onOpen, onOpenLink }) {
+  if (model.titleLinks?.length) {
+    return <View style={styles.titleColumn}>
+      {model.titleLinks.map((link, index) => <Pressable key={`${link.url}-${index}`}
+        accessibilityRole="link" accessibilityLabel={link.label}
+        onPress={onOpenLink ? () => onOpenLink(link.url) : undefined}
+        disabled={!onOpenLink} style={styles.titleLinkPress}>
+        <Text numberOfLines={1} style={[index === 0 ? styles.title : styles.titleSecondary, {
+          color: index === 0 ? palette.text : palette.textMuted,
+        }]}>{link.label}</Text>
+      </Pressable>)}
+    </View>;
+  }
+  const text = <Text numberOfLines={1} style={[styles.title, { color: palette.text }]}>{model.title}</Text>;
+  if (!onOpen) return <View style={styles.titleColumn}>{text}</View>;
+  return <Pressable accessibilityRole="link" accessibilityLabel={model.title} onPress={onOpen}
+    style={styles.titleColumn}>{text}</Pressable>;
+}
+
+function Rating({ model, palette, labels, renderRating, onRate, readOnly }) {
+  const rating = model.rating;
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({});
-  const trigger = useRef(null);
-  const popup = useRef(null);
-  useEffect(() => { setValue(rating.value); setLabel(rating.label); }, [rating.value, rating.label]);
-  const place = () => {
-    const rect = trigger.current?.getBoundingClientRect();
-    if (!rect) return;
-    const width = Math.min(250, window.innerWidth - 32);
-    const height = popup.current?.offsetHeight || 90;
-    const left = Math.min(Math.max(16, rect.right - width), window.innerWidth - width - 16);
-    const below = rect.bottom + 8 + height <= window.innerHeight;
-    setPos({ left, top: below ? rect.bottom + 8 : Math.max(8, rect.top - height - 8), width });
-  };
-  useLayoutEffect(() => {
-    if (!open) return undefined;
-    place();
-    const away = (event) => { if (!popup.current?.contains(event.target) && !trigger.current?.contains(event.target)) setOpen(false); };
-    const key = (event) => { if (event.key === 'Escape') setOpen(false); };
-    document.addEventListener('click', away);
-    window.addEventListener('keydown', key);
-    window.addEventListener('resize', place);
-    window.addEventListener('scroll', place, true);
-    return () => {
-      document.removeEventListener('click', away);
-      window.removeEventListener('keydown', key);
-      window.removeEventListener('resize', place);
-      window.removeEventListener('scroll', place, true);
-    };
-  }, [open]);
-  function onSelect(score) {
+  const [value, setValue] = useState(rating?.value ?? null);
+
+  useEffect(() => {
+    setValue(rating?.value ?? null);
+  }, [rating?.value]);
+
+  if (!rating) return null;
+  if (readOnly || !model.ratingEditable || !renderRating) {
+    if (rating.label == null) return null;
+    return <View accessible accessibilityLabel={`${labels.rate}: ${rating.label}`} style={styles.ratingReadOnly}>
+      <Star color={palette.star} />
+      <Text style={[styles.ratingValue, { color: palette.star }]}>{rating.label}</Text>
+    </View>;
+  }
+  function select(score) {
     setValue(score);
-    setLabel(score === null ? null : String(score));
     setOpen(false);
-    window.htmx?.ajax('POST', rating.rateUrl, {
-      swap: 'none', headers: { 'X-CSRFToken': csrfToken }, values: { score: score ?? value, toggle: true },
-    });
+    onRate?.(score);
   }
-  if (!rating.rateUrl || !editable) {
-    return label == null ? null : <span className="flex h-5 items-center gap-1 text-xs text-yellow-300 shrink-0">
-      {smallStar('w-3 h-3 text-yellow-400 fill-current')}<span className="font-medium">{label}</span></span>;
-  }
-  return <span className="flex shrink-0">
-    <button ref={trigger} type="button" title={rating.rateLabel} aria-label={rating.rateLabel} aria-haspopup="true"
-      onClick={() => setOpen((current) => !current)}
-      className={`media-card-rate-button -mx-1 flex h-5 items-center gap-1 px-1 text-xs text-yellow-300 cursor-pointer${value === null || value === undefined ? ' media-card-rate-empty' : ''}`}>
-      <span className="media-card-rate-star">{smallStar('w-3 h-3 text-yellow-400')}</span>
-      {value !== null && value !== undefined && <span className="font-medium">{label ?? value}</span>}
-    </button>
-    {open && createPortal(<div ref={popup} style={pos}
-      className="fixed z-50 rounded-lg border border-gray-700 bg-[var(--color-surface)] p-3 shadow-lg">
-      <div className="mb-1"><RatingStars scaleMax={rating.scaleMax} value={value} label={rating.rateLabel}
-        renderStar={starShape} onSelect={onSelect} palette={starPalette} /></div>
-    </div>, document.body)}
-  </span>;
+  return <View style={styles.ratingWrap}>
+    <Pressable accessibilityRole="button" accessibilityLabel={rating.rateLabel || labels.rate}
+      accessibilityState={{ expanded: open }} onPress={() => setOpen(true)} style={styles.ratingButton}>
+      <Star color={value == null ? palette.textMuted : palette.star} />
+      {value != null ? <Text style={[styles.ratingValue, { color: palette.star }]}>{value}</Text> : null}
+    </Pressable>
+    <Modal visible={open} transparent animationType="fade" statusBarTranslucent
+      onRequestClose={() => setOpen(false)}>
+      <Pressable accessibilityRole="button" accessibilityLabel={labels.close}
+        onPress={() => setOpen(false)} style={styles.modalBackdrop}>
+        <View accessibilityViewIsModal onStartShouldSetResponder={() => true}
+          style={[styles.ratingDialog, { backgroundColor: palette.card, borderColor: palette.border }]}>
+          <Text style={[styles.ratingTitle, { color: palette.text }]}>{rating.rateLabel || labels.rate}</Text>
+          {renderRating({
+            value,
+            label: rating.rateLabel || labels.rate,
+            scaleMax: rating.scaleMax || 10,
+            palette: palette.rating,
+            onSelect: select,
+          })}
+        </View>
+      </Pressable>
+    </Modal>
+  </View>;
 }
 
-export function MediaCard({ model, slots, labels, selection, host }) {
-  const revealed = useTapToReveal(host, !!model.actions, !!selection?.active);
-  const live = useLiveCard(model);
-  if (model.layout === 'row') return <MediaRow model={model} slots={slots} labels={labels} />;
-  const art = model.image;
-  const imgClass = `media-card-poster w-full ${aspect[model.shape]} bg-[var(--color-surface-alt)] object-cover`;
-  const bar = model.progressBar;
+function AltTitle({ label, open, onPress, palette }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel={label}
+    accessibilityState={{ expanded: open }} onPress={onPress} style={styles.altButton}>
+    <Text style={[styles.altIcon, { color: palette.textMuted }]}>ⓘ</Text>
+  </Pressable>;
+}
+
+function CardMetadata({ model, palette, labels, onOpen, onOpenLink, onRate, renderRating, readOnly, altOpen, setAltOpen }) {
   return <>
-    <div className="media-card-visual relative">
-      {model.recommend ? <div className="cursor-pointer"><img decoding="sync" loading="lazy" alt={model.title}
-        className={imgClass} src={art.src} data-image-source={art.source} /></div> : <a href={model.href} {...(model.boost ? { 'hx-boost': 'true' } : {})} onClick={(event) => {
-        if (selection?.active) { event.preventDefault(); selection.toggle(); }
-      }}>
-        {selection?.active && <div className="absolute top-2 left-2 z-10" onClick={(event) => event.stopPropagation()}>
-          <input type="checkbox" className="cursor-pointer w-5 h-5" checked={selection.selected}
-            aria-label={model.title} onChange={selection.toggle} />
-        </div>}
-        <img decoding="sync" loading="lazy" alt={model.title} className={imgClass} src={art.src}
-          data-image-source={art.source}
-          {...(model.video ? { 'data-image-fallback': art.fallback, 'data-image-fallback-on-small': 'true' } : {})} />
-      </a>}
-      {model.statusChip?.kind === 'status-native' ? <StatusChip chip={model.statusChip} />
-        : model.statusChip?.kind === 'media-type' ? <MediaTypeChip chip={model.statusChip} />
-          : model.statusId && <div id={model.statusId} data-react-owned="">{(() => {
-            const chip = liveChip(model.statusChip, live, labels);
-            return chip && <CardStatusChip chip={chip} />;
-          })()}</div>}
-      {model.cornerChips.map((chip) => <CornerChip key={chip.kind} chip={chip} labels={labels} />)}
-      {bar && <div className="media-card-progress-bar absolute bottom-0 left-0 right-0 h-1 bg-gray-900/60 z-20">
-        <div className={`h-full ${bar.paused ? 'bg-indigo-500/40' : 'bg-indigo-500'} transition-[width] duration-300 ease-out`}
-          style={{ width: `${bar.percent}%` }} />
-      </div>}
-      {model.actions && !selection?.active && <CardOverlay actions={model.actions} host={host} revealed={revealed} labels={labels} />}
-    </div>
-    <div className="media-card-body p-3 bg-card-body">
-      <div className="media-card-title-row flex items-center gap-2 min-w-0">
-        {model.titleLinks.length ? <div className="min-w-0 flex-1">
-          {model.titleLinks.map((part, index) => <a key={part.url} href={part.url} title={part.label}
-            className={index === 0
-              ? 'media-card-title block text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-1'
-              : 'mt-0.5 block text-xs text-[var(--color-text-muted)] hover:text-[var(--color-link)] line-clamp-1'}>{part.label}</a>)}
-        </div> : model.recommend ? <h3 title={model.title}
-          className="media-card-title font-medium text-[var(--color-text)] line-clamp-1 text-sm leading-tight min-w-0">{model.title}</h3>
-          : <a href={model.href} title={model.title} {...(model.boost ? { 'hx-boost': 'true' } : {})}
-          className={`media-card-title text-sm font-semibold text-[var(--color-text)] ${model.publicView ? '' : 'hover:text-[var(--color-link)] '}transition duration-300 line-clamp-1 min-w-0`}>{model.title}</a>}
-        {model.altTitle && <AltTitle text={model.altTitle} label={labels.altTitle} />}
-        {model.scoreText != null && <span className="flex items-center gap-1 text-xs text-yellow-300 shrink-0">
-          <svg className="w-3 h-3 text-yellow-400 fill-current" viewBox="0 0 24 24" aria-hidden="true">
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-          </svg><span className="font-medium">{model.scoreText}</span></span>}
-        {model.ratingId && <span id={model.ratingId} data-react-owned="">{(() => {
-          const rating = live?.rating !== undefined && live ? (live.rating || null) : model.rating;
-          const cardRating = live ? { ...rating, rateUrl: rating?.rateUrl || model.rating?.rateUrl } : rating;
-          return cardRating && <CardRating rating={cardRating} csrfToken={model.csrfToken} editable={model.ratingEditable} />;
-        })()}</span>}
-      </div>
-      {model.lines.map((line, index) => <Line key={index} line={line} />)}
-    </div>
+    <View style={styles.titleRow}>
+      <Title model={model} palette={palette} onOpen={onOpen} onOpenLink={onOpenLink} />
+      {model.altTitle ? <AltTitle label={labels.altTitle} open={altOpen}
+        onPress={() => setAltOpen(current => !current)} palette={palette} /> : null}
+      {model.scoreText != null ? <View style={styles.score}>
+        <Star color={palette.star} />
+        <Text style={[styles.ratingValue, { color: palette.star }]}>{model.scoreText}</Text>
+      </View> : null}
+      <Rating model={model} palette={palette} labels={labels} renderRating={renderRating} onRate={onRate} readOnly={readOnly} />
+    </View>
+    {altOpen && model.altTitle ? <Text style={[styles.altText, { color: palette.textMuted }]}>{model.altTitle}</Text> : null}
+    {model.lines?.map((line, index) => <Line key={index} line={line} palette={palette} />)}
   </>;
 }
+
+export function MediaCard({
+  model,
+  labels = {},
+  palette,
+  width = 168,
+  selection,
+  actions,
+  onOpen,
+  onOpenLink,
+  onAction,
+  onReorder,
+  onReorderDrag,
+  dragging = false,
+  readOnly = false,
+  onRevealChange,
+  revealed,
+  renderActionIcon,
+  onRate,
+  renderRating,
+  style,
+}) {
+  const colors = resolvePalette(palette);
+  const copy = {
+    altTitle: 'Show alternative title',
+    nextEpisode: 'Jump to next episode',
+    noStatus: 'No Status',
+    rate: 'Rate',
+    close: 'Close',
+    dragHint: 'Drag to reorder or use the step buttons',
+    ...labels,
+  };
+  const [altOpen, setAltOpen] = useState(false);
+  const [localRevealed, setLocalRevealed] = useState(false);
+  const activeSelection = readOnly ? undefined : selection;
+  const shownActions = readOnly ? null : (actions === undefined ? model.actions : actions);
+  const isRevealed = revealed === undefined ? localRevealed : revealed;
+
+  function setReveal(value) {
+    if (revealed === undefined) setLocalRevealed(value);
+    onRevealChange?.(value);
+  }
+
+  function open() {
+    if (activeSelection?.active) {
+      activeSelection.toggle?.();
+      return;
+    }
+    if (shownActions && !isRevealed) {
+      setReveal(true);
+      return;
+    }
+    onOpen?.();
+  }
+
+  const rowOpen = activeSelection?.active ? activeSelection.toggle : onOpen;
+
+  function gatedOpen() {
+    if (shownActions && !activeSelection?.active && !isRevealed) {
+      setReveal(true);
+      return;
+    }
+    onOpen?.();
+  }
+
+  function gatedOpenLink(href) {
+    if (shownActions && !activeSelection?.active && !isRevealed) {
+      setReveal(true);
+      return;
+    }
+    onOpenLink?.(href);
+  }
+
+  if (model.layout === 'row') {
+    return <View style={[styles.row, style]}>
+      <View style={styles.rowArtwork}>
+        <Artwork model={model} palette={colors} selection={activeSelection} onPress={rowOpen} />
+      </View>
+      <View style={styles.rowBody}>
+        <CardMetadata model={model} palette={colors} labels={copy} onOpen={onOpen}
+          onOpenLink={onOpenLink} onRate={onRate} renderRating={renderRating} readOnly={readOnly}
+          altOpen={altOpen} setAltOpen={setAltOpen} />
+        {model.matched ? <Text numberOfLines={1} accessibilityLabel={model.matched.title}
+          style={[styles.matched, { color: colors.textMuted }]}>{model.matched.text}</Text> : null}
+        {shownActions && !activeSelection?.active ? <MediaCardActionRow actions={shownActions}
+          palette={colors} onAction={onAction} renderIcon={renderActionIcon} /> : null}
+      </View>
+    </View>;
+  }
+
+  return <View style={[styles.card, {
+    width,
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+  }, style]}
+    onPointerEnter={event => {
+      if (event?.nativeEvent?.pointerType === 'mouse' && shownActions && !activeSelection?.active) setReveal(true);
+    }}
+    onPointerLeave={event => {
+      if (event?.nativeEvent?.pointerType === 'mouse' && shownActions && !activeSelection?.active) setReveal(false);
+    }}>
+    <View style={styles.artworkWrap}>
+      <Artwork model={model} palette={colors} selection={activeSelection} onPress={open} />
+      {model.statusChip?.kind === 'media-type'
+        ? <MediaTypeChip chip={model.statusChip} palette={colors} />
+        : <StatusChip chip={model.statusChip} palette={colors} labels={copy} />}
+      {model.cornerChips?.map((chip, index) => <CornerChip key={`${chip.kind}-${index}`}
+        chip={chip} palette={colors} labels={copy} onOpenLink={gatedOpenLink} />)}
+      <ProgressBar bar={model.progressBar} palette={colors} />
+      {shownActions && !activeSelection?.active ? <MediaCardActions actions={shownActions}
+        palette={colors} labels={copy} revealed={isRevealed} onOpen={onOpen}
+        onAction={onAction} onReorder={onReorder} onReorderDrag={onReorderDrag}
+        dragging={dragging} renderIcon={renderActionIcon} /> : null}
+    </View>
+    <View style={styles.body}>
+      <CardMetadata model={model} palette={colors} labels={copy} onOpen={gatedOpen}
+        onOpenLink={gatedOpenLink} onRate={onRate} renderRating={renderRating} readOnly={readOnly}
+        altOpen={altOpen} setAltOpen={setAltOpen} />
+    </View>
+  </View>;
+}
+
+const styles = StyleSheet.create({
+  card: { borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
+  artworkWrap: { position: 'relative' },
+  artworkFrame: {
+    width: '100%',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  artworkPlaceholder: { paddingHorizontal: 8, textAlign: 'center', fontSize: 11, fontWeight: '600' },
+  body: { padding: 10, gap: 2 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 0 },
+  titleColumn: { flex: 1, minWidth: 0 },
+  titleLinkPress: { minWidth: 0 },
+  title: { fontSize: 14, fontWeight: '600', lineHeight: 18 },
+  titleSecondary: { fontSize: 11, fontWeight: '500', lineHeight: 15 },
+  altButton: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  altIcon: { fontSize: 13 },
+  altText: { fontSize: 11, lineHeight: 15, marginTop: 2 },
+  line: { fontSize: 11, lineHeight: 15, marginTop: 2 },
+  provenance: { fontSize: 10, lineHeight: 14, marginTop: 1 },
+  matched: { fontSize: 11, lineHeight: 15, marginTop: 2 },
+  score: { flexDirection: 'row', alignItems: 'center', gap: 2, flexShrink: 0 },
+  chip: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3, maxWidth: '90%' },
+  statusChip: { top: 6, left: 6, zIndex: 6 },
+  chipText: { fontSize: 10, fontWeight: '600' },
+  chipGlyph: { fontSize: 11, fontWeight: '700' },
+  mediaChipText: { fontSize: 9, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' },
+  cornerChip: { position: 'absolute', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3, zIndex: 10, maxWidth: '90%' },
+  cornerText: { fontSize: 10, fontWeight: '600' },
+  topRight: { top: 6, right: 6 },
+  bottomRight: { bottom: 9, right: 6 },
+  bottomLeft: { bottom: 9, left: 6 },
+  progressTrack: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 4, zIndex: 20 },
+  progressFill: { height: '100%' },
+  selection: { position: 'absolute', top: 6, left: 6, zIndex: 20, width: 24, height: 24,
+    borderRadius: 4, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  selectionCheck: { fontSize: 14, fontWeight: '700' },
+  ratingWrap: { flexShrink: 0 },
+  ratingButton: { flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 20, paddingHorizontal: 2 },
+  ratingReadOnly: { flexDirection: 'row', alignItems: 'center', gap: 2, flexShrink: 0 },
+  ratingValue: { fontSize: 11, fontWeight: '600' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    alignItems: 'center', justifyContent: 'center', padding: 24 },
+  ratingDialog: { width: '100%', maxWidth: 320, borderRadius: 12, borderWidth: 1, padding: 16, gap: 8 },
+  ratingTitle: { fontSize: 14, fontWeight: '600' },
+  row: { flexDirection: 'row', gap: 12, padding: 12, alignItems: 'flex-start' },
+  rowArtwork: { width: 64 },
+  rowBody: { flex: 1, minWidth: 0 },
+});

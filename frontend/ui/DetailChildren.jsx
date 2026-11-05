@@ -3,7 +3,7 @@ import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'r
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { MediaCardActionHost } from './MediaCardActionHost';
-import { MediaCardView } from './MediaCardView';
+import { MediaCard } from './MediaCard';
 import { ProgressBar } from './ProgressBar';
 
 const DEFAULT_PALETTE = {
@@ -382,7 +382,7 @@ function DetailChildRow({
     backgroundColor: item.unreleased ? palette.surfaceStrong : palette.surface,
     borderColor: palette.surfaceBorder,
   }]}>
-    <MediaCardView model={model} labels={labels} palette={cardPalette(palette)}
+    <MediaCard model={model} labels={labels} palette={cardPalette(palette)}
       selection={undefined} actions={model.actions} onOpen={() => onOpen?.(item)}
       onAction={action => runChildAction(action, item, { onOpenHistory, onAction, onReveal })}
       onRate={score => onRate?.(item, score)}
