@@ -8,6 +8,7 @@ import { surface as rails } from './RailsSlot';
 import { surface as preferences } from './PreferencesSlot';
 import { surface as progress } from './ProgressSlot';
 import { surface as rating } from './RatingSlot';
+import { surface as shell } from './ShellSlot';
 import { surface as search } from './SearchSlot';
 import { surface as appearanceSettings } from './AppearanceSettingsSlot';
 import { surface as cardsSettings } from './CardsSettingsSlot';
@@ -17,4 +18,4 @@ import { surface as providerSettings } from './ProviderSettingsSlot';
 import { surface as users } from './UsersSlot';
 import { surface as dataAccessNotifications } from './DataAccessNotificationsSlot';
 
-export const surfaces = [search, mediaCard, rails, filters, rating, progress, dateTime, calendar, bulk, button, settingsCard, providerSettings, preferences, appearanceSettings, cardsSettings, homeSettings, dataAccessNotifications, users];
+export const surfaces = [shell, search, mediaCard, rails, filters, rating, progress, dateTime, calendar, bulk, button, settingsCard, providerSettings, preferences, appearanceSettings, cardsSettings, homeSettings, dataAccessNotifications, users];
