@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Button } from '../../../frontend/ui/Button';
 import { ListsForm } from '../../../frontend/ui/ListsFormView';
@@ -24,6 +24,7 @@ import {
   loadTrackTabs,
   mediaCardVariant,
   reorderListItem,
+  reorderListItems,
   runDiscoverAction,
   saveArtwork,
   saveScore,
@@ -38,7 +39,7 @@ export const surface = {
   title: 'Media card',
   where: 'Home rails, Discover, Library, Search and List results',
   status: 'in_progress',
-  note: 'Poster, square, landscape and row cards render the shared model with artwork fallback, chips, progress, rating, action overlay, touch/hover reveal and read-only/selectable states. The native action host owns the Track and Lists form bodies, the Track song/episode variants, Discover plan/hide, list reorder and a shared card-change event through the platform transport. Native drag reorder, Discover completeness and bulk refresh integration are in progress; runtime interaction evidence remains outstanding.',
+  note: 'Poster, square, landscape and row cards render the shared model with artwork fallback, chips, progress, rating, action overlay, touch/hover reveal and read-only/selectable states. The native action host owns the Track and Lists form bodies, the Track song/episode variants, Discover plan/hide, list reorder and a shared card-change event through the platform transport. Native drag reorder, Discover plan/hide completeness and bulk refresh integration are wired; runtime interaction and accessibility evidence remains outstanding.',
 };
 
 const labels = {
@@ -97,8 +98,15 @@ function actionsFor(title, media, trackTitle = 'Edit tracking') {
 function discoverActionsFor(title, media) {
   const vals = {
     candidate_media_type: media.mediaType,
+    identity_media_type: media.mediaType === 'episode' ? 'episode' : '',
+    library_media_type: '',
     source: media.source,
     media_id: media.mediaId,
+    season_number: media.seasonNumber != null ? String(media.seasonNumber) : '',
+    active_media_type: 'all',
+    show_more: '0',
+    row_key: 'demo',
+    discover_debug: '0',
     title,
     image: '',
     release_date: '',
@@ -200,6 +208,13 @@ const demoMedia = {
 const reorderOrdering = {
   listId: '9',
   itemId: '4',
+  itemIds: {
+    'quiet-orbit': '1',
+    'signal-static': '2',
+    'paper-lanterns': '3',
+    'home-studio': '4',
+    'the-long-night': '5',
+  },
   url: '/demo/lists/9/reorder',
   labels: {
     first: 'Move to first',
@@ -324,6 +339,12 @@ const demoItems = [
     },
   },
 ];
+
+const discoverCandidateKeys = new Set(
+  demoItems
+    .filter(item => item.model.actions?.items?.some(action => action.vals?.action === 'dismiss'))
+    .map(item => identityKey(item.model.identity)),
+);
 
 function actionGlyph(action) {
   if (action.kind === 'drag') return '≡';
@@ -759,6 +780,12 @@ function TrackAction({ action, onClose }) {
     if (transportReady) await setDiscoverHidden(itemId, hidden);
     else await delay(200);
     setTabs(current => updateTab(current, 'discover', tab => ({ ...tab, hidden })));
+    emitMediaCardChange({
+      identity,
+      source: 'discover',
+      action: hidden ? 'hide' : 'unhide',
+      hidden,
+    });
   }
 
   return <TrackForm
@@ -804,13 +831,14 @@ function DiscoverAction({ action, onClose }) {
             mediaId: vals.media_id,
           },
           source: 'discover',
-          ...(planning ? { status: 'Planning' } : {}),
+          action: planning ? 'planning' : 'dismiss',
+          ...(planning ? { status: 'Planning', tracked: true } : { hidden: true, tracked: false }),
         });
         onClose?.();
       })
       .catch(error => { if (alive) setFailed(error.message || ''); });
     return () => { alive = false; };
-  }, [attempt, transportReady, planning, vals]);
+  }, [attempt, transportReady, planning, action]);
 
   if (failed) {
     return <View style={styles.hostStack}>
@@ -830,6 +858,46 @@ function ActionBody({ action, onClose }) {
   if (action.modal === 'track') return <TrackAction action={action} onClose={onClose} />;
   if (action.kind === 'post') return <DiscoverAction action={action} onClose={onClose} />;
   return <Text style={styles.hostBody}>This link is routed by the platform navigation adapter.</Text>;
+}
+
+function nearestCardIndex(order, layouts, key, dx, dy, fallback) {
+  const start = layouts[key];
+  if (!start) return fallback;
+  const x = start.x + start.width / 2 + dx;
+  const y = start.y + start.height / 2 + dy;
+  let best = fallback;
+  let bestDistance = Infinity;
+  order.forEach((candidate, index) => {
+    const layout = layouts[candidate];
+    if (!layout) return;
+    const distance = (layout.x + layout.width / 2 - x) ** 2
+      + (layout.y + layout.height / 2 - y) ** 2;
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = index;
+    }
+  });
+  return best;
+}
+
+async function persistListOrder(ordering, orderedKeys, targetIndex, fromIndex) {
+  const itemIds = orderedKeys.map(key => ordering.itemIds?.[key]);
+  if (ordering.itemIds && itemIds.every(Boolean)) {
+    await reorderListItems(ordering, itemIds);
+    return;
+  }
+  if (targetIndex === 0) {
+    await reorderListItem(ordering, 'first');
+    return;
+  }
+  if (targetIndex === orderedKeys.length - 1) {
+    await reorderListItem(ordering, 'last');
+    return;
+  }
+  const step = targetIndex < fromIndex ? 'back' : 'next';
+  for (let index = 0; index < Math.abs(targetIndex - fromIndex); index += 1) {
+    await reorderListItem(ordering, step);
+  }
 }
 
 function moveByStep(order, key, step) {
@@ -870,7 +938,9 @@ export default function MediaCardSlot({ onOpenDetail }) {
   const [pendingAction, setPendingAction] = useState(null);
   const [order, setOrder] = useState(() => demoItems.map(item => item.key));
   const [changes, setChanges] = useState({});
+  const [drag, setDrag] = useState(null);
   const [actionError, setActionError] = useState('');
+  const layouts = useRef({});
   const columns = width >= 760 ? 4 : width >= 560 ? 3 : 2;
   const cardWidth = Math.min(180, Math.max(120, (width - 32 - (columns - 1) * spacing.md) / columns));
 
@@ -879,6 +949,16 @@ export default function MediaCardSlot({ onOpenDetail }) {
     if (change.identity) keys.push(identityKey(change.identity));
     if (Array.isArray(change.identities)) keys.push(...change.identities.map(identityKey));
     if (!keys.length) return;
+    if (change.source === 'discover'
+      && ['planning', 'dismiss', 'hide'].includes(change.action)) {
+      const removed = demoItems
+        .filter(item => discoverCandidateKeys.has(identityKey(item.model.identity))
+          && keys.includes(identityKey(item.model.identity)))
+        .map(item => item.key);
+      if (removed.length) {
+        setOrder(current => current.filter(key => !removed.includes(key)));
+      }
+    }
     setChanges(current => {
       const next = { ...current };
       keys.forEach(key => { next[key] = { ...(next[key] || {}), ...change }; });
@@ -918,11 +998,54 @@ export default function MediaCardSlot({ onOpenDetail }) {
     }
   }
 
+  async function moveTo(item, targetIndex) {
+    const fromIndex = order.indexOf(item.key);
+    if (fromIndex < 0 || targetIndex < 0 || targetIndex >= order.length
+      || targetIndex === fromIndex) return;
+    const next = [...order];
+    next.splice(fromIndex, 1);
+    next.splice(targetIndex, 0, item.key);
+    const previous = order;
+    setOrder(next);
+    setActionError('');
+    const ordering = item.model.actions?.ordering;
+    if (!hasMediaCardTransport() || !ordering) return;
+    try {
+      await persistListOrder(ordering, next, targetIndex, fromIndex);
+    } catch (error) {
+      setOrder(previous);
+      setActionError(error.message || 'Could not reorder this item.');
+    }
+  }
+
+  function handleReorderDrag(item, event) {
+    if (!item.model.actions?.ordering) return;
+    const index = order.indexOf(item.key);
+    if (event.phase === 'start') {
+      setDrag({ key: item.key, fromIndex: index, dx: 0, dy: 0, targetIndex: index });
+      setActionError('');
+      return;
+    }
+    if (event.phase === 'cancel') {
+      setDrag(null);
+      return;
+    }
+    const targetIndex = nearestCardIndex(order, layouts.current, item.key,
+      event.dx, event.dy, index);
+    setDrag(current => (current && current.key === item.key
+      ? { ...current, dx: event.dx, dy: event.dy, targetIndex }
+      : current));
+    if (event.phase === 'end') {
+      setDrag(null);
+      moveTo(item, targetIndex);
+    }
+  }
+
   const items = order.map(key => demoItems.find(item => item.key === key)).filter(Boolean);
 
   return <>
     <View style={styles.grid}>
-      {items.map(item => {
+      {items.map((item, index) => {
         const value = ratings[item.key];
         let model = item.model;
         if (value !== undefined) {
@@ -936,16 +1059,26 @@ export default function MediaCardSlot({ onOpenDetail }) {
           };
         }
         model = applyMediaCardChange(model, changes[identityKey(item.model.identity)]);
-        return <MediaCardView key={item.key} model={model} labels={labels} palette={mediaCardPalette}
-          width={cardWidth} onOpen={onOpenDetail}
-          onOpenLink={onOpenDetail}
-          onAction={setPendingAction}
-          onReorder={step => reorder(item, step)}
-          renderActionIcon={renderActionIcon}
-          onRate={score => rate(item, score)}
-          renderRating={({ value: score, label, scaleMax, palette, onSelect }) => <RatingStars
-            scaleMax={scaleMax} value={score} label={label} onSelect={onSelect} palette={palette}
-            renderStar={lit => <Text style={[styles.pickerStar, { color: lit ? palette.lit : palette.unlit }]}>★</Text>} />} />;
+        const isDragging = drag?.key === item.key;
+        return <View key={item.key}
+          onLayout={event => { layouts.current[item.key] = event.nativeEvent.layout; }}
+          style={[
+            isDragging && styles.draggingCard,
+            !isDragging && drag && drag.targetIndex === index && styles.dropTarget,
+          ]}>
+          <MediaCardView model={model} labels={labels} palette={mediaCardPalette}
+            width={cardWidth} onOpen={onOpenDetail}
+            onOpenLink={onOpenDetail}
+            onAction={setPendingAction}
+            onReorder={step => reorder(item, step)}
+            onReorderDrag={event => handleReorderDrag(item, event)}
+            dragging={isDragging}
+            renderActionIcon={renderActionIcon}
+            onRate={score => rate(item, score)}
+            renderRating={({ value: score, label, scaleMax, palette, onSelect }) => <RatingStars
+              scaleMax={scaleMax} value={score} label={label} onSelect={onSelect} palette={palette}
+              renderStar={lit => <Text style={[styles.pickerStar, { color: lit ? palette.lit : palette.unlit }]}>★</Text>} />} />
+        </View>;
       })}
     </View>
     {actionError ? <Text role="status" accessibilityRole="alert" style={styles.actionError}>{actionError}</Text> : null}
@@ -959,6 +1092,8 @@ export default function MediaCardSlot({ onOpenDetail }) {
 
 const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  draggingCard: { zIndex: 20, elevation: 8, opacity: 0.9 },
+  dropTarget: { opacity: 0.72 },
   pickerStar: { fontSize: 20 },
   actionGlyph: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
   hostBody: { color: '#a1a1aa', fontSize: 13, lineHeight: 19 },

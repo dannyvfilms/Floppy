@@ -1,5 +1,5 @@
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useMemo, useRef } from 'react';
+import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 
 const FALLBACK_TONES = {
   indigo: '#4f46e5',
@@ -68,6 +68,54 @@ const REORDER_STEPS = [
   ['last', '>>'],
 ];
 
+function DragHandle({ label, icon, stepLabels = {}, palette, renderIcon, onReorder, onDrag, dragging }) {
+  const dragRef = useRef(onDrag);
+  dragRef.current = onDrag;
+  const responder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => Boolean(dragRef.current),
+    onMoveShouldSetPanResponder: (_, gesture) => Boolean(dragRef.current)
+      && Math.abs(gesture.dx) + Math.abs(gesture.dy) > 4,
+    onPanResponderGrant: () => dragRef.current?.({ phase: 'start', dx: 0, dy: 0 }),
+    onPanResponderMove: (_, gesture) => dragRef.current?.({
+      phase: 'move',
+      dx: gesture.dx,
+      dy: gesture.dy,
+    }),
+    onPanResponderRelease: (_, gesture) => dragRef.current?.({
+      phase: 'end',
+      dx: gesture.dx,
+      dy: gesture.dy,
+    }),
+    onPanResponderTerminate: (_, gesture) => dragRef.current?.({
+      phase: 'cancel',
+      dx: gesture.dx,
+      dy: gesture.dy,
+    }),
+    onPanResponderTerminationRequest: () => false,
+  }), []);
+  const actions = onReorder
+    ? [
+      { name: 'decrement', label: stepLabels.back },
+      { name: 'increment', label: stepLabels.next },
+    ]
+    : undefined;
+  return <View {...responder.panHandlers}
+    accessible
+    accessibilityRole="adjustable"
+    accessibilityLabel={label}
+    accessibilityActions={actions}
+    accessibilityState={{ disabled: !onDrag && !onReorder, busy: !!dragging }}
+    onAccessibilityAction={event => {
+      if (event.nativeEvent.actionName === 'increment') onReorder?.('next');
+      if (event.nativeEvent.actionName === 'decrement') onReorder?.('back');
+    }}
+    style={[styles.dragHandle, dragging && styles.dragHandleActive]}>
+    {renderIcon
+      ? renderIcon({ kind: 'drag', title: label, icon })
+      : <Text accessible={false} style={[styles.dragGlyph, { color: palette.actionText }]}>≡</Text>}
+  </View>;
+}
+
 export function MediaCardActions({
   actions,
   palette,
@@ -76,6 +124,8 @@ export function MediaCardActions({
   onOpen,
   onAction,
   onReorder,
+  onReorderDrag,
+  dragging = false,
   renderIcon,
 }) {
   if (!actions?.items?.length || !revealed) return null;
@@ -98,11 +148,9 @@ export function MediaCardActions({
               <Text style={[styles.orderText, { color: colors.actionText }]}>{text}</Text>
             </Pressable>)}
           </View>
-          <View accessible accessibilityLabel={ordering.labels?.drag} style={styles.dragHandle}>
-            {renderIcon
-              ? renderIcon({ kind: 'drag', title: ordering.labels?.drag, icon: ordering.dragIcon })
-              : <Text accessible={false} style={[styles.dragGlyph, { color: colors.actionText }]}>≡</Text>}
-          </View>
+          <DragHandle label={ordering.labels?.drag} icon={ordering.dragIcon} stepLabels={ordering.labels}
+            palette={colors} renderIcon={renderIcon} onReorder={onReorder}
+            onDrag={onReorderDrag} dragging={dragging} />
         </View>
         : <MediaCardActionRow actions={actions} palette={colors} onAction={onAction} renderIcon={renderIcon} />}
     </View>
@@ -137,5 +185,6 @@ const styles = StyleSheet.create({
   },
   orderText: { fontSize: 13, fontWeight: '700' },
   dragHandle: { minHeight: 28, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
+  dragHandleActive: { opacity: 0.55 },
   dragGlyph: { fontSize: 18, fontWeight: '700' },
 });

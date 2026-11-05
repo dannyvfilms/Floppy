@@ -56,15 +56,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not rendered by the web bundle; the existing web MediaCard adapter remains active."
+          "evidence": "Compiled into the web bundle through SearchResults, HistoryFeed, ListResults, ListCard, TierBoard, CollectionBrowser and ListSearchView; the DOM MediaCard adapter remains the browser card. No browser interaction pass was performed."
         },
         "ios": {
           "status": "verified",
-          "evidence": "iOS 17.2 simulator: rendered the shared card on Home; no action overlay, rating popup or accessibility pass."
+          "evidence": "iOS 17.2 simulator: rendered the shared card on Home. The new drag gesture, Discover plan/hide removal and bulk refresh were not exercised; no action overlay, rating popup or accessibility pass."
         },
         "android": {
           "status": "verified",
-          "evidence": "Android 15 Pixel 7 AVD: rendered the shared card on Home and Library; demo images did not load; no action overlay, rating popup or accessibility pass."
+          "evidence": "Android 15 Pixel 7 AVD: rendered the shared card on Home and Library; demo images did not load. The new drag gesture, Discover plan/hide removal and bulk refresh were not exercised; no action overlay, rating popup or accessibility pass."
         }
       }
     },
@@ -78,15 +78,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not rendered by the web bundle; the existing web MediaCard action adapter remains active. Shared presentation is planned for a browser adapter."
+          "evidence": "Compiled into the web bundle through MediaCardView consumers; the drag handle and step controls were not exercised in a browser."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled and placed in the card on the iOS Home screen, but no action reveal, button press or reorder was exercised."
+          "evidence": "Compiled and placed in the card on the iOS Home screen. The new PanResponder drag gesture and adjustable accessibility actions were not exercised; no action reveal, button press or reorder was exercised."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled and placed in the card on the Android Home and Library screens, but no action reveal, button press or reorder was exercised."
+          "evidence": "Compiled and placed in the card on the Android Home and Library screens. The new PanResponder drag gesture and adjustable accessibility actions were not exercised; no action reveal, button press or reorder was exercised."
         }
       }
     },

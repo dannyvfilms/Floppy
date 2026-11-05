@@ -564,3 +564,16 @@ export async function reorderListItem(ordering, step) {
   });
   return { itemId, action: step };
 }
+
+export async function reorderListItems(ordering, itemIds) {
+  const listId = ordering && (ordering.listId || ordering.list_id);
+  if (!listId || !Array.isArray(itemIds) || !itemIds.length) {
+    throw new Error('This list cannot be reordered.');
+  }
+  const ids = itemIds.map(itemId => Number(itemId));
+  await request(`/api/v1/lists/${encodeURIComponent(listId)}/items/order/`, {
+    method: 'PUT',
+    body: { item_ids: ids },
+  });
+  return { itemIds: ids };
+}
