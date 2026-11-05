@@ -80,6 +80,7 @@ export function normalizeTrackForm(payload) {
   }
   return {
     mediaType: source.mediaType || '',
+    variant: source.variant || '',
     title: source.title || '',
     subtitle: source.titleSubtitle || source.subtitle || '',
     formId: source.formId || '',

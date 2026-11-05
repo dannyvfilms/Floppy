@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Button } from '../../../frontend/ui/Button';
 import { ListsForm } from '../../../frontend/ui/ListsFormView';
 import { MediaCardActionHost } from '../../../frontend/ui/MediaCardActionHost';
 import { MediaCardView } from '../../../frontend/ui/MediaCardView';
@@ -13,6 +14,7 @@ import {
   normalizeTrackForm,
 } from '../../../frontend/ui/mediaCardForms';
 import { mediaCardPalette, spacing } from '../theme';
+import { emitMediaCardChange, subscribeMediaCardChange } from './mediaCardEvents';
 import {
   createTag,
   deleteTrack,
@@ -20,7 +22,11 @@ import {
   loadLists,
   loadTrack,
   loadTrackTabs,
+  mediaCardVariant,
+  reorderListItem,
+  runDiscoverAction,
   saveArtwork,
+  saveScore,
   saveTrack,
   setDiscoverHidden,
   setTags,
@@ -32,7 +38,7 @@ export const surface = {
   title: 'Media card',
   where: 'Home rails, Discover, Library, Search and List results',
   status: 'in_progress',
-  note: 'Poster, square, landscape and row cards render the shared model with artwork fallback, chips, progress, rating, action overlay, touch/hover reveal and read-only/selectable states. The native action host owns the Track and Lists form bodies, a native-only /api/v1 transport and the full Track tab set. Discover plan, list reorder, bulk selection and runtime evidence remain outstanding.',
+  note: 'Poster, square, landscape and row cards render the shared model with artwork fallback, chips, progress, rating, action overlay, touch/hover reveal and read-only/selectable states. The native action host owns the Track and Lists form bodies, the Track song/episode variants, Discover plan/hide, list reorder and a shared card-change event through the platform transport. Runtime interaction evidence remains outstanding.',
 };
 
 const labels = {
@@ -44,7 +50,7 @@ const labels = {
   open: 'Open',
 };
 
-function actionsFor(title, media) {
+function actionsFor(title, media, trackTitle = 'Edit tracking') {
   return {
     href: '/demo/library',
     items: [
@@ -52,7 +58,7 @@ function actionsFor(title, media) {
         kind: 'modal',
         modal: 'track',
         tone: 'indigo',
-        title: 'Edit tracking',
+        title: trackTitle,
         glyph: '✎',
         url: '/demo/track',
         vals: { return_url: '/demo/library' },
@@ -88,6 +94,66 @@ function actionsFor(title, media) {
   };
 }
 
+function discoverActionsFor(title, media) {
+  const vals = {
+    candidate_media_type: media.mediaType,
+    source: media.source,
+    media_id: media.mediaId,
+    title,
+    image: '',
+    release_date: '',
+  };
+  return {
+    href: '/demo/discover',
+    items: [
+      {
+        kind: 'post',
+        tone: 'emerald',
+        title: 'Add to Planning',
+        glyph: '＋',
+        vals: { ...vals, action: 'planning' },
+        media,
+      },
+      {
+        kind: 'post',
+        tone: 'rose',
+        title: 'Hide from Discover',
+        glyph: '⦸',
+        vals: { ...vals, action: 'dismiss' },
+        media,
+      },
+      {
+        kind: 'modal',
+        modal: 'lists',
+        tone: 'amber',
+        title: 'Add to custom lists',
+        glyph: '☰',
+        url: '/demo/lists',
+        vals: { return_url: '/demo/discover' },
+        target: '#lists-discover',
+        media,
+      },
+    ],
+    ordering: null,
+    modals: { lists: 'lists-discover' },
+    csrfToken: '',
+    clickable: true,
+    title,
+    media,
+  };
+}
+
+function identityKey(identity) {
+  if (!identity) return '';
+  return [
+    identity.mediaType,
+    identity.source,
+    identity.mediaId,
+    identity.seasonNumber || '',
+    identity.episodeNumber || '',
+  ].join('|');
+}
+
 const demoMedia = {
   orbit: {
     mediaType: 'tv',
@@ -99,9 +165,21 @@ const demoMedia = {
   signal: {
     mediaType: 'podcast',
     source: 'pocketcasts',
-    mediaId: 'signal-and-static',
+    mediaId: 'signal-carrier-wave',
+    episodeNumber: 3,
+    showId: '77',
+    trackId: '301',
     title: 'Signal & Static',
     subtitle: 'Episode 3 · Carrier Wave',
+  },
+  episode: {
+    mediaType: 'episode',
+    source: 'tmdb',
+    mediaId: '76479',
+    seasonNumber: 1,
+    episodeNumber: 6,
+    title: 'The Long Night',
+    subtitle: 'S1 E6 · The Quiet Orbit',
   },
   studio: {
     mediaType: 'movie',
@@ -119,11 +197,25 @@ const demoMedia = {
   },
 };
 
+const reorderOrdering = {
+  listId: '9',
+  itemId: '4',
+  url: '/demo/lists/9/reorder',
+  labels: {
+    first: 'Move to first',
+    back: 'Move back',
+    next: 'Move next',
+    last: 'Move to last',
+    drag: 'Drag to reorder',
+  },
+};
+
 const demoItems = [
   {
     key: 'quiet-orbit',
     model: {
       mediaType: 'tv',
+      identity: demoMedia.orbit,
       shape: 'poster',
       video: false,
       href: '/demo/the-quiet-orbit',
@@ -144,6 +236,7 @@ const demoItems = [
     key: 'signal-static',
     model: {
       mediaType: 'podcast',
+      identity: demoMedia.signal,
       shape: 'square',
       video: false,
       href: '/demo/signal-and-static',
@@ -157,13 +250,14 @@ const demoItems = [
       lines: [{ join: 'plain', parts: [{ text: '2023' }, { text: '• 3 / 8 episodes', muted: true }] }],
       rating: { label: '4.5', value: 4.5, scaleMax: 5, rateLabel: 'Rate' },
       ratingEditable: true,
-      actions: actionsFor('Signal & Static', demoMedia.signal),
+      actions: actionsFor('Signal & Static', demoMedia.signal, 'Add play'),
     },
   },
   {
     key: 'home-studio',
     model: {
       mediaType: 'video',
+      identity: demoMedia.studio,
       shape: 'landscape',
       video: true,
       href: '/demo/building-a-home-studio',
@@ -177,16 +271,16 @@ const demoItems = [
       lines: [{ join: 'plain', parts: [{ text: '2024' }, { text: '• Watched', muted: true }] }],
       rating: null,
       ratingEditable: true,
-      actions: actionsFor('Building a Home Studio', demoMedia.studio),
+      actions: { ...actionsFor('Building a Home Studio', demoMedia.studio), ordering: reorderOrdering },
     },
   },
   {
     key: 'paper-lanterns',
     model: {
       mediaType: 'book',
+      identity: demoMedia.lanterns,
       shape: 'poster',
       video: false,
-      publicView: true,
       href: '/demo/paper-lanterns',
       image: { src: null, fallback: '', source: 'primary' },
       title: 'Paper Lanterns',
@@ -205,7 +299,28 @@ const demoItems = [
       lines: [{ join: 'plain', parts: [{ text: '2022' }, { text: '• 0 / 320 pages', muted: true }] }],
       rating: { label: '6.5', value: 6.5, scaleMax: 10, rateLabel: 'Rate' },
       ratingEditable: false,
-      actions: null,
+      actions: discoverActionsFor('Paper Lanterns', demoMedia.lanterns),
+    },
+  },
+  {
+    key: 'the-long-night',
+    model: {
+      mediaType: 'episode',
+      identity: demoMedia.episode,
+      shape: 'poster',
+      video: false,
+      href: '/demo/the-quiet-orbit/s1/e6',
+      image: { src: 'https://picsum.photos/seed/floppy-orbit-night/400/600', fallback: '', source: 'primary' },
+      title: 'The Long Night',
+      altTitle: null,
+      statusChip: { kind: 'status', status: 'In progress', hideOnMobile: false },
+      cornerChips: [{ kind: 'queue', text: 'S1 E6' }],
+      titleLinks: [],
+      progressBar: null,
+      lines: [{ join: 'plain', parts: [{ text: 'The Quiet Orbit' }, { text: '• 48 min', muted: true }] }],
+      rating: null,
+      ratingEditable: false,
+      actions: actionsFor('The Long Night', demoMedia.episode, 'Mark watched'),
     },
   },
 ];
@@ -319,6 +434,43 @@ const demoTrack = {
   labels: trackLabels,
   trackTime: false,
 };
+
+const demoEpisodeTrack = {
+  title: 'The Long Night',
+  titleSubtitle: 'S1 E6 · The Quiet Orbit',
+  mediaType: 'episode',
+  variant: 'episode',
+  action: '/demo/episode/watch',
+  deleteAction: '/demo/episode/drop',
+  csrfToken: 'demo',
+  submitLabel: 'Add watch',
+  deleteLabel: 'Drop',
+  fields: [{ name: 'end_date', label: 'Watch date', type: 'date', value: '2026-10-12' }],
+  labels: trackLabels,
+  trackTime: false,
+};
+
+const demoSongTrack = {
+  title: 'Signal & Static',
+  titleSubtitle: 'Episode 3 · Carrier Wave',
+  mediaType: 'podcast',
+  variant: 'song',
+  action: '/demo/podcast/play',
+  deleteAction: '',
+  csrfToken: 'demo',
+  submitLabel: 'Add play',
+  deleteLabel: 'Delete',
+  fields: [{ name: 'end_date', label: 'Play date', type: 'date', value: '2026-10-12' }],
+  labels: trackLabels,
+  trackTime: false,
+};
+
+function demoTrackFor(identity) {
+  const variant = mediaCardVariant(identity);
+  if (variant === 'episode') return demoEpisodeTrack;
+  if (variant === 'song') return demoSongTrack;
+  return demoTrack;
+}
 
 const demoTrackTabs = [
   {
@@ -473,10 +625,11 @@ function ListsAction({ action, onClose }) {
 function TrackAction({ action, onClose }) {
   const transportReady = hasMediaCardTransport();
   const identity = action.media || { mediaType: 'tv', source: 'tmdb', mediaId: 'demo', title: action.title };
-  const fallback = normalizeTrackForm(demoTrack);
+  const variant = mediaCardVariant(identity);
+  const fallback = normalizeTrackForm(demoTrackFor(identity));
   const [model, setModel] = useState(transportReady ? null : fallback);
   const [values, setValues] = useState(() => (transportReady ? {} : initialTrackValues(fallback)));
-  const [tabs, setTabs] = useState(transportReady ? [] : demoTrackTabs);
+  const [tabs, setTabs] = useState(transportReady || variant ? [] : demoTrackTabs);
   const [tracked, setTracked] = useState(false);
   const [status, setStatus] = useState(transportReady ? 'loading' : 'ready');
   const [busy, setBusy] = useState(false);
@@ -505,7 +658,8 @@ function TrackAction({ action, onClose }) {
         setStatus('error');
       });
     return () => { alive = false; };
-  }, [attempt, transportReady, identity.mediaType, identity.source, identity.mediaId]);
+  }, [attempt, transportReady, identity.mediaType, identity.source, identity.mediaId,
+    identity.seasonNumber, identity.episodeNumber, identity.albumId, identity.trackId]);
 
   function change(name, value) {
     setValues(current => ({ ...current, [name]: value }));
@@ -524,6 +678,13 @@ function TrackAction({ action, onClose }) {
       } else {
         await delay(500);
       }
+      emitMediaCardChange({
+        identity,
+        source: 'track',
+        tracked: true,
+        ...(values.status !== undefined ? { status: values.status } : {}),
+        ...(values.score !== undefined ? { score: values.score === '' ? null : Number(values.score) } : {}),
+      });
       onClose?.();
     } catch (error) {
       setServerError(error.message || '');
@@ -536,8 +697,9 @@ function TrackAction({ action, onClose }) {
     setBusy(true);
     setServerError('');
     try {
-      if (transportReady) await deleteTrack(identity);
+      if (transportReady) await deleteTrack(identity, model);
       else await delay(400);
+      emitMediaCardChange({ identity, source: 'track', tracked: false, status: null });
       onClose?.();
     } catch (error) {
       setServerError(error.message || '');
@@ -622,49 +784,174 @@ function TrackAction({ action, onClose }) {
     onDiscoverToggle={toggleDiscover} />;
 }
 
+function DiscoverAction({ action, onClose }) {
+  const transportReady = hasMediaCardTransport();
+  const vals = action?.vals || {};
+  const [attempt, setAttempt] = useState(0);
+  const [failed, setFailed] = useState('');
+  const planning = vals.action === 'planning';
+
+  useEffect(() => {
+    let alive = true;
+    setFailed('');
+    (transportReady ? runDiscoverAction(vals) : delay(350))
+      .then(() => {
+        if (!alive) return;
+        emitMediaCardChange({
+          identity: {
+            mediaType: vals.candidate_media_type,
+            source: vals.source,
+            mediaId: vals.media_id,
+          },
+          source: 'discover',
+          ...(planning ? { status: 'Planning' } : {}),
+        });
+        onClose?.();
+      })
+      .catch(error => { if (alive) setFailed(error.message || ''); });
+    return () => { alive = false; };
+  }, [attempt, transportReady, planning, vals]);
+
+  if (failed) {
+    return <View style={styles.hostStack}>
+      <Text accessibilityRole="alert" style={styles.hostError}>{failed}</Text>
+      <Button label="Try again" tone="surface" palette={formPalette}
+        onPress={() => setAttempt(current => current + 1)} />
+    </View>;
+  }
+  return <Text style={styles.hostBody}>
+    {planning ? `Adding “${vals.title || action.title}” to Planning…` : `Hiding “${vals.title || action.title}” from Discover…`}
+  </Text>;
+}
+
 function ActionBody({ action, onClose }) {
   if (!action) return null;
   if (action.modal === 'lists') return <ListsAction action={action} onClose={onClose} />;
   if (action.modal === 'track') return <TrackAction action={action} onClose={onClose} />;
-  if (action.kind === 'post') {
-    return <Text style={styles.hostBody}>Discover plan and hide use the existing server POST contract. The native write adapter is not ported yet.</Text>;
-  }
+  if (action.kind === 'post') return <DiscoverAction action={action} onClose={onClose} />;
   return <Text style={styles.hostBody}>This link is routed by the platform navigation adapter.</Text>;
+}
+
+function moveByStep(order, key, step) {
+  const index = order.indexOf(key);
+  if (index < 0) return order;
+  const target = step === 'first' ? 0
+    : step === 'last' ? order.length - 1
+      : step === 'back' ? Math.max(0, index - 1)
+        : step === 'next' ? Math.min(order.length - 1, index + 1) : index;
+  if (target === index) return order;
+  const next = [...order];
+  next.splice(index, 1);
+  next.splice(target, 0, key);
+  return next;
+}
+
+function applyMediaCardChange(model, change) {
+  if (!change) return model;
+  const next = { ...model };
+  if (Object.prototype.hasOwnProperty.call(change, 'status')) {
+    next.statusChip = change.status
+      ? { kind: 'status', status: change.status, hideOnMobile: false }
+      : { kind: 'no-status', hideOnMobile: false };
+  }
+  if (Object.prototype.hasOwnProperty.call(change, 'score') && next.rating) {
+    next.rating = {
+      ...next.rating,
+      value: change.score,
+      label: change.score == null ? null : String(change.score),
+    };
+  }
+  return next;
 }
 
 export default function MediaCardSlot({ onOpenDetail }) {
   const { width } = useWindowDimensions();
   const [ratings, setRatings] = useState({});
   const [pendingAction, setPendingAction] = useState(null);
+  const [order, setOrder] = useState(() => demoItems.map(item => item.key));
+  const [changes, setChanges] = useState({});
+  const [actionError, setActionError] = useState('');
   const columns = width >= 760 ? 4 : width >= 560 ? 3 : 2;
   const cardWidth = Math.min(180, Math.max(120, (width - 32 - (columns - 1) * spacing.md) / columns));
 
+  useEffect(() => subscribeMediaCardChange(change => {
+    const keys = [];
+    if (change.identity) keys.push(identityKey(change.identity));
+    if (Array.isArray(change.identities)) keys.push(...change.identities.map(identityKey));
+    if (!keys.length) return;
+    setChanges(current => {
+      const next = { ...current };
+      keys.forEach(key => { next[key] = { ...(next[key] || {}), ...change }; });
+      return next;
+    });
+  }), []);
+
+  async function rate(item, score) {
+    setRatings(current => ({ ...current, [item.key]: score }));
+    emitMediaCardChange({ identity: item.model.identity, source: 'rating', score });
+    if (!hasMediaCardTransport()) return;
+    try {
+      await saveScore(item.model.identity, score);
+    } catch (error) {
+      setRatings(current => {
+        const next = { ...current };
+        delete next[item.key];
+        return next;
+      });
+      setActionError(error.message || 'Could not save this rating.');
+    }
+  }
+
+  async function reorder(item, step) {
+    const next = moveByStep(order, item.key, step);
+    if (next === order) return;
+    const previous = order;
+    setOrder(next);
+    setActionError('');
+    const ordering = item.model.actions?.ordering;
+    if (!hasMediaCardTransport() || !ordering) return;
+    try {
+      await reorderListItem(ordering, step);
+    } catch (error) {
+      setOrder(previous);
+      setActionError(error.message || 'Could not reorder this item.');
+    }
+  }
+
+  const items = order.map(key => demoItems.find(item => item.key === key)).filter(Boolean);
+
   return <>
     <View style={styles.grid}>
-      {demoItems.map(item => {
+      {items.map(item => {
         const value = ratings[item.key];
-        const model = value === undefined ? item.model : {
-          ...item.model,
-          rating: item.model.rating && {
-            ...item.model.rating,
-            value,
-            label: value == null ? null : String(value),
-          },
-        };
+        let model = item.model;
+        if (value !== undefined) {
+          model = {
+            ...model,
+            rating: model.rating && {
+              ...model.rating,
+              value,
+              label: value == null ? null : String(value),
+            },
+          };
+        }
+        model = applyMediaCardChange(model, changes[identityKey(item.model.identity)]);
         return <MediaCardView key={item.key} model={model} labels={labels} palette={mediaCardPalette}
           width={cardWidth} onOpen={onOpenDetail}
           onOpenLink={onOpenDetail}
           onAction={setPendingAction}
+          onReorder={step => reorder(item, step)}
           renderActionIcon={renderActionIcon}
-          onRate={score => setRatings(current => ({ ...current, [item.key]: score }))}
-          renderRating={({ value, label, scaleMax, palette, onSelect }) => <RatingStars
-            scaleMax={scaleMax} value={value} label={label} onSelect={onSelect} palette={palette}
+          onRate={score => rate(item, score)}
+          renderRating={({ value: score, label, scaleMax, palette, onSelect }) => <RatingStars
+            scaleMax={scaleMax} value={score} label={label} onSelect={onSelect} palette={palette}
             renderStar={lit => <Text style={[styles.pickerStar, { color: lit ? palette.lit : palette.unlit }]}>★</Text>} />} />;
       })}
     </View>
+    {actionError ? <Text role="status" accessibilityRole="alert" style={styles.actionError}>{actionError}</Text> : null}
     <MediaCardActionHost action={pendingAction} open={!!pendingAction} labels={labels}
       palette={mediaCardPalette} onClose={() => setPendingAction(null)}>
-      <ActionBody key={pendingAction?.target || 'closed'} action={pendingAction}
+      <ActionBody key={pendingAction?.target || pendingAction?.title || 'closed'} action={pendingAction}
         onClose={() => setPendingAction(null)} />
     </MediaCardActionHost>
   </>;
@@ -675,4 +962,7 @@ const styles = StyleSheet.create({
   pickerStar: { fontSize: 20 },
   actionGlyph: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
   hostBody: { color: '#a1a1aa', fontSize: 13, lineHeight: 19 },
+  hostStack: { gap: spacing.sm },
+  hostError: { color: '#f87171', fontSize: 12, lineHeight: 17 },
+  actionError: { color: '#f87171', fontSize: 12, lineHeight: 17 },
 });

@@ -40,20 +40,51 @@ function queryString(query = {}) {
 }
 
 export function mediaPath(identity) {
-  const { mediaType, source, mediaId } = identity || {};
-  return `/api/v1/media/${encodeURIComponent(mediaType)}/${encodeURIComponent(source)}/${encodeURIComponent(mediaId)}`;
+  const { mediaType, source, mediaId, seasonNumber, episodeNumber } = identity || {};
+  const pathType = mediaType === 'episode' ? 'tv' : mediaType;
+  let path = `/api/v1/media/${encodeURIComponent(pathType)}/${encodeURIComponent(source)}/${encodeURIComponent(mediaId)}`;
+  if (seasonNumber != null) path += `/${encodeURIComponent(seasonNumber)}`;
+  if (episodeNumber != null) path += `/${encodeURIComponent(episodeNumber)}`;
+  return path;
 }
 
-async function request(path, { method = 'GET', body, query } = {}) {
+function episodeActionPath(identity, action) {
+  const { source, mediaId, seasonNumber, episodeNumber } = identity || {};
+  return `/api/v1/media/tv/${encodeURIComponent(source)}/${encodeURIComponent(mediaId)}`
+    + `/${encodeURIComponent(seasonNumber)}/episodes/${encodeURIComponent(episodeNumber)}/${action}/`;
+}
+
+export function mediaCardVariant(identity) {
+  if (!identity) return '';
+  if (identity.mediaType === 'episode') return 'episode';
+  if (identity.mediaType === 'music') return 'song';
+  if (identity.mediaType === 'podcast' && identity.episodeNumber != null) return 'song';
+  if (identity.episodeNumber != null) return 'episode';
+  return '';
+}
+
+async function request(path, { method = 'GET', body, query, form } = {}) {
   const fetcher = config.fetchImpl || fetch;
   const headers = { Accept: 'application/json' };
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  let payload;
+  if (body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+    payload = JSON.stringify(body);
+  }
+  if (form !== undefined) {
+    headers['Content-Type'] = 'application/x-www-form-urlencoded';
+    const params = new URLSearchParams();
+    Object.entries(form).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) params.append(key, String(value));
+    });
+    payload = params.toString();
+  }
   if (config.token) headers.Authorization = `Bearer ${config.token}`;
   if (config.csrfToken) headers['X-CSRFToken'] = config.csrfToken;
   const response = await fetcher(`${config.baseUrl}${path}${queryString(query)}`, {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: payload,
     credentials: config.token ? 'omit' : 'include',
   });
   const text = await response.text();
@@ -244,7 +275,61 @@ async function loadDiscoverTab(identity, detail) {
   return { hidden: Boolean(entry), itemId: itemId || null, canToggle: Boolean(itemId) };
 }
 
+function todayText() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function variantFields(identity, consumption) {
+  const podcast = identity.mediaType === 'podcast';
+  return [field(
+    'end_date',
+    mediaCardVariant(identity) === 'episode' ? 'Watch date' : (podcast ? 'Play date' : 'Listen date'),
+    'date',
+    dateText(consumption && consumption.end_date) || todayText(),
+  )];
+}
+
+function variantModel(identity, detail, consumption) {
+  const variant = mediaCardVariant(identity);
+  const podcast = identity.mediaType === 'podcast';
+  return {
+    mediaType: identity.mediaType,
+    variant,
+    title: (detail && detail.title) || identity.title || '',
+    subtitle: identity.subtitle || '',
+    action: variant === 'episode' ? episodeActionPath(identity, 'watch') : '',
+    deleteAction: variant === 'episode' ? episodeActionPath(identity, 'drop') : '',
+    fields: variantFields(identity, consumption),
+    notes: null,
+    submitLabel: variant === 'episode' ? 'Add watch' : (podcast ? 'Add play' : 'Add listen'),
+    deleteLabel: variant === 'episode' ? 'Drop' : 'Delete',
+    trackTime: false,
+  };
+}
+
+function needsVariant(identity) {
+  return mediaCardVariant(identity) !== '';
+}
+
 export async function loadTrack(identity) {
+  if (needsVariant(identity)) {
+    if (mediaCardVariant(identity) === 'episode') {
+      const state = await request(`${mediaPath(identity)}/state/`);
+      const consumption = currentConsumption(state);
+      return {
+        tracked: Boolean(state.tracked),
+        title: (state.media && state.media.title) || identity.title || '',
+        model: variantModel(identity, state.media, consumption),
+        tabs: [],
+      };
+    }
+    return {
+      tracked: false,
+      title: identity.title || '',
+      model: variantModel(identity, null, null),
+      tabs: [],
+    };
+  }
   const state = await request(`${mediaPath(identity)}/state/`);
   let detail = null;
   try { detail = await request(`${mediaPath(identity)}/`); } catch { detail = null; }
@@ -354,6 +439,37 @@ function trackBody(model, values) {
 }
 
 export async function saveTrack(identity, model, values, tracked) {
+  if (model && model.variant === 'episode') {
+    await request(episodeActionPath(identity, 'watch'), {
+      method: 'POST',
+      body: { end_date: values.end_date || null },
+    });
+    return { tracked: true };
+  }
+  if (model && model.variant === 'song') {
+    if (identity.mediaType === 'podcast') {
+      await request('/api/v1/podcasts/episodes/plays/', {
+        method: 'POST',
+        body: {
+          show_id: identity.showId,
+          episode_id: identity.trackId,
+          episode_uuid: identity.mediaId,
+          end_date: values.end_date || null,
+        },
+      });
+    } else {
+      await request('/api/v1/music/songs/plays/', {
+        method: 'POST',
+        body: {
+          album_id: identity.albumId,
+          track_id: identity.trackId,
+          recording_id: identity.recordingId,
+          end_date: values.end_date || null,
+        },
+      });
+    }
+    return { tracked: true };
+  }
   const body = trackBody(model, values);
   if (tracked) {
     await request(`${mediaPath(identity)}/`, { method: 'PATCH', body });
@@ -371,7 +487,11 @@ export async function saveTrack(identity, model, values, tracked) {
   return { tracked: true };
 }
 
-export async function deleteTrack(identity) {
+export async function deleteTrack(identity, model) {
+  if (model && model.variant === 'episode') {
+    await request(episodeActionPath(identity, 'drop'), { method: 'POST', body: {} });
+    return;
+  }
   await request(`${mediaPath(identity)}/`, { method: 'DELETE' });
 }
 
@@ -392,10 +512,55 @@ export async function saveArtwork(identity, imageUrl) {
   await request(`${mediaPath(identity)}/`, { method: 'PATCH', body: { image_url: imageUrl } });
 }
 
+export async function saveScore(identity, score) {
+  if (mediaCardVariant(identity) === 'episode') {
+    await request(episodeActionPath(identity, 'score'), { method: 'PATCH', body: { score } });
+    return { score };
+  }
+  if (identity.mediaType === 'podcast' && identity.showId != null) {
+    await request(`/api/v1/podcasts/shows/${encodeURIComponent(identity.showId)}/`, {
+      method: 'PATCH',
+      body: { score },
+    });
+    return { score };
+  }
+  if (identity.mediaType === 'music' && identity.musicId != null) {
+    await request(`/api/v1/music/tracks/${encodeURIComponent(identity.musicId)}/score/`, {
+      method: 'PATCH',
+      body: { score },
+    });
+    return { score };
+  }
+  await request(`${mediaPath(identity)}/`, { method: 'PATCH', body: { score } });
+  return { score };
+}
+
 export async function setDiscoverHidden(itemId, hidden) {
   await request('/api/v1/discover/hidden/', {
     method: 'POST',
     body: { item_id: Number(itemId), action: hidden ? 'hide' : 'unhide' },
   });
   return { hidden };
+}
+
+export async function runDiscoverAction(vals) {
+  const { action, ...fields } = vals || {};
+  if (action !== 'planning' && action !== 'dismiss') {
+    throw new Error('Unsupported Discover action.');
+  }
+  await request('/discover/action', { method: 'POST', form: { ...fields, action } });
+  return { action };
+}
+
+export async function reorderListItem(ordering, step) {
+  const listId = ordering && (ordering.listId || ordering.list_id);
+  const itemId = ordering && ordering.itemId;
+  if (!listId || itemId == null) {
+    throw new Error('This list item cannot be reordered.');
+  }
+  await request(`/api/v1/lists/${encodeURIComponent(listId)}/items/reorder/`, {
+    method: 'POST',
+    body: { item_id: Number(itemId), action: step },
+  });
+  return { itemId, action: step };
 }

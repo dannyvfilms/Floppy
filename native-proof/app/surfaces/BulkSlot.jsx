@@ -4,6 +4,7 @@ import { BulkActionDialog, BulkOptionRow, BulkToolbar } from '../../../frontend/
 import { Button } from '../../../frontend/ui/Button';
 import { MediaCardView } from '../../../frontend/ui/MediaCardView';
 import MediaCardSlot from './MediaCardSlot';
+import { emitMediaCardChange } from './mediaCardEvents';
 import { mediaCardPalette, palette, radius, spacing } from '../theme';
 
 export const surface = {
@@ -11,7 +12,7 @@ export const surface = {
   title: 'Bulk selection and actions',
   where: 'Library, custom lists and smart lists',
   status: 'ported',
-  note: 'Library select mode, card selection, selected count, Update Status, Add to List, Add to Collection, Apply Tag, confirmation dialogs, busy/partial-failure results and clear/reset use shared bulk presentation. The Add Plays history job dock and server write transport remain web-owned.',
+  note: 'Library select mode, card selection, selected count, Update Status, Add to List, Add to Collection, Apply Tag, confirmation dialogs, busy/partial-failure results and clear/reset use shared bulk presentation. A finished status action publishes a card-change event so the card grid reflects it. The Add Plays history job dock and server write transport remain web-owned.',
 };
 
 const STATUS_OPTIONS = [
@@ -39,6 +40,7 @@ const CARDS = [
     id: 'quiet-orbit',
     model: {
       mediaType: 'tv',
+      identity: { mediaType: 'tv', source: 'tmdb', mediaId: '76479' },
       shape: 'poster',
       video: false,
       image: { src: 'https://picsum.photos/seed/floppy-orbit/400/600', fallback: '', source: 'primary' },
@@ -58,6 +60,7 @@ const CARDS = [
     id: 'signal-static',
     model: {
       mediaType: 'podcast',
+      identity: { mediaType: 'podcast', source: 'pocketcasts', mediaId: 'signal-carrier-wave', episodeNumber: 3 },
       shape: 'square',
       video: false,
       image: { src: 'https://picsum.photos/seed/floppy-signal/400/400', fallback: '', source: 'primary' },
@@ -77,6 +80,7 @@ const CARDS = [
     id: 'home-studio',
     model: {
       mediaType: 'video',
+      identity: { mediaType: 'movie', source: 'tmdb', mediaId: '603' },
       shape: 'landscape',
       video: true,
       image: { src: 'https://picsum.photos/seed/floppy-studio/800/450', fallback: '', source: 'primary' },
@@ -96,6 +100,7 @@ const CARDS = [
     id: 'paper-lanterns',
     model: {
       mediaType: 'book',
+      identity: { mediaType: 'book', source: 'openlibrary', mediaId: 'OL27448W' },
       shape: 'poster',
       video: false,
       publicView: true,
@@ -181,6 +186,15 @@ export default function BulkSlot({ onOpenDetail }) {
   }
 
   function finish(text, tone = 'success') {
+    const identities = CARDS
+      .filter(card => selectedIds.includes(card.id))
+      .map(card => card.model.identity)
+      .filter(Boolean);
+    emitMediaCardChange({
+      source: 'bulk',
+      identities,
+      ...(dialog === 'status' ? { status } : {}),
+    });
     setBusy(false);
     setDialog(null);
     setSelectedIds([]);
