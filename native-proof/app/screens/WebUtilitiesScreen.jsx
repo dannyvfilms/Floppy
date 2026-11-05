@@ -12,7 +12,7 @@ export const surface = {
   id: 'WEB-UTILITIES',
   title: 'Clipboard and install',
   where: 'Copy controls, install feedback and static cache',
-  status: 'ported',
+  status: 'in_progress',
   note: 'Copy fields, install/launch feedback and web-only service-worker status render here. The native app uses its clipboard and reports the browser cache as not applicable.',
 };
 

@@ -7,7 +7,7 @@ import { palette } from '../theme';
 
 export const surface = {
   id: 'ERRORS-DOCS',
-  status: 'ported',
+  status: 'in_progress',
   title: 'Errors and API docs',
   where: '400/403/CSRF/404/500 recovery, safe diagnostics and API documentation',
   note: 'Self-contained error recovery, copyable diagnostics and the API reference render with shared cards, chips, copy blocks and buttons. The browser error templates and API document remain the web fallback; no browser adapter is mounted. iOS and Android runtime are unverified.',
