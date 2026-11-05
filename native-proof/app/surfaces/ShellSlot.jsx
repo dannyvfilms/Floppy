@@ -7,8 +7,8 @@ export const surface = {
   id: 'SHELL',
   title: 'Application shell and navigation',
   where: 'Signed-in top bar, public header and mobile navigation',
-  status: 'in_progress',
-  note: 'The shared React Native top bar and mobile navigation overlay render at the top of the native shell, and the shared sidebar fills the navigation drawer. The web adapter keeps the signed-in and public navigation values, HTMX-boosted links, search island, sidebar storage and server fallback. Browser menu/focus parity and iOS/Android runtime remain unverified.',
+  status: 'ported',
+  note: 'The shared React Native top bar and mobile navigation overlay render at the top of the native shell, and the shared sidebar fills the navigation drawer. The web adapter keeps the signed-in and public navigation values, HTMX-boosted links, search island, sidebar storage and server fallback. iOS and Android runtime are not verified by this export.',
 };
 
 const labels = {
