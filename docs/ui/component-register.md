@@ -63,7 +63,7 @@ Page composition index (existing stack except shared card shells and the full An
 
 - Home: `SHELL`, `HOME`, `RAILS`, `MEDIA-CARD`, `PLAYBACK`, `PROGRESS`.
 - Library/search/discover: `LIBRARY`, `FILTERS`, `TABLES`, `BULK`, `SEARCH`, `DISCOVER`, `MEDIA-CARD`.
-- Detail: `DETAIL`, `CHILDREN`, `RATING`, `TRACKING`, `NOTES`, `ARTWORK`, `MUSIC`, `PEOPLE`, `PROGRESS`, `INTEGRATION-PANELS`.
+- Detail: `DETAIL`, `DETAIL-RELATED`, `CHILDREN`, `RATING`, `TRACKING`, `NOTES`, `ARTWORK`, `MUSIC`, `PEOPLE`, `PROGRESS`, `INTEGRATION-PANELS`.
 - History/statistics/calendar: `HISTORY`, `STATISTICS`, `RELEASE-CALENDAR`, `DATE-TIME`, `FILTERS`.
 - Collection/tags/lists: `OWNERSHIP`, `CUSTOM-FIELDS`, `TAGS`, `LISTS`, `SMART-RULES`, `LIST-CURATION`, `TIERS`; shared cards/filters/tables.
 - Settings: `SET-*`, `FORM-CONTROLS`, `AUTH`, `ONBOARDING`; integration routes also use `MATCH-REVIEW`, `DEVICE-CONNECT`, `STREMIO`.
@@ -714,10 +714,12 @@ can inform a focused completion pass.
 ### DETAIL-RELATED — Related-media sections and Steam DLC cards
 
 - Purpose/usage: game/media detail related sections (IGDB DLCs, expansions, remakes) plus display-only Steam DLC cards when IGDB lists none.
-- Implementation: legacy Django template `src/templates/app/components/detail_secondary_content.html`; heading via `related_section_label` in `src/app/templatetags/app_tags.py`; data from `app.providers.igdb.get_steam_dlcs`.
-- Contract: Steam DLC cards are untracked links to the Steam store (title, header image, URL); IGDB DLCs remain tracked media cards.
-- Status: legacy (not React-owned). Deferred: the section is Alpine-driven and shares one `x-data` grid with the media card; porting needs the shared media card island first. Reopen when `media_card` ships as a React component.
-- Validation: `app.tests.providers.test_metadata` (`get_steam_dlcs`), `app.tests.test_templatetags`. Browser/iOS/Android verification: none.
+- Implementation: universal `frontend/ui/DetailRelated.jsx` (`DetailRelated`) over the shared `MediaCardView` card; `frontend/ui/DetailRelatedTheme.web.jsx` and `frontend/ui/mountDetailRelated.jsx` mount it in the browser; `src/templates/app/components/detail_related.html` keeps a plain server-rendered grid as the fallback; the `detail_related` tag in `src/users/templatetags/ui_tags.py` builds escaped card props from `app.card_surfaces` and keeps labels server-localized; data comes from `app.providers.igdb.get_steam_dlcs` and the existing related-media enrichment.
+- Contract: each related section has a server-supplied order and label (`related_section_label`), the shared `MediaCardView` cards preserve tracked status, progress, rating, hover/track/list/history actions and navigation, and the show-more control reveals the next two rows. Steam DLC cards are display-only links to the Steam store (title, header image, URL); they are never tracked. Empty and loading states are presentation-owned. The native Detail screen renders the same sections through `native-proof/app/surfaces/DetailRelatedSlot.jsx`; the web detail mounts over its server fallback.
+- Status: `Partial / coexisting`. The shared component owns the native related sections and Steam DLCs and is mounted on web detail; the server grid remains the no-JavaScript/chunk-failure fallback. Related cards still route through the existing card action contracts and the rating endpoint; no server data or provider semantics are recomputed in the client.
+- Verification: `app.tests.views.test_media_details` and `app.tests.test_templatetags` cover the server fallback, related grids and DLC label casing; `npm run check:ui-architecture`, `npm run test:ui-architecture`, `npm run build:ui`, `npm run check:ui` and the Expo export `--platform all` compile the shared component and adapters. No browser interaction pass was performed; iOS and Android runtime verification were not performed (the Expo export is a build check only).
+- Validation targets: `src/app/tests/views/test_media_details.py`, `src/app/tests/test_templatetags.py`, `src/app/tests/providers/test_metadata.py` (`get_steam_dlcs`).
+- Retirement condition: remove the server fallback grid and the legacy `detail_secondary_content.html` related/DLC markup after a browser pass verifies the mounted shared sections with tracked cards, show-more, rating and action behavior and the no-JS fallback is no longer required.
 
 ## Feature interfaces
 

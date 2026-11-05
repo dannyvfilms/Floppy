@@ -134,6 +134,26 @@
         }
       }
     },
+    "frontend/ui/DetailRelated.jsx": {
+      "components": [
+        "DetailRelated"
+      ],
+      "register": "DETAIL-RELATED",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The browser adapter mounts the shared related sections and Steam DLC links over the server fallback; build and targeted Django tests only, no browser pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled and placed on the native Detail screen; not exercised on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled and placed on the native Detail screen; not exercised on a simulator or device."
+        }
+      }
+    },
     "frontend/ui/DetailChildren.jsx": {
       "components": [
         "DetailChildren",
@@ -2578,6 +2598,14 @@
     "frontend/ui/mountDetailComposition.jsx": {
       "register": "DETAIL",
       "purpose": "Django/browser integration for the shared detail synopsis block."
+    },
+    "frontend/ui/DetailRelatedTheme.web.jsx": {
+      "register": "DETAIL-RELATED",
+      "purpose": "Resolve the browser theme and route card opens, hover actions, ratings and Steam DLC links to the existing navigation, modal, htmx and store boundaries."
+    },
+    "frontend/ui/mountDetailRelated.jsx": {
+      "register": "DETAIL-RELATED",
+      "purpose": "Django/browser integration for the shared related-media sections and Steam DLC links."
     },
     "frontend/ui/mountFilterBar.jsx": {
       "register": "FILTERS",

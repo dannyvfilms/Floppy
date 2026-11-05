@@ -369,48 +369,9 @@
             {% include "app/components/detail_notes_section.html" %}
           </div>
         {% endif %}
-        {% if media.related %}
+        {% if media.related or media.steam_dlcs %}
           <div {% detail_section_attrs user detail_family "content" "related" %}>
-          {% for name, related_items in media.related.items %}
-            {% if name != "seasons" and name != "recommendations" and related_items %}
-              <section class="mb-8"
-                       x-data="{ detailGridExpanded: false, detailGridVisibleCount: 0, syncDetailGrid() { this.$nextTick(() => { const grid = this.$refs.detailGrid; if (!grid) return; const templateColumns = window.getComputedStyle(grid).gridTemplateColumns || ''; const columnCount = templateColumns.split(' ').filter(Boolean).length || 1; this.detailGridVisibleCount = Math.max(columnCount, 1) * 2; }); }, shouldShowDetailCard(index) { return this.detailGridExpanded || index < this.detailGridVisibleCount; }, canToggleDetailGrid(total) { return this.detailGridVisibleCount > 0 && total > this.detailGridVisibleCount; } }"
-                       x-init="syncDetailGrid()"
-                       @resize.window.debounce.100ms="syncDetailGrid()">
-                {% with related_label=name|related_section_label %}
-                  <h2 class="text-xl font-bold mb-4">{% translate related_label %}</h2>
-                {% endwith %}
-                <div x-ref="detailGrid" class="detail-media-grid">
-                  {% for result in related_items %}
-                    <div x-show="shouldShowDetailCard({{ forloop.counter0 }})">
-                      {% media_card "related" item=result.item media=result.media title=result.item.season_header_title|default:result.item.title active=media.media_id|str_equals:result.item.media_id %}
-                    </div>
-                  {% endfor %}
-                </div>
-                <button x-show="canToggleDetailGrid({{ related_items|length }})"
-                        @click="detailGridExpanded = !detailGridExpanded"
-                        class="mt-4 inline-flex text-sm font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer">
-                  {% translate "Show less" as media_i18n_0 %}{% translate "Show more" as media_i18n_1 %}<span x-text="detailGridExpanded ? '{{ media_i18n_0|escapejs }}' : '{{ media_i18n_1|escapejs }}'"></span>
-                </button>
-              </section>
-            {% endif %}
-          {% endfor %}
-          {% if media.steam_dlcs %}
-            <section class="mb-8">
-              <h2 class="text-xl font-bold mb-4">{% translate "DLCs" %}</h2>
-              <div class="detail-media-grid">
-                {% for dlc in media.steam_dlcs %}
-                  <a href="{{ dlc.url }}"
-                     target="_blank"
-                     rel="noopener noreferrer"
-                     class="block">
-                    {% if dlc.image %}<img src="{{ dlc.image }}" alt="" loading="lazy" class="w-full rounded-lg aspect-[460/215] object-cover">{% endif %}
-                    <p class="mt-2 text-sm font-medium">{{ dlc.title }}</p>
-                  </a>
-                {% endfor %}
-              </div>
-            </section>
-          {% endif %}
+            {% detail_related %}
           </div>
         {% endif %}
 

@@ -501,6 +501,77 @@ def detail_composition(context, part="synopsis"):
     })
 
 
+@register.simple_tag(takes_context=True)
+def detail_related(context):
+    """Render the related-media sections and Steam DLCs with a server fallback."""
+    from django.utils.translation import gettext as _
+
+    from app.card_surfaces import card_context
+    from app.templatetags.app_tags import related_section_label
+
+    media = context.get("media") or {}
+    page_context = context.flatten()
+    sections = []
+    for name, related_items in (media.get("related") or {}).items():
+        if name in {"seasons", "recommendations"} or not related_items:
+            continue
+        items = []
+        for index, result in enumerate(related_items):
+            item = result.get("item") if isinstance(result, dict) else result
+            if not item:
+                continue
+            title = item.get("season_header_title") or item.get("title") or ""
+            card = card_context(page_context, "related", {
+                "item": item,
+                "media": result.get("media") if isinstance(result, dict) else None,
+                "title": title,
+            })
+            model = (card.get("react_props") or {}).get("model")
+            if model:
+                items.append({
+                    "key": model.get("cardKey") or f"{name}-{index}",
+                    "active": bool(item.get("media_id")) and str(item.get("media_id")) == str(media.get("media_id")),
+                    "model": model,
+                })
+        if items:
+            sections.append({
+                "id": name,
+                "label": str(_(related_section_label(name))),
+                "items": items,
+            })
+
+    steam_dlcs = [
+        {
+            "title": str(dlc.get("title") or ""),
+            "image": str(dlc.get("image") or ""),
+            "url": str(dlc.get("url") or ""),
+        }
+        for dlc in (media.get("steam_dlcs") or [])
+        if dlc.get("title") and dlc.get("url")
+    ]
+    labels = {
+        "showMore": str(_("Show more")),
+        "showLess": str(_("Show less")),
+        "dlcs": str(_("DLCs")),
+        "empty": str(_("No related media available.")),
+        "loading": str(_("Loading related media…")),
+        "altTitle": str(_("Show alternative title")),
+        "nextEpisode": str(_("Jump to next episode")),
+        "noStatus": str(_("No Status")),
+        "rate": str(_("Rate")),
+        "close": str(_("Close")),
+    }
+    if not sections and not steam_dlcs:
+        return ""
+    props = {"model": {"sections": sections, "steamDlcs": steam_dlcs}, "labels": labels}
+    return render_to_string("app/components/detail_related.html", {
+        "props": props,
+        "props_id": f"detail-related-{uuid4().hex}",
+        "sections": sections,
+        "steam_dlcs": steam_dlcs,
+    }, request=context.get("request"))
+
+
 def _people_plain_text(value):
     """Turn provider-authored HTML into the plain text the shared hero renders."""
     import re

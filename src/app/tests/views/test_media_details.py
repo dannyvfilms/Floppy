@@ -1079,6 +1079,71 @@ class MediaDetailsViewTests(TestCase):
         self.assertContains(response, "No collection data available")
 
     @patch("app.providers.services.get_media_metadata")
+    def test_related_sections_and_steam_dlcs_render_shared_island(
+        self, mock_get_metadata
+    ):
+        mock_get_metadata.return_value = {
+            "media_id": "100",
+            "title": "Test Game",
+            "media_type": MediaTypes.GAME.value,
+            "source": Sources.IGDB.value,
+            "image": "http://example.com/game.jpg",
+            "synopsis": "Test game",
+            "details": {},
+            "related": {
+                "dlcs": [
+                    {
+                        "media_id": "101",
+                        "title": "Test DLC",
+                        "media_type": MediaTypes.GAME.value,
+                        "source": Sources.IGDB.value,
+                        "image": "http://example.com/dlc.jpg",
+                    }
+                ],
+                "standalone_expansions": [
+                    {
+                        "media_id": "102",
+                        "title": "Test Expansion",
+                        "media_type": MediaTypes.GAME.value,
+                        "source": Sources.IGDB.value,
+                        "image": "http://example.com/expansion.jpg",
+                    }
+                ],
+            },
+            "steam_dlcs": [
+                {
+                    "title": "Steam DLC",
+                    "image": "http://example.com/steam.jpg",
+                    "url": "https://store.steampowered.com/app/1/",
+                }
+            ],
+            "cast": [],
+            "crew": [],
+        }
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.IGDB.value,
+                    "media_type": MediaTypes.GAME.value,
+                    "media_id": "100",
+                    "title": "test-game",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn("data-detail-related-root", content)
+        self.assertIn(">DLCs</h2>", content)
+        self.assertIn(">Standalone Expansions</h2>", content)
+        self.assertIn('"steamDlcs"', content)
+        self.assertIn("https://store.steampowered.com/app/1/", content)
+        self.assertIn('"title": "Test DLC"', content)
+
+    @patch("app.providers.services.get_media_metadata")
     def test_media_details_related_sections_use_mobile_card_grid_preferences(
         self, mock_get_metadata
     ):
