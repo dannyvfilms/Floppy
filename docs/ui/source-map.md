@@ -384,6 +384,7 @@ in the register.
 
 - `frontend/ui/Rail.jsx`
 - `frontend/ui/Rail.web.jsx`
+- `frontend/ui/mountRails.jsx`
 - `native-proof/app/surfaces/RailsSlot.jsx` (native placement on the Home and Discover screens)
 - `src/static/js/horizontal-scroll.js`
 - `src/static/js/horizontal-scroll.selfcheck.mjs`

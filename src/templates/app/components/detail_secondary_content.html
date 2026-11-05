@@ -564,7 +564,7 @@
 
         {% if media.related.recommendations %}
           <section class="mb-8" {% detail_section_attrs user detail_family "content" "recommendations" %}>
-            {% include "app/components/_scrollable_row.html" with row=recommendations_row grid_template="app/components/home_grid.html" collapse_key="detail-recommendations-open" %}
+            {% include "app/components/_scrollable_row.html" with row=recommendations_row grid_template="app/components/home_grid.html" collapse_key="detail-recommendations-open" rails_mount=True %}
           </section>
         {% endif %}
 

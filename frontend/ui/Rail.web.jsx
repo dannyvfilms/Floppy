@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Rail as SharedRail } from './Rail';
+import { Rail as SharedRail } from './Rail.jsx';
 
 const interactiveSelector = "button, input, select, textarea, [role='button']";
 

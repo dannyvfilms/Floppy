@@ -34,6 +34,7 @@ export function Rail({
   viewAll,
   onSort,
   sortLabel,
+  onTitlePress,
   onLoadMore,
   loadingLabel = 'Loading more',
   emptyLabel,
@@ -71,7 +72,7 @@ export function Rail({
 
   useEffect(() => {
     loadGuard.current = false;
-  }, [items.length, hasMore]);
+  }, [items.length, hasMore, loadingMore]);
 
   const requestMore = useCallback(() => {
     if (!onLoadMore || !canLoadMore || loadingMore || loadGuard.current) return;
@@ -135,16 +136,20 @@ export function Rail({
   const atEnd = metrics.content > 0 && metrics.x + metrics.width >= metrics.content - 4;
   const canScrollPrev = !atStart;
   const canScrollNext = canLoadMore || (metrics.content > metrics.width + 1 && !atEnd);
+  const titleContent = <>
+    <Text role="heading" aria-level={3} style={[styles.title, { color: palette.text }]}>{title}</Text>
+    {titleDetail ? <>
+      <Text aria-hidden style={[styles.detail, { color: palette.text }]}>•</Text>
+      <Text role="heading" aria-level={3} style={[styles.detail, { color: palette.text }]}>{titleDetail}</Text>
+    </> : null}
+  </>;
 
   return <View style={styles.wrapper} testID={testID}>
     {(title || summaryInline || viewAll || collapsible) ? <View style={styles.headingRow}>
       <View style={styles.headingText}>
         <View style={styles.titleRow}>
-          <Text role="heading" aria-level={3} style={[styles.title, { color: palette.text }]}>{title}</Text>
-          {titleDetail ? <>
-            <Text aria-hidden style={[styles.detail, { color: palette.text }]}>•</Text>
-            <Text role="heading" aria-level={3} style={[styles.detail, { color: palette.text }]}>{titleDetail}</Text>
-          </> : null}
+          {onTitlePress ? <Pressable accessibilityRole="link" accessibilityLabel={label}
+            onPress={onTitlePress} style={styles.titleLink}>{titleContent}</Pressable> : titleContent}
           {summaryInline ? (onSort
             ? <Pressable accessibilityRole="button" accessibilityLabel={sortLabel || summaryInline}
               onPress={onSort} style={styles.sortButton}>
@@ -205,6 +210,7 @@ const styles = StyleSheet.create({
   headingRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
   headingText: { flex: 1, minWidth: 0, gap: 2 },
   titleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+  titleLink: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
   title: { fontSize: 18, fontWeight: '600', lineHeight: 22 },
   detail: { fontSize: 18, fontWeight: '600', lineHeight: 22 },
   summary: { fontSize: 13, lineHeight: 18 },
