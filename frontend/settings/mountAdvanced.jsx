@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { mountRoot } from './root';
 import {
   CacheManagementCard,
@@ -32,20 +32,31 @@ export const systemPalette = {
   focusStyle: {},
 };
 
-function submitForm(url, csrfToken, fields = {}) {
-  const form = document.createElement('form');
-  form.method = 'post';
-  form.action = url;
-  Object.entries({ csrfmiddlewaretoken: csrfToken, ...fields })
-    .forEach(([name, value]) => {
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = name;
-      input.value = value == null ? '' : String(value);
-      form.append(input);
-    });
-  document.body.append(form);
-  form.submit();
+function formBody(fields = {}) {
+  const body = new URLSearchParams();
+  Object.entries(fields).forEach(([name, value]) => {
+    if (value !== undefined && value !== null) body.append(name, String(value));
+  });
+  return body;
+}
+
+async function postJson(url, csrfToken, fields = {}) {
+  const response = await fetch(url, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'X-CSRFToken': csrfToken || '',
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+    body: formBody(fields),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.message || data.error || 'The request failed.');
+  }
+  return data;
 }
 
 function openUrl(url) {
@@ -54,48 +65,131 @@ function openUrl(url) {
 
 function AdvancedAdapter({ props }) {
   const labels = props.labels || {};
-  const submit = (url, fields) => submitForm(url, props.csrfToken, fields);
+  const [logs, setLogs] = useState({ busy: false, error: '', success: '' });
+  const [image, setImage] = useState({
+    enabled: Boolean(props.imageEnabled),
+    count: props.imageCount,
+    size: props.imageSize,
+    busy: false,
+    error: '',
+    success: '',
+  });
+  const [cache, setCache] = useState({ busyKind: '', success: '' });
+
+  function downloadLogs() {
+    if (!props.urls.logs) return;
+    setLogs({ busy: true, error: '', success: '' });
+    window.location.assign(props.urls.logs);
+    window.setTimeout(() => {
+      setLogs(current => (current.busy
+        ? { busy: false, error: '', success: '' }
+        : current));
+    }, 1500);
+  }
+
+  async function saveImage(enabled) {
+    setImage(current => ({ ...current, busy: true, error: '', success: '' }));
+    try {
+      const data = await postJson(props.urls.updateImageCache, props.csrfToken, {
+        image_caching_enabled: enabled ? '1' : '',
+      });
+      setImage(current => ({
+        ...current,
+        busy: false,
+        enabled: data.imageEnabled ?? enabled,
+        success: data.message || '',
+      }));
+    } catch (failure) {
+      setImage(current => ({
+        ...current,
+        busy: false,
+        error: failure.message || labels.imageCache?.saveError || '',
+      }));
+    }
+  }
+
+  async function clearImageCache() {
+    setImage(current => ({ ...current, busy: true, error: '', success: '' }));
+    try {
+      const data = await postJson(props.urls.clearImageCache, props.csrfToken);
+      setImage(current => ({
+        ...current,
+        count: data.imageCount ?? current.count,
+        size: data.imageSize ?? current.size,
+        success: data.message || '',
+      }));
+    } catch (failure) {
+      setImage(current => ({ ...current, error: failure.message || '' }));
+      throw failure;
+    } finally {
+      setImage(current => ({ ...current, busy: false }));
+    }
+  }
+
+  async function clearCache(kind) {
+    setCache({ busyKind: kind, success: '' });
+    try {
+      const data = await postJson(props.urls.clearCaches[kind], props.csrfToken);
+      setCache({ busyKind: '', success: data.message || '' });
+    } catch (failure) {
+      setCache({ busyKind: '', success: '' });
+      throw failure;
+    }
+  }
+
   return <>
     <LogsCard isSuperuser={props.isSuperuser}
       logsSince={props.logsSince}
       lastUncleanExit={props.lastUncleanExit}
       bugReportUrl={props.bugReportUrl}
-      onDownloadLogs={() => window.location.assign(props.urls.logs)}
+      busy={logs.busy} error={logs.error} success={logs.success}
+      onDownloadLogs={downloadLogs}
       onOpenUrl={openUrl}
       palette={systemPalette}
       labels={labels.logs} />
     <ImageCacheCard isSuperuser={props.isSuperuser}
-      enabled={props.imageEnabled}
-      count={props.imageCount}
-      size={props.imageSize}
-      onSave={enabled => submit(props.urls.updateImageCache, {
-        image_caching_enabled: enabled ? '1' : '',
-      })}
-      onClear={() => {
-        submit(props.urls.clearImageCache);
-        return Promise.resolve();
-      }}
+      enabled={image.enabled}
+      count={image.count}
+      size={image.size}
+      busy={image.busy} error={image.error} success={image.success}
+      onSave={saveImage}
+      onClear={clearImageCache}
       palette={systemPalette}
       labels={labels.imageCache} />
     <CacheManagementCard
-      onClear={kind => {
-        submit(props.urls.clearCaches[kind]);
-        return Promise.resolve();
-      }}
+      busyKind={cache.busyKind} success={cache.success}
+      onClear={clearCache}
       palette={systemPalette}
       labels={labels.cache} />
   </>;
 }
 
 function ServerPortAdapter({ props }) {
-  return <ServerPortCard {...props}
-    onSave={port => submitForm(props.urls.update, props.csrfToken, {
-      action: 'save',
-      port,
-    })}
-    onReset={() => submitForm(props.urls.update, props.csrfToken, {
-      action: 'reset',
-    })}
+  const [state, setState] = useState(props);
+  const [status, setStatus] = useState({ busy: false, error: '', success: '' });
+
+  async function write(action, fields = {}) {
+    setStatus({ busy: true, error: '', success: '' });
+    try {
+      const data = await postJson(props.urls.update, props.csrfToken, {
+        action,
+        ...fields,
+      });
+      setState(current => ({ ...current, ...(data.serverPort || {}) }));
+      setStatus({ busy: false, error: '', success: data.message || '' });
+    } catch (failure) {
+      setStatus({
+        busy: false,
+        error: failure.message || '',
+        success: '',
+      });
+    }
+  }
+
+  return <ServerPortCard {...state}
+    busy={status.busy} error={status.error} success={status.success}
+    onSave={port => write('save', { port })}
+    onReset={() => write('reset')}
     palette={systemPalette} />;
 }
 

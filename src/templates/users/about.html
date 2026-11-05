@@ -50,6 +50,7 @@
       }
   }"
   @keydown.escape.window="schemaModalOpen = false"
+  @about:schema-preview.window="openSchemaViewer($event.detail.url, $event.detail.title, $event.detail.badge, $event.detail.downloadName)"
   class="bg-[var(--color-surface)] rounded-lg p-6 relative">
     <h2 class="text-2xl font-bold mb-6 text-[var(--color-text)]">{% translate "About Floppy" %}</h2>
 
@@ -360,6 +361,8 @@
       </section>
       </div>
 
+      {{ about_props.specs|json_script:"about-specs-props" }}
+      <div data-about-card-root data-props-id="about-specs-props" x-ignore>
       {# Developer & API Specifications Table #}
       <section aria-labelledby="about-api-heading" class="space-y-3">
         <div class="flex items-center gap-2 text-lg font-medium text-[var(--color-text-secondary)]">
@@ -515,6 +518,7 @@
           </div>
         </div>
       </section>
+      </div>
 
       {{ about_props.attributions|json_script:"about-attributions-props" }}
       <div data-about-card-root data-props-id="about-attributions-props" x-ignore>

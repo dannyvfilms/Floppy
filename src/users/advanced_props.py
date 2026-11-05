@@ -67,6 +67,7 @@ def _advanced_labels() -> dict[str, object]:
             ),
             "confirmLabel": _("Clear Image Cache"),
             "clearError": _("Could not clear the image cache."),
+            "saveError": _("Could not update image caching."),
             "superuserOnly": _(
                 "Only a superuser can change this setting or clear the cache."
             ),
@@ -334,6 +335,7 @@ def server_port_props(request) -> dict[str, object]:
     if can_manage and not status["show_reset"]:
         labels.pop("reset", None)
     return {
+        "csrfToken": get_token(request),
         "canManage": can_manage,
         "runtimePort": status["runtime_port"],
         "configuredPort": (
@@ -439,6 +441,18 @@ def _about_labels() -> dict[str, object]:
             ),
         },
         "resources": {"title": _("Project Resources"), "open": _("Open")},
+        "specs": {
+            "title": _("Developer & API Specifications"),
+            "description": _(
+                "Reviewed contracts and live schemas served by this instance."
+            ),
+            "formatSeparator": _(" · "),
+            "open": _("Open"),
+            "preview": _("Preview"),
+            "download": _("Download"),
+            "previewLabel": _("Preview {label}"),
+            "downloadLabel": _("Download {label}"),
+        },
         "attributions": {"title": _("Metadata & Attributions"), "open": _("Open")},
         "licenses": {"title": _("License & Legal"), "open": _("Open")},
         "version": {
@@ -539,6 +553,75 @@ def about_props(request) -> dict[str, object]:
                         "https://github.com/sponsors/dannyvfilms"
                         "?metadata_source=app-about"
                     ),
+                },
+            ],
+        },
+        "specs": {
+            "kind": "specs",
+            "labels": labels["specs"],
+            "items": [
+                {
+                    "label": _("API Reference"),
+                    "format": _("HTML Docs"),
+                    "description": _(
+                        "Interactive index, tasks, authentication recipes, and "
+                        "curl cheat sheets"
+                    ),
+                    "url": reverse("swagger-ui"),
+                },
+                {
+                    "label": _("Verified API Schema"),
+                    "format": _("OpenAPI 3.0.3 (YAML)"),
+                    "badge": "YAML",
+                    "previewTitle": _(
+                        "Verified API Schema (OpenAPI 3.0.3)"
+                    ),
+                    "description": _(
+                        "Reviewed 41-operation subset for stable integrations "
+                        "and MCP grounding"
+                    ),
+                    "url": reverse("openapi-contract"),
+                    "downloadName": "openapi.yaml",
+                },
+                {
+                    "label": _("Domain Context (JSON-LD)"),
+                    "format": _("JSON-LD 1.1"),
+                    "badge": "JSON-LD",
+                    "previewTitle": _("Domain Context (JSON-LD 1.1)"),
+                    "description": _(
+                        "Semantic RDF / schema.org vocabulary mapping for Floppy "
+                        "entities"
+                    ),
+                    "url": reverse("jsonld-context"),
+                    "downloadName": "context.jsonld",
+                },
+                {
+                    "label": _("Full Diagnostic API Schema"),
+                    "format": _("Live OpenAPI (YAML)"),
+                    "badge": _("Live"),
+                    "previewTitle": _(
+                        "Full Diagnostic API Schema (Live OpenAPI)"
+                    ),
+                    "description": _(
+                        "Dynamically generated OpenAPI schema covering all active "
+                        "routes on this instance"
+                    ),
+                    "url": reverse("schema"),
+                    "downloadName": "openapi-live.yaml",
+                },
+                {
+                    "label": _("Asynchronous Channels (AsyncAPI)"),
+                    "format": _("AsyncAPI 3.0.0 (JSON)"),
+                    "badge": "AsyncAPI",
+                    "previewTitle": _(
+                        "Asynchronous Channels (AsyncAPI 3.0.0)"
+                    ),
+                    "description": _(
+                        "Inbound webhook routes, Celery queues, and worker "
+                        "concurrency profiles"
+                    ),
+                    "url": reverse("asyncapi-contract"),
+                    "downloadName": "asyncapi.json",
                 },
             ],
         },

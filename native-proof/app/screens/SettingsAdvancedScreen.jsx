@@ -24,8 +24,8 @@ export const surface = {
   id: 'SET-SYSTEM',
   title: 'Advanced and About',
   where: 'System, updates, logs, install and API links',
-  status: 'in_progress',
-  note: 'Shared cache, image, log, server-port and About cards render with realistic demo data. Web adoption is in progress; server transport and iOS/Android runtime evidence remain unverified.',
+  status: 'ported',
+  note: 'Shared cache, image, log, server-port and About cards render with realistic demo data. Cache/port writes, log download, release and update links, install guidance and API preview/download intents are represented; authenticated native transport and iOS/Android runtime remain unverified.',
 };
 
 const settingsPalette = {
@@ -47,6 +47,7 @@ const buttonPalette = {
 };
 
 const serverUrl = 'https://floppy.example.com';
+const releasesUrl = 'https://github.com/dannyvfilms/Floppy/releases';
 const releaseTag = 'v0.3.0';
 
 const releases = [
@@ -96,10 +97,10 @@ const resources = [
 
 const specs = [
   { label: 'API Reference', format: 'HTML Docs', description: 'Interactive index, tasks, authentication recipes, and curl cheat sheets', url: `${serverUrl}/api/docs/` },
-  { label: 'Verified API Schema', format: 'OpenAPI 3.0.3 (YAML)', description: 'Reviewed subset for stable integrations and MCP grounding', url: `${serverUrl}/api/openapi.yaml` },
-  { label: 'Domain Context (JSON-LD)', format: 'JSON-LD 1.1', description: 'Semantic RDF / schema.org vocabulary mapping for Floppy entities', url: `${serverUrl}/api/context.jsonld` },
-  { label: 'Full Diagnostic API Schema', format: 'Live OpenAPI (YAML)', description: 'Dynamically generated schema covering all active routes on this instance', url: `${serverUrl}/api/schema/` },
-  { label: 'Asynchronous Channels (AsyncAPI)', format: 'AsyncAPI 3.0.0 (JSON)', description: 'Inbound webhook routes, Celery queues, and worker concurrency profiles', url: `${serverUrl}/api/asyncapi.json` },
+  { label: 'Verified API Schema', format: 'OpenAPI 3.0.3 (YAML)', badge: 'YAML', previewTitle: 'Verified API Schema (OpenAPI 3.0.3)', downloadName: 'openapi.yaml', description: 'Reviewed subset for stable integrations and MCP grounding', url: `${serverUrl}/api/openapi.yaml` },
+  { label: 'Domain Context (JSON-LD)', format: 'JSON-LD 1.1', badge: 'JSON-LD', previewTitle: 'Domain Context (JSON-LD 1.1)', downloadName: 'context.jsonld', description: 'Semantic RDF / schema.org vocabulary mapping for Floppy entities', url: `${serverUrl}/api/context.jsonld` },
+  { label: 'Full Diagnostic API Schema', format: 'Live OpenAPI (YAML)', badge: 'Live', previewTitle: 'Full Diagnostic API Schema (Live OpenAPI)', downloadName: 'openapi-live.yaml', description: 'Dynamically generated schema covering all active routes on this instance', url: `${serverUrl}/api/schema/` },
+  { label: 'Asynchronous Channels (AsyncAPI)', format: 'AsyncAPI 3.0.0 (JSON)', badge: 'AsyncAPI', previewTitle: 'Asynchronous Channels (AsyncAPI 3.0.0)', downloadName: 'asyncapi.json', description: 'Inbound webhook routes, Celery queues, and worker concurrency profiles', url: `${serverUrl}/api/asyncapi.json` },
 ];
 
 const attributions = [
@@ -216,7 +217,10 @@ export default function SettingsAdvancedScreen({ onBack }) {
   return <Screen title="Advanced" subtitle="System, updates and about" onBack={onBack}>
     {updateVisible ? <ReleaseUpdateBanner releaseTag={releaseTag}
       onDismiss={() => setUpdateVisible(false)}
-      onViewWhatsNew={() => setUpdateVisible(false)} /> : null}
+      onViewWhatsNew={() => {
+        setUpdateVisible(false);
+        openUrl(releasesUrl);
+      }} /> : null}
     <LogsCard isSuperuser logsSince="Oct 2, 2026 13:39" lastUncleanExit="Oct 28, 2026 22:14"
       bugReportUrl="https://github.com/dannyvfilms/Floppy/issues/new?title=%5BBUG%5D%20"
       busy={logsBusy} success={logsSuccess}
@@ -240,13 +244,16 @@ export default function SettingsAdvancedScreen({ onBack }) {
       palette={settingsPalette} buttonPalette={buttonPalette} />
     <Section title="About">
       <AboutOverviewCard onOpenUrl={openUrl} palette={settingsPalette} />
-      <WhatsNewCard releases={releases} releasesUrl="https://github.com/dannyvfilms/Floppy/releases"
+      <WhatsNewCard releases={releases} releasesUrl={releasesUrl}
         onOpenUrl={openUrl} palette={settingsPalette} />
       <InstallCard installAvailable={false} installBusy={installBusy} installStatus={installStatus}
         onInstall={install} onOpenUrl={openUrl}
         palette={settingsPalette} buttonPalette={buttonPalette} />
       <ProjectResourcesCard resources={resources} onOpenUrl={openUrl} palette={settingsPalette} />
-      <DeveloperSpecsCard specs={specs} onOpenUrl={openUrl} palette={settingsPalette} />
+      <DeveloperSpecsCard specs={specs} onOpenUrl={openUrl}
+        onPreview={spec => openUrl(spec.url)}
+        onDownload={spec => openUrl(`${spec.url}${spec.url.includes('?') ? '&' : '?'}download=1`)}
+        palette={settingsPalette} />
       <AttributionsCard attributions={attributions} onOpenUrl={openUrl} palette={settingsPalette} />
       <LicenseCard licenses={licenses} onOpenUrl={openUrl} palette={settingsPalette} />
       <AboutVersionFooter version="v0.3.0" commit="a1b2c3d" palette={settingsPalette} />

@@ -8,6 +8,7 @@ from pathlib import Path
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.views.decorators.http import require_POST
 
@@ -38,6 +39,29 @@ def _runtime_port() -> int | None:
 def _environment_override_active() -> bool:
     """Return whether the environment owns the server-port value."""
     return SERVER_PORT_ENV in os.environ
+
+
+def _wants_json(request) -> bool:
+    """Return whether the browser adapter asked for an in-place result."""
+    accept = request.headers.get("Accept", "")
+    return (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or "application/json" in accept
+    )
+
+
+def _json_port_result(request, message: str, *, ok: bool = True):
+    """Return a fresh server-port payload for an async browser write."""
+    from users.advanced_props import server_port_props
+
+    return JsonResponse(
+        {
+            "ok": ok,
+            "message": message,
+            "serverPort": server_port_props(request),
+        },
+        status=200 if ok else 400,
+    )
 
 
 def server_port_context() -> dict[str, object]:
@@ -80,47 +104,62 @@ def update_server_port(request):
         try:
             removed = clear_saved_port()
         except ServerPortError as exc:
-            messages.error(request, str(exc))
+            message = str(exc)
+            messages.error(request, message)
+            if _wants_json(request):
+                return _json_port_result(request, message, ok=False)
         else:
             if removed:
-                messages.success(
-                    request,
+                message = (
                     "Saved server port removed. Restart Floppy to apply the current "
-                    "environment or default value.",
+                    "environment or default value."
                 )
+                messages.success(request, message)
             else:
-                messages.info(request, "No saved server port was set.")
+                message = "No saved server port was set."
+                messages.info(request, message)
+            if _wants_json(request):
+                return _json_port_result(request, message)
         return redirect("advanced")
 
     if action == "save":
         if _environment_override_active():
-            messages.error(
-                request,
+            message = (
                 f"{SERVER_PORT_ENV} controls the server port for this instance. "
-                "Change or remove that environment variable, then restart Floppy.",
+                "Change or remove that environment variable, then restart Floppy."
             )
+            messages.error(request, message)
+            if _wants_json(request):
+                return _json_port_result(request, message, ok=False)
             return redirect("advanced")
 
         try:
             saved_port = save_server_port(request.POST.get("port", ""))
         except ServerPortError as exc:
-            messages.error(request, str(exc))
+            message = str(exc)
+            messages.error(request, message)
+            if _wants_json(request):
+                return _json_port_result(request, message, ok=False)
         else:
             running_port = _runtime_port()
             if running_port == saved_port:
-                messages.success(
-                    request,
+                message = (
                     f"Server port {saved_port} saved. The current listener already "
-                    "uses this port.",
+                    "uses this port."
                 )
             else:
-                messages.success(
-                    request,
+                message = (
                     f"Server port {saved_port} saved. If your container publishes "
                     f"Floppy's port, update its target to {saved_port} before you "
-                    "restart Floppy.",
+                    "restart Floppy."
                 )
+            messages.success(request, message)
+            if _wants_json(request):
+                return _json_port_result(request, message)
         return redirect("advanced")
 
-    messages.error(request, "Unknown server port action.")
+    message = "Unknown server port action."
+    messages.error(request, message)
+    if _wants_json(request):
+        return _json_port_result(request, message, ok=False)
     return redirect("advanced")

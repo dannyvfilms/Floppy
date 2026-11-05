@@ -4,9 +4,11 @@ import {
   AboutOverviewCard,
   AboutVersionFooter,
   AttributionsCard,
+  DeveloperSpecsCard,
   InstallCard,
   LicenseCard,
   ProjectResourcesCard,
+  ReleaseUpdateBanner,
   WhatsNewCard,
 } from './AboutSettings';
 import { systemPalette } from './mountAdvanced';
@@ -27,6 +29,45 @@ function detectPlatform() {
 function installAvailable() {
   const pwa = window.floppyPwa;
   return Boolean(pwa?.deferredPrompt) && !pwa.isStandalone();
+}
+
+const SEEN_RELEASE_KEY = 'floppy_seen_release';
+
+function rememberRelease(tag) {
+  try {
+    localStorage.setItem(SEEN_RELEASE_KEY, tag || '');
+  } catch (error) {
+    // Storage can be unavailable in private windows; the banner still hides.
+  }
+}
+
+function initialBannerVisible(tag) {
+  try {
+    const seen = localStorage.getItem(SEEN_RELEASE_KEY);
+    if (seen === null) {
+      localStorage.setItem(SEEN_RELEASE_KEY, tag || '');
+      return false;
+    }
+    return seen !== tag;
+  } catch (error) {
+    return false;
+  }
+}
+
+function BannerAdapter({ props }) {
+  const [visible, setVisible] = useState(() => initialBannerVisible(props.releaseTag));
+  function dismiss() {
+    rememberRelease(props.releaseTag);
+    setVisible(false);
+  }
+  function viewWhatsNew() {
+    dismiss();
+    if (props.whatsNewUrl) window.location.assign(props.whatsNewUrl);
+  }
+  if (!visible) return null;
+  return <ReleaseUpdateBanner releaseTag={props.releaseTag}
+    onDismiss={dismiss} onViewWhatsNew={viewWhatsNew}
+    palette={systemPalette} labels={props.labels} />;
 }
 
 function OverviewAdapter({ props }) {
@@ -98,6 +139,31 @@ function InstallAdapter({ props }) {
     onOpenUrl={openUrl} palette={systemPalette} labels={labels} />;
 }
 
+function SpecsAdapter({ props }) {
+  function preview(spec) {
+    window.dispatchEvent(new CustomEvent('about:schema-preview', {
+      bubbles: true,
+      detail: {
+        url: spec.url,
+        title: spec.previewTitle || spec.label,
+        badge: spec.badge || spec.format || '',
+        downloadName: spec.downloadName || '',
+      },
+    }));
+  }
+  function download(spec) {
+    if (!spec.downloadName) {
+      openUrl(spec.url);
+      return;
+    }
+    const separator = spec.url.includes('?') ? '&' : '?';
+    window.location.assign(`${spec.url}${separator}download=1`);
+  }
+  return <DeveloperSpecsCard specs={props.items}
+    onOpenUrl={openUrl} onPreview={preview} onDownload={download}
+    palette={systemPalette} labels={props.labels} />;
+}
+
 function ResourcesAdapter({ props }) {
   return <ProjectResourcesCard resources={props.items}
     onOpenUrl={openUrl} palette={systemPalette} labels={props.labels} />;
@@ -119,10 +185,12 @@ function VersionAdapter({ props }) {
 }
 
 const adapters = {
+  banner: BannerAdapter,
   overview: OverviewAdapter,
   whatsNew: WhatsNewAdapter,
   install: InstallAdapter,
   resources: ResourcesAdapter,
+  specs: SpecsAdapter,
   attributions: AttributionsAdapter,
   licenses: LicensesAdapter,
   version: VersionAdapter,

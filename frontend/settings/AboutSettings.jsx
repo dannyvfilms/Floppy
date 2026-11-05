@@ -90,6 +90,11 @@ const defaultLabels = {
     title: 'Developer & API Specifications',
     description: 'Reviewed contracts and live schemas served by this instance.',
     formatSeparator: ' · ',
+    open: 'Open',
+    preview: 'Preview',
+    download: 'Download',
+    previewLabel: 'Preview {label}',
+    downloadLabel: 'Download {label}',
   },
   attributions: { title: 'Metadata & Attributions' },
   licenses: { title: 'License & Legal' },
@@ -284,17 +289,60 @@ export function ProjectResourcesCard({ resources = [], onOpenUrl, palette = {}, 
     onOpenUrl={onOpenUrl} palette={colors} />;
 }
 
-export function DeveloperSpecsCard({ specs = [], onOpenUrl, palette = {}, labels = {} }) {
+function SpecRow({ spec, copy, onOpenUrl, onPreview, onDownload, palette }) {
+  const open = onOpenUrl ? () => onOpenUrl(spec) : undefined;
+  const preview = onPreview && spec.downloadName ? () => onPreview(spec) : undefined;
+  const download = onDownload && spec.downloadName ? () => onDownload(spec) : undefined;
+  return <View style={[styles.specRow, { backgroundColor: palette.surfaceStrong, borderColor: palette.border }]}>
+    <View style={styles.specBody}>
+      <View style={styles.linkHeading}>
+        <Pressable accessibilityRole="link" accessibilityLabel={spec.label}
+          accessibilityHint={spec.url} accessibilityState={{ disabled: !open }}
+          disabled={!open} onPress={open}
+          style={({ pressed }) => pressed && open && { opacity: 0.75 }}>
+          <Text style={[styles.linkLabel, { color: palette.accent }]}>{spec.label}</Text>
+        </Pressable>
+        {spec.format ? <Badge label={spec.format} size="xs" tone="outline" palette={badgesFor(palette)} /> : null}
+      </View>
+      {spec.description ? <Text style={[styles.linkCopy, { color: palette.textMuted }]}>{spec.description}</Text> : null}
+      {spec.url ? <Text style={[styles.linkUrl, { color: palette.textMuted }]} numberOfLines={1}>{spec.url}</Text> : null}
+      <View style={styles.specActions}>
+        {preview ? <Pressable accessibilityRole="button" accessibilityLabel={format(copy.previewLabel, { label: spec.label })}
+          onPress={preview} style={({ pressed }) => pressed && { opacity: 0.7 }}>
+          <Text style={[styles.linkAction, { color: palette.textSecondary }]}>{copy.preview}</Text>
+        </Pressable> : null}
+        {download ? <Pressable accessibilityRole="link" accessibilityLabel={format(copy.downloadLabel, { label: spec.label })}
+          onPress={download} style={({ pressed }) => pressed && { opacity: 0.7 }}>
+          <Text style={[styles.linkAction, { color: palette.textSecondary }]}>{copy.download}</Text>
+        </Pressable> : null}
+        {open ? <Pressable accessibilityRole="link" accessibilityLabel={`${copy.open} ${spec.label}`}
+          onPress={open} style={({ pressed }) => pressed && { opacity: 0.7 }}>
+          <Text style={[styles.linkAction, { color: palette.textSecondary }]}>{copy.open}</Text>
+        </Pressable> : null}
+      </View>
+    </View>
+  </View>;
+}
+
+export function DeveloperSpecsCard({
+  specs = [],
+  onOpenUrl,
+  onPreview,
+  onDownload,
+  palette = {},
+  labels = {},
+}) {
   const colors = { ...defaultPalette, ...palette };
   const copy = mergeLabels({ ...defaultLabels.specs, open: defaultLabels.links.open }, labels);
-  const items = specs.map(spec => ({
-    label: spec.label,
-    description: `${spec.format}${copy.formatSeparator}${spec.description}`,
-    url: spec.url,
-  }));
-  return <LinkListCard title={copy.title}
-    description={copy.description}
-    items={items} openLabel={copy.open} onOpenUrl={onOpenUrl} palette={colors} />;
+  const openSpec = onOpenUrl ? spec => onOpenUrl(spec.url) : undefined;
+  return <SettingsCard title={copy.title} palette={colors}>
+    <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.description}</Text>
+    <View style={styles.column}>
+      {specs.map(spec => <SpecRow key={spec.label} spec={spec} copy={copy}
+        onOpenUrl={openSpec} onPreview={onPreview} onDownload={onDownload}
+        palette={colors} />)}
+    </View>
+  </SettingsCard>;
 }
 
 export function AttributionsCard({ attributions = [], onOpenUrl, palette = {}, labels = {} }) {
@@ -341,6 +389,9 @@ const styles = StyleSheet.create({
   inlineLink: { textDecorationLine: 'underline' },
   inlineAction: { alignSelf: 'flex-start', paddingVertical: 2 },
   linkRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, borderWidth: 1, borderRadius: 8, padding: 12 },
+  specRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderWidth: 1, borderRadius: 8, padding: 12 },
+  specBody: { flexShrink: 1, gap: 4 },
+  specActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingTop: 2 },
   linkBody: { flexShrink: 1, gap: 2 },
   linkHeading: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
   linkLabel: { fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
