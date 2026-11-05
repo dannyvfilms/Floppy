@@ -4,7 +4,7 @@ import { basename, resolve } from 'node:path';
 
 const outdir = resolve('src/static/ui');
 const result = await build({
-  entryPoints: { 'settings-islands': 'frontend/settings/index.js' },
+  entryPoints: { 'settings-islands': 'frontend/settings/index.js', 'markdown-islands': 'frontend/ui/mountMarkdownIslands.jsx' },
   outdir, bundle: true, splitting: true, format: 'esm', minify: true,
   target: ['es2022'], jsx: 'automatic', legalComments: 'external',
   resolveExtensions: ['.web.tsx', '.web.ts', '.web.jsx', '.web.js',

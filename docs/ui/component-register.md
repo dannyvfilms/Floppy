@@ -611,12 +611,17 @@ can inform a focused completion pass.
 ### NOTES — Markdown editing and display
 
 - Purpose/usage: detail/media forms/music track notes.
-- Status: `In progress`. The shared Markdown editor and preview are being ported; the server fragments, `markdown-editor.js` and marked remain the web fallback until the mount lands.
-- Implementation: markdown/detail-note/music-note fragments; `src/static/js/markdown-editor.js` and marked.
-- Contract: Write/Preview, toolbar/selection, safe rendering, initialization after full/HTMX loads and save errors.
-- Data: bound note fields and music note handler in `src/app/music_views.py`.
-- Reuse/blockers: text/formatting intent shared; textarea selection and HTML preview need platform implementation/content safety review.
-- Validation targets: `src/app/tests/views/test_music_track_notes.py`; general editor interactions unverified.
+- Status: `Ported`. The shared editor and preview own the mounted web note fields and detail previews over the server fallback, and the native detail and music editors use the same presentation. The no-JS textarea, server-rendered `notes_field`, Django validation, ownership and the marked browser renderer remain the fallback.
+- Implementation: universal `frontend/ui/MarkdownNotes.jsx` owns the Write/Preview tabs, toolbar and selection transforms; shared logic `frontend/ui/markdown.js` owns the selection actions and the native Markdown block/inline model. `frontend/ui/MarkdownPreview.web.jsx` renders sanitized marked HTML on the web and `frontend/ui/MarkdownPreview.native.jsx` renders React Native primitives; `frontend/ui/mountMarkdownIslands.jsx` mounts both over the server fragments, mirrors text into the Django textarea, resolves theme tokens and translated labels, and re-initializes after full and htmx loads. Templates `app/components/markdown_notes.html`, `detail_notes_block.html` and `detail_secondary_content.html` keep the server fallback and the Alpine show-more measurement.
+- Shared logic exports: `normalizeSelection`, `wrapMarkdownSelection`, `prefixMarkdownLines`, `applyMarkdownAction`, `safeMarkdownHref`, `markdownBlocks` and `inlineMarkdown`.
+- Contract: Write/Preview, toolbar actions (heading, bold, italic, code, link, quote, bulleted/numbered lists) over the current selection, a labelled multiline editor, keyboard and screen-reader labels, safe link protocols, escaped raw HTML and image placeholders on the web, no HTML on native, server field errors, and continued form submission through the original Django textarea.
+- Data: bound note fields and the music note handler in `src/app/music_views.py`; Markdown stays user text, and credentials, transport and permissions never enter presentation.
+- Consumers: `artist_track_modal.html`, `album_track_modal.html`, `podcast_show_track_modal.html`, `fill_track.html`, `music_track_notes.html`, `detail_notes_section.html`/`detail_notes_block.html`, and the detail secondary content repeat notes. Native consumers: `native-proof/app/surfaces/NotesSlot.jsx` on detail and the MusicParts `NotesModal`, `TrackPage` and `TrackingModal` editors.
+- Reuse/blockers: The browser keeps `marked` as its HTML renderer because the native parser does not need to reproduce HTML; both paths share the Write/Preview contract but not the renderer. Raw HTML is escaped rather than trusted, relative links resolve against the page origin, and native links are labelled but not navigated because navigation belongs to a platform adapter.
+- Native placement: `ported` in `native-proof/app/surfaces/NotesSlot.jsx` and the native music note editors. Expo export is a compile check only; no iOS or Android runtime, VoiceOver or TalkBack pass was performed.
+- Verification: `app.tests.views.test_music_track_notes` and the detail/track-modal note tests; `npm run build:ui`, `npm run check:ui`, architecture checks and the Expo export. Browser tab/toolbar/selection interaction and native editing were not exercised at runtime.
+- Validation targets: `src/app/tests/views/test_music_track_notes.py`, `src/app/tests/views/test_media_details.py`, `src/app/tests/views/test_track_modal.py`.
+- Retirement: `src/static/js/markdown-editor.js` is retired. The server textarea and preview placeholders stay intentionally as the no-JS and mount-failure fallback.
 
 ### PROGRESS — Adjustment and repeat breakdown
 

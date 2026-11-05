@@ -1705,6 +1705,26 @@
           "evidence": "Compiled by the Expo export through the native artist discography; the album grid was not exercised on an emulator or device."
         }
       }
+    },
+    "frontend/ui/MarkdownNotes.jsx": {
+      "components": [
+        "MarkdownNotes"
+      ],
+      "register": "NOTES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Mounted by mountMarkdownIslands into the server note fields; compiled by npm run build:ui, but no browser interaction pass was performed for the Write/Preview tabs, toolbar or selection."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native detail notes slot and the music track notes editors; no simulator interaction pass."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native detail notes slot and the music track notes editors; no emulator interaction pass."
+        }
+      }
     }
   },
   "legacy": {
@@ -2080,6 +2100,32 @@
           "evidence": "Pure shared form-model logic consumed by the native placement; not a renderer."
         }
       }
+    },
+    "frontend/ui/markdown.js": {
+      "components": [
+        "normalizeSelection",
+        "wrapMarkdownSelection",
+        "prefixMarkdownLines",
+        "applyMarkdownAction",
+        "safeMarkdownHref",
+        "markdownBlocks",
+        "inlineMarkdown"
+      ],
+      "register": "NOTES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Pure selection and Markdown block logic imported by the shared editor and browser preview adapter; not a renderer and not exercised in a browser."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Imported by the shared editor and native preview; compiled by the Expo export, no runtime interaction."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Imported by the shared editor and native preview; compiled by the Expo export, no runtime interaction."
+        }
+      }
     }
   },
   "platform": {
@@ -2440,6 +2486,50 @@
           "evidence": "Expo export --platform all compiles the dock through the native Library slot; no emulator interaction pass."
         }
       }
+    },
+    "frontend/ui/MarkdownPreview.web.jsx": {
+      "kind": "presentation",
+      "register": "NOTES",
+      "components": [
+        "MarkdownPreview"
+      ],
+      "purpose": "Render the shared Markdown preview as sanitized HTML on the web with marked, safe link protocols, escaped raw HTML and image placeholders.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Compiled into the web bundle through mountMarkdownIslands; no browser rendering or sanitization pass was performed in this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to this web implementation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to this web implementation."
+        }
+      }
+    },
+    "frontend/ui/MarkdownPreview.native.jsx": {
+      "kind": "presentation",
+      "register": "NOTES",
+      "components": [
+        "MarkdownPreview"
+      ],
+      "purpose": "Render the shared Markdown preview with React Native primitives on iOS and Android, using safe links and no HTML.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not applicable to this native implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native notes slot and music editors; no simulator interaction pass."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native notes slot and music editors; no emulator interaction pass."
+        }
+      }
     }
   },
   "web_adapters": {
@@ -2646,6 +2736,10 @@
     "frontend/ui/mountMusicAlbums.jsx": {
       "register": "MUSIC",
       "purpose": "Maps server-shaped artist discography album rows into the shared music album grid and owns browser navigation for the card link; the server album grid inside the host remains the no-React fallback."
+    },
+    "frontend/ui/mountMarkdownIslands.jsx": {
+      "register": "NOTES",
+      "purpose": "Browser integration for the shared Markdown editor and preview: mount over the server note field and preview placeholder, mirror typed text into the enclosing Django textarea, resolve theme tokens and translated labels, and re-initialize after full and htmx loads while keeping the server fallback."
     }
   }
 }

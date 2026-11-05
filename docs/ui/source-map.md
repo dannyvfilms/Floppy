@@ -512,12 +512,23 @@ Legacy consumers retained until expression-driven suggestions and the activity c
 
 ## NOTES
 
-- `src/static/js/libraries/marked-12.0.2.min.js`
-- `src/static/js/markdown-editor.js`
-- `src/templates/app/components/detail_notes_block.html`
+The editor and preview are shared React presentation on the web and native. The
+browser keeps marked as its HTML renderer; the native preview uses React Native
+primitives. The server note field and preview placeholders remain the no-JS and
+mount-failure fallback.
+
+- `frontend/ui/MarkdownNotes.jsx` (universal editor: Write/Preview tabs, toolbar, selection transforms, labels, errors and preview host)
+- `frontend/ui/markdown.js` (shared selection actions, safe link helper and native Markdown block/inline model)
+- `frontend/ui/MarkdownPreview.web.jsx` (browser Markdown preview: marked HTML, escaping, safe link protocols and image placeholders)
+- `frontend/ui/MarkdownPreview.native.jsx` (native React Native Markdown preview with no HTML)
+- `frontend/ui/mountMarkdownIslands.jsx` (browser adapter: mount editors and previews over the server fragments, mirror text into the Django textarea and re-initialize after full and htmx loads)
 - `src/templates/app/components/markdown_notes.html`
+- `src/templates/app/components/detail_notes_block.html`
+- `src/templates/app/components/detail_secondary_content.html` (repeat note previews)
 - `src/templates/app/components/music_track_notes.html`
 - `src/templates/app/components/music_track_notes_button.html`
+- `src/static/js/libraries/marked-12.0.2.min.js` (browser HTML renderer used by the web preview)
+- `native-proof/app/surfaces/NotesSlot.jsx` (native detail notes placement)
 
 ## PROGRESS
 
