@@ -1,1 +1,0 @@
-import{a as m}from"./chunk-MLLOCG7M.js";import{a as i,c as r,d as t}from"./chunk-A7UXS76T.js";import{b as o}from"./chunk-SQE76S5B.js";var f=o(i());var n=o(r());function a(p,e){return t(p,(0,n.jsx)(m,{props:e}))}export{a as mountParentPicker};

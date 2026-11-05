@@ -19,7 +19,7 @@ export const surface = {
   status: 'in_progress',
   title: 'People, studios and credits',
   where: 'Person and studio pages, cast/filmography/credit rows, trailers, lightbox and medium extras',
-  note: 'Person and studio pages, cast and credit cards with role lines, bounded rails, a trailer/photo gallery with play and lightbox intents, and time-to-beat, YouTube and reading extras render with shared React Native presentation and demo data. Production data transport, permissions, person/studio hero web mounting and iOS/Android runtime verification remain outstanding.',
+  note: 'Person and studio heroes mount on the Django person and studio pages through the browser adapter while the server hero remains the fallback. The native screen renders cast and credit cards with role lines, bounded rails, a trailer/photo gallery with play and lightbox intents, and time-to-beat, YouTube and reading extras with demo data. Production data transport, permissions, filmography web action parity, gallery/extras web consumers and iOS/Android runtime verification remain outstanding.',
 };
 
 const DEMO_PERSON = {

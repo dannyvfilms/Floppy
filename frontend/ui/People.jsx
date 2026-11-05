@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { Badge } from './Badge';
@@ -139,9 +140,13 @@ export function PersonHero({
   onOpenSource,
   canViewHistory = true,
   biographyLines = 5,
+  headingLevel = 2,
+  actionPalette,
+  showBiography = true,
 }) {
   const copy = mergeLabels(labels);
   const colors = mergePalette(palette);
+  const wide = useWindowDimensions().width >= 768;
   const [expanded, setExpanded] = useState(false);
   const biography = text(person.biography);
   const canExpand = biography.length > 260;
@@ -151,23 +156,23 @@ export function PersonHero({
     person.placeOfBirth ? { label: copy.placeOfBirth, value: person.placeOfBirth } : null,
   ].filter(Boolean);
 
-  return <View style={styles.hero}>
-    <View style={styles.heroMedia}>
+  return <View style={[styles.hero, wide && styles.heroWide]}>
+    <View style={[styles.heroMedia, wide && styles.heroMediaWide]}>
       <Artwork uri={person.imageUrl} title={person.name} palette={colors} />
       {onViewHistory && canViewHistory ? <View style={[styles.heroAction, { backgroundColor: colors.surface }]}>
         <Button label={person.isAuthor ? copy.viewReads : copy.viewPlays} width="full"
-          onPress={onViewHistory} palette={{ radius: colors.radiusSmall }} />
+          onPress={onViewHistory} palette={actionPalette || { radius: colors.radiusSmall }} />
       </View> : null}
     </View>
-    <View style={styles.heroBody}>
-      <Text role="heading" aria-level={2} style={[styles.heroTitle, { color: colors.text }]}>{person.name}</Text>
+    <View style={[styles.heroBody, wide && styles.heroBodyWide]}>
+      <Text role="heading" aria-level={headingLevel} style={[styles.heroTitle, { color: colors.text }]}>{person.name}</Text>
       {person.knownForDepartment || counts.length ? <View style={styles.chipRow}>
         {person.knownForDepartment ? <Badge label={person.knownForDepartment} tone="indigo"
           palette={badgePalette(colors)} /> : null}
         {counts.map((count, index) => <Badge key={`${count.label}-${index}`} label={count.label}
           palette={badgePalette(colors)} />)}
       </View> : null}
-      <View style={[styles.card, { backgroundColor: colors.surface }]}>
+      {showBiography ? <View style={[styles.card, { backgroundColor: colors.surface }]}>
         <Text numberOfLines={expanded ? undefined : biographyLines}
           style={[styles.biography, { color: colors.textSecondary }]}>
           {biography || copy.noBiography}
@@ -177,7 +182,7 @@ export function PersonHero({
           onPress={() => setExpanded(value => !value)} style={styles.inlineAction}>
           <Text style={[styles.inlineActionText, { color: colors.link }]}>{expanded ? copy.showLess : copy.showMore}</Text>
         </Pressable> : null}
-      </View>
+      </View> : null}
       <View style={styles.factGrid}>
         {facts.map(fact => <Fact key={fact.label} label={fact.label} value={fact.value} palette={colors} />)}
         <Fact label={copy.source} value={person.sourceLabel || copy.source} palette={colors}
@@ -193,9 +198,13 @@ export function StudioHero({
   labels,
   palette,
   onOpenWebsite,
+  headingLevel = 2,
+  sourcePlacement = 'media',
+  showBiography = true,
 }) {
   const copy = mergeLabels(labels);
   const colors = mergePalette(palette);
+  const wide = useWindowDimensions().width >= 768;
   const [expanded, setExpanded] = useState(false);
   const description = text(studio.description);
   const canExpand = description.length > 260;
@@ -206,22 +215,24 @@ export function StudioHero({
       ? { label: copy.developed, value: text(studio.developedCount) } : null,
     studio.publishedCount !== undefined && studio.publishedCount !== null
       ? { label: copy.published, value: text(studio.publishedCount) } : null,
+    sourcePlacement === 'facts'
+      ? { label: copy.source, value: studio.sourceLabel || copy.source } : null,
   ].filter(Boolean);
 
-  return <View style={styles.hero}>
-    <View style={styles.heroMedia}>
+  return <View style={[styles.hero, wide && styles.heroWide]}>
+    <View style={[styles.heroMedia, wide && styles.heroMediaWide]}>
       <Artwork uri={studio.logoUrl} title={studio.name} ratio={1} palette={colors} />
       {studio.websiteUrl && onOpenWebsite ? <View style={[styles.heroAction, { backgroundColor: colors.surface }]}>
         <Button label={copy.visitWebsite} width="full" onPress={() => onOpenWebsite(studio.websiteUrl)}
           palette={{ radius: colors.radiusSmall }} />
       </View> : null}
-      <View style={[styles.sourceCard, { backgroundColor: colors.surface }]}>
+      {sourcePlacement !== 'facts' ? <View style={[styles.sourceCard, { backgroundColor: colors.surface }]}>
         <Text style={[styles.factLabel, { color: colors.textMuted }]}>{copy.source}</Text>
         <Text style={[styles.factValue, { color: colors.textSecondary }]}>{studio.sourceLabel || copy.source}</Text>
-      </View>
+      </View> : null}
     </View>
-    <View style={styles.heroBody}>
-      <Text role="heading" aria-level={2} style={[styles.heroTitle, { color: colors.text }]}>{studio.name}</Text>
+    <View style={[styles.heroBody, wide && styles.heroBodyWide]}>
+      <Text role="heading" aria-level={headingLevel} style={[styles.heroTitle, { color: colors.text }]}>{studio.name}</Text>
       {counts.length ? <View style={styles.chipRow}>
         {counts.map((count, index) => index === 0
           ? <Badge key={`${count.label}-${index}`} label={count.label} tone="indigo"
@@ -229,7 +240,7 @@ export function StudioHero({
           : <Badge key={`${count.label}-${index}`} label={count.label}
             palette={badgePalette(colors)} />)}
       </View> : null}
-      <View style={[styles.card, { backgroundColor: colors.surface }]}>
+      {showBiography ? <View style={[styles.card, { backgroundColor: colors.surface }]}>
         <Text numberOfLines={expanded ? undefined : 5}
           style={[styles.biography, { color: colors.textSecondary }]}>{description}</Text>
         {canExpand ? <Pressable accessibilityRole="button"
@@ -237,7 +248,7 @@ export function StudioHero({
           onPress={() => setExpanded(value => !value)} style={styles.inlineAction}>
           <Text style={[styles.inlineActionText, { color: colors.link }]}>{expanded ? copy.showLess : copy.showMore}</Text>
         </Pressable> : null}
-      </View>
+      </View> : null}
       <View style={styles.factGrid}>
         {facts.map(fact => <Fact key={fact.label} label={fact.label} value={fact.value} palette={colors} />)}
       </View>
@@ -514,8 +525,11 @@ export function MediumExtras({
 
 const styles = StyleSheet.create({
   hero: { gap: 20 },
+  heroWide: { flexDirection: 'row', alignItems: 'flex-start' },
   heroMedia: { gap: 12, alignSelf: 'stretch' },
+  heroMediaWide: { width: 250, flexShrink: 0 },
   heroBody: { gap: 12, minWidth: 0 },
+  heroBodyWide: { flex: 1 },
   heroTitle: { fontSize: 28, fontWeight: '700', lineHeight: 34 },
   heroAction: { padding: 12, borderRadius: 10 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' },

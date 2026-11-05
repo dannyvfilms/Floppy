@@ -1579,7 +1579,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The shared person, studio, credit, gallery and medium-extra presentation is not mounted in the browser; the existing Django person and studio pages remain the web owner."
+          "evidence": "The browser adapter mounts the shared person and studio heroes on the Django person/studio pages; no browser interaction pass was run during this change."
         },
         "ios": {
           "status": "unverified",
@@ -2531,6 +2531,10 @@
     "frontend/ui/mountBulkToolbar.jsx": {
       "register": "BULK_ACTIONS",
       "purpose": "Django/browser integration for the shared bulk action bar: mirror the page Alpine selection, run quick bulk posts and open the status/plays dialogs."
+    },
+    "frontend/ui/mountPeople.jsx": {
+      "register": "PEOPLE",
+      "purpose": "Django/browser integration for the shared person and studio heroes: resolves theme tokens, maps history/source/website intents to browser navigation and keeps the server hero as the fallback."
     }
   }
 }

@@ -499,3 +499,219 @@ def detail_composition(context, part="synopsis"):
         "props": props,
         "props_id": f"detail-composition-{uuid4().hex}",
     })
+
+
+def _people_plain_text(value):
+    """Turn provider-authored HTML into the plain text the shared hero renders."""
+    import re
+    from html import unescape
+
+    from django.utils.html import strip_tags
+
+    with_breaks = re.sub(r"<br\s*/?>", "\n", str(value or ""), flags=re.IGNORECASE)
+    return unescape(strip_tags(with_breaks)).strip()
+
+
+def _people_labels():
+    """Keep hero copy localized on the server while the shared view stays prop-driven."""
+    from django.utils.translation import gettext as _
+
+    return {
+        "showMore": str(_("Show more")),
+        "showLess": str(_("Show less")),
+        "viewReads": str(_("View Reads in History")),
+        "viewPlays": str(_("View Plays in History")),
+        "visitWebsite": str(_("Visit Website")),
+        "source": str(_("Source")),
+        "born": str(_("Born")),
+        "died": str(_("Died")),
+        "placeOfBirth": str(_("Place of Birth")),
+        "founded": str(_("Founded")),
+        "titles": str(_("Titles")),
+        "developed": str(_("Developed")),
+        "published": str(_("Published")),
+    }
+
+
+def _people_section_visible(context, family, zone, section):
+    """Match the server's section visibility so the shared hero keeps user layout choices."""
+    from users.appearance import resolved_detail_layouts
+
+    user = context.get("user")
+    layouts = resolved_detail_layouts(
+        getattr(user, "detail_page_layouts", {}) if getattr(user, "is_authenticated", False) else {},
+    )
+    return section in layouts.get(family, {}).get(zone, [])
+
+
+def _person_hero_props(context):
+    """Shape the person page's existing values into the shared hero contract."""
+    from django.conf import settings
+    from django.utils.translation import gettext as _
+    from django.utils.translation import ngettext
+
+    from app.templatetags.app_tags import image_url, source_readable
+    from users.templatetags.user_tags import user_date_format
+
+    person = context.get("person") or {}
+    user = context.get("user")
+    is_author = bool(context.get("is_author"))
+    counts = []
+    tracked_plays_count = context.get("tracked_plays_count")
+    if tracked_plays_count is not None:
+        if is_author:
+            count = context.get("watched_book_count") or 0
+            counts.append({
+                "label": ngettext(
+                    "%(value_1)s book", "%(value_1)s books", count,
+                ) % {"value_1": count},
+            })
+        else:
+            count = context.get("watched_movie_count") or 0
+            counts.append({
+                "label": ngettext(
+                    "%(value_1)s movie", "%(value_1)s movies", count,
+                ) % {"value_1": count},
+            })
+            count = context.get("watched_show_count") or 0
+            counts.append({
+                "label": ngettext(
+                    "%(value_1)s show", "%(value_1)s shows", count,
+                ) % {"value_1": count},
+            })
+        counts.append({
+            "label": ngettext(
+                "%(count)s tracked read" if is_author else "%(count)s tracked play",
+                "%(count)s tracked reads" if is_author else "%(count)s tracked plays",
+                tracked_plays_count,
+            ) % {"count": tracked_plays_count},
+        })
+        tracked_hours_count = context.get("tracked_hours_count")
+        if tracked_hours_count:
+            counts.append({"label": str(tracked_hours_count)})
+
+    return {
+        "kind": "person",
+        "headingLevel": 1,
+        "person": {
+            "name": str(person.get("name") or _("Unknown Person")),
+            "imageUrl": image_url(person.get("image") or settings.IMG_NONE),
+            "biography": _people_plain_text(person.get("biography")),
+            "knownForDepartment": person.get("known_for_department") or "",
+            "birthDate": user_date_format(person.get("birth_date"), user)
+            if person.get("birth_date") else "",
+            "deathDate": user_date_format(person.get("death_date"), user)
+            if person.get("death_date") else "",
+            "placeOfBirth": person.get("place_of_birth") or "",
+            "sourceLabel": source_readable(context.get("source")),
+            "sourceUrl": context.get("source_url") or "",
+            "isAuthor": is_author,
+        },
+        "counts": counts,
+        "historyUrl": context.get("history_filter_url") or "",
+        "canViewHistory": True,
+        "showBiography": _people_section_visible(context, "person", "hero", "biography"),
+        "labels": _people_labels(),
+    }
+
+
+def _studio_hero_props(context):
+    """Shape the studio page's existing values into the shared hero contract."""
+    from django.conf import settings
+    from django.utils.translation import gettext as _
+    from django.utils.translation import ngettext
+
+    from app.templatetags.app_tags import (
+        image_url,
+        media_type_readable,
+        media_type_readable_plural,
+        source_readable,
+    )
+    from users.templatetags.user_tags import user_date_format
+
+    studio = context.get("studio")
+    user = context.get("user")
+    source = context.get("source")
+    credited_media_type = context.get("credited_media_type")
+    title_count = context.get("studio_games_count") or 0
+    developed_count = context.get("studio_developed_count")
+    published_count = context.get("studio_published_count")
+    media_label = (
+        media_type_readable_plural(credited_media_type)
+        if credited_media_type else str(_("Titles"))
+    )
+    counts = []
+    if credited_media_type:
+        label = (
+            media_type_readable(credited_media_type) if title_count == 1
+            else media_type_readable_plural(credited_media_type)
+        )
+        counts.append({"label": f"{title_count} {label.lower()}"})
+    else:
+        counts.append({
+            "label": ngettext(
+                "%(value_1)s title", "%(value_1)s titles", title_count,
+            ) % {"value_1": title_count},
+        })
+    if developed_count is not None:
+        counts.append({"label": _("%(value_1)s developed") % {"value_1": developed_count}})
+    if published_count is not None:
+        counts.append({"label": _("%(value_1)s published") % {"value_1": published_count}})
+
+    founded = context.get("studio_founded")
+    return {
+        "kind": "studio",
+        "headingLevel": 1,
+        "sourcePlacement": "facts",
+        "studio": {
+            "name": str(getattr(studio, "name", "") or _("Unknown Studio")),
+            "logoUrl": image_url(
+                (getattr(studio, "logo", "") if studio else "") or settings.IMG_NONE,
+            ),
+            "description": _people_plain_text(context.get("studio_description")),
+            "founded": user_date_format(founded, user) if founded else "",
+            "mediaLabel": media_label,
+            "titleCount": title_count,
+            "developedCount": developed_count,
+            "publishedCount": published_count,
+            "sourceLabel": source_readable(source),
+            "websiteUrl": context.get("studio_source_url") or "",
+        },
+        "counts": counts,
+        "showBiography": _people_section_visible(context, "studio", "hero", "overview"),
+        "labels": _people_labels(),
+    }
+
+
+@register.tag
+def people_hero(parser, token):
+    """Wrap the server hero fallback in the shared person/studio mount."""
+    _, *args = token.split_contents()
+    kind = args[0].strip("\"'") if args and not args[1:] else ""
+    if kind not in {"person", "studio"}:
+        message = 'people_hero requires exactly "person" or "studio"'
+        raise template.TemplateSyntaxError(message)
+    body = parser.parse(("endpeople_hero",))
+    parser.delete_first_token()
+    return PeopleHeroNode(kind, body)
+
+
+class PeopleHeroNode(template.Node):
+    """Render shared hero props and keep the server markup as the fallback."""
+
+    def __init__(self, kind, body):
+        """Store the profile kind and its fallback body."""
+        self.kind = kind
+        self.body = body
+
+    def render(self, context):
+        """Render the hero island or leave the existing server markup intact."""
+        props = (
+            _person_hero_props(context) if self.kind == "person"
+            else _studio_hero_props(context)
+        )
+        return render_to_string("app/components/people_hero.html", {
+            "props": props,
+            "props_id": f"people-hero-{uuid4().hex}",
+            "body": self.body.render(context),
+        })
