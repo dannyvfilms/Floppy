@@ -33,6 +33,8 @@ const defaultLabels = {
   selected: 'selected',
   noSelection: 'Pick items to use these actions.',
   updateStatus: 'Update Status',
+  chooseStatus: 'Choose status',
+  removeFromList: 'Remove from List',
   addToList: 'Add to List',
   addToCollection: 'Add to Collection',
   applyTag: 'Apply Tag',
@@ -268,11 +270,14 @@ export function ListBulkBar({
   count = 0,
   palette,
   labels,
+  statuses = [],
   onClear,
   onAction,
+  onRemove,
 }) {
   const colors = mergePalette(palette);
   const copy = mergeLabels(labels);
+  const [statusOpen, setStatusOpen] = useState(false);
   const actions = [
     { kind: 'status', label: copy.updateStatus, tone: 'primary' },
     { kind: 'list', label: copy.addToList, tone: 'surface' },
@@ -280,6 +285,13 @@ export function ListBulkBar({
     { kind: 'tag', label: copy.applyTag, tone: 'surface' },
     { kind: 'plays', label: copy.addPlays, tone: 'surface' },
   ];
+  function choose(action) {
+    if (action.kind === 'status' && statuses.length > 0) {
+      setStatusOpen(current => !current);
+      return;
+    }
+    onAction?.(action.kind);
+  }
   return <View accessible accessibilityLabel="Bulk actions"
     style={[styles.bulkBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
     <View style={styles.bulkHeader}>
@@ -296,8 +308,22 @@ export function ListBulkBar({
         label={action.label}
         tone={action.tone}
         disabled={count === 0}
-        onPress={() => onAction?.(action.kind)} />)}
+        onPress={() => choose(action)} />)}
+      {onRemove ? <Button
+        label={copy.removeFromList}
+        tone="ghost-danger"
+        disabled={count === 0}
+        onPress={onRemove} /> : null}
     </View>
+    {statusOpen ? <View style={styles.bulkActions} accessible accessibilityLabel={copy.chooseStatus}>
+      {statuses.map(status => <Button key={status.value}
+        label={status.label}
+        tone="surface"
+        onPress={() => {
+          setStatusOpen(false);
+          onAction?.('status', status.value);
+        }} />)}
+    </View> : null}
   </View>;
 }
 
@@ -348,6 +374,8 @@ export function ListResults({
   onToggleSelectMode,
   onClearSelection,
   onBulkAction,
+  bulkStatuses = [],
+  onRemoveItems,
   bulkMessage,
   onOpenItem,
   onRate,
@@ -388,8 +416,10 @@ export function ListResults({
       count={selectedIds.length}
       palette={colors}
       labels={copy}
+      statuses={bulkStatuses}
       onClear={onClearSelection}
-      onAction={onBulkAction} /> : null}
+      onAction={onBulkAction}
+      onRemove={onRemoveItems ? () => onRemoveItems(selectedIds) : undefined} /> : null}
     {bulkMessage ? <Text style={[styles.bulkMessage, { color: colors.textMuted }]}>
       {bulkMessage}
     </Text> : null}

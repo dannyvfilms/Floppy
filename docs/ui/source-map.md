@@ -637,6 +637,9 @@ stay legacy until a native chart renderer is chosen.
 - `frontend/ui/ListHeader.jsx`
 - `frontend/ui/ListResults.jsx`
 - `frontend/ui/ListMembership.jsx`
+- `native-proof/app/data/listTransportCore.js` (shared list action contract and existing endpoint mapping)
+- `native-proof/app/data/listTransport.js` (native list transport; requires an injected request, otherwise local preview)
+- `native-proof/app/data/listTransport.web.js` (browser list transport; same-origin session, CSRF header and local fallback)
 - `native-proof/app/screens/ListsScreen.jsx`
 - `native-proof/app/screens/ListDetailScreen.jsx`
 - `src/templates/lists/components/fill_lists.html`

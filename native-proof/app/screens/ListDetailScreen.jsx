@@ -5,7 +5,24 @@ import { FilterBar } from '../../../frontend/ui/FilterBar';
 import { ListHeader } from '../../../frontend/ui/ListHeader';
 import { ListMembershipPopup } from '../../../frontend/ui/ListMembership';
 import { ListResults } from '../../../frontend/ui/ListResults';
+import { createListTransport } from '../data/listTransport';
 import { palette, radius, spacing } from '../theme';
+
+export const surface = {
+  id: 'LIST-DETAIL',
+  status: 'ported',
+  title: 'List detail results, membership and bulk actions',
+  where: 'List detail page for manual, smart and source-backed lists',
+  note: 'Results, membership and bulk status/collection/remove/rating write through the list transport. Native login, server selection and CSRF transport remain unconfigured, so the native adapter keeps local preview state; the browser adapter uses the same-origin session.',
+};
+
+const BULK_STATUSES = [
+  { value: 'Completed', label: 'Completed' },
+  { value: 'In progress', label: 'In progress' },
+  { value: 'Paused', label: 'Paused' },
+  { value: 'Planning', label: 'Planning' },
+  { value: 'Dropped', label: 'Dropped' },
+];
 
 const MEMBERSHIPS = {
   1: [
@@ -278,8 +295,13 @@ function activeFilter(filters) {
 }
 
 export default function ListDetailScreen({ params, onBack, navigate }) {
+  const transport = useMemo(
+    () => createListTransport(params?.listTransport),
+    [params?.listTransport],
+  );
   const [list, setList] = useState(() => buildList(params?.list));
   const [filters, setFilters] = useState(() => defaultFilters(buildList(params?.list)));
+  const [items, setItems] = useState(() => itemsFor(buildList(params?.list)));
   const [search, setSearch] = useState('');
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -288,7 +310,6 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
   const [membersOpen, setMembersOpen] = useState(false);
   const [suggestions, setSuggestions] = useState(() => SUGGESTIONS[list.id] || []);
 
-  const items = useMemo(() => itemsFor(list), [list.id]);
   const options = useMemo(() => {
     const mediaTypes = [];
     const statuses = [];
@@ -413,41 +434,188 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
     setBulkMessage(null);
   }
 
-  function runBulkAction(kind) {
+  async function removeItems(ids) {
+    const targets = items.filter(item => ids.includes(item.id));
+    if (!targets.length) {
+      return;
+    }
+    const previousItems = items;
+    setItems(current => current.filter(item => !ids.includes(item.id)));
+    setSelectedIds([]);
+    setBulkMessage(null);
+    try {
+      await Promise.all(targets.map(item => transport.removeItem({
+        listId: list.id,
+        itemId: item.itemId ?? item.id,
+      })));
+      setNotice(transport.mode === 'local'
+        ? `${targets.length} item(s) removed from the local preview. ${transport.reason}`
+        : `Removed ${targets.length} item(s) from ${list.name}.`);
+    } catch (error) {
+      setItems(previousItems);
+      setNotice(error.message || 'The items could not be removed.');
+    }
+  }
+
+  async function runBulkAction(kind, value) {
+    const ids = selectedIds;
+    if (!ids.length) {
+      return;
+    }
+    if (kind === 'remove') {
+      await removeItems(ids);
+      return;
+    }
+    if (kind === 'status') {
+      if (!value) {
+        setBulkMessage('Choose a status for the selected items.');
+        return;
+      }
+      const previousItems = items;
+      setItems(current => current.map(item => (
+        ids.includes(item.id)
+          ? { ...item, status: value, statusLabel: value }
+          : item
+      )));
+      setBulkMessage(null);
+      try {
+        await transport.bulkStatus({ itemIds: ids, status: value });
+        setNotice(transport.mode === 'local'
+          ? `Set ${ids.length} item(s) to ${value} in the local preview. ${transport.reason}`
+          : `Set ${ids.length} item(s) to ${value}.`);
+      } catch (error) {
+        setItems(previousItems);
+        setNotice(error.message || 'The status update failed.');
+      }
+      return;
+    }
+    if (kind === 'collection') {
+      try {
+        await transport.bulkCollection({ itemIds: ids });
+        setBulkMessage(transport.mode === 'local'
+          ? `${ids.length} selected · collection changes stay in the local preview. ${transport.reason}`
+          : `${ids.length} item(s) added to your collection.`);
+      } catch (error) {
+        setBulkMessage(error.message || 'The collection update failed.');
+      }
+      return;
+    }
     const labels = {
-      status: 'Status update',
       list: 'Add to list',
-      collection: 'Add to collection',
       tag: 'Tag change',
       plays: 'Add plays',
     };
-    setBulkMessage(`${selectedIds.length} selected · ${labels[kind] || kind} is ready for the server bulk action.`);
+    setBulkMessage(`${ids.length} selected · ${labels[kind] || kind} needs its option picker or job transport, which is not ported.`);
   }
 
-  function changeVisibility(visibility) {
+  async function changeVisibility(visibility) {
+    const previous = list.visibility;
     setList(current => ({ ...current, visibility }));
-    setNotice(`Visibility set to ${visibility} in this demo. The server save is not connected yet.`);
+    try {
+      await transport.updateVisibility({ listId: list.id, visibility });
+      setNotice(transport.mode === 'local'
+        ? `Visibility set to ${visibility} in the local preview. ${transport.reason}`
+        : `Visibility set to ${visibility}.`);
+    } catch (error) {
+      setList(current => ({ ...current, visibility: previous }));
+      setNotice(error.message || 'Visibility could not be saved.');
+    }
   }
 
-  function addMember(name) {
-    const id = name.toLowerCase();
-    setList(current => {
-      if (current.members.some(member => member.id === id)) {
-        return current;
-      }
-      const next = [...current.members, { id, name, handle: `@${id}`, role: 'collaborator' }];
-      return { ...current, members: next, memberCount: next.length };
-    });
-    setSuggestions(current => current.filter(value => value !== name));
-    setNotice(`${name} added as a collaborator in this demo.`);
+  async function addMember(suggestion) {
+    const input = typeof suggestion === 'string' ? { name: suggestion } : suggestion;
+    const id = String(input.id ?? input.name.toLowerCase());
+    if (list.members.some(member => String(member.id) === id)) {
+      return;
+    }
+    const member = {
+      id,
+      name: input.name,
+      handle: input.handle || `@${id}`,
+      role: 'collaborator',
+    };
+    const nextMembers = [...list.members, member];
+    if (transport.mode === 'server' && nextMembers
+      .filter(entry => entry.role !== 'owner')
+      .some(entry => !/^\d+$/.test(String(entry.id)))) {
+      setNotice('Adding a collaborator needs a user id from the server directory; that picker is not ported.');
+      return;
+    }
+    const previousMembers = list.members;
+    const previousSuggestions = suggestions;
+    setList(current => ({
+      ...current,
+      members: nextMembers,
+      memberCount: nextMembers.length,
+    }));
+    setSuggestions(current => current.filter(entry => entry !== member.name));
+    try {
+      await transport.setCollaborators({ listId: list.id, members: nextMembers });
+      setNotice(transport.mode === 'local'
+        ? `${member.name} added as a collaborator in the local preview. ${transport.reason}`
+        : `${member.name} added as a collaborator.`);
+    } catch (error) {
+      setList(current => ({
+        ...current,
+        members: previousMembers,
+        memberCount: previousMembers.length,
+      }));
+      setSuggestions(previousSuggestions);
+      setNotice(error.message || 'The collaborator could not be added.');
+    }
   }
 
-  function removeMember(id) {
-    setList(current => {
-      const next = current.members.filter(member => member.id !== id);
-      return { ...current, members: next, memberCount: next.length };
-    });
-    setNotice('Collaborator removed in this demo.');
+  async function removeMember(id) {
+    const member = list.members.find(entry => String(entry.id) === String(id));
+    const nextMembers = list.members.filter(entry => String(entry.id) !== String(id));
+    if (transport.mode === 'server' && nextMembers
+      .filter(entry => entry.role !== 'owner')
+      .some(entry => !/^\d+$/.test(String(entry.id)))) {
+      setNotice('Removing a collaborator needs server user ids; this list is still using preview members.');
+      return;
+    }
+    const previousMembers = list.members;
+    setList(current => ({
+      ...current,
+      members: nextMembers,
+      memberCount: nextMembers.length,
+    }));
+    try {
+      await transport.setCollaborators({ listId: list.id, members: nextMembers });
+      setNotice(transport.mode === 'local'
+        ? `${member?.name || 'Collaborator'} removed in the local preview. ${transport.reason}`
+        : `${member?.name || 'Collaborator'} removed.`);
+    } catch (error) {
+      setList(current => ({
+        ...current,
+        members: previousMembers,
+        memberCount: previousMembers.length,
+      }));
+      setNotice(error.message || 'The collaborator could not be removed.');
+    }
+  }
+
+  async function rateItem(item, score) {
+    const previousItems = items;
+    setItems(current => current.map(entry => (
+      entry.id === item.id
+        ? {
+            ...entry,
+            score,
+            rating: {
+              ...(entry.rating || { scaleMax: 10 }),
+              value: score,
+              label: score == null ? null : String(score),
+            },
+          }
+        : entry
+    )));
+    try {
+      await transport.rateItem({ item, score });
+    } catch (error) {
+      setItems(previousItems);
+      setNotice(error.message || 'The rating could not be saved.');
+    }
   }
 
   function openLink(row) {
@@ -523,8 +691,11 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
         setBulkMessage(null);
       }}
       onBulkAction={runBulkAction}
+      bulkStatuses={BULK_STATUSES}
+      onRemoveItems={removeItems}
       bulkMessage={bulkMessage}
       onOpenItem={openItem}
+      onRate={rateItem}
       emptyMode={emptyMode}
       hasSearch={!!search.trim()}
       onRecommend={recommendItem}
