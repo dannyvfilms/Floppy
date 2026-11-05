@@ -1,28 +1,21 @@
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { Screen, Section } from '../components/Screen';
-import { Note } from '../components/Note';
 import { ListCard } from '../../../frontend/ui/ListCard';
 import { Button } from '../../../frontend/ui/Button';
 import { Badge } from '../../../frontend/ui/Badge';
 import { ListForm } from '../../../frontend/ui/ListFormView';
 import { ListItemPreview, ListItemSearch } from '../../../frontend/ui/ListSearchView';
 import { ListRecommendations } from '../../../frontend/ui/ListRecommendationsView';
+import { SmartRuleSummary } from '../../../frontend/ui/SmartRules';
 import { palette, spacing } from '../theme';
 
 export const surface = {
   id: 'LISTS',
   status: 'ported',
-  title: 'Lists hub, list forms and add/recommend flows',
-  where: 'Lists screen cards, create/edit list form, item search/preview, recommendations approval and deny',
-  note: 'The list hub, create/edit list form, add-item search and preview, recommend flow and recommendations approval/deny use shared React Native presentation with local demo state. Tiers and smart-rule editing remain legacy; server transport and the web list pages remain unchanged.',
-};
-
-const tiers = {
-  id: 'TIERS',
-  title: 'Tier boards',
-  where: 'List detail tier view',
-  note: 'Tier tiles, ordering and export remain legacy. Tiers and smart-rule editing are not part of this port.',
+  title: 'Lists hub, list forms, add/recommend flows and smart summaries',
+  where: 'Lists screen cards, create/edit list form, item search/preview, recommendations approval and deny, saved smart-rule summary',
+  note: 'The list hub, create/edit list form, add-item search and preview, recommend flow, recommendations approval/deny and saved smart-rule summary use shared React Native presentation with local demo state. Server transport and the web list pages remain unchanged.',
 };
 
 const URL_PREFIX = 'https://floppy.example/lists/';
@@ -35,6 +28,25 @@ const MEDIA_TYPES = [
   { value: 'game', label: 'Games' },
   { value: 'anime', label: 'Anime' },
 ];
+
+const SMART_HUB_OPTIONS = {
+  mediaTypes: [
+    { value: 'movie', label: 'Movie' },
+    { value: 'tv', label: 'TV Show' },
+    { value: 'book', label: 'Book' },
+    { value: 'game', label: 'Game' },
+    { value: 'anime', label: 'Anime' },
+  ],
+  statuses: [
+    { value: 'Completed', label: 'Completed' },
+    { value: 'In progress', label: 'In Progress' },
+    { value: 'Planning', label: 'Planning' },
+    { value: 'Paused', label: 'Paused' },
+    { value: 'Dropped', label: 'Dropped' },
+  ],
+  tags: ['sci-fi', 'favourites'],
+  lists: [],
+};
 
 const PEOPLE = [
   { id: 'avery', name: 'Avery', handle: '@avery' },
@@ -78,6 +90,31 @@ const demoLists = [
     description: 'The books and films worth revisiting.',
     coverUrl: 'https://picsum.photos/seed/floppy-list-2/400/300',
     isSmart: true,
+    smartRules: {
+      media_types: ['book', 'movie'],
+      status: [],
+      rating: 'rated',
+      rating_min: '7.5',
+      rating_max: '',
+      collection: 'all',
+      genre: 'Science Fiction',
+      implied_genre: '',
+      year: '',
+      release: 'all',
+      source: '',
+      language: '',
+      country: '',
+      platform: '',
+      origin: '',
+      format: '',
+      author: '',
+      provider: '',
+      tag: ['sci-fi'],
+      tag_mode: 'or',
+      list: [],
+      search: '',
+      semantics_version: '2',
+    },
     source: 'local',
     visibility: 'private',
     visibilityLabel: 'Private',
@@ -707,8 +744,16 @@ export default function ListsScreen({ onBack, navigate }) {
         </View>
       </Section>
     )}
-    <Section title="Tiers">
-      <Note surface={tiers} />
+    <Section title="Smart list rules" copy="Saved rules are evaluated by the server; this hub shows their current summary.">
+      {lists.filter(list => list.isSmart).length ? lists.filter(list => list.isSmart).map(list => (
+        <View key={list.id} style={styles.smartBlock}>
+          <Text style={styles.smartName}>{list.name}</Text>
+          <SmartRuleSummary
+            rules={list.smartRules}
+            options={SMART_HUB_OPTIONS}
+            palette={palette} />
+        </View>
+      )) : <Text style={styles.stateText}>No smart lists yet.</Text>}
     </Section>
 
     {form ? <ListForm
@@ -800,4 +845,6 @@ const styles = StyleSheet.create({
   state: { alignItems: 'center', gap: spacing.sm, padding: spacing.xl },
   stateText: { color: palette.textMuted, fontSize: 14 },
   notice: { color: palette.textMuted, fontSize: 12, lineHeight: 17, marginBottom: spacing.md },
+  smartBlock: { gap: spacing.xs },
+  smartName: { color: palette.text, fontSize: 15, fontWeight: '600' },
 });
