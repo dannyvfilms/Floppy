@@ -6,6 +6,7 @@ import {
   flattenStatisticsModel,
 } from './statisticsTransport.js';
 import { createHistoryTransport, historyEntriesFromPayload } from './historyTransport.js';
+import { createHomeTransport, mergeHomeRowPage } from './homeTransport.js';
 import { createListTransport } from './listTransport.js';
 import { createMusicTransport } from './musicTransport.js';
 import {
@@ -258,4 +259,50 @@ test('history entries map bounded API days into feed rows', () => {
   assert.equal(entries[0].historyId, 7);
   assert.equal(entries[0].sessions.length, 1);
   assert.equal(entries[0].sessions[0].runtimeMinutes, 166);
+});
+
+test('home transport reads presentation shelves, deferred rows and artwork', async () => {
+  const { calls, session } = authFixture(path => {
+    if (path === '/api/v1/home/') return { groups: [{ mediaType: 'tv', rows: [] }], deferredGroups: [] };
+    if (path === '/api/v1/home/row/4/') return { row: { rowId: 4, items: [{ id: 'b' }], loadedCount: 15 } };
+    if (path === '/api/v1/home/row/4/sort/') return { row: { rowId: 4, direction: 'asc' } };
+    return { rows: [], pollRowIds: [] };
+  });
+  const transport = createHomeTransport({ auth: session });
+  assert.equal(transport.mode, 'server');
+
+  const model = await transport.load({ limit: 14 });
+  assert.equal(calls[0].path, '/api/v1/home/');
+  assert.equal(calls[0].options.query.presentation, 1);
+  assert.equal(calls[0].options.query.deferred, 1);
+  assert.equal(calls[0].options.query.limit, 14);
+  assert.equal(model.groups.length, 1);
+
+  const row = await transport.loadRow({ rowId: 4, offset: 14, seed: 9 });
+  assert.equal(calls[1].path, '/api/v1/home/row/4/');
+  assert.equal(calls[1].options.query.offset, 14);
+  assert.equal(calls[1].options.query.seed, 9);
+  assert.equal(row.loadedCount, 15);
+
+  const sorted = await transport.sortRow({ rowId: 4 });
+  assert.equal(calls[2].path, '/api/v1/home/row/4/sort/');
+  assert.equal(calls[2].options.method, 'POST');
+  assert.equal(sorted.direction, 'asc');
+
+  await transport.refreshCovers({ ids: [4], pending: 2 });
+  assert.equal(calls[3].path, '/api/v1/home/artwork/');
+  assert.equal(calls[3].options.query.ids, '4');
+});
+
+test('home transport keeps the local preview and merges row pages', () => {
+  const transport = createHomeTransport();
+  assert.equal(transport.mode, 'local');
+  assert.match(transport.reason, /sign in/i);
+  const merged = mergeHomeRowPage(
+    { rowId: 1, items: [{ id: 'a' }], loadedCount: 1, total: 2, seed: 4 },
+    { items: [{ id: 'b' }], loadedCount: 2 },
+  );
+  assert.deepEqual(merged.items.map(item => item.id), ['a', 'b']);
+  assert.equal(merged.loadedCount, 2);
+  assert.equal(merged.seed, 4);
 });

@@ -17,6 +17,8 @@ from app.discover_views import (
     _resolve_discover_media_type_for_user,
 )
 from app.helpers import build_provider_ids, is_item_collected
+from app.home_artwork import refresh_home_artwork
+from app.home_presentation import home_screen_payload, row_presentation
 from app.models import (
     CollectionEntry,
     DiscoverFeedback,
@@ -26,7 +28,12 @@ from app.models import (
     Sources,
 )
 from app.providers import services
-from users.home_screen import build_home_page_groups
+from users.home_screen import (
+    HomeScreenValidationError,
+    build_home_page_groups,
+    build_home_row,
+    toggle_home_row_direction,
+)
 
 from .contract_serializers import (
     DetailErrorSerializer,
@@ -355,6 +362,18 @@ class HomeView(drf_views.APIView):
                 {"detail": "Invalid limit parameter"},
                 status=HTTP.BAD_REQUEST,
             )
+        if request.GET.get("presentation") in {"1", "true"}:
+            http_request = getattr(request, "_request", request)
+            deferred = request.GET.get("deferred") in {"1", "true"}
+            return Response(
+                home_screen_payload(
+                    request.user,
+                    http_request,
+                    items_limit,
+                    deferred=deferred,
+                ),
+                status=HTTP.OK,
+            )
         groups = build_home_page_groups(request.user, items_limit)
         payload = []
         for group in groups:
@@ -389,3 +408,104 @@ class HomeView(drf_views.APIView):
                 },
             )
         return Response({"groups": payload}, status=HTTP.OK)
+
+# /api/v1/home/row/[row_id]/
+class HomeRowView(drf_views.APIView):
+    """One Home shelf window, for deferred rows and bounded load-more."""
+
+    def get(self, request, row_id):
+        """Return one bounded Home row window."""
+        try:
+            items_limit = max(1, min(int(request.GET.get("limit", 14)), 50))
+            offset = max(int(request.GET.get("offset", "0")), 0)
+            raw_seed = request.GET.get("seed", "")
+            seed = int(raw_seed) if raw_seed not in (None, "") else 0
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "Invalid row window"},
+                status=HTTP.BAD_REQUEST,
+            )
+        if offset:
+            groups = build_home_page_groups(
+                request.user,
+                items_limit,
+                load_row_id=row_id,
+                load_row_offset=offset,
+                load_row_seed=seed,
+                append_only=True,
+                only_row_id=row_id,
+            )
+            row = next(
+                (
+                    row
+                    for group in groups
+                    for row in group["rows"]
+                    if row["row_id"] == row_id
+                ),
+                None,
+            )
+        else:
+            row = build_home_row(request.user, row_id, items_limit)
+        if row is None:
+            return Response({"row": None}, status=HTTP.OK)
+        http_request = getattr(request, "_request", request)
+        return Response(
+            {"row": row_presentation(row, request.user, http_request)},
+            status=HTTP.OK,
+        )
+
+
+# /api/v1/home/rows/[row_id]/sort/
+class HomeRowDirectionView(drf_views.APIView):
+    """Flip one configured Home row's sort direction."""
+
+    def post(self, request, row_id):
+        """Flip the row's persisted sort direction and return it."""
+        if getattr(request.user, "is_demo", False):
+            return Response(
+                {"detail": "This section is view-only for demo accounts."},
+                status=HTTP.FORBIDDEN,
+            )
+        try:
+            toggle_home_row_direction(request.user, row_id)
+        except HomeScreenValidationError:
+            return Response(
+                {"detail": "Home row not found."},
+                status=HTTP.NOT_FOUND,
+            )
+        row = build_home_row(request.user, row_id, 14, refresh=True)
+        if row is None:
+            return Response({"row": None}, status=HTTP.OK)
+        http_request = getattr(request, "_request", request)
+        return Response(
+            {"row": row_presentation(row, request.user, http_request)},
+            status=HTTP.OK,
+        )
+
+
+# /api/v1/home/artwork/
+class HomeArtworkView(drf_views.APIView):
+    """Refresh every Home row that still needs cover artwork in one request."""
+
+    def get(self, request):
+        """Refresh the polled rows together and report rows still missing art."""
+        raw_ids = request.GET.get("ids", "")
+        row_ids = {int(part) for part in raw_ids.split(",") if part.strip().isdigit()}
+        raw_pending = request.GET.get("pending", "")
+        rows_pending = raw_pending.isdigit() and int(raw_pending) > 0
+        rows, poll_row_ids, pending = refresh_home_artwork(
+            request.user,
+            row_ids,
+            rows_pending,
+        )
+        http_request = getattr(request, "_request", request)
+        return Response(
+            {
+                "rows": [
+                    row_presentation(row, request.user, http_request) for row in rows
+                ],
+                "pollRowIds": [str(row_id) for row_id in poll_row_ids],
+                "pending": pending,
+            },
+            status=HTTP.OK,
+        )

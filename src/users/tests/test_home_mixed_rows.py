@@ -516,7 +516,9 @@ class MixedDisplayLevelTests(TestCase):
             request=request,
         )
         self.assertIn("Episode F", content)
-        self.assertIn("TV D • S01E01", content)
+        # The card model is embedded as JSON, where the separator is escaped.
+        self.assertIn("TV D", content)
+        self.assertIn("S01E01", content)
         self.assertIn("Podcast Episode I", content)
         self.assertFalse(
             next(
