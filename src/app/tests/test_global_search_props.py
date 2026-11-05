@@ -3,6 +3,7 @@
 import json
 import re
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -88,3 +89,46 @@ class GlobalSearchPropsTest(TestCase):
         self.assertEqual(card["mediaType"], MediaTypes.MOVIE.value)
         for key in ("searchOnline", "emptyTitle", "loadMore", "previous"):
             self.assertIn(key, props["labels"])
+
+    @patch("app.providers.services.search")
+    def test_search_results_paging_props_carry_web_urls(self, mock_search):
+        """The shared pager gets page numbers and hrefs the browser adapter follows."""
+        mock_search.return_value = {
+            "page": 2,
+            "total_results": 21,
+            "total_pages": 3,
+            "results": [
+                {
+                    "media_id": "438631",
+                    "title": "Dune",
+                    "media_type": MediaTypes.MOVIE.value,
+                    "source": Sources.TMDB.value,
+                    "image": "http://example.com/dune.jpg",
+                },
+            ],
+        }
+
+        response = self.client.get(
+            reverse("search"),
+            {"q": "dune", "media_type": MediaTypes.MOVIE.value, "page": 2},
+        )
+
+        html = response.content.decode()
+        match = re.search(
+            r'<script id="(search-results-[0-9a-f]+)" type="application/json">(.*?)</script>',
+            html,
+            re.DOTALL,
+        )
+        paging = json.loads(match.group(2))["paging"]
+        self.assertEqual(paging["page"], 2)
+        self.assertEqual(paging["totalPages"], 3)
+        self.assertEqual(paging["totalResults"], 21)
+        self.assertEqual([page["number"] for page in paging["pages"]], [1, 2, 3])
+        self.assertTrue(paging["pages"][1]["current"])
+
+        previous = parse_qs(urlparse(paging["previous"]["href"]).query)
+        next_page = parse_qs(urlparse(paging["next"]["href"]).query)
+        self.assertEqual(previous["page"], ["1"])
+        self.assertEqual(next_page["page"], ["3"])
+        self.assertEqual(previous["q"], ["dune"])
+        self.assertEqual(previous["media_type"], [MediaTypes.MOVIE.value])

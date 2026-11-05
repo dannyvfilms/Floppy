@@ -363,6 +363,7 @@ in the register.
 - `frontend/ui/barcodeEntry.web.js`
 - `frontend/ui/barcodeEntry.native.js`
 - `frontend/ui/global-search.css`
+- `native-proof/app/components/BarcodeScannerModal.jsx` (native camera/photo/manual barcode sheet)
 - `native-proof/app/surfaces/SearchSlot.jsx` (native placement on Home, Discover, Library and Search)
 - `native-proof/app/surfaces/SearchResultsSlot.jsx` (native search results on the Search screen)
 - `native-proof/app/surfaces/SearchParentSlot.jsx` (native parent TV/season and music album pickers on the Search screen)
