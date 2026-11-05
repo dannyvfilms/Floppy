@@ -12,10 +12,18 @@ from django.conf import settings
 from django.core.paginator import EmptyPage, Paginator
 from django.db.models.functions import ExtractDay, ExtractMonth
 from django.db.utils import OperationalError
-from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseNotFound
+from django.http import (
+    HttpResponse,
+    HttpResponseBadRequest,
+    HttpResponseNotFound,
+    JsonResponse,
+)
+from django.middleware.csrf import get_token
 from django.shortcuts import render
+from django.urls import reverse
 from django.utils import formats, timezone
 from django.utils.dateparse import parse_date
+from django.utils.translation import gettext as _
 from django.utils.translation import gettext_noop
 from django.views.decorators.http import require_GET, require_http_methods
 
@@ -1011,8 +1019,6 @@ def _parse_history_filters(request):
 @require_GET
 def history_genres(request):
     """Return sorted list of unique genres from the user's tracked items."""
-    from django.http import JsonResponse
-
     from app.models import (
         BoardGame,
         Episode,
@@ -1061,6 +1067,257 @@ def history_genres(request):
             "implied_genres": sorted(implied_genres, key=str.lower),
         },
     )
+
+
+def _history_feed_labels():
+    """Return the shared feed's labels without serializing template HTML."""
+    return {
+        "history": _("History"),
+        "previousYear": _("Go back one year"),
+        "previousMonth": _("Go to previous month"),
+        "nextMonth": _("Go to next month"),
+        "currentMonth": _("Go to current month"),
+        "filters": _("Filter history"),
+        "hideFilters": _("Hide filters"),
+        "clearFilters": _("Clear filters"),
+        "saveView": _("Save view"),
+        "apply": _("Apply"),
+        "allTypes": _("All types"),
+        "mediaType": _("Media type"),
+        "viewMode": _("View mode"),
+        "activity": _("Activity (watched)"),
+        "release": _("Release dates"),
+        "genre": _("Genre"),
+        "allGenres": _("All genres"),
+        "impliedGenre": _("Implied genre"),
+        "allImpliedGenres": _("All implied genres"),
+        "from": _("From"),
+        "to": _("To"),
+        "dateRange": _("Date range"),
+        "refreshing": _("Refreshing history in background..."),
+        "dismiss": _("Dismiss refresh notice"),
+        "refreshFailed": _(
+            "History could not be refreshed. Showing saved activity.",
+        ),
+        "retryRefresh": _("Try again"),
+        "loadMore": _("Load more"),
+        "loadDay": _("Load this day"),
+        "loadingDay": _("Loading this day..."),
+        "loadDayError": _("This day could not be loaded."),
+        "retryDay": _("Retry day"),
+        "noHistory": _("No watch history yet"),
+        "noHistoryCopy": _("Start tracking movies and episodes to see them here."),
+        "loadError": _("History could not be loaded."),
+        "retry": _("Try again"),
+        "loading": _("Loading history..."),
+        "edit": _("Edit"),
+        "delete": _("Delete"),
+        "showMore": _("Show more"),
+        "showLess": _("Show less"),
+        "status": _("Status"),
+        "rate": _("Rate"),
+        "score": _("Score"),
+        "close": _("Close"),
+        "viewActivity": _("Activity"),
+        "open": _("Open"),
+        "items": _("items"),
+        "item": _("item"),
+        "releases": _("releases"),
+        "releaseOne": _("release"),
+        "previousPage": _("Previous page"),
+        "nextPage": _("Next page"),
+        "page": _("Page"),
+    }
+
+
+def _history_feed_day_url(request, day_key, offset=0):
+    """Return the bounded JSON day URL preserving the current filters."""
+    query = request.GET.copy()
+    query.pop("page", None)
+    query["entry_offset"] = str(max(int(offset or 0), 0))
+    query["format"] = "json"
+    return (
+        reverse("history_day_fragment", kwargs={"day_key": day_key})
+        + "?"
+        + query.urlencode()
+    )
+
+
+def _history_feed_activity_url(entry):
+    """Return the existing server activity-session dialog URL for an entry."""
+    item = entry.get("item") or {}
+    show = entry.get("show") or {}
+    album = entry.get("album") or {}
+    media_type = entry.get("media_type")
+    media_id = item.get("media_id")
+    source = item.get("source")
+    params = {}
+    if media_type == MediaTypes.MUSIC.value and album.get("id"):
+        params["album"] = album["id"]
+    elif media_type == MediaTypes.PODCAST.value and show.get("id"):
+        params["media_type"] = MediaTypes.PODCAST.value
+        params["podcast_show"] = show["id"]
+    elif media_type == MediaTypes.EPISODE.value:
+        params["media_type"] = MediaTypes.TV.value
+        params["media_id"] = media_id
+        params["source"] = source
+        if item.get("season_number"):
+            params["season_number"] = item["season_number"]
+    else:
+        params["media_type"] = media_type
+        params["media_id"] = media_id
+        params["source"] = source
+    if media_type in {MediaTypes.GAME.value, MediaTypes.BOARDGAME.value}:
+        params["logging_style"] = "sessions"
+    params = {key: value for key, value in params.items() if value not in (None, "")}
+    return reverse("activity_sessions_modal") + "?" + urlencode(params)
+
+
+def _history_feed_verb(entry):
+    """Return the action word shown before an entry's timestamp."""
+    media_type = entry.get("media_type")
+    entry_key = str(entry.get("entry_key") or "")
+    if media_type in {MediaTypes.EPISODE.value, MediaTypes.MOVIE.value,
+                      MediaTypes.VIDEO.value, MediaTypes.ANIME.value}:
+        return _("Watched")
+    if media_type in {MediaTypes.GAME.value, MediaTypes.BOARDGAME.value}:
+        return _("Played")
+    if media_type in {MediaTypes.MUSIC.value, MediaTypes.PODCAST.value}:
+        return _("Listened")
+    if media_type == MediaTypes.BOOK.value and entry_key.startswith("book-session"):
+        return _("Listened")
+    return _("Read")
+
+
+def _history_feed_entry(entry, history_mode, user, request, index=0):
+    """Convert one cached history entry into the shared feed row contract."""
+    from app.media_card_model import history_actions, history_card_model
+    from users.templatetags import user_tags
+
+    media_type = entry.get("media_type")
+    card_class = (
+        "search-result-card-square"
+        if media_type in {MediaTypes.MUSIC.value, MediaTypes.PODCAST.value}
+        else "search-result-card"
+    )
+    card = history_card_model(
+        entry,
+        card_class,
+        history_mode,
+        user,
+        request,
+    ) or {}
+    actions = history_actions(
+        entry,
+        history_mode,
+        user,
+        request,
+    ) or {}
+    track = next(
+        (
+            action
+            for action in actions.get("items", [])
+            if action.get("modal") == "track"
+        ),
+        None,
+    )
+    played_at = entry.get("played_at_local")
+    when = ""
+    if played_at:
+        if history_mode == "release":
+            when = user_tags.user_date_format(played_at, user)
+        else:
+            when = user_tags.user_datetime_format(played_at, user)
+    return {
+        "key": entry.get("entry_key") or f"history-entry-{index}",
+        "mediaType": card.get("mediaType") or media_type,
+        "title": card.get("title") or entry.get("display_title")
+        or entry.get("title") or "",
+        "altTitle": card.get("altTitle") or None,
+        "href": card.get("href") or "",
+        "image": card.get("image") or {
+            "src": None,
+            "fallback": "",
+            "source": "primary",
+        },
+        "subtitle": entry.get("episode_code") or entry.get("episode_label")
+        or entry.get("time_range_display") or None,
+        "verb": _("Released") if history_mode == "release"
+        else _history_feed_verb(entry),
+        "when": when,
+        "runtime": entry.get("runtime_display")
+        or entry.get("progress_display") or "",
+        "score": card.get("scoreText"),
+        "status": entry.get("status") or None,
+        "date": played_at.date().isoformat() if hasattr(played_at, "date") else None,
+        "runtimeMinutes": entry.get("runtime_minutes") or 0,
+        "canEdit": bool(track),
+        "canDelete": False,
+        "canViewActivity": history_mode != "release",
+        "editUrl": track.get("url") if track else None,
+        "editTarget": track.get("target") if track else None,
+        "editVals": track.get("vals") if track else None,
+        "activityUrl": _history_feed_activity_url(entry)
+        if history_mode != "release"
+        else None,
+        "activityTarget": "#session-history-modal-host",
+        "activityVals": {},
+    }
+
+
+def _history_feed_day(day, history_mode, user, request):
+    """Convert one prepared history day into the shared feed day contract."""
+    day_key = day.get("day_key") or _history_day_key(day)
+    entries = [
+        _history_feed_entry(entry, history_mode, user, request, index)
+        for index, entry in enumerate(day.get("entries", []))
+    ]
+    entry_count = day.get("entry_count", len(entries))
+    next_offset = day.get("next_entry_offset", len(entries))
+    return {
+        "key": day_key,
+        "weekday": day.get("weekday", ""),
+        "dateLabel": day.get("date_display", ""),
+        "entryCount": entry_count,
+        "offset": day.get("entry_offset", 0),
+        "releaseCount": day.get("release_count")
+        if history_mode == "release"
+        else None,
+        "runtimeLabel": day.get("total_runtime_display", "")
+        if history_mode != "release"
+        else "",
+        "lazy": bool(day.get("lazy")),
+        "loading": False,
+        "loadingMore": False,
+        "hasMore": bool(day.get("has_more")),
+        "remaining": day.get("remaining_entry_count", 0),
+        "entries": entries,
+        "loadUrl": _history_feed_day_url(request, day_key, 0) if day_key else None,
+        "nextUrl": _history_feed_day_url(request, day_key, next_offset)
+        if day_key and day.get("has_more")
+        else None,
+    }
+
+
+def _history_feed_model(request, context):
+    """Return the bounded initial model for the browser History feed."""
+    history_days = context.get("history_days") or []
+    history_mode = context.get("history_mode") or "activity"
+    user = context["user"]
+    return {
+        "mode": history_mode,
+        "refreshing": bool(context.get("history_refreshing")),
+        "refreshError": bool(context.get("database_error")),
+        "summary": [],
+        "days": [
+            _history_feed_day(day, history_mode, user, request)
+            for day in history_days
+        ],
+        "filters": {},
+        "options": {},
+        "nav": {},
+        "pagination": None,
+    }
 
 
 @require_GET
@@ -1361,6 +1618,16 @@ def history(request):
             current_page,
             rendered_entries,
         )
+        context["history_feed"] = _history_feed_model(request, context)
+        context["history_feed_props"] = {
+            "model": context["history_feed"],
+            "labels": _history_feed_labels(),
+            "chrome": False,
+            "baseUrl": request.path,
+            "saveViewUrl": reverse("saved_view_create"),
+            "saveViewPrompt": _("Name this view"),
+            "csrfToken": get_token(request),
+        }
         render_start = time.perf_counter()
         logger.info(
             "history_render_start user_id=%s page=%s",
@@ -1402,6 +1669,7 @@ def history(request):
             "history_refreshing": False,
             "media_type": context_media_type,
         }
+        context["history_feed"] = _history_feed_model(request, context)
         return render(request, "app/history.html", context)
     else:
         return response
@@ -1464,6 +1732,17 @@ def history_day_fragment(request, day_key):
         request,
         prepared_day["next_entry_offset"],
     )
+    if request.GET.get("format") == "json":
+        return JsonResponse(
+            {
+                "day": _history_feed_day(
+                    prepared_day,
+                    "activity",
+                    request.user,
+                    request,
+                ),
+            },
+        )
     return render(
         request,
         "app/components/history_day.html",

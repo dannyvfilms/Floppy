@@ -734,8 +734,8 @@
       "register": "HISTORY",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "Compiled by the web bundle through the browser intent adapter; the adapter is not mounted yet, so the existing server-rendered History page remains the browser owner and no browser interaction pass was performed."
+          "status": "verified",
+          "evidence": "Chromium (local gunicorn, seeded manual movies, 1280x900): the browser adapter mounted into data-history-feed-root, rendered the seeded day rows with Activity and Edit actions, and logged no console errors. Lazy days, load-more, the activity/edit dialogs, filters, cache refresh and accessibility behaviour were not exercised."
         },
         "ios": {
           "status": "unverified",
@@ -1691,7 +1691,7 @@
     },
     "frontend/ui/mountHistoryFeed.jsx": {
       "register": "HISTORY",
-      "purpose": "Browser intent bridge for the shared History feed: delegate month/pagination navigation to existing History URLs, load bounded day fragments and edits through htmx, delete through the existing DELETE route, and save/apply filters through the existing history and saved-view endpoints."
+      "purpose": "Browser feed adapter for the shared History feed: read the bounded initial model and JSON day slices, load lazy/load-more days, open the existing track modal through ModalHost, open the server activity-session dialog, delete through the existing route, and keep filter/save-view URLs; month navigation, the Alpine filter sheet, cache banner and pagination remain server-owned."
     },
     "frontend/ui/mountReleaseCalendar.jsx": {
       "register": "RELEASE-CALENDAR",

@@ -249,10 +249,13 @@
   {% endif %}
 
   {% if history_days %}
-    <div class="space-y-10">
-      {% for day in history_days %}
-        {% include "app/components/history_day.html" with day=day history_mode=history_mode user=user %}
-      {% endfor %}
+    {{ history_feed_props|json_script:"history-feed-props" }}
+    <div data-history-feed-root data-props-id="history-feed-props">
+      <div class="space-y-10">
+        {% for day in history_days %}
+          {% include "app/components/history_day.html" with day=day history_mode=history_mode user=user %}
+        {% endfor %}
+      </div>
     </div>
     {% if not use_month_view and total_pages|default:0 > 1 %}
       <div class="history-pagination flex flex-wrap items-center justify-center gap-2 sm:gap-3 mt-6">
@@ -375,6 +378,23 @@
     </div>
     {% endif %}
   {% endif %}
+  </div>
+</div>
+
+{# Per-item activity dialog used by the shared feed's Activity action. #}
+<div x-data="{ sessionHistoryOpen: false }"
+     @open-session-history.window="sessionHistoryOpen = true; $nextTick(() => $el.querySelector('[data-session-history-close]')?.focus())"
+     @keydown.escape.window="if (!$event.target.closest('[data-session-history-track-modal]')) sessionHistoryOpen = false">
+  <div x-show="sessionHistoryOpen"
+       x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 md:p-6"
+       role="dialog"
+       aria-modal="true"
+       aria-label="{% translate "Activity history" %}"
+       @click.self="sessionHistoryOpen = false">
+    <div id="session-history-modal-host"
+         class="flex max-h-full w-full items-center justify-center"
+         @click.stop></div>
   </div>
 </div>
 

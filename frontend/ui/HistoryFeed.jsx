@@ -57,6 +57,7 @@ const DEFAULT_LABELS = {
   viewMode: 'View mode',
   activity: 'Activity (watched)',
   release: 'Release dates',
+  releaseOne: 'release',
   genre: 'Genre',
   allGenres: 'All genres',
   impliedGenre: 'Implied genre',
@@ -111,7 +112,6 @@ const DEFAULT_LABELS = {
   items: 'items',
   item: 'item',
   releases: 'releases',
-  release: 'release',
   activeDays: 'Active days',
   entries: 'Activity entries',
   trackedTime: 'Tracked time',
@@ -267,7 +267,7 @@ export function HistoryDaySummary({ day, mode = 'activity', labels, palette }) {
   const count = day.entryCount ?? day.entries?.length ?? 0;
   let text;
   if (mode === 'release') {
-    text = `${day.releaseCount ?? count} ${day.releaseCount === 1 ? copy.release : copy.releases}`;
+    text = `${day.releaseCount ?? count} ${day.releaseCount === 1 ? copy.releaseOne : copy.releases}`;
   } else {
     const noun = count === 1 ? copy.item : copy.items;
     text = `${count} ${noun}${day.runtimeLabel ? ` · ${day.runtimeLabel}` : ''}`;
@@ -305,8 +305,8 @@ export function HistoryEntryRow({
       </Pressable> : null}
     </View> : null}
     <View style={styles.entryActions}>
-      <Button label={copy.viewActivity} size="sm" tone="surface"
-        onPress={() => onOpenActivity?.(entry)} palette={buttonPalette(colors)} />
+      {entry.canViewActivity !== false ? <Button label={copy.viewActivity} size="sm" tone="surface"
+        onPress={() => onOpenActivity?.(entry)} palette={buttonPalette(colors)} /> : null}
       {entry.canEdit ? <Button label={copy.edit} size="sm" onPress={() => onEdit?.(entry)} palette={buttonPalette(colors)} /> : null}
       {entry.canDelete ? <Button label={copy.delete} size="sm" tone="ghost-danger" onPress={() => onDelete?.(entry)} palette={buttonPalette(colors)} /> : null}
     </View>
@@ -680,6 +680,7 @@ export function HistoryFeed({
   model = {},
   labels,
   palette,
+  chrome = true,
   onNavigate,
   onLoadMore,
   onLoadDay,
@@ -706,7 +707,7 @@ export function HistoryFeed({
   const filters = model.filters || {};
   const options = model.options || {};
   const activeCount = filters.activeCount ?? 0;
-  const showRefresh = model.refreshing && !refreshDismissed;
+  const showRefresh = chrome && model.refreshing && !refreshDismissed;
 
   return <View style={styles.feed}>
     {showRefresh ? <View style={[styles.refresh, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
@@ -716,13 +717,13 @@ export function HistoryFeed({
         <Text style={[styles.refreshClose, { color: colors.textMuted }]}>✕</Text>
       </Pressable>
     </View> : null}
-    {model.refreshError ? <View style={[styles.refresh, { backgroundColor: colors.surface, borderColor: colors.danger }]}>
+    {chrome && model.refreshError ? <View style={[styles.refresh, { backgroundColor: colors.surface, borderColor: colors.danger }]}>
       <Text accessibilityLiveRegion="polite" style={[styles.refreshText, { color: colors.text }]}>{copy.refreshFailed}</Text>
       <Button label={copy.retryRefresh} size="sm" tone="surface" palette={buttonPalette(colors)}
         onPress={() => onRefresh?.()} />
     </View> : null}
 
-    {nav.monthLabel ? <View style={styles.monthNav}>
+    {chrome && nav.monthLabel ? <View style={styles.monthNav}>
       <View style={styles.monthNavSide}>
         {nav.previousYear ? <Button label={nav.previousYear.label || copy.previousYear} size="sm" tone="surface"
           palette={buttonPalette(colors)} disabled={nav.previousYear.disabled}
@@ -742,7 +743,7 @@ export function HistoryFeed({
       </View>
     </View> : null}
 
-    <View style={styles.toolbar}>
+    {chrome ? <View style={styles.toolbar}>
       <Button label={filtersOpen ? copy.hideFilters : copy.filters} size="sm" tone="surface"
         palette={buttonPalette(colors)} onPress={() => setFiltersOpen(current => !current)} />
       {activeCount > 0 ? <Badge label={String(activeCount)} size="sm" tone="indigo"
@@ -753,12 +754,12 @@ export function HistoryFeed({
       {filters.mediaTypes?.length ? <Text style={[styles.toolbarText, { color: colors.textMuted }]}>
         {filters.mediaTypes.map(value => mediaTypeLabel(options.mediaTypes, value)).join(', ')}
       </Text> : null}
-    </View>
+    </View> : null}
 
-    {filtersOpen ? <HistoryFilterPanel filters={filters} options={options} labels={copy}
+    {chrome && filtersOpen ? <HistoryFilterPanel filters={filters} options={options} labels={copy}
       palette={colors} onApply={onApplyFilters} onClear={onClearFilters} onSaveView={onSaveView} /> : null}
 
-    {model.summary?.length ? <HistoryActivitySummary stats={model.summary} labels={copy} palette={colors} /> : null}
+    {chrome && model.summary?.length ? <HistoryActivitySummary stats={model.summary} labels={copy} palette={colors} /> : null}
 
     {model.error ? <HistoryState kind="error" labels={copy} palette={colors} onRetry={onRetry} /> : null}
     {!model.error && model.loading && !days.length
@@ -773,7 +774,7 @@ export function HistoryFeed({
       onEditEntry={onEditEntry} onDeleteEntry={onDeleteEntry} onLoadMore={onLoadMore}
       onLoadDay={onLoadDay} onRetryDay={onRetryDay} />)}
 
-    {model.pagination && model.pagination.pageCount > 1 ? <View style={styles.pagination}>
+    {chrome && model.pagination && model.pagination.pageCount > 1 ? <View style={styles.pagination}>
       <Button label={copy.previousPage} size="sm" tone="surface" palette={buttonPalette(colors)}
         disabled={!model.pagination.previousUrl}
         onPress={() => onNavigate?.({ kind: 'page', direction: -1, url: model.pagination.previousUrl })} />
