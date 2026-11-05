@@ -216,7 +216,7 @@ function Title({ model, palette, onOpen, onOpenLink }) {
     style={styles.titleColumn}>{text}</Pressable>;
 }
 
-function Rating({ model, palette, labels, renderRating, onRate }) {
+function Rating({ model, palette, labels, renderRating, onRate, readOnly }) {
   const rating = model.rating;
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState(rating?.value ?? null);
@@ -226,7 +226,7 @@ function Rating({ model, palette, labels, renderRating, onRate }) {
   }, [rating?.value]);
 
   if (!rating) return null;
-  if (!model.ratingEditable || !renderRating) {
+  if (readOnly || !model.ratingEditable || !renderRating) {
     if (rating.label == null) return null;
     return <View accessible accessibilityLabel={`${labels.rate}: ${rating.label}`} style={styles.ratingReadOnly}>
       <Star color={palette.star} />
@@ -271,7 +271,7 @@ function AltTitle({ label, open, onPress, palette }) {
   </Pressable>;
 }
 
-function CardMetadata({ model, palette, labels, onOpen, onOpenLink, onRate, renderRating, altOpen, setAltOpen }) {
+function CardMetadata({ model, palette, labels, onOpen, onOpenLink, onRate, renderRating, readOnly, altOpen, setAltOpen }) {
   return <>
     <View style={styles.titleRow}>
       <Title model={model} palette={palette} onOpen={onOpen} onOpenLink={onOpenLink} />
@@ -281,7 +281,7 @@ function CardMetadata({ model, palette, labels, onOpen, onOpenLink, onRate, rend
         <Star color={palette.star} />
         <Text style={[styles.ratingValue, { color: palette.star }]}>{model.scoreText}</Text>
       </View> : null}
-      <Rating model={model} palette={palette} labels={labels} renderRating={renderRating} onRate={onRate} />
+      <Rating model={model} palette={palette} labels={labels} renderRating={renderRating} onRate={onRate} readOnly={readOnly} />
     </View>
     {altOpen && model.altTitle ? <Text style={[styles.altText, { color: palette.textMuted }]}>{model.altTitle}</Text> : null}
     {model.lines?.map((line, index) => <Line key={index} line={line} palette={palette} />)}
@@ -301,6 +301,7 @@ export function MediaCardView({
   onReorder,
   onReorderDrag,
   dragging = false,
+  readOnly = false,
   onRevealChange,
   revealed,
   renderActionIcon,
@@ -315,11 +316,13 @@ export function MediaCardView({
     noStatus: 'No Status',
     rate: 'Rate',
     close: 'Close',
+    dragHint: 'Drag to reorder or use the step buttons',
     ...labels,
   };
   const [altOpen, setAltOpen] = useState(false);
   const [localRevealed, setLocalRevealed] = useState(false);
-  const shownActions = actions === undefined ? model.actions : actions;
+  const activeSelection = readOnly ? undefined : selection;
+  const shownActions = readOnly ? null : (actions === undefined ? model.actions : actions);
   const isRevealed = revealed === undefined ? localRevealed : revealed;
 
   function setReveal(value) {
@@ -328,8 +331,8 @@ export function MediaCardView({
   }
 
   function open() {
-    if (selection?.active) {
-      selection.toggle?.();
+    if (activeSelection?.active) {
+      activeSelection.toggle?.();
       return;
     }
     if (shownActions && !isRevealed) {
@@ -339,10 +342,10 @@ export function MediaCardView({
     onOpen?.();
   }
 
-  const rowOpen = selection?.active ? selection.toggle : onOpen;
+  const rowOpen = activeSelection?.active ? activeSelection.toggle : onOpen;
 
   function gatedOpen() {
-    if (shownActions && !selection?.active && !isRevealed) {
+    if (shownActions && !activeSelection?.active && !isRevealed) {
       setReveal(true);
       return;
     }
@@ -350,7 +353,7 @@ export function MediaCardView({
   }
 
   function gatedOpenLink(href) {
-    if (shownActions && !selection?.active && !isRevealed) {
+    if (shownActions && !activeSelection?.active && !isRevealed) {
       setReveal(true);
       return;
     }
@@ -360,14 +363,15 @@ export function MediaCardView({
   if (model.layout === 'row') {
     return <View style={[styles.row, style]}>
       <View style={styles.rowArtwork}>
-        <Artwork model={model} palette={colors} selection={selection} onPress={rowOpen} />
+        <Artwork model={model} palette={colors} selection={activeSelection} onPress={rowOpen} />
       </View>
       <View style={styles.rowBody}>
         <CardMetadata model={model} palette={colors} labels={copy} onOpen={onOpen}
-          onOpenLink={onOpenLink} onRate={onRate} renderRating={renderRating} altOpen={altOpen} setAltOpen={setAltOpen} />
+          onOpenLink={onOpenLink} onRate={onRate} renderRating={renderRating} readOnly={readOnly}
+          altOpen={altOpen} setAltOpen={setAltOpen} />
         {model.matched ? <Text numberOfLines={1} accessibilityLabel={model.matched.title}
           style={[styles.matched, { color: colors.textMuted }]}>{model.matched.text}</Text> : null}
-        {shownActions && !selection?.active ? <MediaCardActionRow actions={shownActions}
+        {shownActions && !activeSelection?.active ? <MediaCardActionRow actions={shownActions}
           palette={colors} onAction={onAction} renderIcon={renderActionIcon} /> : null}
       </View>
     </View>;
@@ -379,27 +383,28 @@ export function MediaCardView({
     borderColor: colors.border,
   }, style]}
     onPointerEnter={event => {
-      if (event?.nativeEvent?.pointerType === 'mouse' && shownActions && !selection?.active) setReveal(true);
+      if (event?.nativeEvent?.pointerType === 'mouse' && shownActions && !activeSelection?.active) setReveal(true);
     }}
     onPointerLeave={event => {
-      if (event?.nativeEvent?.pointerType === 'mouse' && shownActions && !selection?.active) setReveal(false);
+      if (event?.nativeEvent?.pointerType === 'mouse' && shownActions && !activeSelection?.active) setReveal(false);
     }}>
     <View style={styles.artworkWrap}>
-      <Artwork model={model} palette={colors} selection={selection} onPress={open} />
+      <Artwork model={model} palette={colors} selection={activeSelection} onPress={open} />
       {model.statusChip?.kind === 'media-type'
         ? <MediaTypeChip chip={model.statusChip} palette={colors} />
         : <StatusChip chip={model.statusChip} palette={colors} labels={copy} />}
       {model.cornerChips?.map((chip, index) => <CornerChip key={`${chip.kind}-${index}`}
         chip={chip} palette={colors} labels={copy} onOpenLink={gatedOpenLink} />)}
       <ProgressBar bar={model.progressBar} palette={colors} />
-      {shownActions && !selection?.active ? <MediaCardActions actions={shownActions}
+      {shownActions && !activeSelection?.active ? <MediaCardActions actions={shownActions}
         palette={colors} labels={copy} revealed={isRevealed} onOpen={onOpen}
         onAction={onAction} onReorder={onReorder} onReorderDrag={onReorderDrag}
         dragging={dragging} renderIcon={renderActionIcon} /> : null}
     </View>
     <View style={styles.body}>
       <CardMetadata model={model} palette={colors} labels={copy} onOpen={gatedOpen}
-        onOpenLink={gatedOpenLink} onRate={onRate} renderRating={renderRating} altOpen={altOpen} setAltOpen={setAltOpen} />
+        onOpenLink={gatedOpenLink} onRate={onRate} renderRating={renderRating} readOnly={readOnly}
+        altOpen={altOpen} setAltOpen={setAltOpen} />
     </View>
   </View>;
 }

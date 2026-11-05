@@ -208,16 +208,17 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 
 ## MEDIA-CARD
 
-- `frontend/ui/MediaCardView.jsx` (universal native card shell: layouts, artwork fallback, chips, progress, title/lines, rating affordance and read-only/selectable states; presentation only)
-- `frontend/ui/MediaCardActions.jsx` (universal action overlay, row buttons and list-reorder controls; native drag gesture with `adjustable` accessibility actions, explicit action/reorder/reorder-drag/reveal callbacks, no transport)
+- `frontend/ui/MediaCardView.jsx` (universal native card shell: layouts, artwork fallback, chips, progress, title/lines, rating affordance, explicit read-only mode and selectable states; presentation only)
+- `frontend/ui/MediaCardActions.jsx` (universal action overlay, row buttons and list-reorder controls; native drag gesture with an `adjustable` value, hint and accessibility actions, explicit action/reorder/reorder-drag/reveal callbacks, no transport)
 - `frontend/ui/MediaCardActionHost.jsx` (universal popup shell for the card action callback contract; the browser ModalHost remains the web host)
 - `frontend/ui/MediaCardFormControls.jsx` (`FormHeader`, `FormField`, `FormTextField`, `FormSelect`, `FormStatus` and `FormError` for the shared action forms; presentation only)
 - `frontend/ui/ListsFormView.jsx` (universal `ListsForm`: tag filter, count, Add/Remove rows, loading/error/empty states and accessible header; presentation only)
 - `frontend/ui/ListsForm.web.jsx` (browser transport adapter: JSON list model, CSRF toggle, `floppy-list-toggled` event and errors for the shared `ListsForm`)
-- `frontend/ui/TrackForm.jsx` (universal `TrackForm`: General tab fields, date-time fields, notes, validation, tab host and save/delete states; presentation only)
+- `frontend/ui/TrackForm.jsx` (universal `TrackForm`: General tab fields, date-time fields, notes, validation, tab host, repeat actions and save/delete states; presentation only)
+- `frontend/ui/mountTrackForm.jsx` (browser adapter for the shared General form inside the server track modal: reads the serialized model, hides the legacy form only when htmx is available, and submits/delete/rewatch through htmx so OOB fragments, HX-Trigger events, CSRF and permissions stay server-owned)
 - `frontend/ui/TrackFormTabs.jsx` (universal `TrackTabs`: General, Tags, Metadata, Collection, Plays/Episode plays, Status history and Discover tab strip and bodies with loading, error, retry, empty and pending states; supplied labels drive the tabs and add/remove actions; presentation only)
 - `frontend/ui/mediaCardForms.js` (shared lists/track form models, membership helpers, initial values and validation)
-- `native-proof/app/surfaces/MediaCardSlot.jsx` (native placement with realistic library items, Track song/episode variants, Discover plan/hide with candidate removal, drag and button reorder with full-order transport, bulk refresh through the card-change bus and popup host on Home, Discover and Library)
+- `native-proof/app/surfaces/MediaCardSlot.jsx` (native placement with realistic library items, Track song/episode variants, Discover plan/hide with candidate removal, link action routing, read-only/selectable states, drag and button reorder with full-order transport and accessibility announcements, bulk refresh through the card-change bus and popup host on Home, Discover and Library)
 - `native-proof/app/surfaces/mediaCardEvents.js` (native-only card-change event bus used by the card, Track, Discover and bulk selection; not presentation)
 - `src/templates/app/components/card_lines.html`
 - `src/templates/app/components/media_card.html` (shell: wrapper classes, props script and first-paint poster and title; React replaces it on mount)
@@ -466,13 +467,15 @@ Server-owned rows retained behind the web fallback:
 
 Shared React Native dialog and native placement:
 
-- `frontend/ui/TrackDialog.jsx` (universal tracking dialog: General, Tags, Metadata, Collection, Episode plays and Status history tabs, date/status/progress coupling, notes, delete, repeat actions, validation and busy/error states)
+- `frontend/ui/TrackDialog.jsx` (universal tracking dialog and embedded General form: General, Tags, Metadata, Collection, Episode plays and Status history tabs, date/status/progress coupling, notes, delete, repeat actions, validation and busy/error states)
 - `frontend/ui/TrackForm.jsx` (reused General fields, rating fields, notes, tabs and save/delete/secondary actions)
 - `frontend/ui/TrackFormTabs.jsx` (reused Tags, Metadata, Collection, Episode plays and Status history bodies)
+- `frontend/ui/mountTrackForm.jsx` (browser adapter that mounts the embedded shared General form inside `fill_track.html` and keeps htmx/OOB saves, CSRF, permissions and repeat routes)
 - `native-proof/app/surfaces/DetailTrackingSlot.jsx` (native Detail actions and episode/issue row Track actions with demo data)
 
 Server-owned web path retained behind the fallback:
 
+- `src/templates/app/components/fill_track.html` (server General form remains the no-JavaScript fallback; its Tags, Metadata, Collection, Episode plays, Status history and Discover tabs stay active because only General is mounted)
 - `src/static/js/episodeBulkTrackForm.js`
 - `src/static/js/mediaStatusDateHandler.js`
 - `src/templates/app/components/album_track_modal.html`
@@ -481,7 +484,6 @@ Server-owned web path retained behind the fallback:
 - `src/templates/app/components/detail_track_action_attrs.html`
 - `src/templates/app/components/detail_track_open_attrs.html`
 - `src/templates/app/components/detail_track_split.html`
-- `src/templates/app/components/fill_track.html`
 - `src/templates/app/components/fill_track_episode.html`
 - `src/templates/app/components/fill_track_episode_bulk.html`
 - `src/templates/app/components/fill_track_song.html`

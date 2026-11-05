@@ -154,6 +154,7 @@ export function TrackDialog({
   onDiscoverToggle,
   onSaveAsNew,
   onRewatch,
+  embedded = false,
   now = () => new Date(),
 }) {
   const palette = { ...DEFAULT_PALETTE, ...(suppliedPalette || {}) };
@@ -224,35 +225,41 @@ export function TrackDialog({
 
   const repeatActions = repeatActionsFor(model, onSaveAsNew, onRewatch);
 
+  const form = <TrackForm
+    model={model}
+    values={values}
+    errors={errors}
+    status={status}
+    serverError={serverError}
+    busy={busy}
+    labels={labels}
+    palette={palette}
+    tabs={tabs}
+    activeTab={activeTab}
+    onTabChange={setActiveTab}
+    onChange={change}
+    onSubmit={submit}
+    onDelete={onDelete}
+    onRetry={onRetry}
+    onClose={onClose}
+    onRetryTabs={onRetryTabs}
+    onTagToggle={onTagToggle}
+    onTagCreate={onTagCreate}
+    onArtworkSave={onArtworkSave}
+    onDiscoverToggle={onDiscoverToggle}
+    secondaryActions={repeatActions}
+    showHeader={!embedded}
+    embedded={embedded} />;
+
+  if (embedded) return form;
+
   return <Modal visible={Boolean(open)} transparent animationType="fade" onRequestClose={onClose}>
     <View style={styles.root}>
       <Pressable accessible={false} accessibilityLabel={labels.close || 'Close'} onPress={onClose}
         style={[StyleSheet.absoluteFill, { backgroundColor: palette.backdrop }]} />
       <View accessibilityViewIsModal role="dialog" accessibilityLabel={model?.title || labels.title || 'Tracking'}
         style={[styles.dialog, { maxHeight: height * 0.92 }]}>
-        <TrackForm
-          model={model}
-          values={values}
-          errors={errors}
-          status={status}
-          serverError={serverError}
-          busy={busy}
-          labels={labels}
-          palette={palette}
-          tabs={tabs}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          onChange={change}
-          onSubmit={submit}
-          onDelete={onDelete}
-          onRetry={onRetry}
-          onClose={onClose}
-          onRetryTabs={onRetryTabs}
-          onTagToggle={onTagToggle}
-          onTagCreate={onTagCreate}
-          onArtworkSave={onArtworkSave}
-          onDiscoverToggle={onDiscoverToggle}
-          secondaryActions={repeatActions} />
+        {form}
       </View>
     </View>
   </Modal>;

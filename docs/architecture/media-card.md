@@ -55,22 +55,30 @@ library items.
 The web DOM card (`MediaCard.jsx` with `mountMediaCard.jsx`) is still the active
 adapter and keeps web consumers, themes, popups and server writes. The native action
 presentation owns Track and Add-to-lists form bodies, the song and episode Track
-variants, Discover plan/hide, list reorder and the shared card-change event. The
-list reorder drag handle starts a native `PanResponder` gesture and moves the
-touched card over the nearest card centre; the same handle exposes
-`adjustable` accessibility actions and the step buttons remain the keyboard and
-screen-reader equivalent. Drag drops persist through the full-order
-`PUT /api/v1/lists/{id}/items/order/` endpoint, with the existing first/back/next/last
-endpoint as the fallback when only one item id is available. Discover planning and
-dismiss send the complete candidate payload and remove the candidate from the
-native Discover grid; the Track Discover tab hide/unhide action publishes the same
-event. Bulk status changes arrive through the shared card-change bus and update
-matching cards without a page reload. The web Track popup, a live account, paged
-and tagged list loading, and a full interaction/accessibility pass remain. The
-iOS 17.2 simulator and Android 15 Pixel 7 AVD rendered the shared cards; Android
-demo images did not load and no action overlay, drag, popup, bulk refresh or
-screen-reader pass was exercised. That is why the component register keeps
-`MEDIA-CARD` at `in_progress` for native.
+variants, Discover plan/hide, list reorder and the shared card-change event. Link
+actions route through the platform navigation callback instead of opening an empty
+popup. The list reorder drag handle starts a native `PanResponder` gesture and moves
+the touched card over the nearest card centre; the same handle exposes an
+`adjustable` position and hint, increment/decrement accessibility actions, and the
+step buttons remain the keyboard and screen-reader equivalent. Reorder results and
+failures are announced through the native accessibility API. Drag drops persist
+through the full-order `PUT /api/v1/lists/{id}/items/order/` endpoint, with the
+existing first/back/next/last endpoint as the fallback when only one item id is
+available. Discover planning and dismiss send the complete candidate payload and
+remove the candidate from the native Discover grid; the Track Discover tab
+hide/unhide action publishes the same event. Bulk status changes arrive through the
+shared card-change bus and update matching cards without a page reload. Read-only
+cards suppress actions, selection and rating writes, while selectable cards expose
+the shared checkbox state for bulk surfaces.
+
+The web Track General form is now shared presentation through
+`frontend/ui/mountTrackForm.jsx`; the remaining Track tabs and the song/episode
+variants keep the server-rendered form as the progressive fallback. A live account,
+paged and tagged list loading, and a full browser/device/screen-reader interaction
+pass remain. The iOS 17.2 simulator and Android 15 Pixel 7 AVD rendered the shared
+cards earlier; Android demo images did not load and no action overlay, drag, popup,
+bulk refresh or screen-reader pass was exercised. Runtime evidence for the finish
+pass is unverified even though the component is otherwise complete.
 
 ## What `media` must be
 
