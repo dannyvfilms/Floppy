@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { BulkActionDialog, BulkOptionRow, BulkToolbar } from '../../../frontend/ui/BulkActions';
+import { BulkActionDialog, BulkActionRow, BulkJobCard, BulkJobMessage, BulkJobProblems, BulkJobProgress, BulkJobSummary, BulkOptionRow, BulkToolbar } from '../../../frontend/ui/BulkActions';
+import { BulkJobDock } from '../../../frontend/ui/BulkJobDock';
 import { Button } from '../../../frontend/ui/Button';
 import { MediaCardView } from '../../../frontend/ui/MediaCardView';
 import MediaCardSlot from './MediaCardSlot';
@@ -12,7 +13,7 @@ export const surface = {
   title: 'Bulk selection and actions',
   where: 'Library, custom lists and smart lists',
   status: 'ported',
-  note: 'Library select mode, card selection, selected count, Update Status, Add to List, Add to Collection, Apply Tag, confirmation dialogs, busy/partial-failure results and clear/reset use shared bulk presentation. A finished status action publishes a card-change event so the card grid reflects it. The Add Plays history job dock and server write transport remain web-owned.',
+  note: 'Library select mode, card selection, selected count, Update Status, Add to List, Add to Collection, Apply Tag, Add Plays, confirmation dialogs, job progress, skipped-item results and clear/reset use shared bulk presentation. Finished status and plays actions publish a card-change event so the card grid reflects them. The demo writes stay local; the browser keeps its authenticated transport.',
 };
 
 const STATUS_OPTIONS = [
@@ -148,6 +149,11 @@ const labels = {
   close: 'Close',
   confirm: 'Confirm',
   cancelAction: 'Cancel',
+  addPlays: 'Add Plays to History',
+  checking: 'Checking',
+  addingPlays: 'Adding plays',
+  nothingToAdd: 'Nothing to add with these choices.',
+  discard: 'Discard',
 };
 
 export default function BulkSlot({ onOpenDetail }) {
@@ -161,8 +167,12 @@ export default function BulkSlot({ onOpenDetail }) {
   const [tagName, setTagName] = useState('Favorite');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
+  const [playsJob, setPlaysJob] = useState(null);
+  const playsTimer = useRef(null);
   const columns = width >= 760 ? 4 : width >= 560 ? 3 : 2;
   const cardWidth = Math.min(180, Math.max(120, (width - 32 - (columns - 1) * spacing.md) / columns));
+
+  useEffect(() => () => clearTimeout(playsTimer.current), []);
 
   function toggleSelectMode() {
     if (selectMode) {
@@ -236,7 +246,53 @@ export default function BulkSlot({ onOpenDetail }) {
         text: `${tagMode === 'add' ? 'Added' : 'Removed'} ${tagName} ${tagMode === 'add' ? 'to' : 'from'} ${count} item${count === 1 ? '' : 's'}.`,
         tone: 'success',
       }));
+    } else if (dialog === 'plays') {
+      startPlaysReview(count);
     }
+  }
+
+  function startPlaysReview(count) {
+    const ids = [...selectedIds];
+    const adds = { 'quiet-orbit': 6, 'signal-static': 3, 'home-studio': 1 };
+    const samples = CARDS.filter(card => ids.includes(card.id))
+      .map(card => ({ title: card.model.title, add: adds[card.id] || 0 }));
+    const plays = samples.reduce((sum, sample) => sum + sample.add, 0);
+    const problems = ids.includes('paper-lanterns')
+      ? [{ title: 'Paper Lanterns', reason: 'Books have no aired episodes to add.' }]
+      : [];
+    setDialog(null);
+    setNotice(null);
+    setPlaysJob({ phase: 'previewing', total: count, done: 0, ids, result: null });
+    clearTimeout(playsTimer.current);
+    playsTimer.current = setTimeout(() => {
+      setPlaysJob({
+        phase: 'review',
+        total: count,
+        done: count,
+        ids,
+        result: { totals: { plays, shows: count }, samples, problem_count: problems.length, problems },
+      });
+    }, 700);
+  }
+
+  function completePlays() {
+    if (!playsJob || playsJob.phase !== 'review') return;
+    const job = playsJob;
+    setPlaysJob({ ...job, phase: 'running', done: 0 });
+    clearTimeout(playsTimer.current);
+    playsTimer.current = setTimeout(() => {
+      const identities = CARDS.filter(card => job.ids.includes(card.id))
+        .map(card => card.model.identity).filter(Boolean);
+      emitMediaCardChange({ source: 'bulk', identities });
+      setSelectedIds([]);
+      setSelectMode(false);
+      setPlaysJob({
+        ...job,
+        phase: 'done',
+        done: job.total,
+        doneText: `${job.result.totals.plays} play${job.result.totals.plays === 1 ? '' : 's'} added across ${job.result.totals.shows} show${job.result.totals.shows === 1 ? '' : 's'}.`,
+      });
+    }, 700);
   }
 
   const count = selectedIds.length;
@@ -244,7 +300,8 @@ export default function BulkSlot({ onOpenDetail }) {
   const title = dialog === 'status' ? labels.updateStatus
     : dialog === 'list' ? labels.addToList
       : dialog === 'collection' ? labels.addToCollection
-        : dialog === 'tag' ? labels.applyTag : '';
+        : dialog === 'tag' ? labels.applyTag
+          : dialog === 'plays' ? labels.addPlays : '';
   const description = dialog === 'status'
     ? `Set ${count} selected item${count === 1 ? '' : 's'} to ${status}. This changes status only; Completed also adds plays dated today.`
     : dialog === 'list'
@@ -253,7 +310,9 @@ export default function BulkSlot({ onOpenDetail }) {
         ? `Add ${count} selected item${count === 1 ? '' : 's'} to your collection? Shows and seasons expand to their episodes.`
         : dialog === 'tag'
           ? `Choose a tag and whether to add or remove it across ${count} selected item${count === 1 ? '' : 's'}.`
-          : '';
+          : dialog === 'plays'
+            ? `Adds viewing records for ${count} selected item${count === 1 ? '' : 's'}. Review checks every show before anything is added.`
+            : '';
 
   return <View style={styles.root}>
     <View style={styles.selectRow}>
@@ -289,7 +348,8 @@ export default function BulkSlot({ onOpenDetail }) {
       onUpdateStatus={() => setDialog('status')}
       onAddToList={() => setDialog('list')}
       onAddToCollection={() => setDialog('collection')}
-      onApplyTag={() => setDialog('tag')} /> : null}
+      onApplyTag={() => setDialog('tag')}
+      onAddPlays={() => setDialog('plays')} /> : null}
     {notice ? <Text role="status"
       style={[styles.notice, { color: notice.tone === 'warning' ? palette.warning : palette.success }]}>
       {notice.text}
@@ -301,7 +361,7 @@ export default function BulkSlot({ onOpenDetail }) {
       confirmLabel={dialog === 'status' ? 'Update status'
         : dialog === 'list' ? 'Add to list'
           : dialog === 'collection' ? 'Add to collection'
-            : 'Apply tag'}
+            : dialog === 'plays' ? 'Review' : 'Apply tag'}
       busy={busy}
       confirmDisabled={busy || count === 0}
       palette={bulkPalette}
@@ -326,6 +386,42 @@ export default function BulkSlot({ onOpenDetail }) {
           palette={bulkPalette} onPress={() => setTagName(option.value)} />)}
       </View> : null}
     </BulkActionDialog>
+    {playsJob ? <BulkJobDock palette={bulkPalette} label="Bulk jobs">
+      <BulkJobCard title={labels.addPlays} palette={bulkPalette}
+        onHide={() => setPlaysJob(null)}
+        footer={playsJob.phase === 'review' ? <BulkActionRow>
+          {playsJob.result.totals.plays > 0 ? <Button
+            label={`${labels.addPlays} (${playsJob.result.totals.plays})`}
+            onPress={completePlays} palette={{
+              primary: { background: palette.accentStrong, pressed: '#4338ca', hovered: '#4338ca', text: '#ffffff', border: 'transparent' },
+              radius: radius.sm,
+              focusStyle: {},
+            }} /> : null}
+          <Button label={labels.discard} tone="surface" onPress={() => setPlaysJob(null)}
+            palette={{
+              surface: { background: palette.surfaceStrong, pressed: palette.surfaceMuted, hovered: palette.surfaceMuted, text: palette.text, border: palette.border },
+              radius: radius.sm,
+              focusStyle: {},
+            }} />
+        </BulkActionRow> : null}>
+        {playsJob.phase === 'previewing' ? <BulkJobProgress label={labels.checking}
+          done={playsJob.done} total={playsJob.total} palette={bulkPalette} /> : null}
+        {playsJob.phase === 'running' ? <BulkJobProgress label={labels.addingPlays}
+          done={Math.round(playsJob.total / 2)} total={playsJob.total} palette={bulkPalette} /> : null}
+        {playsJob.phase === 'review' ? <>
+          <BulkJobSummary totals={playsJob.result.totals} samples={playsJob.result.samples}
+            palette={bulkPalette} />
+          <BulkJobProblems count={playsJob.result.problem_count}
+            problems={playsJob.result.problems} palette={bulkPalette} />
+          {playsJob.result.totals.plays === 0
+            ? <BulkJobMessage palette={bulkPalette}>{labels.nothingToAdd}</BulkJobMessage>
+            : null}
+        </> : null}
+        {playsJob.phase === 'done' ? <BulkJobMessage palette={bulkPalette}>
+          {playsJob.doneText}
+        </BulkJobMessage> : null}
+      </BulkJobCard>
+    </BulkJobDock> : null}
   </View>;
 }
 

@@ -1058,15 +1058,23 @@
     },
     "frontend/ui/BulkActions.jsx": {
       "components": [
-        "BulkToolbar",
         "BulkActionDialog",
-        "BulkOptionRow"
+        "BulkActionRow",
+        "BulkFieldRow",
+        "BulkJobCard",
+        "BulkJobMessage",
+        "BulkJobProblems",
+        "BulkJobProgress",
+        "BulkJobSummary",
+        "BulkNote",
+        "BulkOptionRow",
+        "BulkToolbar"
       ],
       "register": "BULK_ACTIONS",
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the existing Alpine selection store, React toolbar and dialogs remain the browser implementation."
+          "evidence": "Mounted by the web bulk adapter for the status dialog and the Add Plays job dock and by the native Library slot; the browser status dialog and job dock were not exercised after this shared swap."
         },
         "ios": {
           "status": "unverified",
@@ -1957,42 +1965,6 @@
         "18725d65ffc6eb61d5864be0b229737b86feed4f7073e4fe373802f1a331a688",
         "daff16f97eed303f71615b32c7ce6d09b179195edd7c7e48278026f52d337ad9"
       ]
-    },
-    "frontend/ui/mountBulkActions.jsx": {
-      "sha256": "e1fa826ef97ad07dd869020899ac467c5df91cc853130bbf52743bdcd11fabc8",
-      "statements": [
-        "9de8a78a942078d77d8f1a331c552dc29dcc44a336dff53339376fe99cd045f6",
-        "1ac8024a5891f369f598688152a2626d6a6d490b3b6446a8cd992ca0d6f2d178",
-        "6dc97e0b4a25cc3fb12831b67900705b0cf793be1644fcf848271b2e02c3ee92",
-        "c10715f9d6636ee466f5f3f3d5e7cae32ab1943ad6b327331ba8717ac3703383",
-        "989592b1957f14ee945890f3247dcb67044a983e047f07404f5f56fa802d009a",
-        "3d8e6ca4c8f314e1a36f75a31aa91b6705ea172beac6e38d705e15827b7e3618",
-        "efc72b27bd18776a6bd1145dc056983b8bb30c2dcb3e466a531c9b484321b5c0",
-        "eb21d46f43a0cdd20b5e70db4b118374a1d2ab08ff34b47511edad7cbca50e89",
-        "5ce2306e3794ecb06f4f16d1710aeee5994ead842402b72b63a4c8a03cb686ac",
-        "be7958a88fb6e4c373fdcacba5a2b5c7b6e95e2ddef1b13fdcb5a555da917175",
-        "ce2dcc592a5c8de4494c163727f82abf9107570f2b5c3e138f1e9a4dbf832faa",
-        "6582e1bf90a206024779677c7491c726ea6d4f102e4a13e8678889384e3b3df3",
-        "542787a9c99e258ab240080a5e052521f9b4166b2cae1124f168418e0ff8c2b3",
-        "18a6604566d0596391579492f6f7853db5a1ed44ac0df245539b0363425d872a",
-        "961ece2587519129cff2a79a2494569169f83ee25dc112e6d538f74a8eadf8e0",
-        "cee8a81faf1fd21808dfdb09e2a52c9415b001f67cb6ea2fb7be38b42d977dcf",
-        "1c2b327348af6c633f2b3efe89f4d2a2d533ba347b3d66222a8d19b30b39da96",
-        "838cc5f94bebb07a3a7f141b86be6e57c8d7600e1c82984795f93914a2f38fd2",
-        "3a891841a734b431dfddf81220df6ae67a4465be78d57b1e5db4b82213d5660c",
-        "a798f69f8bfcb9fcd6df592143c36488661d5aa971b9a7fdce77860b81a5c434",
-        "762c69433d9efd0348f7e8e23b9e463c3aa33517f7258dc977ed01289d4d7294",
-        "f3a1db7b2a367f2b44cfc8b3a868810ebd733099b542cd148480f680332ec221",
-        "cfe09494bd0f9554cf64c05f94dd764cf422b1a5922c2e6f5fbfab397e7a52b4",
-        "8913b39b12d3d98901d4aeccb09de2ea72f9c10914573139c1eba4e49a367a22",
-        "12ffe36349316df699ec75d3f4201ca11422abfb03013687de544a5f3d3086bf",
-        "55974510ce37854efefcca7a2bd792a29116764e213fa61583ba21f575dd3f9a",
-        "6ba535f1d5155f2cf273658867f6666207741caa798e64376f7f08d90cef63d4",
-        "224c5b3cb84881ff4b244caa5b9b2cc5700218d2e437c3c842c76bc392737a54",
-        "f0fd9c861bd6574c56d07a98ff73b1c45dbfe52dbe41748a2d2f96b08de480de",
-        "2268081f449b894930b6c5eaa5522b73f3a9a6845e3e3dc02b7ce69bb8801e12",
-        "c9f7ce3a68103e095a1f59be63bc1e0d9af18e168d55fef9a26d313ef1104ee2"
-      ]
     }
   },
   "logic": {
@@ -2381,6 +2353,50 @@
           "evidence": "Compiled by the Expo export through the native WebUtilities screen; no emulator run was performed."
         }
       }
+    },
+    "frontend/ui/BulkJobDock.web.jsx": {
+      "kind": "presentation",
+      "register": "BULK_ACTIONS",
+      "components": [
+        "BulkJobDock"
+      ],
+      "purpose": "Anchor the shared bulk job cards in the browser dock.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Compiled by the web UI build through the base-layout job dock; no browser interaction pass in this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to this web implementation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to this web implementation."
+        }
+      }
+    },
+    "frontend/ui/BulkJobDock.native.jsx": {
+      "kind": "presentation",
+      "register": "BULK_ACTIONS",
+      "components": [
+        "BulkJobDock"
+      ],
+      "purpose": "Anchor the shared bulk job cards in the native Library dock.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not applicable to this native implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the dock through the native Library slot; no simulator interaction pass."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the dock through the native Library slot; no emulator interaction pass."
+        }
+      }
     }
   },
   "web_adapters": {
@@ -2531,6 +2547,10 @@
     "frontend/ui/mountBulkToolbar.jsx": {
       "register": "BULK_ACTIONS",
       "purpose": "Django/browser integration for the shared bulk action bar: mirror the page Alpine selection, run quick bulk posts and open the status/plays dialogs."
+    },
+    "frontend/ui/mountBulkActions.jsx": {
+      "register": "BULK_ACTIONS",
+      "purpose": "Django/browser integration for the shared bulk actions: open the status and plays dialogs, poll Add Plays jobs and render their docked progress and results."
     }
   }
 }

@@ -1044,12 +1044,14 @@ Shared `AuthEntrance`, `SocialProviders` and `AuthNotice` own entrance, social-p
 
 ## BULK_ACTIONS
 
-- `frontend/ui/BulkActions.jsx` (universal `BulkToolbar`, `BulkActionDialog`, `BulkOptionRow`)
-- `frontend/ui/mountBulkActions.jsx` (web job dialog and dock, legacy)
+- `frontend/ui/BulkActions.jsx` (universal `BulkToolbar`, `BulkActionDialog`, `BulkOptionRow`, `BulkNote`, `BulkFieldRow`, `BulkActionRow`, `BulkJobCard`, `BulkJobProgress`, `BulkJobSummary`, `BulkJobProblems`, `BulkJobMessage`)
+- `frontend/ui/BulkJobDock.web.jsx` (web job dock anchor)
+- `frontend/ui/BulkJobDock.native.jsx` (native job dock anchor)
+- `frontend/ui/mountBulkActions.jsx` (web dialog, polling and dock adapter)
 - `frontend/ui/BulkActionBar.web.jsx` (web icon toolbar)
 - `frontend/ui/BulkActionBar.native.jsx` (native icon toolbar counterpart)
 - `frontend/ui/mountBulkToolbar.jsx` (web toolbar adapter)
-- `native-proof/app/surfaces/BulkSlot.jsx` (native Library selection, cards, toolbar and dialogs)
+- `native-proof/app/surfaces/BulkSlot.jsx` (native Library selection, cards, toolbar, dialogs and job dock)
 - `src/templates/base.html` (dock mount)
 - `src/app/bulk_action_views.py`
 - `src/app/services/bulk_show_plays.py`
