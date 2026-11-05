@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createCalendarTransport } from './calendarTransport.js';
 import { createListTransport } from './listTransport.js';
+import { createMusicTransport } from './musicTransport.js';
 import {
   configureMediaCardTransport,
   hasMediaCardTransport,
@@ -79,4 +80,41 @@ test('media-card transport routes reads and writes through the session', async (
     resetMediaCardTransport();
   }
   assert.equal(hasMediaCardTransport(), false);
+});
+
+
+test('music transport uses the authenticated request facade', async () => {
+  const { calls, session } = authFixture();
+  const transport = createMusicTransport({ auth: session });
+  assert.equal(transport.mode, 'server');
+
+  await transport.loadArtistRelations({ artistId: 9 });
+  assert.equal(calls[0].path, '/api/v1/music/artists/9/relations/');
+
+  await transport.syncArtistMembers({ artistId: 9 });
+  assert.equal(calls[1].path, '/api/v1/music/artists/9/sync-members/');
+  assert.equal(calls[1].options.method, 'POST');
+
+  await transport.syncAlbumMetadata({ albumId: 4 });
+  assert.equal(calls[2].path, '/api/v1/music/albums/4/sync-metadata/');
+  assert.equal(calls[2].options.method, 'POST');
+
+  await transport.saveTrackNotes({ trackId: 12, notes: 'Side B' });
+  assert.equal(calls[3].path, '/api/v1/music/tracks/12/notes/');
+  assert.equal(calls[3].options.method, 'PATCH');
+  assert.deepEqual(calls[3].options.json, { notes: 'Side B' });
+
+  await transport.saveEpisodeNotes({ episodeId: 33, notes: 'Replay' });
+  assert.equal(calls[4].path, '/api/v1/podcasts/episodes/33/notes/');
+  assert.equal(calls[4].options.method, 'PATCH');
+
+  await transport.deleteHistory({ mediaType: 'music', historyId: 88 });
+  assert.equal(calls[5].path, '/api/v1/history/music/88/');
+  assert.equal(calls[5].options.method, 'DELETE');
+});
+
+test('music transport keeps its local preview without a session', () => {
+  const transport = createMusicTransport();
+  assert.equal(transport.mode, 'local');
+  assert.match(transport.reason, /sign in/i);
 });

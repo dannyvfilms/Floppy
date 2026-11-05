@@ -1683,6 +1683,27 @@
           "evidence": "Compiled by the Expo export through the native Artist screen; the relation grid was not exercised on a simulator or device."
         }
       }
+    },
+    "frontend/ui/MusicAlbumCard.jsx": {
+      "components": [
+        "MusicAlbumCard",
+        "MusicAlbumGrid"
+      ],
+      "register": "MUSIC",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Mounted through mountMusicAlbums on the artist discography grid over the server fallback; no browser runtime pass has been performed for the album grid."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native artist discography; the album grid was not exercised on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native artist discography; the album grid was not exercised on an emulator or device."
+        }
+      }
     }
   },
   "legacy": {
@@ -2604,6 +2625,10 @@
     "frontend/ui/mountBulkActions.jsx": {
       "register": "BULK_ACTIONS",
       "purpose": "Django/browser integration for the shared bulk actions: open the status and plays dialogs, poll Add Plays jobs and render their docked progress and results."
+    },
+    "frontend/ui/mountMusicAlbums.jsx": {
+      "register": "MUSIC",
+      "purpose": "Maps server-shaped artist discography album rows into the shared music album grid and owns browser navigation for the card link; the server album grid inside the host remains the no-React fallback."
     }
   }
 }

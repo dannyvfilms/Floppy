@@ -2542,6 +2542,44 @@ def music_relations_react(context, relations):
     }
 
 
+@register.simple_tag(takes_context=True)
+def music_albums_react(context, albums):
+    """Return the shared album-card grid props for an artist discography."""
+    items = []
+    for album in albums or []:
+        image = album.image or ""
+        if image == settings.IMG_NONE:
+            image = ""
+        items.append(
+            {
+                "id": album.id,
+                "title": album.title,
+                "image": image_cache.rewrite_image_url(image) if image else "",
+                "href": music_album_url(album),
+                "releaseType": album.release_type or "",
+                "year": album.release_date.year if album.release_date else None,
+                "plays": getattr(album, "play_count", 0) or 0,
+                "score": float(album.score)
+                if getattr(album, "score", None) is not None
+                else None,
+            }
+        )
+    return {
+        "id": f"music-albums-{uuid4().hex[:8]}",
+        "props": {
+            "albums": items,
+            "labels": {
+                "rate": str(_("Rate")),
+                "close": str(_("Close")),
+                "track": str(_("track")),
+                "tracks": str(_("tracks")),
+                "play": str(_("play")),
+                "plays": str(_("plays")),
+            },
+        },
+    }
+
+
 # Icons the detail action row may hold, in display order. Below 400px wide the
 # row keeps this many cells (the More menu is one of them) so each stays tappable.
 DETAIL_ROW_PHONE_CAP = 5

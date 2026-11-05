@@ -2347,3 +2347,70 @@ class MusicRelationGridTemplateTests(SimpleTestCase):
         self.assertIn("Grid Member", html)
         self.assertIn("Drums", html)
         self.assertIn("Former", html)
+
+
+class MusicAlbumsReactPropsTests(SimpleTestCase):
+    """The shared discography grid receives plain, linkable album rows."""
+
+    def test_album_rows_carry_release_year_plays_and_score(self):
+        artist = SimpleNamespace(id=3, name="Mira Vale")
+        album = SimpleNamespace(
+            id=11,
+            title="Glass Meridian",
+            image="https://example.com/glass.jpg",
+            artist=artist,
+            release_type="Album",
+            release_date=date(2025, 3, 14),
+            play_count=64,
+            score=9,
+        )
+        result = app_tags.music_albums_react({}, [album])
+
+        self.assertEqual(
+            result["props"]["albums"],
+            [
+                {
+                    "id": 11,
+                    "title": "Glass Meridian",
+                    "image": "https://example.com/glass.jpg",
+                    "href": reverse(
+                        "music_album_details",
+                        kwargs={
+                            "artist_id": 3,
+                            "artist_slug": "mira-vale",
+                            "album_id": 11,
+                            "album_slug": "glass-meridian",
+                        },
+                    ),
+                    "releaseType": "Album",
+                    "year": 2025,
+                    "plays": 64,
+                    "score": 9.0,
+                },
+            ],
+        )
+
+
+class MusicAlbumGridTemplateTests(SimpleTestCase):
+    """The discography grid keeps its server fallback and mounts shared cards."""
+
+    def test_grid_mounts_with_server_fallback(self):
+        artist = SimpleNamespace(id=3, name="Mira Vale")
+        album = SimpleNamespace(
+            id=11,
+            title="Grid Album",
+            image="",
+            artist=artist,
+            release_type="Album",
+            release_date=None,
+            play_count=0,
+            score=None,
+        )
+        html = render_to_string(
+            "app/components/album_grid.html",
+            {"all_albums": [album]},
+        )
+
+        self.assertIn("data-music-albums-root", html)
+        self.assertIn("Grid Album", html)
+        self.assertIn('data-media-type="music"', html)

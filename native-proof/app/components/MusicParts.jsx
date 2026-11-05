@@ -14,6 +14,7 @@ import { Badge } from '../../../frontend/ui/Badge';
 import { Button } from '../../../frontend/ui/Button';
 import { DateTimePicker } from '../../../frontend/ui/DateTimePicker';
 import { MediaCardView } from '../../../frontend/ui/MediaCardView';
+import { MusicAlbumGrid } from '../../../frontend/ui/MusicAlbumCard';
 import { MusicRelationCard } from '../../../frontend/ui/MusicRelationCard';
 import { ProgressBar } from '../../../frontend/ui/ProgressBar';
 import { RatingChip } from '../../../frontend/ui/RatingChip';
@@ -269,35 +270,6 @@ function MusicRatingPicker({ value, label, scaleMax, palette: colors, onSelect }
 }
 
 
-export function AlbumCard({ album, width, onOpen }) {
-  const latest = album.tracks.length ? album.tracks.length : 0;
-  const model = {
-    mediaType: 'music',
-    shape: 'square',
-    image: { src: album.image, fallback: '', source: 'primary' },
-    title: album.title,
-    altTitle: null,
-    cornerChips: album.plays ? [{ kind: 'runtime', text: countLabel(album.plays, 'play', 'plays') }] : [],
-    lines: [{
-      join: 'dot',
-      parts: [
-        { text: album.releaseType },
-        { text: album.year, muted: true },
-        { text: countLabel(latest, 'track', 'tracks'), muted: true },
-      ],
-    }],
-    rating: album.score == null ? null : {
-      label: String(album.score),
-      value: album.score,
-      scaleMax: 10,
-      rateLabel: 'Rate',
-    },
-    ratingEditable: false,
-  };
-  return <MediaCardView model={model} labels={{ rate: 'Rate', close: 'Close' }}
-    palette={mediaCardPalette} width={width} onOpen={onOpen} />;
-}
-
 function trackActions() {
   return actionGroup('Track actions', [
     { kind: 'action', key: 'listen', title: 'Add listen', glyph: '▶', tone: 'indigo' },
@@ -413,7 +385,7 @@ export function EpisodeRow({ episode, showImage, onOpen, onAction, onRate }) {
     renderRating={MusicRatingPicker} />;
 }
 
-export function ArtistPage({ artist, albums, onOpenAlbum, onTrack, onHistory, onRate }) {
+export function ArtistPage({ artist, albums, onOpenAlbum, onTrack, onHistory, onRate, onSyncMembers }) {
   return <View style={styles.page}>
     <MusicHero image={artist.image} title={artist.name} shape="poster"
       eyebrow={artist.type}
@@ -426,6 +398,7 @@ export function ArtistPage({ artist, albums, onOpenAlbum, onTrack, onHistory, on
       <PrimaryActions>
         <Button label={artist.status || 'Add to Library'} onPress={onTrack} />
         <Button label="Activity history" tone="surface" onPress={onHistory} />
+        {onSyncMembers ? <Button label="Sync members" tone="surface" onPress={onSyncMembers} /> : null}
       </PrimaryActions>
       <Text style={styles.bio}>{artist.bio}</Text>
     </MusicHero>
@@ -464,14 +437,14 @@ export function ArtistPage({ artist, albums, onOpenAlbum, onTrack, onHistory, on
           <Text style={styles.groupTitle}>{group.label}</Text>
           <Text style={styles.groupCount}>{countLabel(group.albums.length, 'release', 'releases')}</Text>
         </View>
-        <MusicCardGrid items={group.albums}
-          renderItem={(album, width) => <AlbumCard key={album.id} album={album} width={width} onOpen={() => onOpenAlbum(album)} />} />
+        <MusicAlbumGrid albums={group.albums}
+          onOpen={album => onOpenAlbum(album)} />
       </View>)}
     </View>
   </View>;
 }
 
-export function AlbumPage({ album, onBack, onOpenTrack, onTrack, onHistory, onRate, onAction, onTrackRate }) {
+export function AlbumPage({ album, onBack, onOpenTrack, onTrack, onHistory, onRate, onAction, onTrackRate, onSyncMetadata }) {
   return <View style={styles.page}>
     <View style={styles.inlineNav}>
       <Button label="Back to artist" tone="surface" onPress={onBack} />
@@ -487,6 +460,7 @@ export function AlbumPage({ album, onBack, onOpenTrack, onTrack, onHistory, onRa
       <PrimaryActions>
         <Button label={album.status || 'Add to Library'} onPress={onTrack} />
         <Button label="Activity history" tone="surface" onPress={onHistory} />
+        {onSyncMetadata ? <Button label="Sync metadata" tone="surface" onPress={onSyncMetadata} /> : null}
       </PrimaryActions>
     </MusicHero>
 

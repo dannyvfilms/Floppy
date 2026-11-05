@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { DetailHistoryDialog } from '../../../frontend/ui/DetailChildren';
 import { Screen } from '../components/Screen';
@@ -27,7 +27,7 @@ const surface = {
   status: 'in_progress',
   title: 'Music and podcasts',
   where: 'Artist, album, track and podcast detail',
-  note: 'Finishing the native music and podcast transport: authenticated session requests, track and episode note writes, history deletion, artist membership and album metadata sync. Artist relations, discography, album tracks, per-track notes, scores and play history, show/episode filtering, pagination, repeats and podcast tracking use the shared React Native presentation. The remaining music and podcast web controls stay server-owned with their permissions, feed and RSS refresh, tracking writes and progressive fallback, so the surface stays in progress.',
+  note: 'The native transport now uses the authenticated session and maps track and episode note writes, history deletion, artist membership and album metadata sync alongside the existing tracking and play endpoints. Artist relations, discography, album tracks, per-track notes, scores and play history, show/episode filtering, pagination, repeats and podcast tracking use the shared React Native presentation. The remaining music and podcast web controls stay server-owned with their permissions, feed and RSS refresh, tracking writes and progressive fallback, so the surface stays in progress.',
 };
 
 const TABS = [
@@ -47,6 +47,19 @@ function sortDescending(entries) {
   return [...entries].sort((left, right) => (
     `${right.date || ''} ${right.time || ''}`.localeCompare(`${left.date || ''} ${left.time || ''}`)
   ));
+}
+
+function relationModel(relation) {
+  const tracker = relation.tracker || {};
+  return {
+    id: relation.id,
+    name: relation.name,
+    role: relation.role || '',
+    current: Boolean(relation.current),
+    image: relation.image || '',
+    status: tracker.status || null,
+    score: tracker.score == null ? null : Number(tracker.score),
+  };
 }
 
 function trackHistoryRows(track) {
@@ -113,6 +126,28 @@ export default function MusicScreen({ onBack, transport: injectedTransport }) {
   const [dialog, setDialog] = useState(EMPTY_DIALOG);
   const [dateValue, setDateValue] = useState('2026-11-04');
 
+  useEffect(() => {
+    const artistId = remoteId(library.artist.artistId ?? library.artist.id);
+    if (!artistId || transport.mode !== 'server') return;
+    let active = true;
+    transport.loadArtistRelations({ artistId }).then(payload => {
+      if (!active || !payload) return;
+      setLibrary(current => ({
+        ...current,
+        artist: {
+          ...current.artist,
+          relations: {
+            members: (payload.members || []).map(relationModel),
+            alsoIn: (payload.also_in || []).map(relationModel),
+          },
+        },
+      }));
+    }).catch(error => {
+      if (active) setTransportError(error?.message || 'Could not load artist relations.');
+    });
+    return () => { active = false; };
+  }, [library.artist.artistId, library.artist.id, transport]);
+
   const artist = library.artist;
   const albums = flattenAlbums(artist);
 
@@ -126,6 +161,8 @@ export default function MusicScreen({ onBack, transport: injectedTransport }) {
   const album = findAlbum(library, selectedAlbumId) || albums[0];
   const selected = selectedTrackId ? findTrack(library, selectedTrackId) : null;
   const show = library.show;
+  const artistRemoteId = remoteId(artist.artistId ?? artist.id);
+  const albumRemoteId = remoteId(album.albumId ?? album.id);
 
   function changeTab(next) {
     setTab(next);
@@ -258,12 +295,20 @@ export default function MusicScreen({ onBack, transport: injectedTransport }) {
     setDialog(EMPTY_DIALOG);
   }
 
+  function saveTrackNotes(trackId, value) {
+    updateTrack(trackId, track => ({ ...track, notes: value }));
+    const remoteTrackId = remoteId(trackId);
+    if (remoteTrackId) persist('saveTrackNotes', { trackId: remoteTrackId, notes: value });
+  }
+
   function saveNotes(value) {
     if (!dialog) return;
     if (dialog.target === 'track') {
-      updateTrack(dialog.id, track => ({ ...track, notes: value }));
+      saveTrackNotes(dialog.id, value);
     } else {
       updateEpisode(dialog.id, episode => ({ ...episode, notes: value }));
+      const episodeId = remoteId(dialog.id);
+      if (episodeId) persist('saveEpisodeNotes', { episodeId, notes: value });
     }
     setDialog(EMPTY_DIALOG);
   }
@@ -302,11 +347,13 @@ export default function MusicScreen({ onBack, transport: injectedTransport }) {
     else if (key === 'history') openHistory('episode', episode);
   }
 
-  function deleteListen(trackId, listenId) {
+  function deleteListen(trackId, entry) {
     updateTrack(trackId, track => ({
       ...track,
-      listens: track.listens.filter(entry => entry.id !== listenId),
+      listens: track.listens.filter(item => item.id !== entry.id),
     }));
+    const historyId = remoteId(entry.historyId ?? entry.id);
+    if (historyId) persist('deleteHistory', { mediaType: 'music', historyId });
   }
 
   function historyRows() {
@@ -346,7 +393,10 @@ export default function MusicScreen({ onBack, transport: injectedTransport }) {
         onOpenAlbum={openAlbum}
         onTrack={() => openTracking('artist', artist)}
         onHistory={() => openHistory('artist', artist)}
-        onRate={rateArtist} />
+        onRate={rateArtist}
+        onSyncMembers={artistRemoteId
+          ? () => persist('syncArtistMembers', { artistId: artistRemoteId })
+          : null} />
       : null}
 
     {tab === 'album' && !selected
@@ -357,7 +407,10 @@ export default function MusicScreen({ onBack, transport: injectedTransport }) {
         onHistory={() => openHistory('album', album)}
         onRate={rateAlbum}
         onAction={(key, targetAlbum, track) => handleTrackAction(key, targetAlbum, track)}
-        onTrackRate={rateTrack} />
+        onTrackRate={rateTrack}
+        onSyncMetadata={albumRemoteId
+          ? () => persist('syncAlbumMetadata', { albumId: albumRemoteId })
+          : null} />
       : null}
 
     {tab === 'album' && selected
@@ -366,8 +419,8 @@ export default function MusicScreen({ onBack, transport: injectedTransport }) {
         onRate={score => rateTrack(selected.track, score)}
         onAddListen={() => openDateDialog('track', selected.track)}
         onOpenNotes={() => openNotes('track', selected.track)}
-        onSaveNotes={value => updateTrack(selected.track.id, track => ({ ...track, notes: value }))}
-        onDeleteListen={listenId => deleteListen(selected.track.id, listenId)}
+        onSaveNotes={value => saveTrackNotes(selected.track.id, value)}
+        onDeleteListen={entry => deleteListen(selected.track.id, entry)}
         onOpenHistory={() => openHistory('track', selected.track)} />
       : null}
 

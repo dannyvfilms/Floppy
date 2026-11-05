@@ -1,13 +1,18 @@
-import { createLocalMusicActions, createRemoteMusicActions } from './musicTransportCore';
+import { getActiveAuthSession } from './authSession.js';
+import { createLocalMusicActions, createRemoteMusicActions } from './musicTransportCore.js';
 
-// Native credential storage, server selection and CSRF handling are still
-// undesigned. A caller may inject a request function when that transport
-// exists; until then the screen keeps its local preview state.
+// The native feature boundary uses the authenticated session when one exists.
+// Presentation receives plain values; credentials, CSRF, base URL and error
+// handling stay in the request adapter behind this contract.
 export function createMusicTransport(options = {}) {
   if (typeof options.request === 'function') {
     return createRemoteMusicActions(options.request);
   }
+  const auth = options.auth || getActiveAuthSession();
+  if (auth && typeof auth.request === 'function') {
+    return createRemoteMusicActions(auth.request);
+  }
   return createLocalMusicActions(
-    'Native server login, server selection and CSRF transport are not configured yet.',
+    'Sign in to your Floppy server to save music and podcast changes.',
   );
 }

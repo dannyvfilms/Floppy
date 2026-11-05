@@ -2,6 +2,8 @@ const api = path => `/api/v1${path}`;
 const artistPath = artistId => api(`/music/artists/${encodeURIComponent(artistId)}/`);
 const albumPath = albumId => api(`/music/albums/${encodeURIComponent(albumId)}/`);
 const showPath = showId => api(`/podcasts/shows/${encodeURIComponent(showId)}/`);
+const trackPath = trackId => api(`/music/tracks/${encodeURIComponent(trackId)}/`);
+const episodePath = episodeId => api(`/podcasts/episodes/${encodeURIComponent(episodeId)}/`);
 
 function trackerFields({ status, score, startDate, endDate, notes }) {
   const payload = {};
@@ -36,6 +38,14 @@ export function createRemoteMusicActions(request) {
         method: 'POST',
       });
     },
+    loadArtistRelations({ artistId }) {
+      return request(api(`/music/artists/${encodeURIComponent(artistId)}/relations/`));
+    },
+    syncArtistMembers({ artistId }) {
+      return request(api(`/music/artists/${encodeURIComponent(artistId)}/sync-members/`), {
+        method: 'POST',
+      });
+    },
     deleteArtistPlays({ artistId }) {
       return request(api(`/music/artists/${encodeURIComponent(artistId)}/plays/`), {
         method: 'DELETE',
@@ -61,6 +71,11 @@ export function createRemoteMusicActions(request) {
         method: 'DELETE',
       });
     },
+    syncAlbumMetadata({ albumId }) {
+      return request(api(`/music/albums/${encodeURIComponent(albumId)}/sync-metadata/`), {
+        method: 'POST',
+      });
+    },
     addListen({ albumId, trackId, endDate }) {
       return request(api('/music/songs/plays/'), {
         method: 'POST',
@@ -75,6 +90,17 @@ export function createRemoteMusicActions(request) {
       return request(api(`/music/tracks/${encodeURIComponent(musicId)}/score/`), {
         method: 'PATCH',
         json: { score },
+      });
+    },
+    saveTrackNotes({ trackId, notes }) {
+      return request(`${trackPath(trackId)}notes/`, {
+        method: 'PATCH',
+        json: { notes },
+      });
+    },
+    deleteHistory({ mediaType, historyId }) {
+      return request(api(`/history/${encodeURIComponent(mediaType)}/${encodeURIComponent(historyId)}/`), {
+        method: 'DELETE',
       });
     },
     loadShow({ showId }) {
@@ -92,6 +118,12 @@ export function createRemoteMusicActions(request) {
     },
     removeShow({ showId }) {
       return request(showPath(showId), { method: 'DELETE' });
+    },
+    saveEpisodeNotes({ episodeId, notes }) {
+      return request(`${episodePath(episodeId)}notes/`, {
+        method: 'PATCH',
+        json: { notes },
+      });
     },
     addEpisodePlay({ showId, episodeId, episodeUuid, endDate }) {
       return request(api('/podcasts/episodes/plays/'), {
@@ -121,18 +153,24 @@ export function createLocalMusicActions(reason) {
     saveArtist: local,
     removeArtist: local,
     syncArtistDiscography: local,
+    loadArtistRelations: local,
+    syncArtistMembers: local,
     deleteArtistPlays: local,
     loadAlbum: local,
     loadAlbumTracks: local,
     saveAlbum: local,
     removeAlbum: local,
     deleteAlbumPlays: local,
+    syncAlbumMetadata: local,
     addListen: local,
     rateTrack: local,
+    saveTrackNotes: local,
+    deleteHistory: local,
     loadShow: local,
     loadEpisodes: local,
     saveShow: local,
     removeShow: local,
+    saveEpisodeNotes: local,
     addEpisodePlay: local,
     markAllPlayed: local,
   };

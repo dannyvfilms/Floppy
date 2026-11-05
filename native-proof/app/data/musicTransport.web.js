@@ -1,4 +1,5 @@
-import { createLocalMusicActions, createRemoteMusicActions } from './musicTransportCore';
+import { getActiveAuthSession } from './authSession.js';
+import { createLocalMusicActions, createRemoteMusicActions } from './musicTransportCore.js';
 
 const CSRF_COOKIE = 'csrftoken';
 
@@ -43,6 +44,10 @@ function createRequest(baseUrl, csrfToken) {
 export function createMusicTransport(options = {}) {
   if (typeof options.request === 'function') {
     return createRemoteMusicActions(options.request);
+  }
+  const auth = options.auth || getActiveAuthSession();
+  if (auth && typeof auth.request === 'function') {
+    return createRemoteMusicActions(auth.request);
   }
   const csrfToken = options.csrfToken || readCsrfToken();
   if (!csrfToken) {
