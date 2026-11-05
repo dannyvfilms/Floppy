@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createCalendarTransport } from './calendarTransport.js';
+import { createHistoryTransport, historyEntriesFromPayload } from './historyTransport.js';
 import { createListTransport } from './listTransport.js';
 import {
   configureMediaCardTransport,
@@ -79,4 +80,56 @@ test('media-card transport routes reads and writes through the session', async (
     resetMediaCardTransport();
   }
   assert.equal(hasMediaCardTransport(), false);
+});
+
+test('history transport reads a bounded page through the session', async () => {
+  const { calls, session } = authFixture();
+  const transport = createHistoryTransport({ auth: session });
+  assert.equal(transport.mode, 'server');
+
+  await transport.load({ mediaTypes: ['movie'], from: '2026-01-01', limit: 5, offset: 10 });
+  assert.equal(calls[0].path, '/api/v1/history/');
+  assert.equal(calls[0].options.query.media_type, 'movie');
+  assert.equal(calls[0].options.query.start_date, '2026-01-01');
+  assert.equal(calls[0].options.query.limit, 5);
+  assert.equal(calls[0].options.query.offset, 10);
+
+  await transport.deleteRecord({ mediaType: 'movie', historyId: 42 });
+  assert.equal(calls[1].path, '/api/v1/history/movie/42/');
+  assert.equal(calls[1].options.method, 'DELETE');
+});
+
+test('history transport falls back to local preview without a session', async () => {
+  const transport = createHistoryTransport();
+  assert.equal(transport.mode, 'local');
+  assert.match(transport.reason, /sign in/i);
+  assert.equal((await transport.load()).local, true);
+});
+
+test('history entries map bounded API days into feed rows', () => {
+  const entries = historyEntriesFromPayload({
+    results: [{
+      date: '2026-11-04',
+      entries: [{
+        entry_key: 'movie-7',
+        instance_id: 7,
+        media_type: 'movie',
+        title: 'Dune',
+        display_title: 'Dune',
+        played_at_local: '2026-11-04T21:42:00-06:00',
+        runtime_display: '2h 46min',
+        runtime_minutes: 166,
+        score: 9,
+        item: { media_id: '603', source: 'tmdb', title: 'Dune' },
+      }],
+    }],
+  });
+
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].date, '2026-11-04');
+  assert.equal(entries[0].time, '21:42');
+  assert.equal(entries[0].mediaType, 'movie');
+  assert.equal(entries[0].historyId, 7);
+  assert.equal(entries[0].sessions.length, 1);
+  assert.equal(entries[0].sessions[0].runtimeMinutes, 166);
 });

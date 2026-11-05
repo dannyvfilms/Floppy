@@ -374,6 +374,19 @@ export function HistoryActivitySummary({ stats, labels, palette }) {
   </View>;
 }
 
+function filterList(filters, key, legacyKey) {
+  if (Array.isArray(filters[key])) return [...filters[key]];
+  if (Array.isArray(filters[legacyKey])) return [...filters[legacyKey]];
+  const legacy = filters[legacyKey];
+  return legacy ? [legacy] : [];
+}
+
+function toggleValue(values, value) {
+  return values.includes(value)
+    ? values.filter(item => item !== value)
+    : [...values, value];
+}
+
 export function HistoryFilterPanel({
   filters = {},
   options = {},
@@ -385,33 +398,36 @@ export function HistoryFilterPanel({
 }) {
   const copy = mergeLabels(labels);
   const colors = mergePalette(palette);
-  const [state, setState] = useState({
+  const initial = () => ({
     from: filters.from || '',
     to: filters.to || '',
     mediaTypes: [...(filters.mediaTypes || [])],
-    genre: filters.genre || '',
-    impliedGenre: filters.impliedGenre || '',
+    genres: filterList(filters, 'genres', 'genre'),
+    impliedGenres: filterList(filters, 'impliedGenres', 'impliedGenre'),
     mode: filters.mode || 'activity',
   });
+  const [state, setState] = useState(initial);
   const mediaTypes = options.mediaTypes?.length ? options.mediaTypes : DEFAULT_MEDIA_TYPES;
 
   useEffect(() => {
-    setState({
-      from: filters.from || '',
-      to: filters.to || '',
-      mediaTypes: [...(filters.mediaTypes || [])],
-      genre: filters.genre || '',
-      impliedGenre: filters.impliedGenre || '',
-      mode: filters.mode || 'activity',
-    });
-  }, [filters.from, filters.to, filters.mode, filters.genre, filters.impliedGenre, JSON.stringify(filters.mediaTypes || [])]);
+    setState(initial());
+  }, [filters.from, filters.to, filters.mode, filters.genre, filters.genres, filters.impliedGenre, filters.impliedGenres, JSON.stringify(filters.mediaTypes || [])]);
 
   function toggleMediaType(value) {
     setState(current => ({
       ...current,
-      mediaTypes: current.mediaTypes.includes(value)
-        ? current.mediaTypes.filter(item => item !== value)
-        : [...current.mediaTypes, value],
+      mediaTypes: toggleValue(current.mediaTypes, value),
+    }));
+  }
+
+  function toggleGenre(value) {
+    setState(current => ({ ...current, genres: toggleValue(current.genres, value) }));
+  }
+
+  function toggleImpliedGenre(value) {
+    setState(current => ({
+      ...current,
+      impliedGenres: toggleValue(current.impliedGenres, value),
     }));
   }
 
@@ -448,15 +464,15 @@ export function HistoryFilterPanel({
     {options.genres?.length ? <>
       <Text style={[styles.filterHeading, { color: colors.text }]}>{copy.genre}</Text>
       <View style={styles.chipRow}>
-        {options.genres.map(genre => chip(genre, state.genre === genre,
-          () => setState(current => ({ ...current, genre: current.genre === genre ? '' : genre })), `genre-${genre}`))}
+        {options.genres.map(genre => chip(genre, state.genres.includes(genre),
+          () => toggleGenre(genre), `genre-${genre}`))}
       </View>
     </> : null}
     {options.impliedGenres?.length ? <>
       <Text style={[styles.filterHeading, { color: colors.text }]}>{copy.impliedGenre}</Text>
       <View style={styles.chipRow}>
-        {options.impliedGenres.map(genre => chip(genre, state.impliedGenre === genre,
-          () => setState(current => ({ ...current, impliedGenre: current.impliedGenre === genre ? '' : genre })), `implied-${genre}`))}
+        {options.impliedGenres.map(genre => chip(genre, state.impliedGenres.includes(genre),
+          () => toggleImpliedGenre(genre), `implied-${genre}`))}
       </View>
     </> : null}
     <View style={styles.filterActions}>
@@ -691,6 +707,7 @@ export function HistoryFeed({
   onApplyFilters,
   onClearFilters,
   onSaveView,
+  onRequestOptions,
   onRetry,
   onRetryDay,
   onRefresh,
@@ -745,7 +762,10 @@ export function HistoryFeed({
 
     {chrome ? <View style={styles.toolbar}>
       <Button label={filtersOpen ? copy.hideFilters : copy.filters} size="sm" tone="surface"
-        palette={buttonPalette(colors)} onPress={() => setFiltersOpen(current => !current)} />
+        palette={buttonPalette(colors)} onPress={() => {
+          if (!filtersOpen) onRequestOptions?.();
+          setFiltersOpen(current => !current);
+        }} />
       {activeCount > 0 ? <Badge label={String(activeCount)} size="sm" tone="indigo"
         palette={chipPalette(colors)} accessibilityLabel={`${copy.filters}: ${activeCount}`} /> : null}
       <Badge label={mode === 'release' ? copy.release : copy.activity} size="sm" tone="outline"
@@ -778,9 +798,17 @@ export function HistoryFeed({
       <Button label={copy.previousPage} size="sm" tone="surface" palette={buttonPalette(colors)}
         disabled={!model.pagination.previousUrl}
         onPress={() => onNavigate?.({ kind: 'page', direction: -1, url: model.pagination.previousUrl })} />
-      <Text style={[styles.pageLabel, { color: colors.textMuted }]}>
-        {`${copy.page} ${model.pagination.page} / ${model.pagination.pageCount}`}
-      </Text>
+      {model.pagination.pages?.length
+        ? model.pagination.pages.map((page, index) => page
+          ? <Button key={page.number} label={String(page.number)} size="sm"
+            tone={page.current ? undefined : 'surface'} disabled={page.current}
+            accessibilityLabel={`${copy.page} ${page.number}`}
+            palette={buttonPalette(colors)}
+            onPress={() => onNavigate?.({ kind: 'page', url: page.url })} />
+          : <Text key={`gap-${index}`} style={[styles.pageLabel, { color: colors.textMuted }]}>…</Text>)
+        : <Text style={[styles.pageLabel, { color: colors.textMuted }]}>
+          {`${copy.page} ${model.pagination.page} / ${model.pagination.pageCount}`}
+        </Text>}
       <Button label={copy.nextPage} size="sm" tone="surface" palette={buttonPalette(colors)}
         disabled={!model.pagination.nextUrl}
         onPress={() => onNavigate?.({ kind: 'page', direction: 1, url: model.pagination.nextUrl })} />
