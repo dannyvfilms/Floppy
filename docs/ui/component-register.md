@@ -660,10 +660,13 @@ can inform a focused completion pass.
 ### TAGS — Management and assignment
 
 - Purpose/usage: tag index, detail/library/bulk tagging and settings tag filters.
-- Implementation: `src/templates/app/tag_index.html`, fill/tag-button/detail-preview fragments, `src/templates/users/components/media_tag_filter.html`.
-- Contract: search/select/add/remove, item/bulk identity, confirmed library-wide delete and consistent filter semantics.
-- Data: `src/app/tag_views.py`, user-owned tag relations/library query.
-- Reuse/blockers: chip/selection model shared; destructive/ownership checks stay server-enforced.
+- Implementation: universal `frontend/ui/TagManagement.jsx` (`TagIndex`, `TagMediaFilter`, `TagAssignmentDialog`, `TagBulkDialog`) reusing shared `Chip`, `Badge`, `TextField`, `Button`, `ConfirmDialog`, `BulkActionDialog` and `BulkOptionRow`; native placement `native-proof/app/screens/TagsScreen.jsx`. Web fallback remains `src/templates/app/tag_index.html`, fill/tag-button/detail-preview fragments and `src/templates/users/components/media_tag_filter.html`.
+- Contract: case-insensitive search and name/count sorting, item assignment and creation, selected-item add/remove, global counts that stay library-wide under filtering, confirmed library-wide deletion, media-type filter choices and summary semantics, and disabled destructive actions when a tag is not owned.
+- Data: `src/app/tag_views.py`, user-owned tag relations/library query. The native screen uses local demo state; the web path keeps server-enforced ownership and writes.
+- Reuse/blockers: chip/selection model shared; destructive/ownership checks stay server-enforced and the web server fallback is retained. Native browser mounting, API transport, iOS and Android interaction/accessibility evidence remain open.
+- Status: `Partial / coexisting`. The shared React Native tag presentation renders on the native Tags screen with local demo state. Web tag index, detail tag modal, bulk tag toolbar and settings media-type filters remain the server-rendered implementation.
+- Native placement: `ported` in `native-proof/app/screens/TagsScreen.jsx`. Expo export compiles it; no iOS or Android runtime interaction was exercised in this change.
+- Verification: `app.tests.views.test_tags`, `users.tests.views.test_settings_media_tag_filters`, `npm run check:ui-architecture` and `npm run test:ui-architecture` pass. `npm run build:ui`, `npm run check:ui` and Expo export `--platform all` compile the tag presentation when the branch's referenced `frontend/users/UsersManagement.jsx` and `native-proof/app/surfaces/UsersSlot.jsx` are present; this branch point lacks them. Export is a build check, not runtime evidence.
 - Validation targets: `src/app/tests/views/test_tags.py`, `src/users/tests/views/test_settings_media_tag_filters.py`.
 
 ### METADATA-REVIEW — Episode order, provider switch and remap

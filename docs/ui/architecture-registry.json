@@ -391,26 +391,6 @@
         }
       }
     },
-    "frontend/users/UsersManagement.jsx": {
-      "components": [
-        "UsersManagement"
-      ],
-      "register": "SET-USERS",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Mounted by frontend/settings/index.js; UI build and targeted Django tests only, no browser pass during this change."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Settings users slot; no simulator run was performed."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Settings users slot; no emulator run was performed."
-        }
-      }
-    },
     "frontend/ui/SelectField.jsx": {
       "components": [
         "SelectField"
@@ -1224,32 +1204,6 @@
         }
       }
     },
-    "frontend/ui/People.jsx": {
-      "components": [
-        "PersonHero",
-        "StudioHero",
-        "PersonCard",
-        "CreditCard",
-        "MediaGallery",
-        "LightboxDialog",
-        "MediumExtras"
-      ],
-      "register": "PEOPLE",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "The shared person, studio, credit, gallery and medium-extra presentation is not mounted in the browser; the existing Django person and studio pages remain the web owner."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native People screen; no person, studio, credit, gallery, lightbox or medium-extra state was exercised on a simulator or device."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native People screen; no person, studio, credit, gallery, lightbox or medium-extra state was exercised on an emulator or device."
-        }
-      }
-    },
     "frontend/ui/SmartRules.jsx": {
       "components": [
         "SmartRuleSummary",
@@ -1288,6 +1242,75 @@
         "android": {
           "status": "unverified",
           "evidence": "Expo export only; the native tier board, move and edit dialogs were not exercised on an emulator."
+        }
+      }
+    },
+    "frontend/ui/TagManagement.jsx": {
+      "components": [
+        "TagIndex",
+        "TagMediaFilter",
+        "TagAssignmentDialog",
+        "TagBulkDialog"
+      ],
+      "register": "TAGS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted in the browser; the server tag index, fill_tags modal, bulk tag action and settings media-type filters remain the web fallback. No browser interaction pass was run in this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Tags screen; the index, assignment, bulk and delete interactions were not exercised on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Tags screen; the index, assignment, bulk and delete interactions were not exercised on an emulator or device."
+        }
+      }
+    },
+    "frontend/users/UsersManagement.jsx": {
+      "components": [
+        "UsersManagement"
+      ],
+      "register": "SET-USERS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Mounted by frontend/settings/index.js; UI build and targeted Django tests only, no browser pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Settings users slot; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Settings users slot; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/ui/People.jsx": {
+      "components": [
+        "PersonHero",
+        "StudioHero",
+        "PersonCard",
+        "CreditCard",
+        "MediaGallery",
+        "LightboxDialog",
+        "MediumExtras"
+      ],
+      "register": "PEOPLE",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The shared person, studio, credit, gallery and medium-extra presentation is not mounted in the browser; the existing Django person and studio pages remain the web owner."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native People screen; no person, studio, credit, gallery, lightbox or medium-extra state was exercised on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native People screen; no person, studio, credit, gallery, lightbox or medium-extra state was exercised on an emulator or device."
         }
       }
     },
