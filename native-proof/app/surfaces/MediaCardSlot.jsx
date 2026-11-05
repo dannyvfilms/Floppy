@@ -38,8 +38,8 @@ export const surface = {
   id: 'MEDIA-CARD',
   title: 'Media card',
   where: 'Home rails, Discover, Library, Search and List results',
-  status: 'ported',
-  note: 'Poster, square, landscape and row cards render the shared model with artwork fallback, chips, progress, rating, action overlay, touch/hover reveal, explicit read-only mode and selectable states. The native action host owns the Track and Lists form bodies, the Track song/episode variants, link routing, Discover plan/hide, list reorder and a shared card-change event through the platform transport. Drag reorder exposes an adjustable position and hint, step and accessibility actions, and announces moves and failures; the web Track General form is shared presentation through mountTrackForm. The Expo export compiles the finished card; iOS, Android, browser and screen-reader runtime interaction remain unverified.',
+  status: 'in_progress',
+  note: 'Artwork loading, fallback, provenance and refresh states are moving into shared presentation. Poster, square, landscape and row cards render the shared model with artwork fallback, chips, progress, rating, action overlay, touch/hover reveal, explicit read-only mode and selectable states. The native action host owns the Track and Lists form bodies, the Track song/episode variants, link routing, Discover plan/hide, list reorder and a shared card-change event through the platform transport. Drag reorder exposes an adjustable position and hint, step and accessibility actions, and announces moves and failures; the web Track General form is shared presentation through mountTrackForm. The Expo export compiles the finished card; iOS, Android, browser and screen-reader runtime interaction remain unverified.',
 };
 
 const labels = {
