@@ -276,3 +276,47 @@ class StudioDetailViewTests(TestCase):
             ),
             [m["rating"]["rateUrl"] for m in models if m["rating"]],
         )
+
+    @patch("app.providers.igdb.company_profile", return_value=None)
+    def test_studio_detail_json_contract_shapes_the_native_profile(
+        self,
+        _mock_company_profile,
+    ):
+        studio = Studio.objects.create(
+            source=Sources.IGDB.value,
+            source_studio_id="1",
+            name="CD Projekt Red",
+            logo="https://images.igdb.com/igdb/image/upload/t_logo_med/logo123.png",
+        )
+        item = Item.objects.create(
+            media_id="1942",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="The Witcher 3: Wild Hunt",
+            image="http://example.com/witcher3.jpg",
+            release_datetime=timezone.now(),
+        )
+        ItemStudioCredit.objects.create(item=item, studio=studio)
+
+        response = self.client.get(
+            reverse(
+                "studio_detail",
+                kwargs={
+                    "source": Sources.IGDB.value,
+                    "studio_id": "1",
+                    "name": "cd-projekt-red",
+                },
+            )
+            + "?format=json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["kind"], "studio")
+        self.assertEqual(payload["studio"]["name"], "CD Projekt Red")
+        self.assertEqual(payload["studioId"], "1")
+        self.assertEqual(len(payload["titles"]), 1)
+        credit = payload["titles"][0]
+        self.assertEqual(credit["title"], "The Witcher 3: Wild Hunt")
+        self.assertEqual(credit["mediaTypeLabel"], "Game")
+        self.assertIn("/details/igdb/game/1942/", credit["href"])

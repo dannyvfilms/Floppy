@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Rail } from '../../../frontend/ui/Rail';
 import {
@@ -12,6 +12,7 @@ import {
 } from '../../../frontend/ui/People';
 import { Note } from '../components/Note';
 import { Screen, Section } from '../components/Screen';
+import { createPeopleTransport } from '../data/peopleTransport';
 import { palette, radius, spacing } from '../theme';
 
 export const surface = {
@@ -19,7 +20,7 @@ export const surface = {
   status: 'in_progress',
   title: 'People, studios and credits',
   where: 'Person and studio pages, cast/filmography/credit rows, trailers, lightbox and medium extras',
-  note: 'Person and studio heroes mount on the Django person and studio pages through the browser adapter while the server hero remains the fallback. The native screen renders cast and credit cards with role lines, bounded rails, a trailer/photo gallery with play and lightbox intents, and time-to-beat, YouTube and reading extras with demo data. Production data transport, permissions, filmography web action parity, gallery/extras web consumers and iOS/Android runtime verification remain outstanding.',
+  note: 'Person and studio heroes, watched/filmography credit rails and studio title rails load through the authenticated profile transport, with the person and studio demos kept only when no identity is supplied. Cast rows and game extras mount the shared presentation on the web over their server fallback; the filmography grid stays on the shared media card so hover/tracking actions survive, and the detail carousel stays server-owned because the shared gallery delegates playback externally instead of keeping the embedded YouTube player. Gallery data, live cast/extras transport, permissions and iOS/Android runtime verification remain outstanding.',
 };
 
 const DEMO_PERSON = {
@@ -230,72 +231,252 @@ function Menu({ value, onChange }) {
   </View>;
 }
 
-export default function PeopleScreen({ navigate, onBack }) {
-  const [view, setView] = useState('person');
+function identityFrom(params) {
+  if (!params) return null;
+  if (params.kind === 'studio' || params.studioId) {
+    if (!params.source || !params.studioId) return null;
+    return {
+      kind: 'studio',
+      source: params.source,
+      studioId: String(params.studioId),
+      slug: params.slug || 'profile',
+    };
+  }
+  if (params.kind === 'person' || params.personId) {
+    if (!params.source || !params.personId) return null;
+    return {
+      kind: 'person',
+      source: params.source,
+      personId: String(params.personId),
+      slug: params.slug || 'profile',
+    };
+  }
+  return null;
+}
+
+export default function PeopleScreen({ navigate, onBack, params, transport: injectedTransport }) {
+  const [transport] = useState(() => injectedTransport || createPeopleTransport());
+  const identity = identityFrom(params);
+  const [mode, setMode] = useState(() => (params?.profile ? 'ready' : identity ? 'loading' : 'demo'));
+  const [profile, setProfile] = useState(params?.profile || null);
+  const [error, setError] = useState('');
+  const [view, setView] = useState(params?.kind === 'extras' ? 'extras' : identity?.kind === 'studio' ? 'studio' : 'person');
   const [lightbox, setLightbox] = useState({ visible: false, index: 0 });
 
+  useEffect(() => {
+    let active = true;
+    if (!identity) {
+      setProfile(params?.profile || null);
+      setMode(params?.profile ? 'ready' : 'demo');
+      return () => { active = false; };
+    }
+    if (params?.profile) {
+      setProfile(params.profile);
+      setMode('ready');
+      return () => { active = false; };
+    }
+    setMode('loading');
+    setError('');
+    const request = identity.kind === 'studio'
+      ? transport.loadStudio(identity)
+      : transport.loadPerson(identity);
+    Promise.resolve(request).then(data => {
+      if (!active) return;
+      if (data?.local) {
+        setProfile(null);
+        setMode('demo');
+        setError(data.reason || 'Sign in to load this profile from your server.');
+        return;
+      }
+      setProfile(data);
+      setMode('ready');
+    }).catch(requestError => {
+      if (!active) return;
+      setProfile(null);
+      setMode('error');
+      setError(requestError?.message || 'The server rejected the profile request.');
+    });
+    return () => { active = false; };
+  }, [transport, identity?.kind, identity?.source, identity?.personId, identity?.studioId, identity?.slug, params?.profile]);
+
   function openCredit(entry) {
-    navigate?.('Detail', { item: { title: entry.title, mediaType: entry.mediaType } });
+    navigate?.('Detail', {
+      item: {
+        title: entry.title,
+        mediaType: entry.mediaType,
+        source: entry.source,
+        mediaId: entry.mediaId,
+      },
+    });
   }
 
   function openPerson(person) {
+    if (person.personId && person.source) {
+      navigate?.('People', {
+        kind: 'person',
+        source: person.source,
+        personId: person.personId,
+        slug: person.slug,
+      });
+      return;
+    }
     navigate?.('Detail', { item: { title: person.name } });
   }
 
-  return <Screen title="People, studios" subtitle="People, studios and credits" onBack={onBack}>
-    <Menu value={view} onChange={setView} />
+  function openExtra(item) {
+    navigate?.('Detail', {
+      item: {
+        title: item.name || item.title,
+        mediaType: item.mediaType,
+        source: item.source,
+        mediaId: item.mediaId,
+      },
+    });
+  }
 
-    {view === 'person' ? <>
-      <PersonHero person={DEMO_PERSON} counts={PERSON_COUNTS}
-        onViewHistory={() => navigate?.('History')}
-        onOpenSource={openExternal} />
+  function playGalleryItem(item) {
+    openExternal(item.key ? `https://www.youtube.com/watch?v=${item.key}` : item.url);
+  }
 
-      <Rail items={WATCHED_CREDITS} renderItem={entry => <CreditCard entry={entry} onOpen={openCredit} />}
-        title="Watched Content" summary={`${WATCHED_CREDITS.length} titles`} itemWidth={176}
-        emptyLabel="No watched titles yet." />
-
-      <Rail items={FILMOGRAPHY} renderItem={entry => <CreditCard entry={entry} onOpen={openCredit} />}
-        title="Filmography" summary={`${FILMOGRAPHY.length} titles`} summaryInline="Most recent"
-        itemWidth={176} emptyLabel="No filmography available." />
-
-      <Rail items={CAST} renderItem={person => <PersonCard person={person} onOpen={openPerson} />}
-        title="Cast" summary="Signal Fires · season one" summaryInline={`${CAST.length} people`}
-        itemWidth={132} emptyLabel="No cast available." />
-
-      <MediumExtras reading={READING} youtubeWatch={YOUTUBE_WATCH}
-        onOpenItem={item => navigate?.('Detail', { item: { title: item.name || item.title } })} />
-    </> : null}
-
-    {view === 'studio' ? <>
-      <StudioHero studio={DEMO_STUDIO} counts={STUDIO_COUNTS} onOpenWebsite={openExternal} />
-
-      <Rail items={STUDIO_TITLES} renderItem={entry => <CreditCard entry={entry} onOpen={openCredit} />}
-        title="Games" summary={`${STUDIO_TITLES.length} titles`} summaryInline="Newest first"
-        itemWidth={176} emptyLabel="No titles available." />
-
-      <MediumExtras gameLengths={GAME_LENGTHS} onOpenSource={openExternal} />
-    </> : null}
-
-    {view === 'extras' ? <>
-      <Section title="Trailers and photos" copy="Signal Fires · season one">
-        <MediaGallery items={GALLERY}
-          onPlay={item => openExternal(item.key ? `https://www.youtube.com/watch?v=${item.key}` : item.url)}
+  function extrasView(extras) {
+    const gallery = params?.gallery || profile?.gallery || [];
+    const labels = profile?.labels;
+    const gameLengths = extras?.gameLengths;
+    const youtubeWatch = extras?.youtubeWatch;
+    const reading = extras?.reading;
+    if (!gallery.length && !gameLengths && !youtubeWatch && !reading) return null;
+    return <>
+      {gallery.length ? <Section title="Trailers and photos" copy={params?.galleryTitle || profile?.person?.name || ''}>
+        <MediaGallery items={gallery} labels={labels} palette={palette}
+          onPlay={playGalleryItem}
           onOpenLightbox={(items, index) => setLightbox({ visible: true, index })} />
-      </Section>
+      </Section> : null}
+      {gameLengths || youtubeWatch || reading ? <Section title="Medium extras">
+        <MediumExtras gameLengths={gameLengths} youtubeWatch={youtubeWatch} reading={reading}
+          labels={labels} palette={palette}
+          onOpenSource={openExternal} onOpenItem={openExtra} />
+      </Section> : null}
+    </>;
+  }
 
-      <Section title="Medium extras">
-        <MediumExtras gameLengths={GAME_LENGTHS} youtubeWatch={YOUTUBE_WATCH} reading={READING}
-          onOpenSource={openExternal}
-          onOpenItem={item => navigate?.('Detail', { item: { title: item.name || item.title } })} />
-      </Section>
-    </> : null}
+  function livePerson(personProfile) {
+    const person = personProfile.person;
+    const labels = personProfile.labels || {};
+    const watched = personProfile.watched || [];
+    const filmography = personProfile.filmography || [];
+    const cast = params?.cast || personProfile.cast || [];
+    const extras = params?.extras || personProfile.extras || {};
+    return <>
+      <PersonHero person={person} counts={personProfile.counts} labels={labels}
+        palette={palette} headingLevel={1}
+        showBiography={personProfile.showBiography} canViewHistory={personProfile.canViewHistory}
+        actionPalette={{ radius: radius.md || 8 }}
+        onOpenSource={openExternal}
+        onViewHistory={personProfile.historyUrl
+          ? () => navigate?.('History', { filters: personProfile.historyUrl })
+          : undefined} />
+      {watched.length ? <Rail items={watched}
+        renderItem={entry => <CreditCard entry={entry} labels={labels} palette={palette} onOpen={openCredit} />}
+        title={labels.watchedContent || 'Watched Content'}
+        summary={`${watched.length} ${watched.length === 1 ? 'title' : 'titles'}`}
+        itemWidth={176} emptyLabel={labels.noWatched} palette={palette} /> : null}
+      {filmography.length ? <Rail items={filmography}
+        renderItem={entry => <CreditCard entry={entry} labels={labels} palette={palette} onOpen={openCredit} />}
+        title={personProfile.isAuthor ? labels.bibliography || 'Bibliography' : labels.filmography || 'Filmography'}
+        summary={`${filmography.length} ${filmography.length === 1 ? 'title' : 'titles'}`}
+        summaryInline="Most recent" itemWidth={176}
+        emptyLabel={personProfile.isAuthor ? labels.noBibliography : labels.noFilmography}
+        palette={palette} /> : null}
+      {cast.length ? <Rail items={cast}
+        renderItem={member => <PersonCard person={member} labels={labels} palette={palette} onOpen={openPerson} />}
+        title="Cast" summary={`${cast.length} ${cast.length === 1 ? 'person' : 'people'}`}
+        itemWidth={132} emptyLabel="No cast available." palette={palette} /> : null}
+      {extrasView(extras)}
+    </>;
+  }
 
+  function liveStudio(studioProfile) {
+    const labels = studioProfile.labels || {};
+    const titles = studioProfile.titles || [];
+    const extras = params?.extras || studioProfile.extras || {};
+    return <>
+      <StudioHero studio={studioProfile.studio} counts={studioProfile.counts} labels={labels}
+        palette={palette} headingLevel={1} sourcePlacement="facts"
+        showBiography={studioProfile.showBiography}
+        onOpenWebsite={openExternal} />
+      {titles.length ? <Rail items={titles}
+        renderItem={entry => <CreditCard entry={entry} labels={labels} palette={palette} onOpen={openCredit} />}
+        title={studioProfile.studio.mediaLabel || labels.titles || 'Titles'}
+        summary={`${titles.length} ${titles.length === 1 ? 'title' : 'titles'}`}
+        summaryInline="Newest first" itemWidth={176} emptyLabel={labels.noTitles}
+        palette={palette} /> : null}
+      {extrasView(extras)}
+    </>;
+  }
+
+  function demoView() {
+    return <>
+      <Menu value={view} onChange={setView} />
+      {view === 'person' ? <>
+        <PersonHero person={DEMO_PERSON} counts={PERSON_COUNTS} palette={palette}
+          onViewHistory={() => navigate?.('History')} onOpenSource={openExternal} />
+        <Rail items={WATCHED_CREDITS} renderItem={entry => <CreditCard entry={entry} onOpen={openCredit} />}
+          title="Watched Content" summary={`${WATCHED_CREDITS.length} titles`} itemWidth={176}
+          palette={palette} emptyLabel="No watched titles yet." />
+        <Rail items={FILMOGRAPHY} renderItem={entry => <CreditCard entry={entry} onOpen={openCredit} />}
+          title="Filmography" summary={`${FILMOGRAPHY.length} titles`} summaryInline="Most recent"
+          itemWidth={176} palette={palette} emptyLabel="No filmography available." />
+        <Rail items={CAST} renderItem={person => <PersonCard person={person} onOpen={openPerson} />}
+          title="Cast" summary="Signal Fires · season one" summaryInline={`${CAST.length} people`}
+          itemWidth={132} palette={palette} emptyLabel="No cast available." />
+        <MediumExtras reading={READING} youtubeWatch={YOUTUBE_WATCH}
+          palette={palette} onOpenItem={openExtra} />
+      </> : null}
+      {view === 'studio' ? <>
+        <StudioHero studio={DEMO_STUDIO} counts={STUDIO_COUNTS} palette={palette}
+          onOpenWebsite={openExternal} />
+        <Rail items={STUDIO_TITLES} renderItem={entry => <CreditCard entry={entry} onOpen={openCredit} />}
+          title="Games" summary={`${STUDIO_TITLES.length} titles`} summaryInline="Newest first"
+          itemWidth={176} palette={palette} emptyLabel="No titles available." />
+        <MediumExtras gameLengths={GAME_LENGTHS} palette={palette} onOpenSource={openExternal} />
+      </> : null}
+      {view === 'extras' ? <>
+        <Section title="Trailers and photos" copy="Signal Fires · season one">
+          <MediaGallery items={GALLERY} palette={palette}
+            onPlay={playGalleryItem}
+            onOpenLightbox={(items, index) => setLightbox({ visible: true, index })} />
+        </Section>
+        <Section title="Medium extras">
+          <MediumExtras gameLengths={GAME_LENGTHS} youtubeWatch={YOUTUBE_WATCH} reading={READING}
+            palette={palette} onOpenSource={openExternal} onOpenItem={openExtra} />
+        </Section>
+      </> : null}
+    </>;
+  }
+
+  const live = mode === 'ready' && profile;
+  const liveKind = live?.kind;
+  const liveLightboxItems = live ? (params?.gallery || profile?.gallery || []) : GALLERY;
+
+  return <Screen title="People, studios" subtitle="People, studios and credits" onBack={onBack}>
+    {mode === 'loading' ? <Section title="Loading profile">
+      <Text style={styles.statusText}>Loading the person or studio profile from your server.</Text>
+    </Section> : null}
+    {mode === 'error' ? <Section title="Profile unavailable">
+      <Text accessibilityLiveRegion="polite" style={styles.statusText}>{error}</Text>
+    </Section> : null}
+    {identity && !live && mode === 'demo' && error ? <Section title="Local preview">
+      <Text accessibilityLiveRegion="polite" style={styles.statusText}>{error}</Text>
+    </Section> : null}
+    {liveKind === 'person' ? livePerson(profile) : null}
+    {liveKind === 'studio' ? liveStudio(profile) : null}
+    {!identity ? demoView() : null}
     <Note surface={surface} compact />
-
-    <LightboxDialog visible={lightbox.visible} items={GALLERY} index={lightbox.index}
+    <LightboxDialog visible={lightbox.visible} items={liveLightboxItems} index={lightbox.index}
+      palette={palette}
       onClose={() => setLightbox({ visible: false, index: lightbox.index })}
       onIndexChange={index => setLightbox({ visible: true, index })}
-      onPlay={item => openExternal(item.key ? `https://www.youtube.com/watch?v=${item.key}` : item.url)} />
+      onPlay={playGalleryItem} />
   </Screen>;
 }
 
@@ -303,4 +484,5 @@ const styles = StyleSheet.create({
   menu: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   menuItem: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1 },
   menuText: { fontSize: 13, fontWeight: '600' },
+  statusText: { color: palette.textSecondary, fontSize: 14, lineHeight: 20 },
 });

@@ -80,3 +80,27 @@ test('media-card transport routes reads and writes through the session', async (
   }
   assert.equal(hasMediaCardTransport(), false);
 });
+
+test('people transport reads person and studio profiles through the session', async () => {
+  const { calls, session } = authFixture((path) => (
+    path.startsWith('/studio/')
+      ? { kind: 'studio', studio: { name: 'Northlight Interactive' } }
+      : { kind: 'person', person: { name: 'Nora Voss' } }
+  ));
+  const { createPeopleTransport } = await import('./peopleTransport.js');
+  const transport = createPeopleTransport({ auth: session });
+  assert.equal(transport.mode, 'server');
+
+  await transport.loadPerson({ source: 'tmdb', personId: 1001, slug: 'nora-voss' });
+  assert.equal(calls[0].path, '/person/tmdb/1001/nora-voss?format=json');
+
+  await transport.loadStudio({ source: 'igdb', studioId: 88, slug: 'northlight' });
+  assert.equal(calls[1].path, '/studio/igdb/88/northlight?format=json');
+});
+
+test('people transport keeps the local preview without a session', async () => {
+  const { createPeopleTransport } = await import('./peopleTransport.js');
+  const transport = createPeopleTransport();
+  assert.equal(transport.mode, 'local');
+  assert.equal((await transport.loadPerson({})).local, true);
+});

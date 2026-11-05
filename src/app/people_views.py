@@ -2,7 +2,7 @@ from urllib.parse import quote
 
 from django.conf import settings
 from django.db.models import Q
-from django.http import HttpResponseBadRequest
+from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET
 
@@ -77,6 +77,102 @@ def attach_card_media(user, entries, source):
                 **entry,
                 "source": entry.get("source") or source,
             }
+
+
+def _people_credit_contract(entry, source):
+    """Shape one filmography entry for the shared native credit card."""
+    from django.urls import reverse
+    from django.utils.text import slugify
+
+    from app.templatetags.app_tags import image_url, media_type_readable, media_url
+
+    media_type = entry.get("media_type")
+    media_id = str(entry.get("media_id") or "")
+    title = entry.get("title") or "Unknown Title"
+    tracked_item = entry.get("tracked_item")
+    href = media_url(tracked_item) if tracked_item else ""
+    if not href:
+        href = reverse(
+            "media_details",
+            kwargs={
+                "source": entry.get("source") or source,
+                "media_type": media_type,
+                "media_id": media_id,
+                "title": slugify(title) or media_id or "item",
+            },
+        )
+    departments = entry.get("all_departments") or []
+    role = (
+        entry.get("role")
+        or ", ".join(department for department in departments if department)
+        or entry.get("department")
+        or ""
+    )
+    return {
+        "id": f"{media_type}:{media_id}",
+        "title": title,
+        "mediaType": media_type,
+        "mediaTypeLabel": media_type_readable(media_type) if media_type else "",
+        "source": entry.get("source") or source,
+        "mediaId": media_id,
+        "year": entry.get("year"),
+        "role": role,
+        "imageUrl": image_url(entry.get("image") or ""),
+        "href": href,
+        "watched": bool(entry.get("is_watched")),
+        "watchedRuntimeLabel": entry.get("watched_person_runtime_display") or "",
+        "voteAverage": entry.get("vote_average"),
+    }
+
+
+def _people_person_contract(context):
+    """Return the person page values the native and browser adapters consume."""
+    from users.templatetags.ui_tags import _person_hero_props
+
+    hero = _person_hero_props(context)
+    person = context.get("person") or {}
+    return {
+        "kind": "person",
+        "person": hero["person"],
+        "counts": hero["counts"],
+        "labels": hero["labels"],
+        "historyUrl": hero["historyUrl"],
+        "canViewHistory": hero["canViewHistory"],
+        "showBiography": hero["showBiography"],
+        "isAuthor": bool(context.get("is_author")),
+        "source": context.get("source"),
+        "personId": str(person.get("person_id") or ""),
+        "sourceUrl": context.get("source_url") or "",
+        "watched": [
+            _people_credit_contract(entry, context.get("source"))
+            for entry in context.get("watched_filmography") or []
+        ],
+        "filmography": [
+            _people_credit_contract(entry, context.get("source"))
+            for entry in context.get("filmography") or []
+        ],
+    }
+
+
+def _people_studio_contract(context):
+    """Return the studio page values the native and browser adapters consume."""
+    from users.templatetags.ui_tags import _studio_hero_props
+
+    hero = _studio_hero_props(context)
+    studio = context.get("studio")
+    return {
+        "kind": "studio",
+        "studio": hero["studio"],
+        "counts": hero["counts"],
+        "labels": hero["labels"],
+        "source": context.get("source"),
+        "studioId": str(getattr(studio, "source_studio_id", "") or ""),
+        "sourceUrl": context.get("studio_source_url") or "",
+        "titles": [
+            _people_credit_contract(entry, context.get("source"))
+            for entry in context.get("credited_titles") or []
+        ],
+    }
 
 
 @require_GET
@@ -753,6 +849,8 @@ def person_detail(request, source, person_id, name):
         "supports_critic_rating_sort": not is_author,
         "person_detail_url": request.path,
     }
+    if request.GET.get("format") == "json":
+        return JsonResponse(_people_person_contract(context))
     if request.headers.get("HX-Request"):
         return render(
             request, "app/components/person_filmography_fragment.html", context
@@ -884,4 +982,6 @@ def studio_detail(request, source, studio_id, name):
         "studio_games_count": len(credited_titles),
         "IMG_NONE": settings.IMG_NONE,
     }
+    if request.GET.get("format") == "json":
+        return JsonResponse(_people_studio_contract(context))
     return render(request, "app/studio_detail.html", context)
