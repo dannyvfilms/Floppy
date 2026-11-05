@@ -1224,6 +1224,32 @@
         }
       }
     },
+    "frontend/ui/People.jsx": {
+      "components": [
+        "PersonHero",
+        "StudioHero",
+        "PersonCard",
+        "CreditCard",
+        "MediaGallery",
+        "LightboxDialog",
+        "MediumExtras"
+      ],
+      "register": "PEOPLE",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The shared person, studio, credit, gallery and medium-extra presentation is not mounted in the browser; the existing Django person and studio pages remain the web owner."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native People screen; no person, studio, credit, gallery, lightbox or medium-extra state was exercised on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native People screen; no person, studio, credit, gallery, lightbox or medium-extra state was exercised on an emulator or device."
+        }
+      }
+    },
     "frontend/ui/SmartRules.jsx": {
       "components": [
         "SmartRuleSummary",
