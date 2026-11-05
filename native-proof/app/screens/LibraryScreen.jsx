@@ -1,9 +1,9 @@
 import React from 'react';
 import { Screen, Section } from '../components/Screen';
 import { Note } from '../components/Note';
+import BulkSlot from '../surfaces/BulkSlot';
 import ButtonSlot from '../surfaces/ButtonSlot';
 import FiltersSlot from '../surfaces/FiltersSlot';
-import MediaCardSlot from '../surfaces/MediaCardSlot';
 import SearchSlot from '../surfaces/SearchSlot';
 
 const tables = {
@@ -21,7 +21,7 @@ export default function LibraryScreen({ navigate }) {
     />
     <FiltersSlot />
     <Section title="Movies and shows">
-      <MediaCardSlot onOpenDetail={() => navigate('Detail')} />
+      <BulkSlot onOpenDetail={() => navigate('Detail')} />
     </Section>
     <Section title="Table view">
       <Note surface={tables} />
