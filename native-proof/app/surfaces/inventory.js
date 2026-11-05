@@ -14,6 +14,7 @@ import { surface as cardsSettings } from './CardsSettingsSlot';
 import { surface as homeSettings } from './HomeSettingsSlot';
 import { surface as settingsCard } from './SettingsCardSlot';
 import { surface as providerSettings } from './ProviderSettingsSlot';
+import { surface as users } from './UsersSlot';
 import { surface as dataAccessNotifications } from './DataAccessNotificationsSlot';
 
-export const surfaces = [search, mediaCard, rails, filters, rating, progress, dateTime, calendar, bulk, button, settingsCard, providerSettings, preferences, appearanceSettings, cardsSettings, homeSettings, dataAccessNotifications];
+export const surfaces = [search, mediaCard, rails, filters, rating, progress, dateTime, calendar, bulk, button, settingsCard, providerSettings, preferences, appearanceSettings, cardsSettings, homeSettings, dataAccessNotifications, users];
