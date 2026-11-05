@@ -58,6 +58,58 @@ class SettingsCardNode(template.Node):
         })
 
 
+@register.tag
+def filter_bar(parser, token):
+    """Render the shared filter bar with its server toolbar as the fallback."""
+    bits = token.split_contents()
+    options = token_kwargs(bits[1:], parser)
+    allowed = {
+        "endpoint", "target", "form_id", "surface", "ranges",
+        "platform_multi", "media_types", "views", "saved_views", "state",
+    }
+    if set(options) - allowed or any("=" not in bit for bit in bits[1:]):
+        message = "filter_bar accepts named presentation options only"
+        raise template.TemplateSyntaxError(message)
+    body = parser.parse(("endfilter_bar",))
+    parser.delete_first_token()
+    return FilterBarNode(options, body)
+
+
+class FilterBarNode(template.Node):
+    """Render the universal filter bar around the legacy toolbar fallback."""
+
+    def __init__(self, options, body):
+        """Keep the compiled expressions and Django body for each render."""
+        self.options = options
+        self.body = body
+
+    def render(self, context):
+        """Resolve options, serialize normalized state and keep a fallback."""
+        from app.filter_bar import build_filter_bar_props
+
+        resolved = {
+            name: value.resolve(context) for name, value in self.options.items()
+        }
+        props = build_filter_bar_props(
+            context,
+            endpoint=resolved.get("endpoint", ""),
+            target=resolved.get("target", ""),
+            form_id=resolved.get("form_id", "filter-form"),
+            surface=str(resolved.get("surface", "library")),
+            ranges=bool(resolved.get("ranges", False)),
+            platform_multi=bool(resolved.get("platform_multi", False)),
+            media_types=resolved.get("media_types"),
+            views=resolved.get("views"),
+            saved_views=resolved.get("saved_views"),
+            state=resolved.get("state"),
+        )
+        return render_to_string("app/components/filter_bar.html", {
+            "props": props,
+            "props_id": f"filter-bar-{uuid4().hex}",
+            "body": self.body.render(context),
+        })
+
+
 @register.simple_tag
 def settings_link_chip(label, url):
     """Render a shared link chip with a usable server fallback."""

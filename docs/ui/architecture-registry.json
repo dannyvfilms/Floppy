@@ -307,7 +307,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not exercised in a browser. The browser adapter and Expo web export compile the shared bar; the existing Django/Alpine filter toolbar remains the active web consumer."
+          "evidence": "Mounted by frontend/ui/mountFilterBar.jsx on the library and custom-list filter toolbars; npm run build:ui compiled the adapter and targeted Django filter/list tests passed. No browser interaction, theme, keyboard or screen-reader pass was performed."
         },
         "ios": {
           "status": "unverified",
@@ -2654,7 +2654,7 @@
     },
     "frontend/ui/mountFilterBar.jsx": {
       "register": "FILTERS",
-      "purpose": "Django/browser integration for the shared filter bar: mirror the page Alpine filter state, write filter intents into the existing form, and refresh through the existing htmx/URL boundary."
+      "purpose": "Django/browser integration for the shared filter bar: mirror the page Alpine filter state, write media-type, status, sort, range and attribute-section intents into the existing form, and refresh through the existing htmx/URL boundary while the server toolbar remains the fallback."
     },
     "frontend/ui/mountHistoryFeed.jsx": {
       "register": "HISTORY",

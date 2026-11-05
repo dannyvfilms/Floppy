@@ -1,6 +1,7 @@
 
 {% load i18n %}
 {% load app_tags %}
+{% load ui_tags %}
 <div class="flex flex-col md:flex-row gap-4 mb-6">
   <div class="flex gap-1 flex-wrap md:flex-nowrap w-full items-center filter-toolbar media-filter-toolbar">
     {% if show_layout_toggle and column_config %}
@@ -8,7 +9,10 @@
       {{ default_column_config|json_script:"media-column-default-config-data" }}
     {% endif %}
 
-    {% include "app/components/filter_menu.html" %}
+    {% firstof filter_data_id "media-filter-data" as resolved_filter_data_id %}
+    {% if filter_data %}{{ filter_data|json_script:resolved_filter_data_id }}{% endif %}
+    {% filter_bar endpoint=filter_hx_endpoint target=filter_hx_target form_id=filter_form_id|default:'filter-form' surface=filter_surface|default:'library' ranges=filter_show_ranges platform_multi=filter_platform_multi state=media_list_filter_state %}
+    {% include "app/components/filter_menu.html" with filter_data_id=resolved_filter_data_id filter_suppress_data_script=True %}
 
     <!-- Filter by Status -->
     {% if status_choices %}
@@ -108,6 +112,8 @@
         {% endfor %}
       </div>
     </div>
+
+    {% endfilter_bar %}
 
     {% if show_layout_toggle %}
       <div id="result-count"

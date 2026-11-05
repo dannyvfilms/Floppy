@@ -58,6 +58,9 @@ const defaultLabels = {
   to: 'To',
   within: 'In the last',
   change: 'Change',
+  all: 'All',
+  searchOptions: 'Search options',
+  noOptions: 'No options found',
 };
 
 function mergeLabels(labels) {
@@ -112,8 +115,59 @@ function isRangeActive(value) {
   return Boolean(value && (value.from || value.to || value.within));
 }
 
+function sectionValue(filters, section) {
+  return (filters.fields || {})[section.key];
+}
+
+function sectionClearValue(section) {
+  return section.clearValue === undefined ? '' : section.clearValue;
+}
+
+function sectionIsActive(section, value) {
+  if (section.type === 'multi') {
+    return Array.isArray(value) && value.length > 0;
+  }
+  return Boolean(value) && String(value) !== String(sectionClearValue(section));
+}
+
+function sectionSummary(section, filters) {
+  const value = sectionValue(filters, section);
+  if (!sectionIsActive(section, value)) {
+    return '';
+  }
+  const labels = (section.options || []);
+  if (section.type === 'multi') {
+    const mode = (filters.modes || {})[section.key] || section.modeValue;
+    const selected = (value || []).map((item) => {
+      const match = labels.find((option) => String(option.value) === String(item));
+      return match ? match.label : String(item);
+    });
+    const prefix = mode === 'not' ? '−' : '';
+    const separator = mode === 'and' ? ' & ' : ', ';
+    return prefix + selected.join(separator);
+  }
+  const match = labels.find((option) => String(option.value) === String(value));
+  return match ? match.label : String(value);
+}
+
+function sectionCount(filters, sections) {
+  return (sections || []).filter((section) =>
+    sectionIsActive(section, sectionValue(filters, section))).length;
+}
+
+function sectionSummaryText(filters, sections) {
+  const parts = [];
+  for (const section of sections || []) {
+    const summary = sectionSummary(section, filters);
+    if (summary) {
+      parts.push(summary);
+    }
+  }
+  return parts;
+}
+
 function activeFilterCount(filters, options) {
-  let count = 0;
+  let count = sectionCount(filters, options.sections);
   if ((filters.mediaTypes || []).length) {
     count += 1;
   }
@@ -137,6 +191,7 @@ function filterSummary(filters, options, copy = defaultLabels) {
   if ((filters.mediaTypes || []).length) {
     parts.push(typeSummary(filters, options, copy));
   }
+  parts.push(...sectionSummaryText(filters, options.sections));
   for (const range of options.ranges || []) {
     const value = (filters.ranges || {})[range.key];
     if (isRangeActive(value)) {
@@ -174,6 +229,8 @@ export function FilterBar({
   const [rangeDraft, setRangeDraft] = useState(null);
   const ranges = options.ranges || [];
   const savedViews = options.savedViews || [];
+  const sections = options.sections || [];
+  const views = options.views || [];
   const count = activeFilterCount(filters, options);
   const isDisabled = disabled || busy;
   const directionLabel = filters.direction === 'asc' ? '↑' : '↓';
@@ -237,12 +294,16 @@ export function FilterBar({
     closeSheet();
   }
 
+  const activeSection = openSheet && openSheet.startsWith('section:')
+    ? sections.find((section) => `section:${section.key}` === openSheet)
+    : null;
   const sheetTitle = openSheet === 'filters' ? copy.filters
     : openSheet === 'status' ? copy.status
       : openSheet === 'sort' ? copy.sort
         : openSheet === 'view' ? copy.view
-          : openSheet && openSheet.startsWith('range:') ? (ranges.find((range) => `range:${range.key}` === openSheet)?.label || copy.range)
-            : '';
+          : activeSection ? activeSection.label
+            : openSheet && openSheet.startsWith('range:') ? (ranges.find((range) => `range:${range.key}` === openSheet)?.label || copy.range)
+              : '';
 
   const activeRange = openSheet && openSheet.startsWith('range:')
     ? ranges.find((range) => `range:${range.key}` === openSheet)
@@ -274,13 +335,13 @@ export function FilterBar({
         onPress={() => setOpenSheet(openSheet === 'sort' ? null : 'sort')}
         styles={styles} />
 
-      <Trigger
-        label={`${copy.view}: ${viewValue}`}
-        value={viewValue}
+      {views.length || savedViews.length ? <Trigger
+        label={`${copy.view}: ${viewValue || copy.savedViews}`}
+        value={viewValue || copy.savedViews}
         expanded={openSheet === 'view'}
         disabled={isDisabled}
         onPress={() => setOpenSheet(openSheet === 'view' ? null : 'view')}
-        styles={styles} />
+        styles={styles} /> : null}
 
       {ranges.length > 0 ? <Trigger
         label={`${copy.range}: ${ranges.map((range) => `${range.label} ${rangeSummary(range, (filters.ranges || {})[range.key])}`).join(', ')}`}
@@ -333,8 +394,13 @@ export function FilterBar({
               options={options}
               copy={copy}
               styles={styles}
+              sections={sections}
               onToggleType={(value) => toggleMulti('mediaTypes', value)}
               onOpenRange={openRange}
+              onOpenSection={(section) => {
+                setOpenSheet(`section:${section.key}`);
+                setRangeDraft(null);
+              }}
               onClear={clearAll} /> : null}
 
             {openSheet === 'status' ? <StatusSheet
@@ -361,6 +427,23 @@ export function FilterBar({
               savedViews={savedViews}
               onChoose={(value) => chooseSingle('view', value)}
               onSavedView={chooseSavedView} /> : null}
+
+            {activeSection ? <SectionSheet
+              section={activeSection}
+              value={sectionValue(filters, activeSection)}
+              mode={(filters.modes || {})[activeSection.key] || activeSection.modeValue}
+              copy={copy}
+              styles={styles}
+              placeholderColor={colors.textMuted}
+              onSelect={(option) => {
+                emit({ type: activeSection.type === 'multi' ? 'toggleField' : 'field', key: activeSection.key, value: option.value });
+                if (activeSection.type !== 'multi') closeSheet();
+              }}
+              onClear={() => {
+                emit({ type: 'clearField', key: activeSection.key });
+                if (activeSection.type !== 'multi') closeSheet();
+              }}
+              onMode={(mode) => emit({ type: 'fieldMode', key: activeSection.key, value: mode })} /> : null}
 
             {activeRange && rangeDraft ? <RangeSheet
               range={activeRange}
@@ -411,7 +494,7 @@ function OptionRow({ label, selected, disabled, role = 'radio', onPress, styles 
   </Pressable>;
 }
 
-function FiltersSheet({ filters, options, copy, styles, onToggleType, onOpenRange, onClear }) {
+function FiltersSheet({ filters, options, copy, styles, sections, onToggleType, onOpenRange, onOpenSection, onClear }) {
   return <View style={styles.sheetStack}>
     <Section title={copy.mediaType} styles={styles}>
       {(options.mediaTypes || []).map((option) => <OptionRow
@@ -423,6 +506,22 @@ function FiltersSheet({ filters, options, copy, styles, onToggleType, onOpenRang
         onPress={() => onToggleType(option.value)}
         styles={styles} />)}
     </Section>
+
+    {(sections || []).length ? <View style={styles.sheetStack}>
+      {(sections || []).map((section) => {
+        const summary = sectionSummary(section, filters);
+        return <Pressable
+          key={section.key}
+          accessibilityRole="button"
+          accessibilityLabel={`${section.label}: ${summary || copy.any}`}
+          onPress={() => onOpenSection(section)}
+          style={({ pressed }) => [styles.option, pressed && styles.pressed]}>
+          <Text style={styles.optionText}>{section.label}</Text>
+          <Text style={styles.optionValue}>{summary || copy.any}</Text>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>;
+      })}
+    </View> : null}
 
     {(options.ranges || []).length ? <Section title={copy.range} styles={styles}>
       {(options.ranges || []).map((range) => <Pressable
@@ -444,6 +543,76 @@ function FiltersSheet({ filters, options, copy, styles, onToggleType, onOpenRang
       style={({ pressed }) => [styles.clearAll, pressed && styles.pressed]}>
       <Text style={styles.clearAllText}>{copy.clearAll}</Text>
     </Pressable>
+  </View>;
+}
+
+function SectionSheet({ section, value, mode, copy, styles, placeholderColor, onSelect, onClear, onMode }) {
+  const [search, setSearch] = useState('');
+  const options = section.options || [];
+  const clearValue = sectionClearValue(section);
+  const isMulti = section.type === 'multi';
+  const term = search.trim().toLowerCase();
+  const visible = term
+    ? options.filter((option) => String(option.label).toLowerCase().includes(term))
+    : options;
+  const hasClearOption = options.some((option) => String(option.value) === String(clearValue));
+  const selectedValues = isMulti ? (Array.isArray(value) ? value : []) : [];
+  return <View style={styles.sheetStack}>
+    {section.modes?.length ? <View style={styles.segments}>
+      {section.modes.map((item) => <Pressable
+        key={item.value}
+        accessibilityRole="button"
+        accessibilityLabel={item.label}
+        accessibilityState={{ selected: mode === item.value }}
+        onPress={() => onMode(item.value)}
+        style={({ pressed }) => [styles.segment, mode === item.value && styles.segmentSelected, pressed && styles.pressed]}>
+        <Text style={[styles.segmentText, mode === item.value && styles.segmentTextSelected]}>{item.label}</Text>
+      </Pressable>)}
+    </View> : null}
+
+    {section.searchable && options.length > 8 ? <TextInput
+      accessibilityLabel={copy.searchOptions}
+      value={search}
+      onChangeText={setSearch}
+      placeholder={copy.searchOptions}
+      placeholderTextColor={placeholderColor}
+      style={styles.input} /> : null}
+
+    {isMulti ? <OptionRow
+      label={copy.all}
+      role="checkbox"
+      selected={selectedValues.length === 0}
+      onPress={onClear}
+      styles={styles} /> : !hasClearOption ? <OptionRow
+        label={copy.any}
+        role="radio"
+        selected={!sectionIsActive(section, value)}
+        onPress={onClear}
+        styles={styles} /> : null}
+
+    {visible.map((option) => {
+      const selected = isMulti
+        ? selectedValues.some((item) => String(item) === String(option.value))
+        : String(value) === String(option.value);
+      return <OptionRow
+        key={option.value}
+        label={option.label}
+        role={isMulti ? 'checkbox' : 'radio'}
+        selected={selected}
+        disabled={option.disabled}
+        onPress={() => onSelect(option)}
+        styles={styles} />;
+    })}
+
+    {!visible.length ? <Text style={styles.metaText}>{copy.noOptions}</Text> : null}
+
+    {isMulti && selectedValues.length ? <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${copy.clear} ${section.label}`}
+      onPress={onClear}
+      style={({ pressed }) => [styles.clearAll, pressed && styles.pressed]}>
+      <Text style={styles.clearAllText}>{copy.clear}</Text>
+    </Pressable> : null}
   </View>;
 }
 

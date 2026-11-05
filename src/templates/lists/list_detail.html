@@ -468,7 +468,9 @@
         </div>
 
         <div class="contents" x-cloak x-show="!searchMode">
-          {% include "app/components/filter_menu.html" with filter_show_completed_date=True filter_hx_endpoint=list_filter_endpoint filter_hx_target="#items-view" filter_form_id="filter-form" filter_data_id="list-filter-data" filter_show_ranges=True filter_show_media_types=True filter_data=list_filter_data %}
+          {{ list_filter_data|json_script:"list-filter-data" }}
+          {% filter_bar endpoint=list_filter_endpoint target="#items-view" form_id="filter-form" surface="list" ranges=True platform_multi=False state=list_filter_state media_types=media_type_breakdown %}
+          {% include "app/components/filter_menu.html" with filter_show_completed_date=True filter_hx_endpoint=list_filter_endpoint filter_hx_target="#items-view" filter_form_id="filter-form" filter_data_id="list-filter-data" filter_show_ranges=True filter_show_media_types=True filter_data=list_filter_data filter_suppress_data_script=True %}
 
           {# Filter by Status #}
           <div class="relative filter-control" x-data="{ open: false }">
@@ -598,6 +600,7 @@
             </div>
           </div>
 
+          {% endfilter_bar %}
           <div class="ml-auto flex items-center gap-2">
             {% if column_config %}
               {% include "app/components/table_column_menu.html" with table_column_update_url=table_column_update_url table_refresh_url=table_refresh_url table_refresh_target=table_refresh_target table_refresh_include_selector=table_refresh_include_selector table_loading_indicator="#loading-indicator" table_type=table_type table_column_media_type=table_column_media_type %}
