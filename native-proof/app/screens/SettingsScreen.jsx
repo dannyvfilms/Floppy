@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Screen, Section } from '../components/Screen';
 import AppearanceSettingsSlot from '../surfaces/AppearanceSettingsSlot';
 import CardsSettingsSlot from '../surfaces/CardsSettingsSlot';
+import DataAccessNotificationsSlot from '../surfaces/DataAccessNotificationsSlot';
 import HomeSettingsSlot from '../surfaces/HomeSettingsSlot';
 import PreferencesSlot from '../surfaces/PreferencesSlot';
 import ProviderSettingsSlot from '../surfaces/ProviderSettingsSlot';
@@ -20,6 +21,7 @@ function NavigationRow({ label, onPress }) {
 export default function SettingsScreen({ navigate }) {
   return <Screen title="Settings" subtitle="Account, providers, appearance and data">
     <SettingsCardSlot />
+    <DataAccessNotificationsSlot />
     <ProviderSettingsSlot />
     <Section title="Screens">
       <NavigationRow label="Lists" onPress={() => navigate('Lists')} />

@@ -971,6 +971,10 @@ templates are compatibility/composition sources, not equally active parallel pag
 - Reuse/blockers: selection/warning/status shared; download/clipboard/feed/restore are platform/server boundaries.
 - Validation targets: `src/users/tests/views/test_export_schedule.py`, `test_bulk_delete_by_import_source.py`, `test_rss.py`.
 - Backup status (#1627): the destination/freshness paragraphs of `export_controls.html` are React-owned (`frontend/settings/BackupStatus.jsx`, partial/coexisting — the schedule form and the rest of the page stay legacy). Server fallback retained inside `data-backup-status-root`; sections are built and translated by `users.views.backup_panel_props`. Retirement: when the export form itself is ported. Browser verification: Chromium via the isolated bench server, empty-history state mounted and rendered both sections; failure and PostgreSQL states covered by unit tests only. iOS/Android: not tested.
+- Native shared presentation: `frontend/settings/DataSettings.jsx` exports `ExportScheduleCard` (frequency/time/content selection), `ScheduledExportsCard` (schedule list and destructive delete), `ExportHistoryCard` (status, timestamps and expandable errors), `RestoreBackupCard` (backup choice and typed RESTORE confirmation) and `RssFeedCard` (media/row selection, skip filters, feed URL copy and preview). `frontend/settings/ConfirmDialog.jsx` supplies the shared destructive confirmation used here and by access revocations. They compose the shared `SettingsCard`, `SelectField`, `TextField`, `ToggleChip` and `Button`. Contracts carry presentation values, masked or stored hints, and async intents only; server schedules, file download/restore execution, clipboard and RSS generation remain server or platform boundaries.
+- Native placement: `native-proof/app/surfaces/DataAccessNotificationsSlot.jsx` renders the cards on Settings with demo schedules, history, restore and RSS state. Expo export is a compile check, not runtime verification.
+
+- Status: `Partial / coexisting`. The export form, restore, schedule history, RSS builder and backup status remain server-owned on the web; the shared native cards render on Settings with demo data. Download, clipboard, file restore, feed generation and secure token storage remain platform or server boundaries.
 
 ### SET-ACCESS — Tokens, grants and OAuth approval
 
@@ -980,6 +984,10 @@ templates are compatibility/composition sources, not equally active parallel pag
 - Data: token/grant handlers, `src/integrations/oauth_management.py`, `oauth_device.py`.
 - Reuse/blockers: fields/status shared; secure native storage/auth lifecycle separately designed, never credentials in shared presentation.
 - Validation targets: `src/users/tests/views/test_integration_tokens.py`, `src/integrations/tests/test_oauth_device_flow.py`.
+- Native shared presentation: `frontend/settings/AccessSettings.jsx` exports `AccessTokenCard` (masked account token, copy intent and destructive regenerate), `AppTokensCard` (token list, scopes, expiry, one-time secret copy and destructive revoke), `CatalogGrantsCard` (install-credential list/create/revoke) and `AuthorizedApplicationsCard` (OAuth grant list, scope labels and revoke). Existing token values never enter presentation; `AppTokensCard` receives only a masked one-time preview and a copy intent so the adapter keeps the minted secret, matching the store-only-a-hash server rule. Revocations use the shared `ConfirmDialog`; permissions, scopes and transport stay server-owned.
+- Native placement: `native-proof/app/surfaces/DataAccessNotificationsSlot.jsx` renders the access cards on Settings with demo tokens, grants and OAuth applications. Expo export is a compile check, not runtime verification.
+
+- Status: `Partial / coexisting`. The browser access-token, install-credential and OAuth application pages remain server-owned; the shared native cards render on Settings with demo data. Token creation, revocation, OAuth authorization and secure credential storage remain server or adapter responsibilities.
 
 ### AUTH — Authentication and account security
 
@@ -998,6 +1006,10 @@ templates are compatibility/composition sources, not equally active parallel pag
 - Data: notification/test/search/exclusion handlers and delivery jobs.
 - Reuse/blockers: selection/search/exclusion shared; delivery/scheduling remains server capability.
 - Validation targets: `src/users/tests/views/test_notifications.py`.
+- Native shared presentation: `frontend/settings/NotificationSettings.jsx` exports `NotificationPreferencesCard` (Apprise/playback webhook drafts, stored-credential hints, digest/release/premiere choices, test and save states) and `ExcludedMediaCard` (bounded search, exclusions and include/exclude intents). Stored Apprise URLs and webhook secrets are represented by stored hints and blank replace fields, never by serialized values; newly entered values stay in local form state. The card reuses `SettingsCard`, `FormSaveBar`, `TextField`, `ToggleChip`, `Button` and `Spinner`.
+- Native placement: `native-proof/app/surfaces/DataAccessNotificationsSlot.jsx` renders both cards on Settings with demo busy, error and success state. Expo export is a compile check, not runtime verification.
+
+- Status: `Partial / coexisting`. The browser notifications page and Alpine exclusion search remain server-owned; the shared native cards render on Settings with demo data. Delivery, scheduling, webhook signing and stored Apprise credentials remain server responsibilities.
 
 ### ONBOARDING — Resumable first-run setup
 

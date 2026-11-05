@@ -1010,6 +1010,94 @@
         }
       }
     },
+    "frontend/settings/ConfirmDialog.jsx": {
+      "components": [
+        "ConfirmDialog"
+      ],
+      "register": "SET-DATA",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the existing Django/Alpine destructive confirmations remain the browser implementation. No browser pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the component through the native Settings slot; no simulator run or accessibility pass was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the component through the native Settings slot; no emulator run or accessibility pass was performed."
+        }
+      }
+    },
+    "frontend/settings/DataSettings.jsx": {
+      "components": [
+        "ExportScheduleCard",
+        "ScheduledExportsCard",
+        "ExportHistoryCard",
+        "RestoreBackupCard",
+        "RssFeedCard"
+      ],
+      "register": "SET-DATA",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the server-rendered data management, export and RSS templates remain the browser implementation and regression target. No browser pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the component through the native Settings slot; no simulator run or accessibility pass was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the component through the native Settings slot; no emulator run or accessibility pass was performed."
+        }
+      }
+    },
+    "frontend/settings/AccessSettings.jsx": {
+      "components": [
+        "AccessTokenCard",
+        "AppTokensCard",
+        "CatalogGrantsCard",
+        "AuthorizedApplicationsCard"
+      ],
+      "register": "SET-ACCESS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the server-rendered access-token, install-credential and OAuth application pages remain the browser implementation. No browser pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the component through the native Settings slot; no simulator run or accessibility pass was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the component through the native Settings slot; no emulator run or accessibility pass was performed."
+        }
+      }
+    },
+    "frontend/settings/NotificationSettings.jsx": {
+      "components": [
+        "NotificationPreferencesCard",
+        "ExcludedMediaCard"
+      ],
+      "register": "SET-NOTIFICATIONS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the server-rendered notifications page and Alpine exclusion search remain the browser implementation. No browser pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the component through the native Settings slot; no simulator run or accessibility pass was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the component through the native Settings slot; no emulator run or accessibility pass was performed."
+        }
+      }
+    },
     "frontend/settings/AppearanceEditor.jsx": {
       "components": [
         "AppearanceEditor"
