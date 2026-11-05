@@ -129,13 +129,19 @@ function Adapter({ host, props }) {
       };
       pending.current.add(handler);
       document.body.addEventListener('htmx:afterRequest', handler);
-      window.htmx.ajax(verb, url, {
-        source: host,
-        target: host,
-        swap: 'none',
-        values,
-        headers: { 'X-Progress-Request': id },
-      });
+      try {
+        window.htmx.ajax(verb, url, {
+          source: host,
+          target: host,
+          swap: 'none',
+          values,
+          headers: { 'X-Progress-Request': id },
+        });
+      } catch (error) {
+        document.body.removeEventListener('htmx:afterRequest', handler);
+        pending.current.delete(handler);
+        reject(error);
+      }
     });
   }
 
