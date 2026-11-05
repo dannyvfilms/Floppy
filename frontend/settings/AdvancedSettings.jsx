@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../ui/Button';
 import { TextField } from '../ui/TextField';
@@ -107,6 +107,7 @@ const defaultLabels = {
     confirmWarning: 'Artwork may briefly reload the next time it is requested.',
     confirmLabel: 'Clear Image Cache',
     clearError: 'Could not clear the image cache.',
+    saveError: 'Could not update image caching.',
     superuserOnly: 'Only a superuser can change this setting or clear the cache.',
     status: 'Status:',
   },
@@ -375,6 +376,11 @@ export function ServerPortCard({
   const initial = savedPort ?? configuredPort ?? defaultPort;
   const [port, setPort] = useState(String(initial));
   const [formError, setFormError] = useState('');
+
+  useEffect(() => {
+    setPort(String(savedPort ?? configuredPort ?? defaultPort));
+    setFormError('');
+  }, [savedPort, configuredPort, defaultPort]);
 
   function save() {
     const value = Number(port);

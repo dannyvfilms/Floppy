@@ -1461,7 +1461,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The browser adapter mounts LogsCard, ImageCacheCard and CacheManagementCard into users/advanced.html from server-built props, with the server-rendered cards retained as fallback. Forms still POST to the existing Django endpoints. No browser runtime pass during this change."
+          "evidence": "The browser adapter mounts all four Advanced cards into users/advanced.html from server-built props, with the server-rendered forms retained as fallback. Cache and port writes send the existing CSRF-protected fields with Accept: application/json and update the cards in place; log download keeps the authenticated server response. The no-JS forms still POST and redirect. No browser runtime pass during this change."
         },
         "ios": {
           "status": "unverified",
@@ -1489,7 +1489,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The browser card adapter mounts the shared About, What's New, Install, resource, attribution, licence and version cards into users/about.html from server-built props. The Developer & API specifications table and schema viewer remain server-owned. No browser runtime pass during this change."
+          "evidence": "The browser card adapter mounts the shared About, What's New, Install, resource, API specification, attribution, licence and version cards into users/about.html from server-built props, and the global update banner mounts the shared banner with localStorage dismissal. API preview dispatches to the existing schema viewer and download requests the contract endpoints with download=1; the server tables and modal remain fallbacks. No browser runtime pass during this change."
         },
         "ios": {
           "status": "unverified",
@@ -2499,11 +2499,11 @@
     },
     "frontend/settings/mountAdvanced.jsx": {
       "register": "SET-SYSTEM",
-      "purpose": "Browser adapter for the shared Advanced cards: supplies theme tokens, submits the existing image-cache, cache and server-port forms with CSRF, starts the sanitized log download and opens external bug-report links while retaining the server fallback."
+      "purpose": "Browser adapter for the shared Advanced cards: supplies theme tokens, sends the existing image-cache, cache, server-port and log actions with CSRF, applies the returned JSON state in place and opens external bug-report links while retaining the server fallback."
     },
     "frontend/settings/mountAbout.jsx": {
       "register": "SET-SYSTEM",
-      "purpose": "Browser adapter for the shared About cards: supplies theme tokens, loads release notes from the existing fragment endpoint, owns the PWA install prompt and platform narrowing, and opens project, attribution, licence and guide links while retaining the server fallback."
+      "purpose": "Browser adapter for the shared About cards: supplies theme tokens, loads release notes from the fragment endpoint, owns the update-banner dismissal, PWA install prompt and platform narrowing, and dispatches API preview/download and project, attribution, licence and guide link intents while retaining the server fallback."
     },
     "frontend/ui/SpinnerTheme.web.jsx": {
       "register": "SPINNER",

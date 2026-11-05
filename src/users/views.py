@@ -3063,6 +3063,15 @@ def delete_managed_user(request, user_id):
     return JsonResponse({"deleted": member_id})
 
 
+def _wants_json(request):
+    """Return whether the browser adapter asked for an in-place result."""
+    accept = request.headers.get("Accept", "")
+    return (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or "application/json" in accept
+    )
+
+
 @require_GET
 def advanced(request):
     """Render the advanced settings page."""
@@ -3100,10 +3109,10 @@ def update_image_cache(request):
         return HttpResponse(status=403)
     enabled = request.POST.get("image_caching_enabled") == "1"
     image_cache.set_enabled(enabled)
-    messages.success(
-        request,
-        f"External image caching {'enabled' if enabled else 'disabled'}.",
-    )
+    message = f"External image caching {'enabled' if enabled else 'disabled'}."
+    messages.success(request, message)
+    if _wants_json(request):
+        return JsonResponse({"message": message, "imageEnabled": enabled})
     return redirect("advanced")
 
 
@@ -3113,12 +3122,19 @@ def clear_image_cache(request):
     if not request.user.is_superuser:
         return HttpResponse(status=403)
     summary = image_cache.clear_cache()
-    messages.success(
-        request,
+    message = (
         f"Cleared {summary['removed_count']} cached image"
         f"{' ' if summary['removed_count'] == 1 else 's '}"
-        f"({summary['removed_bytes']} bytes).",
+        f"({summary['removed_bytes']} bytes)."
     )
+    messages.success(request, message)
+    if _wants_json(request):
+        stats = image_cache.cache_stats()
+        return JsonResponse({
+            "message": message,
+            "imageCount": stats["count"],
+            "imageSize": image_cache.format_bytes(stats["bytes"]),
+        })
     return redirect("advanced")
 
 
@@ -4565,15 +4581,16 @@ def clear_search_cache(request):
     """Clear all cached search entries."""
     deleted = cache_management.clear_search_cache()
 
-    messages.success(
-        request,
-        f"Successfully cleared {deleted} search entr{pluralize(deleted, 'y,ies')}",
+    message = (
+        f"Successfully cleared {deleted} search entr{pluralize(deleted, 'y,ies')}"
     )
+    messages.success(request, message)
     logger.info(
         "Successfully cleared %s search entries",
         deleted,
     )
-
+    if _wants_json(request):
+        return JsonResponse({"message": message})
     return redirect("advanced")
 
 
@@ -4582,16 +4599,18 @@ def clear_history_cache(request):
     """Clear the requesting user's cached History day/index payloads."""
     deleted = cache_management.clear_history_cache_for_user(request.user.id)
 
-    messages.success(
-        request,
-        f"Successfully cleared {deleted} history cache entr{pluralize(deleted, 'y,ies')}",
+    message = (
+        f"Successfully cleared {deleted} history cache "
+        f"entr{pluralize(deleted, 'y,ies')}"
     )
+    messages.success(request, message)
     logger.info(
         "Successfully cleared %s history cache entries for user %s",
         deleted,
         request.user.id,
     )
-
+    if _wants_json(request):
+        return JsonResponse({"message": message})
     return redirect("advanced")
 
 
@@ -4600,16 +4619,18 @@ def clear_statistics_cache(request):
     """Clear the requesting user's cached Statistics page/day payloads."""
     deleted = cache_management.clear_statistics_cache_for_user(request.user.id)
 
-    messages.success(
-        request,
-        f"Successfully cleared {deleted} statistics cache entr{pluralize(deleted, 'y,ies')}",
+    message = (
+        f"Successfully cleared {deleted} statistics cache "
+        f"entr{pluralize(deleted, 'y,ies')}"
     )
+    messages.success(request, message)
     logger.info(
         "Successfully cleared %s statistics cache entries for user %s",
         deleted,
         request.user.id,
     )
-
+    if _wants_json(request):
+        return JsonResponse({"message": message})
     return redirect("advanced")
 
 
@@ -4618,16 +4639,18 @@ def clear_discover_cache(request):
     """Clear the requesting user's cached Discover rows/taste profile."""
     deleted = cache_management.clear_discover_cache_for_user(request.user.id)
 
-    messages.success(
-        request,
-        f"Successfully cleared {deleted} discover cache entr{pluralize(deleted, 'y,ies')}",
+    message = (
+        f"Successfully cleared {deleted} discover cache "
+        f"entr{pluralize(deleted, 'y,ies')}"
     )
+    messages.success(request, message)
     logger.info(
         "Successfully cleared %s discover cache entries for user %s",
         deleted,
         request.user.id,
     )
-
+    if _wants_json(request):
+        return JsonResponse({"message": message})
     return redirect("advanced")
 
 
@@ -4639,17 +4662,18 @@ def clear_all_caches(request):
     deleted += cache_management.clear_statistics_cache_for_user(request.user.id)
     deleted += cache_management.clear_discover_cache_for_user(request.user.id)
 
-    messages.success(
-        request,
+    message = (
         f"Successfully cleared {deleted} cache entr{pluralize(deleted, 'y,ies')} "
-        "across search, history, statistics, and discover",
+        "across search, history, statistics, and discover"
     )
+    messages.success(request, message)
     logger.info(
         "Successfully cleared %s total cache entries (all caches) for user %s",
         deleted,
         request.user.id,
     )
-
+    if _wants_json(request):
+        return JsonResponse({"message": message})
     return redirect("advanced")
 
 

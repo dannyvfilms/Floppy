@@ -1034,6 +1034,17 @@ Shared `AuthEntrance`, `SocialProviders` and `AuthNotice` own entrance, social-p
 - `frontend/settings/mountAdvanced.jsx`
 - `frontend/settings/mountAbout.jsx`
 - `src/users/advanced_props.py`
+- `src/app/context_processors.py`
+- `src/users/views.py`
+- `src/users/server_port_views.py`
+- `src/api/contract_views.py`
+- `src/api/schema.py`
+- `src/users/tests/views/test_advanced.py`
+- `src/users/tests/views/test_about.py`
+- `src/users/tests/views/test_image_cache.py`
+- `src/users/tests/views/test_server_port.py`
+- `src/users/tests/test_release_notes.py`
+- `src/api/tests/test_public_endpoints.py`
 
 ## MATCH-REVIEW
 
