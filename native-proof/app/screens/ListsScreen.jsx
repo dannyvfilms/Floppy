@@ -775,7 +775,10 @@ export default function ListsScreen({ onBack, navigate }) {
       palette={palette}
       onApprove={approveRecommendation}
       onDeny={denyRecommendation}
-      onView={() => setNotice('Item details use the platform navigation adapter.')}
+      onView={() => {
+        setApprovalsFor(null);
+        setNotice('Item details use the platform navigation adapter.');
+      }}
       onClose={() => setApprovalsFor(null)} /> : null}
   </Screen>;
 }
