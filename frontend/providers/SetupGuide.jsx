@@ -34,24 +34,37 @@ function PreBlock({ text, values }) {
     <Button type="button" secondary onClick={copy} aria-label={guide.copyLabel}>{copied ? guide.copiedLabel : guide.copyLabel}</Button></span>;
 }
 
-export function SetupGuide({ guide, copy }) {
-  const values = { guide, copy };
-  const Wrapper = guide.bare ? 'div' : Card;
-  const steps = <ol className="ui-guide-steps">{guide.steps.map((step, index) => {
+function Steps({ steps, values }) {
+  return <ol className="ui-guide-steps">{steps.map((step, index) => {
     const parts = Array.isArray(step) ? step : step.parts;
     return <li key={index}><Parts parts={parts} values={values} />
       {step.items && <ul>{step.items.map((item, i) => <li key={i}><Parts parts={item} values={values} /></li>)}</ul>}</li>;
   })}</ol>;
+}
+
+export function SetupGuide({ guide, copy }) {
+  const values = { guide, copy };
+  const Wrapper = guide.bare ? 'div' : Card;
   const cardProps = guide.bare ? {} : { title: guide.title, tone: guide.badge?.tone, badge: guide.badge?.label };
-  return <Wrapper {...cardProps}>
+  const intro = <>
     {!guide.bare && <p>{guide.description}</p>}
     {guide.badge?.tooltip && <p className="provider-small ui-guide-status"><Tooltip label={guide.badge.label} text={guide.badge.tooltip} /> {guide.badge.summary}</p>}
     {guide.warning && <p role="alert" data-testid="jellyfin-template-outdated"><strong>{guide.warning.title}</strong> {guide.warning.text}</p>}
     {guide.primary && <div className="ui-guide-primary"><span className="ui-guide-primary-label">{guide.primary.label}</span>
       <CopyValue id={guide.primary.key} values={values} /></div>}
-    {guide.collapsed ? <details className="ui-guide-details"><summary>{guide.heading}</summary>{steps}</details>
-      : <><h4>{guide.heading}</h4>{steps}</>}
-  </Wrapper>;
+  </>;
+  if (guide.collapsed && !guide.bare) {
+    // Status and the copy value first, the steps in a card of their own below it.
+    return <div className="ui-guide-stack">
+      <Card {...cardProps}>{intro}</Card>
+      {guide.methods ? <div className="ui-guide-methods">{guide.methods.map(method => <Card title={method.title} key={method.title}>
+        <p>{method.description}</p>
+        <details className="ui-guide-details"><summary>{guide.stepsLabel}</summary><Steps steps={method.steps} values={values} /></details></Card>)}</div>
+        : <Card title={guide.heading}><details className="ui-guide-details"><summary>{guide.stepsLabel}</summary>
+          <Steps steps={guide.steps} values={values} /></details></Card>}
+    </div>;
+  }
+  return <Wrapper {...cardProps}>{intro}<h4>{guide.heading}</h4><Steps steps={guide.steps} values={values} /></Wrapper>;
 }
 
 export function mountSetupGuide(host, guide) {

@@ -487,6 +487,16 @@ def _has_dateless_movie_or_episode_activity(user) -> bool:
     ).exists()
 
 
+def _listening_payload(minutes):
+    """Audiobook listening time for a range, kept apart from page counts."""
+    if not minutes:
+        return None
+    return {
+        "minutes": minutes,
+        "formatted": helpers.minutes_to_hhmm(minutes),
+    }
+
+
 def _empty_reading_consumption(unit_name="Unit", completion_label="Items Finished"):
     return {
         "units": {"total": 0, "per_year": 0, "per_month": 0, "per_day": 0},
@@ -504,6 +514,7 @@ def _empty_reading_consumption(unit_name="Unit", completion_label="Items Finishe
         "completed_length_chart": {"labels": [], "datasets": []},
         "release_chart": {"labels": [], "datasets": []},
         "completed_lengths": [],
+        "listening": None,
         "has_data": False,
         "unit_name": unit_name,
         "unit_label": f"{unit_name}s Read",
@@ -648,6 +659,7 @@ def _aggregate_statistics_from_days(
     weekday_hour_counts = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
     day_play_counts = defaultdict(dict)
     day_minutes_by_type = defaultdict(dict)
+    listening_minutes_total = 0
     movie_genres = defaultdict(lambda: {"minutes": 0, "plays": 0, "name": ""})
     tv_genres = defaultdict(lambda: {"minutes": 0, "plays": 0, "name": ""})
     anime_genres = defaultdict(lambda: {"minutes": 0, "plays": 0, "name": ""})
@@ -846,6 +858,9 @@ def _aggregate_statistics_from_days(
                 day_stats.get("totals", {}).get("minutes_by_type", {}).items()
             ):
                 minutes_by_type[media_type] += minutes or 0
+            listening_minutes_total += (
+                day_stats.get("totals", {}).get("listening_minutes") or 0
+            )
             for media_type, plays in (
                 day_stats.get("totals", {}).get("plays_by_type", {}).items()
             ):
@@ -1864,8 +1879,16 @@ def _aggregate_statistics_from_days(
         for entry in completed_queryset.iterator(chunk_size=500):
             if not stats._reading_entry_in_range(entry, start_date, end_date):
                 continue
+            # An audiobook's progress is minutes, so its length is not a page
+            # count and stays out of the page-length distribution.
+            is_audiobook = (
+                media_type == MediaTypes.BOOK.value
+                and getattr(entry.item, "format", "") == "audiobook"
+            )
             completed_length = (
-                entry.progress or getattr(entry.item, "number_of_pages", 0) or 0
+                0
+                if is_audiobook
+                else entry.progress or getattr(entry.item, "number_of_pages", 0) or 0
             )
             if completed_length > 0:
                 completed_lengths.append(completed_length)
@@ -1884,8 +1907,15 @@ def _aggregate_statistics_from_days(
             if meta.get("item_id")
         ]
         top_entries = list(top_played_by_type.get(media_type, {}).values())
+        listening_minutes = (
+            listening_minutes_total if media_type == MediaTypes.BOOK.value else 0
+        )
         has_any_reading_data = bool(
-            unit_total or completion_total or item_ids or top_entries
+            unit_total
+            or completion_total
+            or item_ids
+            or top_entries
+            or listening_minutes
         )
         if not has_any_reading_data:
             return _empty_reading_consumption(
@@ -2023,7 +2053,10 @@ def _aggregate_statistics_from_days(
             "completed_length_chart": completed_length_chart,
             "release_chart": release_chart,
             "completed_lengths": completed_lengths,
-            "has_data": unit_total > 0 or completion_total > 0,
+            "listening": _listening_payload(listening_minutes),
+            "has_data": unit_total > 0
+            or completion_total > 0
+            or listening_minutes > 0,
             "unit_name": unit_name,
             "unit_label": chart_label,
             "completion_label": completion_label,
@@ -2051,6 +2084,7 @@ def _aggregate_statistics_from_days(
             minutes_by_type.get(media_type)
             or items_by_type.get(media_type)
             or top_played_by_type.get(media_type)
+            or (media_type == MediaTypes.BOOK.value and listening_minutes_total)
         )
     }
     book_consumption = (

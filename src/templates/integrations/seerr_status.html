@@ -1,16 +1,15 @@
-{% load i18n %}
-<span class="rounded-full border border-[var(--color-surface-border)] px-2 py-0.5 text-xs text-[var(--color-text-secondary)]">
-  {% if status == "available" %}
-    {% translate "Available" %}
-  {% elif status == "partially_available" %}
-    {% translate "Partially available" %}
-  {% elif status == "processing" %}
-    {% translate "Processing" %}
-  {% elif status == "pending" %}
-    {% translate "Requested" %}
-  {% elif status == "blocklisted" %}
-    {% translate "Blocklisted" %}
-  {% else %}
-    {% translate "Not requested" %}
-  {% endif %}
-</span>
+{% load i18n ui_tags %}
+{% if status == "available" %}
+  {% translate "Available" as status_label %}
+{% elif status == "partially_available" %}
+  {% translate "Partially available" as status_label %}
+{% elif status == "processing" %}
+  {% translate "Processing" as status_label %}
+{% elif status == "pending" %}
+  {% translate "Requested" as status_label %}
+{% elif status == "blocklisted" %}
+  {% translate "Blocklisted" as status_label %}
+{% else %}
+  {% translate "Not requested" as status_label %}
+{% endif %}
+{% badge status_label "sm" "outline" %}

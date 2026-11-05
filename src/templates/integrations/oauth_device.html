@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load ui_tags %}
 
 {% block title %}
   Authorise Application - Floppy
@@ -25,10 +26,7 @@
                  class="flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-strong)] px-3 py-2 font-mono uppercase tracking-wider"
                  placeholder="ABCD-EFGH"
                  required>
-          <button type="submit"
-                  class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer">
-            Continue
-          </button>
+          {% button "Continue" "primary" "base" submit=True %}
         </div>
       </form>
 
@@ -80,12 +78,7 @@
             <form method="post" class="flex flex-wrap gap-3 pt-2">
               {% csrf_token %}
               <input type="hidden" name="user_code" value="{{ user_code }}">
-              <button type="submit"
-                      name="action"
-                      value="approve"
-                      class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer">
-                Allow
-              </button>
+              {% button "Allow" "primary" "base" submit=True name="action" value="approve" %}
               <button type="submit"
                       name="action"
                       value="deny"

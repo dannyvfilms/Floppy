@@ -6,13 +6,16 @@
 {# History card component - used for both 2:3 and 1:1 aspect ratio cards #}
 {# Args: entry, card_class (search-result-card or search-result-card-square), history_mode, user #}
 
+{% if entry.item and entry.item.media_type %}{% history_card_react entry card_class history_mode as react_card %}{% endif %}
 <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative {{ card_class }}{% if entry.media_type == MediaTypes.VIDEO.value %} video-card{% endif %}{% card_subtitle_class entry.media_type %}{% card_title_classes entry.media_type %}{% if user.clickable_media_cards %} media-card-hide-overlay{% endif %}"
      data-media-type="{{ entry.media_type }}"
-     x-data="{ trackOpen: false, historyOpen: false, listsOpen: false, revealed: false, tapToReveal(e) { if (this.revealed) { if (e.target.closest('button, a, input, select, textarea')) { return; } const link = this.$root.querySelector('.media-card-overlay a[href]') || this.$root.querySelector('a.media-card-title[href]'); if (link) { e.preventDefault(); e.stopPropagation(); link.click(); } return; } if (!window.matchMedia('(pointer: coarse)').matches || this.$root.classList.contains('media-card-hide-overlay') || !this.$root.querySelector('.media-card-overlay')) { return; } e.preventDefault(); e.stopPropagation(); this.revealed = true; window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: this.$root })); } }"
+     {% if react_card %}>{% else %}
+     x-data="{ trackOpen: false, historyOpen: false, revealed: false, tapToReveal(e) { if (this.revealed) { if (e.target.closest('button, a, input, select, textarea')) { return; } const link = this.$root.querySelector('.media-card-overlay a[href]') || this.$root.querySelector('a.media-card-title[href]'); if (link) { e.preventDefault(); e.stopPropagation(); link.click(); } return; } if (!window.matchMedia('(pointer: coarse)').matches || this.$root.classList.contains('media-card-hide-overlay') || !this.$root.querySelector('.media-card-overlay')) { return; } e.preventDefault(); e.stopPropagation(); this.revealed = true; window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: this.$root })); } }"
      @click.capture="tapToReveal($event)"
      @media-card-revealed.window="if ($event.detail !== $root) revealed = false"
            @click.window="if (revealed && !$root.contains($event.target)) revealed = false"
-     :class="revealed ? 'media-card-revealed' : ''">
+     :class="revealed ? 'media-card-revealed' : ''">{% endif %}
+  {% if react_card %}{{ react_card.props|json_script:react_card.id }}<div data-media-card-root data-props-id="{{ react_card.id }}">{% endif %}
   <div class="media-card-visual relative">
     {% with entry.item|display_title:user as preferred_entry_title %}
     <a hx-boost="true"
@@ -81,11 +84,7 @@
             {# Lists Button #}
             <button class="p-2.5 bg-emerald-600 text-white rounded-full hover:bg-emerald-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(16,185,129,0.5)] transition-all duration-200 cursor-pointer"
                     title="{% translate "Add to custom lists" %}"
-                    hx-get="{% media_view_url 'lists_modal' entry.item %}"
-                    hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
-                    hx-target="#{% component_id 'lists' entry.item entry.entry_key %}"
-                    hx-trigger="click once"
-                    @click="listsOpen = true">
+                    {% lists_modal_click entry.item request.get_full_path %}>
               {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
             </button>
 
@@ -230,8 +229,10 @@
     {% card_lines entry.media_type entry.item entry %}
   </div>
 
+  {% if react_card %}</div>{% endif %}
+
   {# Modals #}
-  {% if entry.item and entry.item.media_type and history_mode != "release" %}
+  {% if not react_card and entry.item and entry.item.media_type and history_mode != "release" %}
     {# Track Modal #}
     <div x-show="trackOpen"
     @mousedown.self="trackOpen = false"
@@ -245,14 +246,5 @@
     </div>
 
     {# Lists Modal #}
-    <div x-show="listsOpen"
-    @mousedown.self="listsOpen = false"
-         x-cloak
-         @keydown.escape.window="listsOpen = false"
-         class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="w-96 max-h-[90dvh] px-4 md:px-0 relative z-60">
-        <div id="{% component_id 'lists' entry.item entry.entry_key %}"></div>
-      </div>
-    </div>
   {% endif %}
 </div>

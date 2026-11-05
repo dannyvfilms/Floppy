@@ -1,5 +1,6 @@
 
 {% load i18n %}
+{% load ui_tags %}
 {% load app_tags %}
 {% load user_tags %}
 {% load humanize %}
@@ -239,8 +240,7 @@
         <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
           <div class="flex flex-wrap gap-2 justify-center md:justify-start">
             {% for genre in media.genres %}
-              <a href="{{ genre_list_url }}?genre={{ genre|urlencode }}"
-                 class="inline-flex h-6 items-center rounded-full border border-[var(--color-genre-badge-border)] bg-[var(--color-genre-badge-bg)] px-2.5 text-xs font-medium text-[var(--color-genre-badge-text)] hover:bg-[var(--color-genre-badge-hover-bg)] transition-colors duration-200">{% translate genre %}</a>
+              {% translate genre as genre_label %}{% with genre_q=genre|urlencode %}{% badge genre_label "tag" "genre" href=genre_list_url|add:"?genre="|add:genre_q %}{% endwith %}
             {% endfor %}
           </div>
         </div>

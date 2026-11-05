@@ -1,3 +1,4 @@
+{% load ui_tags %}
 {% load i18n user_tags app_tags %}
 
   {{ mal_sync_initial|json_script:"mal-sync-initial" }}
@@ -589,10 +590,7 @@
         <form method="post" action="{% url 'mal_oauth' %}">
           {% csrf_token %}
           <input type="hidden" name="next" value="{{ request.get_full_path }}">
-          <button type="submit"
-                  class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-            {% translate "Connect MyAnimeList" %}
-          </button>
+          {% button _("Connect MyAnimeList") "primary" "sm" "full" submit=True %}
         </form>
       {% else %}
         <p class="text-xs text-[var(--color-text-muted)]">
@@ -690,10 +688,7 @@
                    class="mr-2 rounded bg-[var(--color-surface)] border-gray-600 text-indigo-600 focus:outline-none focus:ring-indigo-500 focus:ring-offset-0">
             {% translate "Adopt a MyAnimeList rating when Floppy doesn't have one" %}
           </label>
-          <button type="submit"
-                  class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
-            {% translate "Save Filters" %}
-          </button>
+          {% button _("Save Filters") submit=True %}
         </form>
       </div>
 
@@ -728,10 +723,7 @@
                      type="time">
             </div>
           </div>
-          <button type="submit"
-                  class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
-            {% translate "Save Schedule" %}
-          </button>
+          {% button _("Save Schedule") submit=True %}
         </form>
       </div>
 

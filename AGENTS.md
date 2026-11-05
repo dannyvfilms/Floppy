@@ -8,7 +8,11 @@ change. This incrementally prepares reusable presentation for eventual native iO
 and Android apps and reduces future bulk migration work.
 
 Reuse or extend shared UI components before creating new ones. Keep domain logic,
-permissions and transport in feature adapters. Preserve appearance, behavior,
+permissions and transport in feature adapters. Shared presentation is written with
+`react-native` primitives and theme tokens, takes props only and touches no browser
+API; browser behavior goes in a web adapter, and a component that cannot be written
+that way is registered as web-only with a reason (see
+`docs/architecture/ui-modernization.md`, "From React on the web to native apps"). Preserve appearance, behavior,
 accessibility, responsive states and performance: users should not notice the
 framework migration. Migration does not authorize redesign or feature removal.
 The unit is the reusable component, not every sibling in its template file.

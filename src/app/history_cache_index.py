@@ -216,6 +216,22 @@ def _build_shared_history_days(user, requested_media_types):
         )
         reading_count += _add_days(days, session_days)
 
+        # Page-based books are dated by the days their progress was saved.
+        HistoricalBook = apps.get_model("app", "HistoricalBook")
+        page_days = (
+            HistoricalBook.objects.filter(
+                id__in=Book.objects.filter(user=user)
+                .exclude(item__format="audiobook")
+                .values("id"),
+                history_type="~",
+            )
+            .annotate(day=TruncDate("history_date"))
+            .order_by()
+            .values_list("day", flat=True)
+            .distinct()
+        )
+        reading_count += _add_days(days, page_days)
+
     podcast_days = []
     if include_podcast:
         HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")

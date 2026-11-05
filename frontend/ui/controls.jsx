@@ -60,9 +60,11 @@ export function CardGrid({ children, auto = false, alignStart = false, className
   return <div className={`ui-card-grid${auto ? ' ui-card-grid-auto' : ''}${alignStart ? ' ui-card-grid-start' : ''} ${className}`}>{children}</div>;
 }
 
-export function Button({ children, danger = false, secondary = false, href, ...props }) {
+// `tone` (danger-solid, danger-deep, surface, ghost-danger), `small` (text-sm), `auto` (fit the label) and `flat` (no border)
+// reproduce the buttons templates used to write by hand; the AniList and provider callers pass none of them.
+export function Button({ children, danger = false, secondary = false, href, tone, small = false, auto = false, flat = false, ...props }) {
   const Element = href ? 'a' : 'button';
-  return <Element href={href} className={`ui-button${danger ? ' ui-button-danger' : ''}${secondary ? ' ui-button-secondary' : ''}`}
+  return <Element href={href} className={`ui-button${danger ? ' ui-button-danger' : ''}${secondary ? ' ui-button-secondary' : ''}${tone ? ` ui-button-tone-${tone}` : ''}${small ? ' ui-button-small' : ''}${auto ? ' ui-button-auto' : ''}${flat ? ' ui-button-flat' : ''}`}
     {...props}>{children}</Element>;
 }
 
@@ -212,9 +214,45 @@ export function Dialog({ open, title, closeLabel, onClose, children }) {
   </dialog>;
 }
 
+// One horizontally scrolling row for tabs and chip filters. It never wraps; a soft
+// fade on a side shows there is more to scroll to, and `scrollTo` brings the
+// selected child into view without moving the page.
+export function ScrollRow({ as: Tag = 'div', className = '', children, selectedKey, ...props }) {
+  const ref = useRef(null);
+  const [edges, setEdges] = useState({ start: false, end: false });
+  const measure = () => {
+    const row = ref.current;
+    if (!row) return;
+    setEdges({ start: row.scrollLeft > 1, end: row.scrollLeft + row.clientWidth < row.scrollWidth - 1 });
+  };
+  useEffect(() => {
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(ref.current);
+    return () => observer?.disconnect();
+  }, [children]);
+  useLayoutEffect(() => {
+    const row = ref.current;
+    const target = row?.querySelector('[aria-current], [aria-pressed="true"]');
+    if (!row || !target) return;
+    const left = target.offsetLeft - (row.clientWidth - target.offsetWidth) / 2;
+    row.scrollTo({ left: Math.max(0, left) });
+    measure();
+  }, [selectedKey]);
+  return <Tag ref={ref} className={`ui-scroll-row ${className}`.trim()} onScroll={measure}
+    data-more-start={edges.start || undefined} data-more-end={edges.end || undefined} {...props}>{children}</Tag>;
+}
+
+export function FilterChips({ items, selected, onSelect, label }) {
+  return <ScrollRow className="ui-filter-chips" role="group" aria-label={label} selectedKey={selected}>
+    {items.map(item => <button key={item.value} type="button" className="ui-filter-chip"
+      aria-pressed={selected === item.value} onClick={() => onSelect(item.value)}>{item.label}</button>)}
+  </ScrollRow>;
+}
+
 export function Tabs({ items, selected, label }) {
-  return <nav className="ui-tabs" aria-label={label}>{items.map(item =>
-    <a key={item.key} href={item.url} aria-current={selected === item.key ? 'page' : undefined}>{item.label}</a>)}</nav>;
+  return <ScrollRow as="nav" className="ui-tabs" aria-label={label} selectedKey={selected}>{items.map(item =>
+    <a key={item.key} href={item.url} aria-current={selected === item.key ? 'page' : undefined}>{item.label}</a>)}</ScrollRow>;
 }
 
 export function FilterToolbar({ children, ...props }) {
@@ -281,4 +319,58 @@ export function ToggleRow({ id, name, label, help, defaultChecked, tone, disable
     <label htmlFor={id}><span>{label}</span>{help && <small>{help}</small>}</label>
     <input id={id} type="checkbox" name={name} defaultChecked={defaultChecked} disabled={disabled} />
   </div>;
+}
+
+// Button that opens a short list of actions. Items are `{ label, onSelect }`, a
+// `{ label, actions: [{ label, onSelect }] }` row with several buttons, or a
+// `{ heading }` line. The consumer owns what each action does.
+// `icon` makes the trigger a square icon button named by `label`; an item with `href` is a real link;
+// an inline action with `selected` is marked pressed.
+export function ActionMenu({ label, items, empty, disabled, align = 'start', secondary = true, icon }) {
+  const [open, setOpen] = useState(false);
+  const host = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = event => { if (!host.current?.contains(event.target)) setOpen(false); };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [open]);
+  const choose = action => { setOpen(false); action(); };
+  const actionable = items.some(item => !item.heading);
+  return <div className={`ui-menu${icon ? ' ui-menu-has-icon' : ''}`} ref={host}
+    onKeyDown={event => { if (event.key === 'Escape') setOpen(false); }}>
+    <Button type="button" secondary={secondary} disabled={disabled} aria-haspopup="menu" aria-expanded={open}
+      onClick={() => setOpen(!open)}
+      {...(icon ? { 'aria-label': label, title: label } : {})}>{icon || label}
+      {!icon && <svg className="ui-menu-chevron" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>}
+    </Button>
+    {open && <div role="menu" className={`ui-menu-list ui-menu-${align}`}>
+      {items.map((item, index) => item.heading ? <p key={index} className="ui-menu-heading">{item.heading}</p>
+        : item.actions ? <div key={index} role="group" aria-label={item.label} className="ui-menu-row">
+          <span>{item.label}</span>
+          <span>{item.actions.map(action => <button key={action.label} type="button" role="menuitem" aria-pressed={action.selected}
+            onClick={() => choose(action.onSelect)}>{action.label}</button>)}</span></div>
+        : item.href ? <a key={index} role="menuitem" className="ui-menu-item" href={item.href}
+          onClick={() => setOpen(false)}>{item.label}</a>
+        : <button key={index} type="button" role="menuitem" className="ui-menu-item"
+          onClick={() => choose(item.onSelect)}>{item.label}</button>)}
+      {!actionable && <p className="ui-menu-heading">{empty}</p>}
+    </div>}
+  </div>;
+}
+
+// Loading indicator. `size` is in px; `tone` is accent, muted or white. Decorative:
+// callers put any accessible status text beside it.
+export function Spinner({ size = 16, tone = 'accent' }) {
+  return <span className={`ui-spinner${size <= 12 ? ' ui-spinner-thin' : ''}`} data-tone={tone}
+    style={{ width: size, height: size }} aria-hidden="true" />;
+}
+
+// Small rounded label for statuses, genres and flags. `size` is xs, sm, md or tag;
+// `tone` picks the colours (see `.ui-badge` in controls.css). `label` is plain text,
+// never markup. `href` makes it a link (genre badges); `nowrap` keeps one line.
+export function Badge({ label, size = 'sm', tone = 'outline', href = '', nowrap = false }) {
+  const props = { className: `ui-badge ui-badge-${size}${nowrap ? ' ui-badge-nowrap' : ''}`, 'data-tone': tone };
+  return href ? <a href={href} {...props}>{label}</a> : <span {...props}>{label}</span>;
 }

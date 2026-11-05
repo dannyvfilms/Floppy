@@ -1,3 +1,5 @@
+import json
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -395,6 +397,15 @@ class JellyfinViewTests(TestCase):
         self.assertEqual(Path(queued).read_bytes(), payload)
         self.assertEqual(mock_delay.call_args.args[1:], (self.user.id, "new"))
 
+    @staticmethod
+    def _account_connection_props(response):
+        match = re.search(
+            r'<script id="account-connection-props" type="application/json">(.*?)</script>',
+            response.content.decode(),
+            re.DOTALL,
+        )
+        return json.loads(match.group(1))
+
     def test_integrations_page_explains_rejected_key(self):
         """Only a rejected key shows the reconnect hint; a transient error does not."""
         account = JellyfinAccount.objects.create(
@@ -409,7 +420,10 @@ class JellyfinViewTests(TestCase):
         response = self.client.get(
             reverse("provider_detail", args=["jellyfin"]) + "?tab=connection"
         )
-        self.assertNotContains(response, hint)
+        # The account card is React: every message travels in its props and the
+        # card picks one from the `attention` flag.
+        props = self._account_connection_props(response)
+        self.assertFalse(props["attention"])
         self.assertContains(response, "Read timed out")
 
         account.connection_broken = True
@@ -417,4 +431,6 @@ class JellyfinViewTests(TestCase):
         response = self.client.get(
             reverse("provider_detail", args=["jellyfin"]) + "?tab=connection"
         )
-        self.assertContains(response, hint)
+        props = self._account_connection_props(response)
+        self.assertTrue(props["attention"])
+        self.assertEqual(props["messages"]["attention"][:len(hint)], hint)

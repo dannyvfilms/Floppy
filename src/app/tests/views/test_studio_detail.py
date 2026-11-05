@@ -14,6 +14,7 @@ from app.models import (
     Status,
     Studio,
 )
+from app.tests.card_props import card_models, card_text
 
 
 class StudioDetailViewTests(TestCase):
@@ -206,7 +207,7 @@ class StudioDetailViewTests(TestCase):
         self.assertContains(response, "We make role-playing games.")
         self.assertContains(response, "Cyberpunk 2077")
         self.assertContains(response, "The Witcher 3: Wild Hunt")
-        self.assertContains(response, "Developer, Publisher")
+        self.assertIn("Developer, Publisher", card_text(response.content))
         self.assertContains(response, "2 games")
         self.assertEqual(response.context["studio"], studio)
         self.assertEqual(
@@ -264,13 +265,14 @@ class StudioDetailViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         # Both cards, tracked or not, get the hover actions.
-        self.assertContains(response, 'class="media-card-overlay', count=2)
+        models = card_models(response.content)
+        self.assertEqual(sum(1 for m in models if m["actions"]), 2)
         # Only the tracked one has a status chip and a rating to change.
-        self.assertContains(response, 'class="media-status-chip', count=1)
-        self.assertContains(
-            response,
+        self.assertEqual(sum(1 for m in models if m["statusChip"]), 1)
+        self.assertIn(
             reverse(
                 "update_media_score",
                 args=[MediaTypes.MOVIE.value, movie.id],
             ),
+            [m["rating"]["rateUrl"] for m in models if m["rating"]],
         )

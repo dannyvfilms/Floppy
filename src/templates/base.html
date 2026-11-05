@@ -2,6 +2,7 @@
 {% load app_tags %}
 {% load user_tags %}
 {% load i18n %}
+{% load ui_tags %}
 
 <!DOCTYPE html>
 <html lang="{{ LANGUAGE_CODE }}"
@@ -191,6 +192,7 @@
         data-quick-season-mobile="{% if user.is_authenticated %}{% if user.quick_season_update_mobile == 'season_update' or user.quick_season_update_mobile == 'both' %}true{% else %}false{% endif %}{% else %}false{% endif %}">
     {% block alphabet_filter %}{% endblock alphabet_filter %}
     {% include "app/components/ui_asset_refresh.html" %}
+    <div data-modal-host-root data-props-id="modal-host-props"></div><script id="modal-host-props" type="application/json">{}</script>
     {% comment %}
       Navigation progress. Boosted links replace the page with a background
       request, so the browser shows no spinner and no stop button. Without
@@ -224,8 +226,8 @@
         {% if not public_view|default:False %}
           <aside class="fixed top-0 left-0 z-[43] h-dvh w-64 pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)] bg-[var(--color-sidebar)] transform transition-[transform,translate,visibility] duration-300 ease-in-out border-r border-[var(--color-border)] -translate-x-full lg:translate-x-0 lg:sticky flex flex-col"
                  :class="isMobileMenuOpen ? 'translate-x-0' : 'max-lg:invisible'"
-                 x-data="sidebarNavigation('{{ user.pk|escapejs }}')"
-                 @sidebar-lists-changed.window="onPinnedListsChanged()">
+                 >
+            {% sidebar_react media_type as sidebar %}{% if sidebar.props %}{{ sidebar.props|json_script:sidebar.id }}{% endif %}<div data-sidebar-root data-props-id="{{ sidebar.id }}" x-ignore>
             <div class="h-16 border-b border-[var(--color-border)] flex items-center px-6">
               <h1 class="flex items-center">
                 {% if user.is_authenticated and user.logo_style == 'monochrome' %}
@@ -318,9 +320,11 @@
                 </div>
             </nav>
 
+            <div data-sidebar-slot="onboarding" class="contents">
             {% if request.user.is_authenticated and request.user.onboarding_status == "in_progress" %}
               {% include "users/components/onboarding_banner.html" %}
             {% endif %}
+            </div>
 
             <div class="p-4 border-t border-[var(--color-border)] mt-auto">
               <div class="space-y-2">
@@ -376,6 +380,7 @@
                 </form>
               </div>
             </div>
+            </div>
           </aside>
         {% endif %}
 
@@ -407,6 +412,7 @@
                 {# Search bar #}
                 {% if not public_view|default:False %}
                   <div class="relative grow min-w-0 max-w-2xl max-lg:max-w-none">
+                    {% global_search_react search_type as global_search %}{{ global_search.props|json_script:global_search.id }}<div data-global-search-root data-props-id="{{ global_search.id }}" x-ignore>
                     <form method="get"
                           action="{% url 'search' %}"
                           x-data="{ isOpen: false, selectedType: { display: '{{ search_type|media_type_readable_plural }}', value: '{{ search_type }}' }, mediaTypes: {% get_search_media_types user as search_types %}{{ search_types }}, getPlaceholder() { if (this.selectedType.value === 'all') { return gettext('Search your whole library...'); } if (window.matchMedia('(max-width: 639px)').matches) { return interpolate(gettext('Search %(media)s...'), {media: this.selectedType.display}, true); } return interpolate(gettext('Search %(media)s in your library or online...'), {media: this.selectedType.display}, true) }, barcodeScanning: false, barcodeError: null, barcodePreview: null, explicitSubmitTriggered: false, async handleBarcodeImage(event) { if (!event || !event.target) { console.error('[BARCODE] Invalid event or event.target'); return; } if (event.target.tagName !== 'INPUT' || event.target.type !== 'file') { console.error('[BARCODE] Event not from file input. TagName:', event.target.tagName, 'Type:', event.target.type); return; } if (event.target !== this.$refs.barcodeInput) { console.error('[BARCODE] Event not from barcode input ref'); return; } console.log('handleBarcodeImage called', event); const file = event.target.files?.[0]; if (!file) { console.log('No file selected'); return; } console.log('File selected:', file.name, file.type); this.barcodeScanning = true; this.barcodeError = null; this.barcodePreview = URL.createObjectURL(file); try { console.log('Checking for barcodeScannerUtils:', typeof window.barcodeScannerUtils); if (!window.barcodeScannerUtils) { throw new Error(gettext('Barcode scanner utilities not loaded. Please refresh the page.')); } console.log('Starting barcode decode...'); const isbn = await window.barcodeScannerUtils.decodeBarcodeFromFile(file); console.log('Decode result:', isbn); if (isbn) { const barcodeInput = event.target; let form = this.$root; if (!form || form.tagName !== 'FORM' || !form.contains(barcodeInput)) { form = barcodeInput.closest('form'); } if (!form || form.tagName !== 'FORM') { console.error('[FORM] Could not find valid form element'); return; } const searchInput = form.querySelector('input[name=q]'); const formContainsBarcodeInput = form.contains(barcodeInput); if (!searchInput || !formContainsBarcodeInput) { console.error('[FORM] Form validation failed - missing search input or barcode input not in form. Search input:', searchInput, 'Form contains barcode input:', formContainsBarcodeInput); return; } console.log('[FORM] ISBN received, form element:', form, 'tagName:', form.tagName); console.log('[FORM] Search input found:', searchInput); searchInput.value = isbn; console.log('[FORM] Set input value to:', isbn, 'Current value:', searchInput.value); this.explicitSubmitTriggered = true; console.log('[FORM] Submitting form...'); form.submit(); console.log('[FORM] Form submit called'); } else { this.barcodeError = gettext('Could not read barcode from image. Please try again or enter ISBN manually.'); } } catch (error) { console.error('Barcode scan error:', error); this.barcodeError = gettext('Error scanning barcode: ') + (error.message || gettext('Please try again.')); } finally { this.barcodeScanning = false; } }, clearBarcodeError() { this.barcodeError = null; this.barcodePreview = null; if (this.$refs.barcodeInput) { this.$refs.barcodeInput.value = ''; } }, selectType(type) { this.selectedType = type; this.isOpen = false; const input = this.$refs.searchInput; if (input && input.value.trim()) { this.$nextTick(() => this.$root.submit()); } }, handleFormSubmit(event) { if (event.currentTarget !== this.$el) { return true; } if (event.submitter && !this.$el.contains(event.submitter)) { console.log('[FORM] Submitter not in search form, allowing'); return true; } if (event.submitter && !this.$el.contains(event.submitter)) { console.log('[FORM] Submitter not in search form, allowing'); return true; } if (this.explicitSubmitTriggered) { this.explicitSubmitTriggered = false; return true; } if (event.submitter && event.submitter === this.$refs.searchButton) { return true; } if (!event.submitter) { const searchInput = this.$el.querySelector('input[name=q]'); if (searchInput && document.activeElement === searchInput) { return true; } } console.log('[FORM] Form submission prevented - not from search button or Enter key in search input'); event.preventDefault(); event.stopPropagation(); return false; }, init() { console.log('Search form Alpine.js initialized'); this.explicitSubmitTriggered = false; } }"
@@ -450,7 +456,7 @@
                                   title="{% translate "Scan barcode" %}"
                                   aria-label="{% translate "Scan barcode" %}">
                             <span x-show="barcodeScanning" class="block">
-                              <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-[var(--color-text-muted)]"></div>
+                              {% spinner 20 "muted" %}
                             </span>
                             <span x-show="!barcodeScanning" class="block">{% include "app/icons/camera.svg" with classes="w-5 h-5" %}</span>
                           </button>
@@ -464,7 +470,7 @@
                           <div id="search-suggestions"></div>
                         </div>
 
-                        <input type="hidden" name="media_type" :value="selectedType.value">
+                        <input type="hidden" name="media_type" value="{{ search_type }}" :value="selectedType.value">
 
                         {# Media type dropdown #}
                         <button type="button"
@@ -511,6 +517,7 @@
                         </div>
                       </div>
                     </form>
+                    </div>
                   </div>
                 {% endif %}
 
@@ -842,5 +849,11 @@
     <script src="{% static 'js/searchAutocomplete.js' %}{% get_static_file_mtime 'js/searchAutocomplete.js' %}"></script>
     <script src="{% static 'js/horizontal-scroll.js' %}{% get_static_file_mtime 'js/horizontal-scroll.js' %}"></script>
     <script src="{% static 'js/keepPopupsOnScreen.js' %}{% get_static_file_mtime 'js/keepPopupsOnScreen.js' %}"></script>
+{% if user.is_authenticated %}
+    <div>
+      <div data-bulk-actions-root data-props-id="bulk-dock-props"></div>
+      <script id="bulk-dock-props" type="application/json">{"statusUrl": "{% url 'bulk_status_update' %}", "playsUrl": "{% url 'bulk_show_plays_start' %}", "playsStatusUrl": "{% url 'bulk_show_plays_status' 'OPERATION' %}", "csrfToken": "{{ csrf_token }}"}</script>
+    </div>
+    {% endif %}
   </body>
 </html>

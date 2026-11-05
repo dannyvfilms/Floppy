@@ -7,6 +7,7 @@ from django.urls import reverse
 
 from app.models import TV, Episode, Item, MediaTypes, Season, Sources, Status
 from app.templatetags.app_tags import item_slot_id
+from app.tests.card_props import card_model, render_card_template
 
 METADATA_PATH = "app.providers.services.get_media_metadata"
 
@@ -219,16 +220,16 @@ class SeasonStatusPillSyncTests(TestCase):
 
         request = RequestFactory().get("/")
         request.user = self.user
-        content = render_to_string(
-            "app/components/media_card.html",
+        content = render_card_template(
             {"item": self.season.item, "media": self.season},
             request=request,
         )
 
-        self.assertIn(
-            f'id="{item_slot_id("media-status-chip", self.season.item)}"', content
+        model = card_model(content)
+        self.assertEqual(
+            model["statusId"], item_slot_id("media-status-chip", self.season.item)
         )
-        self.assertIn("M21.801 10A10 10 0 1 1 17 3.335", content)
+        self.assertEqual(model["statusChip"]["status"], Status.COMPLETED.value)
 
     def test_every_status_refreshes_the_card_chip_of_an_untracked_season(
         self,
@@ -247,13 +248,12 @@ class SeasonStatusPillSyncTests(TestCase):
 
         request = RequestFactory().get("/")
         request.user = self.user
-        slot = f'id="{item_slot_id("media-status-chip", self.season.item)}"'
-        before = render_to_string(
-            "app/components/media_card.html",
+        slot = item_slot_id("media-status-chip", self.season.item)
+        before = render_card_template(
             {"item": self.season.item, "media": None},
             request=request,
         )
-        self.assertIn(slot, before)
+        self.assertEqual(card_model(before)["statusId"], slot)
 
         self.season.delete()
         for status in Status.values:

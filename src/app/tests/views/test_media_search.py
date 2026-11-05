@@ -100,14 +100,15 @@ class MediaSearchViewTests(TestCase):
         mock_search.assert_not_called()
 
     @patch("app.providers.services.search")
-    def test_search_result_track_modal_is_cloaked(self, mock_search):
-        """The track modal must not flash before Alpine hides it.
+    def test_search_results_open_popups_from_the_shared_host(self, mock_search):
+        """Result cards and rows carry no popup markup of their own.
 
-        media_card_list.html's overlay is a full-screen
-        `fixed inset-0 bg-black/50` div; without x-cloak it renders visible
-        until Alpine boots and applies x-show="trackOpen".
+        A popup is a full-screen `fixed inset-0 bg-black/50` div, so one per
+        result used to need x-cloak to stay hidden until Alpine booted. The
+        shared React host now renders a popup only when one is opened.
         """
-        mock_search.return_value = {
+        # The view edits result dicts in place, so each request gets a fresh one.
+        mock_search.side_effect = lambda *args, **kwargs: {
             "page": 1,
             "total_results": 1,
             "total_pages": 1,
@@ -122,15 +123,15 @@ class MediaSearchViewTests(TestCase):
             ],
         }
 
-        response = self.client.get(
-            reverse("search") + "?media_type=movie&q=test",
-        )
+        for layout in ("grid", "list"):
+            response = self.client.get(
+                reverse("search") + f"?media_type=movie&q=test&layout={layout}",
+            )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertRegex(
-            response.content.decode(),
-            r'x-show="trackOpen"[^>]*\sx-cloak\b',
-        )
+            self.assertEqual(response.status_code, 200)
+            html = response.content.decode()
+            self.assertIn("data-media-card-root", html)
+            self.assertNotIn('x-show="trackOpen"', html)
 
     @patch("app.providers.services.search")
     def test_podcast_local_result_keeps_show_source(self, mock_search):

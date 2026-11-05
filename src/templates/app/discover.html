@@ -37,7 +37,8 @@
       </div>
     </div>
 
-    <div class="flex flex-wrap gap-2">
+    {% translate "Media type" as media_type_label %}{% filter_chips_react discover_media_options media_type_label as discover_chips %}{{ discover_chips.props|json_script:discover_chips.id }}
+    <div data-filter-chips-root data-props-id="{{ discover_chips.id }}" class="flex flex-wrap gap-2">
       {% for option in discover_media_options %}
         <button type="button"
                 @click="switchMedia('{{ option.value }}')"

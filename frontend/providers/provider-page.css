@@ -73,6 +73,11 @@
 .ui-guide-primary { display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
 .ui-guide-primary-label { font-size: .75rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--color-text-muted); }
 .ui-guide-primary .ui-copy-value { margin-top: 0; padding: .5rem .75rem; border-radius: .5rem; background: var(--color-surface); }
+.ui-guide-stack { display: flex; flex-direction: column; gap: 1rem; }
+[data-setup-guide-root] { margin-bottom: 1rem; }
+.ui-guide-steps li, .ui-guide-steps a, .ui-guide-steps code { overflow-wrap: anywhere; min-width: 0; }
+.ui-guide-methods > * { min-width: 0; }
+.ui-guide-methods { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: 1rem; align-items: stretch; }
 .ui-guide-details summary { cursor: pointer; padding: .25rem 0; color: var(--color-link); font-weight: 500; }
 .ui-guide-details[open] summary { margin-bottom: .5rem; }
 .ui-guide-status { display: flex; align-items: center; gap: .25rem; }

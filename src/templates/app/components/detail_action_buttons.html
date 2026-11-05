@@ -193,26 +193,11 @@
               </div>
             {% endif %}
 
-            <div x-data="{ listsOpen: false }" class="flex-1 md:flex-none">
+            <div class="flex-1 md:flex-none">
               <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer md:size-11 md:w-11"
                       title="{% translate "Add to custom lists" %}"
-                      hx-get="{% media_view_url 'lists_modal' media %}"
-                      hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
-                      hx-target="#{% component_id 'lists' media %}"
-                      hx-trigger="click once"
-                      @click="listsOpen = true">{% include "app/icons/list-add.svg" with classes="w-4 h-4" %}</button>
+                      {% lists_modal_click media request.get_full_path %}>{% include "app/icons/list-add.svg" with classes="w-4 h-4" %}</button>
 
-              <template x-teleport="body">
-              <div x-show="listsOpen"
-              @mousedown.self="listsOpen = false"
-                   x-cloak
-                   @keydown.escape.window="listsOpen = false"
-                   class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                <div class="w-96 max-h-[90dvh] px-4 md:px-0 relative z-60">
-                  <div id="{% component_id 'lists' media %}"></div>
-                </div>
-              </div>
-              </template>
             </div>
 
             {% if row.seerr %}

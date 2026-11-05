@@ -40,44 +40,10 @@
           {% include "app/components/filter_menu.html" with filter_data_id="calendar-filter-data" filter_show_media_types=True filter_media_types_only=True filter_type_statuses=True filter_release_types=True %}
         </div>
 
-        <div class="relative" @click.outside="actionsOpen = false">
-          <button type="button"
-                  aria-label="{% translate "Calendar Actions" %}"
-                  title="{% translate "Calendar Actions" %}"
-                  class="w-10 h-10 text-sm bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex items-center justify-center cursor-pointer"
-                  @click="actionsOpen = !actionsOpen"
-                  :aria-expanded="actionsOpen">
-            {% include "app/icons/settings.svg" with classes="w-4 h-4" %}
-          </button>
-
-          <div x-cloak
-               x-show="actionsOpen"
-               x-transition:enter="transition ease-out duration-100"
-               x-transition:enter-start="transform opacity-0 scale-95"
-               x-transition:enter-end="transform opacity-100 scale-100"
-               x-transition:leave="transition ease-in duration-75"
-               x-transition:leave-start="transform opacity-100 scale-100"
-               x-transition:leave-end="transform opacity-0 scale-95"
-               class="absolute right-0 mt-2 w-60 rounded-md bg-[var(--color-surface-strong)] border border-[var(--color-border)] shadow-lg overflow-hidden z-40">
-            <a href="{% url 'calendar' %}?month={{ today.month }}&year={{ today.year }}"
-               class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
-               @click="actionsOpen = false">{% translate "Go to Today" %}</a>
-            <form method="post" action="{% url 'reload_calendar' %}">
-              {% csrf_token %}
-              <button type="submit"
-                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
-                      @click="actionsOpen = false">
-                {% include "app/icons/circle-spinning-clockwise.svg" with classes="w-4 h-4 mr-3" %}
-                <span>{% translate "Fetch New Releases" %}</span>
-              </button>
-            </form>
-            <a class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] border-t border-[var(--color-border)]"
-               href="{% url 'download_calendar' token=user.token %}"
-               @click="actionsOpen = false">
-              {% include "app/icons/download.svg" with classes="w-4 h-4 mr-3" %}
-              <span>{% translate "Download Calendar" %}</span>
-            </a>
-          </div>
+        {{ calendar_menu|json_script:"calendar-menu-props" }}
+        <div data-calendar-menu-root data-props-id="calendar-menu-props">
+          <a href="{% url 'calendar' %}?month={{ today.month }}&year={{ today.year }}"
+             class="h-10 px-3 text-sm bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex items-center">{% translate "Go to Today" %}</a>
         </div>
 
       </div>

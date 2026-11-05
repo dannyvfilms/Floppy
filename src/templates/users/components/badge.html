@@ -1,0 +1,2 @@
+{{ props|json_script:props_id }}
+<span data-badge-root data-props-id="{{ props_id }}" class="ui-badge-host" x-ignore>{% if props.href %}<a href="{{ props.href }}" class="ui-badge ui-badge-{{ props.size }}{% if props.nowrap %} ui-badge-nowrap{% endif %}" data-tone="{{ props.tone }}">{{ props.label }}</a>{% else %}<span class="ui-badge ui-badge-{{ props.size }}{% if props.nowrap %} ui-badge-nowrap{% endif %}" data-tone="{{ props.tone }}">{{ props.label }}</span>{% endif %}</span>

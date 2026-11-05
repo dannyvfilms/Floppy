@@ -20,6 +20,7 @@ from app.models import (
     Video,
 )
 from app.templatetags.app_tags import item_slot_id
+from app.tests.card_props import card_models
 from integrations.models import CollectionSourceState
 
 
@@ -175,10 +176,11 @@ class CollectionListViewTest(TestCase):
         response = self.client.get(reverse("collection_list"))
 
         content = response.content.decode()
-        self.assertIn(f'id="{item_slot_id("media-card-rating", movie.item)}"', content)
-        self.assertIn(">8.5</span>", content)
-        self.assertIn(f'id="{item_slot_id("media-status-chip", movie.item)}"', content)
-        self.assertIn('class="media-status-chip ', content)
+        model = card_models(content)[0]
+        self.assertEqual(model["ratingId"], item_slot_id("media-card-rating", movie.item))
+        self.assertEqual(model["rating"]["label"], "8.5")
+        self.assertEqual(model["statusId"], item_slot_id("media-status-chip", movie.item))
+        self.assertEqual(model["statusChip"]["kind"], "status")
 
     def test_collection_card_for_untracked_item_has_no_rating_or_status(self):
         """An owned but untracked item shows no status chip and no rating."""

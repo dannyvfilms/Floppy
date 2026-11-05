@@ -13,6 +13,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from app import history_cache
+from app.card_events import add_card_update
 from app.models import (
     Album,
     BasicMedia,
@@ -124,7 +125,12 @@ def update_media_score(request, media_type, instance_id):
         },
         request=request,
     )
-    return HttpResponse(chip_html + card_rating_html)
+    return add_card_update(
+        HttpResponse(chip_html + card_rating_html),
+        media.item,
+        media,
+        request.user,
+    )
 
 
 @require_POST
@@ -189,7 +195,8 @@ def update_podcast_show_score(request, tracker_id):
             },
             request=request,
         )
-    return HttpResponse(chip_html + card_rating_html)
+    response = HttpResponse(chip_html + card_rating_html)
+    return add_card_update(response, item, tracker, request.user) if item else response
 
 
 @login_required

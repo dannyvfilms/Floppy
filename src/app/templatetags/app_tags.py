@@ -1732,6 +1732,25 @@ def item_slot_id(prefix, item):
 
 
 @register.simple_tag
+def lists_modal_click(media, return_url=""):
+    """Return the onclick attribute that opens the Add-to-lists form in the popup host."""
+    import json
+
+    from app.media_card_model import lists_modal_spec
+
+    spec = lists_modal_spec(
+        media,
+        f"#{component_id('lists', media)}",
+        return_url,
+    )
+    return format_html(
+        "onclick=\"window.dispatchEvent(new CustomEvent('floppy-open-modal', "
+        '{{detail: {}}}))"',
+        json.dumps(spec),
+    )
+
+
+@register.simple_tag
 def component_id(component_type, media, instance_id=None):
     """Return the component ID for both metadata and model object cases."""
     is_dict = isinstance(media, dict)
@@ -2276,6 +2295,130 @@ def media_card(context, surface, **values):
     See ``app.card_surfaces`` for the surfaces and the values a card accepts.
     """
     return card_surfaces.card_context(context.flatten(), surface, values)
+
+
+@register.simple_tag(takes_context=True)
+def history_card_react(context, entry, card_class, history_mode):
+    """Return the shared React card's props for one History entry."""
+    from uuid import uuid4
+
+    from django.utils.translation import gettext as _
+
+    from app.media_card_model import history_card_model
+
+    return {
+        "id": f"media-card-{uuid4().hex[:8]}",
+        "props": {
+            "model": history_card_model(
+                entry, card_class, history_mode, context.get("user"), context.get("request"),
+            ),
+            "labels": {
+                "altTitle": str(_("Show alternative title")),
+                "nextEpisode": str(_("Jump to next episode")),
+            },
+        },
+    }
+
+
+@register.simple_tag(takes_context=True)
+def media_row_react(context, item, media, title, matched_title):
+    """Return the shared React card's props for one Search list-view row."""
+    from uuid import uuid4
+
+    from django.utils.translation import gettext as _
+
+    from app.media_card_model import row_card_model
+
+    return {
+        "id": f"media-card-{uuid4().hex[:8]}",
+        "props": {
+            "model": row_card_model(
+                item, media, title, matched_title, context.get("user"), context.get("request"),
+            ),
+            "labels": {"altTitle": str(_("Show alternative title"))},
+        },
+    }
+
+
+@register.simple_tag(takes_context=True)
+def global_search_react(context, search_type):
+    """Return the props the shared React header search form needs."""
+    from uuid import uuid4
+
+    from django.utils.translation import gettext as _
+
+    request = context.get("request")
+    return {
+        "id": f"global-search-{uuid4().hex[:8]}",
+        "props": {
+            "action": reverse("search"),
+            "query": request.GET.get("q", "") if request else "",
+            "selectedType": {
+                "display": str(media_type_readable_plural(search_type)),
+                "value": str(search_type),
+            },
+            "mediaTypes": [
+                {"display": str(item["display"]), "value": str(item["value"])}
+                for item in get_search_media_types(context.get("user"))
+            ],
+            "barcodeTypes": ["book", "manga", "comic", "comicissue"],
+            "suggestionsUrl": reverse("search_suggestions"),
+            "labels": {
+                "inputLabel": str(_("Search your library or online")),
+                "search": str(_("Search")),
+                "scan": str(_("Scan barcode")),
+                "dismiss": str(_("Dismiss error")),
+                "placeholderAll": str(_("Search your whole library...")),
+                "placeholderShort": str(_("Search %(media)s...")),
+                "placeholderLong": str(
+                    _("Search %(media)s in your library or online..."),
+                ),
+                "barcodeNotLoaded": str(
+                    _("Barcode scanner utilities not loaded. Please refresh the page."),
+                ),
+                "barcodeUnreadable": str(
+                    _(
+                        "Could not read barcode from image. "
+                        "Please try again or enter ISBN manually.",
+                    ),
+                ),
+                "barcodeFailed": str(_("Error scanning barcode: ")),
+                "tryAgain": str(_("Please try again.")),
+            },
+        },
+    }
+
+
+@register.simple_tag(takes_context=True)
+def sidebar_react(context, media_type):
+    """Return the props the shared React sidebar needs."""
+    from uuid import uuid4
+
+    from app.sidebar_model import sidebar_model
+
+    request = context.get("request")
+    return {
+        "id": f"sidebar-{uuid4().hex[:8]}",
+        # A page rendered without a request keeps the server sidebar.
+        "props": sidebar_model(request, context["user"], media_type) if request else None,
+    }
+
+
+@register.simple_tag
+def filter_chips_react(options, label):
+    """Return the props the shared React chip row needs for ``options``."""
+    from uuid import uuid4
+
+    return {
+        "id": f"filter-chips-{uuid4().hex[:8]}",
+        "props": {
+            "label": str(label),
+            "items": [
+                {"value": str(option["value"]), "label": str(_(option["label"]))}
+                for option in options
+            ],
+        },
+    }
 
 
 # Icons the detail action row may hold, in display order. Below 400px wide the

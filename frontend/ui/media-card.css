@@ -1,0 +1,6 @@
+/* The React card's host and slot wrappers add no box of their own, so the
+   existing .media-card layout rules see the same children as before. */
+[data-media-card-root],
+.media-card-slot {
+  display: contents;
+}
