@@ -33,6 +33,10 @@ const historyMediaTypes = [
   { value: 'video', label: 'Videos' },
 ];
 
+const historyDefaultTypes = historyMediaTypes
+  .filter((item) => !['music', 'podcast', 'video'].includes(item.value))
+  .map((item) => item.value);
+
 const statuses = [
   { value: 'Planning', label: 'Planning' },
   { value: 'In progress', label: 'In Progress' },
@@ -93,10 +97,10 @@ export default function CalendarScreen({ navigate }) {
         historyMediaTypes={historyMediaTypes}
         statuses={statuses}
         releaseTypes={releaseTypes}
+        initialHistoryMediaTypes={historyDefaultTypes}
         releaseBaseUrl="https://app.floppy.example/calendar/demo-token.ics"
         historyBaseUrl="https://app.floppy.example/calendar/history/demo-token.ics"
-        palette={calendarLinkPalette}
-        onDownload={() => setActionNote('Calendar downloads use the subscription link above.')} />
+        palette={calendarLinkPalette} />
     </Section>
     <Section title="Tracking dates">
       <DateTimeSlot />
