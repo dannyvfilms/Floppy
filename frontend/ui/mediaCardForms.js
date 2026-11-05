@@ -92,6 +92,16 @@ export function normalizeTrackForm(payload) {
     fields,
     hidden: source.hidden || {},
     submitLabel: source.submitLabel || 'Save',
+    secondaryActions: (source.secondaryActions || []).map(action => ({
+      key: asString(action.key),
+      label: asString(action.label),
+      tone: action.tone || 'surface',
+      url: action.url || '',
+      body: action.body || {},
+    })),
+    target: source.target || '',
+    swap: source.swap || 'none',
+    legacyIds: (source.legacyIds || []).map(asString).filter(Boolean),
     deleteLabel: source.deleteLabel || 'Delete',
     trackTime: Boolean(source.trackTime),
     labels: source.labels || {},
@@ -127,4 +137,24 @@ export function validateTrackValues(model, values, labels = {}) {
     errors.end_date = labels.dateOrder || 'End date must be on or after the start date.';
   }
   return errors;
+}
+
+export function normalizeBulkEpisodeForm(payload) {
+  const source = payload || {};
+  return {
+    formId: source.formId || '',
+    action: source.action || '',
+    csrfToken: source.csrfToken || '',
+    trackTime: Boolean(source.trackTime),
+    hidden: source.hidden || {},
+    values: source.values || {},
+    domain: source.domain || {},
+    seasonOptions: source.seasonOptions || [],
+    writeModeOptions: source.writeModeOptions || [],
+    distributionModeOptions: source.distributionModeOptions || [],
+    submitLabel: source.submitLabel || 'Save plays',
+    notice: source.notice || '',
+    errors: source.errors || {},
+    labels: source.labels || {},
+  };
 }

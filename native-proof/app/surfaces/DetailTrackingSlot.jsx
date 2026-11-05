@@ -6,10 +6,10 @@ import { palette, radius, spacing } from '../theme';
 
 export const surface = {
   id: 'TRACKING',
-  status: 'in_progress',
+  status: 'ported',
   title: 'Detail tracking and edit dialogs',
   where: 'Detail actions, episode and issue rows',
-  note: 'The General, Tags, Metadata, Collection, Episode plays and Status history tracking tabs run on the shared TrackForm and TrackDialog with demo detail data. Date/status/progress coupling, notes, delete, repeat identity, validation, busy and error states are presentation-owned by the shared dialog. The web detail pages keep their server-rendered htmx and OOB save path, permissions and progressive fallback.',
+  note: 'The General, Tags, Metadata, Collection, Episode plays and Status history tracking tabs run on the shared TrackForm and TrackDialog with demo detail data. Date/status/progress coupling, notes, delete, repeat identity, validation, busy and error states are presentation-owned by the shared dialog. On the web the General, song, episode and bulk range forms are now shared presentation over the server htmx/OOB forms; the rich Metadata and Collection editors plus Status history and Discover keep server-owned bodies. Permissions and the progressive fallback stay server-owned.',
 };
 
 const trackLabels = {

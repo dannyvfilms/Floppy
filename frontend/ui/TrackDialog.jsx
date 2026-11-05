@@ -110,7 +110,7 @@ function syncStartFromProgress(next, state, model, now) {
   state.autoStart = true;
 }
 
-function repeatActionsFor(model, onSaveAsNew, onRewatch) {
+function repeatActionsFor(model, onSaveAsNew, onRewatch, onSecondaryAction) {
   const repeat = model?.repeatIdentity || {};
   const actions = [];
   if (repeat.canSaveAsNew) {
@@ -126,6 +126,14 @@ function repeatActionsFor(model, onSaveAsNew, onRewatch) {
       label: repeat.rewatchLabel,
       tone: 'surface',
       onPress: values => onRewatch?.(repeat.rewatchAction, values),
+    });
+  }
+  for (const action of model?.secondaryActions || []) {
+    actions.push({
+      key: action.key,
+      label: action.label,
+      tone: action.tone || 'surface',
+      onPress: values => onSecondaryAction?.(action, values),
     });
   }
   return actions;
@@ -154,6 +162,7 @@ export function TrackDialog({
   onDiscoverToggle,
   onSaveAsNew,
   onRewatch,
+  onSecondaryAction,
   embedded = false,
   now = () => new Date(),
 }) {
@@ -223,7 +232,9 @@ export function TrackDialog({
     changed.forEach(key => onChange?.(key, next[key] ?? ''));
   }
 
-  const repeatActions = repeatActionsFor(model, onSaveAsNew, onRewatch);
+  const repeatActions = repeatActionsFor(
+    model, onSaveAsNew, onRewatch, onSecondaryAction,
+  );
 
   const form = <TrackForm
     model={model}

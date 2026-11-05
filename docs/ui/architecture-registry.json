@@ -908,7 +908,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Rendered by mountTrackForm in the server track modal General tab for card, detail and episode Track popups; the web bundle builds and targeted Django tests pass, but no browser interaction pass was run."
+          "evidence": "Rendered by mountTrackForm and mountBulkEpisodeForm over the server General, song, episode and bulk-range tracking forms; the web bundle builds and targeted Django tests pass, but no browser interaction pass was run."
         },
         "ios": {
           "status": "unverified",
@@ -928,7 +928,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Rendered in embedded mode by mountTrackForm inside the server track modal General tab; the remaining web tabs keep the server path. The web bundle builds and targeted Django tests pass; no browser interaction pass was run."
+          "evidence": "Rendered in embedded mode by mountTrackForm inside the server General, song, episode and bulk-range tracking forms; the rich Metadata and Collection panels and the Status history/Discover tabs keep the server path. The web bundle builds and targeted Django tests pass; no browser interaction pass was run."
         },
         "ios": {
           "status": "unverified",
@@ -1064,7 +1064,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The remaining Tags, Metadata, Collection, Episode plays, Status history and Discover tabs keep the server-rendered Track popup on the web; only the General form is mounted through the shared adapter. No browser tab interaction pass was run."
+          "evidence": "The Tags, Metadata, Collection, Status history and Discover tab bodies keep the server-rendered Track popup on the web because their server contracts are richer than the shared bodies; the Episode Plays range form is mounted through BulkEpisodeForm and the General form through mountTrackForm. No browser tab interaction pass was run."
         },
         "ios": {
           "status": "unverified",
@@ -1073,6 +1073,26 @@
         "android": {
           "status": "unverified",
           "evidence": "Compiled by the Expo export through the MediaCardSlot native placement; no tab interaction pass."
+        }
+      }
+    },
+    "frontend/ui/BulkEpisodeForm.jsx": {
+      "components": [
+        "BulkEpisodeForm"
+      ],
+      "register": "TRACKING",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Rendered by mountBulkEpisodeForm inside the server Episode Plays tab for TV, anime, season, podcast-show and music album range saves; the web bundle builds and the track-modal/bulk Django tests pass, but no browser interaction pass was run."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not placed in the native shell; the native media-card Track body keeps its per-item General form and consumption history."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not placed in the native shell; the native media-card Track body keeps its per-item General form and consumption history."
         }
       }
     },
@@ -2254,6 +2274,7 @@
         "visibleLists",
         "applyListToggle",
         "normalizeTrackForm",
+        "normalizeBulkEpisodeForm",
         "initialTrackValues",
         "validateTrackValues"
       ],
@@ -2723,7 +2744,11 @@
     },
     "frontend/ui/mountTrackForm.jsx": {
       "register": "TRACKING",
-      "purpose": "Browser adapter for the shared General tracking form: read the server serialized model, keep the legacy form as the no-JavaScript fallback, and submit, delete and rewatch through htmx so OOB fragments, HX-Trigger close/toast events, CSRF, permissions and redirects stay server-owned."
+      "purpose": "Browser adapter for the shared General, song and episode tracking forms: read the server serialized model, hide only the matching legacy forms, and submit, delete, drop and rewatch through htmx so OOB fragments, HX-Trigger close/toast events, CSRF, permissions and redirects stay server-owned."
+    },
+    "frontend/ui/mountBulkEpisodeForm.jsx": {
+      "register": "TRACKING",
+      "purpose": "Browser adapter for the shared bulk episode/track range form: read the server serialized form model, hide the legacy form only when htmx is available, mirror the season/episode selection and date shortcuts, and post the same fields through htmx so Django validation, queued saves, close/toast triggers, CSRF and permissions stay server-owned."
     },
     "frontend/ui/mountModalHost.jsx": {
       "register": "SHELL",

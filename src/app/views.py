@@ -401,6 +401,7 @@ from app.tag_views import (
 from app.templatetags import app_tags
 from app.track_modal_views import (
     _bulk_episode_form_initial_data,
+    _bulk_episode_presentation,
     _DummyPodcastWrapper,
     _episode_domain_template_payload,
     _render_podcast_show_track_modal,
@@ -2204,6 +2205,7 @@ __all__ = [
     "_build_track_modal_discover_tab_context",
     "_build_trakt_popularity_context",
     "_bulk_episode_form_initial_data",
+    "_bulk_episode_presentation",
     "_cached_history_entry_matches_filters",
     "_can_use_cached_month_history",
     "_coerce_discover_debug",

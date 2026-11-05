@@ -507,6 +507,18 @@ def _render_music_tracker_modal(
                 bulk_domain.get("mode_notice", "") if bulk_domain else ""
             ),
             "episode_plays_domain_script_id": f"{track_form_id}-episode-domain",
+            "episode_plays_presentation_id": (
+                f"{track_form_id}-episode-plays-props"
+            ),
+            "episode_plays_presentation": view_barrel._bulk_episode_presentation(
+                request,
+                episode_plays_form,
+                bulk_domain,
+                track_form_id=track_form_id,
+                formaction=reverse("music_bulk_save"),
+                return_url=return_url,
+                submit_label=episode_plays_submit_label,
+            ),
         },
     )
     response["Cache-Control"] = "no-cache, no-store, must-revalidate"

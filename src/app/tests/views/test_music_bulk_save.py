@@ -75,7 +75,9 @@ class MusicBulkSaveViewTests(TestCase):
         # start/end picker, each split per #1243 so a field shows only its
         # own shortcut (start: Start Now + Release Date, end: Just Finished).
         self.assertContains(response, "Start Now", count=2)
-        self.assertContains(response, "Just Finished", count=2)
+        # The shared bulk-range form serializes its own quick-action labels;
+        # they mirror the server-rendered pickers behind the fallback.
+        self.assertContains(response, "Just Finished", count=3)
 
     def test_album_bulk_save_creates_music_entries_and_trackers(self):
         artist = Artist.objects.create(name="Bulk Artist")
