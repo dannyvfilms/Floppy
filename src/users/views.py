@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 from allauth.account.views import SignupView
 from allauth.core import ratelimit
+from allauth.socialaccount.adapter import get_adapter as get_socialaccount_adapter
 from allauth.socialaccount.views import SignupView as SocialSignupView
 from celery import states
 from django.apps import apps
@@ -153,10 +154,40 @@ class CustomSignupView(SignupView):
     def form_valid(self, form):
         """Catch a race-condition ValidationError instead of letting it 500."""
         try:
-            return super().form_valid(form)
+            response = super().form_valid(form)
         except ValidationError as exc:
             form.add_error("username", exc)
             return self.form_invalid(form)
+        if _wants_native_json(self.request):
+            if not getattr(self, "user", None):
+                return JsonResponse(
+                    {
+                        "ok": False,
+                        "message": "Could not create the account.",
+                        "errors": {},
+                    },
+                    status=400,
+                )
+            return JsonResponse(
+                {"ok": True, "user": {"username": self.user.username}}
+            )
+        return response
+
+    def form_invalid(self, form):
+        """Return field errors as JSON for the native client, HTML otherwise."""
+        if _wants_native_json(self.request):
+            errors = _form_error_payload(form)
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "message": _first_error_message(
+                        errors, "Check the details and try again."
+                    ),
+                    "errors": errors,
+                },
+                status=400,
+            )
+        return super().form_invalid(form)
 
     def get_success_url(self):
         """Send a newly created account into guided setup instead of Home."""
@@ -352,6 +383,108 @@ def _build_qr_data_uri(provisioning_uri: str) -> str:
     return f"data:image/png;base64,{encoded_png}"
 
 
+def _wants_native_json(request):
+    """Return True for the authenticated native client's explicit JSON contract."""
+    return request.headers.get("X-Floppy-Client") == "native"
+
+
+def _form_error_payload(form):
+    """Serialize Django form errors without exposing submitted values."""
+    return {
+        ("non_field_errors" if field == "__all__" else field): [
+            str(message) for message in messages
+        ]
+        for field, messages in form.errors.items()
+    }
+
+
+def _first_error_message(errors, default):
+    for field_messages in errors.values():
+        if field_messages:
+            return str(field_messages[0])
+    return default
+
+
+def _social_providers(request):
+    """Return the configured social providers and their server-owned login URLs."""
+    try:
+        providers = get_socialaccount_adapter().list_providers(request)
+    except Exception:
+        logger.exception("Could not list social providers for the native client")
+        return []
+    result = []
+    for provider in providers:
+        try:
+            login_url = provider.get_login_url(request, process="login")
+        except Exception:
+            login_url = ""
+        result.append(
+            {
+                "id": provider.id,
+                "name": provider.name,
+                "loginUrl": login_url,
+            }
+        )
+    return result
+
+
+def _native_account_payload(
+    request, context, *, ok=True, message="", tone="info", errors=None
+):
+    """Build the account-security state the native client renders.
+
+    The payload never includes a submitted password. The TOTP secret and QR
+    are only present while setup is pending, because the account screen has to
+    show them exactly once; callers must keep them in memory.
+    """
+    user = request.user
+    return {
+        "ok": ok,
+        "message": message,
+        "tone": tone,
+        "errors": errors or {},
+        "user": {
+            "username": user.username,
+            "isDemo": user.is_demo,
+            "isLastSuperuser": context["is_last_superuser"],
+            "hasUsablePassword": user.has_usable_password(),
+            "isSuperuser": user.is_superuser,
+        },
+        "authenticator": {
+            "configured": user.has_authenticator_configured,
+            "setup": context["show_authenticator_setup"],
+            "secret": context["authenticator_secret"],
+            "provisioningUri": context["authenticator_uri"],
+            "qrDataUri": context["authenticator_qr_data_uri"],
+            "unusedRecoveryCodes": context["unused_recovery_code_count"],
+        },
+        "freshRecoveryCodes": context["fresh_recovery_codes"] or [],
+        "providers": _social_providers(request),
+        "connectionsUrl": request.build_absolute_uri(
+            reverse("socialaccount_connections")
+        ),
+        "deviceUrl": request.build_absolute_uri(reverse("oauth_device")),
+    }
+
+
+@login_not_required
+@require_GET
+def auth_config(request):
+    """Public auth capabilities and redirect intents for the native client."""
+    return JsonResponse(
+        {
+            "registrationEnabled": bool(settings.REGISTRATION),
+            "socialOnly": bool(settings.SOCIALACCOUNT_ONLY),
+            "firstRun": helpers.is_first_run(),
+            "providers": _social_providers(request),
+            "connectionsUrl": request.build_absolute_uri(
+                reverse("socialaccount_connections")
+            ),
+            "deviceUrl": request.build_absolute_uri(reverse("oauth_device")),
+        }
+    )
+
+
 def _last_active_superuser(user):
     """Return True when ``user`` is the only active superuser left."""
     return (
@@ -362,24 +495,40 @@ def _last_active_superuser(user):
     )
 
 
-def _delete_own_account(request):
+def _delete_own_account(request, native=False):
     """Permanently delete the signed-in user after re-checking their identity."""
     user = request.user
-    if user.is_demo:
-        messages.error(request, "This section is view-only for demo accounts.")
+
+    def refuse(message, *, status=400):
+        if native:
+            return JsonResponse(
+                {"ok": False, "message": message, "tone": "error", "errors": {}},
+                status=status,
+            )
+        messages.error(request, message)
         return redirect("account")
+
+    if user.is_demo:
+        return refuse("This section is view-only for demo accounts.")
     limited = ratelimit.consume_or_429(request, action="reauthenticate")
     if limited is not None:
+        if native:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "message": "Too many attempts. Wait a moment and try again.",
+                    "tone": "error",
+                    "errors": {},
+                },
+                status=limited.status_code,
+            )
         return limited
     if _last_active_superuser(user):
-        messages.error(
-            request,
-            "You are the only superuser. Promote another account before deleting this one.",
+        return refuse(
+            "You are the only superuser. Promote another account before deleting this one."
         )
-        return redirect("account")
     if request.POST.get("confirm_delete") != "on":
-        messages.error(request, "Tick the box to confirm.")
-        return redirect("account")
+        return refuse("Tick the box to confirm.")
 
     # Accounts without a usable password (third-party sign-in) confirm by
     # typing their username instead.
@@ -391,8 +540,7 @@ def _delete_own_account(request):
         error = "Type your username exactly to confirm."
     if not confirmed:
         logger.warning("Failed account deletion confirmation for user: %s", user.pk)
-        messages.error(request, error)
-        return redirect("account")
+        return refuse(error)
 
     user_id = user.pk
     username = user.username
@@ -403,19 +551,69 @@ def _delete_own_account(request):
         user.delete()
     logout(request)
     logger.info("Account deleted by its owner: %s (id %s)", username, user_id)
-    messages.success(request, "Your account and all its data have been deleted.")
+    message = "Your account and all its data have been deleted."
+    if native:
+        return JsonResponse(
+            {"ok": True, "deleted": True, "message": message, "tone": "success"}
+        )
+    messages.success(request, message)
     return redirect("account_login")
 
 
 @require_http_methods(["GET", "POST"])
 def account(request):
     """Update the user's account and account security settings."""
+    native = _wants_native_json(request)
     user_form = UserUpdateForm(instance=request.user)
     password_form = PasswordChangeForm(user=request.user)
     authenticator_form = AuthenticatorSetupForm(user=request.user)
     recovery_codes_form = RegenerateRecoveryCodesForm(user=request.user)
     fresh_recovery_codes = None
     show_authenticator_setup = not request.user.has_authenticator_configured
+
+    def account_context():
+        authenticator_secret = ""
+        authenticator_uri = ""
+        authenticator_qr_data_uri = ""
+        if show_authenticator_setup:
+            authenticator_secret = request.user.get_or_create_authenticator_secret()
+            authenticator_uri = request.user.build_totp_uri()
+            authenticator_qr_data_uri = _build_qr_data_uri(authenticator_uri)
+        return {
+            "user_form": user_form,
+            "password_form": password_form,
+            "authenticator_form": authenticator_form,
+            "recovery_codes_form": recovery_codes_form,
+            "authenticator_secret": authenticator_secret,
+            "authenticator_uri": authenticator_uri,
+            "authenticator_qr_data_uri": authenticator_qr_data_uri,
+            "show_authenticator_setup": show_authenticator_setup,
+            "unused_recovery_code_count": request.user.recovery_codes.filter(
+                used_at__isnull=True
+            ).count(),
+            "fresh_recovery_codes": fresh_recovery_codes,
+            "is_last_superuser": _last_active_superuser(request.user),
+        }
+
+    def native_response(
+        *, ok=True, message="", tone="info", errors=None, status=200
+    ):
+        return JsonResponse(
+            _native_account_payload(
+                request,
+                account_context(),
+                ok=ok,
+                message=message,
+                tone=tone,
+                errors=errors,
+            ),
+            status=status,
+        )
+
+    def native_refusal(message, errors=None):
+        return native_response(
+            ok=False, message=message, tone="error", errors=errors, status=400
+        )
 
     if request.method == "POST":
         action = request.POST.get("action", "")
@@ -429,34 +627,48 @@ def account(request):
             # The demo password is public: an authenticator attached to it
             # would let one visitor reset the password for everyone else.
             if request.user.is_demo:
-                messages.error(request, "This section is view-only for demo accounts.")
+                message = "This section is view-only for demo accounts."
+                if native:
+                    return native_refusal(message)
+                messages.error(request, message)
                 return redirect("account")
             limited = ratelimit.consume_or_429(request, action="reauthenticate")
             if limited is not None:
+                if native:
+                    return native_refusal(
+                        "Too many attempts. Wait a moment and try again."
+                    )
                 return limited
             if action != "regenerate_recovery_codes":
                 confirmation = RegenerateRecoveryCodesForm(
                     request.POST, user=request.user
                 )
                 if not confirmation.is_valid():
-                    messages.error(
-                        request,
-                        "Enter your current password to change authenticator recovery.",
+                    message = (
+                        "Enter your current password to change authenticator recovery."
                     )
+                    if native:
+                        return native_refusal(
+                            message, _form_error_payload(confirmation)
+                        )
+                    messages.error(request, message)
                     return redirect("account")
 
         if action == "delete_account":
-            return _delete_own_account(request)
+            return _delete_own_account(request, native=native)
 
         if "username" in request.POST:
             user_form = UserUpdateForm(request.POST, instance=request.user)
 
             if user_form.is_valid():
                 user_form.save()
-                messages.success(request, "Your username has been updated!")
+                message = "Your username has been updated!"
                 logger.info(
                     "Successful username change for user: %s", request.user.username
                 )
+                if native:
+                    return native_response(message=message, tone="success")
+                messages.success(request, message)
                 return redirect("account")
 
             logger.warning(
@@ -474,10 +686,13 @@ def account(request):
             if password_form.is_valid():
                 user = password_form.save()
                 update_session_auth_hash(request, user)
-                messages.success(request, "Your password has been updated!")
+                message = "Your password has been updated!"
                 logger.info(
                     "Successful password change for user: %s", request.user.username
                 )
+                if native:
+                    return native_response(message=message, tone="success")
+                messages.success(request, message)
                 return redirect("account")
 
             logger.warning(
@@ -500,9 +715,17 @@ def account(request):
                 )
                 fresh_recovery_codes = request.user.generate_recovery_codes()
                 show_authenticator_setup = False
-                messages.success(
-                    request,
-                    "Authenticator app enabled. Save your recovery codes now—if you lose both, you cannot self-recover.",
+                message = (
+                    "Authenticator app enabled. Save your recovery codes now"
+                    "—if you lose both, you cannot self-recover."
+                )
+                if native:
+                    return native_response(message=message, tone="success")
+                messages.success(request, message)
+            elif native:
+                return native_refusal(
+                    "Check the authenticator code and try again.",
+                    _form_error_payload(authenticator_form),
                 )
 
         elif action == "start_authenticator_setup":
@@ -517,10 +740,12 @@ def account(request):
                 ],
             )
             show_authenticator_setup = True
-            messages.info(
-                request,
-                "Scan and verify a code from your new authenticator app to finish setup.",
+            message = (
+                "Scan and verify a code from your new authenticator app to finish setup."
             )
+            if native:
+                return native_response(message=message, tone="info")
+            messages.info(request, message)
 
         elif action == "disable_authenticator":
             request.user.authenticator_enabled = False
@@ -534,7 +759,10 @@ def account(request):
                 ],
             )
             show_authenticator_setup = True
-            messages.warning(request, "Authenticator app deactivated.")
+            message = "Authenticator app deactivated."
+            if native:
+                return native_response(message=message, tone="warning")
+            messages.warning(request, message)
 
         elif action == "regenerate_recovery_codes":
             recovery_codes_form = RegenerateRecoveryCodesForm(
@@ -542,35 +770,39 @@ def account(request):
             )
             if recovery_codes_form.is_valid():
                 fresh_recovery_codes = request.user.generate_recovery_codes()
-                messages.success(
-                    request,
-                    "Recovery codes regenerated. Store them securely now.",
+                message = "Recovery codes regenerated. Store them securely now."
+                if native:
+                    return native_response(message=message, tone="success")
+                messages.success(request, message)
+            elif native:
+                return native_refusal(
+                    "Current password is incorrect.",
+                    _form_error_payload(recovery_codes_form),
                 )
 
-    authenticator_secret = ""
-    authenticator_uri = ""
-    authenticator_qr_data_uri = ""
-    if show_authenticator_setup:
-        authenticator_secret = request.user.get_or_create_authenticator_secret()
-        authenticator_uri = request.user.build_totp_uri()
-        authenticator_qr_data_uri = _build_qr_data_uri(authenticator_uri)
-
-    context = {
-        "user_form": user_form,
-        "password_form": password_form,
-        "authenticator_form": authenticator_form,
-        "recovery_codes_form": recovery_codes_form,
-        "authenticator_secret": authenticator_secret,
-        "authenticator_uri": authenticator_uri,
-        "authenticator_qr_data_uri": authenticator_qr_data_uri,
-        "show_authenticator_setup": show_authenticator_setup,
-        "unused_recovery_code_count": request.user.recovery_codes.filter(
-            used_at__isnull=True
-        ).count(),
-        "fresh_recovery_codes": fresh_recovery_codes,
-        "is_last_superuser": _last_active_superuser(request.user),
-    }
-
+    context = account_context()
+    if native:
+        errors = {}
+        for form in (
+            user_form,
+            password_form,
+            authenticator_form,
+            recovery_codes_form,
+        ):
+            if form.is_bound and form.errors:
+                errors.update(_form_error_payload(form))
+        message = (
+            _first_error_message(errors, "Check the details and try again.")
+            if errors
+            else ""
+        )
+        return native_response(
+            ok=not errors,
+            message=message,
+            tone="error" if errors else "info",
+            errors=errors,
+            status=400 if errors else 200,
+        )
     return render(request, "users/account.html", context)
 
 
@@ -578,6 +810,7 @@ def account(request):
 @require_http_methods(["GET", "POST"])
 def password_recover(request):
     """Recover password using recovery code and optional authenticator app code."""
+    native = _wants_native_json(request)
     form = PasswordRecoveryForm()
 
     if request.method == "POST":
@@ -589,6 +822,15 @@ def password_recover(request):
             key=request.POST.get("username", "").strip().casefold(),
         )
         if limited is not None:
+            if native:
+                return JsonResponse(
+                    {
+                        "ok": False,
+                        "message": "Too many attempts. Wait a moment and try again.",
+                        "errors": {},
+                    },
+                    status=limited.status_code,
+                )
             return limited
         form = PasswordRecoveryForm(request.POST)
         if form.is_valid():
@@ -596,12 +838,26 @@ def password_recover(request):
             logger.info(
                 "Successful self-service password recovery for user: %s", user.username
             )
+            if native:
+                return JsonResponse({"ok": True})
             messages.success(
                 request, "Password updated. Sign in with your new password."
             )
             return redirect("account_login")
 
         logger.warning("Failed self-service password recovery attempt")
+        if native:
+            errors = _form_error_payload(form)
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "message": _first_error_message(
+                        errors, "Unable to verify recovery details."
+                    ),
+                    "errors": errors,
+                },
+                status=400,
+            )
 
     return render(request, "users/password_recover.html", {"form": form})
 

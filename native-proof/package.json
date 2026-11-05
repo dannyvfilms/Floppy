@@ -7,7 +7,7 @@
     "start": "expo start",
     "export": "expo export",
     "export:django": "expo export --platform web --output-dir ../src/static/native-proof",
-    "test:transport": "node --no-warnings --test app/data/authTransportCore.test.mjs app/data/transportRoutes.test.mjs"
+    "test:transport": "node --no-warnings --test app/data/authTransportCore.test.mjs app/data/authAccountCore.test.mjs app/data/transportRoutes.test.mjs"
   },
   "dependencies": {
     "expo": "~58.0.23",

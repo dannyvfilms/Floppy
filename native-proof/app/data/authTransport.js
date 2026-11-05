@@ -1,5 +1,14 @@
 import { secureStorage } from './authStorage';
-import { AuthError, AUTH_ERROR_CODES, createAuthTransport } from './authTransportCore';
+import { createAccountTransport } from './authAccountCore';
+import {
+  AuthError,
+  AUTH_ERROR_CODES,
+  buildDeviceVerificationUrl,
+  buildProviderLoginUrl,
+  createAuthTransport,
+  normalizeServerUrl,
+  safeRedirectPath,
+} from './authTransportCore';
 import { setActiveAuthSession } from './authSession';
 
 export const authTransport = createAuthTransport({
@@ -8,14 +17,26 @@ export const authTransport = createAuthTransport({
   onSessionChange: setActiveAuthSession,
 });
 
+export const accountTransport = createAccountTransport({ auth: authTransport });
 export const restoreAuthSession = () => authTransport.restore();
 export const signIn = options => authTransport.signIn(options);
+export const signUp = options => authTransport.signUp(options);
+export const recoverPassword = options => authTransport.recoverPassword(options);
 export const signInWithToken = options => authTransport.signInWithToken(options);
 export const signOut = () => authTransport.signOut();
 export const testAuthConnection = options => authTransport.testConnection(options);
+export const verifyAuthSession = () => authTransport.verify();
+export const fetchAuthConfig = options => authTransport.fetchAuthConfig(options);
 export const getAuthState = () => authTransport.getState();
 export const getAuthorizedRequest = () => authTransport.getSession();
 export const invalidateAuthSession = code => authTransport.invalidate(code || AUTH_ERROR_CODES.SIGNED_OUT);
-export { AuthError, AUTH_ERROR_CODES };
+export {
+  AuthError,
+  AUTH_ERROR_CODES,
+  buildDeviceVerificationUrl,
+  buildProviderLoginUrl,
+  normalizeServerUrl,
+  safeRedirectPath,
+};
 
 restoreAuthSession().catch(() => {});

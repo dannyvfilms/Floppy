@@ -54,6 +54,7 @@ urlpatterns = [
     ),
     path("setup/resume/", onboarding_views.onboarding_resume, name="onboarding_resume"),
     path("setup/restart/", onboarding_views.onboarding_restart, name="onboarding_restart"),
+    path("accounts/auth-config/", views.auth_config, name="auth_config"),
     path("accounts/password/recover/", views.password_recover, name="password_recover"),
     path("settings/account", views.account, name="account"),
     path("settings/users", views.manage_users, name="manage_users"),

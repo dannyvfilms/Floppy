@@ -950,14 +950,17 @@ Shared `AuthEntrance`, `SocialProviders` and `AuthNotice` own entrance, social-p
 
 - `frontend/auth/AuthEntrance.jsx`
 - `frontend/auth/AccountSecurity.jsx`
-- `native-proof/app/screens/AuthScreen.jsx` (native placement; status `in_progress`; presentation still uses demo values)
-- `native-proof/app/data/authTransportCore.js` (platform-neutral server URL, token/session, CSRF, connection-test and error-state core; Node-tested)
-- `native-proof/app/data/authTransport.js` (native session transport; Expo SecureStore and active request facade)
+- `native-proof/app/screens/AuthScreen.jsx` (native placement; shared presentation wired to the authenticated transport, account state and redirect intents)
+- `native-proof/app/data/authTransportCore.js` (platform-neutral server URL, token/session/signup/recovery, CSRF, config/redirect, verify and error-state core; Node-tested)
+- `native-proof/app/data/authTransport.js` (native session transport; Expo SecureStore, active request facade and account transport)
 - `native-proof/app/data/authTransport.web.js` (browser no-secret fallback; same-origin web auth is unchanged)
+- `native-proof/app/data/authAccountCore.js` (platform-neutral account-security request contract; Node-tested)
 - `native-proof/app/data/authStorage.js` (Expo SecureStore adapter for the saved session)
 - `native-proof/app/data/authSession.js` (in-memory active-session registry consumed by data transports)
-- `native-proof/app/data/authTransportCore.test.mjs` (Node tests for URL, credential, CSRF, revocation, redaction and restore boundaries)
+- `native-proof/app/data/authTransportCore.test.mjs` (Node tests for URL, credential, signup, recovery, CSRF/cookie rotation, revocation, redirect, config, redaction and restore boundaries)
+- `native-proof/app/data/authAccountCore.test.mjs` (Node tests for account reads, writes, deletion and signed-out refusal)
 - `native-proof/app/data/transportRoutes.test.mjs` (Node tests for media-card, list and calendar session wiring)
+- `src/users/views.py` (`auth_config` and the `X-Floppy-Client: native` JSON branches; web HTML stays authoritative)
 - `src/templates/account/login.html`
 - `src/templates/account/messages/logged_in.txt`
 - `src/templates/account/messages/logged_out.txt`

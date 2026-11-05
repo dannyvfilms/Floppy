@@ -3,8 +3,11 @@ import test from 'node:test';
 import {
   AUTH_ERROR_CODES,
   AuthError,
+  buildDeviceVerificationUrl,
+  buildProviderLoginUrl,
   createAuthTransport,
   normalizeServerUrl,
+  safeRedirectPath,
 } from './authTransportCore.js';
 
 function response({ status = 200, body = null, setCookie = [] } = {}) {
@@ -270,4 +273,145 @@ test('restore exposes a request facade without leaking stored credentials', asyn
   assert.equal(JSON.stringify(facade).includes('stored-token'), false);
   await facade.request('/api/v1/lists/');
   assert.equal(calls[0].options.headers.Authorization, 'Bearer stored-token');
+});
+
+
+test('redirect intents stay on the server and reject unsafe paths', () => {
+  assert.equal(safeRedirectPath('/library?tab=music#top'), '/library?tab=music#top');
+  assert.equal(safeRedirectPath('//evil.example/path'), '/');
+  assert.equal(safeRedirectPath('https://evil.example'), '/');
+  assert.equal(safeRedirectPath('/\\evil'), '/');
+  assert.equal(buildProviderLoginUrl({ serverUrl: 'floppy.example', providerId: 'trakt', redirectTo: '/home' }),
+    'https://floppy.example/accounts/trakt/login/?process=login&next=%2Fhome');
+  assert.throws(() => buildProviderLoginUrl({ serverUrl: 'floppy.example', providerId: '../evil' }), AuthError);
+  assert.equal(buildDeviceVerificationUrl({ serverUrl: 'floppy.example', userCode: 'ABCD-EFGH' }),
+    'https://floppy.example/oauth/device?user_code=ABCD-EFGH');
+});
+
+test('session cookie rotation is persisted after a write', async () => {
+  const storage = createStorage();
+  let rotated = false;
+  const routes = [
+    ...sessionRoutes(),
+    {
+      match: (url, options) => url.endsWith('/api/v1/media/movie/') && options.method === 'POST',
+      respond: () => {
+        rotated = true;
+        return response({ body: { id: 1 }, setCookie: ['sessionid=session-2; Path=/; HttpOnly'] });
+      },
+    },
+    {
+      match: url => url.endsWith('/api/v1/lists/'),
+      respond: () => response({ body: { results: [] } }),
+    },
+  ];
+  const { fetchImpl, calls } = createFetch(routes);
+  const auth = createAuthTransport({ storage, fetchImpl });
+  await auth.signIn({ serverUrl: 'https://floppy.example', username: 'nova', password: 'secret' });
+  await auth.request('/api/v1/media/movie/', { method: 'POST', body: { score: 8 } });
+  assert.equal(rotated, true);
+  const stored = JSON.parse(storage.values.get('floppy.auth.session.v1'));
+  assert.equal(stored.cookies.sessionid, 'session-2');
+  await auth.request('/api/v1/lists/');
+  assert.match(calls.at(-1).options.headers.Cookie, /sessionid=session-2/);
+});
+
+test('verifying a stored session clears it when the server rejects it', async () => {
+  const storage = createStorage();
+  storage.values.set('floppy.auth.session.v1', JSON.stringify({
+    version: 1,
+    serverUrl: 'https://floppy.example',
+    authType: 'session',
+    cookies: { sessionid: 'session-1' },
+    csrfToken: 'csrf-1',
+    cookieText: 'sessionid=session-1; csrftoken=csrf-1',
+    user: { username: 'nova' },
+  }));
+  const { fetchImpl } = createFetch([
+    { match: url => url.endsWith('/api/v1/user/sidebar/'), respond: () => response({ status: 401, body: { detail: 'Session expired' } }) },
+  ]);
+  const auth = createAuthTransport({ storage, fetchImpl });
+  assert.equal((await auth.restore()).status, 'authenticated');
+  await assert.rejects(() => auth.verify(), error => error.code === AUTH_ERROR_CODES.EXPIRED);
+  assert.equal(auth.getState().status, 'expired');
+  assert.equal(storage.values.has('floppy.auth.session.v1'), false);
+});
+
+test('signup posts the native JSON request and stores only cookies', async () => {
+  const storage = createStorage();
+  const { fetchImpl, calls } = createFetch([
+    {
+      match: (url, options) => url.endsWith('/accounts/signup/') && (options.method || 'GET') === 'GET',
+      respond: () => response({ setCookie: ['csrftoken=signup-csrf; Path=/'] }),
+    },
+    {
+      match: (url, options) => url.endsWith('/accounts/signup/') && options.method === 'POST',
+      respond: () => response({
+        body: { ok: true },
+        setCookie: ['sessionid=signup-session; Path=/; HttpOnly', 'csrftoken=signup-csrf-2; Path=/'],
+      }),
+    },
+    { match: url => url.endsWith('/api/v1/user/sidebar/'), respond: () => response({ body: { media_types: {} } }) },
+  ]);
+  const auth = createAuthTransport({ storage, fetchImpl });
+  const state = await auth.signUp({
+    serverUrl: 'https://floppy.example',
+    username: 'nova',
+    password1: 'signup-secret',
+    password2: 'signup-secret',
+  });
+  assert.equal(state.status, 'authenticated');
+  const signupCall = calls.find(call => call.url.endsWith('/accounts/signup/') && call.options.method === 'POST');
+  assert.equal(signupCall.options.headers['X-Floppy-Client'], 'native');
+  assert.equal(signupCall.options.headers.Accept, 'application/json');
+  const stored = [...storage.values.values()].join('\n');
+  assert.match(stored, /sessionid=signup-session/);
+  assert.equal(stored.includes('signup-secret'), false);
+});
+
+test('recovery reports server field errors without keeping the password', async () => {
+  const storage = createStorage();
+  const { fetchImpl } = createFetch([
+    {
+      match: (url, options) => url.endsWith('/accounts/password/recover/') && (options.method || 'GET') === 'GET',
+      respond: () => response({ setCookie: ['csrftoken=recover-csrf; Path=/'] }),
+    },
+    {
+      match: (url, options) => url.endsWith('/accounts/password/recover/') && options.method === 'POST',
+      respond: () => response({ status: 400, body: { ok: false, errors: { non_field_errors: ['Unable to verify recovery details.'] } } }),
+    },
+  ]);
+  const auth = createAuthTransport({ storage, fetchImpl });
+  await assert.rejects(
+    () => auth.recoverPassword({
+      serverUrl: 'https://floppy.example',
+      username: 'nova',
+      recoveryCode: 'RECOVERY-CODE',
+      newPassword1: 'recovery-secret',
+      newPassword2: 'recovery-secret',
+    }),
+    error => error.message.includes('Unable to verify recovery details'),
+  );
+  assert.equal(storage.values.size, 0);
+});
+
+test('auth config only accepts same-server redirect urls', async () => {
+  const storage = createStorage();
+  const { fetchImpl } = createFetch([
+    {
+      match: url => url.endsWith('/accounts/auth-config/'),
+      respond: () => response({
+        body: {
+          providers: [{ id: 'trakt', name: 'Trakt', loginUrl: '/accounts/trakt/login/' }],
+          connectionsUrl: '/accounts/3rdparty/',
+          deviceUrl: '/oauth/device',
+        },
+      }),
+    },
+  ]);
+  const auth = createAuthTransport({ storage, fetchImpl });
+  const config = await auth.fetchAuthConfig({ serverUrl: 'floppy.example' });
+  assert.equal(config.providers[0].loginUrl, 'https://floppy.example/accounts/trakt/login/');
+  assert.equal(config.connectionsUrl, 'https://floppy.example/accounts/3rdparty/');
+  assert.equal(config.deviceUrl, 'https://floppy.example/oauth/device');
 });

@@ -1,7 +1,25 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import '../data/authTransport';
-import { AuthEntrance, AuthNotice } from '../../../frontend/auth/AuthEntrance';
+import React, { useEffect, useState } from 'react';
+import { Image, Linking, StyleSheet, Text, View } from 'react-native';
+import {
+  accountTransport,
+  AUTH_ERROR_CODES,
+  buildDeviceVerificationUrl,
+  buildProviderLoginUrl,
+  fetchAuthConfig,
+  getAuthState,
+  recoverPassword,
+  restoreAuthSession,
+  signIn,
+  signOut,
+  signUp,
+  testAuthConnection,
+  verifyAuthSession,
+} from '../data/authTransport';
+import { subscribeAuthSession } from '../data/authSession';
+import {
+  AuthEntrance,
+  AuthNotice,
+} from '../../../frontend/auth/AuthEntrance';
 import {
   AccountTypeCard,
   AuthenticatorCard,
@@ -11,16 +29,17 @@ import {
   ProfileCard,
   RecoveryCodesCard,
 } from '../../../frontend/auth/AccountSecurity';
+import { Button } from '../../../frontend/ui/Button';
 import { Chip } from '../../../frontend/settings/Chip';
 import { Screen, Section } from '../components/Screen';
 import { palette, radius, spacing } from '../theme';
 
 export const surface = {
   id: 'AUTH',
-  status: 'in_progress',
+  status: 'ported',
   title: 'Account and authentication',
   where: 'Login, signup, social, password, TOTP, recovery, connections and deletion guards',
-  note: 'Auth finishing pass in progress: wiring the shared entrance and account-security presentation to the authenticated transport (server URL, sign-in, session lifecycle, redirect intents and account actions). iOS and Android runtime remain unverified.',
+  note: 'Server URL and connection checks, session sign-in/signup/recovery, verified restore, expiry/revocation, sign-out, account profile/password/TOTP/recovery/delete actions and social/device browser intents use the shared React Native presentation and authenticated transport. Browser handoffs remain redirect intents; iOS and Android runtime remain unverified.',
 };
 
 const authPalette = {
@@ -62,12 +81,6 @@ const views = [
   { key: 'account', label: 'Account security' },
 ];
 
-const providers = [
-  { id: 'plex', label: 'Plex' },
-  { id: 'trakt', label: 'Trakt' },
-  { id: 'authentik', label: 'Authentik' },
-];
-
 const emptyAuthValues = {
   login: '',
   password: '',
@@ -80,8 +93,27 @@ const emptyAuthValues = {
   newPassword2: '',
 };
 
-function wait(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+const emptyConfig = {
+  providers: [],
+  registrationEnabled: true,
+  socialOnly: false,
+  firstRun: false,
+  connectionsUrl: '',
+  deviceUrl: '',
+};
+
+function errorMessage(error, fallback) {
+  if (error && typeof error.message === 'string' && error.message.trim()) return error.message;
+  return fallback;
+}
+
+function firstFieldError(error, names) {
+  for (const name of names) {
+    const value = error?.errors?.[name];
+    if (Array.isArray(value) && value.length) return String(value[0]);
+    if (typeof value === 'string' && value.trim()) return value;
+  }
+  return '';
 }
 
 function GuardChip({ label, active, onPress }) {
@@ -89,7 +121,16 @@ function GuardChip({ label, active, onPress }) {
 }
 
 export default function AuthScreen({ onBack }) {
+  const initialAuthState = getAuthState();
   const [view, setView] = useState('login');
+  const [authState, setAuthState] = useState(initialAuthState);
+  const [serverUrl, setServerUrl] = useState(initialAuthState.serverUrl || '');
+  const [serverError, setServerError] = useState('');
+  const [serverHelp, setServerHelp] = useState('');
+  const [serverBusy, setServerBusy] = useState(false);
+  const [serverChecked, setServerChecked] = useState(false);
+  const [authConfig, setAuthConfig] = useState(emptyConfig);
+
   const [authValues, setAuthValues] = useState(emptyAuthValues);
   const [authErrors, setAuthErrors] = useState({});
   const [authError, setAuthError] = useState('');
@@ -98,40 +139,111 @@ export default function AuthScreen({ onBack }) {
   const [authBusy, setAuthBusy] = useState(false);
   const [busyProvider, setBusyProvider] = useState('');
 
-  const [guard, setGuard] = useState('owner');
-  const [username, setUsername] = useState('nova');
+  const [account, setAccount] = useState(null);
+  const [accountLoading, setAccountLoading] = useState(false);
+  const [accountError, setAccountError] = useState('');
+  const [accountSuccess, setAccountSuccess] = useState('');
+
+  const [username, setUsername] = useState('');
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileError, setProfileError] = useState('');
   const [profileSuccess, setProfileSuccess] = useState('');
+
   const [passwordValues, setPasswordValues] = useState({ oldPassword: '', newPassword1: '', newPassword2: '' });
   const [passwordErrors, setPasswordErrors] = useState({});
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const [passwordBusy, setPasswordBusy] = useState(false);
-  const [authenticatorSetup, setAuthenticatorSetup] = useState(true);
+
   const [authenticatorValues, setAuthenticatorValues] = useState({ currentPassword: '', code: '' });
   const [authenticatorError, setAuthenticatorError] = useState('');
   const [authenticatorSuccess, setAuthenticatorSuccess] = useState('');
   const [authenticatorBusy, setAuthenticatorBusy] = useState(false);
-  const [unusedRecoveryCodes, setUnusedRecoveryCodes] = useState(8);
+
   const [freshRecoveryCodes, setFreshRecoveryCodes] = useState([]);
   const [recoveryValues, setRecoveryValues] = useState({ currentPassword: '' });
   const [recoveryError, setRecoveryError] = useState('');
   const [recoverySuccess, setRecoverySuccess] = useState('');
   const [recoveryBusy, setRecoveryBusy] = useState(false);
+
   const [deleteError, setDeleteError] = useState('');
   const [deleteSuccess, setDeleteSuccess] = useState('');
   const [deleteBusy, setDeleteBusy] = useState(false);
 
-  const demoAccount = guard === 'demo';
-  const lastSuperuser = guard === 'last';
-  const account = {
-    username,
-    isDemo: demoAccount,
-    isLastSuperuser: lastSuperuser,
-    hasUsablePassword: true,
-    isSuperuser: lastSuperuser,
-  };
+  const signedIn = authState.status === 'authenticated';
+  const accountUser = account?.user || null;
+  const demoAccount = Boolean(accountUser?.isDemo);
+  const lastSuperuser = Boolean(accountUser?.isLastSuperuser);
+  const authenticatorSetup = account?.authenticator?.setup ?? true;
+  const unusedRecoveryCodes = account?.authenticator?.unusedRecoveryCodes ?? 0;
+  const providers = authConfig.providers;
+  const sessionLabel = accountUser?.username || authState.user?.username || '';
+
+  function applyAccountPayload(payload) {
+    if (!payload || typeof payload !== 'object') return;
+    setAccount(payload);
+    if (payload.user?.username) setUsername(payload.user.username);
+    if (Array.isArray(payload.freshRecoveryCodes) && payload.freshRecoveryCodes.length) {
+      setFreshRecoveryCodes(payload.freshRecoveryCodes);
+    }
+    if (payload.message) {
+      if (payload.tone === 'error') setAccountError(payload.message);
+      else setAccountSuccess(payload.message);
+    }
+  }
+
+  async function loadAccountState({ force = false } = {}) {
+    if (!force && !signedIn) return;
+    setAccountLoading(true);
+    setAccountError('');
+    try {
+      applyAccountPayload(await accountTransport.load());
+    } catch (error) {
+      setAuthState(getAuthState());
+      if (error?.code === AUTH_ERROR_CODES.SIGNED_OUT || error?.code === AUTH_ERROR_CODES.EXPIRED || error?.code === AUTH_ERROR_CODES.REVOKED) {
+        setAccount(null);
+      } else {
+        setAccountError(errorMessage(error, 'Could not load account security.'));
+      }
+    } finally {
+      setAccountLoading(false);
+    }
+  }
+
+  useEffect(() => subscribeAuthSession(() => {
+    setAuthState(getAuthState());
+  }), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    restoreAuthSession().then(state => {
+      if (cancelled) return;
+      setAuthState(state);
+      if (state.serverUrl) setServerUrl(state.serverUrl);
+      if (state.status !== 'authenticated') return;
+      verifyAuthSession()
+        .then(next => {
+          if (cancelled) return;
+          setAuthState(next);
+          fetchAuthConfig({ serverUrl: state.serverUrl }).then(config => { if (!cancelled) setAuthConfig(config); }).catch(() => {});
+          loadAccountState({ force: true });
+        })
+        .catch(error => {
+          if (cancelled) return;
+          setAuthState(getAuthState());
+          if (error?.code === AUTH_ERROR_CODES.EXPIRED || error?.code === AUTH_ERROR_CODES.REVOKED) {
+            setServerUrl(getAuthState().serverUrl || state.serverUrl || '');
+          } else {
+            setAuthError(errorMessage(error, 'Could not verify the saved session.'));
+          }
+        });
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (view === 'account' && signedIn && !account && !accountLoading) loadAccountState();
+  }, [view, signedIn, account, accountLoading]);
 
   function chooseView(next) {
     setView(next);
@@ -139,17 +251,26 @@ export default function AuthScreen({ onBack }) {
     setAuthError('');
     setAuthSuccess('');
     setRedirectLabel('');
+    setAccountError('');
+    setAccountSuccess('');
   }
 
   function updateAuth(name, value) {
     setAuthValues(current => ({ ...current, [name]: value }));
     setAuthErrors(current => ({ ...current, [name]: undefined }));
+    setAuthError('');
+    if (name === 'serverUrl') {
+      setServerUrl(value);
+      setServerChecked(false);
+      setServerError('');
+    }
   }
 
   function validateAuth(mode) {
     const next = {};
-    if (!authValues.username.trim() && mode !== 'login') next.username = 'Enter your username.';
-    if (!authValues.login.trim() && mode === 'login') next.login = 'Enter your username.';
+    if (!serverUrl.trim()) next.serverUrl = 'Enter the address of your Floppy server.';
+    if (mode !== 'login' && !authValues.username.trim()) next.username = 'Enter your username.';
+    if (mode === 'login' && !authValues.login.trim()) next.login = 'Enter your username.';
     if (mode === 'login' && !authValues.password) next.password = 'Enter your password.';
     if (mode === 'signup') {
       if (!authValues.password1) next.password1 = 'Choose a password.';
@@ -164,32 +285,97 @@ export default function AuthScreen({ onBack }) {
       if (authValues.newPassword1 !== authValues.newPassword2) next.newPassword2 = 'The passwords do not match.';
     }
     setAuthErrors(next);
+    if (next.serverUrl) setServerError(next.serverUrl);
     return Object.keys(next).length === 0;
+  }
+
+  async function loadConfig() {
+    const config = await fetchAuthConfig({ serverUrl });
+    setAuthConfig(config);
+    if (config.serverUrl) setServerUrl(config.serverUrl);
+    return config;
+  }
+
+  async function checkServer() {
+    setServerError('');
+    setServerHelp('');
+    setServerChecked(false);
+    setServerBusy(true);
+    try {
+      const reachable = await testAuthConnection({ serverUrl });
+      const config = await loadConfig();
+      setServerChecked(true);
+      setServerHelp(reachable.serverUrl ? `Reached ${reachable.serverUrl}` : 'Server reachable.');
+      if (config.firstRun) setServerHelp('First run: create the first account for this server.');
+    } catch (error) {
+      setServerError(errorMessage(error, 'Could not reach that server.'));
+    } finally {
+      setServerBusy(false);
+    }
   }
 
   async function submitAuth(options = {}) {
     setAuthError('');
     setAuthSuccess('');
     setRedirectLabel('');
+    setServerError('');
     if (!validateAuth(view)) {
       setAuthError('Check the highlighted fields and try again.');
       return;
     }
     setAuthBusy(true);
-    await wait(500);
-    setAuthBusy(false);
-    if (view === 'login') {
-      setAuthSuccess('Signed in. The platform adapter would store the session securely and redirect to the requested page.');
-      setRedirectLabel('Continue to Home');
-    } else if (view === 'signup') {
-      setAuthSuccess(options.setupAuthenticator
-        ? 'Account created. Continue into authenticator setup, or choose to set it up from Account security later.'
-        : 'Account created. Set up an authenticator app from Account security so recovery is possible.');
-      setRedirectLabel(options.setupAuthenticator ? 'Continue to authenticator setup' : 'Continue to onboarding');
-    } else {
-      setAuthSuccess('Password updated. Sign in with the new password using the authenticator or recovery code you verified.');
-      setRedirectLabel('Back to sign in');
-      setAuthValues(emptyAuthValues);
+    try {
+      if (view === 'login') {
+        const state = await signIn({
+          serverUrl,
+          username: authValues.login,
+          password: authValues.password,
+          redirectTo: '/',
+        });
+        setAuthState(state);
+        setAuthValues(emptyAuthValues);
+        setServerUrl(state.serverUrl || serverUrl);
+        setServerChecked(true);
+        loadConfig().catch(() => {});
+        await loadAccountState({ force: true });
+        setView('account');
+        setAccountSuccess('Signed in. Your session is stored securely on this device.');
+      } else if (view === 'signup') {
+        const state = await signUp({
+          serverUrl,
+          username: authValues.username,
+          password1: authValues.password1,
+          password2: authValues.password2,
+          setupAuthenticator: Boolean(options.setupAuthenticator),
+        });
+        setAuthState(state);
+        setAuthValues(emptyAuthValues);
+        setServerUrl(state.serverUrl || serverUrl);
+        setServerChecked(true);
+        loadConfig().catch(() => {});
+        await loadAccountState({ force: true });
+        setView('account');
+        setAccountSuccess(options.setupAuthenticator
+          ? 'Account created. Verify an authenticator app below.'
+          : 'Account created. Set up an authenticator app so recovery is possible.');
+      } else {
+        await recoverPassword({
+          serverUrl,
+          username: authValues.username,
+          authenticatorCode: authValues.authenticatorCode,
+          recoveryCode: authValues.recoveryCode,
+          newPassword1: authValues.newPassword1,
+          newPassword2: authValues.newPassword2,
+        });
+        setAuthValues(emptyAuthValues);
+        setAuthSuccess('Password updated. Sign in with the new password.');
+        setRedirectLabel('Back to sign in');
+      }
+    } catch (error) {
+      if (error?.code === AUTH_ERROR_CODES.INVALID_SERVER) setServerError(errorMessage(error, 'Check the server address.'));
+      else setAuthError(errorMessage(error, 'Check the details and try again.'));
+    } finally {
+      setAuthBusy(false);
     }
   }
 
@@ -197,10 +383,26 @@ export default function AuthScreen({ onBack }) {
     setBusyProvider(provider.id);
     setAuthError('');
     setAuthSuccess('');
-    await wait(500);
-    setBusyProvider('');
-    setAuthSuccess(`Opening the ${provider.label} sign-in session in the platform browser adapter.`);
-    setRedirectLabel('Return to Floppy');
+    try {
+      const url = provider.loginUrl || buildProviderLoginUrl({ serverUrl, providerId: provider.id });
+      await Linking.openURL(url);
+      setAuthSuccess(`${provider.name} sign-in opened in the secure browser session. Return to Floppy and sign in with your server account.`);
+    } catch (error) {
+      setAuthError(errorMessage(error, `Could not open ${provider.name} sign-in.`));
+    } finally {
+      setBusyProvider('');
+    }
+  }
+
+  async function openExternal(url, success) {
+    setAccountError('');
+    setAccountSuccess('');
+    try {
+      await Linking.openURL(url);
+      setAccountSuccess(success);
+    } catch {
+      setAccountError('The link could not be opened on this device.');
+    }
   }
 
   function continueFromNotice() {
@@ -211,13 +413,18 @@ export default function AuthScreen({ onBack }) {
     setProfileBusy(true);
     setProfileError('');
     setProfileSuccess('');
-    await wait(400);
-    setProfileBusy(false);
-    if (!username.trim()) {
-      setProfileError('Enter a username.');
-      return;
+    try {
+      const payload = await accountTransport.updateProfile({ username });
+      applyAccountPayload(payload);
+      setProfileSuccess(payload?.message || 'Your username has been updated.');
+      setAccountError('');
+      setAccountSuccess('');
+    } catch (error) {
+      const fieldError = firstFieldError(error, ['username']);
+      setProfileError(fieldError || errorMessage(error, 'Could not update your username.'));
+    } finally {
+      setProfileBusy(false);
     }
-    setProfileSuccess('Your username has been updated.');
   }
 
   async function savePassword() {
@@ -230,10 +437,23 @@ export default function AuthScreen({ onBack }) {
     setPasswordErrors(next);
     if (Object.keys(next).length) return;
     setPasswordBusy(true);
-    await wait(450);
-    setPasswordBusy(false);
-    setPasswordSuccess('Your password has been updated.');
-    setPasswordValues({ oldPassword: '', newPassword1: '', newPassword2: '' });
+    try {
+      const payload = await accountTransport.changePassword(passwordValues);
+      applyAccountPayload(payload);
+      setPasswordValues({ oldPassword: '', newPassword1: '', newPassword2: '' });
+      setPasswordSuccess(payload?.message || 'Your password has been updated.');
+      setAccountError('');
+      setAccountSuccess('');
+    } catch (error) {
+      setPasswordErrors({
+        oldPassword: firstFieldError(error, ['old_password']),
+        newPassword1: firstFieldError(error, ['new_password1']),
+        newPassword2: firstFieldError(error, ['new_password2']),
+      });
+      setPasswordError(firstFieldError(error, ['old_password', 'new_password1', 'new_password2', 'non_field_errors']) || errorMessage(error, 'Could not update your password.'));
+    } finally {
+      setPasswordBusy(false);
+    }
   }
 
   async function enableAuthenticator() {
@@ -248,13 +468,16 @@ export default function AuthScreen({ onBack }) {
       return;
     }
     setAuthenticatorBusy(true);
-    await wait(450);
-    setAuthenticatorBusy(false);
-    setAuthenticatorSetup(false);
-    setAuthenticatorSuccess('Authenticator app enabled. Save your recovery codes now.');
-    setFreshRecoveryCodes(['H4K2-Q9Z7', 'M8R3-T2V6', 'B6P1-L5N8', 'C3W9-X7D2']);
-    setUnusedRecoveryCodes(8);
-    setAuthenticatorValues({ currentPassword: '', code: '' });
+    try {
+      const payload = await accountTransport.enableAuthenticator(authenticatorValues);
+      applyAccountPayload(payload);
+      setAuthenticatorValues({ currentPassword: '', code: '' });
+      setAuthenticatorSuccess(payload?.message || 'Authenticator app enabled. Save your recovery codes now.');
+    } catch (error) {
+      setAuthenticatorError(firstFieldError(error, ['code', 'current_password', 'non_field_errors']) || errorMessage(error, 'Could not enable the authenticator.'));
+    } finally {
+      setAuthenticatorBusy(false);
+    }
   }
 
   async function startAuthenticatorSetup() {
@@ -265,11 +488,17 @@ export default function AuthScreen({ onBack }) {
       return;
     }
     setAuthenticatorBusy(true);
-    await wait(350);
-    setAuthenticatorBusy(false);
-    setAuthenticatorSetup(true);
-    setFreshRecoveryCodes([]);
-    setAuthenticatorSuccess('Scan and verify a code from the new authenticator app to finish setup.');
+    try {
+      const payload = await accountTransport.startAuthenticatorSetup({ currentPassword: authenticatorValues.currentPassword });
+      applyAccountPayload(payload);
+      setFreshRecoveryCodes([]);
+      setAuthenticatorValues({ currentPassword: '', code: '' });
+      setAuthenticatorSuccess(payload?.message || 'Scan and verify a code from the new authenticator app to finish setup.');
+    } catch (error) {
+      setAuthenticatorError(firstFieldError(error, ['current_password', 'non_field_errors']) || errorMessage(error, 'Could not start authenticator setup.'));
+    } finally {
+      setAuthenticatorBusy(false);
+    }
   }
 
   async function disableAuthenticator() {
@@ -280,11 +509,17 @@ export default function AuthScreen({ onBack }) {
       return;
     }
     setAuthenticatorBusy(true);
-    await wait(350);
-    setAuthenticatorBusy(false);
-    setAuthenticatorSetup(true);
-    setFreshRecoveryCodes([]);
-    setAuthenticatorSuccess('Authenticator app deactivated.');
+    try {
+      const payload = await accountTransport.disableAuthenticator({ currentPassword: authenticatorValues.currentPassword });
+      applyAccountPayload(payload);
+      setFreshRecoveryCodes([]);
+      setAuthenticatorValues({ currentPassword: '', code: '' });
+      setAuthenticatorSuccess(payload?.message || 'Authenticator app deactivated.');
+    } catch (error) {
+      setAuthenticatorError(firstFieldError(error, ['current_password', 'non_field_errors']) || errorMessage(error, 'Could not deactivate the authenticator.'));
+    } finally {
+      setAuthenticatorBusy(false);
+    }
   }
 
   async function regenerateRecoveryCodes() {
@@ -295,15 +530,21 @@ export default function AuthScreen({ onBack }) {
       return;
     }
     setRecoveryBusy(true);
-    await wait(400);
-    setRecoveryBusy(false);
-    setFreshRecoveryCodes(['H4K2-Q9Z7', 'M8R3-T2V6', 'B6P1-L5N8', 'C3W9-X7D2', 'T5J8-K2M4', 'R7N3-V9P1', 'D2F6-H8L5', 'Y9B4-C7X3']);
-    setUnusedRecoveryCodes(8);
-    setRecoverySuccess('Recovery codes regenerated. Store them securely now.');
-    setRecoveryValues({ currentPassword: '' });
+    try {
+      const payload = await accountTransport.regenerateRecoveryCodes(recoveryValues);
+      applyAccountPayload(payload);
+      setRecoveryValues({ currentPassword: '' });
+      setRecoverySuccess(payload?.message || 'Recovery codes regenerated. Store them securely now.');
+    } catch (error) {
+      setRecoveryError(firstFieldError(error, ['current_password', 'non_field_errors']) || errorMessage(error, 'Could not regenerate recovery codes.'));
+    } finally {
+      setRecoveryBusy(false);
+    }
   }
 
-  async function deleteAccount() {
+  async function deleteAccount(details = {}) {
+    setDeleteError('');
+    setDeleteSuccess('');
     if (demoAccount) {
       setDeleteError('This section is view-only for demo accounts.');
       return;
@@ -313,30 +554,58 @@ export default function AuthScreen({ onBack }) {
       return;
     }
     setDeleteBusy(true);
-    setDeleteError('');
-    await wait(500);
-    setDeleteBusy(false);
-    setDeleteSuccess(`Demo state: ${username}'s account and data would be deleted, then the session would return to sign in.`);
+    try {
+      const payload = await accountTransport.deleteAccount(details);
+      setAccount(null);
+      setAuthState(getAuthState());
+      setView('login');
+      setAuthValues(emptyAuthValues);
+      setAuthSuccess(payload?.message || 'Your account and all its data have been deleted.');
+      setRedirectLabel('');
+    } catch (error) {
+      setDeleteError(firstFieldError(error, ['current_password', 'confirm_username', 'confirm_delete', 'non_field_errors']) || errorMessage(error, 'Could not delete the account.'));
+    } finally {
+      setDeleteBusy(false);
+    }
   }
 
-  function setGuardState(next) {
-    setGuard(next);
-    setDeleteError('');
-    setDeleteSuccess('');
+  async function handleSignOut() {
+    await signOut().catch(() => {});
+    setAuthState(getAuthState());
+    setAccount(null);
+    setAuthValues(emptyAuthValues);
+    setView('login');
+    setAuthSuccess('Signed out.');
+    setRedirectLabel('');
   }
+
+  const sessionNotice = authState.status === 'expired'
+    ? 'Your session expired. Sign in again to continue.'
+    : authState.status === 'revoked'
+      ? 'This session was revoked or is no longer valid. Sign in again.'
+      : '';
 
   return <Screen title="Account" subtitle="Authentication and account security" onBack={onBack}>
     <View style={styles.viewRow}>
       {views.map(item => <GuardChip key={item.key} label={item.label} active={view === item.key} onPress={() => chooseView(item.key)} />)}
     </View>
 
+    {sessionNotice ? <AuthNotice tone="warning" palette={authPalette}>{sessionNotice}</AuthNotice> : null}
+
     {view === 'login' || view === 'signup' || view === 'recovery' ? <Section
       title={view === 'login' ? 'Sign in' : view === 'signup' ? 'Create account' : 'Recover password'}
-      copy="Authentication uses the server session and CSRF contract. This screen holds demo values only.">
+      copy="Credentials go straight to your Floppy server. This device keeps only the server session in secure storage.">
       <AuthEntrance
         mode={view}
-        firstRun={view === 'signup'}
+        firstRun={authConfig.firstRun}
+        registrationEnabled={authConfig.registrationEnabled}
+        socialOnly={authConfig.socialOnly}
         providers={providers}
+        serverUrl={serverUrl}
+        serverError={serverError}
+        serverHelp={serverHelp}
+        serverBusy={serverBusy}
+        serverChecked={serverChecked}
         values={authValues}
         errors={authErrors}
         error={authError}
@@ -346,7 +615,12 @@ export default function AuthScreen({ onBack }) {
         busyProvider={busyProvider}
         palette={authPalette}
         buttonPalette={buttonPalette}
-        onChange={updateAuth}
+        onChange={(name, value) => {
+          if (name === 'serverUrl') updateAuth(name, value);
+          else updateAuth(name, value);
+        }}
+        onServerChange={value => updateAuth('serverUrl', value)}
+        onCheckServer={checkServer}
         onSubmit={submitAuth}
         onSwitchMode={chooseView}
         onForgotPassword={() => chooseView('recovery')}
@@ -355,61 +629,79 @@ export default function AuthScreen({ onBack }) {
       />
     </Section> : null}
 
-    {view === 'account' ? <Section title="Account security" copy="Signed in as nova. Guard states below are presentation-only; deletion, authenticator and recovery writes stay in the server adapter.">
-      <View style={styles.guardRow}>
-        <GuardChip label="Regular account" active={guard === 'owner'} onPress={() => setGuardState('owner')} />
-        <GuardChip label="Demo account" active={guard === 'demo'} onPress={() => setGuardState('demo')} />
-        <GuardChip label="Only superuser" active={guard === 'last'} onPress={() => setGuardState('last')} />
-      </View>
+    {view === 'account' ? <Section title="Account security" copy={signedIn && sessionLabel ? `Signed in to ${authState.serverUrl} as ${sessionLabel}.` : 'Sign in to manage account security.'}>
+      {!signedIn ? <AuthNotice tone="warning" palette={authPalette}>Sign in first to load your account and security settings.</AuthNotice> : null}
+      {signedIn && accountLoading ? <Text style={[styles.loading, { color: palette.textMuted }]}>Loading account security…</Text> : null}
+      {accountError ? <AuthNotice tone="error" palette={authPalette}>{accountError}</AuthNotice> : null}
+      {accountSuccess ? <AuthNotice tone="success" palette={authPalette}>{accountSuccess}</AuthNotice> : null}
 
-      {demoAccount ? <AuthNotice tone="warning" palette={authPalette}>Demo accounts are view-only for authenticator, recovery, profile and deletion changes.</AuthNotice> : null}
-      {lastSuperuser ? <AuthNotice tone="warning" palette={authPalette}>You are the only active superuser. Promote another account before deleting this one.</AuthNotice> : null}
+      {signedIn && account ? <>
+        <View style={styles.guardRow}>
+          <Button label="Sign out" tone="surface" onPress={handleSignOut} palette={buttonPalette} />
+        </View>
 
-      <ProfileCard username={username} error={profileError} success={profileSuccess}
-        busy={profileBusy} disabled={demoAccount} palette={authPalette}
-        buttonPalette={buttonPalette} onChangeUsername={setUsername} onSave={saveProfile} />
+        {demoAccount ? <AuthNotice tone="warning" palette={authPalette}>Demo accounts are view-only for authenticator, recovery, profile and deletion changes.</AuthNotice> : null}
+        {lastSuperuser ? <AuthNotice tone="warning" palette={authPalette}>You are the only active superuser. Promote another account before deleting this one.</AuthNotice> : null}
 
-      <AccountTypeCard isSuperuser={lastSuperuser} username={username} palette={authPalette} />
+        <ProfileCard username={username} error={profileError} success={profileSuccess}
+          busy={profileBusy} disabled={demoAccount} palette={authPalette}
+          buttonPalette={buttonPalette} onChangeUsername={setUsername} onSave={saveProfile} />
 
-      <PasswordCard values={passwordValues} errors={passwordErrors} error={passwordError}
-        success={passwordSuccess} busy={passwordBusy} disabled={demoAccount}
-        palette={authPalette} buttonPalette={buttonPalette}
-        onChange={(name, value) => {
-          setPasswordValues(current => ({ ...current, [name]: value }));
-          setPasswordErrors(current => ({ ...current, [name]: undefined }));
-        }}
-        onSubmit={savePassword} />
+        <AccountTypeCard isSuperuser={Boolean(accountUser?.isSuperuser)} username={username} palette={authPalette} />
 
-      <AuthenticatorCard configured={!authenticatorSetup} setup={authenticatorSetup}
-        demo={demoAccount} values={authenticatorValues} error={authenticatorError}
-        success={authenticatorSuccess} busy={authenticatorBusy}
-        palette={authPalette} buttonPalette={buttonPalette}
-        qrSlot={<View style={styles.qrPlaceholder}><Text style={styles.qrLabel}>QR</Text></View>}
-        secretSlot={<Text style={[styles.secretHint, { color: palette.textMuted }]}>Manual secret is supplied by the secure setup adapter.</Text>}
-        onChange={(name, value) => {
-          setAuthenticatorValues(current => ({ ...current, [name]: value }));
-          setAuthenticatorError('');
-        }}
-        onEnable={enableAuthenticator}
-        onStartSetup={startAuthenticatorSetup}
-        onDisable={disableAuthenticator} />
+        <PasswordCard values={passwordValues} errors={passwordErrors} error={passwordError}
+          success={passwordSuccess} busy={passwordBusy} disabled={demoAccount}
+          palette={authPalette} buttonPalette={buttonPalette}
+          onChange={(name, value) => {
+            setPasswordValues(current => ({ ...current, [name]: value }));
+            setPasswordErrors(current => ({ ...current, [name]: undefined }));
+            setPasswordError('');
+          }}
+          onSubmit={savePassword} />
 
-      <RecoveryCodesCard unusedCount={unusedRecoveryCodes} freshCodes={freshRecoveryCodes}
-        values={recoveryValues} error={recoveryError} success={recoverySuccess}
-        busy={recoveryBusy} demo={demoAccount} palette={authPalette}
-        buttonPalette={buttonPalette}
-        onChange={(name, value) => {
-          setRecoveryValues(current => ({ ...current, [name]: value }));
-          setRecoveryError('');
-        }}
-        onRegenerate={regenerateRecoveryCodes} />
+        <AuthenticatorCard configured={Boolean(account?.authenticator?.configured)} setup={authenticatorSetup}
+          demo={demoAccount} values={authenticatorValues} error={authenticatorError}
+          success={authenticatorSuccess} busy={authenticatorBusy}
+          palette={authPalette} buttonPalette={buttonPalette}
+          qrSlot={account?.authenticator?.qrDataUri
+            ? <Image accessibilityLabel="Authenticator setup QR code" source={{ uri: account.authenticator.qrDataUri }} style={styles.qrImage} />
+            : null}
+          secretSlot={account?.authenticator?.secret
+            ? <Text selectable style={[styles.secret, { color: palette.textSecondary }]}>{account.authenticator.secret}</Text>
+            : <Text style={[styles.secretHint, { color: palette.textMuted }]}>The server did not return a setup secret.</Text>}
+          onChange={(name, value) => {
+            setAuthenticatorValues(current => ({ ...current, [name]: value }));
+            setAuthenticatorError('');
+          }}
+          onEnable={enableAuthenticator}
+          onStartSetup={startAuthenticatorSetup}
+          onDisable={disableAuthenticator} />
 
-      <ConnectionsCard providerCount={providers.length} disabled={demoAccount}
-        palette={authPalette} buttonPalette={buttonPalette} onManageConnections={() => {}} />
+        <RecoveryCodesCard unusedCount={unusedRecoveryCodes} freshCodes={freshRecoveryCodes}
+          values={recoveryValues} error={recoveryError} success={recoverySuccess}
+          busy={recoveryBusy} demo={demoAccount} palette={authPalette}
+          buttonPalette={buttonPalette}
+          onChange={(name, value) => {
+            setRecoveryValues(current => ({ ...current, [name]: value }));
+            setRecoveryError('');
+          }}
+          onRegenerate={regenerateRecoveryCodes} />
 
-      {deleteSuccess ? <AuthNotice tone="success" palette={authPalette}>{deleteSuccess}</AuthNotice> : null}
-      <DeleteAccountCard account={account} error={deleteError} busy={deleteBusy}
-        palette={authPalette} buttonPalette={buttonPalette} onDelete={deleteAccount} />
+        <ConnectionsCard providerCount={account.providers?.length || 0} disabled={demoAccount}
+          palette={authPalette} buttonPalette={buttonPalette}
+          onManageConnections={() => openExternal(account.connectionsUrl, 'Account connections opened in the secure browser session.')}
+          onApproveDevice={() => openExternal(account.deviceUrl || buildDeviceVerificationUrl({ serverUrl: authState.serverUrl || serverUrl }), 'Device sign-in approval opened in the secure browser session.')} />
+
+        {deleteSuccess ? <AuthNotice tone="success" palette={authPalette}>{deleteSuccess}</AuthNotice> : null}
+        <DeleteAccountCard account={{
+          username: accountUser?.username || username,
+          isDemo: demoAccount,
+          isLastSuperuser: lastSuperuser,
+          hasUsablePassword: accountUser?.hasUsablePassword !== false,
+          isSuperuser: Boolean(accountUser?.isSuperuser),
+        }} error={deleteError} busy={deleteBusy}
+          palette={authPalette} buttonPalette={buttonPalette} onDelete={deleteAccount} />
+      </> : null}
     </Section> : null}
   </Screen>;
 }
@@ -417,7 +709,8 @@ export default function AuthScreen({ onBack }) {
 const styles = StyleSheet.create({
   viewRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   guardRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  qrPlaceholder: { width: 128, height: 128, alignItems: 'center', justifyContent: 'center' },
-  qrLabel: { color: '#18181b', fontSize: 28, fontWeight: '800', letterSpacing: 2 },
+  loading: { fontSize: 13, lineHeight: 19 },
+  qrImage: { width: 128, height: 128 },
+  secret: { fontFamily: 'Courier', fontSize: 12, lineHeight: 17 },
   secretHint: { fontSize: 12, lineHeight: 17 },
 });

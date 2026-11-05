@@ -35,6 +35,55 @@ function normalizeToken(value) {
   return String(value || '').trim().replace(/^Bearer\s+/i, '');
 }
 
+export function safeRedirectPath(value, fallback = '/') {
+  const raw = String(value || '').trim();
+  if (!raw || raw.length > 2000) return fallback;
+  if (!raw.startsWith('/') || raw.startsWith('//') || raw.includes('\\')) return fallback;
+  if (/[\u0000-\u001f]/.test(raw)) return fallback;
+  try {
+    const url = new URL(raw, 'https://floppy.invalid');
+    if (url.origin !== 'https://floppy.invalid') return fallback;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return fallback;
+  }
+}
+
+export function buildProviderLoginUrl({ serverUrl, providerId, redirectTo = '/', process = 'login' } = {}) {
+  const baseUrl = normalizeServerUrl(serverUrl);
+  const provider = String(providerId || '').trim();
+  if (!/^[a-z0-9][a-z0-9_-]*$/i.test(provider)) {
+    throw fail(AUTH_ERROR_CODES.INVALID_SERVER, 'Choose a valid sign-in provider.');
+  }
+  const params = new URLSearchParams({ process });
+  const next = safeRedirectPath(redirectTo, '');
+  if (next) params.set('next', next);
+  return `${baseUrl}/accounts/${provider}/login/?${params.toString()}`;
+}
+
+export function buildDeviceVerificationUrl({ serverUrl, userCode = '' } = {}) {
+  const baseUrl = normalizeServerUrl(serverUrl);
+  const params = new URLSearchParams();
+  const code = String(userCode || '').trim();
+  if (code) params.set('user_code', code);
+  return `${baseUrl}/oauth/device${params.size ? `?${params.toString()}` : ''}`;
+}
+
+function sameServerUrl(serverUrl, candidate) {
+  const baseUrl = normalizeServerUrl(serverUrl);
+  if (!candidate) return '';
+  try {
+    const url = new URL(String(candidate), `${baseUrl}/`);
+    if (url.origin !== new URL(baseUrl).origin) {
+      throw fail(AUTH_ERROR_CODES.INVALID_SERVER, 'The server returned a redirect to another site.');
+    }
+    return url.toString();
+  } catch (error) {
+    if (error instanceof AuthError) throw error;
+    throw fail(AUTH_ERROR_CODES.INVALID_SERVER, 'The server returned an invalid redirect.');
+  }
+}
+
 export function normalizeServerUrl(input) {
   const value = String(input || '').trim();
   if (!value) {
@@ -136,6 +185,15 @@ function extractDetail(data) {
   return typeof value === 'string' ? value.trim().slice(0, 300) : '';
 }
 
+function firstFormError(data) {
+  if (!data || typeof data !== 'object' || !data.errors) return '';
+  for (const value of Object.values(data.errors)) {
+    if (Array.isArray(value) && value.length) return String(value[0]).trim().slice(0, 300);
+    if (typeof value === 'string' && value.trim()) return value.trim().slice(0, 300);
+  }
+  return '';
+}
+
 function redact(message, session) {
   let text = String(message || '');
   const secrets = [session && session.token, session && session.csrfToken];
@@ -212,6 +270,7 @@ function publicState(state) {
     user: state.user,
     hasCredential: state.status === 'authenticated',
     error: state.error,
+    redirectTo: state.redirectTo || null,
   };
 }
 
@@ -238,6 +297,7 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, now =
     authType: '',
     user: null,
     error: null,
+    redirectTo: null,
   };
   let session = null;
 
@@ -266,6 +326,7 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, now =
       authType: '',
       user: state.user,
       error: code,
+      redirectTo: null,
     });
     session = null;
     publish();
@@ -343,6 +404,15 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, now =
       body,
       credentials: current.authType === 'token' ? 'omit' : 'include',
     });
+    if (current.authType === 'session') {
+      const cookies = mergeCookies(current.cookies || {}, response);
+      if (JSON.stringify(cookies) !== JSON.stringify(current.cookies || {})) {
+        current.cookies = cookies;
+        current.csrfToken = cookies.csrftoken || current.csrfToken || '';
+        current.cookieText = cookieHeader(cookies);
+        if (current === session) await persist(session).catch(() => {});
+      }
+    }
     const data = await readBody(response);
     if (response.status === 403 && current.authType === 'session' && isCsrfFailure(data) && !options.csrfRetried) {
       await refreshCsrf(current);
@@ -351,6 +421,9 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, now =
     if (!response.ok) {
       const error = classifyFailure(response, data, current);
       error.message = redact(error.message, current);
+      if (data && typeof data === 'object' && data.errors && typeof data.errors === 'object') {
+        error.errors = data.errors;
+      }
       if (current === session && (error.code === AUTH_ERROR_CODES.EXPIRED || error.code === AUTH_ERROR_CODES.REVOKED)) {
         await invalidate(error.code);
       }
@@ -363,13 +436,180 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, now =
     return send(current, path);
   }
 
+  async function loadFormToken(baseUrl, path) {
+    const page = await perform(`${baseUrl}${path}`, {
+      method: 'GET',
+      headers: { Accept: 'text/html' },
+    });
+    if (!page.ok) {
+      throw fail(AUTH_ERROR_CODES.INVALID_SERVER, 'The server form could not be loaded.', { status: page.status });
+    }
+    const cookies = mergeCookies({}, page);
+    const csrfToken = cookies.csrftoken || '';
+    if (!csrfToken) {
+      throw fail(AUTH_ERROR_CODES.CSRF, 'The server did not provide a security token.');
+    }
+    return { cookies, csrfToken };
+  }
+
+  async function fetchAuthConfig({ serverUrl } = {}) {
+    const baseUrl = normalizeServerUrl(serverUrl);
+    const response = await perform(`${baseUrl}/accounts/auth-config/`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+    const data = await readBody(response);
+    if (!response.ok) throw classifyFailure(response, data, null);
+    const providers = Array.isArray(data?.providers) ? data.providers.map(provider => {
+      let loginUrl = '';
+      try {
+        loginUrl = sameServerUrl(baseUrl, provider.loginUrl);
+      } catch {
+        loginUrl = '';
+      }
+      return {
+        id: String(provider.id || ''),
+        name: String(provider.name || provider.id || ''),
+        loginUrl,
+      };
+    }).filter(provider => provider.id && provider.name) : [];
+    return {
+      registrationEnabled: data?.registrationEnabled !== false,
+      socialOnly: data?.socialOnly === true,
+      firstRun: data?.firstRun === true,
+      serverUrl: baseUrl,
+      providers,
+      connectionsUrl: sameServerUrl(baseUrl, data?.connectionsUrl),
+      deviceUrl: sameServerUrl(baseUrl, data?.deviceUrl) || buildDeviceVerificationUrl({ serverUrl: baseUrl }),
+    };
+  }
+
+  async function signUp({ serverUrl, username, password1, password2, setupAuthenticator = false, redirectTo = '/' } = {}) {
+    const baseUrl = normalizeServerUrl(serverUrl);
+    const login = String(username || '').trim();
+    const secret = String(password1 || '');
+    const confirmation = String(password2 || '');
+    if (!login || !secret) {
+      throw fail(AUTH_ERROR_CODES.INVALID_CREDENTIALS, 'Enter a username and password.');
+    }
+    if (secret !== confirmation) {
+      throw fail(AUTH_ERROR_CODES.INVALID_CREDENTIALS, 'The passwords do not match.');
+    }
+    const next = setupAuthenticator ? '/settings/account' : safeRedirectPath(redirectTo);
+    setState({ status: 'authenticating', serverUrl: baseUrl, authType: 'session', user: { username: login }, error: null, redirectTo: null });
+    publish();
+
+    let formToken;
+    try {
+      formToken = await loadFormToken(baseUrl, '/accounts/signup/');
+    } catch (error) {
+      setState({ status: 'signed_out', error: error.code });
+      publish();
+      throw error;
+    }
+    const form = new URLSearchParams({
+      username: login,
+      password1: secret,
+      password2: confirmation,
+      csrfmiddlewaretoken: formToken.csrfToken,
+      next,
+    });
+    const response = await perform(`${baseUrl}/accounts/signup/`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-CSRFToken': formToken.csrfToken,
+        'X-Floppy-Client': 'native',
+        Cookie: cookieHeader(formToken.cookies),
+        Origin: baseUrl,
+        Referer: `${baseUrl}/accounts/signup/`,
+      },
+      body: form.toString(),
+      credentials: 'omit',
+    });
+    const data = await readBody(response);
+    const cookies = mergeCookies(formToken.cookies, response);
+    if (!response.ok || !data || data.ok !== true) {
+      const message = firstFormError(data) || extractDetail(data) || 'Could not create the account. Check the details and try again.';
+      setState({ status: 'signed_out', authType: '', user: null, error: AUTH_ERROR_CODES.INVALID_CREDENTIALS });
+      publish();
+      throw fail(AUTH_ERROR_CODES.INVALID_CREDENTIALS, message, { status: response.status });
+    }
+    const candidate = {
+      version: SESSION_VERSION,
+      serverUrl: baseUrl,
+      authType: 'session',
+      cookies,
+      csrfToken: cookies.csrftoken || formToken.csrfToken,
+      cookieText: cookieHeader(cookies),
+      user: { username: login },
+      createdAt: now(),
+      lastVerifiedAt: null,
+    };
+    session = candidate;
+    try {
+      await verifyCredential(candidate);
+    } catch (error) {
+      session = null;
+      setState({ status: 'signed_out', authType: '', user: null, error: error.code });
+      publish();
+      throw error;
+    }
+    candidate.lastVerifiedAt = now();
+    await persist(candidate);
+    setState({ status: 'authenticated', authType: 'session', user: candidate.user, error: null, redirectTo: next });
+    publish();
+    return publicState(state);
+  }
+
+  async function recoverPassword({ serverUrl, username, authenticatorCode = '', recoveryCode = '', newPassword1, newPassword2 } = {}) {
+    const baseUrl = normalizeServerUrl(serverUrl);
+    const login = String(username || '').trim();
+    const code = String(authenticatorCode || '').trim();
+    const recovery = String(recoveryCode || '').trim();
+    const secret = String(newPassword1 || '');
+    if (!login || (!code && !recovery) || !secret || secret !== String(newPassword2 || '')) {
+      throw fail(AUTH_ERROR_CODES.INVALID_CREDENTIALS, 'Enter your username, recovery code and matching new passwords.');
+    }
+    const formToken = await loadFormToken(baseUrl, '/accounts/password/recover/');
+    const form = new URLSearchParams({
+      username: login,
+      csrfmiddlewaretoken: formToken.csrfToken,
+    });
+    if (recovery) form.set('recovery_code', recovery);
+    else form.set('authenticator_code', code);
+    form.set('new_password1', secret);
+    form.set('new_password2', String(newPassword2 || ''));
+    const response = await perform(`${baseUrl}/accounts/password/recover/`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-CSRFToken': formToken.csrfToken,
+        'X-Floppy-Client': 'native',
+        Cookie: cookieHeader(formToken.cookies),
+        Origin: baseUrl,
+        Referer: `${baseUrl}/accounts/password/recover/`,
+      },
+      body: form.toString(),
+      credentials: 'omit',
+    });
+    const data = await readBody(response);
+    if (!response.ok || !data || data.ok !== true) {
+      const message = firstFormError(data) || extractDetail(data) || 'Unable to verify recovery details.';
+      throw fail(AUTH_ERROR_CODES.INVALID_CREDENTIALS, message, { status: response.status });
+    }
+    return { ok: true };
+  }
+
   async function signInWithToken({ serverUrl, token, user } = {}) {
     const baseUrl = normalizeServerUrl(serverUrl);
     const value = normalizeToken(token);
     if (!value) {
       throw fail(AUTH_ERROR_CODES.INVALID_CREDENTIALS, 'Enter an access token or sign in with a username and password.');
     }
-    setState({ status: 'authenticating', serverUrl: baseUrl, authType: 'token', user: user || null, error: null });
+    setState({ status: 'authenticating', serverUrl: baseUrl, authType: 'token', user: user || null, error: null, redirectTo: null });
     publish();
     const candidate = {
       version: SESSION_VERSION,
@@ -391,19 +631,20 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, now =
     }
     candidate.lastVerifiedAt = now();
     await persist(candidate);
-    setState({ status: 'authenticated', authType: 'token', user: candidate.user, error: null });
+    setState({ status: 'authenticated', authType: 'token', user: candidate.user, error: null, redirectTo: '/' });
     publish();
     return publicState(state);
   }
 
-  async function signIn({ serverUrl, username, password, remember = true } = {}) {
+  async function signIn({ serverUrl, username, password, remember = true, redirectTo = '/' } = {}) {
     const baseUrl = normalizeServerUrl(serverUrl);
     const login = String(username || '').trim();
     const secret = String(password || '');
     if (!login || !secret) {
       throw fail(AUTH_ERROR_CODES.INVALID_CREDENTIALS, 'Enter your username and password.');
     }
-    setState({ status: 'authenticating', serverUrl: baseUrl, authType: 'session', user: { username: login }, error: null });
+    const next = safeRedirectPath(redirectTo);
+    setState({ status: 'authenticating', serverUrl: baseUrl, authType: 'session', user: { username: login }, error: null, redirectTo: null });
     publish();
 
     const loginPage = await perform(`${baseUrl}/login/`, {
@@ -430,6 +671,7 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, now =
         csrfmiddlewaretoken: csrfToken,
       });
       if (remember) form.set('remember', 'on');
+      if (next !== '/') form.set('next', next);
       return perform(`${baseUrl}/accounts/login/`, {
         method: 'POST',
         headers: {
@@ -477,7 +719,7 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, now =
     }
     candidate.lastVerifiedAt = now();
     await persist(candidate);
-    setState({ status: 'authenticated', authType: 'session', user: candidate.user, error: null });
+    setState({ status: 'authenticated', authType: 'session', user: candidate.user, error: null, redirectTo: next });
     publish();
     return publicState(state);
   }
@@ -490,7 +732,7 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, now =
       stored = null;
     }
     if (!stored) {
-      setState({ status: 'signed_out', authType: '', user: null, error: null });
+      setState({ status: 'signed_out', authType: '', user: null, error: null, redirectTo: null });
       session = null;
       publish();
       return publicState(state);
@@ -500,14 +742,14 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, now =
       parsed = JSON.parse(stored);
     } catch {
       await removeStored().catch(() => {});
-      setState({ status: 'signed_out', authType: '', user: null, error: null });
+      setState({ status: 'signed_out', authType: '', user: null, error: null, redirectTo: null });
       session = null;
       publish();
       return publicState(state);
     }
     if (!parsed || parsed.version !== SESSION_VERSION || !parsed.serverUrl || !['token', 'session'].includes(parsed.authType)) {
       await removeStored().catch(() => {});
-      setState({ status: 'signed_out', authType: '', user: null, error: null });
+      setState({ status: 'signed_out', authType: '', user: null, error: null, redirectTo: null });
       session = null;
       publish();
       return publicState(state);
@@ -519,6 +761,7 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, now =
       authType: parsed.authType,
       user: parsed.user || null,
       error: null,
+      redirectTo: null,
     });
     publish();
     return publicState(state);
@@ -564,6 +807,16 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, now =
     };
   }
 
+  async function verify() {
+    if (!session) return publicState(state);
+    await verifyCredential(session);
+    session.lastVerifiedAt = now();
+    await persist(session).catch(() => {});
+    setState({ status: 'authenticated', error: null });
+    publish();
+    return publicState(state);
+  }
+
   async function request(path, options = {}) {
     if (!session) {
       throw fail(AUTH_ERROR_CODES.SIGNED_OUT, 'Sign in to your Floppy server first.');
@@ -580,9 +833,13 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, now =
   return {
     restore,
     signIn,
+    signUp,
+    recoverPassword,
     signInWithToken,
     signOut,
     testConnection,
+    verify,
+    fetchAuthConfig,
     request,
     getState: () => publicState(state),
     getSession: () => sessionFacade(session, api),
