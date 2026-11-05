@@ -6,7 +6,7 @@ import { ratingPalette, spacing } from '../theme';
 
 export const surface = {
   id: 'RATING',
-  status: 'ported',
+  status: 'in_progress',
   title: 'Score chip and rating popup',
   where: 'Detail pages, episode rows, music tracks and cards',
   note: 'The detail personal score chip and its rating popup use the shared RatingChip and RatingStars. Other rating surfaces remain legacy on the web.',
