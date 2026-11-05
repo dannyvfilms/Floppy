@@ -156,7 +156,17 @@ def _derived_value(derived, name):
 
 
 @register.simple_tag(takes_context=True)
-def rating_chip(context, instance, media_type, post_url, derived_tv_score=None):
+def rating_chip(
+    context,
+    instance=None,
+    media_type="item",
+    post_url="",
+    derived_tv_score=None,
+    *,
+    score=None,
+    layout=None,
+    rate_title=None,
+):
     """Render the shared personal score chip and popup with a server fallback."""
     from django.template.defaultfilters import floatformat
     from django.utils.translation import gettext as _
@@ -166,11 +176,16 @@ def rating_chip(context, instance, media_type, post_url, derived_tv_score=None):
 
     user = context.get("user")
     scale_max = rating_scale_max(user)
-    score = getattr(instance, "score", None)
+    if score is None and instance is not None:
+        score = getattr(instance, "score", None)
+    compact = layout == "compact"
     display = _number_or_value(score_display(score, user)) if score is not None else None
     if display is None:
         display_value = None
         card_display_value = None
+    elif compact:
+        display_value = str(display)
+        card_display_value = str(display)
     elif scale_max == FIVE_POINT_RATING_SCALE:
         display_value = f"{display}/5"
         card_display_value = f"{display}/5"
@@ -196,6 +211,12 @@ def rating_chip(context, instance, media_type, post_url, derived_tv_score=None):
         "tv": _("show"),
         "season": _("show"),
         "movie": _("movie"),
+        "music": _("track"),
+        "track": _("track"),
+        "artist": _("artist"),
+        "album": _("album"),
+        "comic_issue": _("issue"),
+        "episode": _("episode"),
     }.get(media_type, _("item"))
     labels = {
         "rate": str(_("Rate")),
@@ -204,6 +225,8 @@ def rating_chip(context, instance, media_type, post_url, derived_tv_score=None):
         "close": str(_("Close")),
         "prompt": f"{_('Rate this')} {noun}",
     }
+    if rate_title is not None:
+        labels["rateTitle"] = str(rate_title)
     if score is not None:
         labels["yourScore"] = str(_("Your score"))
     if derived is not None:
@@ -217,17 +240,20 @@ def rating_chip(context, instance, media_type, post_url, derived_tv_score=None):
     if not csrf_token and context.get("request"):
         csrf_token = context["request"].META.get("CSRF_COOKIE", "")
 
+    props = {
+        "postUrl": str(post_url),
+        "csrfToken": str(csrf_token or ""),
+        "scaleMax": scale_max,
+        "value": float(display) if display is not None else None,
+        "displayValue": display_value,
+        "cardDisplayValue": card_display_value,
+        "derived": derived,
+        "labels": labels,
+    }
+    if layout:
+        props["layout"] = layout
     return render_to_string("app/components/rating_chip.html", {
-        "props": {
-            "postUrl": str(post_url),
-            "csrfToken": str(csrf_token or ""),
-            "scaleMax": scale_max,
-            "value": float(display) if display is not None else None,
-            "displayValue": display_value,
-            "cardDisplayValue": card_display_value,
-            "derived": derived,
-            "labels": labels,
-        },
+        "props": props,
         "props_id": f"rating-chip-{uuid4().hex}",
     })
 

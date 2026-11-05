@@ -44,35 +44,8 @@
 
     {% if album_tracker and user.ratings_enabled %}
       <div class="mt-4 mb-5 flex flex-wrap gap-2">
-        <div x-data="{ showRatingPopup: false, rating: {{ album_tracker.score|score_display:user|default:'null' }}, ratingScaleMax: {{ user|rating_scale_max }}, hoverRating: null, isHovering: false, formatRating(value) { if (value === null || value === undefined || value === '') { return ''; } return this.ratingScaleMax === 5 ? String(value) + '/5' : String(value); } }"
-             class="relative">
-          <button type="button"
-                  @click="showRatingPopup = !showRatingPopup"
-                  class="inline-flex h-8 items-center gap-2 rounded-full border border-amber-400/18 bg-amber-500/[0.07] pl-0 pr-3 text-sm text-white shadow-sm transition-colors duration-200 hover:border-amber-300/28 hover:bg-amber-500/[0.11]">
-            <span class="sr-only">{% translate "Your score" %}</span>
-            <span class="-my-px -ml-px flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-amber-400/28 bg-amber-500/14">
-              {% include "app/icons/star.svg" with classes="h-4 w-4 text-yellow-400 fill-yellow-400" %}
-            </span>
-            <span class="inline-flex items-center gap-2">
-              <span class="text-sm font-semibold text-[var(--color-text)] {% if album_tracker.score is None %}hidden{% endif %}"
-                    :class="rating ? '' : 'hidden'"
-                    x-text="formatRating(rating)">{% if album_tracker.score is not None %}{% if user|rating_scale_max == 5 %}{{ album_tracker.score|score_display:user }}/5{% else %}{{ album_tracker.score|score_display:user }}{% endif %}{% endif %}</span>
-              <span class="text-sm text-[var(--color-text-muted)] {% if album_tracker.score is None %}hidden{% endif %}"
-                    :class="rating ? '' : 'hidden'">|</span>
-              {% translate "Edit rating" as media_i18n_34 %}{% translate "Add rating" as media_i18n_35 %}<span class="text-sm font-medium text-[var(--color-text-secondary)]"
-                    x-text="rating ? '{{ media_i18n_34|escapejs }}' : '{{ media_i18n_35|escapejs }}'">{% if album_tracker.score is not None %}{% translate "Edit rating" %}{% else %}{% translate "Add rating" %}{% endif %}</span>
-            </span>
-          </button>
-
-          <div x-show="showRatingPopup"
-               @click.outside="showRatingPopup = false; isHovering = false"
-               class="absolute left-0 top-full mt-2 w-[250px] rounded-lg border border-gray-700 bg-[var(--color-surface)] p-3 shadow-lg z-10"
-               @mouseenter="isHovering = true"
-               @mouseleave="isHovering = false; hoverRating = null">
-            {% url 'update_album_score' album.id as rating_post_url %}
-            {% include "app/components/rating_picker.html" with post_url=rating_post_url %}
-          </div>
-        </div>
+        {% url 'update_album_score' album.id as rating_post_url %}
+        {% rating_chip album_tracker "album" rating_post_url %}
       </div>
     {% endif %}
 

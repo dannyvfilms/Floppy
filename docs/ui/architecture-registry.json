@@ -668,15 +668,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Web adapter and Expo export compile; not exercised in a browser during this change."
+          "evidence": "Added the compact row layout and mounted it from the music track and comic issue row templates; the web bundle was built and checked, but no browser interaction pass was run."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Not exercised."
+          "evidence": "The compact layout is available but was not placed on a native row; the Expo export compiles it."
         },
         "android": {
-          "status": "verified",
-          "evidence": "Android 15 Pixel 7 AVD: rendered the shared rating chip on Detail; no rating popup, selection or TalkBack interaction."
+          "status": "unverified",
+          "evidence": "A prior build rendered the detail pill on an Android AVD; the new compact layout and the new consumers were not exercised."
         }
       }
     },
