@@ -745,16 +745,22 @@ presentation.
 ## SET-PROVIDERS
 
 - `frontend/providers/AccountConnection.jsx`
+- `frontend/providers/AccountSettings.jsx`
 - `frontend/providers/Activity.jsx`
 - `frontend/providers/Connection.jsx`
+- `frontend/providers/ConnectionSettings.jsx`
 - `frontend/providers/Directory.jsx`
 - `frontend/providers/Import.jsx`
 - `frontend/providers/ImportPreferences.jsx`
+- `frontend/providers/ImportSettings.jsx`
 - `frontend/providers/Metadata.jsx`
 - `frontend/providers/ProviderPage.jsx`
 - `frontend/providers/mount.jsx`
 - `frontend/providers/provider-page.css`
 - `frontend/providers/web.jsx`
+- `frontend/ui/SetupGuide.jsx`
+- `frontend/ui/TextField.jsx`
+- `native-proof/app/surfaces/ProviderSettingsSlot.jsx`
 - `src/templates/users/providers/overview_fallback.html`
 - `src/templates/users/providers/header_fallback.html`
 - `src/templates/users/providers/content_legacy.html`

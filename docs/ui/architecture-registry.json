@@ -471,6 +471,107 @@
         }
       }
     },
+    "frontend/ui/TextField.jsx": {
+      "components": [
+        "TextField"
+      ],
+      "register": "SET-PROVIDERS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the legacy controls.jsx provider fields remain the browser implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared field through the native Settings provider slot; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared field through the native Settings provider slot; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/ui/SetupGuide.jsx": {
+      "components": [
+        "SetupGuide"
+      ],
+      "register": "SET-PROVIDERS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the legacy providers/SetupGuide.jsx browser adapter remains the active implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared guide through the native Settings provider slot; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared guide through the native Settings provider slot; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/providers/ConnectionSettings.jsx": {
+      "components": [
+        "ConnectionSettings"
+      ],
+      "register": "SET-PROVIDERS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the legacy providers/Credentials.jsx browser form remains the active implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared credential card through the native Settings provider slot; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared credential card through the native Settings provider slot; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/providers/AccountSettings.jsx": {
+      "components": [
+        "AccountSettings"
+      ],
+      "register": "SET-PROVIDERS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the legacy providers/AccountConnection.jsx browser form remains the active implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared account card through the native Settings provider slot; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared account card through the native Settings provider slot; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/providers/ImportSettings.jsx": {
+      "components": [
+        "ImportSettings",
+        "ImportPreferencesCard"
+      ],
+      "register": "SET-PROVIDERS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the legacy providers/Import.jsx and ImportPreferences.jsx browser forms remain the active implementations."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared import cards through the native Settings provider slot; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared import cards through the native Settings provider slot; no emulator run was performed."
+        }
+      }
+    },
     "frontend/ui/RatingStars.jsx": {
       "components": [
         "RatingStars"

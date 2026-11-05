@@ -10,5 +10,6 @@ import { surface as progress } from './ProgressSlot';
 import { surface as rating } from './RatingSlot';
 import { surface as search } from './SearchSlot';
 import { surface as settingsCard } from './SettingsCardSlot';
+import { surface as providerSettings } from './ProviderSettingsSlot';
 
-export const surfaces = [search, mediaCard, rails, filters, rating, progress, dateTime, calendar, bulk, button, settingsCard, preferences];
+export const surfaces = [search, mediaCard, rails, filters, rating, progress, dateTime, calendar, bulk, button, settingsCard, providerSettings, preferences];
