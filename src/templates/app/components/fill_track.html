@@ -90,7 +90,12 @@
 
     <div class="flex-1 min-w-0 p-4 sm:p-5 md:p-6 overflow-y-auto bg-[var(--color-surface-dim)]">
           <section x-show="activeTab === 'general'" x-cloak>
+            {% if track_form_presentation %}
+              {{ track_form_presentation|json_script:track_form_props_id }}
+              <div data-track-form-root data-props-id="{{ track_form_props_id }}"></div>
+            {% endif %}
             <form id="{{ track_form_id }}"
+                  data-track-form-legacy
                   method="post"
                   action="{{ general_submit_formaction }}"
                   hx-post="{{ general_submit_formaction }}"

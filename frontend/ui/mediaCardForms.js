@@ -84,6 +84,8 @@ export function normalizeTrackForm(payload) {
     title: source.title || '',
     subtitle: source.titleSubtitle || source.subtitle || '',
     formId: source.formId || '',
+    instanceId: source.instanceId ?? null,
+    isNew: source.isNew,
     action: source.action || '',
     deleteAction: source.deleteAction || '',
     csrfToken: source.csrfToken || '',
@@ -93,6 +95,7 @@ export function normalizeTrackForm(payload) {
     deleteLabel: source.deleteLabel || 'Delete',
     trackTime: Boolean(source.trackTime),
     labels: source.labels || {},
+    repeatIdentity: source.repeatIdentity || null,
   };
 }
 

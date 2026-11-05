@@ -56,15 +56,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compiled into the web bundle through SearchResults, HistoryFeed, ListResults, ListCard, TierBoard, CollectionBrowser and ListSearchView; the DOM MediaCard adapter remains the browser card. No browser interaction pass was performed."
+          "evidence": "Compiled into the web bundle through SearchResults, HistoryFeed, ListResults, ListCard, TierBoard, CollectionBrowser and ListSearchView; the DOM MediaCard adapter remains the browser card. The explicit read-only and selection props are compiled but were not exercised in a browser."
         },
         "ios": {
           "status": "verified",
-          "evidence": "iOS 17.2 simulator: rendered the shared card on Home. The new drag gesture, Discover plan/hide removal and bulk refresh were not exercised; no action overlay, rating popup or accessibility pass."
+          "evidence": "iOS 17.2 simulator: rendered the shared card on Home. The link routing, read-only/selection states, drag announcements and bulk refresh were not exercised; no action overlay, rating popup or accessibility pass."
         },
         "android": {
           "status": "verified",
-          "evidence": "Android 15 Pixel 7 AVD: rendered the shared card on Home and Library; demo images did not load. The new drag gesture, Discover plan/hide removal and bulk refresh were not exercised; no action overlay, rating popup or accessibility pass."
+          "evidence": "Android 15 Pixel 7 AVD: rendered the shared card on Home and Library; demo images did not load. The link routing, read-only/selection states, drag announcements and bulk refresh were not exercised; no action overlay, rating popup or accessibility pass."
         }
       }
     },
@@ -78,15 +78,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compiled into the web bundle through MediaCardView consumers; the drag handle and step controls were not exercised in a browser."
+          "evidence": "Compiled into the web bundle through MediaCardView consumers; the drag handle, adjustable value and step controls were not exercised in a browser."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled and placed in the card on the iOS Home screen. The new PanResponder drag gesture and adjustable accessibility actions were not exercised; no action reveal, button press or reorder was exercised."
+          "evidence": "Compiled and placed in the card on the iOS Home screen. The PanResponder drag gesture, adjustable value and hint, and accessibility actions were not exercised; no action reveal, button press or reorder was exercised."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled and placed in the card on the Android Home and Library screens. The new PanResponder drag gesture and adjustable accessibility actions were not exercised; no action reveal, button press or reorder was exercised."
+          "evidence": "Compiled and placed in the card on the Android Home and Library screens. The PanResponder drag gesture, adjustable value and hint, and accessibility actions were not exercised; no action reveal, button press or reorder was exercised."
         }
       }
     },
@@ -888,7 +888,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not rendered by the web bundle; the existing server-rendered Track popup remains the browser path."
+          "evidence": "Rendered by mountTrackForm in the server track modal General tab for card, detail and episode Track popups; the web bundle builds and targeted Django tests pass, but no browser interaction pass was run."
         },
         "ios": {
           "status": "unverified",
@@ -908,7 +908,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted in the browser; the web detail pages keep their server-rendered htmx and OOB track modal, permissions and progressive fallback."
+          "evidence": "Rendered in embedded mode by mountTrackForm inside the server track modal General tab; the remaining web tabs keep the server path. The web bundle builds and targeted Django tests pass; no browser interaction pass was run."
         },
         "ios": {
           "status": "unverified",
@@ -1044,7 +1044,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not rendered by the web bundle; the existing server-rendered Track popup remains the browser path."
+          "evidence": "The remaining Tags, Metadata, Collection, Episode plays, Status history and Discover tabs keep the server-rendered Track popup on the web; only the General form is mounted through the shared adapter. No browser tab interaction pass was run."
         },
         "ios": {
           "status": "unverified",
@@ -2436,6 +2436,10 @@
     "frontend/ui/mountMediaCard.jsx": {
       "register": "MEDIA-CARD",
       "purpose": "Django/browser integration for the registered surface."
+    },
+    "frontend/ui/mountTrackForm.jsx": {
+      "register": "TRACKING",
+      "purpose": "Browser adapter for the shared General tracking form: read the server serialized model, keep the legacy form as the no-JavaScript fallback, and submit, delete and rewatch through htmx so OOB fragments, HX-Trigger close/toast events, CSRF, permissions and redirects stay server-owned."
     },
     "frontend/ui/mountModalHost.jsx": {
       "register": "SHELL",

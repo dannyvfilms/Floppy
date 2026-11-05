@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { AccessibilityInfo, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Button } from '../../../frontend/ui/Button';
 import { ListsForm } from '../../../frontend/ui/ListsFormView';
 import { MediaCardActionHost } from '../../../frontend/ui/MediaCardActionHost';
@@ -38,8 +38,8 @@ export const surface = {
   id: 'MEDIA-CARD',
   title: 'Media card',
   where: 'Home rails, Discover, Library, Search and List results',
-  status: 'in_progress',
-  note: 'Poster, square, landscape and row cards render the shared model with artwork fallback, chips, progress, rating, action overlay, touch/hover reveal and read-only/selectable states. The native action host owns the Track and Lists form bodies, the Track song/episode variants, Discover plan/hide, list reorder and a shared card-change event through the platform transport. The finish pass wires the remaining link action transport, the web Track General adapter, explicit read-only and bulk selection states, and drag announcements; runtime interaction and screen-reader evidence stay outstanding until the integrated device pass.',
+  status: 'ported',
+  note: 'Poster, square, landscape and row cards render the shared model with artwork fallback, chips, progress, rating, action overlay, touch/hover reveal, explicit read-only mode and selectable states. The native action host owns the Track and Lists form bodies, the Track song/episode variants, link routing, Discover plan/hide, list reorder and a shared card-change event through the platform transport. Drag reorder exposes an adjustable position and hint, step and accessibility actions, and announces moves and failures; the web Track General form is shared presentation through mountTrackForm. The Expo export compiles the finished card; iOS, Android, browser and screen-reader runtime interaction remain unverified.',
 };
 
 const labels = {
@@ -847,7 +847,7 @@ function DiscoverAction({ action, onClose }) {
         onPress={() => setAttempt(current => current + 1)} />
     </View>;
   }
-  return <Text style={styles.hostBody}>
+  return <Text accessibilityRole="status" accessibilityLiveRegion="polite" style={styles.hostBody}>
     {planning ? `Adding “${vals.title || action.title}” to Planning…` : `Hiding “${vals.title || action.title}” from Discover…`}
   </Text>;
 }
@@ -857,7 +857,7 @@ function ActionBody({ action, onClose }) {
   if (action.modal === 'lists') return <ListsAction action={action} onClose={onClose} />;
   if (action.modal === 'track') return <TrackAction action={action} onClose={onClose} />;
   if (action.kind === 'post') return <DiscoverAction action={action} onClose={onClose} />;
-  return <Text style={styles.hostBody}>This link is routed by the platform navigation adapter.</Text>;
+  return null;
 }
 
 function nearestCardIndex(order, layouts, key, dx, dy, fallback) {
@@ -932,7 +932,14 @@ function applyMediaCardChange(model, change) {
   return next;
 }
 
-export default function MediaCardSlot({ onOpenDetail }) {
+export default function MediaCardSlot({
+  onOpenDetail,
+  onOpenLink,
+  readOnly = false,
+  selectionMode = false,
+  selectedKeys = [],
+  onToggleSelection,
+}) {
   const { width } = useWindowDimensions();
   const [ratings, setRatings] = useState({});
   const [pendingAction, setPendingAction] = useState(null);
@@ -979,7 +986,22 @@ export default function MediaCardSlot({ onOpenDetail }) {
         return next;
       });
       setActionError(error.message || 'Could not save this rating.');
+      AccessibilityInfo.announceForAccessibility?.(error.message || 'Could not save this rating.');
     }
+  }
+
+  function announce(message) {
+    AccessibilityInfo.announceForAccessibility?.(message);
+  }
+
+  function runAction(action) {
+    if (!action) return;
+    if (action.kind === 'link') {
+      setPendingAction(null);
+      (onOpenLink || onOpenDetail)?.(action.href);
+      return;
+    }
+    setPendingAction(action);
   }
 
   async function reorder(item, step) {
@@ -992,9 +1014,11 @@ export default function MediaCardSlot({ onOpenDetail }) {
     if (!hasMediaCardTransport() || !ordering) return;
     try {
       await reorderListItem(ordering, step);
+      announce(`${item.model.title} moved ${step}.`);
     } catch (error) {
       setOrder(previous);
       setActionError(error.message || 'Could not reorder this item.');
+      announce(error.message || 'Could not reorder this item.');
     }
   }
 
@@ -1012,9 +1036,11 @@ export default function MediaCardSlot({ onOpenDetail }) {
     if (!hasMediaCardTransport() || !ordering) return;
     try {
       await persistListOrder(ordering, next, targetIndex, fromIndex);
+      announce(`${item.model.title} moved to position ${targetIndex + 1} of ${order.length}.`);
     } catch (error) {
       setOrder(previous);
       setActionError(error.message || 'Could not reorder this item.');
+      announce(error.message || 'Could not reorder this item.');
     }
   }
 
@@ -1059,6 +1085,25 @@ export default function MediaCardSlot({ onOpenDetail }) {
           };
         }
         model = applyMediaCardChange(model, changes[identityKey(item.model.identity)]);
+        if (model.actions?.ordering) {
+          model = {
+            ...model,
+            actions: {
+              ...model.actions,
+              ordering: {
+                ...model.actions.ordering,
+                position: index + 1,
+                count: items.length,
+              },
+            },
+          };
+        }
+        const selection = selectionMode ? {
+          active: true,
+          selected: selectedKeys.includes(item.key),
+          label: `Select ${model.title}`,
+          toggle: () => onToggleSelection?.(item.key),
+        } : undefined;
         const isDragging = drag?.key === item.key;
         return <View key={item.key}
           onLayout={event => { layouts.current[item.key] = event.nativeEvent.layout; }}
@@ -1068,8 +1113,10 @@ export default function MediaCardSlot({ onOpenDetail }) {
           ]}>
           <MediaCardView model={model} labels={labels} palette={mediaCardPalette}
             width={cardWidth} onOpen={onOpenDetail}
-            onOpenLink={onOpenDetail}
-            onAction={setPendingAction}
+            onOpenLink={onOpenLink || onOpenDetail}
+            onAction={runAction}
+            readOnly={readOnly}
+            selection={selection}
             onReorder={step => reorder(item, step)}
             onReorderDrag={event => handleReorderDrag(item, event)}
             dragging={isDragging}
@@ -1081,7 +1128,8 @@ export default function MediaCardSlot({ onOpenDetail }) {
         </View>;
       })}
     </View>
-    {actionError ? <Text role="status" accessibilityRole="alert" style={styles.actionError}>{actionError}</Text> : null}
+    {actionError ? <Text role="status" accessibilityRole="alert" accessibilityLiveRegion="polite"
+      style={styles.actionError}>{actionError}</Text> : null}
     <MediaCardActionHost action={pendingAction} open={!!pendingAction} labels={labels}
       palette={mediaCardPalette} onClose={() => setPendingAction(null)}>
       <ActionBody key={pendingAction?.target || pendingAction?.title || 'closed'} action={pendingAction}

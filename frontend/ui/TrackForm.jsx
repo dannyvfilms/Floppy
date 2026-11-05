@@ -13,6 +13,7 @@ import {
 import { RatingStars } from './RatingStars';
 import { TrackTabs } from './TrackFormTabs';
 import { validateTrackValues } from './mediaCardForms';
+import { valueFromDate } from './dateTime';
 
 const DEFAULT_LABELS = {
   title: 'Tracking',
@@ -87,6 +88,7 @@ export function TrackForm({
   onArtworkSave,
   onDiscoverToggle,
   secondaryActions = [],
+  embedded = false,
 }) {
   const labels = { ...DEFAULT_LABELS, ...(suppliedLabels || {}) };
   const palette = { ...DEFAULT_PALETTE, ...(suppliedPalette || {}) };
@@ -138,7 +140,18 @@ export function TrackForm({
           help={field.help} error={fieldErrors[field.name]} palette={palette}>
           <DateTimePicker value={value} onChange={next => change(field.name, next)}
             trackTime={Boolean(model.trackTime)} labels={labels.dateTime || {}}
-            palette={palette.dateTime || {}} />
+            palette={palette.dateTime || {}}
+            quickActions={field.quickActions || []}
+            suggestionDate={field.suggestionDate || ''}
+            suggestionLabel={field.suggestionLabel || ''}
+            suggestionExtras={field.suggestionExtras || []}
+            copyValue={field.copyFrom ? (values[field.copyFrom] || '') : ''}
+            copyLabel={field.copyFromLabel || ''}
+            copyEmptyMessage={field.copyEmptyMessage || ''}
+            onQuickAction={action => change(field.name,
+              action === 'release-date'
+                ? (field.suggestionDate || '')
+                : valueFromDate(new Date(), Boolean(model.trackTime)))} />
         </FormField>;
       }
       if (type === 'rating') {
@@ -175,7 +188,9 @@ export function TrackForm({
     </View>
   </View>;
 
-  return <View nativeID={nativeID} style={[styles.card, { backgroundColor: palette.surface, maxHeight: height * 0.88 }]}>
+  return <View nativeID={nativeID} style={[styles.card,
+    embedded && styles.embedded,
+    { backgroundColor: embedded ? 'transparent' : palette.surface, maxHeight: embedded ? undefined : height * 0.88 }]}>
     {showHeader ? <FormHeader title={model?.title || labels.title} closeLabel={labels.close}
       onClose={onClose} closeRef={closeRef} palette={palette} /> : null}
     {status === 'loading' ? <FormStatus message={labels.loading} tone="loading" palette={palette} /> : null}
@@ -201,6 +216,9 @@ const styles = StyleSheet.create({
   card: {
     width: '100%', borderRadius: 8, padding: 24, gap: 16,
     shadowColor: '#000000', shadowOpacity: 0.35, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 16,
+  },
+  embedded: {
+    borderRadius: 0, padding: 0, shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 }, elevation: 0,
   },
   scroll: { flexGrow: 0 },
   stack: { gap: 14 },

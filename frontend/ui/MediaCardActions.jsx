@@ -68,7 +68,7 @@ const REORDER_STEPS = [
   ['last', '>>'],
 ];
 
-function DragHandle({ label, icon, stepLabels = {}, palette, renderIcon, onReorder, onDrag, dragging }) {
+function DragHandle({ label, hint, position, count, icon, stepLabels = {}, palette, renderIcon, onReorder, onDrag, dragging }) {
   const dragRef = useRef(onDrag);
   dragRef.current = onDrag;
   const responder = useMemo(() => PanResponder.create({
@@ -103,7 +103,11 @@ function DragHandle({ label, icon, stepLabels = {}, palette, renderIcon, onReord
     accessible
     accessibilityRole="adjustable"
     accessibilityLabel={label}
+    accessibilityHint={hint}
     accessibilityActions={actions}
+    accessibilityValue={count > 0 && position > 0
+      ? { min: 1, max: count, now: position, text: `${position} of ${count}` }
+      : undefined}
     accessibilityState={{ disabled: !onDrag && !onReorder, busy: !!dragging }}
     onAccessibilityAction={event => {
       if (event.nativeEvent.actionName === 'increment') onReorder?.('next');
@@ -148,7 +152,9 @@ export function MediaCardActions({
               <Text style={[styles.orderText, { color: colors.actionText }]}>{text}</Text>
             </Pressable>)}
           </View>
-          <DragHandle label={ordering.labels?.drag} icon={ordering.dragIcon} stepLabels={ordering.labels}
+          <DragHandle label={ordering.labels?.drag} hint={ordering.labels?.dragHint || labels.dragHint}
+            position={ordering.position} count={ordering.count}
+            icon={ordering.dragIcon} stepLabels={ordering.labels}
             palette={colors} renderIcon={renderIcon} onReorder={onReorder}
             onDrag={onReorderDrag} dragging={dragging} />
         </View>

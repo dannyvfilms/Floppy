@@ -5,14 +5,16 @@ from datetime import UTC, date
 from urllib.parse import urlencode
 from uuid import uuid4
 
+from django import forms
 from django.apps import apps
 from django.conf import settings
+from django.middleware.csrf import get_token
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.utils.timezone import datetime
-from django.utils.translation import gettext_noop
+from django.utils.translation import gettext, gettext_noop, pgettext
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
@@ -184,6 +186,230 @@ def _track_modal_field_groups(form, *, hidden_field_names, metadata_field_names=
             for field_name in form.fields
             if field_name in hidden_field_names
         ],
+    }
+
+
+def _track_form_date_value(value, track_time):
+    """Return a date or datetime value the shared picker can parse."""
+    if isinstance(value, datetime):
+        pattern = "%Y-%m-%dT%H:%M" if track_time else "%Y-%m-%d"
+        return value.strftime(pattern)
+    if isinstance(value, date):
+        return value.isoformat()
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if not track_time:
+        return text.split("T")[0][:10]
+    if "T" in text:
+        return text[:16]
+    if " " in text:
+        return text.replace(" ", "T")[:16]
+    return text[:10]
+
+
+def _track_form_field_value(field, track_time):
+    value = field.value()
+    if field.name in {"start_date", "end_date"}:
+        return _track_form_date_value(value, track_time)
+    return "" if value is None else str(value)
+
+
+def _track_form_field_type(field):
+    widget = field.field.widget
+    if isinstance(widget, forms.Select):
+        return "select"
+    if field.name in {"start_date", "end_date"} or isinstance(
+        widget,
+        (forms.DateInput, forms.DateTimeInput),
+    ):
+        return "date"
+    if isinstance(widget, forms.Textarea):
+        return "textarea"
+    if getattr(widget, "input_type", "") == "number":
+        return "number"
+    return "text"
+
+
+def _track_form_field_options(field):
+    options = []
+    for value, label in getattr(field.field, "choices", None) or []:
+        if isinstance(label, (list, tuple)):
+            for option_value, option_label in label:
+                options.append(
+                    {"value": str(option_value), "label": str(option_label)},
+                )
+        else:
+            options.append({"value": str(value), "label": str(label)})
+    return options
+
+
+def _track_form_field_payload(field, track_time):
+    attrs = field.field.widget.attrs
+    field_type = _track_form_field_type(field)
+    return {
+        "name": field.name,
+        "label": str(field.label),
+        "type": field_type,
+        "value": _track_form_field_value(field, track_time),
+        "required": bool(field.field.required),
+        "options": _track_form_field_options(field) if field_type == "select" else [],
+        "help": str(field.help_text or ""),
+        "min": None if attrs.get("min") is None else str(attrs.get("min")),
+        "max": None if attrs.get("max") is None else str(attrs.get("max")),
+        "step": None if attrs.get("step") is None else str(attrs.get("step")),
+        "placeholder": str(attrs.get("placeholder") or ""),
+    }
+
+
+def _track_form_labels():
+    return {
+        "title": str(gettext("Tracking")),
+        "close": str(gettext("Close")),
+        "loading": str(gettext("Loading")),
+        "loadFailed": str(gettext("Couldn't load this form.")),
+        "retry": str(gettext("Try again")),
+        "save": str(gettext("Save")),
+        "saving": str(gettext("Saving")),
+        "delete": str(gettext("Delete")),
+        "required": str(gettext("%s is required.")),
+        "invalidNumber": str(gettext("Enter a number.")),
+        "minimum": str(gettext("Must be at least %s.")),
+        "maximum": str(gettext("Must be at most %s.")),
+        "dateOrder": str(gettext("End date must be on or after the start date.")),
+        "dateTime": {},
+    }
+
+
+def _track_form_presentation(
+    request,
+    form,
+    *,
+    track_form_id,
+    title,
+    title_subtitle,
+    media_type,
+    media,
+    action,
+    delete_action,
+    hidden_fields,
+    general_fields,
+    rewatch_action,
+    rewatch_url,
+    save_as_new,
+    date_suggestion=None,
+):
+    """Serialize the General tab into the shared TrackForm model."""
+    track_time = bool(settings.TRACK_TIME)
+    hidden = {
+        field.name: _track_form_field_value(field, track_time)
+        for field in hidden_fields
+    }
+    hidden["track_form_id"] = track_form_id
+    if request.GET.get("edition_id"):
+        hidden["edition_id"] = request.GET["edition_id"]
+    repeat_identity = {}
+    if rewatch_action:
+        repeat_identity["rewatchLabel"] = str(gettext(rewatch_action["label"]))
+        repeat_identity["rewatchAction"] = rewatch_action["action"]
+        repeat_identity["rewatchUrl"] = rewatch_url
+    if save_as_new:
+        repeat_identity["canSaveAsNew"] = True
+        repeat_identity["saveAsNewLabel"] = str(gettext("Save as new entry"))
+    fields = [
+        _track_form_field_payload(field, track_time)
+        for field in general_fields
+    ]
+    suggestion = date_suggestion or {}
+    for field in fields:
+        if field["name"] not in {"start_date", "end_date"}:
+            continue
+        is_start = field["name"] == "start_date"
+        quick_actions = []
+        if is_start:
+            quick_actions.append(
+                {
+                    "id": "start-now",
+                    "label": str(
+                        pgettext("date picker shortcut", "Start Now"),
+                    ),
+                },
+            )
+        else:
+            quick_actions.append(
+                {
+                    "id": "just-finished",
+                    "label": str(
+                        pgettext("date picker shortcut", "Just Finished"),
+                    ),
+                },
+            )
+        if is_start:
+            quick_actions.append(
+                {
+                    "id": "release-date",
+                    "label": str(
+                        pgettext("date picker shortcut", "Release Date"),
+                    ),
+                    "requiresSuggestion": True,
+                },
+            )
+        field["quickActions"] = quick_actions
+        field["suggestionDate"] = suggestion.get("date", "")
+        suggestion_label = suggestion.get("label") or ""
+        field["suggestionLabel"] = (
+            (
+                str(pgettext("date picker shortcut", suggestion_label))
+                if suggestion_label == "Release Date"
+                else str(gettext(suggestion_label))
+            )
+            if suggestion.get("date") and suggestion_label
+            else ""
+        )
+        field["suggestionExtras"] = suggestion.get("extras", [])
+        copy_from = "end_date" if is_start else "start_date"
+        if copy_from in form.fields:
+            copy_label = str(gettext("End") if is_start else gettext("Start"))
+            field["copyFrom"] = copy_from
+            field["copyFromLabel"] = copy_label
+            field["copyEmptyMessage"] = str(
+                gettext("%(label)s is empty") % {"label": copy_label},
+            )
+    notes_field = form["notes"] if "notes" in form.fields else None
+    return {
+        "model": {
+            "mediaType": media_type,
+            "title": str(title),
+            "titleSubtitle": title_subtitle,
+            "formId": track_form_id,
+            "instanceId": str(media.id) if media is not None else None,
+            "isNew": media is None,
+            "action": action,
+            "deleteAction": delete_action if media is not None else "",
+            "csrfToken": get_token(request),
+            "fields": fields,
+            "hidden": hidden,
+            "notes": (
+                {
+                    "value": _track_form_field_value(notes_field, track_time),
+                    "label": str(notes_field.label),
+                    "help": str(notes_field.help_text or ""),
+                }
+                if notes_field is not None
+                else None
+            ),
+            "submitLabel": str(
+                gettext("Update") if media is not None else gettext("Add"),
+            ),
+            "deleteLabel": str(gettext("Delete")),
+            "trackTime": track_time,
+            "labels": _track_form_labels(),
+            "repeatIdentity": repeat_identity,
+        },
+        "errors": {
+            name: " ".join(str(message) for message in messages)
+            for name, messages in form.errors.items()
+        },
     }
 
 
@@ -1067,6 +1293,24 @@ def _render_standard_track_modal(
             metadata=base_metadata,
         )
     context.update(_build_track_modal_discover_tab_context(request.user, metadata_item))
+    context["track_form_props_id"] = f"{track_form_id}-shared-form"
+    context["track_form_presentation"] = _track_form_presentation(
+        request,
+        form,
+        track_form_id=track_form_id,
+        title=title,
+        title_subtitle=title_subtitle,
+        media_type=media_type,
+        media=media,
+        action=context["general_submit_formaction"],
+        delete_action=context["general_delete_formaction"],
+        hidden_fields=hidden_fields,
+        general_fields=general_fields,
+        rewatch_action=rewatch_action,
+        rewatch_url=context["general_rewatch_formaction"],
+        save_as_new=bool(media_type == MediaTypes.EPISODE.value and media),
+        date_suggestion=date_suggestion,
+    )
     response = render(
         request,
         "app/components/fill_track.html",

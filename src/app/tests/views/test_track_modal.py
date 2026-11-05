@@ -349,10 +349,10 @@ class TrackModalViewTests(TestCase):
         # also appears once per picker in the unconditional x-data config
         # (see suggestionLabel below), plus once as the start field's
         # visible quick-action label.
-        self.assertEqual(content.count("Start Now"), 1)
-        self.assertEqual(content.count("Just Finished"), 1)
-        self.assertEqual(content.count("Release Date"), 3)
-        self.assertEqual(content.count('"id": "release-date"'), 1)
+        self.assertEqual(content.count("Start Now"), 2)
+        self.assertEqual(content.count("Just Finished"), 2)
+        self.assertEqual(content.count("Release Date"), 4)
+        self.assertEqual(content.count('"id": "release-date"'), 2)
         general_field_names = [
             field.name for field in response.context["general_fields"]
         ]
@@ -377,6 +377,84 @@ class TrackModalViewTests(TestCase):
         self.assertContains(response, "data-date-time-picker-root", html=False)
         self.assertContains(response, '"quickActions"', html=False)
         self.assertNotContains(response, "Custom Metadata")
+
+    def test_track_modal_exposes_shared_general_form_presentation(self):
+        """The General tab carries a serialized model for the shared TrackForm."""
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "238",
+                },
+            )
+            + "?return_url=/home",
+        )
+
+        model = response.context["track_form_presentation"]["model"]
+        self.assertEqual(model["title"], "Test Movie")
+        self.assertEqual(model["submitLabel"], "Update")
+        self.assertEqual(model["action"], reverse("media_save") + "?next=/home")
+        self.assertEqual(
+            model["deleteAction"],
+            reverse("media_delete") + "?next=/home",
+        )
+        self.assertEqual(model["hidden"]["instance_id"], str(self.movie.id))
+        self.assertEqual(
+            model["hidden"]["track_form_id"],
+            response.context["track_form_id"],
+        )
+        self.assertTrue(model["csrfToken"])
+        self.assertEqual(
+            [field["name"] for field in model["fields"]][:2],
+            ["score", "status"],
+        )
+        status_field = next(
+            field for field in model["fields"] if field["name"] == "status"
+        )
+        self.assertEqual(status_field["type"], "select")
+        self.assertTrue(status_field["options"])
+        self.assertEqual(model["notes"]["value"], "")
+        self.assertContains(response, "data-track-form-root")
+        self.assertContains(response, "data-track-form-legacy")
+
+    def test_track_modal_presentation_offers_rewatch_on_completed_show(self):
+        """The shared form keeps the repeat identity offered by the server."""
+        tv_item = Item.objects.create(
+            media_id="279977",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Finished Show",
+            image="https://example.com/finished-show.jpg",
+        )
+        TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+        )
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": tv_item.media_id,
+                },
+            )
+            + "?return_url=/home",
+        )
+
+        repeat = response.context["track_form_presentation"]["model"][
+            "repeatIdentity"
+        ]
+        self.assertEqual(repeat["rewatchAction"], "start")
+        self.assertEqual(
+            repeat["rewatchUrl"],
+            reverse("media_rewatch") + "?action=start&next=/home",
+        )
+        self.assertEqual(repeat["rewatchLabel"], "Rewatch")
 
     def test_track_modal_renders_tags_tab_for_tracked_media(self):
         """The edit modal exposes tag management in its own tab."""
@@ -788,9 +866,9 @@ class TrackModalViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        self.assertEqual(content.count('"suggestionDate": "2024-01-15"'), 2)
+        self.assertEqual(content.count('"suggestionDate": "2024-01-15"'), 4)
         self.assertEqual(content.count('"suggestionRuntimeMinutes": "95"'), 2)
-        self.assert_release_shortcut_labels(response)
+        self.assert_release_shortcut_labels(response, count=4)
 
     def test_track_modal_close_button_supports_split_button_wrapper(self):
         """The shared close button should work for edit/create split-button wrappers."""
@@ -1183,9 +1261,9 @@ class TrackModalViewTests(TestCase):
             "Save this image from the General tab when you add or update the entry.",
         )
         content = response.content.decode()
-        self.assertEqual(content.count('"suggestionDate": "2024-01-15"'), 2)
+        self.assertEqual(content.count('"suggestionDate": "2024-01-15"'), 4)
         self.assertEqual(content.count('"suggestionRuntimeMinutes": "95"'), 2)
-        self.assert_release_shortcut_labels(response)
+        self.assert_release_shortcut_labels(response, count=4)
         self.assertNotContains(response, "Save Image")
 
     @patch("app.providers.services.get_media_metadata")
