@@ -412,6 +412,13 @@ Server-owned detail composition retained behind the fallback:
 
 ## CHILDREN
 
+Shared React Native presentation and native placement:
+
+- `frontend/ui/DetailChildren.jsx`
+- `native-proof/app/surfaces/DetailChildrenSlot.jsx` (native children on the Detail screen)
+
+Server-owned rows retained behind the web fallback:
+
 - `src/templates/app/comic_issue_details.html`
 - `src/templates/app/components/_episode_scroll_restore.html`
 - `src/templates/app/components/detail_episode_collection_button.html`

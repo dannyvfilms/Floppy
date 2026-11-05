@@ -531,11 +531,15 @@ can inform a focused completion pass.
 ### CHILDREN — Seasons, episodes and issue rows
 
 - Purpose/usage: episode/season/comic detail and child lists.
-- Implementation: `src/templates/app/episode_details.html`, `comic_issue_details.html`, episode/issue/season/action/obfuscation/scroll fragments.
-- Contract: ordering, watch/unwatch/drop, score/ownership/history, spoiler obfuscation and correct row/hero/scroll restoration.
-- Data: detail/save/score handlers and source/media/season/episode coordinates.
-- Reuse/blockers: shared row/actions; medium operations/order explicit. Depends on tracking/rating/collection parity.
-- Validation targets: `src/app/tests/views/test_episode_history_poll.py`, `test_episode_score_invalidation.py`, `test_season_status_pill_sync.py`.
+- Implementation: universal `frontend/ui/DetailChildren.jsx` (`DetailChildren`, `DetailSeasonList`, `DetailSeasonRow`, `DetailEpisodeRow`, `DetailIssueRow`, `DetailHistoryDialog`) rendered by `native-proof/app/surfaces/DetailChildrenSlot.jsx`. The web keeps `src/templates/app/episode_details.html`, `comic_issue_details.html`, the episode/issue/season/action/obfuscation/scroll fragments and `src/templates/app/components/detail_secondary_content.html`.
+- Contract: the shared presentation renders server-ordered seasons/episodes/issues with the shared `MediaCardView` row, season progress and status, episode/issue scores through `RatingStars`, watch/unwatch/read/unread/drop/restore/check-in and history actions, spoiler obfuscation with per-row reveal, an optional ordering control and a history dialog. It receives data, palette, labels and explicit action/rate/history intents; it does not own tracking transport, permissions, HTMX swaps, scroll restoration or the server row markup.
+- Data: `src/app/media_details_views.py`, `season_details_views.py`, detail/save/score handlers and source/media/season/episode coordinates. Server permissions, ordering, obfuscation preference, row/watched state and history remain authoritative on the web.
+- Reuse/blockers: reuses `MEDIA-CARD` rows, `RATING` stars/chip, `BUTTON`, `BADGE` and the shared progress bar; the detail progress card is `PROGRESS`. The web child rows are server/HTMX-owned until a browser adapter maps equal intents, so browser parity is not proven. Native check-in is presentation only; it does not open a tracking form or write.
+- Status: `Partial / coexisting`. The native Detail screen renders realistic season, episode and issue rows with local watch/unwatch, read, drop, check-in, score, spoiler reveal, ordering and history-dialog state. The web detail and episode pages remain server-rendered and keep their permissions, HTMX tracking semantics, season-status polling and server fallback.
+- Native placement: `ported` in `native-proof/app/surfaces/DetailChildrenSlot.jsx`. No iOS or Android runtime pass was performed in this change; the Expo export is a compile check only.
+- Verification: `app.tests.views.test_media_details`, `test_episode_history_poll`, `test_episode_score_invalidation`, `test_season_status_pill_sync`, `npm run build:ui`, architecture checks and the Expo export. Browser, iOS, Android, interaction and accessibility were not exercised.
+- Validation targets: `src/app/tests/views/test_episode_history_poll.py`, `test_episode_score_invalidation.py`, `test_season_status_pill_sync.py`, `test_media_details.py`.
+- Retirement: the server episode/issue/season row templates retire when a browser adapter mounts the shared rows with equivalent ordering, permissions, obfuscation, history, scroll restoration and HTMX response fragments; keep the server fallback until then.
 
 ### TRACKING — Add/edit/repeat/bulk logging
 
