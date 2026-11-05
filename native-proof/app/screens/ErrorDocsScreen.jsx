@@ -4,6 +4,7 @@ import { Note } from '../components/Note';
 
 const surface = {
   id: 'ERRORS-DOCS',
+  status: 'in_progress',
   title: 'Errors and API docs',
   where: '400/403/404/500 and API documentation',
   note: 'Error recovery/report panels and the API explorer will replace this note.',
