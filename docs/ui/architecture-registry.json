@@ -267,7 +267,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Web adapter and Expo export compile; the web detail card remains the legacy Alpine version and was not exercised in a browser during this change."
+          "evidence": "Expo export and the web bundles compile; the browser detail card uses ProgressCard.web.jsx and this universal implementation was not exercised in a browser during this change."
         },
         "ios": {
           "status": "unverified",
@@ -296,6 +296,26 @@
         "android": {
           "status": "unverified",
           "evidence": "Compiled in the native shell but not opened on Android; no breakdown interaction."
+        }
+      }
+    },
+    "frontend/ui/ProgressDialog.jsx": {
+      "components": [
+        "ProgressDialog"
+      ],
+      "register": "PROGRESS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Mounted through the browser detail adapter and compiled into the web bundles; dialog opening, Escape and focus were not exercised in a browser during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native progress slot; no emulator dialog pass was performed."
         }
       }
     },
@@ -2404,6 +2424,50 @@
         }
       }
     },
+    "frontend/ui/ProgressCard.web.jsx": {
+      "kind": "presentation",
+      "register": "PROGRESS",
+      "components": [
+        "ProgressCard"
+      ],
+      "purpose": "Render the shared ProgressCard contract with the established detail-chip markup, watched-once bar, current-pass glow and teleported info tip so the phone card row keeps its CSS geometry.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Compiled into the web bundle through the detail progress adapter; the card was not compared in a browser during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to this web implementation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to this web implementation."
+        }
+      }
+    },
+    "frontend/ui/ProgressCard.native.jsx": {
+      "kind": "presentation",
+      "register": "PROGRESS",
+      "components": [
+        "ProgressCard"
+      ],
+      "purpose": "Render the shared ProgressCard with React Native primitives on iOS and Android.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not applicable to this native implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native progress slot; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native progress slot; the wrapper itself was not exercised on an emulator during this change."
+        }
+      }
+    },
     "frontend/ui/RatingStarIcon.web.jsx": {
       "kind": "presentation",
       "components": [
@@ -2830,11 +2894,19 @@
     },
     "frontend/ui/ProgressBreakdownTheme.web.jsx": {
       "register": "PROGRESS",
-      "purpose": "Resolve document theme and navigation for the shared progress breakdown while the Alpine modal, card and cancel form keep their server contract."
+      "purpose": "Serve the intentional Alpine fallback modal: resolve document theme, navigation and hide the fallback while the shared breakdown is mounted."
     },
     "frontend/ui/mountProgressBreakdown.jsx": {
       "register": "PROGRESS",
-      "purpose": "Mount the shared progress breakdown into the htmx-rendered modal body and hide its server fallback."
+      "purpose": "Mount the shared progress breakdown into the fallback Alpine modal body and hide its server markup."
+    },
+    "frontend/ui/ProgressDetailTheme.web.jsx": {
+      "register": "PROGRESS",
+      "purpose": "Resolve document theme and mount the shared progress card and dialog over the existing htmx breakdown endpoint, cancel write, out-of-band card refresh and rewatch events while the Alpine card and modal stay as the server fallback."
+    },
+    "frontend/ui/mountProgressDetail.jsx": {
+      "register": "PROGRESS",
+      "purpose": "Mount the shared progress card and dialog into the detail card slot."
     },
     "frontend/ui/Rail.web.jsx": {
       "register": "RAILS",

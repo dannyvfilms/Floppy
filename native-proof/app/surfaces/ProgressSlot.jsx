@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { ProgressBreakdown } from '../../../frontend/ui/ProgressBreakdown';
+import { View } from 'react-native';
 import { ProgressCard } from '../../../frontend/ui/ProgressCard';
-import { palette, progressDetailPalette, radius, spacing } from '../theme';
+import { ProgressDialog } from '../../../frontend/ui/ProgressDialog';
+import { progressDetailPalette } from '../theme';
 
 export const surface = {
   id: 'PROGRESS',
   status: 'ported',
   title: 'Detail progress card and breakdown',
   where: 'Show and season detail pages',
-  note: 'The “Your Progress” card, rewatch glow and expandable season breakdown use the shared React Native presentation. The web keeps its htmx/Alpine modal shell and legacy card.',
+  note: 'The “Your Progress” card, rewatch glow and expandable season breakdown use the shared React Native presentation. The web now mounts the shared card and dialog over the same htmx fragment endpoint, with the legacy Alpine card and modal as the server fallback.',
 };
 
 const labels = {
@@ -105,33 +105,13 @@ export default function ProgressSlot() {
       rewatch: model.summary.rewatch,
       caughtUp: model.summary.caughtUp,
     }} labels={labels} palette={progressDetailPalette} onOpen={() => setOpen(true)} />
-    <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-      <View style={styles.backdrop}>
-        <View accessibilityViewIsModal style={styles.dialog}>
-          <View style={styles.header}>
-            <Text style={styles.title} numberOfLines={1}>Your Progress · The Quiet Orbit</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setOpen(false)} style={styles.close}>
-              <Text style={styles.closeText}>×</Text>
-            </Pressable>
-          </View>
-          <ScrollView contentContainerStyle={styles.body}>
-            <ProgressBreakdown model={model}
-              palette={progressDetailPalette}
-              cancelling={false}
-              onCancelRewatch={() => setRewatching(false)} />
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
+    <ProgressDialog visible={open}
+      title="Your Progress · The Quiet Orbit"
+      model={model}
+      labels={labels}
+      palette={progressDetailPalette}
+      cancelling={false}
+      onClose={() => setOpen(false)}
+      onCancelRewatch={() => setRewatching(false)} />
   </View>;
 }
-
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0, 0, 0, 0.5)', padding: spacing.lg },
-  dialog: { width: '100%', maxWidth: 672, maxHeight: '90%', overflow: 'hidden', borderRadius: radius.lg, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.background },
-  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderBottomWidth: 1, borderBottomColor: palette.border, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
-  title: { flex: 1, color: palette.text, fontSize: 16, fontWeight: '600' },
-  close: { alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 16 },
-  closeText: { color: palette.textMuted, fontSize: 22, lineHeight: 24 },
-  body: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
-});

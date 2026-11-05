@@ -21,7 +21,7 @@ export function ProgressCard({ model, labels, palette, onOpen }) {
   const text = { ...defaultLabels, ...labels };
   const [infoOpen, setInfoOpen] = useState(false);
   const percent = Math.max(0, Math.min(100, Number(model?.percent) || 0));
-  const rewatch = model?.rewatch && model.rewatch.width > 0 ? model.rewatch : null;
+  const rewatch = model?.rewatch || null;
   const subtitle = rewatch ? rewatch.label : model?.caughtUp ? text.caughtUp : null;
   return <View style={styles.root}>
     <Pressable accessibilityRole="button"

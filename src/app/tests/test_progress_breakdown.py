@@ -644,6 +644,33 @@ class ProgressBreakdownViewTests(BreakdownTestCase):
 
             self.assertIn(f'hx-get="{reverse(url_name, args=[instance.id])}"', html)
 
+    def test_progress_card_exposes_the_shared_presentation_contract(self):
+        """The card carries the shared model while the Alpine card stays as fallback."""
+        self.watch(self.season_one, 2)
+        self.season_one.max_progress = 2
+        html = render_to_string(
+            "app/components/detail_progress_card_slot.html",
+            {
+                "media": self.season_one.item,
+                "media_type": "season",
+                "current_instance": self.season_one,
+                "public_view": False,
+            },
+        )
+
+        self.assertIn("data-progress-detail-root", html)
+        self.assertIn("data-progress-detail-fallback", html)
+        script = html.split('type="application/json">', 1)[1].split("</script>", 1)[0]
+        props = json.loads(script)
+        self.assertEqual(
+            props["control"]["openUrl"],
+            reverse("season_progress_breakdown", args=[self.season_one.id]),
+        )
+        self.assertEqual(props["control"]["cancelUrl"], reverse("cancel_progress_rewatch"))
+        self.assertEqual(props["control"]["mediaType"], "season")
+        self.assertEqual(props["control"]["tvId"], self.tv.id)
+        self.assertIsNone(props["card"]["rewatch"])
+
     def test_progress_card_shows_completion_and_the_rewatch_subtitle(self):
         """The card reads watched-once; an open pass adds a subtitle and glow."""
         self.watch(self.season_one, 2)
