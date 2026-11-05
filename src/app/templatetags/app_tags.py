@@ -2675,3 +2675,70 @@ def month_abbreviation(value):
     except ValueError:
         return value
     return formats.date_format(date(2000, number, 1), "M") if number else ""
+
+
+@register.simple_tag
+def collection_field_input_props(groups, values, form_id=None):
+    """Return plain descriptors for the shared custom-field value inputs."""
+    return {
+        "groups": [
+            {
+                "id": group.id,
+                "name": group.name,
+                "fields": [
+                    {
+                        "id": field.id,
+                        "label": field.label,
+                        "field_type": field.field_type,
+                        "options": field.options,
+                        "media_types": field.media_types,
+                    }
+                    for field in getattr(group, "visible_fields", group.fields.all())
+                ],
+            }
+            for group in groups or []
+        ],
+        "values": values or {},
+        "formId": form_id or "",
+    }
+
+
+@register.simple_tag
+def collection_copy_form_props(form, collection_fields=None):
+    """Return plain descriptors for the shared collection copy editor."""
+    names = list(collection_fields or [name for name in form.fields if name != "item"])
+    fields = []
+    values = {}
+    errors = {}
+    for name in names:
+        field = form.fields.get(name)
+        if field is None:
+            continue
+        widget_type = getattr(field.widget, "input_type", "text")
+        if widget_type == "checkbox":
+            field_type = "checkbox"
+        elif widget_type == "select":
+            field_type = "select"
+        elif widget_type == "number":
+            field_type = "number"
+        else:
+            field_type = "text"
+        options = [
+            {"value": str(value), "label": str(label)}
+            for value, label in getattr(field.widget, "choices", [])
+        ]
+        value = form[name].value()
+        if isinstance(value, (list, tuple)):
+            value = value[0] if value else ""
+        values[name] = "" if value is None else value
+        if form.is_bound and form.errors.get(name):
+            errors[name] = " ".join(str(message) for message in form.errors.get(name))
+        fields.append({
+            "name": name,
+            "label": str(field.label),
+            "type": field_type,
+            "options": options,
+            "required": bool(field.required),
+            "help": str(field.help_text or ""),
+        })
+    return {"fields": fields, "values": values, "errors": errors}

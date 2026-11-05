@@ -44,6 +44,7 @@ from app.services import metadata_resolution
 from app.templatetags import app_tags
 from integrations.models import CollectionSourceState
 from users.home_screen import get_home_configurable_media_types
+from users.templatetags import user_tags
 
 logger = logging.getLogger(__name__)
 
@@ -382,6 +383,7 @@ def _collection_browser_item(entry, user):
     }
     ctx.update(_card_render_context(ctx))
     card = card_model(ctx)
+    completeness = getattr(entry, "completeness", None)
     return {
         "id": entry.id,
         "href": card.get("href", ""),
@@ -389,6 +391,18 @@ def _collection_browser_item(entry, user):
         "mediaType": item.media_type,
         "mediaTypeLabel": str(app_tags.media_type_readable_plural(item.media_type)),
         "mediaTypeColor": _COLLECTION_MEDIA_COLORS.get(item.media_type, "#6366f1"),
+        "format": entry.media_type or "",
+        "resolution": entry.resolution or "",
+        "hdr": entry.hdr or "",
+        "purchaseLocation": entry.purchase_location or "",
+        "collectedAt": user_tags.user_date_format(entry.collected_at, user),
+        "copyLabel": getattr(entry, "copy_label", ""),
+        "completeness": {
+            "collected": completeness["collected"],
+            "total": completeness["total"],
+            "isPartial": completeness["is_partial"],
+        } if completeness and completeness.get("total") else None,
+        "image": card.get("image"),
         "card": card,
     }
 
@@ -403,10 +417,43 @@ def _collection_browser_next_url(request, page_obj):
     return f"{request.path}?{params.urlencode()}"
 
 
-def _collection_browser_model(request, context, entries, total_count, page_obj):
+def _collection_browser_row_next_url(request, row_type, offset, total):
+    """Return the JSON URL for the next row slice, or an empty string."""
+    if offset >= total:
+        return ""
+    params = request.GET.copy()
+    params["group"] = "type"
+    params["row_type"] = row_type
+    params["offset"] = str(offset)
+    params["json"] = "1"
+    params.pop("page", None)
+    return f"{request.path}?{params.urlencode()}"
+
+
+def _collection_browser_groups(request, rows):
+    """Return grouped row descriptors for the shared browser."""
+    groups = []
+    for row in rows:
+        loaded = row.get("loaded_count", len(row.get("items") or []))
+        total = row.get("total", loaded)
+        row_type = row["row_type"]
+        groups.append({
+            "key": row_type,
+            "label": row["title_main"],
+            "items": [_collection_browser_item(entry, request.user) for entry in row["items"]],
+            "total": total,
+            "loadedCount": loaded,
+            "nextUrl": _collection_browser_row_next_url(request, row_type, loaded, total),
+            "rowUrl": row["view_all_url"],
+        })
+    return groups
+
+
+def _collection_browser_model(request, context, entries, total_count, page_obj, *, rows=None):
     """Return the shared collection browser's props for the current page."""
     return {
         "items": [_collection_browser_item(entry, request.user) for entry in entries],
+        "groups": _collection_browser_groups(request, rows) if rows is not None else None,
         "filters": {
             "type": context["media_type"] or "all",
             "format": context["format_filter"] or "all",
@@ -420,7 +467,7 @@ def _collection_browser_model(request, context, entries, total_count, page_obj):
             "query": context["search_query"],
             "sort": context["sort_by"],
             "direction": context["direction"],
-            "view": "grid",
+            "view": context["layout"],
         },
         "options": {
             "mediaTypes": [
@@ -515,6 +562,7 @@ def _collection_media_type_rows(
         rows.append(
             {
                 "row_id": f"collection-{row_type}",
+                "row_type": row_type,
                 "title_main": app_tags.media_type_readable_plural(row_type),
                 "icon_svg": str(
                     app_tags.icon(row_type, False, "w-5 h-5"),
@@ -662,6 +710,24 @@ def collection_list(request, media_type=None):
             offset,
         )
         _decorate_collection_entries(request.user, entries)
+        if request.GET.get("json") == "1":
+            row_collection = collection.filter(item__media_type=row_type)
+            total = row_collection.count()
+            return JsonResponse(
+                {
+                    "items": [
+                        _collection_browser_item(entry, request.user)
+                        for entry in entries
+                    ],
+                    "nextUrl": _collection_browser_row_next_url(
+                        request,
+                        row_type,
+                        offset + len(entries),
+                        total,
+                    ),
+                    "resultCount": total,
+                },
+            )
         return render(
             request,
             "app/components/collection_row_grid.html",
@@ -794,7 +860,16 @@ def collection_list(request, media_type=None):
             },
         )
 
-    if not group_by_type and layout == "grid":
+    if group_by_type:
+        context["collection_browser_props"] = _collection_browser_model(
+            request,
+            context,
+            [],
+            0,
+            None,
+            rows=collection_rows,
+        )
+    else:
         context["collection_browser_props"] = _collection_browser_model(
             request,
             context,
@@ -1620,31 +1695,62 @@ def _resolve_collection_item(
     return item, metadata
 
 
+def _collection_field_group_payload(groups):
+    """Return plain group/field descriptors for the shared custom-field UI."""
+    return [
+        {
+            "id": group.id,
+            "name": group.name,
+            "fields": [
+                {
+                    "id": field.id,
+                    "label": field.label,
+                    "field_type": field.field_type,
+                    "options": field.options,
+                    "media_types": field.media_types,
+                }
+                for field in getattr(group, "visible_fields", group.fields.all())
+            ],
+        }
+        for group in groups or []
+    ]
+
+
 def _custom_fields_fragment_context(request, item, *, manage_fields_open=False):
     """Build context for the custom-fields fragment, scoped to one item."""
     existing_entry = helpers.get_item_collection_entries(request.user, item).first()
+    visible_groups = _visible_custom_field_groups(request.user, item.media_type)
+    schema = serialize_collection_field_schema(request.user)
+    field_types = [
+        {"value": value, "label": label}
+        for value, label in CollectionFieldType.choices
+    ]
+    media_types = [
+        {"value": value, "label": label} for value, label in MediaTypes.choices
+    ]
     return {
         "item": item,
-        "custom_field_groups": _visible_custom_field_groups(
-            request.user, item.media_type
-        ),
+        "custom_field_groups": visible_groups,
         "entry_custom_field_values": existing_entry.custom_field_values
         if existing_entry
         else {},
         "manage_fields_open": manage_fields_open,
-        "custom_field_schema_json": json.dumps(
-            serialize_collection_field_schema(request.user)
-        ),
-        "field_type_choices_json": json.dumps(
-            [
-                {"value": value, "label": label}
-                for value, label in CollectionFieldType.choices
-            ]
-        ),
-        "media_type_choices_json": json.dumps(
-            [{"value": value, "label": label} for value, label in MediaTypes.choices]
-        ),
+        "custom_field_schema_json": json.dumps(schema),
+        "field_type_choices_json": json.dumps(field_types),
+        "media_type_choices_json": json.dumps(media_types),
         "collection_fields_save_url": reverse("collection_fields_save"),
+        "collection_fields_props": {
+            "itemId": item.id,
+            "itemMediaType": item.media_type,
+            "schema": schema,
+            "fieldTypes": field_types,
+            "mediaTypes": media_types,
+            "saveUrl": reverse("collection_fields_save"),
+            "formId": "collection-add-form",
+            "groups": _collection_field_group_payload(visible_groups),
+            "values": existing_entry.custom_field_values if existing_entry else {},
+            "manageOpen": manage_fields_open,
+        },
     }
 
 

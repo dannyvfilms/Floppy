@@ -2626,6 +2626,14 @@
       "register": "BULK_ACTIONS",
       "purpose": "Django/browser integration for the shared bulk actions: open the status and plays dialogs, poll Add Plays jobs and render their docked progress and results."
     },
+    "frontend/ui/mountCollectionFields.jsx": {
+      "register": "CUSTOM-FIELDS",
+      "purpose": "Browser adapter for collection custom-field values and definitions: mirror typed values into the enclosing Django form as hidden inputs, warn about unsaved definitions, and POST the existing JSON schema endpoint before adopting the returned groups. Django keeps required-name, media-type, option, id and ownership validation."
+    },
+    "frontend/ui/mountCollectionCopyFields.jsx": {
+      "register": "OWNERSHIP",
+      "purpose": "Browser adapter for the shared collection copy editor inside the server-owned add and inline edit forms: keep medium-field values in React and mirror them into the enclosing Django form so ownership, validation, redirects and no-JS fallback stay server-owned."
+    },
     "frontend/ui/mountMusicAlbums.jsx": {
       "register": "MUSIC",
       "purpose": "Maps server-shaped artist discography album rows into the shared music album grid and owns browser navigation for the card link; the server album grid inside the host remains the no-React fallback."

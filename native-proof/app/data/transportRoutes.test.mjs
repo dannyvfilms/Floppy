@@ -117,6 +117,8 @@ test('music transport keeps its local preview without a session', () => {
   const transport = createMusicTransport();
   assert.equal(transport.mode, 'local');
   assert.match(transport.reason, /sign in/i);
+});
+
 test('people transport reads person and studio profiles through the session', async () => {
   const { calls, session } = authFixture((path) => (
     path.startsWith('/studio/')

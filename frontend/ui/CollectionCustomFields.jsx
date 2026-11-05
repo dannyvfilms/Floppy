@@ -137,7 +137,8 @@ export function CollectionFieldValueInputs({
         {group.fields.map(field => {
           const key = String(field.id);
           const value = values[key];
-          if (field.fieldType === 'select') {
+          const fieldType = field.fieldType || field.field_type || 'text';
+          if (fieldType === 'select') {
             return <FormSelect key={key} label={field.label}
               value={value ?? ''}
               options={[{ value: '', label: labels.emptyOption },
@@ -145,16 +146,16 @@ export function CollectionFieldValueInputs({
               error={errors[key]} palette={palette}
               onChange={next => { if (canEdit) onChange?.(key, next); }} />;
           }
-          if (field.fieldType === 'checkbox') {
+          if (fieldType === 'checkbox') {
             return <ValueCheckbox key={key} field={field} value={value} editable={canEdit}
               palette={palette} onChange={next => onChange?.(key, next)} />;
           }
           return <FormTextField key={key} label={field.label}
             value={value ?? ''}
             error={errors[key]}
-            keyboardType={field.fieldType === 'number' ? 'decimal-pad' : 'default'}
+            keyboardType={fieldType === 'number' ? 'decimal-pad' : 'default'}
             editable={canEdit} palette={palette}
-            placeholder={field.fieldType === 'date' ? 'YYYY-MM-DD' : undefined}
+            placeholder={fieldType === 'date' ? 'YYYY-MM-DD' : undefined}
             onChangeText={next => { if (canEdit) onChange?.(key, next); }} />;
         })}
       </View>

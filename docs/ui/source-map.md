@@ -539,8 +539,9 @@ modal is shared React presentation on mount, with the server markup as fallback.
 ## OWNERSHIP
 
 - `frontend/ui/CollectionBrowser.jsx` (universal grid, rows, table, filters and card model)
-- `frontend/ui/mountCollectionBrowser.jsx` (browser grid adapter, existing `MediaCard` rendering and bounded JSON load-more)
+- `frontend/ui/mountCollectionBrowser.jsx` (browser grid, grouped-row and table adapter with page and per-row JSON load-more)
 - `frontend/ui/CollectionCopies.jsx`
+- `frontend/ui/mountCollectionCopyFields.jsx` (browser adapter for the shared copy editor inside the server add/edit forms)
 - `native-proof/app/screens/CollectionScreen.jsx` (native placement)
 - `src/templates/app/collection_list.html`
 - `src/templates/app/components/collection_entry_summary.html`
@@ -555,7 +556,8 @@ modal is shared React presentation on mount, with the server markup as fallback.
 ## CUSTOM-FIELDS
 
 - `frontend/ui/CollectionCustomFields.jsx`
-- `src/static/js/collectionCustomFields.js`
+- `frontend/ui/mountCollectionFields.jsx` (browser value/definition adapter that mirrors form values and uses the JSON schema endpoint)
+- `src/static/js/collectionCustomFields.js` (legacy no-JS fallback)
 - `src/templates/app/components/collection_custom_field_inputs.html`
 - `src/templates/app/components/collection_custom_fields.html`
 
