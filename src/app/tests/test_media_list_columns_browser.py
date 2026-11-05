@@ -76,30 +76,24 @@ class MediaListColumnsBrowserTests(SerialStaticLiveServerTestCase):
                 f"{self.live_server_url}/medialist/game?layout=table&status=Paused"
             )
             table = page.locator(".media-table")
-            expect(table.locator("tbody > tr")).to_have_count(2)
+            expect(table.get_by_role("row")).to_have_count(3)
             expect(
                 table.get_by_role("columnheader", name="Notes", exact=True)
             ).to_have_count(1)
             expect(table).not_to_contain_text("Donkey Kong")
-            page.get_by_role("button", name="Configure Table Columns").click()
 
             for action, notes_count in (("Hide column", 0), ("Show column", 1)):
-                with page.expect_response(
-                    lambda response: (
-                        "/medialist/game?" in response.url
-                        and response.request.headers.get("hx-request") == "true"
-                    )
-                ):
-                    page.locator('[draggable="true"]').filter(
-                        has=page.get_by_text("Notes", exact=True)
-                    ).get_by_role("button", name=action, exact=True).click()
-                expect(table.locator("tbody > tr")).to_have_count(2)
+                page.get_by_role("button", name="Configure Table Columns").click()
+                with page.expect_navigation():
+                    with page.expect_response(
+                        lambda response: response.url.endswith("/columns")
+                    ):
+                        page.get_by_role("button", name=f"{action}: Notes").click()
+                expect(table.get_by_role("row")).to_have_count(3)
                 expect(
                     table.get_by_role("columnheader", name="Notes", exact=True)
                 ).to_have_count(notes_count)
                 expect(table).to_contain_text("Pac-Man")
                 expect(table).to_contain_text("Galaga")
                 expect(table).not_to_contain_text("Donkey Kong")
-                expect(table.locator("img[data-media-artwork]").first).to_have_attribute(
-                    "loading", "eager"
-                )
+                expect(table.get_by_role("img")).not_to_have_count(0)

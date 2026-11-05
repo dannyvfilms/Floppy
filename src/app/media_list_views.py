@@ -15,7 +15,8 @@ from django.core.cache import cache
 from django.core.exceptions import FieldError
 from django.core.paginator import Paginator
 from django.db.models import Count, F, Min, Q
-from django.http import HttpResponse, HttpResponseBadRequest
+from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils import timezone
@@ -66,6 +67,7 @@ from app.release_years import prefill_display_release_years
 from app.search_views import _mark_grouped_anime_route
 from app.services import metadata_resolution
 from app.stats_music import _country_name_from_code
+from app.table_browser import build_table_browser_props, table_json_url
 from app.templatetags import app_tags
 from app.tv_sort import _sort_tv_media_by_time_left
 from lists import smart_rules
@@ -3249,7 +3251,11 @@ def media_list(request, media_type):
         "current_layout": layout,
         "layout_class": _layout_class,
         "media_list_url": reverse("medialist", args=[route_media_type]),
-        "filter_hx_target": _layout_class if media_page else "#empty_list",
+        "filter_hx_target": (
+            "#media-table-view" if layout == "table" else _layout_class
+        )
+        if media_page
+        else "#empty_list",
         "current_group_by": group_by,
         "current_game_group": game_group,
         "current_game_group_name": current_game_group_name,
@@ -3529,7 +3535,9 @@ def media_list(request, media_type):
             "current_layout": layout,
             "layout_class": ".media-grid" if layout == "grid" else ".media-table",
             "media_list_url": reverse("medialist", args=[media_type]),
-            "filter_hx_target": (".media-grid" if layout == "grid" else ".media-table")
+            "filter_hx_target": (
+                ".media-grid" if layout == "grid" else "#media-table-view"
+            )
             if media_page
             else "#empty_list",
             "current_sort": sort_filter,
@@ -3741,7 +3749,7 @@ def media_list(request, media_type):
         container_page = context["media_list"]
         context["result_count"] = container_page.paginator.count
         context["filter_hx_target"] = (
-            ".media-grid" if layout == "grid" else ".media-table"
+            ".media-grid" if layout == "grid" else "#media-table-view"
         ) if container_page else "#empty_list"
 
     if context.get("enable_bulk_select"):
@@ -3799,6 +3807,38 @@ def media_list(request, media_type):
                 pref_order,
                 pref_hidden,
                 resolved_keys,
+            )
+
+        media_page = context.get("media_list")
+        next_url = (
+            table_json_url(request, media_page.next_page_number())
+            if media_page is not None and media_page.has_next()
+            else ""
+        )
+        context["table_browser_props"] = build_table_browser_props(
+            rows=list(media_page.object_list) if media_page is not None else [],
+            resolved_columns=context["resolved_columns"],
+            column_config=context["column_config"],
+            default_column_config=context["default_column_config"],
+            user=request.user,
+            table_type=table_type,
+            media_type=media_type,
+            current_sort=sort_filter,
+            current_direction=direction,
+            update_url=reverse("medialist_columns", args=[route_media_type]),
+            refresh_url=context["media_list_url"],
+            refresh_target=".media-table",
+            refresh_include="#filter-form",
+            csrf_token=get_token(request),
+            next_url=next_url,
+        )
+        if request.GET.get("table_json") == "1":
+            return JsonResponse(
+                {
+                    "rows": context["table_browser_props"]["table"]["rows"],
+                    "nextUrl": next_url,
+                    "resultCount": context["result_count"],
+                },
             )
 
     # Handle HTMX requests for partial updates (boosted navigation still

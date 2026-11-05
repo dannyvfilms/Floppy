@@ -100,10 +100,8 @@
         <div class="media-grid{% if media_type == 'video' %} media-grid-video{% endif %}">{% include "app/components/media_grid_items.html" %}</div>
       {% endif %}
     {% else %}
-      <div class="bg-[var(--color-surface)] p-4 rounded-lg overflow-hidden max-w-[calc(100svw-4rem)] overflow-x-scroll">
-        <table class="w-full bg-[var(--color-surface)] media-table">
-          {% include "app/components/table_items.html" %}
-        </table>
+      <div id="media-table-view">
+        {% include "app/components/table_items.html" %}
       </div>
     {% endif %}
     <div id="loading-indicator" class="htmx-indicator text-center pt-8">

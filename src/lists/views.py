@@ -4,7 +4,7 @@ from dataclasses import replace
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required
-from django.http import Http404, StreamingHttpResponse
+from django.http import Http404, JsonResponse, StreamingHttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -29,6 +29,7 @@ from app.providers import (
     services,  # noqa: F401 — kept so legacy test patches on lists.views.services still work
 )
 from app.release_years import prefill_display_release_years
+from app.table_browser import build_table_browser_props, table_json_url
 from integrations import exports
 from lists import smart_rules
 from lists import tasks as list_tasks
@@ -452,6 +453,39 @@ def list_detail(request, list_reference):
                 "table_include_selector": "#filter-form",
             },
         )
+        next_url = (
+            table_json_url(request, items_page.next_page_number())
+            if items_page.has_next()
+            else ""
+        )
+        context["table_browser_props"] = build_table_browser_props(
+            rows=list(items_page.object_list),
+            resolved_columns=context["resolved_columns"],
+            column_config=context["column_config"],
+            default_column_config=context["default_column_config"],
+            user=request.user,
+            table_type="list",
+            media_type=current_media_type,
+            current_sort=params["sort_by"],
+            current_direction=params["direction"],
+            update_url=context["table_column_update_url"],
+            refresh_url=context["table_refresh_url"],
+            refresh_target="#items-view",
+            refresh_include="#filter-form",
+            csrf_token=get_token(request),
+            public_view=public_view,
+            public_list_reference=context["public_list_reference"],
+            show_public_notes=context["show_public_notes"],
+            next_url=next_url,
+        )
+        if request.GET.get("table_json") == "1":
+            return JsonResponse(
+                {
+                    "rows": context["table_browser_props"]["table"]["rows"],
+                    "nextUrl": next_url,
+                    "resultCount": filtered_items_count,
+                },
+            )
 
     # Additional context for full page render
     if not is_partial:

@@ -298,6 +298,12 @@ in the register.
 
 ## TABLES
 
+- `frontend/ui/MediaTable.jsx` (universal table shell, header sorting, bounded row rendering, horizontal scrolling, selection and cell presentation)
+- `frontend/ui/ColumnMenu.jsx` (universal column order/visibility/reset menu with accessible move and toggle actions)
+- `frontend/ui/mountMediaTable.jsx` (browser table and column-menu adapter over the server projection; posts to the existing column preference endpoint and reads the existing `?table_json=1` page rows)
+- `frontend/ui/ListResults.jsx` (native list grid/table, bulk bar and empty states; its table now renders `MediaTable` and `MediaColumnMenu`)
+- `native-proof/app/surfaces/TableSlot.jsx` (native Library table placement with realistic library rows)
+- `src/app/table_browser.py` (server row/cell projection and column-menu props shared by media, list and smart-list tables)
 - `src/templates/app/components/cells/album_artist_cell.html`
 - `src/templates/app/components/cells/album_date_added_cell.html`
 - `src/templates/app/components/cells/album_image_cell.html`

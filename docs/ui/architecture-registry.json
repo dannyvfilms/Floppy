@@ -48,6 +48,47 @@
         }
       }
     },
+    "frontend/ui/MediaTable.jsx": {
+      "components": [
+        "MediaTable",
+        "MediaTableCell"
+      ],
+      "register": "TABLES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "MountMediaTable compiles the shared table over the server projection; no browser interaction pass was performed and the server table remains the fallback."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the file through TableSlot and ListResults; no simulator pass was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the file through TableSlot and ListResults; no emulator pass was performed."
+        }
+      }
+    },
+    "frontend/ui/ColumnMenu.jsx": {
+      "components": [
+        "MediaColumnMenu"
+      ],
+      "register": "TABLES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "MountMediaTable compiles the shared column menu over the existing preference endpoint; no browser interaction pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the file through TableSlot and ListResults; no simulator pass was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the file through TableSlot and ListResults; no emulator pass was performed."
+        }
+      }
+    },
     "frontend/ui/MediaCardView.jsx": {
       "components": [
         "MediaCardView"
@@ -2454,6 +2495,10 @@
     "frontend/settings/webPalette.js": {
       "register": "SETTINGS-CARD",
       "purpose": "Django/browser integration for the registered surface."
+    },
+    "frontend/ui/mountMediaTable.jsx": {
+      "register": "TABLES",
+      "purpose": "Mounts the shared media table and column menu over the server row projection, posts order/hidden to the existing column preference endpoint and reads bounded table JSON pages."
     },
     "frontend/ui/mountMediaCard.jsx": {
       "register": "MEDIA-CARD",
