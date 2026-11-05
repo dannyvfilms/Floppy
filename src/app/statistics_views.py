@@ -8,8 +8,10 @@ from django.db.utils import OperationalError
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.template.loader import render_to_string
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
+from django.utils.timesince import timesince
 from django.utils.timezone import datetime
 from django.utils.translation import gettext_noop
 from django.views.decorators.http import require_GET, require_POST
@@ -17,7 +19,7 @@ from django.views.decorators.http import require_GET, require_POST
 from app import config, statistics_cache, stats_cast_crew
 from app import statistics as stats
 from app.log_safety import exception_summary
-from app.models import MediaTypes
+from app.models import MediaTypes, Status
 from app.providers import tvdb
 from app.statistics_talent import (
     TALENT_MEDIA_TYPES,
@@ -430,6 +432,426 @@ def _build_hours_per_media_type_comparison(
     return comparisons
 
 
+STATISTICS_TYPE_LABELS = {
+    "all": "titles",
+    MediaTypes.MOVIE.value: "films",
+    MediaTypes.TV.value: "shows",
+    MediaTypes.GAME.value: "games",
+    MediaTypes.BOOK.value: "books",
+    MediaTypes.ANIME.value: "titles",
+    MediaTypes.MUSIC.value: "albums",
+    MediaTypes.PODCAST.value: "podcasts",
+    MediaTypes.COMIC.value: "comics",
+    MediaTypes.MANGA.value: "manga",
+    MediaTypes.BOARDGAME.value: "board games",
+    MediaTypes.VIDEO.value: "videos",
+}
+
+STATISTICS_TYPE_FLAVORS = {
+    "all": "stories, ideas, and worlds",
+    MediaTypes.MOVIE.value: "film and storytelling",
+    MediaTypes.TV.value: "episodes and seasons",
+    MediaTypes.GAME.value: "play and adventure",
+    MediaTypes.BOOK.value: "reading and discovery",
+    MediaTypes.ANIME.value: "anime and storytelling",
+    MediaTypes.MUSIC.value: "music and discovery",
+    MediaTypes.PODCAST.value: "listening and learning",
+    MediaTypes.COMIC.value: "comics and art",
+    MediaTypes.MANGA.value: "manga and art",
+    MediaTypes.BOARDGAME.value: "tabletop and strategy",
+    MediaTypes.VIDEO.value: "video and motion",
+}
+
+
+def _statistics_level(count):
+    """Match stats_activity.get_level for the shared heatmap."""
+    for index, threshold in enumerate((0, 3, 6, 9)):
+        if count <= threshold:
+            return index
+    return 4
+
+
+def _statistics_comparison(badge_data, period_label):
+    if not badge_data:
+        return {}
+    state = badge_data.get("badge_state") or "none"
+    if state == "new":
+        state = "up"
+    return {
+        "label": badge_data.get("badge_short") or badge_data.get("badge") or "",
+        "state": state,
+        "periodLabel": period_label or "",
+        "details": badge_data.get("details") or "",
+    }
+
+
+def _statistics_summary_model(media_type, row, comparison, period_label):
+    total_minutes = float(row.get("total_minutes") or 0)
+    start = row.get("longest_streak_start")
+    end = row.get("longest_streak_end")
+    streak_dates = ""
+    if start and end:
+        streak_dates = start if start == end else f"{start} - {end}"
+    return {
+        "total": row.get("total", 0),
+        "completed": row.get("completed", 0),
+        "totalMinutes": total_minutes,
+        "totalHours": round(total_minutes / 60),
+        "totalDays": int(total_minutes / 60 / 24),
+        "scoreCount": row.get("score_count", 0),
+        "scoreSum": row.get("score_sum", 0),
+        "weekdayMinutes": row.get("weekday_minutes") or [],
+        "activeRuns": row.get("active_runs") or [],
+        "streakEndDay": row.get("streak_end_day"),
+        "averageScore": (
+            round(float(row["average_score"]), 1)
+            if row.get("average_score") is not None
+            else None
+        ),
+        "hasScore": bool(row.get("has_score")),
+        "mostActiveDay": row.get("most_active_day") or "",
+        "mostActiveDayLabel": row.get("most_active_day") or "",
+        "mostActiveDayPercentage": round(
+            float(row.get("most_active_day_percentage") or 0)
+        ),
+        "currentStreak": row.get("current_streak", 0),
+        "longestStreak": row.get("longest_streak", 0),
+        "longestStreakStart": start or "",
+        "longestStreakDates": streak_dates,
+        "typeLabel": STATISTICS_TYPE_LABELS.get(media_type, "titles"),
+        "typeFlavor": STATISTICS_TYPE_FLAVORS.get(media_type, "stories, ideas, and worlds"),
+        "comparison": _statistics_comparison(comparison, period_label),
+    }
+
+
+def _statistics_highlight_card(entry, key, label, prefix, user):
+    if not entry:
+        return None
+    played_at = entry.get("played_at")
+    date_label = prefix
+    if played_at is not None:
+        date_label = f"{prefix} {app_tags.date_format(played_at, user)}".strip()
+    media_type = entry.get("media_type") or ""
+    return {
+        "key": key,
+        "label": label,
+        "title": entry.get("title") or "",
+        "meta": app_tags.media_type_readable(media_type) if media_type else "",
+        "date": date_label,
+        "image": entry.get("image") or "",
+        "href": app_tags.media_url(entry.get("item")) if entry.get("item") else "",
+    }
+
+
+def _statistics_highlights_model(history_highlights, user):
+    if not isinstance(history_highlights, dict):
+        return []
+    cards = [
+        _statistics_highlight_card(
+            history_highlights.get("first_play"), "first", "First Play", "Played", user
+        ),
+        _statistics_highlight_card(
+            history_highlights.get("last_play"), "last", "Last Play", "Played", user
+        ),
+    ]
+    today_card = history_highlights.get("today_card") or {}
+    today_entry = today_card.get("entry")
+    if today_entry:
+        card = _statistics_highlight_card(
+            today_entry,
+            "today",
+            today_card.get("label") or "Today",
+            today_card.get("date_prefix") or "Played in",
+            user,
+        )
+        if card:
+            card["date"] = f"{today_card.get('date_prefix') or 'Played in'} {today_card.get('year') or ''}".strip()
+            month = history_highlights.get("today_month")
+            day = history_highlights.get("today_day")
+            params = []
+            if today_card.get("use_release_url"):
+                params.append("history_mode=release")
+            if month and day:
+                params.extend([f"month={month}", f"day={day}"])
+            card["href"] = reverse("history") + (f"?{'&'.join(params)}" if params else "")
+        cards.append(card)
+    return [card for card in cards if card]
+
+
+def _statistics_series_model(chart, default_color):
+    if not isinstance(chart, dict):
+        return {"labels": [], "data": [], "color": default_color}
+    datasets = chart.get("datasets") or []
+    dataset = datasets[0] if datasets else {}
+    return {
+        "labels": chart.get("labels") or [],
+        "data": dataset.get("data") or [],
+        "color": dataset.get("background_color") or default_color,
+    }
+
+
+def _statistics_heatmap_model(activity_data, media_type):
+    weeks = []
+    for week in activity_data.get("calendar_weeks", []):
+        days = []
+        for day in week:
+            future = bool(day.get("future"))
+            if future:
+                count = 0
+            elif media_type is None:
+                count = int(day.get("count") or 0)
+            else:
+                count = int((day.get("by_type") or {}).get(media_type) or 0)
+            days.append({
+                "key": day.get("date"),
+                "count": count,
+                "level": 0 if future else _statistics_level(count),
+                "future": future,
+            })
+        weeks.append({"days": days})
+    months = [
+        {"label": label, "span": span}
+        for label, span in activity_data.get("months", [])
+        if label
+    ]
+    return {
+        "weeks": weeks,
+        "monthLabels": months,
+        "weekdayLabels": activity_data.get("weekday_labels") or [
+            "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"
+        ],
+    }
+
+
+def _statistics_status_composition(status_distribution, media_type=None):
+    labels = []
+    data = []
+    colors = []
+    if not isinstance(status_distribution, dict):
+        return {"labels": labels, "data": data, "colors": colors}
+    type_labels = status_distribution.get("labels") or []
+    try:
+        index = type_labels.index(app_tags.media_type_readable(media_type)) if media_type else None
+    except ValueError:
+        index = None
+    for dataset in status_distribution.get("datasets") or []:
+        values = dataset.get("data") or []
+        value = values[index] if index is not None and index < len(values) else sum(values)
+        if value > 0:
+            labels.append(dataset.get("label") or "")
+            data.append(value)
+            colors.append(dataset.get("background_color") or "")
+    return {"labels": labels, "data": data, "colors": colors}
+
+
+def _statistics_rating_distribution(score_distribution, media_type=None):
+    labels = list(score_distribution.get("labels") or [])
+    data = [0 for _ in labels]
+    if isinstance(score_distribution, dict):
+        for dataset in score_distribution.get("datasets") or []:
+            if media_type and dataset.get("label") != app_tags.media_type_readable(media_type):
+                continue
+            for index, value in enumerate(dataset.get("data") or []):
+                if index < len(data):
+                    data[index] += float(value or 0)
+    return {
+        "labels": labels,
+        "data": [round(value) for value in data],
+        "scaleMax": score_distribution.get("scale_max") or 10,
+    }
+
+
+def _statistics_status_breakdown(
+    status_distribution, media_count, media_type_colors, media_types
+):
+    type_labels = status_distribution.get("labels") or []
+    rows = []
+    for media_type in media_types:
+        label = app_tags.media_type_readable(media_type)
+        if label not in type_labels:
+            continue
+        index = type_labels.index(label)
+        statuses = {}
+        for dataset in status_distribution.get("datasets") or []:
+            values = dataset.get("data") or []
+            statuses[dataset.get("label") or ""] = (
+                values[index] if index < len(values) else 0
+            )
+        rows.append({
+            "label": label,
+            "color": media_type_colors.get(media_type) or "",
+            "total": media_count.get(media_type, 0),
+            "statuses": statuses,
+        })
+    columns = [
+        {
+            "label": dataset.get("label") or "",
+            "color": dataset.get("background_color") or "",
+            "completed": dataset.get("label") == Status.COMPLETED.value,
+        }
+        for dataset in status_distribution.get("datasets") or []
+    ]
+    return {"rows": rows, "columns": columns}
+
+
+def _statistics_completion(summary_stats_by_type, media_type_colors, media_types):
+    rows = []
+    for media_type in media_types:
+        row = summary_stats_by_type.get(media_type) or {}
+        rows.append({
+            "label": app_tags.media_type_readable(media_type),
+            "color": media_type_colors.get(media_type) or "",
+            "completed": row.get("completed", 0),
+            "total": row.get("total", 0),
+        })
+    return {"rows": rows}
+
+
+def _build_statistics_react_props(user, context, statistics_data):
+    """Build the shared Statistics models from the server's own values."""
+    summary_stats_by_type = context.get("summary_stats_by_type") or {}
+    media_count = context.get("media_count") or {}
+    status_distribution = context.get("status_distribution") or {}
+    score_distribution = context.get("score_distribution") or {}
+    media_type_distribution = context.get("media_type_distribution") or {}
+    activity_data = context.get("activity_data") or {}
+    weekday_hour_chart_data = context.get("weekday_hour_chart_data") or {}
+    combined_plays_charts = context.get("combined_plays_charts") or {}
+    media_type_colors = context.get("media_type_colors") or {}
+    minutes_per_media_type = statistics_data.get("minutes_per_media_type") or {}
+    history_highlights = context.get("history_highlights") or {}
+    history_highlights_by_type = context.get("history_highlights_by_type") or {}
+    comparisons = context.get("hours_per_media_type_comparison") or {}
+    total_comparison = context.get("total_activity_comparison") or {}
+    comparison_period = context.get("activity_comparison_period_label") or ""
+
+    types = [
+        media_type
+        for media_type in summary_stats_by_type
+        if media_type != "all"
+    ]
+    # Use the chart-ready type list from the distribution when labels are readable.
+    readable_to_type = {
+        app_tags.media_type_readable(media_type): media_type for media_type in media_type_colors
+    }
+    chart_types = [
+        readable_to_type[label]
+        for label in media_type_distribution.get("labels", [])
+        if label in readable_to_type
+    ] or types
+
+    def summary_for(media_type, comparison):
+        row = summary_stats_by_type.get(media_type) or {}
+        return _statistics_summary_model(
+            media_type, row, comparison, comparison_period
+        )
+
+    summary_all = summary_for("all", total_comparison)
+    summary_types = {
+        media_type: summary_for(media_type, comparisons.get(media_type))
+        for media_type in types
+    }
+
+    def hours(dataset_key, media_type=None):
+        source = (combined_plays_charts.get(dataset_key) or {})
+        key = media_type or "all"
+        return _statistics_series_model(
+            source.get(key),
+            media_type_colors.get(media_type) or "#6366f1",
+        )
+
+    def media_type_hours(media_type=None):
+        if media_type:
+            minutes = float(minutes_per_media_type.get(media_type) or 0)
+            if minutes <= 0:
+                return {"labels": [], "data": [], "colors": []}
+            return {
+                "labels": [app_tags.media_type_readable(media_type)],
+                "data": [round(minutes / 60, 2)],
+                "colors": [media_type_colors.get(media_type) or "#6366f1"],
+            }
+        return {
+            "labels": media_type_distribution.get("labels") or [],
+            "data": (media_type_distribution.get("datasets") or [{}])[0].get("data") or [],
+            "colors": (media_type_distribution.get("datasets") or [{}])[0].get("backgroundColor") or [],
+        }
+
+    def rhythm(media_type=None):
+        key = media_type or "all"
+        matrix = weekday_hour_chart_data.get(key)
+        if not matrix:
+            matrix = [[0 for _ in range(24)] for _ in range(7)]
+        return {
+            "matrix": matrix,
+            "weekdayLabels": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+        }
+
+    def chart_model(media_type=None):
+        return {
+            "rhythm": rhythm(media_type),
+            "mediaTypeHours": media_type_hours(media_type),
+            "heatmap": _statistics_heatmap_model(activity_data, media_type),
+            "hoursByMonth": hours("by_month", media_type),
+            "hoursByWeekday": hours("by_weekday", media_type),
+            "hoursByTimeOfDay": hours("by_time_of_day", media_type),
+            "statusComposition": _statistics_status_composition(
+                status_distribution, media_type
+            ),
+            "ratingDistribution": _statistics_rating_distribution(
+                score_distribution, media_type
+            ),
+            "statusBreakdown": _statistics_status_breakdown(
+                status_distribution,
+                media_count,
+                media_type_colors,
+                [media_type] if media_type else chart_types,
+            ),
+            "completion": _statistics_completion(
+                summary_stats_by_type,
+                media_type_colors,
+                [media_type] if media_type else chart_types,
+            ),
+        }
+
+    def group(keys, media_type):
+        model = chart_model(media_type)
+        return {key: model[key] for key in keys}
+
+    groups = {
+        "overview": ("rhythm", "mediaTypeHours"),
+        "heatmap": ("heatmap",),
+        "hours": ("hoursByMonth", "hoursByWeekday", "hoursByTimeOfDay"),
+        "status": ("statusComposition", "ratingDistribution"),
+        "breakdown": ("statusBreakdown", "completion"),
+    }
+    charts = {
+        name: {
+            "group": name,
+            "all": group(keys, None),
+            "types": {media_type: group(keys, media_type) for media_type in types},
+        }
+        for name, keys in groups.items()
+    }
+
+    built_at = context.get("statistics_built_at")
+    return {
+        "summary": {
+            "all": summary_all,
+            "types": summary_types,
+            "highlights": {
+                "all": _statistics_highlights_model(history_highlights, user),
+                "types": {
+                    media_type: _statistics_highlights_model(highlights, user)
+                    for media_type, highlights in history_highlights_by_type.items()
+                },
+            },
+            "updatedLabel": f"{timesince(built_at)} ago" if built_at else "",
+            "scaleMax": user.rating_scale_max,
+        },
+        "charts": charts,
+    }
+
+
 @require_GET
 def statistics(request):
     """Return the statistics page."""
@@ -678,6 +1100,7 @@ def statistics(request):
             "status_distribution": statistics_data["status_distribution"],
             "status_pie_chart_data": statistics_data["status_pie_chart_data"],
             "hours_per_media_type": statistics_data["hours_per_media_type"],
+            "minutes_per_media_type": statistics_data.get("minutes_per_media_type", {}),
             "tv_consumption": statistics_data["tv_consumption"],
             "movie_consumption": statistics_data["movie_consumption"],
             "anime_consumption": statistics_data.get("anime_consumption", {}),
@@ -707,6 +1130,8 @@ def statistics(request):
             "media_type_colors": {
                 "tv": config.get_stats_color(MediaTypes.TV.value),
                 "movie": config.get_stats_color(MediaTypes.MOVIE.value),
+                "anime": config.get_stats_color(MediaTypes.ANIME.value),
+                "boardgame": config.get_stats_color(MediaTypes.BOARDGAME.value),
                 "game": config.get_stats_color(MediaTypes.GAME.value),
                 "music": config.get_stats_color(MediaTypes.MUSIC.value),
                 "podcast": config.get_stats_color(MediaTypes.PODCAST.value),
@@ -717,6 +1142,9 @@ def statistics(request):
             },
         }
 
+        context["statistics_react_props"] = _build_statistics_react_props(
+            request.user, context, statistics_data
+        )
         return render(request, "app/statistics.html", context)
     except OperationalError:
         logger.exception("Database error in statistics view")
@@ -868,6 +1296,9 @@ def statistics(request):
             "show_year_charts": False,
             "database_error": True,
         }
+        context["statistics_react_props"] = _build_statistics_react_props(
+            request.user, context, empty_statistics_data
+        )
         return render(request, "app/statistics.html", context)
 
 

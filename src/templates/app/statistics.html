@@ -1165,6 +1165,8 @@
     <div class="space-y-8">
       <div class="space-y-4 mb-4">
       <!-- Hero + Highlight Cards -->
+      {{ statistics_react_props.summary|json_script:"statistics-summary-props" }}
+      <div data-statistics-summary-root data-props-id="statistics-summary-props">
       <div class="stats-hero-row grid grid-cols-1 gap-x-3 sm:gap-x-4 items-start">
         <div class="flex flex-col justify-center stats-hero-text">
           <p class="stats-hero-title font-bold text-[var(--color-text)] leading-snug">
@@ -1369,7 +1371,10 @@
           </div>
         </div>
       </div>
+      </div>
       <!-- Activity Rhythm + Time Across Your Worlds -->
+      {{ statistics_react_props.charts.overview|json_script:"statistics-charts-overview" }}
+      <div data-statistics-charts-root data-props-id="statistics-charts-overview">
       <div class="stats-chart-pair grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
     <!-- Activity Rhythm -->
     <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6">
@@ -1415,9 +1420,12 @@
     </div>
   </div>
       </div>
+      </div>
 
   <!-- Activity History Section -->
   {% if user.activity_history_view != 'stacked' %}
+  {{ statistics_react_props.charts.heatmap|json_script:"statistics-charts-heatmap" }}
+  <div data-statistics-charts-root data-props-id="statistics-charts-heatmap">
   {# Translated tooltip templates for the media-type filter; the script swaps in the date and count. #}
   <div id="activityHistory" class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 w-full overflow-hidden mb-4"
        data-title-0="{% blocktranslate with date='__DATE__' count count=0 %}{{ date }}: {{ count }} activity{% plural %}{{ date }}: {{ count }} activities{% endblocktranslate %}"
@@ -1474,9 +1482,12 @@
 
         </div>
     </div>
+  </div>
   {% endif %}
 
   <!-- Combined Hours charts -->
+  {{ statistics_react_props.charts.hours|json_script:"statistics-charts-hours" }}
+  <div data-statistics-charts-root data-props-id="statistics-charts-hours">
   <div class="stats-hour-charts grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4" style="margin-bottom:1rem">
     <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6">
       <h2 class="text-base font-semibold text-[var(--color-text)] mb-3">{% translate "Hours by Month" %}</h2>
@@ -1496,6 +1507,7 @@
         <canvas id="combinedPlaysByTimeChart"></canvas>
       </div>
     </div>
+  </div>
   </div>
 
   <!-- Consumption -->
@@ -1518,6 +1530,8 @@
   </div>
 
   <!-- Status Composition + Rating Distribution -->
+  {{ statistics_react_props.charts.status|json_script:"statistics-charts-status" }}
+  <div data-statistics-charts-root data-props-id="statistics-charts-status">
   <div class="stats-chart-pair grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4" style="margin-bottom:1rem">
     <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 flex flex-col h-full">
       <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5" id="statusCompositionTitle">{% translate "Status Composition" %}</h2>
@@ -1537,6 +1551,7 @@
         <canvas id="ratingDistributionChart"></canvas>
       </div>
     </div>
+  </div>
   </div>
 
   <!-- Status Breakdown + Average Rating -->

@@ -934,7 +934,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The shared summary is not mounted in the browser; the existing server/Alpine Statistics page remains the web owner and no browser interaction pass was performed."
+          "evidence": "The browser summary adapter mounts the shared hero, highlights and summary cards over the server Statistics block, derives the summary from server-supplied per-type values and re-renders on the existing media-type event. The compile and statistics view tests pass; no browser interaction or accessibility pass was performed."
         },
         "ios": {
           "status": "unverified",
@@ -963,7 +963,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The native chart renderer is not mounted in the browser; the existing Chart.js canvases, statistics-charts.js and server fragments remain the web owner and no browser pass was performed."
+          "evidence": "The browser charts adapter mounts the shared overview, heatmap, hours and status chart groups over the server chart cards, keeping the server markup as fallback and merging server-supplied per-type models on the existing media-type event. The remaining breakdown/completion and per-media Chart.js charts stay server-owned. No browser interaction or accessibility pass was performed."
         },
         "ios": {
           "status": "unverified",
@@ -2531,6 +2531,14 @@
     "frontend/ui/mountBulkToolbar.jsx": {
       "register": "BULK_ACTIONS",
       "purpose": "Django/browser integration for the shared bulk action bar: mirror the page Alpine selection, run quick bulk posts and open the status/plays dialogs."
+    },
+    "frontend/ui/mountStatisticsSummary.jsx": {
+      "register": "STATISTICS",
+      "purpose": "Browser summary adapter for the shared Statistics overview: read the server-built summary/highlight models, select the active media types from the page URL, merge per-type values for multi-select, follow the existing stats-media-type-changed event and theme tokens, and open highlight links; the Alpine range/media-type controls and saved preference stay server-owned."
+    },
+    "frontend/ui/mountStatisticsCharts.jsx": {
+      "register": "STATISTICS",
+      "purpose": "Browser chart adapter for the shared Statistics chart groups: mount the overview, heatmap, hours and status groups over the server chart cards, keep the Chart.js markup as the fallback, merge server-supplied per-type chart models for multi-select and follow the existing stats-media-type-changed event; breakdown/completion and the per-media charts remain server-owned."
     }
   }
 }

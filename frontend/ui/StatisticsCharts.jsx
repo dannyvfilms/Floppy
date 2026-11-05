@@ -650,7 +650,16 @@ export function StatisticsFeaturedRepeat({ model = {}, labels, palette, onSelect
   </View>;
 }
 
-export function StatisticsCharts({ model = {}, labels, palette, onSelectPerson }) {
+const CHART_GROUPS = ['overview', 'heatmap', 'hours', 'status', 'breakdown', 'featured'];
+
+export function StatisticsCharts({
+  model = {},
+  labels,
+  palette,
+  onSelectPerson,
+  groups = CHART_GROUPS,
+  showFeatured = true,
+}) {
   const copy = mergeLabels(labels);
   const colors = mergePalette(palette);
   const loading = Boolean(model.loading);
@@ -669,17 +678,20 @@ export function StatisticsCharts({ model = {}, labels, palette, onSelectPerson }
       }}
       palette={colors} />;
   }
+  const visible = new Set(groups || []);
   return <View style={styles.root}>
-    <View style={styles.row}>
+    {visible.has('overview') ? <View style={styles.row}>
       <View style={styles.cardHalf}>
         <StatisticsRhythmChart chart={model.rhythm} labels={copy} palette={colors} />
       </View>
       <View style={styles.cardHalf}>
         <StatisticsHoursByMediaTypeChart chart={model.mediaTypeHours} labels={copy} palette={colors} />
       </View>
-    </View>
-    <StatisticsHeatmapChart chart={model.heatmap} labels={copy} palette={colors} />
-    <View style={styles.row}>
+    </View> : null}
+    {visible.has('heatmap')
+      ? <StatisticsHeatmapChart chart={model.heatmap} labels={copy} palette={colors} />
+      : null}
+    {visible.has('hours') ? <View style={styles.row}>
       <View style={styles.cardThird}>
         <StatisticsHoursChart chart={model.hoursByMonth} labels={copy} palette={colors} />
       </View>
@@ -689,25 +701,27 @@ export function StatisticsCharts({ model = {}, labels, palette, onSelectPerson }
       <View style={styles.cardThird}>
         <StatisticsHoursChart chart={model.hoursByTimeOfDay} labels={copy} palette={colors} />
       </View>
-    </View>
-    <View style={styles.row}>
+    </View> : null}
+    {visible.has('status') ? <View style={styles.row}>
       <View style={styles.cardHalf}>
         <StatisticsStatusCompositionChart chart={model.statusComposition} labels={copy} palette={colors} />
       </View>
       <View style={styles.cardHalf}>
         <StatisticsRatingDistributionChart chart={model.ratingDistribution} labels={copy} palette={colors} />
       </View>
-    </View>
-    <View style={styles.row}>
+    </View> : null}
+    {visible.has('breakdown') ? <View style={styles.row}>
       <View style={styles.cardWide}>
         <StatisticsStatusBreakdownChart chart={model.statusBreakdown} labels={copy} palette={colors} />
       </View>
       <View style={styles.cardThird}>
         <StatisticsCompletionChart chart={model.completion} labels={copy} palette={colors} />
       </View>
-    </View>
-    <StatisticsFeaturedRepeat model={{ featured: model.featured }} labels={copy}
-      palette={colors} onSelectPerson={onSelectPerson} />
+    </View> : null}
+    {showFeatured && visible.has('featured')
+      ? <StatisticsFeaturedRepeat model={{ featured: model.featured }} labels={copy}
+        palette={colors} onSelectPerson={onSelectPerson} />
+      : null}
   </View>;
 }
 

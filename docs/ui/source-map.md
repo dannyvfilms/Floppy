@@ -650,7 +650,10 @@ comparison, taste/talent signals, role/studio leaders and per-media-type overvie
 are React-owned through `frontend/ui/StatisticsSummary.jsx`,
 `frontend/ui/StatisticsCharts.jsx` and `frontend/ui/StatisticsSections.jsx` on the
 native Statistics screen, using React Native primitives instead of Chart.js or a
-WebView. The web Statistics page remains server/Alpine-owned; memory for the
+WebView. The web page mounts the shared summary overview and the overview/heatmap/
+hours/status chart groups through `frontend/ui/mountStatisticsSummary.jsx` and
+`frontend/ui/mountStatisticsCharts.jsx`, keeping the server markup as fallback.
+The rest of the web Statistics page remains server/Alpine-owned; memory for the
 media-type filter is user data, not a new presentation owner:
 `statistics_default_media_types` in `src/users/models.py` and
 `update_statistics_media_types` in `src/app/statistics_views.py`, read and written
@@ -660,6 +663,8 @@ remain the web owner until a browser adapter mounts the shared sections.
 - `frontend/ui/StatisticsSummary.jsx`
 - `frontend/ui/StatisticsCharts.jsx`
 - `frontend/ui/StatisticsSections.jsx`
+- `frontend/ui/mountStatisticsSummary.jsx`
+- `frontend/ui/mountStatisticsCharts.jsx`
 - `native-proof/app/screens/StatisticsScreen.jsx`
 - `src/static/js/date-range.js`
 - `src/static/js/libraries/chartjs-4.4.9.min.js`
