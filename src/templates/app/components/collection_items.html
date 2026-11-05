@@ -2,6 +2,10 @@
 {% load i18n %}
 {% load app_tags %}
 
+{% if collection_browser_props and not is_pagination %}
+  {{ collection_browser_props|json_script:"collection-browser-props" }}
+  <div data-collection-browser-root data-props-id="collection-browser-props">
+{% endif %}
 {% if collection_rows %}
   {% include "app/components/collection_rows.html" %}
 {% elif collection_entries or is_pagination %}
@@ -31,5 +35,8 @@
         {% endif %}
       </p>
     </div>
+  </div>
+{% endif %}
+{% if collection_browser_props and not is_pagination %}
   </div>
 {% endif %}
