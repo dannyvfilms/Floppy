@@ -945,6 +945,10 @@ remain the web owner until a browser adapter mounts the shared sections.
 
 ## ONBOARDING
 
+- `frontend/onboarding/OnboardingWizard.jsx`
+- `native-proof/app/screens/OnboardingScreen.jsx`
+- `native-proof/app/data/onboardingState.js`
+- `native-proof/app/data/onboardingState.web.js`
 - `src/templates/users/components/onboarding_banner.html`
 - `src/templates/users/onboarding/_layout.html`
 - `src/templates/users/onboarding/components/connect_form.html`
