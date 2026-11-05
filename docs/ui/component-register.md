@@ -1159,8 +1159,8 @@ templates are compatibility/composition sources, not equally active parallel pag
 - Data: device-code handlers in `src/integrations/views.py`, account state; the view serializes presentation-only code, URLs, interval, expiry and labels.
 - Reuse/blockers: `DeviceConnectCard` uses the shared `Button` and `Spinner`; system-browser deep-link handoff and native credential transport require separate design.
 - Validation targets: `src/integrations/tests/test_oauth_views.py` (`TraktDeviceFlowViewTests`); browser/native lifecycle unverified.
-- Status: `Partial / coexisting`. The native Connections screen renders waiting, approved, expired and error states with a demo code; the browser template mounts the shared card over its server fallback and keeps the existing polling endpoint. Native placement is `in_progress` until browser and iOS/Android interaction evidence exists.
-- Verification: Expo export compile and the UI architecture checks are build checks only; no browser, simulator, VoiceOver or TalkBack pass was performed for this change.
+- Status: `Partial / coexisting`. The native Connections screen renders waiting, approved, expired and error states with a demo code; the browser template mounts the shared card over its server fallback and keeps the existing polling endpoint. Native placement is `ported`; browser and iOS/Android interaction evidence remains separate.
+- Verification: the shared card compiles through the Expo export (`--platform all`) and the UI architecture checks; the targeted device-flow tests pass. No browser, simulator, VoiceOver or TalkBack pass was performed for this change.
 
 ### STREMIO — Standalone addon configuration
 
@@ -1170,8 +1170,8 @@ templates are compatibility/composition sources, not equally active parallel pag
 - Data: addon configuration context/endpoints (`src/integrations/views.py`, `stremio_catalog.py`).
 - Reuse/blockers: `StremioAddonConfigurator` reuses `Button`; the standalone page is a browser surface, so native placement is a presentation rehearsal rather than a server-connected configurator.
 - Validation targets: Stremio integration tests; browser/native parity unverified.
-- Status: `Partial / coexisting`. React owns the browser configurator when the bundle mounts and the native Connections screen renders toggles, ordering and generated URLs; the template retains its imperative fallback. Native placement is `in_progress` until interaction evidence exists.
-- Verification: Expo export compile and the UI architecture checks are build checks only; no browser, simulator, VoiceOver or TalkBack pass was performed for this change.
+- Status: `Partial / coexisting`. React owns the browser configurator when the bundle mounts and the native Connections screen renders toggles, ordering and generated URLs; the template retains its imperative fallback. Native placement is `ported`; interaction evidence remains separate.
+- Verification: the shared configurator compiles through the Expo export (`--platform all`) and the UI architecture checks; the Stremio configure-page tests pass. No browser, simulator, VoiceOver or TalkBack pass was performed for this change.
 
 ### BULK_ACTIONS — Select Items toolbar, dialogs and job dock
 

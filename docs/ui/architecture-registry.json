@@ -1906,15 +1906,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "First commit: mounted by the device-connect web adapter; no browser pass yet."
+          "evidence": "Mounted by the device-connect web adapter over the server fallback; no browser pass was run."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "First commit: placed on the native Connections screen; Expo export and simulator interaction not run yet."
+          "evidence": "Compiled by Expo export --platform all through the native Connections screen; no simulator interaction or VoiceOver pass was run."
         },
         "android": {
           "status": "unverified",
-          "evidence": "First commit: placed on the native Connections screen; Expo export and emulator interaction not run yet."
+          "evidence": "Compiled by Expo export --platform all through the native Connections screen; no emulator interaction or TalkBack pass was run."
         }
       }
     },
@@ -1926,15 +1926,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "First commit: mounted by the Stremio configure adapter; no browser pass yet."
+          "evidence": "Mounted by the Stremio configure-page adapter over the server fallback; no browser pass was run."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "First commit: placed on the native Connections screen; Expo export and simulator interaction not run yet."
+          "evidence": "Compiled by Expo export --platform all through the native Connections screen; no simulator interaction or VoiceOver pass was run."
         },
         "android": {
           "status": "unverified",
-          "evidence": "First commit: placed on the native Connections screen; Expo export and emulator interaction not run yet."
+          "evidence": "Compiled by Expo export --platform all through the native Connections screen; no emulator interaction or TalkBack pass was run."
         }
       }
     }

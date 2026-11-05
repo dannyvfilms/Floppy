@@ -9,7 +9,7 @@ import { palette, radius, spacing } from '../theme';
 
 export const surface = {
   id: 'DEVICE-CONNECT',
-  status: 'in_progress',
+  status: 'ported',
   title: 'Device connections and Stremio catalogs',
   where: 'Trakt device authorization and the Stremio addon configurator',
   note: 'Trakt device-code waiting, approval, expiry and error states plus Stremio publish toggles, ordering and generated install URLs render on this native placement. Server polling, redirects, credentials and browser/deep-link handoff stay in adapters; iOS and Android runtime interactions remain unverified.',
