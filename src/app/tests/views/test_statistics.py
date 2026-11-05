@@ -224,6 +224,36 @@ class StatisticsViewTests(TestCase):
         self.assertIn("status_pie_chart_data", response.context)
         self.assertIn("daily_hours_by_media_type", response.context)
 
+    def test_statistics_view_builds_shared_react_props(self):
+        """The web adapters receive server-shaped summary and chart models."""
+        response = self.client.get(reverse("statistics"))
+
+        self.assertEqual(response.status_code, 200)
+        props = response.context["statistics_react_props"]
+        self.assertIn("all", props["summary"])
+        self.assertIn("highlights", props["summary"])
+        for name in ("overview", "heatmap", "hours", "status", "breakdown"):
+            group = props["charts"][name]
+            self.assertEqual(group["group"], name)
+            self.assertIn("all", group)
+            self.assertIn("types", group)
+
+    def test_statistics_react_props_include_play_highlights(self):
+        """Highlights and summary values are built from tracked play data."""
+        played_on = timezone.localdate() - timedelta(days=2)
+        self._create_movie_play("tt-react-props", "React Props Movie", played_on, 120)
+
+        response = self.client.get(
+            reverse("statistics")
+            + f"?start-date={played_on.isoformat()}&end-date={timezone.localdate().isoformat()}"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        props = response.context["statistics_react_props"]
+        self.assertGreaterEqual(props["summary"]["all"]["total"], 1)
+        titles = [card["title"] for card in props["summary"]["highlights"]["all"]]
+        self.assertIn("React Props Movie", titles)
+
     def test_statistics_view_custom_date_range(self):
         """Test the statistics view with custom date range."""
         start_date = "2023-01-01"
