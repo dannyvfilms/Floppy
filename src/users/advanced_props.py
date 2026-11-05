@@ -440,6 +440,43 @@ def _about_labels() -> dict[str, object]:
                 "below instead."
             ),
         },
+        "cache": {
+            "title": _("Static cache"),
+            "badge": _("Web only"),
+            "description": _(
+                "Service workers and the static cache belong to the browser "
+                "app. They keep static assets available when the network is "
+                "slow; tracking data still needs your Floppy server."
+            ),
+            "unavailable": _(
+                "The service worker status could not be read in this browser."
+            ),
+            "unsupportedBrowser": _(
+                "This browser does not support service workers."
+            ),
+            "unsupportedNative": _(
+                "Not available in the native app. Native builds update through "
+                "the app distribution channel."
+            ),
+            "refreshLabel": _("Check status"),
+            "labels": {
+                "registration": _("Service worker"),
+                "active": _("Active worker"),
+                "controlled": _("Page controlled"),
+                "scope": _("Scope"),
+                "caches": _("Static caches"),
+            },
+            "values": {
+                "registered": _("Registered"),
+                "notRegistered": _("Not registered"),
+                "active": _("Running"),
+                "inactive": _("Not running"),
+                "controlled": _("Yes"),
+                "uncontrolled": _("No"),
+                "unsupported": _("Unsupported"),
+                "none": _("None"),
+            },
+        },
         "resources": {"title": _("Project Resources"), "open": _("Open")},
         "specs": {
             "title": _("Developer & API Specifications"),
@@ -497,6 +534,10 @@ def about_props(request) -> dict[str, object]:
             "kind": "install",
             "labels": labels["install"],
             "guideUrl": INSTALL_GUIDE_URL,
+        },
+        "cache": {
+            "kind": "cache",
+            "labels": labels["cache"],
         },
         "resources": {
             "kind": "resources",

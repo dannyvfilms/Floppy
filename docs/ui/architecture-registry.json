@@ -3106,6 +3106,18 @@
       "register": "SHELL",
       "purpose": "Django/browser integration for the shared shell top bar and mobile navigation: resolve theme tokens, bridge the existing sidebar open state, lift the HTMX-boosted search island into the shared bar, keep public sign-in link semantics and render the overlay while the server fallback remains."
     },
+    "frontend/errors/mountErrorRecovery.jsx": {
+      "register": "ERRORS-DOCS",
+      "purpose": "Mount the shared error recovery presentation over the server-rendered 400/403/CSRF/404/500 fallback: resolve theme tokens, copy the safe diagnostic report through the browser clipboard adapter, and keep report-issue, retry, login and home navigation as browser intents."
+    },
+    "frontend/ui/mountCopyField.jsx": {
+      "register": "WEB-UTILITIES",
+      "purpose": "Mount the shared copy field over the server-rendered provider URL fallback: resolve theme tokens and copy through the browser clipboard adapter while the server input and copy control remain the no-JavaScript fallback."
+    },
+    "frontend/ui/mountCacheStatus.jsx": {
+      "register": "WEB-UTILITIES",
+      "purpose": "Mount the shared static-cache card over the About page fallback: read the browser service-worker registration, controller, scope and floppy cache names through the platform adapter and refresh on request."
+    },
     "frontend/ui/mountDeviceConnect.jsx": {
       "register": "DEVICE-CONNECT",
       "purpose": "Django/browser integration for the shared device-code card: poll the existing Trakt endpoint, follow its HTMX redirect, copy the code and open the activation page."

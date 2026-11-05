@@ -5,30 +5,36 @@ import {
   AboutVersionFooter,
   AttributionsCard,
   DeveloperSpecsCard,
-  InstallCard,
   LicenseCard,
   ProjectResourcesCard,
   ReleaseUpdateBanner,
   WhatsNewCard,
 } from './AboutSettings';
 import { systemPalette } from './mountAdvanced';
+import { InstallPromptCard } from '../ui/InstallPromptCard';
+import { getInstallState, openInstallGuide, requestInstall, subscribeInstallState } from '../ui/installPrompt';
+
+const systemButtonPalette = {
+  primary: {
+    background: 'var(--color-accent)',
+    pressed: 'var(--color-accent-strong)',
+    hovered: 'var(--color-accent-strong)',
+    text: '#ffffff',
+    border: 'transparent',
+  },
+  surface: {
+    background: 'var(--color-surface-strong)',
+    pressed: 'var(--color-surface-muted)',
+    hovered: 'var(--color-surface-muted)',
+    text: 'var(--color-text)',
+    border: 'var(--color-surface-border)',
+  },
+  radius: 6,
+  focusStyle: {},
+};
 
 function openUrl(url) {
   if (url) window.open(url, '_blank', 'noopener,noreferrer');
-}
-
-function detectPlatform() {
-  const ua = navigator.userAgent || '';
-  if (/Android/i.test(ua)) return 'android';
-  const iosDevice = /iPad|iPhone|iPod/.test(ua);
-  // iPadOS 13+ reports a Mac user agent; touch points betray it.
-  const iPadDesktopUA = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
-  return iosDevice || iPadDesktopUA ? 'ios' : 'desktop';
-}
-
-function installAvailable() {
-  const pwa = window.floppyPwa;
-  return Boolean(pwa?.deferredPrompt) && !pwa.isStandalone();
 }
 
 const SEEN_RELEASE_KEY = 'floppy_seen_release';
@@ -101,42 +107,33 @@ function WhatsNewAdapter({ props }) {
 
 function InstallAdapter({ props }) {
   const labels = props.labels || {};
-  const [platform] = useState(detectPlatform);
-  const [available, setAvailable] = useState(installAvailable);
-  const [status, setStatus] = useState('');
+  const [state, setState] = useState(getInstallState);
 
-  useEffect(() => {
-    const sync = () => setAvailable(installAvailable());
-    window.addEventListener('floppy:install-availability', sync);
-    return () => window.removeEventListener('floppy:install-availability', sync);
-  }, []);
+  useEffect(() => subscribeInstallState(setState), []);
 
-  async function install() {
-    const pwa = window.floppyPwa;
-    const prompt = pwa?.deferredPrompt;
-    if (!prompt) {
-      setAvailable(false);
-      return;
-    }
-    // Consume the event either way: it is single-use.
-    pwa.deferredPrompt = null;
-    setAvailable(false);
-    try {
-      await prompt.prompt();
-      const choice = await prompt.userChoice;
-      setStatus(
-        choice.outcome === 'accepted'
-          ? labels.installedStatus
-          : labels.dismissedStatus,
-      );
-    } catch (error) {
-      setStatus(labels.failedStatus);
-    }
-  }
+  const copy = {
+    title: labels.title,
+    description: labels.intro,
+    installLabel: labels.install,
+    guideLabel: labels.guideLabel,
+    accepted: labels.installedStatus,
+    dismissed: labels.dismissedStatus,
+    failed: labels.failedStatus,
+    noControl: labels.noControl,
+    steps: {
+      ios: { title: labels.iosTitle, items: labels.iosSteps },
+      android: { title: labels.androidTitle, items: labels.androidSteps },
+    },
+    guideNote: {
+      prefix: labels.guidePrefix,
+      linkLabel: labels.guideLink,
+      suffix: labels.guideSuffix,
+    },
+  };
 
-  return <InstallCard platform={platform} installAvailable={available}
-    installStatus={status} guideUrl={props.guideUrl} onInstall={install}
-    onOpenUrl={openUrl} palette={systemPalette} labels={labels} />;
+  return <InstallPromptCard state={state} onInstall={requestInstall}
+    onOpenGuide={openInstallGuide} copy={copy}
+    palette={systemPalette} buttonPalette={systemButtonPalette} />;
 }
 
 function SpecsAdapter({ props }) {

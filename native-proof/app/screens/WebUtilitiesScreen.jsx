@@ -13,7 +13,7 @@ export const surface = {
   title: 'Clipboard and install',
   where: 'Copy controls, install feedback and static cache',
   status: 'ported',
-  note: 'Copy fields, install/launch feedback and web-only service-worker status render here. The native app uses its clipboard and reports the browser cache as not applicable.',
+  note: 'Copy fields, install/launch feedback and web-only service-worker status render here. The browser mounts the same copy, install and cache cards over its server fallback; the native app uses its clipboard and reports the browser cache as not applicable.',
 };
 
 const uiPalette = {
