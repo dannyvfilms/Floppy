@@ -1705,6 +1705,33 @@
           "evidence": "Compiled by the Expo export through the native artist discography; the album grid was not exercised on an emulator or device."
         }
       }
+    },
+    "frontend/discover/DiscoverScreen.jsx": {
+      "components": [
+        "DiscoverScreen",
+        "DiscoverTabs",
+        "DiscoverFeedback",
+        "DiscoverState",
+        "DiscoverRow",
+        "DiscoverRows",
+        "DiscoverHidden",
+        "DiscoverPreview"
+      ],
+      "register": "DISCOVER",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Compiled into the web bundle and mounted through the Discover row, hidden, preview, state and feedback roots; no browser interaction pass was run in this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Discover screen; tabs, rows, hidden, feedback and actions were not exercised on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Discover screen; tabs, rows, hidden, feedback and actions were not exercised on an emulator or device."
+        }
+      }
     }
   },
   "legacy": {
@@ -2512,8 +2539,8 @@
       "purpose": "Django/browser integration for the registered surface."
     },
     "frontend/ui/mountFilterChips.jsx": {
-      "register": "SHELL",
-      "purpose": "Django/browser integration for the registered surface."
+      "register": "DISCOVER",
+      "purpose": "Mount the shared Discover media-type tabs while mirroring the page Alpine selectedMedia and switchMedia state; the server buttons remain the no-JS fallback."
     },
     "frontend/providers/mount.jsx": {
       "register": "SET-PROVIDERS",
@@ -2646,6 +2673,10 @@
     "frontend/ui/mountMusicAlbums.jsx": {
       "register": "MUSIC",
       "purpose": "Maps server-shaped artist discography album rows into the shared music album grid and owns browser navigation for the card link; the server album grid inside the host remains the no-React fallback."
+    },
+    "frontend/discover/mountDiscover.jsx": {
+      "register": "DISCOVER",
+      "purpose": "Mount the shared Discover row, hidden, preview, state and feedback presentation; keep htmx row swaps, browser navigation, rating writes, Alpine feedback state and the existing server fallback in the browser boundary."
     }
   }
 }

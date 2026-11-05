@@ -2,7 +2,9 @@
 {% load i18n %}
 {% load app_tags %}
 
-<section id="discover-row-{{ row.key }}" data-discover-row-key="{{ row.key }}">
+{% if not discover_debug %}{% discover_row_react row selected_media_type show_more discover_debug as discover_row_props %}{% endif %}
+<section id="discover-row-{{ row.key }}" data-discover-row-key="{{ row.key }}"{% if not discover_debug %} data-discover-row-root data-props-id="{{ discover_row_props.id }}"{% endif %}>
+  {% if not discover_debug %}{{ discover_row_props.props|json_script:discover_row_props.id }}{% endif %}
   <div class="mb-3 flex items-start justify-between gap-4">
     <div class="min-w-0">
       <h2 class="text-xl font-semibold text-[var(--color-text)]">{% translate row.title %}</h2>

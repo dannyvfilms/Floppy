@@ -2504,6 +2504,90 @@ def filter_chips_react(options, label):
 
 
 @register.simple_tag(takes_context=True)
+def discover_row_react(context, row, selected_media_type, show_more, discover_debug):
+    """Return the shared React row props for one Discover row."""
+    from uuid import uuid4
+
+    from app.discover_presentation import card_labels, row_props, surface_labels
+
+    return {
+        "id": f"discover-row-props-{uuid4().hex[:8]}",
+        "props": {
+            "row": row_props(
+                context.flatten(),
+                row,
+                selected_media_type=selected_media_type,
+                show_more=show_more,
+                discover_debug=discover_debug,
+            ),
+            "labels": {**surface_labels(), **card_labels()},
+        },
+    }
+
+
+@register.simple_tag(takes_context=True)
+def discover_hidden_react(context):
+    """Return the shared React props for the hidden Discover grid."""
+    from uuid import uuid4
+
+    from app.discover_presentation import card_labels, hidden_props, surface_labels
+
+    props = hidden_props(context.flatten())
+    return {
+        "id": f"discover-hidden-props-{uuid4().hex[:8]}",
+        "props": {**props, "labels": {**surface_labels(), **card_labels()}},
+    }
+
+
+@register.simple_tag(takes_context=True)
+def discover_preview_react(context, row, selected_media_type):
+    """Return the shared React rail props for an RSS row preview."""
+    from uuid import uuid4
+
+    from app.discover_presentation import card_labels, row_props, surface_labels
+
+    return {
+        "id": f"discover-preview-props-{uuid4().hex[:8]}",
+        "props": {
+            "row": row_props(
+                context.flatten(),
+                row,
+                selected_media_type=selected_media_type,
+                show_more=False,
+                discover_debug=False,
+            ) if row else None,
+            "labels": {**surface_labels(), **card_labels()},
+        },
+    }
+
+
+@register.simple_tag
+def discover_state_react(kind):
+    """Return the shared React props for a Discover loading or empty state."""
+    from uuid import uuid4
+
+    from app.discover_presentation import surface_labels
+
+    return {
+        "id": f"discover-state-{uuid4().hex[:8]}",
+        "props": {"kind": str(kind), "labels": surface_labels()},
+    }
+
+
+@register.simple_tag
+def discover_feedback_react():
+    """Return the shared React props for Discover refresh and action feedback."""
+    from uuid import uuid4
+
+    from app.discover_presentation import surface_labels
+
+    return {
+        "id": f"discover-feedback-{uuid4().hex[:8]}",
+        "props": {"labels": surface_labels()},
+    }
+
+
+@register.simple_tag(takes_context=True)
 def music_relations_react(context, relations):
     """Return the shared relation-card grid props for an artist page."""
     items = []
