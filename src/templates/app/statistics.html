@@ -284,6 +284,17 @@
       flex: 0 0 auto;
       min-width: 0;
     }
+    /* Keep the trigger the same width whatever is ticked, so the menu below it
+       does not jump as the label changes. Long labels truncate. */
+    .stats-mediatype-button .stats-button-title {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .stats-mediatype-wrapper .stats-dropdown-panel {
+      width: 100%;
+    }
     .stats-media-card-icon {
       width: 2.75rem;
       height: 2.75rem;
@@ -511,6 +522,9 @@
       .stats-mediatype-button {
         padding-top: 0;
         padding-bottom: 0;
+      }
+      .stats-mediatype-button {
+        width: 14rem;
       }
     }
     @media (max-width: 768px) {
@@ -1013,7 +1027,9 @@
                class="w-5 h-5 text-[var(--color-link)] shrink-0">
             <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
           </svg>
-          <span class="stats-button-title" x-text="mediaTypeTriggerLabel()"></span>
+          <span class="stats-button-title"
+                :title="mediaTypeTriggerLabel()"
+                x-text="mediaTypeTriggerLabel()"></span>
           <svg xmlns="http://www.w3.org/2000/svg"
                width="24"
                height="24"
@@ -1033,7 +1049,7 @@
              x-show="isMediaTypeOpen"
              x-transition
              @click.outside="isMediaTypeOpen = false"
-             class="absolute left-0 z-20 mt-2 stats-dropdown-panel"
+             class="absolute right-0 z-20 mt-2 stats-dropdown-panel"
              style="min-width: 160px;">
           <div class="p-2 space-y-1">
             <template x-for="opt in mediaTypeOptions" :key="opt.value">
