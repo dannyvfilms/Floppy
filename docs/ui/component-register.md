@@ -250,9 +250,19 @@ can inform a focused completion pass.
   `listsCountLabel`, `visibleLists`, `applyListToggle`, `normalizeTrackForm`,
   `initialTrackValues` and `validateTrackValues`. The lists form sends its toggle
   through `frontend/ui/ListsForm.web.jsx`, which owns the JSON fetch, CSRF header,
-  `floppy-list-toggled` event and translated error state. The Track form is
-  ported as the General tab body (fields, dates, notes and validation) and its
-  server transport remains the existing htmx path.
+  `floppy-list-toggled` event and translated error state. `frontend/ui/TrackFormTabs.jsx`
+  (`TrackTabs`) is the shared tab strip and body for Tags, Metadata, Collection,
+  Plays/Episode plays, Status history and Discover, with per-tab loading, error,
+  retry, empty and pending states. The native shell owns the transport:
+  `native-proof/app/surfaces/mediaCardTransport.js` is a native-only adapter for
+  the existing `/api/v1` media, state, tags, collection, history and Discover
+  routes. It carries bearer-token or session/CSRF headers, joins the base URL
+  from in-memory configuration, normalizes API payloads into the shared models
+  and falls back to the demo models when no server is configured. The Track
+  General body saves through `PATCH /api/v1/media/{type}/{source}/{id}/` for a
+  tracked row and `POST /api/v1/media/{type}/` for a new one; Lists toggles
+  through `PUT`/`DELETE /api/v1/media/{type}/{source}/{id}/lists/{list}/`.
+  Transport is not imported by universal presentation.
 - Native status: `in_progress`. The existing web `MediaCard.jsx`,
   `mountMediaCard.jsx` and `ModalHost.jsx` remain the active browser card and
   popup host. The universal action presentation and callback contract are in
@@ -261,12 +271,14 @@ can inform a focused completion pass.
   registered `ListsForm.web.jsx` adapter, so the existing `ModalHost` keeps its
   JSON load, CSRF toggle, permissions, errors and `floppy-list-toggled` event.
   The Track body is shared presentation on native only; the web Track popup stays
-  on the server-rendered htmx form. Still outstanding: the web Track adapter and
-  its server form-model endpoint, the non-General Track tabs (Tags, Metadata,
-  Collection, Episode plays, Status history, Discover), Discover plan/hide and
-  list-reorder writes (the drag handle is visual only; a native drag gesture is
-  not ported), the shared bulk-selection store and toolbar, and a full
-  interaction/accessibility pass. iOS 17.2 simulator and Android 15
+  on the server-rendered htmx form. The native Track body now loads live state,
+  tags, metadata, collection copies, consumption history, status changes and the
+  Discover hidden flag from the API, and writes the General form, tag membership,
+  artwork URL and Discover hide/unhide through the same transport. Discover plan
+  (the card's planning quick action), the server's OOB card refresh after a
+  native save, list reorder (the drag handle is visual only; a native drag
+  gesture is not ported), the shared bulk-selection store and toolbar, and a full
+  interaction/accessibility pass remain outstanding. iOS 17.2 simulator and Android 15
   Pixel 7 AVD rendered the shared cards on Home and Library (and Detail on Android);
   Android demo images did not load, and no action overlay, form popup, reorder or
   TalkBack/VoiceOver pass was exercised.
@@ -278,13 +290,18 @@ can inform a focused completion pass.
 - Reuse/blockers: highest leverage; [media-card contract](../architecture/media-card.md) authoritative. Replace consumers and response slots, never create an unrelated second card system.
 - Status: `React-owned` for every card the `media_card` tag, `history_card_react` and `media_row_react` render. All 14 surfaces in `card_surfaces.py` set `react_card=True`; History (`history_card.html`) and the Search list row (`media_card_list.html`) use the same `MediaCard.jsx` (poster, square, landscape and `layout: row`). The artwork link, corner chips, progress bar, title and alternate-title tooltip, subtitle lines (including a credit's role line), status chip, rating button with its star popup, hover buttons (track, lists, history, Discover plan and hide, list reorder and drag handle), touch tap-to-reveal and bulk-select checkbox are all React (`MediaCard.jsx`, `mountMediaCard.jsx`, model in `media_card_model.py`). The track and lists popups open in the page's one React host (`ModalHost.jsx`); the cards carry no Alpine and no popup markup. `media_card.html` is now a shell: the card wrapper classes (themes and title settings still key off them), the props `<script>`, and a first-paint poster and title link inside the React host that React replaces on mount. The legacy server body, its Alpine fallback and the empty status, overlay and rating slots are deleted. `app.tests.test_media_card_contract.MediaCardInventoryTest` fails if a surface opts out of React, if the template regrows a legacy body, or if any template draws `media-card` markup that is neither the tag nor a documented exception.
 - Remaining consumers and retirement: (1) Bulk select is still read from the page's Alpine scope (`selectMode`, `isItemSelected`, `toggleItemSelected`) by `mountMediaCard.jsx`. It retires when the Library bulk toolbar (`bulkSelection.js`, `mountBulkToolbar.jsx`, owned by another change in flight) publishes selection through a shared store; reopen then. (2) The save and score responses still send server fragments out of band (`media_card_status_chip.html`, `media_card_rating_oob.html`) for pages that render those slots; a React card ignores the swap (`data-react-owned`) and updates from `floppyCardUpdate`. They retire with the detail-page chips. (3) Documented exceptions that are different kinds of card, not this one: person and cast cards, Statistics highlights and the repeat-player strip, Now Playing, list index cards, and the music album and artist grids (they need an Album or Artist, not an Item). They are listed with reasons in `DOCUMENTED_EXCEPTIONS` in the contract test; reopen if a media item is ever drawn there. (4) The Search list row keeps its `meta` slot (server-rendered per-type metadata) inside the React host.
-- Native blockers: the action presentation and the Lists form are ported; the
-  shared Track body covers the General tab only and is not yet wired into the web
-  popup, and the remaining Track tabs, Discover plan/hide and list-reorder
-  transport (including a native drag gesture), the bulk-selection store/toolbar
-  and a full interaction/accessibility pass remain. Render evidence is recorded
-  above; an Expo export is only a compile check. The web DOM card remains the
-  behavior source until those adapters exist.
+- Native blockers: the action presentation, Lists form and tabbed Track body are
+  ported; the shared Track body is not yet wired into the web popup because the
+  web save responses are htmx OOB fragments. Discover plan (not hide/unhide), a
+  native drag gesture and reorder transport, the bulk-selection store/toolbar and
+  a full interaction/accessibility pass remain. The shell's demo items are not a
+  live account, and a native save does not refresh the web card because there is
+  no shared mutation event yet. Lists load the API's current page and the API list
+  serializer does not expose list tags, so the tag filter is hidden in live mode;
+  paged and tagged list loading remains. Podcast and music General fields also
+  still need their type-specific model. Render evidence is recorded above; an Expo
+  export is only a compile check. The web DOM card remains the behavior source
+  until those adapters exist.
 - Fixed while proving it: a credit card lost its role line (for example "Developer, Publisher") once React took over; the track popup was unmounted the moment its form submitted, so htmx fired the save response (card refresh, toast) from a detached form and cards never updated after a tracker save (`ModalHost.jsx` now waits for the request); and a touch card hid its buttons again after its own popup was used.
 - Browser verification (Chromium, built-in browser pane and Playwright, macOS, throwaway database and test login): Library grid (movie, game, book), Home, History, Collection, custom list grid, tier board and list table at desktop (1024 and 1280) and phone (375 and 390) widths, light and dark (system theme driven by the OS setting, plus the explicit `light` and `dark` classes). Before and after builds compared on 36 surface, width and theme combinations: 0.0% differing pixels and identical card geometry on all 36; the only DOM differences are the removed empty slot wrappers and the timing of the async release-year fill. Interactions exercised before this change: tracker popup open and save with live card refresh, the legacy lists popup add, rating popup and score change, touch tap-to-reveal, bulk select, status chip and no native `<select>` in any card. The shared Lists form was not exercised in a browser after this migration. Not exercised in a browser (no provider network in the test setup): Search (card and list row), Discover and hidden Discover, detail-page related and seasons cards, credit and group surfaces, modal search picker, list recommendations, smart lists, the media-type chip and alternative-title tooltip on a real title. Those are covered by `app.tests.test_media_card_contract` and `test_media_card_model`, which render every surface. Other theme presets (Dracula, Nord, Gruvbox, OLED, Glass, Custom) were not opened. iOS and Android: not tested.
 - Validation targets: `src/app/tests/test_media_card_contract.py`, `src/app/tests/test_media_card_model.py`; complete native/consumer matrix outstanding.
@@ -306,9 +323,14 @@ can inform a focused completion pass.
   Their private Alpine `listsOpen` popups are deleted.
 - Status, Track form: `Partial / coexisting`. The shared `TrackForm` renders the
   General tab body with explicit fields, dates, notes and validation inside the
-  native `MediaCardActionHost`; `frontend/ui/mediaCardForms.js` supplies the model,
-  initial values and validation. The web popup remains the server-rendered
-  `fill_track.html` htmx form, so this port does not yet replace the browser path.
+  native `MediaCardActionHost`, with `TrackTabs` supplying Tags, Metadata,
+  Collection, Plays/Episode plays, Status history and Discover bodies.
+  `frontend/ui/mediaCardForms.js` supplies the model, initial values and
+  validation. `native-proof/app/surfaces/mediaCardTransport.js` loads those tabs
+  and writes General, tag membership, artwork URL and Discover hide/unhide
+  through the `/api/v1` bearer-token or session/CSRF boundary. The web popup
+  remains the server-rendered `fill_track.html` htmx form, so this port does not
+  yet replace the browser path.
   Blocker (evidence): the Track popup is not one form. `fill_track.html` is a
   seven-tab shell (General, Tags, Metadata, Collection, Episode plays, Status
   history, Discover) built from Django model forms that differ by media type, with
@@ -318,13 +340,16 @@ can inform a focused completion pass.
   a 1,461-line builder (`track_modal_views.py`) and 2,399 lines of tests. Its save
   views answer with htmx out-of-band fragments (status pill, score chip, progress
   card, notes) and `HX-Trigger` events, so the web adapter must keep posting
-  through htmx. About 34 templates still own a `trackOpen` popup.
-- Reopening condition and plan: (1) ported for native as the shared General tab
-  body; the remaining web step is a Django-form-to-JSON model and a
-  `TrackForm.web.jsx` adapter that submits with `htmx.ajax` so the existing
-  responses keep working; (2) song and episode variants; (3) Tags, Collection,
-  Episode plays, Status history, Discover tab bodies; (4) replace the `trackOpen`
-  popups. The web Track adapter is the next blocker.
+  through htmx. About 34 templates still own a `trackOpen` popup. The native
+  adapter has no shared mutation event back into the web card, and the card's
+  Discover plan quick action is not ported.
+- Reopening condition and plan: (1) the native General, Tags, Metadata, Collection,
+  Plays, Status history and Discover bodies are ported and use the API adapter;
+  the remaining web step is a Django-form-to-JSON model and a `TrackForm.web.jsx`
+  adapter that submits with `htmx.ajax` so the existing responses keep working;
+  (2) song and episode variants; (3) Discover plan and a shared save event that
+  refreshes the card; (4) replace the `trackOpen` popups. The web Track adapter is
+  the next blocker.
 - Remaining consumers and retirement: `fill_lists.html` is still returned for non-JSON requests; it retires with the existing `ListsModalViewTests` HTML assertions once the Track form leaves htmx popups, or sooner if no caller needs it. `list_item_button.html` is the same.
 - Browser verification before this change (Chromium, built-in browser pane, macOS, throwaway database and test login): the legacy `ListsForm` opened from a Movies grid card (desktop, dark) and a movie detail page (phone width, light); added a list (spinner, then "On 1 list" and Remove), filtered by tag, forced a network failure (inline error, list unchanged), Escape closed it. The shared `ListsForm`/`ListsForm.web.jsx` replacement was not exercised in a browser during this change. Not checked: history/episode/table-row entry points, other theme states beyond dark and light, a screen reader. iOS and Android: not verified.
 - Validation targets: `lists.tests.test_views.ListsModalViewTests`, `ListItemToggleTests`, `app.tests.test_media_card_contract`.

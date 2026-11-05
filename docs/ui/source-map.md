@@ -194,7 +194,8 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 - `frontend/ui/MediaCardFormControls.jsx` (`FormHeader`, `FormField`, `FormTextField`, `FormSelect`, `FormStatus` and `FormError` for the shared action forms; presentation only)
 - `frontend/ui/ListsFormView.jsx` (universal `ListsForm`: tag filter, count, Add/Remove rows, loading/error/empty states and accessible header; presentation only)
 - `frontend/ui/ListsForm.web.jsx` (browser transport adapter: JSON list model, CSRF toggle, `floppy-list-toggled` event and errors for the shared `ListsForm`)
-- `frontend/ui/TrackForm.jsx` (universal `TrackForm`: General tab fields, date-time fields, notes, validation and save/delete states; presentation only)
+- `frontend/ui/TrackForm.jsx` (universal `TrackForm`: General tab fields, date-time fields, notes, validation, tab host and save/delete states; presentation only)
+- `frontend/ui/TrackFormTabs.jsx` (universal `TrackTabs`: General, Tags, Metadata, Collection, Plays/Episode plays, Status history and Discover tab strip and bodies with loading, error, retry, empty and pending states; supplied labels drive the tabs and add/remove actions; presentation only)
 - `frontend/ui/mediaCardForms.js` (shared lists/track form models, membership helpers, initial values and validation)
 - `native-proof/app/surfaces/MediaCardSlot.jsx` (native placement with demo library items, action callbacks and popup host on Home, Discover and Library)
 - `src/templates/app/components/card_lines.html`
@@ -206,10 +207,12 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 The existing web `MediaCard.jsx`, `mountMediaCard.jsx` and `ModalHost.jsx` remain the active
 browser adapter and popup host; `MediaCardView` and `MediaCardActions` are the native candidates
 and do not yet replace that DOM card. `ListsFormView` is used on web through `ListsForm.web.jsx`
-and on native through the media-card slot. `TrackForm` renders in the native action host; the web
-Track popup and its remaining tabs, Discover plan/hide and list-reorder writes, the bulk-selection
-store and the full interaction/accessibility pass remain outstanding. Runtime render evidence is
-recorded in the register.
+and on native through the media-card slot. `TrackForm` and `TrackTabs` render in the native action
+host; the native shell's `native-proof/app/surfaces/mediaCardTransport.js` owns the `/api/v1`
+transport and CSRF boundary for those forms and is not imported by universal presentation. The web
+Track popup, Discover plan, list reorder, the bulk-selection store and the full
+interaction/accessibility pass remain outstanding. Runtime render evidence is recorded in the
+register.
 
 ## RATING
 
