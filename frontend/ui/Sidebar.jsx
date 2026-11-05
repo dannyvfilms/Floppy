@@ -1,341 +1,497 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { Icon } from './Icon';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Image,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 
-// The signed-in sidebar. Class names match the Django sidebar it replaces, so
-// every theme keeps applying. Pins, pinned lists and group open states keep the
-// same localStorage keys the page's list-pin buttons and saved-view scripts use.
+// The signed-in sidebar as shared React Native presentation. The browser
+// adapter supplies links, storage, drag and transport; this file only lays out
+// the logo, media-type groups, pinned lists, onboarding slot and bottom actions.
 
-const rowClass = (active) => `transition-colors duration-200 text-sm ${active
-  ? 'text-[var(--color-text)] bg-[var(--color-border)]'
-  : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]'}`;
-const iconClass = (active, size = 'w-5 h-5') => `${size}${active ? ' text-[var(--color-link)]' : ''}`;
-const hxBoost = { 'hx-boost': 'true' };
-const fine = 'pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:focus:opacity-100';
-const iconButton = 'p-1 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)] cursor-pointer';
+const defaultPalette = {
+  text: '#fafafa',
+  textSecondary: '#d1d5db',
+  textMuted: '#adb5bd',
+  surface: '#2a2f35',
+  surfaceStrong: '#343a40',
+  surfaceHover: '#3f3f46',
+  hoverDim: 'rgba(255, 255, 255, 0.05)',
+  border: '#343a40',
+  link: '#818cf8',
+  danger: '#ef4444',
+  sidebar: '#212529',
+  overlay: 'rgba(0, 0, 0, 0.5)',
+  focusStyle: {},
+  radius: 6,
+};
 
-function readJson(key, fallback) {
-  try {
-    const value = JSON.parse(localStorage.getItem(key) || 'null');
-    return value ?? fallback;
-  } catch { return fallback; }
+const defaultLabels = {
+  logo: 'Floppy',
+  explore: 'Explore',
+  logout: 'Logout',
+  pinnedLists: 'Pinned lists',
+  navOptions: 'Navigation options',
+  pin: 'Pin to sidebar',
+  unpin: 'Unpin from sidebar',
+  listOptions: 'List options',
+  reorder: 'Reorder',
+  delete: 'Delete',
+  done: 'Done',
+  closeMenu: 'Close menu',
+  navigation: 'Navigation',
+  savedViews: 'Saved %(name)s views',
+  viewOptions: 'Options for %(name)s',
+  confirmDelete: 'Delete the saved view \u201c%(name)s\u201d?',
+};
+
+const controlGlyphs = {
+  chevron: '\u2304',
+  ellipsis: '\u2026',
+  drag: '\u2195',
+  reorder: '\u21c5',
+  trash: '\u232b',
+  check: '\u2713',
+  close: '\u00d7',
+};
+
+const format = (template, name) => template.replace('%(name)s', name);
+
+function IconSlot({ spec, glyph, renderIcon, size = 20, color, rotate }) {
+  const transform = rotate ? [{ rotate }] : undefined;
+  if (renderIcon && spec) {
+    return <View style={{ width: size, height: size, alignItems: 'center',
+      justifyContent: 'center', color, fontSize: size, transform }}>
+      {renderIcon(spec, { size, color })}
+    </View>;
+  }
+  return <Text aria-hidden style={{ fontSize: size, lineHeight: size + 2, color, transform }}>
+    {glyph || '\u2022'}
+  </Text>;
 }
-const writeJson = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Works without storage. */ } };
-const readOpen = (key) => { try { return localStorage.getItem(`floppy:saved-views-open:${key}`); } catch { return null; } };
-const writeOpen = (key, open) => { try { localStorage.setItem(`floppy:saved-views-open:${key}`, open ? '1' : '0'); } catch { /* Same. */ } };
 
-// A small menu that floats over the page, closing on outside click, Escape, scroll and resize.
-function Popup({ anchor, onClose, children, width = 176 }) {
-  const [style, setStyle] = useState(null);
-  const panel = useRef(null);
-  useLayoutEffect(() => {
-    const rect = anchor.current.getBoundingClientRect();
-    setStyle({ left: Math.max(8, rect.right - width),
-      ...(rect.top >= 48 ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }) });
-  }, [anchor, width]);
-  useEffect(() => {
-    const away = (event) => { if (!panel.current?.contains(event.target) && !anchor.current?.contains(event.target)) onClose(); };
-    const key = (event) => { if (event.key === 'Escape') onClose(); };
-    document.addEventListener('click', away);
-    window.addEventListener('keydown', key);
-    window.addEventListener('scroll', onClose, true);
-    window.addEventListener('resize', onClose);
-    return () => {
-      document.removeEventListener('click', away);
-      window.removeEventListener('keydown', key);
-      window.removeEventListener('scroll', onClose, true);
-      window.removeEventListener('resize', onClose);
-    };
-  }, [anchor, onClose]);
-  return createPortal(<div ref={panel} className="fixed z-50 bg-[var(--color-surface-strong)] rounded-md shadow-lg border border-gray-700"
-    style={{ ...style, width }}>{children}</div>, document.body);
+function MenuModal({ open, onClose, children, palette, labels }) {
+  return <Modal transparent visible={open} animationType="fade" onRequestClose={onClose}>
+    <View style={styles.modalRoot}>
+      <Pressable accessibilityRole="button" accessibilityLabel={labels.closeMenu}
+        onPress={onClose} style={[StyleSheet.absoluteFill, { backgroundColor: palette.overlay }]} />
+      <View accessibilityViewIsModal style={[styles.menu, {
+        backgroundColor: palette.surfaceStrong, borderColor: palette.border,
+      }]}>{children}</View>
+    </View>
+  </Modal>;
 }
 
-const menuButton = 'w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] cursor-pointer';
+function MenuButton({ label, onPress, palette, danger = false, icon, glyph, renderIcon }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress}
+    style={({ pressed }) => [styles.menuItem, pressed && { backgroundColor: palette.surfaceHover }]}>
+    {icon || glyph ? <IconSlot spec={icon} glyph={glyph} renderIcon={renderIcon} size={16}
+      color={danger ? palette.danger : palette.textSecondary} /> : null}
+    <Text style={[styles.menuItemText, { color: danger ? palette.danger : palette.textSecondary }]}>
+      {label}
+    </Text>
+  </Pressable>;
+}
 
-function PinMenu({ pinKey, pinned, onToggle, model }) {
+function PinMenu({ pinKey, pins, palette, labels, icons, renderIcon }) {
   const [open, setOpen] = useState(false);
-  const button = useRef(null);
-  return <div className="relative shrink-0 mr-2">
-    <button ref={button} type="button" className={`${iconButton} ${open ? 'pointer-fine:opacity-100' : fine}`}
-      aria-expanded={open} aria-label={model.labels.navOptions} onClick={() => setOpen((value) => !value)}>
-      <Icon spec={model.icons.ellipsis} className="w-4 h-4" />
-    </button>
-    {open && <Popup anchor={button} onClose={() => setOpen(false)}>
-      <button type="button" className={menuButton} onClick={() => { onToggle(pinKey); setOpen(false); }}>
-        {pinned ? model.labels.unpin : model.labels.pin}
-      </button>
-    </Popup>}
-  </div>;
+  const pinned = pins.isPinned(pinKey);
+  return <View style={styles.action}>
+    <Pressable accessibilityRole="button" accessibilityLabel={labels.navOptions}
+      accessibilityState={{ expanded: open }} onPress={() => setOpen(value => !value)}
+      style={({ pressed }) => [styles.iconButton, { borderRadius: palette.radius },
+        pressed && { backgroundColor: palette.hoverDim }]}>
+      <IconSlot spec={icons?.ellipsis} glyph={controlGlyphs.ellipsis} renderIcon={renderIcon}
+        size={16} color={palette.textMuted} />
+    </Pressable>
+    <MenuModal open={open} onClose={() => setOpen(false)} palette={palette} labels={labels}>
+      <MenuButton label={pinned ? labels.unpin : labels.pin} palette={palette}
+        onPress={() => { pins.toggle(pinKey); setOpen(false); }} />
+    </MenuModal>
+  </View>;
 }
 
-function Link({ item, pins, model }) {
-  return <li>
-    <div className="group relative flex items-center">
-      <a href={item.href} className={`flex flex-1 min-w-0 items-center space-x-3 px-4 py-2 rounded-md ${rowClass(item.active)}`}>
-        <Icon spec={item.icon} className={iconClass(item.active)} />
-        <span>{item.label}</span>
-      </a>
-      {item.pinKey && <PinMenu pinKey={item.pinKey} pinned={pins.isPinned(item.pinKey)} onToggle={pins.toggle} model={model} />}
-    </div>
-  </li>;
+function HoverRow({ active, palette, rowActions = 'always', children, actions, style, ...rest }) {
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const reveal = rowActions !== 'always';
+  const visible = !reveal || hovered || focused;
+  const hoverProps = reveal ? {
+    onPointerEnter: () => setHovered(true),
+    onPointerLeave: () => setHovered(false),
+  } : {};
+  const focusProps = reveal ? {
+    onFocus: () => setFocused(true),
+    onBlur: () => setFocused(false),
+  } : {};
+  return <View {...rest} {...hoverProps}
+    style={[styles.row, style, active && { backgroundColor: palette.border }]}>
+    {children}
+    {actions ? <View {...focusProps}
+      style={[styles.rowActions, { opacity: visible ? 1 : 0 }]}>{actions}</View> : null}
+  </View>;
 }
 
-function SavedViewGroup({ item, pins, model }) {
-  const initial = item.views.some((view) => view.current) || readOpen(item.key) === '1';
-  const [open, setOpen] = useState(initial);
+function LinkRow({ item, palette, labels, renderIcon, onNavigate, rowActions, action }) {
+  const link = item.platformProps || {};
+  const webLink = Boolean(link.href);
+  return <HoverRow active={item.active} palette={palette} rowActions={rowActions} actions={action}>
+    <Pressable {...link} accessibilityRole="link"
+      accessibilityLabel={item.label} accessibilityState={{ selected: item.active }}
+      onPress={webLink ? undefined : () => onNavigate?.(item)}
+      style={({ pressed, focused }) => [styles.link,
+        pressed && !webLink && { backgroundColor: palette.hoverDim },
+        focused && palette.focusStyle]}>
+      <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={20}
+        color={item.active ? palette.link : palette.textMuted} />
+      <Text numberOfLines={1} style={[styles.linkText,
+        { color: item.active ? palette.text : palette.textMuted }]}>{item.label}</Text>
+    </Pressable>
+  </HoverRow>;
+}
+
+function SavedViewGroup({
+  item, pins, palette, labels, renderIcon, rowActions, onNavigate, icons,
+  enableSortable, onToggleGroup, onDeleteView, onFinishReorder,
+}) {
+  const [open, setOpen] = useState(Boolean(item.open));
   const [reordering, setReordering] = useState(false);
   const [views, setViews] = useState(item.views);
   const [menuFor, setMenuFor] = useState(null);
   const list = useRef(null);
-  const sortable = useRef(null);
-  const toggle = () => { setOpen(!open); writeOpen(item.key, !open); };
 
-  useEffect(() => {
-    if (!reordering || !list.current || !window.Sortable) return undefined;
-    sortable.current = window.Sortable.create(list.current, {
-      animation: 150, draggable: '[data-saved-view-id]', handle: '.saved-view-drag-handle',
-      // React owns these rows: put the dragged one back and let state reorder it.
-      onEnd: (event) => {
-        const { item: row, from, oldIndex, newIndex } = event;
-        if (oldIndex === newIndex) return;
-        from.removeChild(row);
-        from.insertBefore(row, from.children[oldIndex] || null);
-        setViews((current) => {
-          const next = [...current];
-          next.splice(newIndex, 0, next.splice(oldIndex, 1)[0]);
-          return next;
-        });
-      },
-    });
-    return () => { sortable.current?.destroy(); sortable.current = null; };
-  }, [reordering]);
-
-  function finishReorder() {
-    const body = new URLSearchParams();
-    body.append('media_type', item.key);
-    views.forEach((view) => body.append('ids', view.id));
-    setReordering(false);
-    fetch(model.reorderUrl, { method: 'POST', headers: { 'X-CSRFToken': model.csrfToken }, body });
-  }
-
-  return <li>
-    <div className={`group relative flex items-center rounded-md ${rowClass(item.active)}`}>
-      <a href={item.href} className="flex-1 min-w-0 flex items-center space-x-3 pl-4 py-2">
-        <Icon spec={item.icon} className={iconClass(item.active)} />
-        <span>{item.label}</span>
-      </a>
-      <button type="button" className={`mr-2 ${iconButton}${item.active ? '' : ` ${fine}`}`} aria-expanded={open}
-        aria-label={model.labels.savedViews.replace('%(name)s', item.label)} onClick={toggle}>
-        <span className={`block transition-transform duration-200${open ? '' : ' -rotate-90'}`}>
-          <Icon spec={model.icons.chevron} className="w-4 h-4" />
-        </span>
-      </button>
-      {item.pinKey && <PinMenu pinKey={item.pinKey} pinned={pins.isPinned(item.pinKey)} onToggle={pins.toggle} model={model} />}
-    </div>
-    {open && <ul ref={list} className="mt-1 ml-8 space-y-1">
-      {views.map((view) => <li key={view.id} data-saved-view-id={view.id}
-        className={`group relative flex items-center gap-2 pl-3 pr-1 rounded-md ${rowClass(view.current)}`}>
-        {reordering && <span className="saved-view-drag-handle shrink-0 cursor-grab text-[var(--color-text-muted)]">
-          <Icon spec={model.icons.drag} className="w-4 h-4" />
-        </span>}
-        <a href={view.href} aria-current={view.current ? 'page' : undefined}
-          className={`flex-1 min-w-0 truncate py-1.5${reordering ? ' pointer-events-none' : ''}`}>{view.name}</a>
-        {!reordering && <button type="button" className={`shrink-0 ${iconButton} ${menuFor === view.id ? 'pointer-fine:opacity-100' : fine}`}
-          aria-expanded={menuFor === view.id} aria-label={model.labels.viewOptions.replace('%(name)s', view.name)}
-          onClick={() => setMenuFor(menuFor === view.id ? null : view.id)}>
-          <Icon spec={model.icons.ellipsis} className="w-4 h-4" />
-        </button>}
-        {menuFor === view.id && <div className="absolute right-0 top-full z-50 mt-1 w-36 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden border border-gray-700">
-          <button type="button" className={`flex items-center gap-2 ${menuButton}`}
-            onClick={() => { setMenuFor(null); setOpen(true); setReordering(true); }}>
-            <Icon spec={model.icons.reorder} className="w-4 h-4" /><span>{model.labels.reorder}</span>
-          </button>
-          <form method="post" action={view.deleteUrl} className="m-0"
-            {...{ 'hx-confirm': model.labels.confirmDelete.replace('%(name)s', view.name) }}>
-            <input type="hidden" name="csrfmiddlewaretoken" value={model.csrfToken} />
-            <input type="hidden" name="next" value={model.currentUrl} />
-            <button type="submit" className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-[var(--color-surface-hover)] cursor-pointer">
-              <Icon spec={model.icons.trash} className="w-4 h-4" /><span>{model.labels.delete}</span>
-            </button>
-          </form>
-        </div>}
-      </li>)}
-      {reordering && <li><button type="button" onClick={finishReorder}
-        className="flex items-center gap-2 w-full pl-3 pr-1 py-1.5 rounded-md text-sm text-left text-[var(--color-link)] hover:bg-[var(--color-hover-dim)] cursor-pointer">
-        <Icon spec={model.icons.check} className="w-4 h-4 shrink-0" /><span>{model.labels.done}</span>
-      </button></li>}
-    </ul>}
-  </li>;
-}
-
-function ListsItem({ item, pins, model, lists }) {
-  const [open, setOpen] = useState(() => {
-    try { return localStorage.getItem('floppy:saved-views-open:lists') === '1'; } catch { return false; }
-  });
-  const [menuFor, setMenuFor] = useState(null);
-  const count = useRef(lists.items.length);
-  // Pinning another list opens the group so the new entry is visible.
-  useEffect(() => {
-    if (lists.items.length > count.current) setOpen(true);
-    count.current = lists.items.length;
-  }, [lists.items.length]);
-  const here = window.location.pathname;
-  const expanded = open || lists.items.some((entry) => entry.url === here);
   const toggle = () => {
-    setOpen(!expanded);
-    try { localStorage.setItem('floppy:saved-views-open:lists', !expanded ? '1' : '0'); } catch { /* Works without storage. */ }
+    const next = !open;
+    setOpen(next);
+    onToggleGroup?.(item.key, next);
   };
-  return <li>
-    <div className="group relative flex items-center">
-      <a href={item.href} className={`flex flex-1 min-w-0 items-center space-x-3 px-4 py-2 rounded-md ${rowClass(item.active)}`}>
-        <Icon spec={item.icon} className={iconClass(item.active)} />
-        <span>{item.label}</span>
-      </a>
-      {lists.items.length > 0 && <button type="button" aria-expanded={expanded} aria-label={model.labels.pinnedLists} onClick={toggle}
-        className={`mr-1 ${iconButton}${item.active ? '' : ` ${fine}`}`}>
-        <span className={`block transition-transform duration-200${expanded ? '' : ' -rotate-90'}`}>
-          <Icon spec={model.icons.chevron} className="w-4 h-4" />
-        </span>
-      </button>}
-      <PinMenu pinKey="lists" pinned={pins.isPinned('lists')} onToggle={pins.toggle} model={model} />
-    </div>
-    {expanded && <ul className="mt-1 ml-8 space-y-1">
-      {lists.items.map((entry) => <li key={entry.id} className="group relative flex items-center rounded-md hover:bg-[var(--color-hover-dim)]">
-        <a href={entry.url} className="flex-1 min-w-0 truncate pl-3 py-1.5 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
-          <span className="truncate">{entry.name}</span>
-        </a>
-        <div className="relative shrink-0 mr-2">
-          <button type="button" className={`p-1 rounded-md cursor-pointer text-[var(--color-text-muted)] ${menuFor === entry.id ? 'pointer-fine:opacity-100' : fine}`}
-            aria-expanded={menuFor === entry.id} aria-label={model.labels.listOptions}
-            onClick={() => setMenuFor(menuFor === entry.id ? null : entry.id)}>
-            <Icon spec={model.icons.ellipsis} className="w-4 h-4" />
-          </button>
-          {menuFor === entry.id && <div className="absolute right-0 bottom-full z-50 mb-1 w-44 bg-[var(--color-surface-strong)] rounded-md shadow-lg border border-gray-700">
-            <button type="button" className={menuButton} onClick={() => { lists.unpin(entry.id); setMenuFor(null); }}>{model.labels.unpin}</button>
-          </div>}
-        </div>
-      </li>)}
-    </ul>}
-  </li>;
-}
-
-// Height eases open and shut like the Alpine directive it replaces.
-function Reveal({ open, children }) {
-  const el = useRef(null);
-  const first = useRef(true);
-  useLayoutEffect(() => {
-    const node = el.current;
-    if (first.current) { first.current = false; node.style.display = open ? '' : 'none'; return undefined; }
-    const start = node.getBoundingClientRect().height;
-    node.style.display = '';
-    node.style.overflow = 'hidden';
-    const end = open ? node.scrollHeight : 0;
-    const animation = node.animate([{ height: `${start}px` }, { height: `${end}px` }], { duration: 200, easing: 'ease-in-out' });
-    animation.onfinish = () => { node.style.display = open ? '' : 'none'; node.style.overflow = ''; };
-    return () => animation.cancel();
-  }, [open]);
-  return <div ref={el}>{children}</div>;
-}
-
-export function Sidebar({ model, slots }) {
-  const pinsKey = `floppy:sidebar-pins:${model.userId}`;
-  const listsKey = `floppy:sidebar-lists:${model.userId}`;
-  const [pinned, setPinned] = useState(() => (readJson(pinsKey, []) || []).filter((key) => model.pinKeys.includes(key)));
-  const [pinnedLists, setPinnedLists] = useState(() => readJson(listsKey, []));
-  const [navOpen, setNavOpen] = useState(false);
-  const navList = useRef(null);
-  const root = useRef(null);
 
   useEffect(() => {
-    const onLists = () => {
-      const next = readJson(listsKey, []);
-      setPinnedLists((current) => {
-        if (next.length > current.length && !pinned.includes('lists')) setNavOpen(true);
+    if (!reordering || !enableSortable || !list.current) return undefined;
+    return enableSortable(list.current, (from, to) => {
+      setViews(current => {
+        const next = [...current];
+        next.splice(to, 0, next.splice(from, 1)[0]);
         return next;
       });
-    };
-    window.addEventListener('sidebar-lists-changed', onLists);
-    return () => window.removeEventListener('sidebar-lists-changed', onLists);
-  }, [listsKey, pinned]);
-  // htmx does not watch the DOM: boost the links and confirm forms React adds.
-  useEffect(() => { window.htmx?.process(root.current); });
+    });
+  }, [reordering, enableSortable]);
 
-  const pins = {
-    isPinned: (key) => pinned.includes(key),
-    toggle: (key) => {
-      const next = pinned.includes(key) ? pinned.filter((entry) => entry !== key) : [...pinned, key];
-      setPinned(next);
-      writeJson(pinsKey, next);
-    },
+  const menuView = menuFor == null ? null : views.find(view => view.id === menuFor);
+  const finish = () => {
+    setReordering(false);
+    onFinishReorder?.(item.key, views);
   };
-  const lists = {
-    items: pinnedLists,
-    unpin: (id) => {
-      const next = pinnedLists.filter((entry) => entry.id !== id);
-      setPinnedLists(next);
-      writeJson(listsKey, next);
-      window.dispatchEvent(new Event('sidebar-lists-changed'));
-    },
-  };
-  const hasUnpinned = model.pinKeys.some((key) => !pinned.includes(key));
-  const renderItem = (item) => {
-    if (item.type === 'group') return <SavedViewGroup key={item.key} item={item} pins={pins} model={model} />;
-    if (item.type === 'lists') return <ListsItem key="lists" item={item} pins={pins} model={model} lists={lists} />;
-    return <Link key={item.href} item={item} pins={pins} model={model} />;
-  };
-  const unpinnedItems = model.secondary.filter((item) => !pins.isPinned(item.pinKey));
-  const pinnedItems = model.secondary.filter((item) => pins.isPinned(item.pinKey));
-  const { logo, bottom } = model;
 
-  return <div ref={root} className="contents">
-    <div className="h-16 border-b border-[var(--color-border)] flex items-center px-6">
-      <h1 className="flex items-center">
-        <img src={logo.src} srcSet={logo.srcSet || undefined} alt="Floppy" width="158" height="48"
-          className={logo.mono ? 'h-9 w-[158px] object-cover object-center' : 'h-9 w-auto'} />
-      </h1>
-    </div>
-    <nav id="sidebar-nav" className="p-4 flex-1 min-h-0 overflow-y-auto" {...hxBoost} style={{ WebkitOverflowScrolling: 'touch' }}>
-      <ul className="space-y-1">{model.primary.map((item) => renderItem({ ...item, pinKey: null }))}</ul>
-    </nav>
-    {(navOpen || pinned.length > 0) && <nav className="border-t border-[var(--color-border)] px-4 py-4" {...hxBoost}>
-      <div ref={navList} className="overflow-y-auto max-h-[40dvh]" style={{ WebkitOverflowScrolling: 'touch' }}>
-        <Reveal open={navOpen}><ul className="space-y-1">{unpinnedItems.map(renderItem)}</ul></Reveal>
-        <ul className="space-y-1">{pinnedItems.map(renderItem)}</ul>
-      </div>
-    </nav>}
-    <div data-sidebar-slot="onboarding" ref={(node) => { if (node && slots.onboarding && node.firstChild !== slots.onboarding) node.replaceChildren(slots.onboarding); }} className="contents" />
-    <div className="p-4 border-t border-[var(--color-border)] mt-auto">
-      <div className="space-y-2">
-        {hasUnpinned && <div>
-          <button type="button" aria-expanded={navOpen}
-            className="flex w-full items-center gap-3 px-4 py-2 rounded-md text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)] cursor-pointer"
-            onClick={() => {
-              setNavOpen(!navOpen);
-              if (!navOpen) requestAnimationFrame(() => { if (navList.current) navList.current.scrollTop = navList.current.scrollHeight; });
-            }}>
-            <span className={`transition-transform duration-200${navOpen ? '' : ' rotate-180'}`}>
-              <Icon spec={model.icons.chevron} className="w-5 h-5" />
-            </span>
-            <span>{model.labels.explore}</span>
-          </button>
-        </div>}
-        <a href={bottom.appearance.href} {...hxBoost}
-          className={`lg:hidden flex items-center space-x-3 px-4 py-2 rounded-md ${rowClass(bottom.appearance.active)}`}>
-          <Icon spec={bottom.appearance.icon} className="w-5 h-5" /><span>{bottom.appearance.label}</span>
-        </a>
-        <a href={bottom.settings.href} {...hxBoost}
-          className={`flex items-center space-x-3 px-4 py-2 rounded-md ${rowClass(bottom.settings.active)}`}>
-          <Icon spec={bottom.settings.icon} className={iconClass(bottom.settings.active)} /><span>{bottom.settings.label}</span>
-        </a>
-        <form method="post" action={bottom.logoutAction} className="w-full">
-          <input type="hidden" name="csrfmiddlewaretoken" value={model.csrfToken} />
-          <button type="submit"
-            className="w-full flex items-center space-x-3 px-4 py-2 rounded-md text-[var(--color-text-muted)] hover:bg-[var(--color-hover-dim)] hover:text-[var(--color-text)] transition-colors duration-200 text-sm cursor-pointer">
-            <Icon spec={bottom.logoutIcon} className="w-5 h-5" /><span>{model.labels.logout}</span>
-          </button>
-        </form>
-      </div>
-    </div>
-  </div>;
+  const actions = <React.Fragment>
+    <Pressable accessibilityRole="button"
+      accessibilityLabel={format(labels.savedViews, item.label)}
+      accessibilityState={{ expanded: open }} onPress={toggle}
+      style={({ pressed }) => [styles.iconButton, { borderRadius: palette.radius },
+        pressed && { backgroundColor: palette.hoverDim }]}>
+      <IconSlot spec={icons?.chevron} glyph={controlGlyphs.chevron} renderIcon={renderIcon}
+        size={16} color={palette.textMuted} rotate={open ? '0deg' : '-90deg'} />
+    </Pressable>
+    {item.pinKey ? <PinMenu pinKey={item.pinKey} pins={pins} palette={palette} labels={labels}
+      icons={icons} renderIcon={renderIcon} /> : null}
+  </React.Fragment>;
+
+  return <View>
+    <HoverRow active={item.active} palette={palette} rowActions={rowActions} actions={actions}>
+      <Pressable {...(item.platformProps || {})} accessibilityRole="link"
+        accessibilityLabel={item.label} accessibilityState={{ selected: item.active }}
+        onPress={item.platformProps?.href ? undefined : () => onNavigate?.(item)}
+        style={({ focused }) => [styles.link, focused && palette.focusStyle]}>
+        <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={20}
+          color={item.active ? palette.link : palette.textMuted} />
+        <Text numberOfLines={1} style={[styles.linkText,
+          { color: item.active ? palette.text : palette.textMuted }]}>{item.label}</Text>
+      </Pressable>
+    </HoverRow>
+    {open ? <View ref={list} style={styles.savedViewList}>
+      {views.map(view => <SavedViewRow key={view.id} view={view} reordering={reordering}
+        palette={palette} labels={labels} rowActions={rowActions} icons={icons}
+        renderIcon={renderIcon} onNavigate={onNavigate} onMenu={() => setMenuFor(view.id)} />)}
+      {reordering ? <Pressable accessibilityRole="button" accessibilityLabel={labels.done}
+        onPress={finish} style={({ pressed }) => [styles.doneButton,
+          { borderRadius: palette.radius }, pressed && { backgroundColor: palette.hoverDim }]}>
+        <IconSlot spec={icons?.check} glyph={controlGlyphs.check} renderIcon={renderIcon}
+          size={16} color={palette.link} />
+        <Text style={[styles.doneText, { color: palette.link }]}>{labels.done}</Text>
+      </Pressable> : null}
+    </View> : null}
+    <MenuModal open={Boolean(menuView)} onClose={() => setMenuFor(null)}
+      palette={palette} labels={labels}>
+      {menuView ? <React.Fragment>
+        <MenuButton label={labels.reorder} palette={palette} icon={icons?.reorder}
+          glyph={controlGlyphs.reorder} renderIcon={renderIcon}
+          onPress={() => { setMenuFor(null); setOpen(true); setReordering(true); }} />
+        <MenuButton label={labels.delete} palette={palette} danger icon={icons?.trash}
+          glyph={controlGlyphs.trash} renderIcon={renderIcon}
+          onPress={() => { setMenuFor(null); onDeleteView?.(menuView); }} />
+      </React.Fragment> : null}
+    </MenuModal>
+  </View>;
 }
+
+function SavedViewRow({ view, reordering, palette, labels, rowActions, icons, renderIcon, onNavigate, onMenu }) {
+  const actions = reordering ? null : <Pressable accessibilityRole="button"
+    accessibilityLabel={format(labels.viewOptions, view.name)}
+    onPress={onMenu} style={({ pressed }) => [styles.iconButton, { borderRadius: palette.radius },
+      pressed && { backgroundColor: palette.hoverDim }]}>
+    <IconSlot spec={icons?.ellipsis} glyph={controlGlyphs.ellipsis} renderIcon={renderIcon}
+      size={16} color={palette.textMuted} />
+  </Pressable>;
+  return <HoverRow testID={`saved-view-row-${view.id}`} active={view.current} palette={palette}
+    rowActions={rowActions} actions={actions} style={styles.savedViewRow}>
+    {reordering ? <View testID="saved-view-handle" style={styles.dragHandle}>
+      <IconSlot spec={icons?.drag} glyph={controlGlyphs.drag} renderIcon={renderIcon}
+        size={16} color={palette.textMuted} />
+    </View> : null}
+    <Pressable {...(reordering ? {} : view.platformProps || {})} accessibilityRole="link"
+      accessibilityLabel={view.name} accessibilityState={{ selected: view.current }}
+      {...(view.platformProps?.href ? { 'aria-current': view.current ? 'page' : undefined } : {})}
+      disabled={reordering}
+      onPress={view.platformProps?.href ? undefined : () => onNavigate?.(view)}
+      style={({ focused }) => [styles.savedViewLink, focused && palette.focusStyle]}>
+      <Text numberOfLines={1} style={[styles.savedViewText,
+        { color: view.current ? palette.text : palette.textMuted }]}>{view.name}</Text>
+    </Pressable>
+  </HoverRow>;
+}
+
+function ListsItem({
+  item, pins, model, palette, labels, renderIcon, rowActions, onNavigate, icons,
+  onToggleLists, onUnpinList,
+}) {
+  const initial = Boolean(item.open);
+  const [open, setOpen] = useState(initial);
+  const [menuFor, setMenuFor] = useState(null);
+  const count = useRef(pins.pinnedLists.length);
+  const current = pins.pinnedLists.some(entry => entry.url === model.currentUrl);
+  const expanded = open || current;
+
+  useEffect(() => {
+    if (pins.pinnedLists.length > count.current) setOpen(true);
+    count.current = pins.pinnedLists.length;
+  }, [pins.pinnedLists.length]);
+
+  const toggle = () => {
+    const next = !expanded;
+    setOpen(next);
+    onToggleLists?.(next);
+  };
+
+  const menuEntry = menuFor == null ? null : pins.pinnedLists.find(entry => entry.id === menuFor);
+
+  const actions = <React.Fragment>
+    {pins.pinnedLists.length > 0 ? <Pressable accessibilityRole="button"
+      accessibilityLabel={labels.pinnedLists} accessibilityState={{ expanded }}
+      onPress={toggle} style={({ pressed }) => [styles.iconButton, { borderRadius: palette.radius },
+        pressed && { backgroundColor: palette.hoverDim }]}>
+      <IconSlot spec={icons?.chevron} glyph={controlGlyphs.chevron} renderIcon={renderIcon}
+        size={16} color={palette.textMuted} rotate={expanded ? '0deg' : '-90deg'} />
+    </Pressable> : null}
+    <PinMenu pinKey="lists" pins={pins} palette={palette} labels={labels}
+      icons={icons} renderIcon={renderIcon} />
+  </React.Fragment>;
+
+  return <View>
+    <HoverRow active={item.active} palette={palette} rowActions={rowActions} actions={actions}>
+      <Pressable {...(item.platformProps || {})} accessibilityRole="link"
+        accessibilityLabel={item.label} accessibilityState={{ selected: item.active }}
+        onPress={item.platformProps?.href ? undefined : () => onNavigate?.(item)}
+        style={({ focused }) => [styles.link, focused && palette.focusStyle]}>
+        <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={20}
+          color={item.active ? palette.link : palette.textMuted} />
+        <Text numberOfLines={1} style={[styles.linkText,
+          { color: item.active ? palette.text : palette.textMuted }]}>{item.label}</Text>
+      </Pressable>
+    </HoverRow>
+    {expanded ? <View style={styles.savedViewList}>
+      {pins.pinnedLists.map(entry => <View key={entry.id}
+        style={[styles.savedViewRow, { backgroundColor: 'transparent' }]}>
+        <Pressable {...(entry.platformProps || {})} accessibilityRole="link"
+          accessibilityLabel={entry.name}
+          onPress={entry.platformProps?.href ? undefined : () => onNavigate?.({ ...entry, href: entry.url })}
+          style={styles.savedViewLink}>
+          <Text numberOfLines={1} style={[styles.savedViewText,
+            { color: palette.textMuted }]}>{entry.name}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={labels.listOptions}
+          onPress={() => setMenuFor(entry.id)}
+          style={({ pressed }) => [styles.iconButton, { borderRadius: palette.radius },
+            pressed && { backgroundColor: palette.hoverDim }]}>
+          <IconSlot spec={icons?.ellipsis} glyph={controlGlyphs.ellipsis} renderIcon={renderIcon}
+            size={16} color={palette.textMuted} />
+        </Pressable>
+      </View>)}
+    </View> : null}
+    <MenuModal open={Boolean(menuEntry)} onClose={() => setMenuFor(null)}
+      palette={palette} labels={labels}>
+      {menuEntry ? <MenuButton label={labels.unpin} palette={palette}
+        onPress={() => { setMenuFor(null); onUnpinList?.(menuEntry.id); }} /> : null}
+    </MenuModal>
+  </View>;
+}
+
+function BottomLink({ item, palette, renderIcon, onNavigate }) {
+  return <Pressable {...(item.platformProps || {})} accessibilityRole={item.platformProps?.href ? 'link' : 'button'}
+    accessibilityLabel={item.label}
+    onPress={item.platformProps?.href ? undefined : () => onNavigate?.(item)}
+    style={({ pressed, hovered, focused }) => [styles.bottomLink,
+      (pressed || hovered) && { backgroundColor: palette.hoverDim },
+      focused && palette.focusStyle]}>
+    <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={20}
+      color={item.active ? palette.link : palette.textMuted} />
+    <Text style={[styles.linkText, { color: item.active ? palette.text : palette.textMuted }]}>
+      {item.label}
+    </Text>
+  </Pressable>;
+}
+
+export function Sidebar({
+  model,
+  pins = { pinned: [], pinnedLists: [], isPinned: () => false, toggle: () => {}, unpinList: () => {} },
+  renderIcon,
+  onNavigate,
+  onToggleGroup,
+  onToggleLists,
+  onUnpinList,
+  onDeleteView,
+  onFinishReorder,
+  enableSortable,
+  onLogout,
+  onboarding,
+  rowActions = 'always',
+  showLogo = true,
+  labels: labelOverrides,
+  palette: paletteOverrides,
+  style,
+}) {
+  const labels = { ...defaultLabels, ...labelOverrides };
+  const palette = { ...defaultPalette, ...paletteOverrides };
+  const { width, height } = useWindowDimensions();
+  const compact = width < 1024;
+  const [navOpen, setNavOpen] = useState(false);
+  const list = useRef(null);
+  const hasUnpinned = model.pinKeys.some(key => !pins.isPinned(key));
+  const unpinned = model.secondary.filter(item => !pins.isPinned(item.pinKey));
+  const pinned = model.secondary.filter(item => pins.isPinned(item.pinKey));
+  const secondaryVisible = navOpen || pinned.length > 0;
+
+  const toggleNav = () => {
+    const next = !navOpen;
+    setNavOpen(next);
+    if (next) setTimeout(() => list.current?.scrollToEnd?.({ animated: false }), 0);
+  };
+
+  const renderItem = item => {
+    if (item.type === 'group') {
+      return <SavedViewGroup key={item.key} item={item} pins={pins} palette={palette}
+        labels={labels} renderIcon={renderIcon} rowActions={rowActions} icons={model.icons}
+        onNavigate={onNavigate} enableSortable={enableSortable} onToggleGroup={onToggleGroup}
+        onDeleteView={onDeleteView} onFinishReorder={onFinishReorder} />;
+    }
+    if (item.type === 'lists') {
+      return <ListsItem key="lists" item={item} pins={pins} model={model}
+        palette={palette} labels={labels} renderIcon={renderIcon} rowActions={rowActions}
+        icons={model.icons} onNavigate={onNavigate} onToggleLists={onToggleLists}
+        onUnpinList={onUnpinList || pins.unpinList} />;
+    }
+    return <LinkRow key={item.href} item={item} palette={palette} labels={labels}
+      renderIcon={renderIcon} onNavigate={onNavigate} rowActions={rowActions}
+      action={item.pinKey ? <PinMenu pinKey={item.pinKey} pins={pins}
+        palette={palette} labels={labels} icons={model.icons} renderIcon={renderIcon} /> : null} />;
+  };
+
+  const logo = model.logo || {};
+
+  return <View style={[styles.root, { backgroundColor: palette.sidebar }, style]}>
+    {showLogo ? <View style={[styles.header, { borderBottomColor: palette.border }]}>
+      {logo.src
+        ? <Image accessible accessibilityLabel={logo.alt || labels.logo}
+          resizeMode={logo.mono ? 'cover' : 'contain'} source={{ uri: logo.src }}
+          style={logo.mono ? styles.logoMono : styles.logo} />
+        : <Text style={[styles.logoText, { color: palette.text }]}>{logo.text || labels.logo}</Text>}
+    </View> : null}
+    <ScrollView style={styles.primary} contentContainerStyle={styles.navContent}>
+      {model.primary.map(item => renderItem({ ...item, pinKey: null }))}
+    </ScrollView>
+    {secondaryVisible ? <View style={[styles.secondary, { borderTopColor: palette.border }]}>
+      <ScrollView ref={list} style={[styles.secondaryScroll, { maxHeight: Math.round(height * 0.4) }]}>
+        {navOpen ? <View style={styles.navContent}>{unpinned.map(renderItem)}</View> : null}
+        <View style={styles.navContent}>{pinned.map(renderItem)}</View>
+      </ScrollView>
+    </View> : null}
+    <View>{onboarding}</View>
+    <View style={[styles.bottom, { borderTopColor: palette.border }]}>
+      {hasUnpinned ? <Pressable accessibilityRole="button" accessibilityLabel={labels.explore}
+        accessibilityState={{ expanded: navOpen }} onPress={toggleNav}
+        style={({ pressed, hovered, focused }) => [styles.explore,
+          (pressed || hovered) && { backgroundColor: palette.hoverDim },
+          focused && palette.focusStyle]}>
+        <IconSlot spec={model.icons?.chevron} glyph={controlGlyphs.chevron} renderIcon={renderIcon}
+          size={20} color={palette.textMuted} rotate={navOpen ? '0deg' : '180deg'} />
+        <Text style={[styles.linkText, { color: palette.textMuted }]}>{labels.explore}</Text>
+      </Pressable> : null}
+      {compact ? <BottomLink item={model.bottom.appearance} palette={palette}
+        renderIcon={renderIcon} onNavigate={onNavigate} /> : null}
+      <BottomLink item={model.bottom.settings} palette={palette}
+        renderIcon={renderIcon} onNavigate={onNavigate} />
+      <Pressable accessibilityRole="button" accessibilityLabel={labels.logout} onPress={onLogout}
+        style={({ pressed, hovered, focused }) => [styles.bottomLink,
+          (pressed || hovered) && { backgroundColor: palette.hoverDim },
+          focused && palette.focusStyle]}>
+        <IconSlot spec={model.bottom.logoutIcon} glyph={model.bottom.logoutGlyph}
+          renderIcon={renderIcon} size={20} color={palette.textMuted} />
+        <Text style={[styles.linkText, { color: palette.textMuted }]}>{labels.logout}</Text>
+      </Pressable>
+    </View>
+  </View>;
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1, minHeight: 0, flexDirection: 'column' },
+  header: { height: 64, flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 24, borderBottomWidth: 1 },
+  logo: { width: 118, height: 36 },
+  logoMono: { width: 158, height: 36 },
+  logoText: { fontSize: 20, fontWeight: '700', letterSpacing: 0.2 },
+  primary: { flex: 1, minHeight: 0 },
+  navContent: { padding: 4, gap: 4 },
+  secondary: { borderTopWidth: 1, paddingHorizontal: 16, paddingVertical: 16 },
+  secondaryScroll: { minHeight: 0 },
+  row: { minHeight: 36, flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'transparent' },
+  rowActions: { flexDirection: 'row', alignItems: 'center' },
+  link: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center',
+    gap: 12, paddingHorizontal: 16, paddingVertical: 8 },
+  linkText: { flexShrink: 1, fontSize: 14 },
+  action: { flexShrink: 0, marginRight: 8 },
+  iconButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  savedViewList: { marginTop: 4, marginLeft: 32, gap: 4 },
+  savedViewRow: { minHeight: 32, flexDirection: 'row', alignItems: 'center',
+    paddingLeft: 12, paddingRight: 4, borderRadius: 6 },
+  savedViewLink: { flex: 1, minWidth: 0, paddingVertical: 6 },
+  savedViewText: { flexShrink: 1, fontSize: 14 },
+  dragHandle: { width: 24, alignItems: 'center', justifyContent: 'center' },
+  doneButton: { flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingLeft: 12, paddingRight: 4, paddingVertical: 6 },
+  doneText: { fontSize: 14 },
+  bottom: { padding: 16, borderTopWidth: 1, gap: 8 },
+  explore: { flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 },
+  bottomLink: { flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 },
+  modalRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  menu: { width: 208, borderRadius: 8, borderWidth: 1, paddingVertical: 4 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 12, paddingVertical: 10 },
+  menuItemText: { fontSize: 14 },
+});

@@ -67,14 +67,14 @@ PY
 - `src/templates/app/components/sidebar_pin_menu.html`
 - `src/templates/base.html`
 - `frontend/ui/Shell.jsx` (`Shell`, `TopBar`, `MobileNav`), `frontend/ui/mountShell.jsx`, the `shell_topbar_react` tag and `src/templates/base.html` / `base_public.html` (signed-in and public top bars plus the mobile navigation overlay; both templates keep their server fallback)
-- `frontend/ui/Sidebar.jsx`, `frontend/ui/mountSidebar.jsx`, `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html`; the onboarding banner stays a server slot; still legacy React DOM)
+- `frontend/ui/Sidebar.jsx` (`Sidebar`) shared React Native presentation, `frontend/ui/mountSidebar.jsx` browser adapter (theme tokens, `floppy:sidebar-pins`/`floppy:sidebar-lists`/`floppy:saved-views-open` storage, HTMX-boosted anchors, Sortable reorder, delete/logout forms, onboarding node slot and mobile aside state), `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html`; shared saved-view rows keep `aria-current` on the active view; the Alpine markup inside the host remains the no-React fallback)
 - `frontend/ui/Icon.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
 - `frontend/ui/ModalHost.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted from `base.html`; the card hover buttons and the legacy Add-to-lists buttons open it through `floppy-open-modal`; the Add-to-lists body is shared presentation in `frontend/ui/ListsFormView.jsx` through the `frontend/ui/ListsForm.web.jsx` adapter with `modal-forms.css`; the Track body is still the server form, see POPUP-HOST in the register)
 - `src/app/card_events.py` (the floppyCardUpdate event sent by `media_save` and the score views so React cards refresh their status chip and rating)
 - `ScrollRow` and the frozen `FilterChips`/`Tabs` web helpers in `frontend/ui/controls.jsx`; Discover's live media-type tabs are mapped under DISCOVER
 - `src/templates/base_public.html`
 
-- `native-proof/app/surfaces/ShellSlot.jsx` (native top bar and mobile navigation overlay on the app shell)
+- `native-proof/app/surfaces/ShellSlot.jsx` (native top bar and mobile navigation overlay on the app shell; the shared `Sidebar` fills the drawer with demo media types, saved-view groups, pins and bottom actions)
 
 ## SETTINGS-CARD
 
@@ -211,7 +211,7 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 
 ## MEDIA-CARD
 
-- `frontend/ui/MediaCardView.jsx` (universal native card shell: layouts, artwork fallback, chips, progress, title/lines, rating affordance, explicit read-only mode and selectable states; presentation only)
+- `frontend/ui/MediaCard.jsx` (universal card shell: layouts, artwork fallback, chips, progress, title/lines, rating affordance, explicit read-only mode and selectable states; presentation only)
 - `frontend/ui/MediaCardActions.jsx` (universal action overlay, row buttons and list-reorder controls; native drag gesture with an `adjustable` value, hint and accessibility actions, explicit action/reorder/reorder-drag/reveal callbacks, no transport)
 - `frontend/ui/MediaCardActionHost.jsx` (universal popup shell for the card action callback contract; the browser ModalHost remains the web host)
 - `frontend/ui/MediaCardFormControls.jsx` (`FormHeader`, `FormField`, `FormTextField`, `FormSelect`, `FormStatus` and `FormError` for the shared action forms; presentation only)
@@ -225,13 +225,13 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 - `native-proof/app/surfaces/mediaCardEvents.js` (native-only card-change event bus used by the card, Track, Discover and bulk selection; not presentation)
 - `src/templates/app/components/card_lines.html`
 - `src/templates/app/components/media_card.html` (shell: wrapper classes, props script and first-paint poster and title; React replaces it on mount)
-- `frontend/ui/MediaCard.jsx`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/ModalHost.jsx`, `frontend/ui/media-card.css`, `src/app/media_card_model.py`, `src/app/card_surfaces.py` (the whole card is React on every surface: body, status chip, rating, hover buttons, popups host, touch reveal and bulk-select checkbox)
+- `frontend/ui/MediaCard.jsx`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/ModalHost.jsx`, `frontend/ui/media-card.css`, `src/app/media_card_model.py`, `src/app/card_surfaces.py` (the whole card is one shared React card on every surface: body, status chip, rating, hover buttons, popups host, touch reveal and bulk-select checkbox)
 - `src/templates/app/components/media_card_list.html`
 - `src/templates/app/components/media_card_status_chip.html` (out-of-band save fragment only; no card renders it)
 
-The existing web `MediaCard.jsx`, `mountMediaCard.jsx` and `ModalHost.jsx` remain the active
-browser adapter and popup host; `MediaCardView` and `MediaCardActions` are the native candidates
-and do not yet replace that DOM card. `ListsFormView` is used on web through `ListsForm.web.jsx`
+The retired DOM card is gone. `MediaCard.jsx` is the one shared card; `mountMediaCard.jsx` is
+its browser adapter and `ModalHost.jsx` is the popup host. `MediaCardActions` supplies the
+action overlay on both platforms. `ListsFormView` is used on web through `ListsForm.web.jsx`
 and on native through the media-card slot. `TrackForm` and `TrackTabs` render in the native action
 host; the native shell's `native-proof/app/surfaces/mediaCardTransport.js` owns the `/api/v1`
 transport and CSRF boundary for those forms and is not imported by universal presentation. It

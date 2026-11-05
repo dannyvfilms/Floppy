@@ -39,7 +39,7 @@ legacy body, or a template draws `media-card` markup that is neither the tag nor
 
 ## Native card
 
-`frontend/ui/MediaCardView.jsx` is the universal React Native shell for the same
+`frontend/ui/MediaCard.jsx` is the one shared React card and React Native shell for the same
 `card_model`: poster, square, landscape and row layouts, artwork fallback, status
 and media-type chips, corner chips, progress, title and alternative title,
 subtitle lines, score and the rating affordance, plus read-only and selectable
@@ -52,8 +52,8 @@ while the browser keeps `ModalHost.jsx`. `native-proof/app/surfaces/MediaCardSlo
 renders the card and the callback contract on Home, Discover and Library with demo
 library items.
 
-The web DOM card (`MediaCard.jsx` with `mountMediaCard.jsx`) is still the active
-adapter and keeps web consumers, themes, popups and server writes. The native action
+The retired DOM card is gone. `mountMediaCard.jsx` is now the web adapter over the shared
+card and keeps web consumers, themes, popups and server writes. The native action
 presentation owns Track and Add-to-lists form bodies, the song and episode Track
 variants, Discover plan/hide, list reorder and the shared card-change event. Link
 actions route through the platform navigation callback instead of opening an empty

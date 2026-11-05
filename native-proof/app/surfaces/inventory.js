@@ -19,13 +19,4 @@ import { surface as settingsCard } from './SettingsCardSlot';
 import { surface as providerSettings } from './ProviderSettingsSlot';
 import { surface as users } from './UsersSlot';
 import { surface as dataAccessNotifications } from './DataAccessNotificationsSlot';
-
-<<<<<<< HEAD
-<<<<<<< HEAD
-export const surfaces = [shell, search, mediaCard, rails, filters, rating, progress, dateTime, calendar, bulk, button, settingsCard, providerSettings, preferences, appearanceSettings, cardsSettings, homeSettings, dataAccessNotifications, users];
-=======
-export const surfaces = [search, mediaCard, playback, rails, filters, rating, progress, dateTime, calendar, bulk, button, settingsCard, providerSettings, preferences, appearanceSettings, cardsSettings, homeSettings, dataAccessNotifications, users];
->>>>>>> native-port/playback
-=======
-export const surfaces = [artwork, search, mediaCard, rails, filters, rating, progress, dateTime, calendar, bulk, button, settingsCard, providerSettings, preferences, appearanceSettings, cardsSettings, homeSettings, dataAccessNotifications, users];
->>>>>>> native-port/artwork
+export const surfaces = [shell, artwork, search, mediaCard, playback, rails, filters, rating, progress, dateTime, calendar, bulk, button, settingsCard, providerSettings, preferences, appearanceSettings, cardsSettings, homeSettings, dataAccessNotifications, users];
