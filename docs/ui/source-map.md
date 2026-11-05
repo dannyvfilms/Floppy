@@ -384,7 +384,8 @@ in the register.
 
 - `frontend/ui/Rail.jsx`
 - `frontend/ui/Rail.web.jsx`
-- `native-proof/app/surfaces/RailsSlot.jsx` (native placement on the Home and Discover screens)
+- `frontend/ui/HomeShelves.jsx` (Home shelves on web and native)
+- `native-proof/app/surfaces/RailsSlot.jsx` (remaining demo rails on the Discover screen)
 - `src/static/js/horizontal-scroll.js`
 - `src/static/js/horizontal-scroll.selfcheck.mjs`
 - `src/templates/app/components/_scrollable_row.html`
@@ -392,10 +393,17 @@ in the register.
 
 ## HOME
 
-- `src/templates/app/components/home_artwork_poller.html`
-- `src/templates/app/components/home_deferred_groups.html`
-- `src/templates/app/components/home_grid.html`
-- `src/templates/app/components/home_groups.html`
+- `frontend/ui/HomeShelves.jsx` (universal shelves, deferred rows, coalesced cover poller and empty/error states)
+- `frontend/ui/mountHome.jsx` (browser mount over the server Home shelves, row/window and cover-poll requests)
+- `native-proof/app/screens/HomeScreen.jsx` (native placement with real transport and demo fallback)
+- `native-proof/app/data/homeTransport.js` (auth transport boundary)
+- `native-proof/app/data/homeTransportCore.js` (Home routes, payload shaping and row-page merging)
+- `src/app/home_presentation.py` (plain group/row/card presentation models)
+- `src/app/home_artwork.py` (shared coalesced cover-refresh work)
+- `src/templates/app/components/home_artwork_poller.html` (server/HTMX fallback)
+- `src/templates/app/components/home_deferred_groups.html` (server/HTMX fallback)
+- `src/templates/app/components/home_grid.html` (server/HTMX fallback)
+- `src/templates/app/components/home_groups.html` (server/HTMX fallback)
 - `src/templates/app/home.html`
 
 ## PLAYBACK

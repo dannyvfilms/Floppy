@@ -23,10 +23,11 @@ from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.paginator import EmptyPage, Paginator
 from django.db import IntegrityError
-from django.db.models import F, Max, Min, Q
+from django.db.models import F, Max, Min
 from django.db.models.functions import ExtractDay, ExtractMonth, TruncDate
 from django.db.utils import OperationalError
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.templatetags.static import static
@@ -170,6 +171,15 @@ from app.history_views import (
     history,
     history_day_fragment,
     history_genres,
+)
+from app.home_artwork import (
+    queue_missing_cover_prefetch,
+    refresh_home_artwork,
+)
+from app.home_presentation import (
+    deferred_groups_presentation,
+    groups_presentation,
+    home_labels,
 )
 from app.log_safety import exception_summary, safe_url
 from app.media_details_views import _get_tv_runtime_display_fallback, media_details
@@ -544,6 +554,22 @@ def home(request):
             "IMG_NONE": settings.IMG_NONE,
             "defer_remaining_groups": bool(deferred_groups),
             "deferred_groups": deferred_groups,
+            "home_props": {
+                "groups": groups_presentation(
+                    home_groups,
+                    request.user,
+                    request,
+                ),
+                "deferredGroups": deferred_groups_presentation(deferred_groups),
+                "showMediaTypeHeaders": bool(
+                    request.user.home_show_media_type_headers
+                ),
+                "readOnly": not request.user.is_authenticated,
+                "itemsLimit": items_limit,
+                "settingsUrl": reverse("home_screen"),
+                "csrfToken": get_token(request),
+                "labels": home_labels(),
+            },
         }
         return render(request, "app/home.html", context)
     except OperationalError:
@@ -559,6 +585,16 @@ def home(request):
             "IMG_NONE": settings.IMG_NONE,
             "defer_remaining_groups": False,
             "deferred_groups": [],
+            "home_props": {
+                "groups": [],
+                "deferredGroups": [],
+                "showMediaTypeHeaders": False,
+                "readOnly": not request.user.is_authenticated,
+                "itemsLimit": 14,
+                "settingsUrl": reverse("home_screen"),
+                "csrfToken": get_token(request),
+                "labels": home_labels(),
+            },
         }
         return render(request, "app/home.html", context)
 
@@ -584,64 +620,6 @@ def home_row_fragment(request, row_id: int):
             "return_url": reverse("home"),
         },
     )
-
-
-def _queue_missing_cover_prefetch(user):
-    """Queue album-cover prefetch tasks for any artists/albums missing art."""
-    from django.db.models import Q
-
-    from app.models import AlbumTracker, ArtistTracker
-    from app.tasks import prefetch_album_covers_batch
-
-    artist_ids: set[int] = set()
-    artist_ids.update(
-        ArtistTracker.objects.filter(user=user)
-        .filter(Q(artist__image="") | Q(artist__image=settings.IMG_NONE))
-        .values_list("artist_id", flat=True)
-        .distinct()
-    )
-    artist_ids.update(
-        AlbumTracker.objects.filter(user=user)
-        .filter(Q(album__image="") | Q(album__image=settings.IMG_NONE))
-        .exclude(album__artist__isnull=True)
-        .values_list("album__artist_id", flat=True)
-        .distinct()
-    )
-    for artist_id in artist_ids:
-        cache_key = f"music:cover-prefetch:{artist_id}"
-        if cache.add(cache_key, True, 60 * 10):
-            try:
-                prefetch_album_covers_batch.delay([artist_id], limit_per_artist=5)
-            except Exception:  # pragma: no cover - defensive
-                cache.delete(cache_key)
-
-
-def _artwork_cover_fingerprint(user):
-    """Cheap fingerprint of the user's missing-cover state.
-
-    The artwork poller only exists to pick up cover-art writes (Artist,
-    Album, PodcastShow images), which don't fire user-scoped row-cache
-    invalidation. Three indexed counts are enough to detect "a cover
-    arrived since the last poll" without rebuilding any rows.
-    """
-    from app.models import AlbumTracker, ArtistTracker, PodcastShowTracker
-
-    missing_artist = (
-        ArtistTracker.objects.filter(user=user)
-        .filter(Q(artist__image="") | Q(artist__image=settings.IMG_NONE))
-        .count()
-    )
-    missing_album = (
-        AlbumTracker.objects.filter(user=user)
-        .filter(Q(album__image="") | Q(album__image=settings.IMG_NONE))
-        .count()
-    )
-    missing_show = (
-        PodcastShowTracker.objects.filter(user=user)
-        .filter(Q(show__image="") | Q(show__image=settings.IMG_NONE))
-        .count()
-    )
-    return (missing_artist, missing_album, missing_show)
 
 
 @require_GET
@@ -678,33 +656,24 @@ def home_rows_artwork_refresh(request):
             },
         )
 
-    cover_state = _artwork_cover_fingerprint(request.user)
-    cover_state_key = f"home_artwork_cover_state_{request.user.id}"
-    if cache.get(cover_state_key) == cover_state:
+    rows, poll_row_ids, rows_pending = refresh_home_artwork(
+        request.user,
+        row_ids,
+        rows_pending,
+    )
+    if not rows:
         # No cover changed since the last poll: keep polling (and keep
         # retrying prefetch, it has its own cooldown) without paying the
         # row rebuild.
-        _queue_missing_cover_prefetch(request.user)
         return render(
             request,
             "app/components/home_artwork_poller.html",
             {
-                "poll_row_ids": sorted(row_ids),
+                "poll_row_ids": poll_row_ids,
                 "active": rows_pending,
                 "retry_soon": rows_pending,
             },
         )
-
-    home_groups = build_home_page_groups(
-        request.user,
-        items_limit=14,
-        only_row_ids=row_ids,
-        refresh_row_cache=True,
-    )
-    rows = [r for group in home_groups for r in group["rows"] if r["row_id"] in row_ids]
-
-    if any(row.get("poll_for_covers") for row in rows):
-        _queue_missing_cover_prefetch(request.user)
 
     row_fragments = [
         render_to_string(
@@ -724,15 +693,12 @@ def home_rows_artwork_refresh(request):
     poller = render_to_string(
         "app/components/home_artwork_poller.html",
         {
-            "poll_row_ids": sorted(
-                row["row_id"] for row in rows if row.get("poll_for_covers")
-            ),
+            "poll_row_ids": poll_row_ids,
             "active": rows_pending,
             "retry_soon": rows_pending,
         },
         request=request,
     )
-    cache.set(cover_state_key, cover_state, 60 * 60)
     return HttpResponse(poller + "".join(row_fragments))
 
 
@@ -757,7 +723,7 @@ def home_row_artwork_refresh(request, row_id: int):
         return HttpResponse("")
 
     if row.get("poll_for_covers"):
-        _queue_missing_cover_prefetch(request.user)
+        queue_missing_cover_prefetch(request.user)
 
     return render(
         request,

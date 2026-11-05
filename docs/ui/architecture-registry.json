@@ -279,6 +279,26 @@
         }
       }
     },
+    "frontend/ui/HomeShelves.jsx": {
+      "components": [
+        "HomeShelves"
+      ],
+      "register": "HOME",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Compiled into the web bundle through mountHome over the server-rendered Home shelves; no browser interaction pass was performed in this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Home screen; no simulator run was performed in this change."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Home screen; no emulator run was performed in this change."
+        }
+      }
+    },
     "frontend/ui/Rail.jsx": {
       "components": [
         "Rail"
@@ -2582,6 +2602,10 @@
     "frontend/ui/mountFilterBar.jsx": {
       "register": "FILTERS",
       "purpose": "Django/browser integration for the shared filter bar: mirror the page Alpine filter state, write filter intents into the existing form, and refresh through the existing htmx/URL boundary."
+    },
+    "frontend/ui/mountHome.jsx": {
+      "register": "HOME",
+      "purpose": "Browser adapter for the shared Home shelves: read the server-built group, row and card model, resolve theme tokens, fetch bounded deferred/load-more row windows and the coalesced artwork poll through the presentation endpoints, keep Django's grouped/deferred markup and HTMX poller as the no-React fallback, and preserve card links, hover actions and quick progress controls."
     },
     "frontend/ui/mountHistoryFeed.jsx": {
       "register": "HISTORY",

@@ -341,6 +341,21 @@ urlpatterns = [
         name="api_home",
     ),
     re_path(
+        r"^home/row/(?P<row_id>\d+)/?$",
+        fork_views_discover.HomeRowView.as_view(),
+        name="api_home_row",
+    ),
+    re_path(
+        r"^home/row/(?P<row_id>\d+)/sort/?$",
+        fork_views_discover.HomeRowDirectionView.as_view(),
+        name="api_home_row_sort",
+    ),
+    re_path(
+        r"^home/artwork/?$",
+        fork_views_discover.HomeArtworkView.as_view(),
+        name="api_home_artwork",
+    ),
+    re_path(
         r"^user/preferences/?$",
         fork_views_users.UserPreferencesView.as_view(),
         name="api_user_preferences",
