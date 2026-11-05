@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from lists.forms import CustomListForm
+from lists.forms import CollaboratorsWidget, CustomListForm
 from lists.models import CustomList
 
 
@@ -224,3 +224,28 @@ class CustomListFormTest(TestCase):
         custom_list.save()
         form.save_m2m()
         self.assertFalse(custom_list.allow_recommendations)
+
+    def test_share_user_search_excludes_demo_and_test_accounts(self):
+        """List sharing only offers real, active accounts."""
+        demo = get_user_model().objects.create_user(
+            username="demo-share",
+            password="12345",
+            is_demo=True,
+        )
+        test_account = get_user_model().objects.create_user(
+            username="test-share",
+            password="12345",
+            is_test_account=True,
+        )
+        inactive = get_user_model().objects.create_user(
+            username="inactive-share",
+            password="12345",
+            is_active=False,
+        )
+
+        queryset = CollaboratorsWidget().get_queryset()
+
+        self.assertIn(self.user, queryset)
+        self.assertNotIn(demo, queryset)
+        self.assertNotIn(test_account, queryset)
+        self.assertNotIn(inactive, queryset)

@@ -704,14 +704,14 @@ remain the web owner until a browser adapter mounts the shared sections.
 
 ## LISTS
 
-- `frontend/ui/ListCard.jsx` (list hub card; visibility/smart and member/role metadata stay in the card body, not artwork corner chips)
+- `frontend/ui/ListCard.jsx` (list hub card; public/unlisted/private visibility and owner/collaborator/viewer role metadata stay in the card body, not artwork corner chips)
 - `frontend/ui/ListHeader.jsx`
 - `frontend/ui/ListResults.jsx`
-- `frontend/ui/ListMembership.jsx`
+- `frontend/ui/ListMembership.jsx` (visibility and member popup with public/unlisted/private states and owner/collaborator/viewer roles)
 - `native-proof/app/data/listTransportCore.js` (shared list action contract and existing endpoint mapping)
 - `native-proof/app/data/listTransport.js` (native list transport; requires an injected request, otherwise local preview)
 - `native-proof/app/data/listTransport.web.js` (browser list transport; same-origin session, CSRF header and local fallback)
-- `frontend/ui/ListFormView.jsx` (universal create/edit list form: name, description, visibility, public slug, notes/recommendation/smart toggles, tags, roles and delete guard; presentation only)
+- `frontend/ui/ListFormView.jsx` (universal create/edit list form: name, description, public/unlisted/private visibility, public slug, notes/recommendation/smart toggles, tags, collaborator/viewer roles and delete guard; presentation only. The web modal remains the active consumer and mirrors these fields.)
 - `frontend/ui/ListSearchView.jsx` (universal list add/recommend item search and preview dialog)
 - `frontend/ui/ListRecommendationsView.jsx` (universal list recommendations approval/deny presentation)
 - `native-proof/app/screens/ListsScreen.jsx`

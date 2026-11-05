@@ -688,7 +688,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not exercised in a browser; the existing Django list grid remains the active web consumer."
+          "evidence": "Not exercised in a browser; the existing Django list grid remains the active web consumer. The shared card now labels unlisted lists and renders owner/collaborator/viewer roles."
         },
         "ios": {
           "status": "unverified",
@@ -708,7 +708,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not exercised in a browser; the existing Django list header remains the active web consumer."
+          "evidence": "Not exercised in a browser; the existing Django list header remains the active web consumer. The shared header now labels unlisted lists alongside public ones."
         },
         "ios": {
           "status": "unverified",
@@ -754,7 +754,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted on the Django list detail page; the existing server list form remains the active web consumer."
+          "evidence": "Not mounted on the Django list detail page; the existing server list form remains the active web consumer. The shared popup now renders public/unlisted/private states and a viewer role."
         },
         "ios": {
           "status": "unverified",
@@ -983,7 +983,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted on the Django lists page; the existing server-rendered list form remains the active web consumer. The web bundle builds."
+          "evidence": "Not mounted on the Django lists page; the existing server-rendered list form remains the active web consumer. The web bundle builds. The shared form now includes unlisted visibility and view-only viewer shares."
         },
         "ios": {
           "status": "unverified",

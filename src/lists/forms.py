@@ -1,4 +1,5 @@
 from django import forms
+from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
@@ -35,9 +36,17 @@ def validate_public_slug(raw_slug, *, exclude_pk=None):
 
 
 class CollaboratorsWidget(s2forms.ModelSelect2MultipleWidget):
-    """Custom widget for selecting multiple users."""
+    """Custom widget for selecting multiple shareable users."""
 
     search_fields = ["username__icontains"]
+
+    def get_queryset(self):
+        """Only search accounts a list can actually be shared with."""
+        return get_user_model().objects.filter(
+            is_active=True,
+            is_demo=False,
+            is_test_account=False,
+        )
 
 
 class TagsField(forms.MultipleChoiceField):
