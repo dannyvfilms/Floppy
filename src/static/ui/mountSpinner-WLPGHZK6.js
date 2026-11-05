@@ -1,0 +1,1 @@
+import{b as t}from"./chunk-TO2UHXTK.js";import"./chunk-WKHWHOVU.js";import"./chunk-3CDD5PYA.js";import"./chunk-3BFLMBN3.js";import"./chunk-5BQOVHAV.js";import{a as f,c as r,d as n}from"./chunk-7SN4BCPP.js";import{b as o}from"./chunk-SQE76S5B.js";var e=o(f());var m=o(n());function c(p,i){return r(p,(0,m.jsx)(t,{...i}))}export{c as mountSpinner};
