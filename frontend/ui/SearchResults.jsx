@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { MediaCardView } from './MediaCardView';
+import { ParentPicker } from './ParentPicker';
 import { Spinner } from './Spinner';
 
 const defaultPalette = {
@@ -46,6 +47,12 @@ const defaultLabels = {
   nextEpisode: 'Jump to next episode',
   noStatus: 'No Status',
   parentTitle: 'Pick a parent',
+  parentPlaceholder: 'Search for a parent…',
+  parentEmpty: 'No matches found.',
+  parentLoading: 'Loading matches…',
+  parentErrorTitle: 'Parent search could not load',
+  parentErrorBody: 'Please try again.',
+  parentSelected: 'Selected',
 };
 
 function ResultCard({
@@ -279,21 +286,30 @@ function LayoutToggle({ options, palette, onSelectLayout }) {
   </View>;
 }
 
-function ParentPicker({ parentPicker, palette, labels, onSelectParent }) {
+function ParentPickerPanel({ parentPicker, palette, labels, onSelectParent }) {
   if (!parentPicker) return null;
-  const rows = parentPicker.results || [];
-  return <View style={[styles.parent, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-    <Text role="heading" aria-level={3} style={[styles.parentTitle, { color: palette.text }]}>
-      {parentPicker.title || labels.parentTitle}
-    </Text>
-    {rows.length ? rows.map((row, index) => <Pressable key={row.id || index}
-      accessibilityRole="button" accessibilityLabel={row.title}
-      onPress={() => onSelectParent?.(row)}
-      style={[styles.parentRow, { borderColor: palette.border }]}>
-      <Text style={[styles.parentRowTitle, { color: palette.text }]}>{row.title}</Text>
-      {row.subtitle ? <Text style={[styles.parentRowSubtitle, { color: palette.textMuted }]}>{row.subtitle}</Text> : null}
-    </Pressable>) : <Text style={[styles.tip, { color: palette.textMuted }]}>{parentPicker.emptyLabel || labels.emptyTitle}</Text>}
-  </View>;
+  return <ParentPicker
+    title={parentPicker.title || labels.parentTitle}
+    description={parentPicker.description}
+    query={parentPicker.query}
+    placeholder={parentPicker.placeholder}
+    results={parentPicker.results || []}
+    selectedId={parentPicker.selectedId}
+    state={parentPicker.state || 'ready'}
+    labels={{
+      placeholder: parentPicker.placeholder || labels.parentPlaceholder,
+      empty: parentPicker.emptyLabel || labels.parentEmpty,
+      loading: labels.parentLoading,
+      errorTitle: labels.parentErrorTitle,
+      errorBody: labels.parentErrorBody,
+      retry: labels.retry,
+      selected: labels.parentSelected,
+    }}
+    palette={palette}
+    onQueryChange={parentPicker.onQueryChange}
+    onSelect={onSelectParent}
+    onRetry={parentPicker.onRetry}
+  />;
 }
 
 export function SearchResults({
@@ -374,7 +390,7 @@ export function SearchResults({
       style={[styles.loadMore, { backgroundColor: palette.surfaceStrong, borderColor: palette.border }]}>
       <Text style={[styles.loadMoreText, { color: palette.text }]}>{loadingMore ? copy.loadingMore : copy.loadMore}</Text>
     </Pressable> : null}
-    <ParentPicker parentPicker={parentPicker} palette={palette} labels={copy} onSelectParent={onSelectParent} />
+    <ParentPickerPanel parentPicker={parentPicker} palette={palette} labels={copy} onSelectParent={onSelectParent} />
   </View>;
 }
 
@@ -429,9 +445,4 @@ const styles = StyleSheet.create({
   pageSummary: { fontSize: 13 },
   loadMore: { alignSelf: 'center', borderWidth: 1, borderRadius: 6, paddingHorizontal: 18, paddingVertical: 10 },
   loadMoreText: { fontSize: 13, fontWeight: '600' },
-  parent: { borderWidth: 1, borderRadius: 10, padding: 12, gap: 8 },
-  parentTitle: { fontSize: 15, fontWeight: '600' },
-  parentRow: { borderTopWidth: 1, paddingVertical: 8, gap: 2 },
-  parentRowTitle: { fontSize: 14, fontWeight: '600' },
-  parentRowSubtitle: { fontSize: 12 },
 });

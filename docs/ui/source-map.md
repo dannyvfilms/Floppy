@@ -329,12 +329,16 @@ register.
 - `frontend/ui/GlobalSearch.jsx`
 - `frontend/ui/GlobalSearch.web.jsx`
 - `frontend/ui/mountGlobalSearch.jsx`
+- `frontend/ui/ParentPicker.jsx`
 - `frontend/ui/SearchResults.jsx`
 - `frontend/ui/SearchResults.web.jsx`
 - `frontend/ui/mountSearchResults.jsx`
+- `frontend/ui/barcodeEntry.web.js`
+- `frontend/ui/barcodeEntry.native.js`
 - `frontend/ui/global-search.css`
 - `native-proof/app/surfaces/SearchSlot.jsx` (native placement on Home, Discover, Library and Search)
 - `native-proof/app/surfaces/SearchResultsSlot.jsx` (native search results on the Search screen)
+- `native-proof/app/surfaces/SearchParentSlot.jsx` (native parent TV/season and music album pickers on the Search screen)
 - `src/static/js/barcode-scanner.js`
 - `src/static/js/barcode-scanner.selfcheck.mjs`
 - `src/static/js/libraries/zxing-library-0.21.3.min.js`

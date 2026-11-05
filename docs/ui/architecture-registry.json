@@ -306,6 +306,26 @@
         }
       }
     },
+    "frontend/ui/ParentPicker.jsx": {
+      "components": [
+        "ParentPicker"
+      ],
+      "register": "SEARCH",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Imported by the shared SearchResults and covered by the UI architecture and build checks; not exercised in a browser."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native search screens; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native search screens; no AVD run was performed in this pass."
+        }
+      }
+    },
     "frontend/settings/Chip.jsx": {
       "components": [
         "Chip"
@@ -1266,6 +1286,50 @@
     }
   },
   "platform": {
+    "frontend/ui/barcodeEntry.web.js": {
+      "kind": "adapter",
+      "register": "SEARCH",
+      "components": [
+        "requestBarcode"
+      ],
+      "purpose": "Open the browser image picker and decode an ISBN through the vendored ZXing helper without owning presentation.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Preserves the existing browser file-picker/ZXing flow; not exercised in a browser in this pass."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to this web adapter."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to this web adapter."
+        }
+      }
+    },
+    "frontend/ui/barcodeEntry.native.js": {
+      "kind": "adapter",
+      "register": "SEARCH",
+      "components": [
+        "requestBarcode"
+      ],
+      "purpose": "Native barcode entry boundary; reports unavailable until a camera/barcode module can decode book barcodes on both platforms.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not applicable to this native adapter."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export compile only; no camera or barcode runtime was exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export compile only; no camera or barcode runtime was exercised."
+        }
+      }
+    },
     "frontend/ui/Button.web.jsx": {
       "kind": "presentation",
       "register": "BUTTON",
@@ -1390,7 +1454,7 @@
     },
     "frontend/ui/GlobalSearch.web.jsx": {
       "register": "SEARCH",
-      "purpose": "Resolve theme values, fetch JSON suggestions, keep GET search navigation and run the browser barcode file picker for the shared search form."
+      "purpose": "Resolve theme values, fetch JSON suggestions and keep GET search navigation for the shared search form; barcode entry delegates to the registered barcode adapter."
     },
     "frontend/ui/SearchResults.web.jsx": {
       "register": "SEARCH",
