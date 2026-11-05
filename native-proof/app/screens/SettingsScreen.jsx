@@ -1,6 +1,9 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Screen, Section } from '../components/Screen';
+import AppearanceSettingsSlot from '../surfaces/AppearanceSettingsSlot';
+import CardsSettingsSlot from '../surfaces/CardsSettingsSlot';
+import HomeSettingsSlot from '../surfaces/HomeSettingsSlot';
 import PreferencesSlot from '../surfaces/PreferencesSlot';
 import ProviderSettingsSlot from '../surfaces/ProviderSettingsSlot';
 import SettingsCardSlot from '../surfaces/SettingsCardSlot';
@@ -25,6 +28,9 @@ export default function SettingsScreen({ navigate }) {
       <NavigationRow label="Search" onPress={() => navigate('Search')} />
     </Section>
     <PreferencesSlot />
+    <AppearanceSettingsSlot />
+    <CardsSettingsSlot />
+    <HomeSettingsSlot />
   </Screen>;
 }
 
