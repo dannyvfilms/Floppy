@@ -38,6 +38,7 @@ export const progressPalette = {
 };
 
 export const progressDetailPalette = {
+  background: palette.background,
   text: palette.text,
   textSecondary: palette.textSecondary,
   textMuted: palette.textMuted,

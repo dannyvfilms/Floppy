@@ -586,18 +586,25 @@ mount-failure fallback.
 
 ## PROGRESS
 
-The quick +/- controls are shared React presentation. The detail progress card and
-modal shell remain server/Alpine-owned; the season/episode breakdown inside the
-modal is shared React presentation on mount, with the server markup as fallback.
+The quick +/- controls are shared React presentation. On the web the detail
+“Your Progress” card, its teleported info tip and the breakdown dialog are shared
+React presentation mounted by `ProgressDetailTheme.web.jsx`; the card keeps the
+detail-chip classes through its browser implementation. The legacy Alpine card,
+teleported modal and breakdown remain as the server fallback.
 
 - `frontend/ui/ProgressChanger.jsx`
 - `frontend/ui/ProgressBar.jsx`
-- `frontend/ui/ProgressCard.jsx`
+- `frontend/ui/ProgressCard.jsx` (universal card)
+- `frontend/ui/ProgressCard.web.jsx` (browser card implementation)
+- `frontend/ui/ProgressCard.native.jsx` (native card implementation)
 - `frontend/ui/ProgressBreakdown.jsx`
+- `frontend/ui/ProgressDialog.jsx` (shared detail dialog shell)
 - `frontend/ui/ProgressChangerTheme.web.jsx`
-- `frontend/ui/ProgressBreakdownTheme.web.jsx`
+- `frontend/ui/ProgressDetailTheme.web.jsx`
+- `frontend/ui/ProgressBreakdownTheme.web.jsx` (server fallback modal)
 - `frontend/ui/mountProgressChanger.jsx`
-- `frontend/ui/mountProgressBreakdown.jsx`
+- `frontend/ui/mountProgressDetail.jsx`
+- `frontend/ui/mountProgressBreakdown.jsx` (server fallback modal)
 - `native-proof/app/surfaces/ProgressSlot.jsx` (native placement on the Detail screen)
 - `src/templates/users/components/progress_changer.html`
 - `src/templates/app/components/detail_progress_card_slot.html`
