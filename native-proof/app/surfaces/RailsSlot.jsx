@@ -8,8 +8,8 @@ export const surface = {
   id: 'RAILS',
   title: 'Horizontal shelves and load more',
   where: 'Home rails, Discover, cast and recommendations',
-  status: 'ported',
-  note: 'The shared rail renders headings, collapse, arrows, horizontal scrolling, bounded load-more and item slots through renderItem. Demo tiles stand in for the unported media card.',
+  status: 'in_progress',
+  note: 'The shared rail renders headings, collapse, arrows, horizontal scrolling, bounded load-more and item slots through renderItem. Demo tiles stand in for the unported media card while the web rows are wired.',
 };
 
 const shelf = [
