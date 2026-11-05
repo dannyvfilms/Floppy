@@ -634,6 +634,7 @@ stay legacy until a native chart renderer is chosen.
 - `frontend/ui/ListHeader.jsx`
 - `frontend/ui/ListResults.jsx`
 - `frontend/ui/ListMembership.jsx`
+- `frontend/ui/ListFormView.jsx` (universal create/edit list form: name, description, visibility, public slug, notes/recommendation/smart toggles, tags, roles and delete guard; presentation only)
 - `native-proof/app/screens/ListsScreen.jsx`
 - `native-proof/app/screens/ListDetailScreen.jsx`
 - `src/templates/lists/components/fill_lists.html`
@@ -662,6 +663,8 @@ stay legacy until a native chart renderer is chosen.
 
 ## LIST-CURATION
 
+- `frontend/ui/ListSearchView.jsx` (universal add/recommend item search and preview dialog; presentation only)
+- `frontend/ui/ListRecommendationsView.jsx` (universal recommendations approval/deny view; presentation only)
 - `src/templates/lists/add_item.html`
 - `src/templates/lists/components/add_item_preview_modal.html`
 - `src/templates/lists/components/add_item_search_results.html`
