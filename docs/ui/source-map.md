@@ -258,6 +258,9 @@ in the register.
 - `src/templates/app/components/derived_tv_rating_detail.html`
 - `src/templates/app/components/detail_episode_rating_chip.html`
 - `src/templates/app/components/detail_row_rating_button.html`
+- `src/templates/app/components/detail_music_artist.html`
+- `src/templates/app/components/detail_music_album.html`
+- `src/templates/app/comic_issue_details.html`
 - `src/templates/app/components/detail_score_and_actions.html`
 - `src/templates/app/components/detail_score_chip.html`
 - `src/templates/app/components/detail_score_chip_slot.html`

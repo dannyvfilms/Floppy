@@ -40,6 +40,15 @@ function readPalette() {
     starBadgeBorder: 'rgba(251, 191, 36, 0.28)',
     cardBackground: 'rgba(251, 191, 36, 0.10)',
     cardBorder: 'rgba(251, 191, 36, 0.26)',
+    compactUnratedBorder: 'rgba(156, 163, 175, 0.28)',
+    compactUnratedBackground: 'rgba(107, 114, 128, 0.14)',
+    compactUnratedHoverBackground: 'rgba(107, 114, 128, 0.20)',
+    compactRatedBorder: 'rgba(251, 191, 36, 0.28)',
+    compactRatedBackground: 'rgba(245, 158, 11, 0.14)',
+    compactRatedHoverBackground: 'rgba(245, 158, 11, 0.20)',
+    compactValue: '#fcd34d',
+    compactFontSize: 12,
+    compactIconSize: 14,
     focusStyle: {
       outlineStyle: 'solid',
       outlineWidth: 1,
@@ -65,11 +74,12 @@ function readLayout(host) {
   return carousel && carousel.childElementCount > 0 ? 'card' : 'pill';
 }
 
-function readAnchor(host) {
+function readAnchor(host, layout) {
   const trigger = host.querySelector('[role="button"]') || host;
   const rect = trigger.getBoundingClientRect();
   const width = 250;
-  const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+  const preferred = layout === 'compact' ? rect.right - width : rect.left;
+  const left = Math.max(8, Math.min(preferred, window.innerWidth - width - 8));
   const top = rect.bottom + 92 > window.innerHeight
     ? Math.max(8, rect.top - 88)
     : rect.bottom + 8;
@@ -87,7 +97,7 @@ function Adapter({ host, props }) {
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState(null);
   const [palette, setPalette] = useState(readPalette);
-  const [layout, setLayout] = useState(() => readLayout(host));
+  const [layout, setLayout] = useState(() => props.layout || readLayout(host));
   const wrapper = host.parentElement;
 
   useEffect(() => {
@@ -99,7 +109,7 @@ function Adapter({ host, props }) {
   }, [wrapper]);
 
   useEffect(() => {
-    const update = () => { setPalette(readPalette()); setLayout(readLayout(host)); };
+    const update = () => { setPalette(readPalette()); setLayout(props.layout || readLayout(host)); };
     update();
     const observer = new MutationObserver(update);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] });
@@ -117,7 +127,7 @@ function Adapter({ host, props }) {
       mobile.removeEventListener('change', update);
       narrow.removeEventListener('change', update);
     };
-  }, [host]);
+  }, [host, props.layout]);
 
   useEffect(() => {
     setValue(props.value ?? null);
@@ -135,7 +145,7 @@ function Adapter({ host, props }) {
   }, [open]);
 
   function onOpenChange(next) {
-    if (next) setAnchor(readAnchor(host));
+    if (next) setAnchor(readAnchor(host, layout));
     setOpen(next);
   }
 

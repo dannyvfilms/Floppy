@@ -18,6 +18,15 @@ const fallbackPalette = {
   starBadgeBorder: 'rgba(251, 191, 36, 0.28)',
   cardBackground: 'rgba(251, 191, 36, 0.10)',
   cardBorder: 'rgba(251, 191, 36, 0.26)',
+  compactUnratedBorder: 'rgba(156, 163, 175, 0.28)',
+  compactUnratedBackground: 'rgba(107, 114, 128, 0.14)',
+  compactUnratedHoverBackground: 'rgba(107, 114, 128, 0.20)',
+  compactRatedBorder: 'rgba(251, 191, 36, 0.28)',
+  compactRatedBackground: 'rgba(245, 158, 11, 0.14)',
+  compactRatedHoverBackground: 'rgba(245, 158, 11, 0.20)',
+  compactValue: '#fcd34d',
+  compactFontSize: 12,
+  compactIconSize: 14,
   focusStyle: {},
   fontSize: 14,
   chipHeight: 32,
@@ -92,6 +101,30 @@ export function RatingChip({
       </View>
     </View>
   </Modal>;
+
+  if (layout === 'compact') {
+    return <View style={styles.root}>
+      <Pressable accessibilityRole="button"
+        accessibilityLabel={rated ? `${text.yourScore}: ${shown}` : text.addRating}
+        accessibilityHint={rated ? text.editRating : text.addRating}
+        title={text.rateTitle || text.rate}
+        onPress={() => onOpenChange?.(!open)}
+        style={({ hovered, pressed, focused }) => [styles.compactButton, {
+          width: colors.starBadgeSize,
+          height: colors.starBadgeSize,
+          borderRadius: colors.starBadgeSize / 2,
+          borderColor: rated ? colors.compactRatedBorder : colors.compactUnratedBorder,
+          backgroundColor: hovered || pressed
+            ? rated ? colors.compactRatedHoverBackground : colors.compactUnratedHoverBackground
+            : rated ? colors.compactRatedBackground : colors.compactUnratedBackground,
+        }, focused && colors.focusStyle]}>
+        {rated
+          ? <Text style={[styles.compactValue, { color: colors.compactValue, fontSize: colors.compactFontSize }]}>{shown}</Text>
+          : <View style={{ color: colors.textSecondary }}>{star(false, colors.compactIconSize)}</View>}
+      </Pressable>
+      {popup}
+    </View>;
+  }
 
   if (layout === 'card') {
     return <View style={styles.root}>
@@ -209,6 +242,8 @@ const styles = StyleSheet.create({
   cardButtonActive: {},
   cardValue: { fontWeight: '600' },
   cardMeta: { flexShrink: 1, fontWeight: '500' },
+  compactButton: { alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  compactValue: { fontWeight: '700' },
   modalRoot: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   popup: { borderWidth: 1, overflow: 'hidden' },
 });

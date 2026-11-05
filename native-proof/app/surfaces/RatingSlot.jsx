@@ -6,10 +6,10 @@ import { ratingPalette, spacing } from '../theme';
 
 export const surface = {
   id: 'RATING',
-  status: 'ported',
+  status: 'in_progress',
   title: 'Score chip and rating popup',
   where: 'Detail pages, episode rows, music tracks and cards',
-  note: 'The detail personal score chip and its rating popup use the shared RatingChip and RatingStars. Other rating surfaces remain legacy on the web.',
+  note: 'The detail personal score chip, the episode/music/comic pill chips, music track and comic issue row chips and their popup use the shared RatingChip and RatingStars. The native shell places the detail pill; the compact row layout compiles but is not placed on a native row, and the season episode card title rating and provider score chips remain legacy.',
 };
 
 const labels = {
