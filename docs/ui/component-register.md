@@ -217,11 +217,14 @@ can inform a focused completion pass.
 ### ERRORS-DOCS — Error/recovery and API documentation pages
 
 - Purpose/usage: 400/403/CSRF/404/500 and API documentation surfaces.
-- Implementation: root error templates, `src/templates/includes/error_report_panel.html`, `src/templates/api/docs.html`.
-- Contract: safe diagnostic/report text, useful recovery links, permission boundaries and usable error documents without normal context or loaded app JS.
+- Components: `ErrorStatusSelector`, `ErrorRecovery`, `ErrorReportPanel`, `ApiDocCommand`, `ApiCheatSheet`, `ApiGlossary`, `ApiSchemaLinks`, `ApiDocs`, `CopyBlock`.
+- Universal implementation: `frontend/errors/ErrorRecovery.jsx` owns the status selector, error hero, quick checks, provider support note, recovery actions and traceback panel; `frontend/errors/ApiDocs.jsx` owns the task index, first-request and workflow commands, cheat sheet, status/media vocabularies, domain glossary and schema links; `frontend/ui/CopyBlock.jsx` owns the copyable report/command block and copied feedback. All take plain status/heading/message/checks/support/report/model props and concrete theme values; platform copy and link intents arrive as callbacks.
+- Native placement: `native-proof/app/screens/ErrorDocsScreen.jsx` renders the five error variants with demo diagnostics, actual clipboard copy through the shell, report-issue and recovery intents, and the API documentation index. Status `ported`: the native screen renders the finished demo error and API content; iOS and Android runtime have not been exercised.
+- Contract: safe diagnostic/report text, useful recovery links, permission boundaries and usable error documents without normal context or loaded app JS. The presentation never owns permissions, request data, credentials or navigation; the host supplies sanitized report text and intents.
 - Data: `src/app/error_views.py`, error context and API schema routes.
-- Reuse/blockers: error presentation shareable; server error documents/API explorer are web surfaces.
-- Validation targets: error view tests under `src/app/tests/`; interactive/native parity unverified.
+- Remaining legacy: `src/templates/400.html`, `src/templates/403.html`, `src/templates/403_csrf.html`, `src/templates/404.html`, `src/templates/500.html`, `src/templates/includes/error_report_panel.html` and `src/templates/api/docs.html` remain the browser/server fallback. No web adapter mounts the shared presentation.
+- Retirement: the server error documents and `api/docs.html` retire only when a browser adapter mounts the shared presentation with equivalent safe diagnostics, CSRF/login/recovery behavior, API links and a no-JS fallback. Keep the server fallback until then.
+- Validation targets: `src/app/tests/test_error_views.py`, `src/app/tests/views/test_service_worker.py`, `src/app/tests/test_api_contracts.py`, `src/api/tests/test_public_endpoints.py`, `npm run build:ui`, `npm run check:ui`, `npm run check:ui-architecture`, `npm run test:ui-architecture` and the Expo export. Browser, iOS and Android runtime parity are unverified.
 
 ## Library, discovery and media presentation
 

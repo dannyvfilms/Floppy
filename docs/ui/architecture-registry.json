@@ -1030,29 +1030,6 @@
         }
       }
     },
-    "frontend/ui/IntegrationPanels.jsx": {
-      "components": [
-        "ArrLibraryPanels",
-        "SeerrRequestsCard",
-        "SeerrStatusBadge",
-        "SeerrRequestDialog"
-      ],
-      "register": "INTEGRATION-PANELS",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the existing server-rendered library_panel, seerr_request and seerr_status templates keep the browser path and progressive fallback."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared Arr/Seerr panels through the native Integrations screen; no simulator run, request interaction, copy feedback or VoiceOver pass."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared Arr/Seerr panels through the native Integrations screen; no emulator run, request interaction, copy feedback or TalkBack pass."
-        }
-      }
-    },
     "frontend/settings/ConfirmDialog.jsx": {
       "components": [
         "ConfirmDialog"
@@ -1138,57 +1115,6 @@
         "android": {
           "status": "unverified",
           "evidence": "Expo export --platform all compiled the component through the native Settings slot; no emulator run or accessibility pass was performed."
-        }
-      }
-    },
-    "frontend/settings/AdvancedSettings.jsx": {
-      "components": [
-        "LogsCard",
-        "ImageCacheCard",
-        "CacheManagementCard",
-        "ServerPortCard"
-      ],
-      "register": "SET-SYSTEM",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the server-rendered advanced page keeps the cache, image and server-port controls. No browser pass was performed."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the component through the native SettingsAdvanced screen; no simulator run or accessibility pass was performed."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the component through the native SettingsAdvanced screen; no emulator run or accessibility pass was performed."
-        }
-      }
-    },
-    "frontend/settings/AboutSettings.jsx": {
-      "components": [
-        "ReleaseUpdateBanner",
-        "AboutOverviewCard",
-        "WhatsNewCard",
-        "InstallCard",
-        "ProjectResourcesCard",
-        "DeveloperSpecsCard",
-        "AttributionsCard",
-        "LicenseCard",
-        "AboutVersionFooter"
-      ],
-      "register": "SET-SYSTEM",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the server-rendered About and Advanced pages remain the browser implementation and regression target. No browser pass was performed."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the component through the native SettingsAdvanced screen; no simulator run or accessibility pass was performed."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the component through the native SettingsAdvanced screen; no emulator run or accessibility pass was performed."
         }
       }
     },
@@ -1316,6 +1242,146 @@
         "android": {
           "status": "unverified",
           "evidence": "Expo export only; the native tier board, move and edit dialogs were not exercised on an emulator."
+        }
+      }
+    },
+    "frontend/ui/CopyBlock.jsx": {
+      "components": [
+        "CopyBlock"
+      ],
+      "register": "ERRORS-DOCS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "No web adapter mounts the shared block; the Django error copy buttons and API command blocks remain the browser implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native error/API docs screen; copy feedback and selection were not exercised in a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native error/API docs screen; copy feedback and selection were not exercised on an emulator."
+        }
+      }
+    },
+    "frontend/errors/ErrorRecovery.jsx": {
+      "components": [
+        "ErrorStatusSelector",
+        "ErrorRecovery",
+        "ErrorReportPanel"
+      ],
+      "register": "ERRORS-DOCS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted on the web; the Django 400/403/CSRF/404/500 templates and their server fallback remain authoritative."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native error/API docs screen; status switching, copy, report and recovery actions were not exercised in a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native error/API docs screen; status switching, copy, report and recovery actions were not exercised on an emulator."
+        }
+      }
+    },
+    "frontend/errors/ApiDocs.jsx": {
+      "components": [
+        "ApiDocCommand",
+        "ApiCheatSheet",
+        "ApiGlossary",
+        "ApiSchemaLinks",
+        "ApiDocs"
+      ],
+      "register": "ERRORS-DOCS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted on the web; src/templates/api/docs.html remains the offline API reference and browser fallback."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native error/API docs screen; command copy and schema link intents were not exercised in a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native error/API docs screen; command copy and schema link intents were not exercised on an emulator."
+        }
+      }
+    },
+    "frontend/ui/IntegrationPanels.jsx": {
+      "components": [
+        "ArrLibraryPanels",
+        "SeerrRequestsCard",
+        "SeerrStatusBadge",
+        "SeerrRequestDialog"
+      ],
+      "register": "INTEGRATION-PANELS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the existing server-rendered library_panel, seerr_request and seerr_status templates keep the browser path and progressive fallback."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared Arr/Seerr panels through the native Integrations screen; no simulator run, request interaction, copy feedback or VoiceOver pass."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared Arr/Seerr panels through the native Integrations screen; no emulator run, request interaction, copy feedback or TalkBack pass."
+        }
+      }
+    },
+    "frontend/settings/AdvancedSettings.jsx": {
+      "components": [
+        "LogsCard",
+        "ImageCacheCard",
+        "CacheManagementCard",
+        "ServerPortCard"
+      ],
+      "register": "SET-SYSTEM",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the server-rendered advanced page keeps the cache, image and server-port controls. No browser pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the component through the native SettingsAdvanced screen; no simulator run or accessibility pass was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the component through the native SettingsAdvanced screen; no emulator run or accessibility pass was performed."
+        }
+      }
+    },
+    "frontend/settings/AboutSettings.jsx": {
+      "components": [
+        "ReleaseUpdateBanner",
+        "AboutOverviewCard",
+        "WhatsNewCard",
+        "InstallCard",
+        "ProjectResourcesCard",
+        "DeveloperSpecsCard",
+        "AttributionsCard",
+        "LicenseCard",
+        "AboutVersionFooter"
+      ],
+      "register": "SET-SYSTEM",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the server-rendered About and Advanced pages remain the browser implementation and regression target. No browser pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the component through the native SettingsAdvanced screen; no simulator run or accessibility pass was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the component through the native SettingsAdvanced screen; no emulator run or accessibility pass was performed."
         }
       }
     },
