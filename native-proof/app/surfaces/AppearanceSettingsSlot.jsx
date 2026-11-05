@@ -27,6 +27,10 @@ const settingsPalette = {
   success: palette.success,
   warning: palette.warning,
   danger: palette.danger,
+  badgeBorder: palette.surfaceMuted,
+  badgeBackground: palette.surfaceStrong,
+  badgeText: palette.textSecondary,
+  badgeHover: palette.surfaceMuted,
   focusStyle: {},
 };
 
