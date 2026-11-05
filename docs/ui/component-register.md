@@ -134,20 +134,32 @@ can inform a focused completion pass.
 ### ARTWORK-LOADING — Image loading and fallback
 
 - Purpose/usage: cards, rails, posters/backdrops and detail images.
-- Implementation: `src/static/js/artwork-loading.js`, `image-fallback.js`, lazySizes; `src/templates/app/components/home_artwork_poller.html` is the deferred shelf consumer.
-- Contract: no blank/broken art, preserved aspect/fallback provenance, lazy/deferred refresh; display fallback does not overwrite stored artwork.
-- Data: server artwork projection/cache URLs and Home cover state in `src/app/views.py`.
-- Reuse/blockers: image states/geometry reusable; observers/error hooks/polling are web adapters. Preserve [cover security](../architecture/local-covers.md).
-- Validation targets: `src/app/tests/test_media_card_contract.py`, `src/app/tests/test_game_artwork.py`; native caching unverified.
+- Components: `ArtworkImage`.
+- Universal implementation: `frontend/ui/ArtworkImage.jsx` owns the primary/fallback source chain, loading placeholder, unavailable state, optional stale marker, provenance input and the image frame using React Native `Image`, `Text` and `View`.
+- Web adapters: `frontend/ui/ArtworkImage.web.jsx` renders the same contract as a real browser image with `loading`/`decoding`, `data-media-artwork`, `data-image-source`, `data-artwork-state`, the bounded video fallback and the existing `data-image-fallback` hooks. `src/static/js/artwork-loading.js` keeps remembered-artwork promotion, the parser/HTMX observers and session storage; `image-fallback.js` keeps server-image and HTMX error recovery; lazySizes stays unchanged. Those scripts remain the browser fallback for server-rendered and DOM-media-card images.
+- Native placement: `frontend/ui/MediaCardView.jsx` renders `ArtworkImage` on the native Home, Library, Discover, Search, History, list and collection surfaces through `MediaCardSlot.jsx` and `RailsSlot.jsx`. No iOS or Android runtime pass was performed; the Expo export is a compile check only.
+- Contract: no blank or broken art, preserved aspect/fallback provenance, lazy/deferred refresh, display fallback never overwrites stored artwork, and [cover security](../architecture/local-covers.md) stays server-owned.
+- Data: server artwork projection/cache URLs and Home cover state in `src/app/views.py`; card image `src`/`fallback`/`source` in `src/app/media_card_model.py`.
+- Status: `Partial / coexisting`. Shared artwork presentation is React-owned inside shared cards on web islands and native. `frontend/ui/MediaCard.jsx` and server-rendered `<img data-media-artwork>` remain legacy consumers with the scripts as their browser adapter.
+- Verification: `npm run check:ui-architecture`, `npm run test:ui-architecture`, `npm run build:ui` and the Expo export compile the component and adapters. No browser, simulator or device runtime pass was performed for this change.
+- Reuse/blockers: image states and geometry are shared; observers, session storage and error hooks stay in the web adapters. Native image caching is the platform image component. No blocked incompatibility.
+- Retirement: the DOM media-card image and global artwork/fallback scripts retire only when the shared card covers every browser surface, preserves remembered-artwork promotion and HTMX swaps, and has browser plus device evidence.
+- Validation targets: `src/app/tests/test_media_card_contract.py`, `src/app/tests/test_page_pipeline_cost.py`, `src/app/tests/test_game_artwork.py`, `src/static/js/cache-updater.selfcheck.mjs`.
 
 ### ASYNC-STATE — Cache/loading refresh lifecycle
 
 - Purpose/usage: Discover, History and Statistics refresh/pending/error state.
-- Implementation: `src/static/js/cache-updater.js`, owning inline template pollers/HTMX fragments.
-- Contract: bounded retries/timeouts, offline/online recovery, exit cleanup and useful stale/error/loading display without duplicate pollers.
+- Components: `RefreshNotice`.
+- Universal implementation: `frontend/ui/RefreshNotice.jsx` owns the loading, stale, error and complete notice presentation, dismiss/retry intents, retry/offline notes and the polite live region with concrete theme values. It is adopted by `frontend/ui/HistoryFeed.jsx` and `frontend/discover/DiscoverScreen.jsx` (`DiscoverFeedback`) on web and native.
+- Web adapters: `src/static/js/cache-updater.js` remains the browser poller and the owner of bounded timeouts, request aborts, retry backoff, `Retry-After`, offline/online pause-resume, page-path guards and pagehide cleanup; the owning Alpine templates keep their inline pollers and HTMX fragments. `cache-status` transport stays server-owned.
+- Native placement: the shared History and Discover feeds render `RefreshNotice` on the native History and Discover screens. Native background refresh transport is not mapped; the Expo export is a compile check only.
+- Contract: useful loading/stale/error/complete display without duplicate pollers, bounded retries and timeouts, offline/online recovery, exit cleanup and no offline synchronization claim.
 - Data: cache-status endpoint in `src/app/views.py`, feature task/cache state.
-- Reuse/blockers: potentially share transitions; browser lifecycle/task transport need adapters. This is not offline synchronization.
-- Validation targets: `src/static/js/cache-updater.selfcheck.mjs`, owning feature tests; native background behavior unverified.
+- Status: `Partial / coexisting`. The notice presentation is React-owned on web and native; the browser pollers and Statistics/Discover Alpine controls remain legacy adapters.
+- Verification: `npm run check:ui-architecture`, `npm run test:ui-architecture`, `npm run build:ui`, the cache-updater self-check and the Expo export compile the shared notice and preserve the poller contract. No browser, simulator or device runtime pass was performed for this change.
+- Reuse/blockers: share the notice states; browser lifecycle/task transport stay in adapters. This is not offline synchronization.
+- Retirement: retire `cache-updater.js` and the inline Alpine banners only when a browser adapter owns the same bounded retry, offline/online, pagehide and duplicate-poller behavior with equal test coverage.
+- Validation targets: `src/static/js/cache-updater.selfcheck.mjs`, `src/app/tests/discover/test_views.py`, `src/app/tests/test_page_pipeline_cost.py`; native background behavior unverified.
 
 ### SPINNER — Loading ring
 

@@ -2,6 +2,7 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Badge } from '../ui/Badge';
 import { MediaCardView } from '../ui/MediaCardView';
+import { RefreshNotice } from '../ui/RefreshNotice';
 import { Rail } from '../ui/Rail';
 
 const defaultPalette = {
@@ -110,18 +111,13 @@ export function DiscoverFeedback({
   const message = toast || {};
   const showToast = Boolean(message.visible && (message.message || message.undoToken));
   return <View style={styles.feedbackStack}>
-    {cacheRefreshing ? <View accessibilityLiveRegion="polite"
-      style={[styles.notice, { backgroundColor: 'rgba(245, 158, 11, 0.12)', borderColor: 'rgba(245, 158, 11, 0.3)' }]}>
-      <Text style={[styles.noticeText, { color: palette.warning }]}>{copy.refreshBackground}</Text>
-    </View> : null}
-    {status.visible ? <View accessibilityLiveRegion="polite"
-      style={[styles.notice, styles.statusRow, { backgroundColor: 'rgba(16, 185, 129, 0.12)', borderColor: 'rgba(16, 185, 129, 0.3)' }]}>
-      <Text style={[styles.noticeText, { color: palette.success }]}>{status.message || copy.refreshDone}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel={copy.dismiss}
-        onPress={onDismissRefreshStatus} style={styles.dismissButton}>
-        <Text style={[styles.dismissText, { color: palette.success }]}>✕</Text>
-      </Pressable>
-    </View> : null}
+    {cacheRefreshing ? <RefreshNotice state="loading" message={copy.refreshBackground}
+      palette={palette} background="rgba(245, 158, 11, 0.12)"
+      border="rgba(245, 158, 11, 0.3)" color={palette.warning} /> : null}
+    {status.visible ? <RefreshNotice state="complete" message={status.message || copy.refreshDone}
+      labels={{ dismiss: copy.dismiss }} palette={palette}
+      background="rgba(16, 185, 129, 0.12)" border="rgba(16, 185, 129, 0.3)"
+      color={palette.success} onDismiss={onDismissRefreshStatus} /> : null}
     {showToast ? <View accessibilityLiveRegion="polite"
       style={[styles.toast, { backgroundColor: palette.surface, borderColor: palette.border }, toastStyle]}>
       <Text style={[styles.toastText, { color: palette.text }]}>{message.message}</Text>
@@ -384,9 +380,6 @@ const styles = StyleSheet.create({
   toolbarText: { fontSize: 13, fontWeight: '600' },
   refreshGlyph: { fontSize: 18, lineHeight: 20 },
   feedbackStack: { gap: 8 },
-  notice: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
-  statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  noticeText: { flex: 1, fontSize: 13, lineHeight: 18 },
   dismissButton: { padding: 4 },
   dismissText: { fontSize: 13, fontWeight: '600' },
   toast: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10,
