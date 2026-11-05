@@ -51,48 +51,52 @@
       {% endfor %}
     </div>
 
-    <div x-cloak
-         x-show="cacheRefreshing"
-         class="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-[var(--color-warning-text)]">
-      {% translate "Refreshing recommendations in background..." %}
-    </div>
-
-    <div x-cloak
-         x-show="refreshStatusVisible"
-         x-transition
-         role="status"
-         aria-live="polite"
-         class="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-      <div class="flex items-center justify-between gap-3">
-        <span x-text="refreshStatusMessage">{% translate "Recommendations refreshed." %}</span>
-        <button type="button"
-                @click="dismissRefreshStatus()"
-                class="text-emerald-100/80 transition-colors hover:text-[var(--color-text)] cursor-pointer">
-          {% include "app/icons/x.svg" with classes="h-4 w-4" %}
-        </button>
+    {% discover_feedback_react as discover_feedback %}
+    <div data-discover-feedback-root data-props-id="{{ discover_feedback.id }}">
+      {{ discover_feedback.props|json_script:discover_feedback.id }}
+      <div x-cloak
+           x-show="cacheRefreshing"
+           class="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-[var(--color-warning-text)]">
+        {% translate "Refreshing recommendations in background..." %}
       </div>
-    </div>
 
-    <div x-show="toastVisible"
-         x-cloak
-         x-transition
-         class="fixed top-24 right-0 left-0 {% block messages_sidebar_offset %}lg:left-64{% endblock messages_sidebar_offset %} z-50 flex justify-center pointer-events-none mb-4">
-      <div class="w-full max-w-xl px-4 pointer-events-auto">
-        <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg toast-info"
-             x-init="$watch('toastVisible', v => { if (v) { $el.classList.remove('opacity-100','transform-none'); $el.classList.add('opacity-0','translate-y-[-1rem]'); setTimeout(() => $el.classList.add('opacity-100','transform-none'), 10); } })"
-             :class="{ 'transition-all duration-300 ease-out': true }">
-          {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-indigo-300 shrink-0" %}
-          <p class="text-sm font-medium flex-1" x-text="toastMessage"></p>
-          <button x-show="undoToken"
-                  type="button"
-                  @click="undoAction()"
-                  class="shrink-0 rounded-md bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-indigo-400 cursor-pointer">
-            {% translate "Undo" %}
+      <div x-cloak
+           x-show="refreshStatusVisible"
+           x-transition
+           role="status"
+           aria-live="polite"
+           class="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+        <div class="flex items-center justify-between gap-3">
+          <span x-text="refreshStatusMessage">{% translate "Recommendations refreshed." %}</span>
+          <button type="button"
+                  @click="dismissRefreshStatus()"
+                  class="text-emerald-100/80 transition-colors hover:text-[var(--color-text)] cursor-pointer">
+            {% include "app/icons/x.svg" with classes="h-4 w-4" %}
           </button>
-          <button class="text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
-                  @click="dismissToast()">
-            {% include "app/icons/x.svg" with classes="w-4 h-4" %}
-          </button>
+        </div>
+      </div>
+
+      <div x-show="toastVisible"
+           x-cloak
+           x-transition
+           class="fixed top-24 right-0 left-0 {% block messages_sidebar_offset %}lg:left-64{% endblock messages_sidebar_offset %} z-50 flex justify-center pointer-events-none mb-4">
+        <div class="w-full max-w-xl px-4 pointer-events-auto">
+          <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg toast-info"
+               x-init="$watch('toastVisible', v => { if (v) { $el.classList.remove('opacity-100','transform-none'); $el.classList.add('opacity-0','translate-y-[-1rem]'); setTimeout(() => $el.classList.add('opacity-100','transform-none'), 10); } })"
+               :class="{ 'transition-all duration-300 ease-out': true }">
+            {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-indigo-300 shrink-0" %}
+            <p class="text-sm font-medium flex-1" x-text="toastMessage"></p>
+            <button x-show="undoToken"
+                    type="button"
+                    @click="undoAction()"
+                    class="shrink-0 rounded-md bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-indigo-400 cursor-pointer">
+              {% translate "Undo" %}
+            </button>
+            <button class="text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
+                    @click="dismissToast()">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+          </div>
         </div>
       </div>
     </div>

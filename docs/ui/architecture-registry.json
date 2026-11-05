@@ -279,26 +279,6 @@
         }
       }
     },
-    "frontend/ui/HomeShelves.jsx": {
-      "components": [
-        "HomeShelves"
-      ],
-      "register": "HOME",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Compiled into the web bundle through mountHome over the server-rendered Home shelves; no browser interaction pass was performed in this change."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Home screen; no simulator run was performed in this change."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Home screen; no emulator run was performed in this change."
-        }
-      }
-    },
     "frontend/ui/Rail.jsx": {
       "components": [
         "Rail"
@@ -1726,6 +1706,53 @@
         }
       }
     },
+    "frontend/discover/DiscoverScreen.jsx": {
+      "components": [
+        "DiscoverScreen",
+        "DiscoverTabs",
+        "DiscoverFeedback",
+        "DiscoverState",
+        "DiscoverRow",
+        "DiscoverRows",
+        "DiscoverHidden",
+        "DiscoverPreview"
+      ],
+      "register": "DISCOVER",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Compiled into the web bundle and mounted through the Discover row, hidden, preview, state and feedback roots; no browser interaction pass was run in this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Discover screen; tabs, rows, hidden, feedback and actions were not exercised on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Discover screen; tabs, rows, hidden, feedback and actions were not exercised on an emulator or device."
+        }
+      }
+    },
+    "frontend/ui/HomeShelves.jsx": {
+      "components": [
+        "HomeShelves"
+      ],
+      "register": "HOME",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Compiled into the web bundle through mountHome over the server-rendered Home shelves; no browser interaction pass was performed in this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Home screen; no simulator run was performed in this change."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Home screen; no emulator run was performed in this change."
+        }
+      }
+    },
     "frontend/ui/Shell.jsx": {
       "components": [
         "Shell",
@@ -2625,10 +2652,6 @@
       "register": "FILTERS",
       "purpose": "Django/browser integration for the shared filter bar: mirror the page Alpine filter state, write filter intents into the existing form, and refresh through the existing htmx/URL boundary."
     },
-    "frontend/ui/mountHome.jsx": {
-      "register": "HOME",
-      "purpose": "Browser adapter for the shared Home shelves: read the server-built group, row and card model, resolve theme tokens, fetch bounded deferred/load-more row windows and the coalesced artwork poll through the presentation endpoints, keep Django's grouped/deferred markup and HTMX poller as the no-React fallback, and preserve card links, hover actions and quick progress controls."
-    },
     "frontend/ui/mountHistoryFeed.jsx": {
       "register": "HISTORY",
       "purpose": "Browser feed adapter for the shared History feed: read the bounded initial model, JSON day slices and bounded activity sessions, load lazy/load-more days, own month navigation, filters and lazy genre options, dismiss/reload the cache banner, page filtered views, open edits through ModalHost, and keep filter/save-view URLs while the server template keeps its no-JS fallback and detail-page session modal."
@@ -2692,6 +2715,14 @@
     "frontend/ui/mountMusicAlbums.jsx": {
       "register": "MUSIC",
       "purpose": "Maps server-shaped artist discography album rows into the shared music album grid and owns browser navigation for the card link; the server album grid inside the host remains the no-React fallback."
+    },
+    "frontend/discover/mountDiscover.jsx": {
+      "register": "DISCOVER",
+      "purpose": "Mount the shared Discover row, hidden, preview, state and feedback presentation; keep htmx row swaps, browser navigation, rating writes, Alpine feedback state and the existing server fallback in the browser boundary."
+    },
+    "frontend/ui/mountHome.jsx": {
+      "register": "HOME",
+      "purpose": "Browser adapter for the shared Home shelves: read the server-built group, row and card model, resolve theme tokens, fetch bounded deferred/load-more row windows and the coalesced artwork poll through the presentation endpoints, keep Django's grouped/deferred markup and HTMX poller as the no-React fallback, and preserve card links, hover actions and quick progress controls."
     },
     "frontend/ui/mountShell.jsx": {
       "register": "SHELL",
