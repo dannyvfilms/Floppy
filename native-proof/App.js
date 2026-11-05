@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { SafeAreaView, StatusBar, StyleSheet, View } from 'react-native';
 import { TabBar } from './app/components/TabBar';
+import { EXTRA_SCREENS } from './app/extraScreens';
 import CalendarScreen from './app/screens/CalendarScreen';
 import DetailScreen from './app/screens/DetailScreen';
 import DiscoverScreen from './app/screens/DiscoverScreen';
@@ -30,6 +31,7 @@ const STACK_SCREENS = {
   History: HistoryScreen,
   Statistics: StatisticsScreen,
   Search: SearchScreen,
+  ...EXTRA_SCREENS,
 };
 
 export default function App() {

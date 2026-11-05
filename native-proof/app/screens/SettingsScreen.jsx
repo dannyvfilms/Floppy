@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Screen, Section } from '../components/Screen';
+import { EXTRA_LABELS, EXTRA_SCREENS } from '../extraScreens';
 import AppearanceSettingsSlot from '../surfaces/AppearanceSettingsSlot';
 import CardsSettingsSlot from '../surfaces/CardsSettingsSlot';
 import DataAccessNotificationsSlot from '../surfaces/DataAccessNotificationsSlot';
@@ -8,6 +9,7 @@ import HomeSettingsSlot from '../surfaces/HomeSettingsSlot';
 import PreferencesSlot from '../surfaces/PreferencesSlot';
 import ProviderSettingsSlot from '../surfaces/ProviderSettingsSlot';
 import SettingsCardSlot from '../surfaces/SettingsCardSlot';
+import UsersSlot from '../surfaces/UsersSlot';
 import { palette, radius, spacing } from '../theme';
 
 function NavigationRow({ label, onPress }) {
@@ -28,11 +30,15 @@ export default function SettingsScreen({ navigate }) {
       <NavigationRow label="History" onPress={() => navigate('History')} />
       <NavigationRow label="Statistics" onPress={() => navigate('Statistics')} />
       <NavigationRow label="Search" onPress={() => navigate('Search')} />
+      {Object.keys(EXTRA_SCREENS).map(key => <NavigationRow key={key} label={EXTRA_LABELS[key]} onPress={() => navigate(key)} />)}
     </Section>
     <PreferencesSlot />
     <AppearanceSettingsSlot />
     <CardsSettingsSlot />
     <HomeSettingsSlot />
+    <Section title="Administration" copy="Superuser-only account management.">
+      <UsersSlot />
+    </Section>
   </Screen>;
 }
 

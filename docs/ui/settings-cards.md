@@ -39,9 +39,11 @@ use React Native primitives and are registered universal presentation.
 `mount.jsx` is the web adapter: it uses React DOM, supplies browser theme tokens,
 and renders the component without its own frame because Django's outer section
 contains both the React header and the server body. `Chip.web.jsx` is the
-browser link adapter: it keeps native anchors, new-tab attributes and the
-CSS-variable palette while the shared chip owns hover, focus and action
-semantics. Future React-owned children can use the framed component directly.
+browser link adapter: it keeps native anchors and new-tab attributes, uses a
+caller-supplied palette for React-owned cards, and falls back to the scoped
+CSS-variable palette for server card/chip wrappers while the shared chip owns
+hover, focus and action semantics. Future React-owned children can use the
+framed component directly.
 The web slot is not a portable form API. Neither React hydration nor
 `dangerouslySetInnerHTML` is used.
 

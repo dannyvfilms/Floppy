@@ -17,17 +17,22 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_not_required, login_required
+from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.validators import UnicodeUsernameValidator
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.serializers.json import DjangoJSONEncoder
+from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.http import Http404, HttpResponse, JsonResponse, StreamingHttpResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.defaultfilters import filesizeformat, pluralize
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from django.utils.formats import date_format
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.timesince import timesince
 from django.utils.translation import gettext
@@ -2720,6 +2725,345 @@ def mal_export_context(request, slug=None):
 def mal_export(request):
     """Render the Sync to Trackers page: MyAnimeList, TMDb and WeTrakr."""
     return render(request, "users/mal_export.html", mal_export_context(request))
+
+
+def _managed_user_payload(member, current_user):
+    """Serialize one account for the React user-management page."""
+    last_login = member.last_login
+    return {
+        "id": member.pk,
+        "username": member.username,
+        "email": member.email or "",
+        "dateJoined": date_format(
+            timezone.localtime(member.date_joined), "DATETIME_FORMAT"
+        ),
+        "lastLogin": (
+            date_format(timezone.localtime(last_login), "DATETIME_FORMAT")
+            if last_login
+            else ""
+        ),
+        "isActive": member.is_active,
+        "isStaff": member.is_staff,
+        "isSuperuser": member.is_superuser,
+        "isDemo": member.is_demo,
+        "isSelf": member.pk == current_user.pk,
+        "canDelete": member.pk != current_user.pk
+        and not _last_active_superuser(member),
+    }
+
+
+def _managed_users_labels():
+    """Return translated copy rendered by the shared component."""
+    return {
+        "accounts": gettext("Accounts"),
+        "overviewTitle": gettext("User accounts"),
+        "overviewCopy": gettext(
+            "Manage the accounts on this Floppy instance. Only superusers can see "
+            "this page."
+        ),
+        "search": gettext("Search users"),
+        "statusFilter": gettext("Status"),
+        "statusAll": gettext("All statuses"),
+        "statusActive": gettext("Active"),
+        "statusInactive": gettext("Inactive"),
+        "roleFilter": gettext("Role"),
+        "roleAll": gettext("All roles"),
+        "roleSuperuser": gettext("Superuser"),
+        "roleStaff": gettext("Staff"),
+        "roleUser": gettext("User"),
+        "createTitle": gettext("Add a user"),
+        "createCopy": gettext(
+            "Create an account for someone else on this instance. Leave the "
+            "password blank to create the account without one."
+        ),
+        "username": gettext("Username"),
+        "email": gettext("Email"),
+        "password": gettext("Password"),
+        "passwordHelp": gettext(
+            "Optional. The person can set their own password later."
+        ),
+        "createAction": gettext("Create user"),
+        "createdStatus": gettext("User created."),
+        "empty": gettext("No users match these filters."),
+        "noUsers": gettext("No users have been created yet."),
+        "never": gettext("Never"),
+        "joined": gettext("Joined"),
+        "lastLogin": gettext("Last login"),
+        "active": gettext("Active"),
+        "inactive": gettext("Inactive"),
+        "superuser": gettext("Superuser"),
+        "staff": gettext("Staff"),
+        "thisIsYou": gettext("This is you"),
+        "activate": gettext("Activate"),
+        "deactivate": gettext("Deactivate"),
+        "makeStaff": gettext("Make staff"),
+        "removeStaff": gettext("Remove staff"),
+        "makeSuperuser": gettext("Make superuser"),
+        "removeSuperuser": gettext("Remove superuser"),
+        "resetPassword": gettext("Set password"),
+        "deleteUser": gettext("Delete"),
+        "deleteTitle": gettext("Delete user?"),
+        "deleteCopy": gettext(
+            "This permanently deletes {username} and all of their tracked media, "
+            "history, ratings, lists and settings. This cannot be undone."
+        ),
+        "cancel": gettext("Cancel"),
+        "confirmDelete": gettext("Delete user"),
+        "deleteStatus": gettext("User deleted."),
+        "passwordTitle": gettext("Set a new password"),
+        "passwordCopy": gettext(
+            "Set a new password for {username}. Share it with them securely; they "
+            "should change it after signing in."
+        ),
+        "newPassword": gettext("New password"),
+        "savePassword": gettext("Save password"),
+        "passwordStatus": gettext("Password updated."),
+        "error": gettext("Something went wrong. Try again."),
+        "close": gettext("Close"),
+    }
+
+
+def _managed_users_query():
+    """Return real accounts for the superuser user-management page.
+
+    Test, QA and automation accounts carry ``is_test_account`` and stay out of
+    normal pickers; the management page follows the same exclusion.
+    """
+    return User.objects.filter(is_test_account=False).order_by(
+        "-is_superuser", "username"
+    )
+
+
+def _managed_users_props(request):
+    """Presentation props with no credentials or transport details."""
+    members = _managed_users_query()
+    return {
+        "users": [_managed_user_payload(member, request.user) for member in members],
+        "currentUserId": request.user.pk,
+        "csrfToken": get_token(request),
+        "labels": _managed_users_labels(),
+        "urls": {
+            "create": reverse("create_managed_user"),
+            "update": reverse("update_managed_user", args=[0]).replace("/0/", "/{id}/"),
+            "delete": reverse("delete_managed_user", args=[0]).replace("/0/", "/{id}/"),
+            "password": reverse("set_managed_user_password", args=[0]).replace(
+                "/0/", "/{id}/"
+            ),
+        },
+    }
+
+
+@require_GET
+def manage_users(request):
+    """Render the superuser-only user management settings page."""
+    if not request.user.is_superuser:
+        return HttpResponse(status=403)
+    return render(
+        request,
+        "users/manage_users.html",
+        {
+            "users_management": _managed_users_props(request),
+            "managed_users": _managed_users_query(),
+        },
+    )
+
+
+def _managed_users_json_error(message, status=400):
+    """Return a JSON error the React page can display without a redirect."""
+    return JsonResponse({"error": message}, status=status)
+
+
+def _managed_users_json_body(request):
+    """Decode a JSON request body, or return None when it is malformed."""
+    try:
+        return json.loads(request.body or "{}")
+    except (TypeError, ValueError):
+        return None
+
+
+def _managed_users_json_guard(request):
+    """Require a superuser for every account-management write."""
+    if not request.user.is_superuser:
+        return _managed_users_json_error(
+            gettext("Only superusers can manage users."), status=403
+        )
+    return None
+
+
+@require_POST
+def create_managed_user(request):
+    """Create an account on behalf of a superuser."""
+    denied = _managed_users_json_guard(request)
+    if denied is not None:
+        return denied
+    payload = _managed_users_json_body(request)
+    if payload is None:
+        return _managed_users_json_error(gettext("Invalid request."))
+
+    username = str(payload.get("username") or "").strip()
+    email = str(payload.get("email") or "").strip()
+    password = str(payload.get("password") or "")
+
+    if not username:
+        return _managed_users_json_error(gettext("Enter a username."))
+    if len(username) > User._meta.get_field("username").max_length:
+        return _managed_users_json_error(gettext("That username is too long."))
+    try:
+        UnicodeUsernameValidator()(username)
+    except ValidationError:
+        return _managed_users_json_error(
+            gettext(
+                "Usernames can only contain letters, numbers and @/./+/-/_ "
+                "characters."
+            )
+        )
+    if User.objects.filter(username__iexact=username).exists():
+        return _managed_users_json_error(
+            gettext("An account with that username already exists.")
+        )
+    if email:
+        try:
+            validate_email(email)
+        except ValidationError:
+            return _managed_users_json_error(gettext("Enter a valid email address."))
+    if password:
+        try:
+            validate_password(password)
+        except ValidationError as error:
+            return _managed_users_json_error(" ".join(error.messages))
+
+    member = User.objects.create_user(
+        username=username, email=email, password=password or None
+    )
+    logger.info(
+        "User account created by superuser %s: %s (id %s)",
+        request.user.pk,
+        member.username,
+        member.pk,
+    )
+    return JsonResponse({"user": _managed_user_payload(member, request.user)})
+
+
+@require_POST
+def update_managed_user(request, user_id):
+    """Change active, staff or superuser status for one account."""
+    denied = _managed_users_json_guard(request)
+    if denied is not None:
+        return denied
+    member = get_object_or_404(User, pk=user_id, is_test_account=False)
+    payload = _managed_users_json_body(request)
+    if payload is None:
+        return _managed_users_json_error(gettext("Invalid request."))
+
+    field_map = {
+        "isActive": "is_active",
+        "isStaff": "is_staff",
+        "isSuperuser": "is_superuser",
+    }
+    updates = {
+        field_map[key]: bool(payload[key])
+        for key in field_map
+        if key in payload
+    }
+    if not updates:
+        return _managed_users_json_error(gettext("Nothing to update."))
+
+    if member.pk == request.user.pk:
+        if updates.get("is_active") is False:
+            return _managed_users_json_error(
+                gettext("You cannot deactivate your own account.")
+            )
+        if updates.get("is_superuser") is False:
+            return _managed_users_json_error(
+                gettext("You cannot remove your own superuser access.")
+            )
+    if (
+        member.is_superuser
+        and member.is_active
+        and (
+            updates.get("is_superuser") is False
+            or updates.get("is_active") is False
+        )
+        and _last_active_superuser(member)
+    ):
+        return _managed_users_json_error(
+            gettext("Promote another account before changing the last superuser.")
+        )
+
+    if updates.get("is_superuser") is True:
+        updates["is_staff"] = True
+
+    for field, value in updates.items():
+        setattr(member, field, value)
+    member.save(update_fields=list(updates))
+    logger.info(
+        "User account updated by superuser %s: %s (id %s) fields %s",
+        request.user.pk,
+        member.username,
+        member.pk,
+        sorted(updates),
+    )
+    return JsonResponse({"user": _managed_user_payload(member, request.user)})
+
+
+@require_POST
+def set_managed_user_password(request, user_id):
+    """Replace another account's password without ever disclosing the old one."""
+    denied = _managed_users_json_guard(request)
+    if denied is not None:
+        return denied
+    member = get_object_or_404(User, pk=user_id, is_test_account=False)
+    payload = _managed_users_json_body(request)
+    if payload is None:
+        return _managed_users_json_error(gettext("Invalid request."))
+
+    password = str(payload.get("password") or "")
+    if not password:
+        return _managed_users_json_error(gettext("Enter a new password."))
+    try:
+        validate_password(password, user=member)
+    except ValidationError as error:
+        return _managed_users_json_error(" ".join(error.messages))
+
+    member.set_password(password)
+    member.save(update_fields=["password"])
+    logger.info(
+        "Password reset by superuser %s for account %s (id %s)",
+        request.user.pk,
+        member.username,
+        member.pk,
+    )
+    return JsonResponse({"message": gettext("Password updated.")})
+
+
+@require_POST
+def delete_managed_user(request, user_id):
+    """Permanently delete another account and its scheduled work."""
+    denied = _managed_users_json_guard(request)
+    if denied is not None:
+        return denied
+    member = get_object_or_404(User, pk=user_id, is_test_account=False)
+    if member.pk == request.user.pk:
+        return _managed_users_json_error(
+            gettext("You cannot delete your own account.")
+        )
+    if _last_active_superuser(member):
+        return _managed_users_json_error(
+            gettext("Promote another account before deleting the last superuser.")
+        )
+
+    member_id = member.pk
+    username = member.username
+    with transaction.atomic(), signals.deleting_account():
+        PeriodicTask.objects.filter(**periodic_task_user_kwargs(member_id)).delete()
+        member.delete()
+    logger.info(
+        "User account deleted by superuser %s: %s (id %s)",
+        request.user.pk,
+        username,
+        member_id,
+    )
+    return JsonResponse({"deleted": member_id})
 
 
 @require_GET

@@ -125,6 +125,16 @@
               <span>{% translate "Advanced" %}</span>
             </a>
 
+            {% if request.user.is_superuser %}
+              {% url 'manage_users' as manage_users_url %}
+              <a href="{{ manage_users_url }}"
+                 {% if request.path == manage_users_url %}aria-current="page"{% endif %}
+                 class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == manage_users_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
+                {% include "app/icons/persons.svg" with classes="w-5 h-5" %}
+                <span>{% translate "Users" %}</span>
+              </a>
+            {% endif %}
+
             {% url 'about' as about_url %}
             <a href="{{ about_url }}"
                {% if request.path == about_url %}aria-current="page"{% endif %}
