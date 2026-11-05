@@ -10,8 +10,8 @@ export const surface = {
   id: 'BULK',
   title: 'Bulk selection and actions',
   where: 'Library, custom lists and smart lists',
-  status: 'ported',
-  note: 'Library select mode, card selection, selected count, Update Status, Add to List, Add to Collection, Apply Tag, confirmation dialogs, busy/partial-failure results and clear/reset use shared bulk presentation. The Add Plays history job dock and server write transport remain web-owned.',
+  status: 'in_progress',
+  note: 'Closing BULK: adopting the shared BulkToolbar/dialog presentation on the web, porting the Add Plays job dock/status to the shared surface, and preserving Alpine selection/HTMX writes as fallbacks.',
 };
 
 const STATUS_OPTIONS = [
