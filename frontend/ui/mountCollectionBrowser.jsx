@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { mountRoot } from '../settings/root';
 import { CollectionBrowser } from './CollectionBrowser';
+import { MediaCard } from './MediaCard';
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;
@@ -133,7 +134,8 @@ function Adapter({ host, props }) {
     hasMore={!!model.nextUrl}
     loadingMore={loadingMore}
     onOpenCopy={item => assign(item.href)}
-    onLoadMore={loadMore} />;
+    onLoadMore={loadMore}
+    renderCard={item => <MediaCard model={item.card} labels={props.labels} host={host} />} />;
 }
 
 export function mountCollectionBrowser(host, props) {

@@ -223,20 +223,20 @@ function TableView({ items, labels, palette, onOpenCopy }) {
   </View>;
 }
 
-function GridView({ items, labels, palette, onOpenCopy }) {
+function GridView({ items, labels, palette, onOpenCopy, renderCard }) {
   return <View style={styles.grid}>
     {items.map(item => <View key={item.id} style={styles.gridItem}>
-      <MediaCardView model={cardModel(item)} width={164} palette={{
+      {renderCard ? renderCard(item) : <MediaCardView model={cardModel(item)} width={164} palette={{
         ...palette,
         card: palette.surface,
         link: '#818cf8',
         star: '#facc15',
-      }} labels={labels} onOpen={() => onOpenCopy?.(item)} />
+      }} labels={labels} onOpen={() => onOpenCopy?.(item)} />}
     </View>)}
   </View>;
 }
 
-function RowView({ items, labels, palette, onOpenCopy }) {
+function RowView({ items, labels, palette, onOpenCopy, renderCard }) {
   const groups = useMemo(() => {
     const byType = new Map();
     items.forEach(item => {
@@ -258,12 +258,12 @@ function RowView({ items, labels, palette, onOpenCopy }) {
       <ScrollView horizontal showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.rowScroll}>
         {group.rows.map(item => <View key={item.id} style={styles.rowCard}>
-          <MediaCardView model={cardModel(item)} width={164} palette={{
+          {renderCard ? renderCard(item) : <MediaCardView model={cardModel(item)} width={164} palette={{
             ...palette,
             card: palette.surface,
             link: '#818cf8',
             star: '#facc15',
-          }} labels={labels} onOpen={() => onOpenCopy?.(item)} />
+          }} labels={labels} onOpen={() => onOpenCopy?.(item)} />}
         </View>)}
       </ScrollView>
     </View>)}
@@ -284,6 +284,7 @@ export function CollectionBrowser({
   onFilterChange,
   onOpenCopy,
   onLoadMore,
+  renderCard,
 }) {
   const labels = mergeLabels(suppliedLabels);
   const palette = mergePalette(suppliedPalette);
@@ -454,8 +455,8 @@ export function CollectionBrowser({
     </View> : view === 'table'
       ? <TableView items={items} labels={labels} palette={palette} onOpenCopy={onOpenCopy} />
       : view === 'rows'
-        ? <RowView items={items} labels={labels} palette={palette} onOpenCopy={onOpenCopy} />
-        : <GridView items={items} labels={labels} palette={palette} onOpenCopy={onOpenCopy} />}
+        ? <RowView items={items} labels={labels} palette={palette} onOpenCopy={onOpenCopy} renderCard={renderCard} />
+        : <GridView items={items} labels={labels} palette={palette} onOpenCopy={onOpenCopy} renderCard={renderCard} />}
 
     {hasMore || loadingMore ? <View style={styles.loadMore} testID="collection-load-more">
       <Button label={labels.loadMore} tone="surface" palette={palette}

@@ -382,9 +382,6 @@ def _collection_browser_item(entry, user):
     }
     ctx.update(_card_render_context(ctx))
     card = card_model(ctx)
-    # The shared browser renders cards without the page's hover action host.
-    card["actions"] = None
-    card["ratingEditable"] = False
     return {
         "id": entry.id,
         "href": card.get("href", ""),

@@ -90,7 +90,7 @@ class CollectionListViewTest(TestCase):
         self.assertEqual(item["mediaType"], MediaTypes.MOVIE.value)
         self.assertEqual(item["card"]["statusChip"]["kind"], "status")
         self.assertEqual(item["card"]["rating"]["label"], "8.5")
-        self.assertIsNone(item["card"]["actions"])
+        self.assertIn("actions", item["card"])
 
     def test_table_layout_keeps_the_server_fallback(self):
         """The shared grid mount is not emitted for the server-owned table layout."""
