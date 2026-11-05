@@ -34,9 +34,11 @@ browser — with artwork, chips, status, rating, hover buttons, popups and the
 bulk-select checkbox. The title, rating and subtitle lines overlay the poster's bottom
 edge over the faded `bg-card-body` gradient, so the text is part of the card rather
 than a separate block below it. It keeps the established DOM classes so themes, title
-settings and hover rules still apply. The server sends the card wrapper, a props
-`<script>` built by `app/media_card_model.py`, and a first-paint poster and title link
-that React replaces on mount. The card's popups open in the shared host: the
+settings and hover rules still apply. The server sends the `.media-card` wrapper as
+the React host, a props `<script>` built by `app/media_card_model.py`, and a first-paint
+poster and title link that React replaces on mount. Keeping the wrapper as the host
+means the established `search-result-card`/poster first-child rules still size the
+artwork and place the body over it. The card's popups open in the shared host: the
 Add-to-lists form is React (a JSON form model from `lists_modal?format=json`), and the
 Track popup opens the shared Track dialog for every available tab, with Metadata,
 Collection and Episode plays still server-owned inside it (see POPUP-HOST in

@@ -67,7 +67,7 @@ PY
 - `src/templates/app/components/sidebar_pin_menu.html`
 - `src/templates/base.html`
 - `frontend/ui/Shell.jsx` (`Shell`, `TopBar`, `MobileNav`), `frontend/ui/mountShell.jsx`, the `shell_topbar_react` tag and `src/templates/base.html` / `base_public.html` (signed-in and public top bars plus the mobile navigation overlay; both templates keep their server fallback)
-- `frontend/ui/Sidebar.jsx` (`Sidebar`) shared React Native presentation, `frontend/ui/mountSidebar.jsx` browser adapter (theme tokens, `floppy:sidebar-pins`/`floppy:sidebar-lists`/`floppy:saved-views-open` storage, HTMX-boosted anchors, Sortable reorder, delete/logout forms, onboarding node slot and mobile aside state), `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html`; shared saved-view rows keep `aria-current` on the active view; the Alpine markup inside the host remains the no-React fallback)
+- `frontend/ui/Sidebar.jsx` (`Sidebar`) shared React Native presentation, `frontend/ui/mountSidebar.jsx` browser adapter (theme tokens, `floppy:sidebar-pins`/`floppy:sidebar-lists`/`floppy:saved-views-open` storage, HTMX-boosted anchors, Sortable reorder, delete/logout forms, onboarding node slot and mobile aside state), `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html`; shared saved-view rows keep `aria-current` on the active view; the Alpine markup inside the host remains the no-React fallback; nav padding, link width, label size and theme-radius rows match the server sidebar; the Explore slot and server fallback reserve their height so pin/list hydration does not move the footer)
 - `frontend/ui/Icon.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
 - `frontend/ui/ModalHost.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted from `base.html`; the card hover buttons and the legacy Add-to-lists buttons open it through `floppy-open-modal`; the Add-to-lists body is shared presentation in `frontend/ui/ListsFormView.jsx` through the `frontend/ui/ListsForm.web.jsx` adapter with `modal-forms.css`; the Track body opens the shared `TrackDialog` for every available tab, with Metadata/Collection/Episode plays still server-owned inside it, see POPUP-HOST in the register)
 - `src/app/card_events.py` (the floppyCardUpdate event sent by `media_save` and the score views so React cards refresh their status chip and rating)
@@ -240,7 +240,7 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 - `native-proof/app/surfaces/MediaCardSlot.jsx` (native placement with realistic library items, Track song/episode variants, Discover plan/hide with candidate removal, link action routing, read-only/selectable states, drag and button reorder with full-order transport and accessibility announcements, bulk refresh through the card-change bus and popup host on Home, Discover and Library)
 - `native-proof/app/surfaces/mediaCardEvents.js` (native-only card-change event bus used by the card, Track, Discover and bulk selection; not presentation)
 - `src/templates/app/components/card_lines.html`
-- `src/templates/app/components/media_card.html` (shell: wrapper classes, props script and first-paint poster and title; React replaces it on mount)
+- `src/templates/app/components/media_card.html` (shell: the `.media-card` wrapper is the React host, keeping the wrapper classes and poster/body first-child CSS; the props script, first-paint poster and title sit outside the host's rendered children)
 - `frontend/ui/MediaCard.jsx`, `frontend/ui/MediaCard.web.jsx`, `frontend/ui/MediaCard.native.jsx`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/ModalHost.jsx`, `frontend/ui/media-card.css`, `src/app/media_card_model.py`, `src/app/card_surfaces.py` (the whole card is one React component on every surface: the browser implementation everywhere on web and the React Native implementation on native; body, status chip, rating, hover buttons, popups host, touch reveal and bulk-select checkbox)
 - `src/templates/app/components/media_card_list.html`
 - `src/templates/app/components/media_card_status_chip.html` (out-of-band save fragment only; no card renders it)
@@ -309,7 +309,7 @@ in the register.
 ## FILTERS
 
 - `frontend/ui/FilterBar.jsx`
-- `frontend/ui/mountFilterBar.jsx` (web adapter; mounted on library and custom-list toolbars)
+- `frontend/ui/mountFilterBar.jsx` (web adapter retained for the finish pass; the library and custom-list web toolbars keep the server/Alpine controls so their trigger geometry, borderless dropdowns and anchored menus match the release)
 - `native-proof/app/surfaces/FiltersSlot.jsx` (native placement on the Library screen)
 - `src/app/filter_bar.py` (server-owned normalized props and option descriptors)
 - `src/users/templatetags/ui_tags.py` (`filter_bar` slot tag)

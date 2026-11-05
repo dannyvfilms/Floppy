@@ -78,7 +78,6 @@ function RailRow({
   return <Rail
     title={row.titleMain || row.title}
     titleDetail={row.titleDetail}
-    summary={row.summary}
     summaryInline={row.summaryInline}
     direction={row.direction}
     total={row.total}

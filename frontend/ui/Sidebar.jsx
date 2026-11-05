@@ -130,7 +130,7 @@ function HoverRow({ active, palette, rowActions = 'always', children, actions, s
     onBlur: () => setFocused(false),
   } : {};
   return <View {...rest} {...hoverProps}
-    style={[styles.row, style, active && { backgroundColor: palette.border }]}>
+    style={[styles.row, style, { borderRadius: palette.radius }, active && { backgroundColor: palette.border }]}>
     {children}
     {actions ? <View {...focusProps}
       style={[styles.rowActions, { opacity: visible ? 1 : 0 }]}>{actions}</View> : null}
@@ -431,15 +431,17 @@ export function Sidebar({
     </View> : null}
     <View>{onboarding}</View>
     <View style={[styles.bottom, { borderTopColor: palette.border }]}>
-      {hasUnpinned ? <Pressable accessibilityRole="button" accessibilityLabel={labels.explore}
-        accessibilityState={{ expanded: navOpen }} onPress={toggleNav}
+      <Pressable accessibilityRole="button" accessibilityLabel={labels.explore}
+        accessibilityState={{ expanded: navOpen, disabled: !hasUnpinned }}
+        onPress={hasUnpinned ? toggleNav : undefined}
         style={({ pressed, hovered, focused }) => [styles.explore,
-          (pressed || hovered) && { backgroundColor: palette.hoverDim },
-          focused && palette.focusStyle]}>
+          !hasUnpinned && styles.exploreReserved,
+          (pressed || hovered) && hasUnpinned && { backgroundColor: palette.hoverDim },
+          focused && hasUnpinned && palette.focusStyle]}>
         <IconSlot spec={model.icons?.chevron} glyph={controlGlyphs.chevron} renderIcon={renderIcon}
           size={20} color={palette.textMuted} rotate={navOpen ? '0deg' : '180deg'} />
         <Text style={[styles.linkText, { color: palette.textMuted }]}>{labels.explore}</Text>
-      </Pressable> : null}
+      </Pressable>
       {compact ? <BottomLink item={model.bottom.appearance} palette={palette}
         renderIcon={renderIcon} onNavigate={onNavigate} /> : null}
       <BottomLink item={model.bottom.settings} palette={palette}
@@ -464,7 +466,7 @@ const styles = StyleSheet.create({
   logoMono: { width: 158, height: 36 },
   logoText: { fontSize: 20, fontWeight: '700', letterSpacing: 0.2 },
   primary: { flex: 1, minHeight: 0 },
-  navContent: { padding: 4, gap: 4 },
+  navContent: { padding: 16, gap: 4 },
   secondary: { borderTopWidth: 1, paddingHorizontal: 16, paddingVertical: 16 },
   secondaryScroll: { minHeight: 0 },
   row: { minHeight: 36, flexDirection: 'row', alignItems: 'center',
@@ -477,7 +479,7 @@ const styles = StyleSheet.create({
   iconButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   savedViewList: { marginTop: 4, marginLeft: 32, gap: 4 },
   savedViewRow: { minHeight: 32, flexDirection: 'row', alignItems: 'center',
-    paddingLeft: 12, paddingRight: 4, borderRadius: 6 },
+    paddingLeft: 12, paddingRight: 4 },
   savedViewLink: { flex: 1, minWidth: 0, paddingVertical: 6 },
   savedViewText: { flexShrink: 1, fontSize: 14 },
   dragHandle: { width: 24, alignItems: 'center', justifyContent: 'center' },
@@ -486,7 +488,8 @@ const styles = StyleSheet.create({
   doneText: { fontSize: 14 },
   bottom: { padding: 16, borderTopWidth: 1, gap: 8 },
   explore: { flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 },
+    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6, minHeight: 36 },
+  exploreReserved: { opacity: 0, pointerEvents: 'none' },
   bottomLink: { flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 },
   modalRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },

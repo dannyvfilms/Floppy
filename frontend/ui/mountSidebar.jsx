@@ -30,6 +30,7 @@ function readPalette() {
   const token = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
   const color = (name, fallback) => resolveColor(token(name, fallback), fallback);
   const accent = color('--color-accent', '#6366f1');
+  const radius = Number.parseFloat(css.getPropertyValue('--theme-radius')) || 6;
   return {
     text: color('--color-text', '#fafafa'),
     textSecondary: color('--color-text-secondary', '#d1d5db'),
@@ -44,7 +45,7 @@ function readPalette() {
     sidebar: color('--color-sidebar', '#212529'),
     overlay: 'rgba(0, 0, 0, 0.5)',
     focusStyle: { outlineStyle: 'solid', outlineWidth: 2, outlineColor: accent, outlineOffset: 2 },
-    radius: 6,
+    radius,
   };
 }
 

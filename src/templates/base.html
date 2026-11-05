@@ -326,8 +326,9 @@
 
             <div class="p-4 border-t border-[var(--color-border)] mt-auto">
               <div class="space-y-2">
-                <div x-cloak x-show="hasUnpinned()">
-                    <button type="button"
+                <div style="min-height: 2.25rem">
+                    <button type="button" x-cloak x-show="hasUnpinned()"
+                            style="min-height: 2.25rem"
                             class="flex w-full items-center gap-3 px-4 py-2 rounded-md text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)] cursor-pointer"
                             :aria-expanded="navOpen.toString()"
                             @click="navOpen = !navOpen; if (navOpen) $nextTick(() => { $refs.navigationItems.scrollTop = $refs.navigationItems.scrollHeight })">
