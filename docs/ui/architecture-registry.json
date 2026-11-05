@@ -1244,6 +1244,72 @@
           "evidence": "Expo export only; the native tier board, move and edit dialogs were not exercised on an emulator."
         }
       }
+    },
+    "frontend/ui/CopyBlock.jsx": {
+      "components": [
+        "CopyBlock"
+      ],
+      "register": "ERRORS-DOCS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "No web adapter mounts the shared block; the Django error copy buttons and API command blocks remain the browser implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native error/API docs screen; copy feedback and selection were not exercised in a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native error/API docs screen; copy feedback and selection were not exercised on an emulator."
+        }
+      }
+    },
+    "frontend/errors/ErrorRecovery.jsx": {
+      "components": [
+        "ErrorStatusSelector",
+        "ErrorRecovery",
+        "ErrorReportPanel"
+      ],
+      "register": "ERRORS-DOCS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted on the web; the Django 400/403/CSRF/404/500 templates and their server fallback remain authoritative."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native error/API docs screen; status switching, copy, report and recovery actions were not exercised in a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native error/API docs screen; status switching, copy, report and recovery actions were not exercised on an emulator."
+        }
+      }
+    },
+    "frontend/errors/ApiDocs.jsx": {
+      "components": [
+        "ApiDocCommand",
+        "ApiCheatSheet",
+        "ApiGlossary",
+        "ApiSchemaLinks",
+        "ApiDocs"
+      ],
+      "register": "ERRORS-DOCS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted on the web; src/templates/api/docs.html remains the offline API reference and browser fallback."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native error/API docs screen; command copy and schema link intents were not exercised in a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native error/API docs screen; command copy and schema link intents were not exercised on an emulator."
+        }
+      }
     }
   },
   "legacy": {

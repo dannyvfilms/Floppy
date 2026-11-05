@@ -178,6 +178,13 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 
 ## ERRORS-DOCS
 
+- `frontend/errors/ErrorRecovery.jsx` (universal error status selector, recovery hero, quick checks, provider support note, actions, report panel and safe copyable traceback; presentation only)
+- `frontend/errors/ApiDocs.jsx` (universal API task index, first-request/workflow commands, cheat sheet, status/media vocabularies, glossary and schema links; presentation only)
+- `frontend/ui/CopyBlock.jsx` (universal copyable report/command block with copy intent and copied feedback; presentation only)
+- `native-proof/app/screens/ErrorDocsScreen.jsx` (native placement for the five error variants and the API documentation index; status `ported`)
+- `frontend/settings/SettingsCard.jsx` (`SettingsCard`, existing shared card used by the error and API sections)
+- `frontend/settings/Chip.jsx` (`Chip`, existing shared chip used by status selection, tasks and vocabularies)
+- `frontend/ui/Button.jsx` (`Button`, existing shared action used by copy, recovery and schema actions)
 - `src/templates/400.html`
 - `src/templates/403.html`
 - `src/templates/403_csrf.html`
