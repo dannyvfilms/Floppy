@@ -1,8 +1,11 @@
+import { getActiveAuthSession } from '../data/authSession.js';
+
 const DEFAULT_CONFIG = {
   baseUrl: (typeof process !== 'undefined' && process.env && process.env.EXPO_PUBLIC_FLOPPY_BASE_URL) || '',
   token: (typeof process !== 'undefined' && process.env && process.env.EXPO_PUBLIC_FLOPPY_TOKEN) || '',
   csrfToken: (typeof process !== 'undefined' && process.env && process.env.EXPO_PUBLIC_FLOPPY_CSRF) || '',
   fetchImpl: null,
+  auth: null,
 };
 
 let config = { ...DEFAULT_CONFIG };
@@ -20,16 +23,22 @@ export function configureMediaCardTransport(next = {}) {
   return { ...config };
 }
 
+function activeAuth() {
+  return config.auth || getActiveAuthSession();
+}
+
 export function resetMediaCardTransport() {
   config = { ...DEFAULT_CONFIG };
 }
 
 export function hasMediaCardTransport() {
-  return Boolean(config.baseUrl);
+  const auth = activeAuth();
+  return Boolean(config.baseUrl || (auth && typeof auth.request === 'function'));
 }
 
 export function mediaCardTransportLabel() {
-  return hasMediaCardTransport() ? config.baseUrl : 'demo';
+  const auth = activeAuth();
+  return config.baseUrl || (auth && auth.serverUrl) || 'demo';
 }
 
 function queryString(query = {}) {
@@ -64,6 +73,10 @@ export function mediaCardVariant(identity) {
 }
 
 async function request(path, { method = 'GET', body, query, form } = {}) {
+  const auth = activeAuth();
+  if (auth && typeof auth.request === 'function') {
+    return auth.request(path, { method, body, query, form });
+  }
   const fetcher = config.fetchImpl || fetch;
   const headers = { Accept: 'application/json' };
   let payload;

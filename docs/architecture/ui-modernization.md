@@ -128,8 +128,11 @@ shell's Metro configuration resolves shared imports to the app's single React an
 React Native installation. Run `npm ci` and `npm run export -- --platform all`
 inside `native-proof/` for a compile check. An export is not runtime verification:
 it does not establish iOS or Android behavior. The shell renders local demo data
-and does not authenticate or read the API, so native transport, secure credential
-storage, revocation and server identity remain undesigned. `export:django` still
+and does not call the API. Its auth data layer now owns server URL validation,
+token and session login, Expo SecureStore persistence, CSRF refresh, connection
+tests and expiry/revocation states, and the media-card, list and calendar
+transports accept that session; the Auth screen itself is not yet wired to those
+calls, so the native authenticated UI remains unverified. `export:django` still
 writes the web export under the ignored `src/static/native-proof/`; that directory
 and `native-proof/` stay outside Docker's build context. `npm audit --audit-level=high`
 runs in CI; the Expo dependency tree currently has five moderate advisories.

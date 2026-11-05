@@ -1,3 +1,4 @@
+import { getActiveAuthSession } from './authSession.js';
 import { createLocalListActions, createRemoteListActions } from './listTransportCore';
 
 const CSRF_COOKIE = 'csrftoken';
@@ -69,6 +70,10 @@ function createRequest(baseUrl, csrfToken) {
 export function createListTransport(options = {}) {
   if (typeof options.request === 'function') {
     return createRemoteListActions(options.request);
+  }
+  const auth = options.auth || getActiveAuthSession();
+  if (auth && typeof auth.request === 'function') {
+    return createRemoteListActions(auth.request);
   }
   const csrfToken = options.csrfToken || readCsrfToken();
   if (!csrfToken) {

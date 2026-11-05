@@ -3,6 +3,7 @@ import { StyleSheet, Text } from 'react-native';
 import { CalendarLinks } from '../../../frontend/ui/CalendarLinks';
 import { Screen, Section } from '../components/Screen';
 import { readCalendarPreferences, writeCalendarPreferences } from '../data/calendarPreferences';
+import { createCalendarTransport } from '../data/calendarTransport';
 import CalendarSlot from '../surfaces/CalendarSlot';
 import DateTimeSlot from '../surfaces/DateTimeSlot';
 import { palette, spacing } from '../theme';
@@ -103,7 +104,15 @@ export default function CalendarScreen({ navigate }) {
       return;
     }
     if (key === 'fetch') {
-      setActionNote('Fetch requested. Release fetching runs on the Django server.');
+      const transport = createCalendarTransport();
+      if (transport.mode !== 'server') {
+        setActionNote('Sign in to your Floppy server to fetch new releases.');
+        return;
+      }
+      setActionNote('Fetching new releases…');
+      transport.fetchReleases()
+        .then(() => setActionNote('Release fetch queued on the Django server.'))
+        .catch(error => setActionNote(error.message || 'Could not fetch new releases.'));
       return;
     }
     if (key === 'download') {
