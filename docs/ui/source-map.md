@@ -850,6 +850,9 @@ presentation.
 
 ## SET-DATA
 
+- `frontend/settings/ConfirmDialog.jsx`
+- `frontend/settings/DataSettings.jsx`
+- `native-proof/app/surfaces/DataAccessNotificationsSlot.jsx`
 - `src/templates/users/components/export_controls.html` (backup status region mounts `frontend/settings/BackupStatus.jsx`; fallback kept)
 - `src/templates/users/components/library_danger_zone.html`
 - `src/templates/users/data_management.html`
@@ -858,6 +861,7 @@ presentation.
 
 ## SET-ACCESS
 
+- `frontend/settings/AccessSettings.jsx`
 - `src/templates/integrations/oauth_applications.html`
 - `src/templates/integrations/oauth_device.html`
 - `src/templates/users/access_tokens.html`
@@ -894,6 +898,7 @@ presentation.
 
 ## SET-NOTIFICATIONS
 
+- `frontend/settings/NotificationSettings.jsx`
 - `src/templates/users/components/excluded_items.html`
 - `src/templates/users/components/search_results.html`
 - `src/templates/users/notifications.html`
