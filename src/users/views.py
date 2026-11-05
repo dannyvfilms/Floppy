@@ -86,6 +86,9 @@ from integrations.models import (
 from integrations.plex_watchlist import WATCHLIST_TASK_NAME
 from users import appearance as appearance_config
 from users import cache_management, helpers, release_notes
+from users.advanced_props import about_props as build_about_props
+from users.advanced_props import advanced_props as build_advanced_props
+from users.advanced_props import server_port_props as build_server_port_props
 from users.forms import (
     AuthenticatorSetupForm,
     NotificationSettingsForm,
@@ -3085,6 +3088,8 @@ def advanced(request):
             (run_state.read_state() or {}).get("last_unclean_at") or "",
         ),
     }
+    context["advanced_props"] = build_advanced_props(request, context)
+    context["server_port_props"] = build_server_port_props(request)
     return render(request, "users/advanced.html", context)
 
 
@@ -3185,6 +3190,8 @@ def whats_new(request):
         release["newer"] = release_notes.tag_sort_key(
             release["tag"],
         ) > release_notes.tag_sort_key(installed)
+    if request.GET.get("format") == "json":
+        return JsonResponse({"releases": releases or []})
     return render(
         request,
         "users/components/whats_new.html",
@@ -3206,6 +3213,7 @@ def about(request):
             "user": request.user,
             "version": settings.VERSION,
             "commit": settings.COMMIT_SHA_SHORT,
+            "about_props": build_about_props(request),
         },
     )
 

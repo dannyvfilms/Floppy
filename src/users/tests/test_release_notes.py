@@ -168,6 +168,16 @@ class WhatsNewViewTests(TestCase):
         self.assertIn("Tiers", text)
         self.assertIn("See the release page for what changed.", text)
 
+    def test_json_branch_returns_structured_releases(self):
+        with mock.patch.object(release_notes, "get_releases", return_value=self._releases()):
+            response = self.client.get(reverse("whats_new"), {"format": "json"})
+
+        self.assertEqual(response.status_code, 200)
+        releases = response.json()["releases"]
+        self.assertEqual([release["tag"] for release in releases], ["v26.10.8", "v26.10.1"])
+        self.assertTrue(releases[0]["newer"])
+        self.assertTrue(releases[1]["installed"])
+
     def test_unreachable_github_links_to_the_releases_page(self):
         with mock.patch.object(release_notes, "get_releases", return_value=None):
             response = self.client.get(reverse("whats_new"))

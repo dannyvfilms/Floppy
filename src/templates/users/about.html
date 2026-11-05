@@ -54,6 +54,8 @@
     <h2 class="text-2xl font-bold mb-6 text-[var(--color-text)]">{% translate "About Floppy" %}</h2>
 
     <div class="space-y-8">
+      {{ about_props.overview|json_script:"about-overview-props" }}
+      <div data-about-card-root data-props-id="about-overview-props" x-ignore>
       {# Description #}
       <section aria-labelledby="about-description-heading" class="space-y-3">
         <div class="flex items-center gap-2 text-lg font-medium text-[var(--color-text-secondary)]">
@@ -74,7 +76,10 @@
           </p>
         </div>
       </section>
+      </div>
 
+      {{ about_props.whatsNew|json_script:"about-whats-new-props" }}
+      <div data-about-card-root data-props-id="about-whats-new-props" x-ignore>
       {# What's new #}
       <section id="whats-new"
                aria-labelledby="about-whats-new-heading"
@@ -90,7 +95,10 @@
           <p class="text-[var(--color-text-muted)] text-sm">{% translate "Loading release notes…" %}</p>
         </div>
       </section>
+      </div>
 
+      {{ about_props.install|json_script:"about-install-props" }}
+      <div data-about-card-root data-props-id="about-install-props" x-ignore>
       {# Install #}
       <section aria-labelledby="about-install-heading"
                class="space-y-3"
@@ -214,7 +222,10 @@
           </p>
         </div>
       </section>
+      </div>
 
+      {{ about_props.resources|json_script:"about-resources-props" }}
+      <div data-about-card-root data-props-id="about-resources-props" x-ignore>
       {# Project Resources Table #}
       <section aria-labelledby="about-links-heading" class="space-y-3">
         <div class="flex items-center gap-2 text-lg font-medium text-[var(--color-text-secondary)]">
@@ -347,6 +358,7 @@
           </div>
         </div>
       </section>
+      </div>
 
       {# Developer & API Specifications Table #}
       <section aria-labelledby="about-api-heading" class="space-y-3">
@@ -504,6 +516,8 @@
         </div>
       </section>
 
+      {{ about_props.attributions|json_script:"about-attributions-props" }}
+      <div data-about-card-root data-props-id="about-attributions-props" x-ignore>
       {# Metadata & Attributions Table #}
       <section aria-labelledby="about-attribution-heading" class="space-y-3">
         <div class="flex items-center gap-2 text-lg font-medium text-[var(--color-text-secondary)]">
@@ -603,7 +617,10 @@
           </div>
         </div>
       </section>
+      </div>
 
+      {{ about_props.licenses|json_script:"about-licenses-props" }}
+      <div data-about-card-root data-props-id="about-licenses-props" x-ignore>
       {# License Section #}
       <section aria-labelledby="about-license-heading" class="space-y-3">
         <div class="flex items-center gap-2 text-lg font-medium text-[var(--color-text-secondary)]">
@@ -653,13 +670,17 @@
           </div>
         </div>
       </section>
+      </div>
 
+      {{ about_props.version|json_script:"about-version-props" }}
+      <div data-about-card-root data-props-id="about-version-props" x-ignore>
       {# Version Footer #}
       <div class="mt-8 pt-4 border-t border-[var(--color-border)]">
         <p class="text-[var(--color-text-muted)] text-sm">
           {% translate "Version:" %} <span class="font-mono">{{ version }}</span>
           {% if commit %}<span class="text-[var(--color-text-muted)] px-1">|</span><span class="font-mono">{% blocktranslate %}Commit: {{ commit }}{% endblocktranslate %}</span>{% endif %}
         </p>
+      </div>
       </div>
     </div>
 

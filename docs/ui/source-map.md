@@ -1030,6 +1030,9 @@ Shared `AuthEntrance`, `SocialProviders` and `AuthNotice` own entrance, social-p
 - `src/templates/users/components/whats_new.html`
 - `frontend/settings/AdvancedSettings.jsx`
 - `frontend/settings/AboutSettings.jsx`
+- `frontend/settings/mountAdvanced.jsx`
+- `frontend/settings/mountAbout.jsx`
+- `src/users/advanced_props.py`
 
 ## MATCH-REVIEW
 

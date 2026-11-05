@@ -19,7 +19,9 @@
         <h2 class="text-xl font-semibold">{% translate "Advanced" %}</h2>
       </div>
 
-      <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6">
+      {{ advanced_props|json_script:"advanced-props" }}
+      <div class="space-y-6" data-advanced-settings-root data-props-id="advanced-props" x-ignore>
+      <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg">
         <div class="flex items-center mb-3">
           {% include "app/icons/vertical-sliders.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
           <h3 class="text-base font-medium">{% translate "Logs & Bug Reports" %}</h3>
@@ -49,7 +51,7 @@
         </div>
       </div>
 
-      <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6">
+      <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg">
         <div class="flex items-center mb-3">
           {% include "app/icons/image.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
           <h3 class="text-base font-medium">{% translate "External Image Caching" %}</h3>
@@ -100,8 +102,7 @@
         {% endif %}
       </div>
 
-      <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
-           x-data="{ confirmOpen: false, pending: null, openConfirm(key) { this.pending = key; this.confirmOpen = true; }, closeConfirm() { this.confirmOpen = false; this.pending = null; }, }">
+      <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg">
         <div class="flex items-center mb-3">
           {% include "app/icons/trashcan.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
           <h3 class="text-base font-medium">{% translate "Cache Management" %}</h3>
@@ -354,10 +355,14 @@
           </div>
         </template>
       </div>
+      </div>
 
     </div>
   </div>
 
-  {% server_port_panel %}
+  {{ server_port_props|json_script:"server-port-props" }}
+  <div data-server-port-root data-props-id="server-port-props" x-ignore>
+    {% server_port_panel %}
+  </div>
 
 {% endblock settings_content %}
