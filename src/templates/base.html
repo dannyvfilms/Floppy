@@ -225,9 +225,10 @@
         {# Sidebar #}
         {% if not public_view|default:False %}
           <aside class="fixed top-0 left-0 z-[43] h-dvh w-64 pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)] bg-[var(--color-sidebar)] transform transition-[transform,translate,visibility] duration-300 ease-in-out border-r border-[var(--color-border)] -translate-x-full lg:translate-x-0 lg:sticky flex flex-col"
+                 x-data="sidebarNavigation('{{ user.pk|escapejs }}')"
                  :class="isMobileMenuOpen ? 'translate-x-0' : 'max-lg:invisible'"
                  >
-            {% sidebar_react media_type as sidebar %}{% if sidebar.props %}{{ sidebar.props|json_script:sidebar.id }}{% endif %}<div data-sidebar-root data-props-id="{{ sidebar.id }}" x-ignore>
+            {% sidebar_react media_type as sidebar %}{% if sidebar.props %}{{ sidebar.props|json_script:sidebar.id }}{% endif %}<div data-sidebar-root data-props-id="{{ sidebar.id }}">
             <div class="h-16 border-b border-[var(--color-border)] flex items-center px-6">
               <h1 class="flex items-center">
                 {% if user.is_authenticated and user.logo_style == 'monochrome' %}
@@ -304,7 +305,7 @@
             <nav class="border-t border-[var(--color-border)] px-4 py-4"
                  hx-boost="true"
                  x-cloak
-                 x-show="navOpen || pinned.length"
+                 x-show="navOpen || pinned.length || pinnedLists.length"
                  x-transition:enter="transition duration-200"
                  x-transition:leave="transition duration-200">
                 <div x-ref="navigationItems" class="overflow-y-auto max-h-[40dvh]"

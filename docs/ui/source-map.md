@@ -62,6 +62,7 @@ PY
 - `src/static/js/libraries/alpinejs-3.14.9.min.js`
 - `src/static/js/libraries/htmx-2.0.4.min.js`
 - `src/static/js/safari-rail.js`
+- `src/static/js/savedViews.js` (fallback sidebar Explore/pin/pinned-list state)
 - `src/templates/app/components/sidebar_navigation_items.html`
 - `src/templates/app/components/sidebar_pin_menu.html`
 - `src/templates/base.html`
