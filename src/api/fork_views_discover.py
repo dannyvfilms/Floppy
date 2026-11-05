@@ -6,9 +6,11 @@ from types import SimpleNamespace
 
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import views as drf_views
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
+from api.authentication import APIKeyAuthentication, BearerAuthentication
 from app.discover import tab_cache as discover_tab_cache
 from app.discover_views import (
     _discover_hidden_entries,
@@ -43,6 +45,22 @@ from .helpers import paginate_data, parse_limit_offset
 from .serializers import serialize_data
 
 logger = logging.getLogger(__name__)
+
+
+class HomeBrowserSessionMixin:
+    """Accept the signed-in browser session on the Home presentation endpoints.
+
+    These endpoints back the React Home shelves in the web app, which fetch with
+    the session cookie. ``HasScope`` already treats a session (``request.auth``
+    is ``None``) as full access; without this the session never authenticates
+    and DRF answers 403.
+    """
+
+    authentication_classes = (
+        BearerAuthentication,
+        APIKeyAuthentication,
+        SessionAuthentication,
+    )
 
 
 # /api/v1/collection/status/[item_id]/
@@ -350,7 +368,7 @@ class DiscoverHiddenView(DiscoverEnabledMixin, drf_views.APIView):
 
 
 # /api/v1/home/
-class HomeView(drf_views.APIView):
+class HomeView(HomeBrowserSessionMixin, drf_views.APIView):
     """The user's home rows — the same groups the web home page renders."""
 
     def get(self, request):
@@ -410,7 +428,7 @@ class HomeView(drf_views.APIView):
         return Response({"groups": payload}, status=HTTP.OK)
 
 # /api/v1/home/row/[row_id]/
-class HomeRowView(drf_views.APIView):
+class HomeRowView(HomeBrowserSessionMixin, drf_views.APIView):
     """One Home shelf window, for deferred rows and bounded load-more."""
 
     def get(self, request, row_id):
@@ -456,7 +474,7 @@ class HomeRowView(drf_views.APIView):
 
 
 # /api/v1/home/rows/[row_id]/sort/
-class HomeRowDirectionView(drf_views.APIView):
+class HomeRowDirectionView(HomeBrowserSessionMixin, drf_views.APIView):
     """Flip one configured Home row's sort direction."""
 
     def post(self, request, row_id):
@@ -484,7 +502,7 @@ class HomeRowDirectionView(drf_views.APIView):
 
 
 # /api/v1/home/artwork/
-class HomeArtworkView(drf_views.APIView):
+class HomeArtworkView(HomeBrowserSessionMixin, drf_views.APIView):
     """Refresh every Home row that still needs cover artwork in one request."""
 
     def get(self, request):

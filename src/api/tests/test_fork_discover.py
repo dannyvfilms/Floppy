@@ -226,6 +226,12 @@ class HomeTests(FloppyApiTestCase):
             self.assertEqual(row_response.status_code, HTTP.OK)
             self.assertEqual(row_response.json()["row"]["rowId"], row_id)
 
+    def test_home_row_accepts_signed_in_session(self):
+        """The web Home shelves fetch rows with the session cookie, not a token."""
+        self.client.force_login(self.user1)
+        response = self.call_api("get", "api_home_row", args=(1,))
+        self.assertEqual(response.status_code, HTTP.OK)
+
     def test_home_row_hides_a_row_the_user_cannot_see(self):
         """A missing/disabled row returns an empty window, not an error."""
         response = self.call_api(

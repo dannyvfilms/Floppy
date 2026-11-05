@@ -408,6 +408,8 @@ in the register.
 
 ## HOME
 
+The `frontend/settings/index.js` island loader (owned under SET-USERS) resolves this family's browser roots; keep its selector, kind mapping and mount selection in sync with the shared mounts.
+
 - `frontend/ui/HomeShelves.jsx` (universal shelves, deferred rows, coalesced cover poller and empty/error states)
 - `frontend/ui/mountHome.jsx` (browser mount over the server Home shelves, row/window and cover-poll requests)
 - `native-proof/app/screens/HomeScreen.jsx` (native placement with real transport and demo fallback)
