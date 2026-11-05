@@ -141,6 +141,10 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_music.MusicSongPlayView": {"POST": "music:write"},
     "api.fork_views_music.MusicTrackScoreView": {"PATCH": "music:write"},
     "api.fork_views_music.MusicBulkPlaysView": {"POST": "music:write"},
+    "api.fork_views_music.MusicArtistRelationsView": {"GET": "music:read"},
+    "api.fork_views_music.MusicArtistMembersSyncView": {"POST": "music:write"},
+    "api.fork_views_music.MusicAlbumSyncView": {"POST": "music:write"},
+    "api.fork_views_music.MusicTrackNotesView": {"PATCH": "music:write"},
     "api.fork_views_playback.PlaybackProgressView": {
         "GET": "progress:read",
         "PUT": "progress:write",
@@ -160,6 +164,7 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_podcast.PodcastShowEpisodesView": {"GET": "podcasts:read"},
     "api.fork_views_podcast.PodcastMarkAllPlayedView": {"POST": "podcasts:write"},
     "api.fork_views_podcast.PodcastEpisodePlayView": {"POST": "podcasts:write"},
+    "api.fork_views_podcast.PodcastEpisodeNotesView": {"PATCH": "podcasts:write"},
     "api.fork_views_scrobble.ScrobbleView": {"POST": "scrobble:write"},
     "api.fork_views_statistics.StatisticsOverviewView": {"GET": "statistics:read"},
     "api.fork_views_statistics.StatisticsRefreshView": {"POST": "statistics:write"},
