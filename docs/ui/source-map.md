@@ -477,6 +477,23 @@ Server-owned detail composition retained behind the fallback:
 - `src/templates/app/components/video_details_extra.html`
 - `src/templates/app/media_details.html`
 
+## DETAIL-RELATED
+
+Shared React Native presentation, native placement and browser adapter:
+
+- `frontend/ui/DetailRelated.jsx` (related sections, media cards, show-more, Steam DLC links and empty/loading states)
+- `frontend/ui/DetailRelatedTheme.web.jsx` (theme tokens, card actions, rating writes and external store navigation only)
+- `frontend/ui/mountDetailRelated.jsx`
+- `native-proof/app/surfaces/DetailRelatedSlot.jsx` (native related media on the Detail screen)
+- `src/templates/app/components/detail_related.html` (server fallback and island host)
+- `src/users/templatetags/ui_tags.py` (`{% detail_related %}`)
+
+Server-owned data and legacy consumers retained behind the fallback:
+
+- `src/app/detail_related.py`
+- `src/app/providers/igdb.py` (`get_steam_dlcs`)
+- `src/app/card_surfaces.py`, `src/app/templatetags/app_tags.py`, `src/templates/app/components/detail_secondary_content.html`, `src/templates/app/components/seasons_grid.html` and `src/templates/app/components/media_card.html` remain the related card surface, label filter and server fallback consumers already mapped under DETAIL and MEDIA-CARD.
+
 ## CHILDREN
 
 Shared React Native presentation and native placement:

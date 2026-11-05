@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
+import { Linking } from 'react-native';
 import { Screen, Section } from '../components/Screen';
 import ArtworkSlot from '../surfaces/ArtworkSlot';
 import DetailChildrenSlot from '../surfaces/DetailChildrenSlot';
+import DetailRelatedSlot from '../surfaces/DetailRelatedSlot';
 import DetailSlot from '../surfaces/DetailSlot';
 import DetailTrackingSlot from '../surfaces/DetailTrackingSlot';
 import { CheckInStateSlot } from '../surfaces/PlaybackSlot';
@@ -37,6 +39,9 @@ export default function DetailScreen({ params, onBack }) {
     </Section>
     <Section title="Seasons, episodes and issues">
       <DetailChildrenSlot onTrack={setTrackTarget} />
+    </Section>
+    <Section title="Related media">
+      <DetailRelatedSlot onOpenExternal={url => { Linking.openURL(url).catch(() => {}); }} />
     </Section>
   </Screen>;
 }
