@@ -6,7 +6,7 @@ import { palette, progressDetailPalette, radius, spacing } from '../theme';
 
 export const surface = {
   id: 'PROGRESS',
-  status: 'ported',
+  status: 'in_progress',
   title: 'Detail progress card and breakdown',
   where: 'Show and season detail pages',
   note: 'The “Your Progress” card, rewatch glow and expandable season breakdown use the shared React Native presentation. The web keeps its htmx/Alpine modal shell and legacy card.',
