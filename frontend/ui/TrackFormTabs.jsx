@@ -227,6 +227,7 @@ function DiscoverBody({ tab, palette, labels, onDiscoverToggle }) {
 
 function TabBody({ tab, palette, labels, handlers }) {
   if (!tab || tab.id === 'general') return handlers.generalContent || null;
+  if (tab.content) return tab.content;
   if (tab.status === 'loading') return <FormStatus message={labels.loading} tone="loading" palette={palette} />;
   if (tab.status === 'error') {
     return <View style={styles.stack}>

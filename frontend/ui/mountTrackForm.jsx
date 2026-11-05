@@ -1,5 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { View } from 'react-native';
 import { mountRoot } from '../settings/root';
+import { applyPreviewRefresh, readTags } from './mountTags';
+import { TagAssignmentDialog } from './TagManagement';
 import { TrackDialog } from './TrackDialog';
 import { initialTrackValues, normalizeTrackForm } from './mediaCardForms';
 
@@ -24,6 +27,7 @@ function readPalette() {
   const token = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
   const color = (name, fallback) => resolveColor(token(name, fallback), fallback);
   const palette = {
+    background: color('--color-page-bg', '#18181b'),
     text: color('--color-text', '#fafafa'),
     textSecondary: color('--color-text-secondary', '#d4d4d8'),
     textMuted: color('--color-text-muted', '#a1a1aa'),
@@ -36,6 +40,9 @@ function readPalette() {
     accentContrast: '#ffffff',
     link: color('--color-link', '#818cf8'),
     danger: color('--color-danger', '#ef4444'),
+    success: color('--color-status-clean', '#10b981'),
+    warning: color('--color-warning-text', '#f59e0b'),
+    overlay: 'rgba(0, 0, 0, 0.55)',
     radius: 8,
     radiusSmall: 6,
     focusStyle: {},
@@ -54,10 +61,127 @@ function readPalette() {
   return palette;
 }
 
+function body(values) {
+  const params = new URLSearchParams();
+  Object.entries(values).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      params.append(key, value);
+    }
+  });
+  return params;
+}
+
+function ServerTabBody({ host, selector }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    const root = host.closest('[data-track-popup]') || host.parentElement;
+    const section = root?.querySelector(`[data-track-tab-section="${selector}"]`);
+    if (!section || !ref.current) return undefined;
+    const parent = section.parentElement;
+    const next = section.nextSibling;
+    const hidden = section.style.display;
+    const show = section.getAttribute('x-show');
+    const cloak = section.hasAttribute('x-cloak');
+    section.removeAttribute('x-show');
+    section.removeAttribute('x-cloak');
+    section.style.display = '';
+    ref.current.appendChild(section);
+    return () => {
+      if (!parent?.isConnected) return;
+      if (show !== null) section.setAttribute('x-show', show);
+      if (cloak) section.setAttribute('x-cloak', '');
+      section.style.display = hidden;
+      parent.insertBefore(section, next?.isConnected ? next : null);
+    };
+  }, [host, selector]);
+  return <View ref={ref} style={{ width: '100%' }} />;
+}
+
+function TagsTab({ tab, itemTitle, palette, labels, onChange }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function post(url, values) {
+    const response = await window.fetch(url, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'X-CSRFToken': tab.csrfToken || '' },
+      body: body({
+        item_id: tab.itemId,
+        tag_surface: 'track',
+        preview_genres_json: tab.previewGenresJson,
+        preview_implied_genres_json: tab.previewImpliedGenresJson,
+        ...values,
+      }),
+    });
+    if (!response.ok) throw new Error('Request failed');
+    const parsed = applyPreviewRefresh(await response.text());
+    return { tags: readTags(parsed), parsed };
+  }
+
+  function change(next) {
+    onChange(next);
+  }
+
+  function toggle(tag) {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    post(tab.urls.toggle, { tag_id: tag.id }).then(() => {
+      change(tab.tags.map(entry => entry.id === tag.id
+        ? { ...entry, hasTag: !entry.hasTag }
+        : entry));
+    }).catch(() => {
+      setError(labels.tagFailed || "Couldn't update this tag.");
+    }).finally(() => setBusy(false));
+  }
+
+  function create(name) {
+    if (busy) return false;
+    setBusy(true);
+    setError('');
+    post(tab.urls.create, { name }).then(({ tags }) => {
+      if (!tags.some(tag => tag.name.toLowerCase() === name.toLowerCase())) {
+        setError(`Tag "${name}" already exists.`);
+        return;
+      }
+      change(tags);
+    }).catch(() => {
+      setError(labels.tagFailed || "Couldn't update this tag.");
+    }).finally(() => setBusy(false));
+    return true;
+  }
+
+  function remove(tag) {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    post(tab.urls.delete, { tag_id: tag.id }).then(({ tags }) => {
+      change(tags);
+    }).catch(() => {
+      setError(labels.tagFailed || "Couldn't update this tag.");
+    }).finally(() => setBusy(false));
+  }
+
+  return <TagAssignmentDialog
+    open
+    embedded
+    showClose={false}
+    item={{ id: tab.itemId, title: itemTitle }}
+    tags={tab.tags}
+    palette={palette}
+    busy={busy}
+    error={error}
+    onToggle={toggle}
+    onCreate={create}
+    onDelete={remove} />;
+}
+
 function Adapter({ host, props }) {
   const model = useMemo(() => normalizeTrackForm(props?.model || {}), [props]);
   const initialValues = useMemo(() => initialTrackValues(model), [model]);
   const [values, setValues] = useState(initialValues);
+  const [tabs, setTabs] = useState(() => model.tabs || []);
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState('');
   const [palette, setPalette] = useState(readPalette);
@@ -85,6 +209,15 @@ function Adapter({ host, props }) {
     return () => { form.style.display = previous; };
   }, [model.formId]);
 
+  useEffect(() => {
+    const root = host.closest('[data-track-popup]') || host.parentElement;
+    const fallback = root?.querySelector('[data-track-fallback]');
+    if (!fallback) return undefined;
+    const previous = fallback.style.display;
+    fallback.style.display = 'none';
+    return () => { fallback.style.display = previous; };
+  }, [host]);
+
   function change(name, value) {
     setValues(current => ({ ...current, [name]: value }));
     if (name === 'start_date') {
@@ -96,27 +229,68 @@ function Adapter({ host, props }) {
   function send(url, extra = {}, submitted = values) {
     const ajax = window.htmx?.ajax;
     if (!ajax || !url) return;
-    const body = {
+    const payload = {
       ...(model.hidden || {}),
       ...submitted,
       csrfmiddlewaretoken: model.csrfToken || '',
       ...extra,
     };
-    if (startCleared.current && 'start_date_cleared' in body) {
-      body.start_date_cleared = '1';
+    if (startCleared.current && 'start_date_cleared' in payload) {
+      payload.start_date_cleared = '1';
     }
     setBusy(true);
     setServerError('');
-    const request = ajax('POST', url, { values: body, target: legacyForm() || host, swap: 'none' });
+    const request = ajax('POST', url, { values: payload, target: legacyForm() || host, swap: 'none' });
     if (request?.finally) request.finally(() => setBusy(false));
     else setBusy(false);
   }
 
+  function updateTagTab(nextTags) {
+    setTabs(current => current.map(tab => tab.id === 'tags'
+      ? { ...tab, tags: nextTags }
+      : tab));
+  }
+
+  function toggleDiscover(hidden, itemId) {
+    const tab = tabs.find(entry => entry.id === 'discover');
+    const ajax = window.htmx?.ajax;
+    if (!tab || !ajax) return Promise.reject(new Error('Discover is unavailable.'));
+    const root = host.closest('[data-track-popup]') || host.parentElement;
+    const section = root?.querySelector('[data-track-tab-section="discover"]');
+    const target = section?.querySelector('#discover-tab-content') || section;
+    return Promise.resolve(ajax('POST', tab.url, {
+      values: { item_id: itemId, action: hidden ? 'hide' : 'unhide' },
+      target,
+      swap: 'outerHTML',
+    })).then(() => {
+      setTabs(current => current.map(entry => entry.id === 'discover'
+        ? { ...entry, hidden }
+        : entry));
+    });
+  }
+
   const labels = model.labels || {};
+  const decorated = tabs.map(tab => {
+    if (tab.id === 'tags') {
+      return {
+        ...tab,
+        content: <TagsTab key="tags" tab={tab} itemTitle={model.title} palette={palette}
+          labels={labels} onChange={updateTagTab} />,
+      };
+    }
+    if (tab.kind === 'server') {
+      return {
+        ...tab,
+        content: <ServerTabBody key={tab.id} host={host} selector={tab.id} />,
+      };
+    }
+    return tab;
+  });
 
   return <TrackDialog
     embedded
     open
+    showHeader
     model={model}
     values={values}
     errors={props?.errors || {}}
@@ -125,12 +299,13 @@ function Adapter({ host, props }) {
     busy={busy}
     labels={labels}
     palette={palette}
-    tabs={[]}
+    tabs={decorated}
     onChange={change}
     onSubmit={next => send(model.action, {}, next)}
     onDelete={next => send(model.deleteAction, {}, next)}
     onRewatch={(action, next) => send(model.repeatIdentity?.rewatchUrl, {}, next)}
     onSaveAsNew={next => send(model.action, { save_as_new_entry: '1' }, next)}
+    onDiscoverToggle={toggleDiscover}
     onRetry={() => setServerError('')}
     onClose={() => window.closeTrackModal?.(legacyForm() || host)} />;
 }

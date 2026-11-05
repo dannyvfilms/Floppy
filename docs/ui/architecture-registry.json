@@ -908,7 +908,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Rendered by mountTrackForm in the server track modal General tab for card, detail and episode Track popups; the web bundle builds and targeted Django tests pass, but no browser interaction pass was run."
+          "evidence": "Rendered in the shared TrackDialog by mountTrackForm for card, detail and episode Track popups; General fields, date/status/progress coupling, notes, repeat identity, validation and htmx save/delete/rewatch are wired. The web bundle builds and targeted Django tests pass, but no browser interaction pass was run."
         },
         "ios": {
           "status": "unverified",
@@ -928,7 +928,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Rendered in embedded mode by mountTrackForm inside the server track modal General tab; the remaining web tabs keep the server path. The web bundle builds and targeted Django tests pass; no browser interaction pass was run."
+          "evidence": "Rendered by mountTrackForm as the web Track dialog for card, detail, album/artist and podcast-show popups with General, Tags, Status history and Discover shared; the Metadata, Collection and Episode plays bodies are moved in from the server. The web bundle builds and targeted Django tests pass, but no browser interaction pass was run."
         },
         "ios": {
           "status": "unverified",
@@ -1064,7 +1064,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The remaining Tags, Metadata, Collection, Episode plays, Status history and Discover tabs keep the server-rendered Track popup on the web; only the General form is mounted through the shared adapter. No browser tab interaction pass was run."
+          "evidence": "Rendered by mountTrackForm for every available Track tab. Tags renders through TagAssignmentDialog, Status history and Discover use shared bodies, and Metadata, Collection and Episode plays receive the moved server-owned sections through the tab content slot. No browser tab interaction pass was run."
         },
         "ios": {
           "status": "unverified",
@@ -2261,7 +2261,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Pure shared form-model logic consumed by the web Lists adapter; not a renderer."
+          "evidence": "Pure shared form-model logic consumed by the web Lists and Track adapters; the Track model now also normalizes the serialized tab list. Not a renderer."
         },
         "ios": {
           "status": "unverified",
@@ -2723,7 +2723,7 @@
     },
     "frontend/ui/mountTrackForm.jsx": {
       "register": "TRACKING",
-      "purpose": "Browser adapter for the shared General tracking form: read the server serialized model, keep the legacy form as the no-JavaScript fallback, and submit, delete and rewatch through htmx so OOB fragments, HX-Trigger close/toast events, CSRF, permissions and redirects stay server-owned."
+      "purpose": "Browser adapter for the shared Track dialog: read the serialized model and tab list, render General through TrackForm, Tags through TagAssignmentDialog, Status history and Discover through TrackTabs, move the server-owned Metadata/Collection/Episode plays sections into the dialog, keep the legacy shell as the no-JavaScript fallback, and submit, delete and rewatch through htmx so OOB fragments, HX-Trigger close/toast events, CSRF, permissions and repeat routes stay server-owned."
     },
     "frontend/ui/mountModalHost.jsx": {
       "register": "SHELL",
@@ -2875,7 +2875,7 @@
     },
     "frontend/ui/mountTags.jsx": {
       "register": "TAGS",
-      "purpose": "Django/browser integration for the shared tag index, item assignment dialog (modal and embedded track tab), settings media-type filter and detail tag preview: keep confirmation and ownership-protected posts, apply the server's OOB preview model without replacing the React host, and forward the selected media type to the page Alpine state."
+      "purpose": "Django/browser integration for the shared tag index, item assignment dialog (modal and embedded track tab), settings media-type filter and detail tag preview: keep confirmation and ownership-protected posts, apply the server OOB preview model without replacing the React host, forward the selected media type to the page Alpine state, and export the tag-row/OOB refresh helpers the Track adapter reuses."
     },
     "frontend/ui/mountCollectionBrowser.jsx": {
       "register": "OWNERSHIP",

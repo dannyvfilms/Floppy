@@ -463,51 +463,76 @@ def _render_music_tracker_modal(
             ),
         }
 
+    date_suggestion = view_barrel._track_modal_date_suggestion(
+        "Release Date",
+        release_date_shortcut,
+    )
+    context = {
+        "user": request.user,
+        "title": title,
+        "media_type": MediaTypes.MUSIC.value,
+        "form": form,
+        "media": tracker,
+        "return_url": return_url,
+        "metadata_tab_available": music_release_picker["available"],
+        "metadata_fields": [],
+        "can_manage_hardcover_edition": False,
+        "music_release_preference": music_release_preference,
+        "selected_music_release": selected_music_release,
+        "music_release_picker": music_release_picker,
+        "general_hidden_fields": field_groups["hidden_fields"],
+        "general_fields": field_groups["general_fields"],
+        "general_submit_formaction": (
+            f"{save_url}?next={return_url}"
+            + (f"&home_row_id={home_row_id}" if home_row_id else "")
+        ),
+        "general_delete_formaction": f"{delete_url}?next={return_url}",
+        "general_existing_instance": tracker,
+        "image_field": None,
+        "image_save_item_id": None,
+        "date_suggestion": date_suggestion,
+        "track_form_id": track_form_id,
+        "initial_active_tab": initial_active_tab,
+        "episode_plays_tab_available": episode_plays_tab_available,
+        "episode_plays_form": episode_plays_form,
+        "episode_plays_formaction": reverse("music_bulk_save"),
+        "episode_plays_tab_label": episode_plays_tab_label,
+        "episode_plays_submit_label": episode_plays_submit_label,
+        "episode_plays_domain": view_barrel._episode_domain_template_payload(
+            bulk_domain,
+        ),
+        "episode_plays_mode_notice": (
+            bulk_domain.get("mode_notice", "") if bulk_domain else ""
+        ),
+        "episode_plays_domain_script_id": f"{track_form_id}-episode-domain",
+    }
+    context["track_form_props_id"] = f"{track_form_id}-shared-form"
+    presentation = view_barrel._track_form_presentation(
+        request,
+        form,
+        track_form_id=track_form_id,
+        title=title,
+        title_subtitle="",
+        media_type=MediaTypes.MUSIC.value,
+        media=tracker,
+        action=context["general_submit_formaction"],
+        delete_action=context["general_delete_formaction"],
+        hidden_fields=field_groups["hidden_fields"],
+        general_fields=field_groups["general_fields"],
+        rewatch_action=None,
+        rewatch_url="",
+        save_as_new=False,
+        date_suggestion=date_suggestion,
+    )
+    presentation["tabs"] = view_barrel._track_tabs_presentation(context)
+    presentation["model"]["labels"].update(
+        view_barrel._track_tab_labels(context),
+    )
+    context["track_form_presentation"] = presentation
     response = render(
         request,
         "app/components/fill_track.html",
-        {
-            "user": request.user,
-            "title": title,
-            "media_type": MediaTypes.MUSIC.value,
-            "form": form,
-            "media": tracker,
-            "return_url": return_url,
-            "metadata_tab_available": music_release_picker["available"],
-            "metadata_fields": [],
-            "can_manage_hardcover_edition": False,
-            "music_release_preference": music_release_preference,
-            "selected_music_release": selected_music_release,
-            "music_release_picker": music_release_picker,
-            "general_hidden_fields": field_groups["hidden_fields"],
-            "general_fields": field_groups["general_fields"],
-            "general_submit_formaction": (
-                f"{save_url}?next={return_url}"
-                + (f"&home_row_id={home_row_id}" if home_row_id else "")
-            ),
-            "general_delete_formaction": f"{delete_url}?next={return_url}",
-            "general_existing_instance": tracker,
-            "image_field": None,
-            "image_save_item_id": None,
-            "date_suggestion": view_barrel._track_modal_date_suggestion(
-                "Release Date",
-                release_date_shortcut,
-            ),
-            "track_form_id": track_form_id,
-            "initial_active_tab": initial_active_tab,
-            "episode_plays_tab_available": episode_plays_tab_available,
-            "episode_plays_form": episode_plays_form,
-            "episode_plays_formaction": reverse("music_bulk_save"),
-            "episode_plays_tab_label": episode_plays_tab_label,
-            "episode_plays_submit_label": episode_plays_submit_label,
-            "episode_plays_domain": view_barrel._episode_domain_template_payload(
-                bulk_domain,
-            ),
-            "episode_plays_mode_notice": (
-                bulk_domain.get("mode_notice", "") if bulk_domain else ""
-            ),
-            "episode_plays_domain_script_id": f"{track_form_id}-episode-domain",
-        },
+        context,
     )
     response["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response["Pragma"] = "no-cache"

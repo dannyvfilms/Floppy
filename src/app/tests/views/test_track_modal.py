@@ -419,6 +419,80 @@ class TrackModalViewTests(TestCase):
         self.assertContains(response, "data-track-form-root")
         self.assertContains(response, "data-track-form-legacy")
 
+    def test_track_modal_serializes_remaining_tabs_for_shared_dialog(self):
+        """The shared dialog receives the available tab models and actions."""
+        tag = Tag.objects.create(user=self.user, name="Favourite")
+        ItemTag.objects.create(tag=tag, item=self.item)
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "238",
+                },
+            )
+            + "?return_url=/home",
+        )
+
+        tabs = response.context["track_form_presentation"]["tabs"]
+        by_id = {tab["id"]: tab for tab in tabs}
+        self.assertEqual(
+            list(by_id),
+            ["tags", "metadata", "collection", "discover"],
+        )
+        self.assertEqual(by_id["tags"]["kind"], "tags")
+        self.assertEqual(
+            [tag["name"] for tag in by_id["tags"]["tags"]],
+            ["Favourite"],
+        )
+        self.assertEqual(
+            by_id["tags"]["urls"]["toggle"],
+            reverse("tag_item_toggle"),
+        )
+        self.assertEqual(by_id["metadata"]["kind"], "server")
+        self.assertEqual(by_id["collection"]["kind"], "server")
+        self.assertEqual(by_id["discover"]["itemId"], self.item.id)
+        self.assertFalse(by_id["discover"]["hidden"])
+        self.assertEqual(
+            by_id["discover"]["url"],
+            reverse("discover_toggle_hidden"),
+        )
+
+    def test_track_modal_serializes_status_history_tab(self):
+        """A tracked show exposes its status changes to the shared dialog."""
+        tv_item = Item.objects.create(
+            media_id="279977",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Finished Show",
+            image="https://example.com/finished-show.jpg",
+        )
+        TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+        )
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": tv_item.media_id,
+                },
+            )
+            + "?return_url=/home",
+        )
+
+        tabs = response.context["track_form_presentation"]["tabs"]
+        status_tab = next(tab for tab in tabs if tab["id"] == "status-history")
+        self.assertEqual(status_tab["kind"], "status-history")
+        self.assertTrue(status_tab["changes"])
+        self.assertEqual(status_tab["changes"][0]["next"], Status.COMPLETED.value)
+
     def test_track_modal_presentation_offers_rewatch_on_completed_show(self):
         """The shared form keeps the repeat identity offered by the server."""
         tv_item = Item.objects.create(
@@ -1003,8 +1077,8 @@ class TrackModalViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        self.assertEqual(content.count('"suggestionDate": "2024-02-03"'), 2)
-        self.assert_release_shortcut_labels(response)
+        self.assertEqual(content.count('"suggestionDate": "2024-02-03"'), 4)
+        self.assert_release_shortcut_labels(response, count=4)
 
     def test_artist_save_redirects_to_canonical_music_details(self):
         """Artist saves should land on the canonical shared details page."""

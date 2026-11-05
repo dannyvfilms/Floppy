@@ -58,7 +58,7 @@ function readPreviewSections(parsed, node) {
   }
 }
 
-function applyPreviewRefresh(html) {
+export function applyPreviewRefresh(html) {
   const parsed = new DOMParser().parseFromString(html, 'text/html');
   parsed.querySelectorAll('[hx-swap-oob="outerHTML"]').forEach((node) => {
     const target = node.id ? document.getElementById(node.id) : null;
@@ -78,7 +78,7 @@ function applyPreviewRefresh(html) {
   return parsed;
 }
 
-function readTags(parsed) {
+export function readTags(parsed) {
   return [...parsed.querySelectorAll('[data-tag-row]')].map((row) => ({
     id: Number(row.dataset.tagId),
     name: row.dataset.tagName || '',
