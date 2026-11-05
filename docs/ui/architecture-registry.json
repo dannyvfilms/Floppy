@@ -1076,6 +1076,26 @@
         }
       }
     },
+    "frontend/ui/BulkEpisodeForm.jsx": {
+      "components": [
+        "BulkEpisodeForm"
+      ],
+      "register": "TRACKING",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Rendered by mountBulkEpisodeForm inside the server Episode Plays tab for TV, anime, season, podcast-show and music album range saves; the web bundle builds and the track-modal/bulk Django tests pass, but no browser interaction pass was run."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not placed in the native shell; the native media-card Track body keeps its per-item General form and consumption history."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not placed in the native shell; the native media-card Track body keeps its per-item General form and consumption history."
+        }
+      }
+    },
     "frontend/ui/BulkActions.jsx": {
       "components": [
         "BulkActionDialog",
@@ -2719,6 +2739,10 @@
     "frontend/ui/mountTrackForm.jsx": {
       "register": "TRACKING",
       "purpose": "Browser adapter for the shared Track dialog: read the serialized model and tab list, render General through TrackForm, Tags through TagAssignmentDialog, Status history and Discover through TrackTabs, move the server-owned Metadata/Collection/Episode plays sections into the dialog, keep the legacy shell as the no-JavaScript fallback, and submit, delete and rewatch through htmx so OOB fragments, HX-Trigger close/toast events, CSRF, permissions and repeat routes stay server-owned."
+    },
+    "frontend/ui/mountBulkEpisodeForm.jsx": {
+      "register": "TRACKING",
+      "purpose": "Browser adapter for the shared bulk episode/track range form: read the server serialized form model, hide the legacy form only when htmx is available, mirror the season/episode selection and date shortcuts, and post the same fields through htmx so Django validation, queued saves, close/toast triggers, CSRF and permissions stay server-owned."
     },
     "frontend/ui/mountModalHost.jsx": {
       "register": "SHELL",

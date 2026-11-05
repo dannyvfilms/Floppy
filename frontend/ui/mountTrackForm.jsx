@@ -202,12 +202,12 @@ function Adapter({ host, props }) {
   const legacyForm = () => document.getElementById(model.formId);
 
   useEffect(() => {
-    const form = legacyForm();
-    if (!form) return undefined;
-    const previous = form.style.display;
-    form.style.display = 'none';
-    return () => { form.style.display = previous; };
-  }, [model.formId]);
+    const nodes = [legacyForm(), ...(model.legacyIds || []).map(id => document.getElementById(id))]
+      .filter(Boolean);
+    const previous = nodes.map(node => node.style.display);
+    nodes.forEach(node => { node.style.display = 'none'; });
+    return () => { nodes.forEach((node, index) => { node.style.display = previous[index]; }); };
+  }, [model.formId, model.legacyIds]);
 
   useEffect(() => {
     const root = host.closest('[data-track-popup]') || host.parentElement;
@@ -238,9 +238,20 @@ function Adapter({ host, props }) {
     if (startCleared.current && 'start_date_cleared' in payload) {
       payload.start_date_cleared = '1';
     }
+    const target = (model.target && document.querySelector(model.target))
+      || legacyForm()
+      || host;
     setBusy(true);
     setServerError('');
+<<<<<<< HEAD
     const request = ajax('POST', url, { values: payload, target: legacyForm() || host, swap: 'none' });
+=======
+    const request = ajax('POST', url, {
+      values: body,
+      target,
+      swap: model.swap || 'none',
+    });
+>>>>>>> native-port/tracking
     if (request?.finally) request.finally(() => setBusy(false));
     else setBusy(false);
   }
@@ -305,7 +316,11 @@ function Adapter({ host, props }) {
     onDelete={next => send(model.deleteAction, {}, next)}
     onRewatch={(action, next) => send(model.repeatIdentity?.rewatchUrl, {}, next)}
     onSaveAsNew={next => send(model.action, { save_as_new_entry: '1' }, next)}
+<<<<<<< HEAD
     onDiscoverToggle={toggleDiscover}
+=======
+    onSecondaryAction={(action, next) => send(action.url, action.body || {}, next)}
+>>>>>>> native-port/tracking
     onRetry={() => setServerError('')}
     onClose={() => window.closeTrackModal?.(legacyForm() || host)} />;
 }

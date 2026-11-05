@@ -535,15 +535,29 @@ Server-owned rows retained behind the web fallback:
 Shared React Native dialog and native placement:
 
 - `frontend/ui/TrackDialog.jsx` (universal tracking dialog and embedded General form: General, Tags, Metadata, Collection, Episode plays and Status history tabs, date/status/progress coupling, notes, delete, repeat actions, validation and busy/error states)
+<<<<<<< HEAD
 - `frontend/ui/TrackForm.jsx` (reused General fields, rating fields, notes, tabs and save/delete/secondary actions)
 - `frontend/ui/TrackFormTabs.jsx` (reused Tags, Metadata, Collection, Episode plays and Status history bodies)
 - `frontend/ui/mountTrackForm.jsx` (browser adapter that mounts the shared `TrackDialog` inside `fill_track.html`: General via `TrackForm`, Tags/Status history/Discover via shared bodies, server-owned Metadata/Collection/Episode plays moved into the dialog, htmx/OOB saves, CSRF, permissions and repeat routes preserved, and the legacy shell kept as fallback)
+=======
+- `frontend/ui/TrackForm.jsx` (reused General fields, rating fields, notes, secondary Drop action, tabs and save/delete/repeat actions)
+- `frontend/ui/TrackFormTabs.jsx` (reused Tags, Metadata, Collection, Episode plays, Status history and Discover bodies for native)
+- `frontend/ui/BulkEpisodeForm.jsx` (universal ordered episode/track range form: season/episode selectors, date shortcuts, play handling, distribution, live summary and warnings)
+- `frontend/ui/mountTrackForm.jsx` (browser adapter that mounts the embedded shared General, song and episode forms over `fill_track.html`, `fill_track_song.html` and `fill_track_episode.html`; keeps htmx/OOB saves, CSRF, permissions and repeat routes)
+- `frontend/ui/mountBulkEpisodeForm.jsx` (browser adapter that mounts the shared range form inside the Episode Plays tab and keeps Django validation, queued saves, close/toast triggers, CSRF and permissions)
+- `src/app/templatetags/track_tags.py` (serializes the song/episode web forms into the shared model)
+>>>>>>> native-port/tracking
 - `native-proof/app/surfaces/DetailTrackingSlot.jsx` (native Detail actions and episode/issue row Track actions with demo data)
 
 Server-owned web path retained behind the fallback:
 
+<<<<<<< HEAD
 - `src/templates/app/components/fill_track.html` (server General form and the Metadata, Collection and Episode plays tab bodies remain the no-JavaScript fallback; the adapter moves those sections into the shared dialog when htmx is available)
 - `src/static/js/episodeBulkTrackForm.js`
+=======
+- `src/templates/app/components/fill_track.html` (server General form and the Tags, Metadata, Collection, Status history and Discover bodies remain the no-JavaScript fallback; the Episode Plays range form mounts the shared body over the same fields)
+- `src/static/js/episodeBulkTrackForm.js` (legacy Alpine behavior retained only as the no-JavaScript fallback behind the shared range form)
+>>>>>>> native-port/tracking
 - `src/static/js/mediaStatusDateHandler.js`
 - `src/templates/app/components/album_track_modal.html`
 - `src/templates/app/components/artist_track_modal.html`

@@ -1896,6 +1896,19 @@ class TrackModalViewTests(TestCase):
             ],
             24,
         )
+        presentation = response.context["episode_plays_presentation"]
+        self.assertEqual(
+            presentation["formId"],
+            f"{response.context['track_form_id']}-episode-plays-form",
+        )
+        self.assertEqual(presentation["action"], reverse("episode_bulk_save"))
+        self.assertEqual(
+            presentation["values"]["first_episode_number"],
+            "1",
+        )
+        self.assertTrue(presentation["domain"]["seasonEpisodeMap"])
+        self.assertContains(response, "data-bulk-episode-form-root")
+        self.assertContains(response, presentation["formId"])
 
     @patch("app.views.metadata_resolution.resolve_detail_metadata")
     @patch("app.providers.services.get_media_metadata")
@@ -2284,6 +2297,10 @@ class PodcastTrackModalViewTests(TestCase):
             html=False,
         )
         self.assertContains(response, 'name="media_type" value="podcast"', html=False)
+        self.assertContains(response, "data-track-form-root")
+        self.assertContains(response, "data-track-form-legacy")
+        self.assertContains(response, '"variant": "song"')
+        self.assertContains(response, f'"episode_uuid": "{episode.episode_uuid}"')
 
     def test_podcast_track_modal_can_force_standard_editor(self):
         """History cards should be able to request the full shared editor for podcast plays."""

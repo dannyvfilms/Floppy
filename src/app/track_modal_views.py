@@ -14,7 +14,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.utils.timezone import datetime
-from django.utils.translation import gettext, gettext_noop, pgettext
+from django.utils.translation import gettext, gettext_noop, ngettext, pgettext
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
@@ -145,6 +145,192 @@ def _episode_domain_template_payload(domain):
         ),
         "dateShortcutLabel": domain.get("date_shortcut_label", ""),
         "modeNotice": domain.get("mode_notice", ""),
+    }
+
+
+def _bulk_episode_form_labels():
+    """Return the translated labels used by the shared bulk-play form."""
+    return {
+        "startDate": str(gettext("Start date")),
+        "endDate": str(gettext("End date")),
+        "playHandling": str(gettext("Play handling")),
+        "distribution": str(gettext("Distribution")),
+        "save": str(gettext("Save plays")),
+        "saving": str(gettext("Saving")),
+        "justFinished": str(pgettext("date picker shortcut", "Just Finished")),
+        "chooseRange": str(
+            gettext("Choose the first and last item to log a bulk play range."),
+        ),
+        "invalidRange": str(gettext("Choose a valid ordered range to log plays.")),
+        "lockedRange": str(
+            gettext("This range is locked to one mapped season."),
+        ),
+        "targetDates": str(
+            gettext("the target dates within the selected date range"),
+        ),
+        "evenDistribution": str(
+            gettext("an even distribution across the date range"),
+        ),
+        "fallbackEven": str(
+            gettext("Saving will fall back to even distribution."),
+        ),
+        "noExisting": str(
+            gettext("No existing plays are currently logged in the selected range."),
+        ),
+        "noTargetDateOne": str(
+            ngettext(
+                "%(count)s selected item has no target date.",
+                "%(count)s selected items have no target date.",
+                1,
+            ),
+        ),
+        "noTargetDateMany": str(
+            ngettext(
+                "%(count)s selected item has no target date.",
+                "%(count)s selected items have no target date.",
+                2,
+            ),
+        ),
+        "addOne": str(
+            ngettext(
+                "This will add plays for %(count)s ordered item using %(distribution)s.",
+                "This will add plays for %(count)s ordered items using %(distribution)s.",
+                1,
+            ),
+        ),
+        "addMany": str(
+            ngettext(
+                "This will add plays for %(count)s ordered item using %(distribution)s.",
+                "This will add plays for %(count)s ordered items using %(distribution)s.",
+                2,
+            ),
+        ),
+        "replaceOne": str(
+            ngettext(
+                "This will replace plays for %(count)s ordered item using %(distribution)s.",
+                "This will replace plays for %(count)s ordered items using %(distribution)s.",
+                1,
+            ),
+        ),
+        "replaceMany": str(
+            ngettext(
+                "This will replace plays for %(count)s ordered item using %(distribution)s.",
+                "This will replace plays for %(count)s ordered items using %(distribution)s.",
+                2,
+            ),
+        ),
+        "existingReplaceOne": str(
+            ngettext(
+                "This will delete %(count)s existing play in the selected range before adding the new ordered pass.",
+                "This will delete %(count)s existing plays in the selected range before adding the new ordered pass.",
+                1,
+            ),
+        ),
+        "existingReplaceMany": str(
+            ngettext(
+                "This will delete %(count)s existing play in the selected range before adding the new ordered pass.",
+                "This will delete %(count)s existing plays in the selected range before adding the new ordered pass.",
+                2,
+            ),
+        ),
+        "existingAppendOne": str(
+            ngettext(
+                "This range already has %(count)s logged play. New plays will be appended in order.",
+                "This range already has %(count)s logged plays. New plays will be appended in order.",
+                1,
+            ),
+        ),
+        "existingAppendMany": str(
+            ngettext(
+                "This range already has %(count)s logged play. New plays will be appended in order.",
+                "This range already has %(count)s logged plays. New plays will be appended in order.",
+                2,
+            ),
+        ),
+    }
+
+
+def _bulk_episode_presentation(
+    request,
+    form,
+    domain,
+    *,
+    track_form_id,
+    formaction,
+    return_url,
+    submit_label,
+):
+    """Serialize the bulk episode-play range form into shared presentation."""
+    if form is None or not domain:
+        return None
+    track_time = bool(settings.TRACK_TIME)
+    hidden_names = (
+        "media_id",
+        "source",
+        "media_type",
+        "identity_media_type",
+        "library_media_type",
+        "instance_id",
+        "return_url",
+        "context_kind",
+        "context_id",
+    )
+    hidden = {
+        name: str(form[name].value() or "")
+        for name in hidden_names
+        if name in form.fields
+    }
+    values = {
+        "first_season_number": str(form["first_season_number"].value() or ""),
+        "first_episode_number": str(form["first_episode_number"].value() or ""),
+        "last_season_number": str(form["last_season_number"].value() or ""),
+        "last_episode_number": str(form["last_episode_number"].value() or ""),
+        "write_mode": str(form["write_mode"].value() or ""),
+        "distribution_mode": str(form["distribution_mode"].value() or ""),
+        "start_date": _track_form_field_value(form["start_date"], track_time),
+        "end_date": _track_form_field_value(form["end_date"], track_time),
+        "episode_count": "",
+    }
+    action = formaction
+    if return_url:
+        action = f"{action}?next={return_url}"
+    errors = {
+        name: " ".join(str(message) for message in messages)
+        for name, messages in form.errors.items()
+        if name != "__all__"
+    }
+    non_field_errors = [
+        str(message) for message in form.non_field_errors()
+    ]
+    if non_field_errors:
+        errors["non_field"] = " ".join(non_field_errors)
+    return {
+        "formId": f"{track_form_id}-episode-plays-form",
+        "action": action,
+        "csrfToken": get_token(request),
+        "trackTime": track_time,
+        "hidden": hidden,
+        "values": values,
+        "domain": _episode_domain_template_payload(domain) or {},
+        "seasonOptions": [
+            {
+                "value": str(season["season_number"]),
+                "label": str(season["season_title"]),
+            }
+            for season in domain.get("seasons", [])
+        ],
+        "writeModeOptions": [
+            {"value": str(value), "label": str(label)}
+            for value, label in form.fields["write_mode"].choices
+        ],
+        "distributionModeOptions": [
+            {"value": str(value), "label": str(label)}
+            for value, label in form.fields["distribution_mode"].choices
+        ],
+        "submitLabel": str(submit_label),
+        "notice": str(domain.get("mode_notice") or ""),
+        "errors": errors,
+        "labels": _bulk_episode_form_labels(),
     }
 
 
@@ -1425,6 +1611,18 @@ def _render_standard_track_modal(
             metadata=base_metadata,
         )
     context.update(_build_track_modal_discover_tab_context(request.user, metadata_item))
+    context["episode_plays_presentation_id"] = (
+        f"{track_form_id}-episode-plays-props"
+    )
+    context["episode_plays_presentation"] = _bulk_episode_presentation(
+        request,
+        episode_plays_form,
+        episode_plays_domain,
+        track_form_id=track_form_id,
+        formaction=reverse("episode_bulk_save"),
+        return_url=return_url,
+        submit_label=context["episode_plays_submit_label"],
+    )
     context["track_form_props_id"] = f"{track_form_id}-shared-form"
     presentation = _track_form_presentation(
         request,
@@ -1588,7 +1786,62 @@ def _render_podcast_show_track_modal(
     response = render(
         request,
         "app/components/fill_track.html",
+<<<<<<< HEAD
         context,
+=======
+        {
+            "user": request.user,
+            "title": show.title,
+            "media_type": MediaTypes.PODCAST.value,
+            "form": form,
+            "media": tracker,
+            "return_url": return_url,
+            "metadata_tab_available": False,
+            "metadata_fields": [],
+            "general_hidden_fields": field_groups["hidden_fields"],
+            "general_fields": field_groups["general_fields"],
+            "general_submit_formaction": (
+                f"{reverse('podcast_show_save')}?next={return_url}"
+                + (f"&home_row_id={home_row_id}" if home_row_id else "")
+            ),
+            "general_delete_formaction": (
+                f"{reverse('podcast_show_delete')}?next={return_url}"
+            ),
+            "general_existing_instance": tracker,
+            "image_field": None,
+            "image_save_item_id": None,
+            "date_suggestion": _track_modal_date_suggestion("Release Date", ""),
+            "track_form_id": track_form_id,
+            "track_action_update": track_action_update,
+            "initial_active_tab": initial_active_tab,
+            "episode_plays_tab_available": episode_plays_tab_available,
+            "episode_plays_form": episode_plays_form,
+            "episode_plays_formaction": reverse("episode_bulk_save"),
+            "episode_plays_tab_label": "Episode Plays",
+            "episode_plays_submit_label": "Save plays",
+            "episode_plays_domain": _episode_domain_template_payload(
+                episode_plays_domain,
+            ),
+            "episode_plays_mode_notice": (
+                episode_plays_domain.get("mode_notice", "")
+                if episode_plays_domain
+                else ""
+            ),
+            "episode_plays_domain_script_id": f"{track_form_id}-episode-domain",
+            "episode_plays_presentation_id": (
+                f"{track_form_id}-episode-plays-props"
+            ),
+            "episode_plays_presentation": _bulk_episode_presentation(
+                request,
+                episode_plays_form,
+                episode_plays_domain,
+                track_form_id=track_form_id,
+                formaction=reverse("episode_bulk_save"),
+                return_url=return_url,
+                submit_label="Save plays",
+            ),
+        },
+>>>>>>> native-port/tracking
     )
     response["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response["Pragma"] = "no-cache"
