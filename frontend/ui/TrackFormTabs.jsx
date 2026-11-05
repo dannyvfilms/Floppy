@@ -12,6 +12,8 @@ const DEFAULT_LABELS = {
   noTags: 'No tags yet. Create one below.',
   newTag: 'New tag...',
   addTag: 'Add',
+  add: 'Add',
+  remove: 'Remove',
   tagFailed: "Couldn't update this tag.",
   metadata: 'Metadata',
   artwork: 'Artwork URL',
@@ -63,15 +65,15 @@ function tabLabel(tab, labels) {
   return tab.id;
 }
 
-function TabButton({ tab, active, onSelect, palette }) {
-  return <Pressable accessibilityRole="tab" accessibilityLabel={tabLabel(tab, labelsFor())}
+function TabButton({ tab, active, onSelect, palette, labels }) {
+  return <Pressable accessibilityRole="tab" accessibilityLabel={tabLabel(tab, labels)}
     accessibilityState={{ selected: active }} onPress={() => onSelect(tab.id)}
     style={({ pressed, focused }) => [styles.tab, {
       backgroundColor: active ? palette.surfaceStrong : pressed ? palette.surfaceMuted : 'transparent',
       borderColor: active ? palette.accent : palette.border,
     }, focused && palette.focusStyle]}>
     <Text style={[styles.tabText, { color: active ? palette.text : palette.textMuted }]}>
-      {tabLabel(tab, labelsFor())}
+      {tabLabel(tab, labels)}
     </Text>
   </Pressable>;
 }
@@ -86,9 +88,9 @@ function TagRow({ tag, palette, labels, onToggle }) {
       <Text style={[styles.rowTitle, { color: palette.text }]}>{tag.name}</Text>
       {tag.error ? <Text accessibilityRole="alert" style={[styles.rowError, { color: palette.danger }]}>{tag.error}</Text> : null}
     </View>
-    <Button label={tag.hasTag ? 'Remove' : 'Add'} tone={tag.hasTag ? 'primary' : 'surface'}
+    <Button label={tag.hasTag ? labels.remove : labels.add} tone={tag.hasTag ? 'primary' : 'surface'}
       busy={tag.pending} disabled={tag.pending} accessibilityLabel={
-        tag.hasTag ? `Remove ${tag.name}` : `Add ${tag.name}`
+        tag.hasTag ? `${labels.remove} ${tag.name}` : `${labels.add} ${tag.name}`
       } onPress={() => onToggle?.(tag)} />
   </View>;
 }
@@ -265,7 +267,7 @@ export function TrackTabs({
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.nav}
       contentContainerStyle={styles.navContent}>
       {allTabs.map(tab => <TabButton key={tab.id} tab={tab} active={tab.id === active.id}
-        onSelect={onChange} palette={palette} />)}
+        onSelect={onChange} palette={palette} labels={labels} />)}
     </ScrollView>
     <View style={styles.body}>
       <TabBody tab={active} palette={palette} labels={labels} handlers={{
