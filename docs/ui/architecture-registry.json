@@ -1118,6 +1118,57 @@
         }
       }
     },
+    "frontend/settings/AdvancedSettings.jsx": {
+      "components": [
+        "LogsCard",
+        "ImageCacheCard",
+        "CacheManagementCard",
+        "ServerPortCard"
+      ],
+      "register": "SET-SYSTEM",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the server-rendered advanced page keeps the cache, image and server-port controls. No browser pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the component through the native SettingsAdvanced screen; no simulator run or accessibility pass was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the component through the native SettingsAdvanced screen; no emulator run or accessibility pass was performed."
+        }
+      }
+    },
+    "frontend/settings/AboutSettings.jsx": {
+      "components": [
+        "ReleaseUpdateBanner",
+        "AboutOverviewCard",
+        "WhatsNewCard",
+        "InstallCard",
+        "ProjectResourcesCard",
+        "DeveloperSpecsCard",
+        "AttributionsCard",
+        "LicenseCard",
+        "AboutVersionFooter"
+      ],
+      "register": "SET-SYSTEM",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the server-rendered About and Advanced pages remain the browser implementation and regression target. No browser pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the component through the native SettingsAdvanced screen; no simulator run or accessibility pass was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the component through the native SettingsAdvanced screen; no emulator run or accessibility pass was performed."
+        }
+      }
+    },
     "frontend/settings/AppearanceEditor.jsx": {
       "components": [
         "AppearanceEditor"
