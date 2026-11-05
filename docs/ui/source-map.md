@@ -425,7 +425,7 @@ in the register.
 
 ## HOME
 
-The `frontend/settings/index.js` island loader (owned under SET-USERS) resolves this family's browser roots; keep its selector, kind mapping and mount selection in sync with the shared mounts.
+The `frontend/settings/index.js` island loader (owned under SET-USERS) resolves this family's browser roots; its selector, kind mapping, dynamic import and mount selection must all name the same root, or the host is never mounted even when it has a kind.
 
 - `frontend/ui/HomeShelves.jsx` (universal shelves, deferred rows, coalesced cover poller and empty/error states)
 - `frontend/ui/mountHome.jsx` (browser mount over the server Home shelves, row/window and cover-poll requests)
