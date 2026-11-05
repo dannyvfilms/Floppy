@@ -1244,6 +1244,29 @@
           "evidence": "Expo export only; the native tier board, move and edit dialogs were not exercised on an emulator."
         }
       }
+    },
+    "frontend/ui/TagManagement.jsx": {
+      "components": [
+        "TagIndex",
+        "TagMediaFilter",
+        "TagAssignmentDialog",
+        "TagBulkDialog"
+      ],
+      "register": "TAGS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted in the browser; the server tag index, fill_tags modal, bulk tag action and settings media-type filters remain the web fallback. No browser interaction pass was run in this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Tags screen; the index, assignment, bulk and delete interactions were not exercised on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Tags screen; the index, assignment, bulk and delete interactions were not exercised on an emulator or device."
+        }
+      }
     }
   },
   "legacy": {
