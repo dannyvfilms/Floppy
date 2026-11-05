@@ -1587,15 +1587,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The shared person, studio, credit, gallery and medium-extra presentation is not mounted in the browser; the existing Django person and studio pages remain the web owner."
+          "evidence": "The person and studio heroes, cast/crew person rails and game medium extras mount through frontend/ui/mountPeople.jsx over retained server markup. The filmography grid stays on the shared media card for hover/tracking actions, and the detail carousel stays server-owned because the shared gallery does not keep the embedded YouTube player. The UI build compiles the mounts; no browser interaction pass was performed."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native People screen; no person, studio, credit, gallery, lightbox or medium-extra state was exercised on a simulator or device."
+          "evidence": "Compiled by the Expo export through the native People screen, including the profile transport and live credit rails; no person, studio, credit, gallery, lightbox or medium-extra state was exercised on a simulator or device."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native People screen; no person, studio, credit, gallery, lightbox or medium-extra state was exercised on an emulator or device."
+          "evidence": "Compiled by the Expo export through the native People screen, including the profile transport and live credit rails; no person, studio, credit, gallery, lightbox or medium-extra state was exercised on an emulator or device."
         }
       }
     },
@@ -2608,7 +2608,7 @@
     },
     "frontend/ui/mountPeople.jsx": {
       "register": "PEOPLE",
-      "purpose": "Django/browser integration for the shared person and studio heroes: resolves theme tokens, maps history/source/website intents to browser navigation and keeps the server hero as the fallback."
+      "purpose": "Django/browser integration for the shared person and studio heroes, cast/crew person rails and medium extras: resolves theme tokens, keeps the server markup as the fallback, maps history/source/website and card links to browser navigation, and restores the saved cast/crew collapse state."
     },
     "frontend/ui/mountMusicRelations.jsx": {
       "register": "MUSIC",

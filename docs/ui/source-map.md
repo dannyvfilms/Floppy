@@ -599,12 +599,15 @@ modal is shared React presentation on mount, with the server markup as fallback.
 ## PEOPLE
 
 - `frontend/ui/People.jsx`
-- `frontend/ui/mountPeople.jsx` (browser mount for the person and studio heroes)
-- `native-proof/app/screens/PeopleScreen.jsx` (native placement)
+- `frontend/ui/mountPeople.jsx` (browser mount for the person/studio heroes, cast/crew rails and game extras)
+- `native-proof/app/screens/PeopleScreen.jsx` (native placement; live profile transport or demo preview)
+- `native-proof/app/data/peopleTransport.js` / `.web.js` / `peopleTransportCore.js` (authenticated person/studio read boundary and local fallback)
+- `src/users/templatetags/ui_tags.py` (`people_hero`, `people_cast` and `people_extras` server props)
 - `src/templates/app/components/people_hero.html` (hero props and server fallback wrapper)
-- `src/templates/app/components/cast_card.html`
-- `src/templates/app/components/detail_carousel_fragment.html`
-- `src/templates/app/components/detail_cast_grid.html`
+- `src/templates/app/components/people_island.html` (cast/extras props and server fallback wrapper)
+- `src/templates/app/components/detail_carousel_fragment.html` (server-owned embedded trailer, fit and lightbox behavior)
+- `src/templates/app/components/detail_cast_grid.html` (cast/crew server fallback)
+- `src/templates/app/components/detail_secondary_content.html` (cast and game-extra mount points)
 - `src/templates/app/components/game_lengths_section.html`
 - `src/templates/app/components/person_card_inline.html`
 - `src/templates/app/components/person_filmography_card.html`

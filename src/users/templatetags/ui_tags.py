@@ -530,6 +530,134 @@ def _people_labels():
         "titles": str(_("Titles")),
         "developed": str(_("Developed")),
         "published": str(_("Published")),
+        "overview": str(_("Overview")),
+        "playTrailer": str(_("Play trailer")),
+        "viewFullSize": str(_("View full size")),
+        "fitImage": str(_("Fit image")),
+        "fillFrame": str(_("Fill frame")),
+        "previous": str(_("Previous")),
+        "next": str(_("Next")),
+        "close": str(_("Close")),
+        "timeToBeat": str(_("Time to Beat")),
+        "submissions": str(_("submissions")),
+        "timeToBeatPending": str(_("Fetching cached time-to-beat data in the background.")),
+        "timeToBeatEmpty": str(_("Time-to-beat data is not available yet.")),
+        "watchedOnYouTube": str(_("Watched on YouTube")),
+        "started": str(_("Started")),
+        "youtubeEstimate": str(
+            _("Estimated from how far you got in each video. Your playtime is not affected."),
+        ),
+        "readingActivity": str(_("Reading Activity")),
+        "listeningTime": str(_("Listening Time")),
+        "mostRead": str(_("Most Read")),
+        "topAuthors": str(_("Top Authors")),
+        "noReadingData": str(_("No reading data available.")),
+        "noTitles": str(_("No titles available.")),
+        "watchedContent": str(_("Watched Content")),
+        "readContent": str(_("Read Content")),
+        "filmography": str(_("Filmography")),
+        "bibliography": str(_("Bibliography")),
+        "noFilmography": str(_("No filmography available.")),
+        "noBibliography": str(_("No bibliography available.")),
+        "noWatched": str(_("No watched titles yet.")),
+        "noRead": str(_("No read titles yet.")),
+    }
+
+
+def _people_island(context, root, props, body):
+    """Render one shared People island with the server markup as its fallback."""
+    return render_to_string("app/components/people_island.html", {
+        "root": root,
+        "props": props,
+        "props_id": f"people-{root}-{uuid4().hex}",
+        "body": body,
+    }, request=context.get("request"))
+
+
+def _people_cast_props(context, row, source, collapse_key):
+    """Shape one cast or crew row for the shared person card rail."""
+    from app.templatetags.app_tags import image_url
+    from app.templatetags.app_tags import slug as slug_value
+
+    items = []
+    for person in row.get("items") or []:
+        name = person.get("name") or "Unknown Person"
+        person_id = person.get("person_id")
+        role = person.get("role") or ""
+        department = person.get("department") or ""
+        href = ""
+        if person_id and source:
+            href = reverse(
+                "person_detail",
+                kwargs={
+                    "source": source,
+                    "person_id": person_id,
+                    "name": slug_value(name),
+                },
+            )
+        items.append({
+            "id": f"{source}:{person_id}" if person_id else name,
+            "name": name,
+            "subtitle": role,
+            "lines": [department] if department and department != role else [],
+            "imageUrl": image_url(person.get("image") or ""),
+            "personId": str(person_id) if person_id else "",
+            "source": source or "",
+            "slug": slug_value(name),
+            "href": href,
+        })
+    view_all = None
+    if row.get("view_all_url") and row.get("view_all_text"):
+        view_all = {
+            "label": str(row["view_all_text"]),
+            "href": row["view_all_url"],
+        }
+    return {
+        "kind": "cast",
+        "title": str(row.get("title") or ""),
+        "items": items,
+        "viewAll": view_all,
+        "collapseKey": collapse_key or "",
+        "labels": _people_labels(),
+    }
+
+
+def _people_game_lengths_props(game_lengths, pending):
+    """Shape the game length cards for the shared medium extras view."""
+    from django.utils.translation import gettext as _
+
+    if not game_lengths:
+        return {
+            "available": False,
+            "pending": bool(pending),
+            "cards": [],
+        }
+    cards = [
+        {
+            "label": str(_(card.get("label") or "")),
+            "value": card.get("value") or "",
+            "count": card.get("count"),
+            "glyph": "◷",
+        }
+        for card in game_lengths.get("cards") or []
+    ]
+    return {
+        "sourceLabel": str(_(game_lengths.get("source_label") or "")),
+        "sourceUrl": game_lengths.get("source_url") or "",
+        "available": bool(game_lengths.get("available")),
+        "pending": bool(pending) and not game_lengths.get("available"),
+        "cards": cards,
+    }
+
+
+def _people_youtube_props(youtube_watch):
+    """Shape the YouTube watch summary for the shared medium extras view."""
+    if not youtube_watch:
+        return None
+    return {
+        "seconds": youtube_watch.get("seconds"),
+        "hoursLabel": youtube_watch.get("hours_label") or "",
+        "videos": youtube_watch.get("videos") or 0,
     }
 
 
@@ -715,3 +843,99 @@ class PeopleHeroNode(template.Node):
             "props_id": f"people-hero-{uuid4().hex}",
             "body": self.body.render(context),
         })
+
+
+@register.tag
+def people_cast(parser, token):
+    """Wrap a cast or crew row in the shared person card rail."""
+    bits = token.split_contents()
+    options = token_kwargs(bits[1:], parser)
+    allowed = {"row", "source", "collapse_key"}
+    if "row" not in options or set(options) - allowed or any("=" not in bit for bit in bits[1:]):
+        message = "people_cast requires row= and optional source=/collapse_key= only"
+        raise template.TemplateSyntaxError(message)
+    body = parser.parse(("endpeople_cast",))
+    parser.delete_first_token()
+    return PeopleCastNode(options, body)
+
+
+class PeopleCastNode(template.Node):
+    """Render cast card props beside the existing server row."""
+
+    def __init__(self, options, body):
+        """Keep the compiled row/source values and fallback body."""
+        self.options = options
+        self.body = body
+
+    def render(self, context):
+        """Render the shared rail when the row has people, else the fallback."""
+        row = self.options["row"].resolve(context)
+        if not row or not row.get("items"):
+            return self.body.render(context)
+        source = (
+            self.options["source"].resolve(context)
+            if "source" in self.options else context.get("source")
+        )
+        collapse_key = (
+            str(self.options["collapse_key"].resolve(context))
+            if "collapse_key" in self.options else ""
+        )
+        return _people_island(
+            context,
+            "cast",
+            _people_cast_props(context, row, source, collapse_key),
+            self.body.render(context),
+        )
+
+
+@register.tag
+def people_extras(parser, token):
+    """Wrap one medium-extras section in the shared extras mount."""
+    bits = token.split_contents()
+    part = bits[1].strip("\"'") if len(bits) > 1 else ""
+    if part not in {"game_lengths", "youtube"}:
+        message = 'people_extras requires "game_lengths" or "youtube"'
+        raise template.TemplateSyntaxError(message)
+    body = parser.parse(("endpeople_extras",))
+    parser.delete_first_token()
+    return PeopleExtrasNode(part, body)
+
+
+class PeopleExtrasNode(template.Node):
+    """Render medium-extra props beside the existing server section."""
+
+    def __init__(self, part, body):
+        """Store which extras section this block wraps."""
+        self.part = part
+        self.body = body
+
+    def render(self, context):
+        """Render the shared extras view when this section has data."""
+        if self.part == "game_lengths":
+            if not _people_section_visible(context, "game", "content", "game_lengths"):
+                return self.body.render(context)
+            game_lengths = context.get("game_lengths")
+            props = {
+                "kind": "extras",
+                "gameLengths": _people_game_lengths_props(
+                    game_lengths,
+                    context.get("game_lengths_pending"),
+                ),
+                "labels": _people_labels(),
+            }
+            if not game_lengths:
+                return self.body.render(context)
+            return _people_island(context, "extras", props, self.body.render(context))
+        youtube_watch = _people_youtube_props(context.get("youtube_watch"))
+        if not youtube_watch:
+            return self.body.render(context)
+        return _people_island(
+            context,
+            "extras",
+            {
+                "kind": "extras",
+                "youtubeWatch": youtube_watch,
+                "labels": _people_labels(),
+            },
+            self.body.render(context),
+        )

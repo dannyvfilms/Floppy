@@ -548,13 +548,17 @@
 
         {% if cast_row.total %}
           <section class="mb-8" {% detail_section_attrs user detail_family "content" "cast" %}>
-            {% include "app/components/_scrollable_row.html" with row=cast_row grid_template="app/components/detail_cast_grid.html" collapse_key="detail-cast-open" %}
+            {% people_cast row=cast_row source=media.source collapse_key="detail-cast-open" %}
+              {% include "app/components/_scrollable_row.html" with row=cast_row grid_template="app/components/detail_cast_grid.html" collapse_key="detail-cast-open" %}
+            {% endpeople_cast %}
           </section>
         {% endif %}
 
         {% if crew_row.total %}
           <section class="mb-8" {% detail_section_attrs user detail_family "content" "crew" %}>
-            {% include "app/components/_scrollable_row.html" with row=crew_row grid_template="app/components/detail_cast_grid.html" collapse_key="detail-crew-open" %}
+            {% people_cast row=crew_row source=media.source collapse_key="detail-crew-open" %}
+              {% include "app/components/_scrollable_row.html" with row=crew_row grid_template="app/components/detail_cast_grid.html" collapse_key="detail-crew-open" %}
+            {% endpeople_cast %}
           </section>
         {% endif %}
 
@@ -566,10 +570,14 @@
 
         {% if media_type == MediaTypes.GAME.value %}
           {% if youtube_watch %}
-            {% include "app/components/youtube_watch_section.html" %}
+            {% people_extras "youtube" %}
+              {% include "app/components/youtube_watch_section.html" %}
+            {% endpeople_extras %}
           {% endif %}
           <div {% detail_section_attrs user detail_family "content" "game_lengths" %}>
-            {% include "app/components/game_lengths_section.html" %}
+            {% people_extras "game_lengths" %}
+              {% include "app/components/game_lengths_section.html" %}
+            {% endpeople_extras %}
           </div>
         {% endif %}
 
