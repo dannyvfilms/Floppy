@@ -25,7 +25,7 @@ export const surface = {
   title: 'Advanced and About',
   where: 'System, updates, logs, install and API links',
   status: 'in_progress',
-  note: 'Shared cache, image, log, server-port and About cards render with realistic demo data. Web adoption is in progress; server transport and iOS/Android runtime evidence remain unverified.',
+  note: 'Shared cache, image, log, server-port and About cards render with realistic demo data. The finish pass is wiring the remaining server writes, log download and release/install/API intents while the web adapter keeps its server fallback.',
 };
 
 const settingsPalette = {
