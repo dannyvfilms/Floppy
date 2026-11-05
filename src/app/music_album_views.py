@@ -3,7 +3,7 @@ import logging
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -11,7 +11,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_GET, require_POST
 
-from app import fork_services_music, helpers
+from app import fork_services_music, helpers, image_cache
 from app.discover import tab_cache as discover_tab_cache
 from app.forms import AlbumTrackerForm
 from app.models import (
@@ -98,6 +98,14 @@ def list_music_releases(request, album_id):
         user=request.user,
         album=album,
     ).first()
+    if request.GET.get("format") == "json":
+        return JsonResponse({
+            "pickerType": "music",
+            "results": [
+                {**release, "image": image_cache.rewrite_image_url(release.get("image"))}
+                for release in releases
+            ],
+        })
     return render(
         request,
         "app/components/hardcover_edition_results.html",

@@ -9,7 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.db.models import Max, Min
 from django.db.utils import OperationalError
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -25,6 +25,7 @@ from app import (
     custom_metadata,
     helpers,
     history_cache,
+    image_cache,
     metadata_utils,
 )
 from app.cover_views import user_has_item
@@ -488,6 +489,14 @@ def list_hardcover_editions(request, media_id):
                 for field in ("title", "language", "format", "publisher")
             ).lower()
         ]
+    if request.GET.get("format") == "json":
+        return JsonResponse({
+            "pickerType": "hardcover",
+            "results": [
+                {**edition, "image": image_cache.rewrite_image_url(edition.get("image"))}
+                for edition in editions
+            ],
+        })
     return render(
         request,
         "app/components/hardcover_edition_results.html",

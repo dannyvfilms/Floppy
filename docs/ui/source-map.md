@@ -566,12 +566,19 @@ modal is shared React presentation on mount, with the server markup as fallback.
 
 ## ARTWORK
 
+- `frontend/ui/ArtworkPicker.jsx` (universal cover and edition pickers: candidate/file/link selection, preview/reset/save, accepted formats, provider identity, edition search, selected row and loading/error/empty states; presentation only)
+- `frontend/ui/ArtworkPicker.web.jsx` (browser adapter over the existing upload form and edition search: candidate/edition JSON reads, file input, drag/drop, preview object URLs, CSRF form submission and theme values)
+- `frontend/ui/mountArtworkPicker.jsx` (cover picker mount)
+- `frontend/ui/mountEditionPicker.jsx` (edition picker mount)
+- `native-proof/app/surfaces/ArtworkSlot.jsx` (native Detail placement with shared cover and edition pickers, Expo photo-library/camera adapter and demo save state)
 - `src/templates/app/components/cover_change_section.html`
+- `src/templates/app/components/edition_picker.html` (shared picker root plus server fallback form and search)
 - `src/templates/app/components/edition_picker_result.html`
 - `src/templates/app/components/edition_picker_results.html`
 - `src/templates/app/components/hardcover_edition_results.html`
-- `src/templates/app/components/image_picker.html`
+- `src/templates/app/components/image_picker.html` (shared picker root plus the existing server upload form fallback)
 - `src/templates/app/components/image_picker_tiles.html`
+- `src/users/templatetags/ui_tags.py` (`artwork_picker_props`, `edition_picker_props`)
 
 ## MUSIC
 

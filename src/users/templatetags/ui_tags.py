@@ -181,6 +181,135 @@ def rating_chip(context, instance, media_type, post_url, derived_tv_score=None):
 
 
 @register.simple_tag
+def artwork_picker_props(uid, title, current, save_url, candidates_url, next_url):
+    """Build the shared cover picker contract; the server form stays the fallback."""
+    from django.utils.translation import gettext as _
+
+    from app.templatetags.app_tags import image_url
+
+    labels = {
+        "choose": str(_("choose an image")),
+        "drag": str(_("drag and drop")),
+        "urlToggle": str(_("enter a URL")),
+        "urlPlaceholder": str(_("Link to an image, or to a book or comic page")),
+        "urlLabel": str(_("Image or page link")),
+        "current": str(_("Current")),
+        "new": str(_("New")),
+        "save": str(_("Save Changes")),
+        "cancel": str(_("Cancel")),
+        "retry": str(_("Try again")),
+        "candidatesEmpty": str(_("No other covers found.")),
+        "candidatesError": str(_("Other covers could not load.")),
+        "saveError": str(_("Could not save that cover.")),
+    }
+    return {
+        "formId": f"{uid}-form",
+        "fallbackId": f"{uid}-fallback",
+        "title": "",
+        "current": {"uri": str(image_url(current) or "")},
+        "saveUrl": str(save_url),
+        "candidatesUrl": str(candidates_url),
+        "nextUrl": str(next_url or ""),
+        "accepted": str(_("JPEG, PNG or WebP, up to 10 MB")),
+        "labels": labels,
+    }
+
+
+@register.simple_tag
+def edition_picker_props(
+    uid,
+    picker_type,
+    description,
+    provider,
+    placeholder,
+    list_url,
+    selection_url,
+    return_url,
+    selected=None,
+    selected_id="",
+):
+    """Build the shared edition picker contract; the server results stay the fallback."""
+    from django.utils.translation import gettext as _
+
+    from app.templatetags.app_tags import image_url
+
+    def meta_for(edition):
+        if not edition:
+            return []
+        if picker_type == "music":
+            meta = []
+            first = " · ".join(
+                str(value)
+                for value in (
+                    edition.get("release_date") or _("Date unknown"),
+                    edition.get("country"),
+                    edition.get("status"),
+                )
+                if value
+            )
+            if first:
+                meta.append(first)
+            second = " · ".join(
+                str(value)
+                for value in (
+                    edition.get("format") or _("Format unknown"),
+                    edition.get("packaging"),
+                    edition.get("label"),
+                    (
+                        _("%(count)s tracks") % {"count": edition.get("track_count")}
+                        if edition.get("track_count")
+                        else ""
+                    ),
+                )
+                if value
+            )
+            if second:
+                meta.append(second)
+            if edition.get("barcode"):
+                meta.append(_("Barcode: %(code)s") % {"code": edition["barcode"]})
+            return meta
+        line = " · ".join(
+            str(value)
+            for value in (edition.get("language"), edition.get("format"))
+            if value
+        )
+        return [line] if line else []
+
+    selected_row = None
+    if selected:
+        identifier = selected.get("release_id") if picker_type == "music" else selected.get("id")
+        selected_row = {
+            "id": identifier,
+            "title": str(selected.get("title") or ""),
+            "uri": str(image_url(selected.get("image")) or ""),
+            "meta": meta_for(selected),
+        }
+    labels = {
+        "selectedEdition": str(_("Selected")),
+        "editionsLoading": str(_("Looking for editions…")),
+        "editionsError": str(_("Editions could not load.")),
+        "noEditions": str(_("No editions found.")),
+        "noEditionsQuery": str(_("No editions match this search.")),
+        "retry": str(_("Try again")),
+    }
+    return {
+        "formId": f"{uid}-form",
+        "fallbackId": f"{uid}-fallback",
+        "title": "",
+        "description": str(description or ""),
+        "provider": str(provider or ""),
+        "placeholder": str(placeholder or ""),
+        "pickerType": picker_type,
+        "listUrl": str(list_url),
+        "selectionUrl": str(selection_url or ""),
+        "returnUrl": str(return_url or ""),
+        "selected": selected_row,
+        "selectedId": str(selected_id or ""),
+        "labels": labels,
+    }
+
+
+@register.simple_tag
 def spinner(size=16, tone="accent"):
     """Render the shared React loading ring; the server markup is the fallback."""
     return render_to_string("users/components/spinner.html", {
