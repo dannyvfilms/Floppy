@@ -160,7 +160,7 @@
         <div x-data="{ tagsOpen: false, tagsPreviewOpen: false, hasTagPreview() { return this.$refs.tagsPreviewHost?.firstElementChild?.dataset.hasPreview === 'true' }, clampTagsPopup() { const el = this.$refs.tagsPopup; if (!el) return; el.style.left = '0'; const over = el.getBoundingClientRect().right - (window.innerWidth - 16); if (over > 0) el.style.left = (-over) + 'px'; } }"
              class="relative"
              @mouseenter="if (hasTagPreview()) tagsPreviewOpen = true"
-             @mouseleave="tagsPreviewOpen = false"
+             @mouseleave="tagsPreviewOpen = false" @tag-preview-open.stop="tagsPreviewOpen = false; $refs.manageTagsButton.click()"
              x-effect="if (tagsPreviewOpen) $nextTick(() => clampTagsPopup())">
           <input id="{{ detail_tag_preview_genres_id }}"
                  type="hidden"

@@ -2789,6 +2789,8 @@ class MediaDetailsViewTests(TestCase):
             [
                 {
                     "title": "Genres",
+                    "title_label": "Genres",
+                    "tone": "violet",
                     "entries": [
                         {
                             "label": "Drama",
@@ -2804,6 +2806,8 @@ class MediaDetailsViewTests(TestCase):
                 },
                 {
                     "title": "Tags",
+                    "title_label": "Tags",
+                    "tone": "slate",
                     "entries": [
                         {
                             "label": "Prestige TV",
@@ -2864,6 +2868,8 @@ class MediaDetailsViewTests(TestCase):
             [
                 {
                     "title": "Genres",
+                    "title_label": "Genres",
+                    "tone": "violet",
                     "entries": [
                         {
                             "label": "Drama",
@@ -2879,6 +2885,8 @@ class MediaDetailsViewTests(TestCase):
                 },
                 {
                     "title": "Tags",
+                    "title_label": "Tags",
+                    "tone": "slate",
                     "entries": [],
                     "empty_label": "Click to add tags",
                 },

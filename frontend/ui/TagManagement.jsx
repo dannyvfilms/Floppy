@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Badge } from './Badge';
 import { BulkActionDialog, BulkOptionRow } from './BulkActions';
 import { Button } from './Button';
@@ -41,6 +41,24 @@ function chipPalette(colors, active) {
     badgeBackground: active ? colors.accentStrong : 'transparent',
     badgeText: active ? '#ffffff' : colors.textSecondary,
     badgeHover: active ? colors.accent : colors.surfaceMuted,
+    interactiveStyle: {},
+    focusStyle: {},
+  };
+}
+
+const PREVIEW_TONES = {
+  violet: { border: 'rgba(167, 139, 250, 0.18)', background: 'rgba(139, 92, 246, 0.07)' },
+  slate: { border: 'rgba(148, 163, 184, 0.18)', background: 'rgba(100, 116, 139, 0.07)' },
+  sky: { border: 'rgba(56, 189, 248, 0.18)', background: 'rgba(14, 165, 233, 0.07)' },
+};
+
+function previewChipPalette(colors, tone) {
+  const appearance = PREVIEW_TONES[tone] || PREVIEW_TONES.slate;
+  return {
+    badgeBorder: appearance.border,
+    badgeBackground: appearance.background,
+    badgeText: colors.text,
+    badgeHover: colors.surfaceMuted,
     interactiveStyle: {},
     focusStyle: {},
   };
@@ -167,9 +185,47 @@ export function TagMediaFilter({
   </View>;
 }
 
+export function TagPreview({
+  sections = [],
+  palette,
+  onOpen,
+  onOpenEntry,
+}) {
+  const colors = mergePalette(palette);
+  return <View style={styles.stack}>
+    {sections.map((section, index) => <View key={`${section.title}-${index}`}
+      style={index ? [styles.previewSection, { borderColor: colors.border }] : null}>
+      <Text style={[styles.previewTitle, { color: colors.textMuted }]}>
+        {section.title_label || section.title}
+      </Text>
+      {section.entries && section.entries.length ? <View style={styles.chipRow}>
+        {section.entries.map((entry, entryIndex) => <Chip
+          key={`${entry.label}-${entryIndex}`}
+          label={entry.label}
+          pill
+          palette={previewChipPalette(colors, section.tone)}
+          accessibilityRole={entry.url ? 'link' : undefined}
+          onPress={entry.url && onOpenEntry ? () => onOpenEntry(entry) : undefined} />)}
+      </View> : section.empty_label ? <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={section.empty_label}
+        onPress={() => onOpen?.(section)}
+        style={({ pressed }) => [styles.previewEmpty, {
+          borderColor: colors.textMuted,
+          backgroundColor: pressed ? colors.surfaceMuted : colors.surface,
+        }]}>
+        <Text style={[styles.previewEmptyText, { color: colors.textSecondary }]}>
+          {section.empty_label}
+        </Text>
+      </Pressable> : null}
+    </View>)}
+  </View>;
+}
+
 export function TagAssignmentDialog({
   open = false,
   embedded = false,
+  showClose = true,
   item,
   tags = [],
   palette,
@@ -218,7 +274,8 @@ export function TagAssignmentDialog({
           {item.title}{item.subtitle ? ` · ${item.subtitle}` : ''}
         </Text> : null}
       </View>
-      <Button label="Close" tone="surface" disabled={busy} onPress={close} palette={colors} />
+      {showClose ? <Button label="Close" tone="surface" disabled={busy}
+        onPress={close} palette={colors} /> : null}
     </View>
     <TextField
       label="Search tags"
@@ -283,6 +340,7 @@ export function TagAssignmentDialog({
 export function TagBulkDialog({
   open = false,
   selectedItems = [],
+  itemCount = 0,
   tags = [],
   selectedTag = '',
   action = 'add',
@@ -296,7 +354,7 @@ export function TagBulkDialog({
 }) {
   const colors = mergePalette(palette);
   const tag = tags.find(entry => entry.name === selectedTag);
-  const count = selectedItems.length;
+  const count = selectedItems.length || itemCount;
   return <BulkActionDialog
     open={open}
     title="Apply Tag"
@@ -308,13 +366,13 @@ export function TagBulkDialog({
     palette={colors}
     onConfirm={onApply}
     onClose={onClose}>
-    <View style={styles.bulkBlock}>
+    {selectedItems.length ? <View style={styles.bulkBlock}>
       <Text style={[styles.bulkHeading, { color: colors.textMuted }]}>Selected items</Text>
       {selectedItems.map(item => <Text key={item.id} numberOfLines={1}
         style={[styles.bulkItem, { color: colors.textSecondary }]}>
         {item.title}{item.detail ? ` · ${item.detail}` : ''}
       </Text>)}
-    </View>
+    </View> : null}
     <View style={styles.bulkBlock}>
       <Text style={[styles.bulkHeading, { color: colors.textMuted }]}>Action</Text>
       {[{ value: 'add', label: 'Add tag' }, { value: 'remove', label: 'Remove tag' }].map(option =>
@@ -324,7 +382,9 @@ export function TagBulkDialog({
     <View style={styles.bulkBlock}>
       <Text style={[styles.bulkHeading, { color: colors.textMuted }]}>Tag</Text>
       {tags.length ? tags.map(entry => <BulkOptionRow key={entry.id} label={entry.name}
-        detail={`${entry.count} ${entry.count === 1 ? 'item' : 'items'}`}
+        detail={Number.isFinite(entry.count)
+          ? `${entry.count} ${entry.count === 1 ? 'item' : 'items'}`
+          : undefined}
         selected={selectedTag === entry.name} palette={colors}
         onPress={() => onSelectTag?.(entry.name)} />) : <Text style={[styles.muted, { color: colors.textMuted }]}>
         No tags yet. Create a tag from an item first.
@@ -352,6 +412,10 @@ const styles = StyleSheet.create({
   filterCard: { borderWidth: 1, borderRadius: 10, padding: 12, gap: 10 },
   filterPrompt: { fontSize: 13 },
   filterSummary: { fontSize: 12 },
+  previewSection: { borderTopWidth: 1, paddingTop: 12 },
+  previewTitle: { fontSize: 11, fontWeight: '600', letterSpacing: 1.1, textTransform: 'uppercase' },
+  previewEmpty: { alignItems: 'center', borderWidth: 1, borderStyle: 'dashed', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
+  previewEmptyText: { fontSize: 14, fontWeight: '500' },
   overlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
   dialog: { width: '100%', maxWidth: 560, maxHeight: '88%', borderWidth: 1, borderRadius: 12, padding: 16, gap: 12 },
   dialogHead: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },

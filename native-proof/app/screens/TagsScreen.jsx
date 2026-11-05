@@ -13,10 +13,10 @@ import { palette, radius, spacing } from '../theme';
 
 export const surface = {
   id: 'TAGS',
-  status: 'in_progress',
+  status: 'ported',
   title: 'Tag index, item assignment, bulk tagging and settings filters',
-  where: 'Tags screen; shared by detail assignment, library bulk tagging and settings media-type filters',
-  note: 'The tag index, item assignment modal and settings media-type filter now mount the shared React Native presentation over their server fallbacks on the web. The bulk toolbar quick action, the track-tab tag editor and the server-rendered fragments remain, so this surface stays in progress. Native keeps local demo state; ownership and destructive writes remain server-enforced.',
+  where: 'Tags screen; shared by detail preview and assignment, track-tab assignment, library bulk tagging and settings media-type filters',
+  note: 'The tag index, detail preview, item-assignment dialog, embedded track-tab editor, bulk tag dialog and settings media-type filter mount the shared React Native presentation over their server fallbacks on the web. No-JS server fallbacks stay in place. Native keeps local demo state; ownership and destructive writes remain server-enforced, and iOS/Android runtime verification is still separate from the Expo compile check.',
 };
 
 const MEDIA_TYPES = [

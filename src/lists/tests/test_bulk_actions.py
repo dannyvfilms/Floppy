@@ -140,6 +140,10 @@ class ListPageBulkActionDataTests(TestCase):
         self.assertTrue(data["statuses"])
         self.assertEqual([entry["label"] for entry in data["lists"]], ["Target List"])
         self.assertEqual(data["tags"], ["favorite"])
+        self.assertEqual(
+            data["tagOptions"],
+            [{"id": Tag.objects.get(user=self.owner, name="favorite").id, "name": "favorite", "count": 0}],
+        )
 
     def test_manual_and_smart_list_pages_pass_bulk_action_data(self):
         Tag.objects.create(user=self.owner, name="favorite")

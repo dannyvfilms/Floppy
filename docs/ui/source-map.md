@@ -625,8 +625,8 @@ modal is shared React presentation on mount, with the server markup as fallback.
 
 ## TAGS
 
-- `frontend/ui/TagManagement.jsx` (universal `TagIndex`, `TagMediaFilter`, `TagAssignmentDialog` and `TagBulkDialog`; presentation only)
-- `frontend/ui/mountTags.jsx` (browser adapter for the tag index, assignment dialog and media-type filter)
+- `frontend/ui/TagManagement.jsx` (universal `TagIndex`, `TagMediaFilter`, `TagPreview`, `TagAssignmentDialog` and `TagBulkDialog`; presentation only)
+- `frontend/ui/mountTags.jsx` (browser adapter for the tag index, detail preview, assignment dialog in its modal and embedded track-tab forms, and media-type filter)
 - `src/templates/app/components/detail_tag_preview.html`
 - `src/templates/app/components/fill_tags.html`
 - `src/templates/app/components/tag_item_button.html`
