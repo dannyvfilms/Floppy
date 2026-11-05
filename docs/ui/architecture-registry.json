@@ -1,5 +1,53 @@
 {
   "universal": {
+    "frontend/auth/AuthEntrance.jsx": {
+      "components": [
+        "AuthEntrance",
+        "SocialProviders",
+        "AuthNotice"
+      ],
+      "register": "AUTH",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the server-rendered allauth entrance templates remain the browser implementation and fallback. No browser pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the component through the native Auth screen; no simulator run or accessibility pass was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the component through the native Auth screen; no emulator run or accessibility pass was performed."
+        }
+      }
+    },
+    "frontend/auth/AccountSecurity.jsx": {
+      "components": [
+        "ProfileCard",
+        "AccountTypeCard",
+        "PasswordCard",
+        "AuthenticatorCard",
+        "RecoveryCodesCard",
+        "ConnectionsCard",
+        "DeleteAccountCard"
+      ],
+      "register": "AUTH",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the server-rendered account and recovery pages remain the browser implementation and fallback. No browser pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the component through the native Auth screen; no simulator run or accessibility pass was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the component through the native Auth screen; no emulator run or accessibility pass was performed."
+        }
+      }
+    },
     "frontend/ui/MediaCardView.jsx": {
       "components": [
         "MediaCardView"

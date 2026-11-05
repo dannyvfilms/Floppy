@@ -928,6 +928,11 @@ remain the web owner until a browser adapter mounts the shared sections.
 
 ## AUTH
 
+Shared `AuthEntrance`, `SocialProviders` and `AuthNotice` own entrance, social-provider and notice presentation. `AccountSecurity` owns the profile, account-type, password, authenticator, recovery-code, connection and deletion cards. The Django templates below remain the browser implementation and fallback.
+
+- `frontend/auth/AuthEntrance.jsx`
+- `frontend/auth/AccountSecurity.jsx`
+- `native-proof/app/screens/AuthScreen.jsx` (native placement; status `in_progress`)
 - `src/templates/account/login.html`
 - `src/templates/account/messages/logged_in.txt`
 - `src/templates/account/messages/logged_out.txt`
