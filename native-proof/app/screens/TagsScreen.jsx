@@ -13,10 +13,10 @@ import { palette, radius, spacing } from '../theme';
 
 export const surface = {
   id: 'TAGS',
-  status: 'ported',
+  status: 'in_progress',
   title: 'Tag index, item assignment, bulk tagging and settings filters',
   where: 'Tags screen; shared by detail assignment, library bulk tagging and settings media-type filters',
-  note: 'The tag index, search and sort, item assignment with add/remove/create, selected-item bulk add/remove, confirmed library-wide deletion and media-type filter semantics use shared React Native presentation with local demo state. The web tag index, detail tag modal, bulk toolbar and settings filters keep their server-rendered fallback; ownership and destructive writes remain server-enforced.',
+  note: 'The tag index, item assignment modal and settings media-type filter now mount the shared React Native presentation over their server fallbacks on the web. The bulk toolbar quick action, the track-tab tag editor and the server-rendered fragments remain, so this surface stays in progress. Native keeps local demo state; ownership and destructive writes remain server-enforced.',
 };
 
 const MEDIA_TYPES = [

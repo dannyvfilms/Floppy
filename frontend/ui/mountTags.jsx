@@ -1,0 +1,240 @@
+import React, { useMemo, useState } from 'react';
+import { mountRoot } from '../settings/root';
+import {
+  TagAssignmentDialog,
+  TagIndex,
+  TagMediaFilter,
+} from './TagManagement';
+
+const palette = {
+  background: 'var(--color-page-bg)',
+  surface: 'var(--color-surface)',
+  surfaceStrong: 'var(--color-surface-strong)',
+  surfaceMuted: 'var(--color-surface-muted)',
+  border: 'var(--color-surface-border)',
+  text: 'var(--color-text)',
+  textSecondary: 'var(--color-text-secondary)',
+  textMuted: 'var(--color-text-muted)',
+  accent: 'var(--color-accent)',
+  accentStrong: 'var(--color-accent)',
+  accentText: 'var(--color-accent-contrast)',
+  danger: 'var(--color-error-text)',
+  success: 'var(--color-status-clean)',
+  warning: 'var(--color-warning-text)',
+  overlay: 'rgba(0, 0, 0, 0.55)',
+  badgeBorder: 'var(--color-surface-border)',
+  badgeBackground: 'var(--color-surface-strong)',
+  badgeText: 'var(--color-text-secondary)',
+  badgeHover: 'var(--color-surface-hover)',
+  focusedBorder: 'var(--color-accent)',
+  fontFamily: 'inherit',
+  interactiveStyle: {
+    cursor: 'pointer',
+    textDecorationLine: 'none',
+    transitionProperty: 'background-color, border-color, color, box-shadow',
+  },
+  focusStyle: {},
+};
+
+function body(values) {
+  const params = new URLSearchParams();
+  Object.entries(values).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      params.append(key, value);
+    }
+  });
+  return params;
+}
+
+function applyPreviewRefresh(html) {
+  const parsed = new DOMParser().parseFromString(html, 'text/html');
+  parsed.querySelectorAll('[hx-swap-oob="outerHTML"]').forEach((node) => {
+    const target = node.id ? document.getElementById(node.id) : null;
+    if (!target) return;
+    node.removeAttribute('hx-swap-oob');
+    target.replaceWith(node);
+  });
+  return parsed;
+}
+
+function readTags(parsed) {
+  return [...parsed.querySelectorAll('[data-tag-row]')].map((row) => ({
+    id: Number(row.dataset.tagId),
+    name: row.dataset.tagName || '',
+    hasTag: row.dataset.hasTag === 'true',
+    owned: true,
+  }));
+}
+
+function TagIndexAdapter({ props }) {
+  const [tags, setTags] = useState(props.tags || []);
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState(props.sort || 'name');
+
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    const filtered = needle
+      ? tags.filter((tag) => tag.name.toLowerCase().includes(needle))
+      : tags;
+    return [...filtered].sort((left, right) => sort === 'count'
+      ? right.count - left.count || left.name.toLowerCase().localeCompare(right.name.toLowerCase())
+      : left.name.toLowerCase().localeCompare(right.name.toLowerCase()));
+  }, [query, sort, tags]);
+
+  function openType(_tag, type) {
+    if (type.url) window.location.assign(type.url);
+  }
+
+  function changeSort(next) {
+    setSort(next);
+    const url = new URL(window.location.href);
+    url.searchParams.set('sort', next);
+    window.history.replaceState({}, '', url);
+  }
+
+  function remove(tag) {
+    if (!window.confirm(tag.confirmMessage || `Delete the "${tag.name}" tag from your library? This removes it from every item.`)) return;
+    window.fetch(props.urls.delete, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'X-CSRFToken': props.csrfToken || '' },
+      body: body({ tag_id: tag.id }),
+    }).then((response) => {
+      if (!response.ok) throw new Error('Delete failed');
+      setTags((current) => current.filter((entry) => entry.id !== tag.id));
+    }).catch(() => {
+      window.alert('The tag could not be deleted. Try again.');
+    });
+  }
+
+  return <TagIndex
+    tags={visible}
+    sort={sort}
+    query={query}
+    palette={palette}
+    emptyText={props.emptyText}
+    onQueryChange={setQuery}
+    onSortChange={changeSort}
+    onDelete={remove}
+    onOpenType={openType} />;
+}
+
+function TagAssignmentAdapter({ host, props }) {
+  const [tags, setTags] = useState(props.tags || []);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  function previewFields() {
+    return {
+      item_id: props.item.id,
+      preview_genres_json: props.previewGenresJson,
+      preview_implied_genres_json: props.previewImpliedGenresJson,
+    };
+  }
+
+  async function post(url, values) {
+    const response = await window.fetch(url, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'X-CSRFToken': props.csrfToken || '' },
+      body: body({ ...previewFields(), ...values }),
+    });
+    if (!response.ok) throw new Error('Request failed');
+    return applyPreviewRefresh(await response.text());
+  }
+
+  function toggle(tag) {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    post(props.urls.toggle, { tag_id: tag.id }).then(() => {
+      setTags((current) => current.map((entry) => entry.id === tag.id
+        ? { ...entry, hasTag: !entry.hasTag }
+        : entry));
+    }).catch(() => {
+      setError('The tag could not be updated. Try again.');
+    }).finally(() => setBusy(false));
+  }
+
+  function create(name) {
+    if (tags.some((tag) => tag.name.toLowerCase() === name.toLowerCase())) {
+      setError(`Tag "${name}" already exists.`);
+      return false;
+    }
+    setBusy(true);
+    setError('');
+    post(props.urls.create, { name }).then((parsed) => {
+      const next = readTags(parsed);
+      if (!next.some((tag) => tag.name.toLowerCase() === name.toLowerCase())) {
+        setError(`Tag "${name}" already exists.`);
+        return;
+      }
+      setTags(next);
+    }).catch(() => {
+      setError('The tag could not be created. Try again.');
+    }).finally(() => setBusy(false));
+    return true;
+  }
+
+  function remove(tag) {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    post(props.urls.delete, { tag_id: tag.id }).then((parsed) => {
+      setTags(readTags(parsed));
+    }).catch(() => {
+      setError('The tag could not be deleted. Try again.');
+    }).finally(() => setBusy(false));
+  }
+
+  function close() {
+    setError('');
+    host.dispatchEvent(new CustomEvent('tag-assignment-close', { bubbles: true }));
+  }
+
+  return <TagAssignmentDialog
+    open
+    embedded
+    tags={tags}
+    palette={palette}
+    busy={busy}
+    error={error}
+    onToggle={toggle}
+    onCreate={create}
+    onDelete={remove}
+    onClose={close} />;
+}
+
+function TagMediaFilterAdapter({ host, props }) {
+  const [active, setActive] = useState('all');
+  const options = Array.isArray(props) ? props : (props.options || []);
+
+  function select(key) {
+    setActive(key);
+    host.dispatchEvent(new CustomEvent('tag-media-filter-change', {
+      bubbles: true,
+      detail: { key },
+    }));
+  }
+
+  return <TagMediaFilter
+    options={options}
+    active={active}
+    allLabel={host.dataset.allLabel || 'All'}
+    prompt={host.dataset.prompt || 'Browse by media type:'}
+    summary={host.dataset.summary === 'true'}
+    palette={palette}
+    onSelect={select} />;
+}
+
+export function mountTagIndex(host, props) {
+  return mountRoot(host, <TagIndexAdapter props={props} />);
+}
+
+export function mountTagAssignment(host, props) {
+  return mountRoot(host, <TagAssignmentAdapter host={host} props={props} />);
+}
+
+export function mountTagMediaFilter(host, props) {
+  return mountRoot(host, <TagMediaFilterAdapter host={host} props={props} />);
+}

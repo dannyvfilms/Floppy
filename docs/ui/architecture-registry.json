@@ -2585,10 +2585,6 @@
       "register": "FILTERS",
       "purpose": "Django/browser integration for the shared filter bar: mirror the page Alpine filter state, write filter intents into the existing form, and refresh through the existing htmx/URL boundary."
     },
-    "frontend/ui/mountCollectionBrowser.jsx": {
-      "register": "OWNERSHIP",
-      "purpose": "Browser adapter for the shared collection grid: read the server-built item/card model, render the grid without duplicating the server toolbar, open existing item links, and append bounded JSON pages with nextUrl; grouped rows, table layout, filters, search and the copy/custom-field modal remain server-owned."
-    },
     "frontend/ui/mountHistoryFeed.jsx": {
       "register": "HISTORY",
       "purpose": "Browser feed adapter for the shared History feed: read the bounded initial model and JSON day slices, load lazy/load-more days, open the existing track modal through ModalHost, open the server activity-session dialog, delete through the existing route, and keep filter/save-view URLs; month navigation, the Alpine filter sheet, cache banner and pagination remain server-owned."
@@ -2608,6 +2604,14 @@
     "frontend/ui/mountBulkToolbar.jsx": {
       "register": "BULK_ACTIONS",
       "purpose": "Django/browser integration for the shared bulk action bar: mirror the page Alpine selection, run quick bulk posts and open the status/plays dialogs."
+    },
+    "frontend/ui/mountTags.jsx": {
+      "register": "TAGS",
+      "purpose": "Django/browser integration for the shared tag index, item assignment dialog and settings media-type filter: keep confirmation and ownership-protected posts, refresh the detail tag preview from the server response, and forward the selected media type to the page Alpine state."
+    },
+    "frontend/ui/mountCollectionBrowser.jsx": {
+      "register": "OWNERSHIP",
+      "purpose": "Browser adapter for the shared collection grid: read the server-built item/card model, render the grid without duplicating the server toolbar, open existing item links, and append bounded JSON pages with nextUrl; grouped rows, table layout, filters, search and the copy/custom-field modal remain server-owned."
     },
     "frontend/ui/mountPeople.jsx": {
       "register": "PEOPLE",
