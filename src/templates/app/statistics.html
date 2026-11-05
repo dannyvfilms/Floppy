@@ -1372,6 +1372,10 @@
         </div>
       </div>
       </div>
+      {{ statistics_react_props.sections.comparison|json_script:"statistics-comparison-props" }}
+      <div data-statistics-sections-root data-section="comparison"
+           data-props-id="statistics-comparison-props"
+           data-update-url="{% url 'update_statistics_compare_mode' %}"></div>
       <!-- Activity Rhythm + Time Across Your Worlds -->
       {{ statistics_react_props.charts.overview|json_script:"statistics-charts-overview" }}
       <div data-statistics-charts-root data-props-id="statistics-charts-overview">
@@ -1660,60 +1664,90 @@
 
       {% if tv_consumption.has_data %}
         <div x-show="isMediaTypeVisible('tv')">
+          <div data-statistics-sections-root data-section="overview" data-props-id="statistics-overview-tv">
+          {{ statistics_react_props.sections.overviews.tv|json_script:"statistics-overview-tv" }}
           {% include "app/components/statistics/tv_activity_overview.html" %}
+        </div>
         </div>
       {% endif %}
 
       {% if anime_consumption.has_data %}
         <div x-show="isMediaTypeVisible('anime')">
+          <div data-statistics-sections-root data-section="overview" data-props-id="statistics-overview-anime">
+          {{ statistics_react_props.sections.overviews.anime|json_script:"statistics-overview-anime" }}
           {% include "app/components/statistics/anime_activity_overview.html" %}
+        </div>
         </div>
       {% endif %}
 
       {% if user.manga_enabled and manga_consumption.has_data %}
         <div x-show="isMediaTypeVisible('manga')">
+          <div data-statistics-sections-root data-section="overview" data-props-id="statistics-overview-manga">
+          {{ statistics_react_props.sections.overviews.manga|json_script:"statistics-overview-manga" }}
           {% include "app/components/reading_consumption_section.html" with media_name=_("Manga") consumption=manga_consumption media_type_slug='manga' chart_prefix='manga' top_rated_list=top_rated_manga %}
+        </div>
         </div>
       {% endif %}
 
       {% if movie_consumption.has_data %}
         <div x-show="isMediaTypeVisible('movie')">
+          <div data-statistics-sections-root data-section="overview" data-props-id="statistics-overview-movie">
+          {{ statistics_react_props.sections.overviews.movie|json_script:"statistics-overview-movie" }}
           {% include "app/components/statistics/movie_activity_overview.html" %}
+        </div>
         </div>
       {% endif %}
 
       {% if game_consumption.has_data %}
         <div x-show="isMediaTypeVisible('game')">
+          <div data-statistics-sections-root data-section="overview" data-props-id="statistics-overview-game">
+          {{ statistics_react_props.sections.overviews.game|json_script:"statistics-overview-game" }}
           {% include "app/components/statistics/game_activity_overview.html" %}
+        </div>
         </div>
       {% endif %}
 
       {% if user.book_enabled and book_consumption.has_data %}
         <div x-show="isMediaTypeVisible('book')">
+          <div data-statistics-sections-root data-section="overview" data-props-id="statistics-overview-book">
+          {{ statistics_react_props.sections.overviews.book|json_script:"statistics-overview-book" }}
           {% include "app/components/reading_consumption_section.html" with media_name=_("Books") consumption=book_consumption media_type_slug='book' chart_prefix='book' top_rated_list=top_rated_book show_top_authors=True %}
+        </div>
         </div>
       {% endif %}
 
       {% if user.comic_enabled and comic_consumption.has_data %}
         <div x-show="isMediaTypeVisible('comic')">
+          <div data-statistics-sections-root data-section="overview" data-props-id="statistics-overview-comic">
+          {{ statistics_react_props.sections.overviews.comic|json_script:"statistics-overview-comic" }}
           {% include "app/components/reading_consumption_section.html" with media_name=_("Comics") consumption=comic_consumption media_type_slug='comic' chart_prefix='comic' top_rated_list=top_rated_comic %}
+        </div>
         </div>
       {% endif %}
 
       {% if user.music_enabled and music_consumption.has_data %}
         <div x-show="isMediaTypeVisible('music')">
+          <div data-statistics-sections-root data-section="overview" data-props-id="statistics-overview-music">
+          {{ statistics_react_props.sections.overviews.music|json_script:"statistics-overview-music" }}
           {% include "app/components/statistics/music_activity_overview.html" %}
+        </div>
         </div>
       {% endif %}
 
       {% if user.video_enabled and video_consumption.has_data %}
         <div x-show="isMediaTypeVisible('video')">
+          <div data-statistics-sections-root data-section="overview" data-props-id="statistics-overview-video">
+          {{ statistics_react_props.sections.overviews.video|json_script:"statistics-overview-video" }}
           {% include "app/components/statistics/video_activity_overview.html" %}
+        </div>
         </div>
       {% endif %}
       {% if user.podcast_enabled and podcast_consumption.has_data %}
         <div x-show="isMediaTypeVisible('podcast')">
+          <div data-statistics-sections-root data-section="overview" data-props-id="statistics-overview-podcast">
+          {{ statistics_react_props.sections.overviews.podcast|json_script:"statistics-overview-podcast" }}
           {% include "app/components/statistics/podcast_activity_overview.html" %}
+        </div>
         </div>
       {% endif %}
 

@@ -254,6 +254,52 @@ class StatisticsViewTests(TestCase):
         titles = [card["title"] for card in props["summary"]["highlights"]["all"]]
         self.assertIn("React Props Movie", titles)
 
+    def test_statistics_react_props_include_comparison_and_media_overviews(self):
+        """The shared sections receive server comparison rows and per-media models."""
+        played_on = timezone.localdate() - timedelta(days=1)
+        self._create_movie_play("tt-react-sections", "React Sections Movie", played_on, 95)
+
+        response = self.client.get(
+            reverse("statistics")
+            + f"?start-date={played_on.isoformat()}&end-date={timezone.localdate().isoformat()}"
+            + "&compare=previous_period"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        sections = response.context["statistics_react_props"]["sections"]
+        self.assertEqual(sections["comparison"]["selected"], "previous_period")
+        self.assertIn("previous_period", [
+            option["value"] for option in sections["comparison"]["options"]
+        ])
+        self.assertTrue(any(
+            row["type"] == "movie" and row["currentLabel"]
+            for row in sections["comparison"]["rows"]
+        ))
+        movie = sections["overviews"]["movie"]
+        self.assertEqual(movie["typeLabel"], "Movies")
+        self.assertEqual(movie["panels"][0]["title"], "Most Played")
+        self.assertEqual(movie["panels"][0]["items"][0]["title"], "React Sections Movie")
+
+    def test_statistics_json_model_matches_the_shared_props(self):
+        """The native/browser transport can read the same server-shaped model."""
+        played_on = timezone.localdate() - timedelta(days=1)
+        self._create_movie_play("tt-react-json", "React JSON Movie", played_on, 30)
+
+        response = self.client.get(
+            reverse("statistics") + "?format=json"
+            + f"&start-date={played_on.isoformat()}&end-date={timezone.localdate().isoformat()}"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        model = response.json()["model"]
+        self.assertIn("all", model["summary"])
+        self.assertIn("overview", model["charts"])
+        self.assertIn("comparison", model["sections"])
+        self.assertEqual(
+            model["sections"]["overviews"]["movie"]["panels"][0]["items"][0]["title"],
+            "React JSON Movie",
+        )
+
     def test_statistics_view_custom_date_range(self):
         """Test the statistics view with custom date range."""
         start_date = "2023-01-01"
@@ -382,7 +428,7 @@ class StatisticsViewTests(TestCase):
                     "album_slug": "stats-album",
                 },
             ),
-            count=2,
+            count=4,
         )
 
     def test_statistics_view_invalid_date_format(self):
@@ -3475,6 +3521,20 @@ class StatisticsTalentFragmentTests(TestCase):
         self.assertContains(response, 'id="talent-section"')
         self.assertContains(response, reverse("statistics_talent_fragment"))
         self.assertNotIn("top_talent", response.context)
+
+    def test_talent_fragment_exposes_shared_section_props_as_json(self):
+        """The shared talent sections read one server-shaped JSON model."""
+        response = self.client.get(
+            reverse("statistics_talent_fragment")
+            + "?start-date=all&end-date=all&format=json"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("roleLeaders", payload["talent"])
+        self.assertIn("studioFootprint", payload["talent"])
+        self.assertIn("tasteSignals", payload["talent"])
+        self.assertIn("selected", payload["talent"]["roleLeaders"])
 
     def test_fragment_context_is_cached_per_user(self):
         """A second fragment request must not recompute the featured player."""

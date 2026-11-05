@@ -2604,6 +2604,10 @@
     "frontend/ui/mountBulkActions.jsx": {
       "register": "BULK_ACTIONS",
       "purpose": "Django/browser integration for the shared bulk actions: open the status and plays dialogs, poll Add Plays jobs and render their docked progress and results."
+    },
+    "frontend/ui/mountStatisticsSections.jsx": {
+      "register": "STATISTICS",
+      "purpose": "Browser adapter for the shared Statistics studio footprint, taste signals and per-media overviews: mount server-shaped section models over the server fallback, resolve theme tokens, open item links, follow stats-media-type-changed, and persist studio/taste sort through the existing endpoints; role leaders and the featured repeat/person strip stay server-owned."
     }
   }
 }
