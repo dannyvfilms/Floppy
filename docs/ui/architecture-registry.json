@@ -1244,6 +1244,35 @@
           "evidence": "Expo export only; the native tier board, move and edit dialogs were not exercised on an emulator."
         }
       }
+    },
+    "frontend/onboarding/OnboardingWizard.jsx": {
+      "components": [
+        "OnboardingWizard",
+        "OnboardingNotice",
+        "OnboardingMediaTypesStep",
+        "OnboardingMetadataStep",
+        "OnboardingServicesStep",
+        "OnboardingSummaryStep",
+        "OnboardingServiceSetupStep",
+        "OnboardingIntegrationStep",
+        "OnboardingImportStatusStep",
+        "OnboardingCompleteStep"
+      ],
+      "register": "ONBOARDING",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the Django onboarding views and templates remain the browser implementation. No browser pass was performed."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the wizard through the native Onboarding screen; no simulator run, interaction or VoiceOver pass was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the wizard through the native Onboarding screen; no emulator run, interaction or TalkBack pass was performed."
+        }
+      }
     }
   },
   "legacy": {

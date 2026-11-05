@@ -1015,10 +1015,13 @@ templates are compatibility/composition sources, not equally active parallel pag
 ### ONBOARDING — Resumable first-run setup
 
 - Purpose/usage: media/metadata/services wizard, connection/upload/OAuth/Trakt variants/banner.
-- Implementation: `src/templates/users/onboarding/`, onboarding-banner component; shared media-type picker.
-- Contract: persisted resume/restart/skip/next, connect/import status, Plex instructions and device fallback.
-- Data: `src/users/onboarding_views.py`, `src/integrations/onboarding.py`, user state/ImportRun.
-- Reuse/blockers: wizard/controls shared; standalone onboarding needs separately approved capabilities.
+- Implementation: `src/templates/users/onboarding/`, onboarding-banner component; shared media-type picker. Universal native presentation: `frontend/onboarding/OnboardingWizard.jsx` exports `OnboardingWizard`, `OnboardingNotice`, `OnboardingMediaTypesStep`, `OnboardingMetadataStep`, `OnboardingServicesStep`, `OnboardingSummaryStep`, `OnboardingServiceSetupStep`, `OnboardingIntegrationStep`, `OnboardingImportStatusStep` and `OnboardingCompleteStep`.
+- Contract: persisted resume/restart/skip/next, connect/import status, Plex instructions and device fallback. The native wizard keeps `onboarding_status` and `onboarding_step` semantics: an unfinished wizard stays `in_progress`, restart reopens media types, skipping media types or finishing import completes setup, selected/skipped/connected sources are retained, and the stale `import_status` resume edge is normalised through scrobbling. Connection variants cover credential/host/API-key forms, uploads, OAuth, Trakt public/private/export profiles, and a device-code fallback for sources without an inline form. Import rows carry queued/running/done/failed status.
+- Data: `src/users/onboarding_views.py`, `src/integrations/onboarding.py`, user state/ImportRun. The native shell uses `native-proof/app/data/onboardingState.js` (Expo file storage) and `onboardingState.web.js` (browser local storage) for demo resume state; secrets stay in local form state and are never persisted or passed to presentation. Server permissions and transport remain authoritative and are not reproduced in the shell.
+- Reuse/blockers: wizard reuses shared `SettingsCard`, `Chip`, `Button`, `TextField`, `SelectField`, `SetupGuide` and `ConfirmDialog`. The standalone browser wizard remains server-owned; native transport, real OAuth handoff, live import progress and iOS/Android runtime verification are not implemented.
+- Native placement: `native-proof/app/screens/OnboardingScreen.jsx` replaces the placeholder with the demo wizard (`ported`).
+- Status: `Partial / coexisting`. Browser onboarding stays Django/Alpine; the universal wizard renders in the native shell with demo persistence. No iOS or Android runtime, interaction or assistive-technology pass was performed.
+- Verification: `src/users/tests/views/test_onboarding.py`, `src/integrations/tests/test_onboarding.py`; Expo export is a compile check, not runtime evidence.
 - Validation targets: `src/users/tests/views/test_onboarding.py`, `src/integrations/tests/test_onboarding.py`.
 
 ### SET-SYSTEM — Advanced, About, updates and install
