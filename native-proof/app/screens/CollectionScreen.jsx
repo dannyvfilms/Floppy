@@ -4,6 +4,7 @@ import { Note } from '../components/Note';
 
 const surface = {
   id: 'OWNERSHIP',
+  status: 'in_progress',
   title: 'Collection and copies',
   where: 'Collection browser and detail ownership',
   note: 'Ownership grids, copies, labels, custom fields and collection editing will replace this note.',
