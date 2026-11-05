@@ -5,6 +5,7 @@ import { Button } from './Button';
 import { DateTimePicker } from './DateTimePicker';
 import { MediaCardView } from './MediaCardView';
 import { RatingStars } from './RatingStars';
+import { RefreshNotice } from './RefreshNotice';
 
 const DEFAULT_PALETTE = {
   background: '#18181b',
@@ -727,18 +728,13 @@ export function HistoryFeed({
   const showRefresh = chrome && model.refreshing && !refreshDismissed;
 
   return <View style={styles.feed}>
-    {showRefresh ? <View style={[styles.refresh, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
-      <Text accessibilityLiveRegion="polite" style={[styles.refreshText, { color: colors.text }]}>{copy.refreshing}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel={copy.dismiss}
-        onPress={() => { setRefreshDismissed(true); onDismissRefresh?.(); }}>
-        <Text style={[styles.refreshClose, { color: colors.textMuted }]}>✕</Text>
-      </Pressable>
-    </View> : null}
-    {chrome && model.refreshError ? <View style={[styles.refresh, { backgroundColor: colors.surface, borderColor: colors.danger }]}>
-      <Text accessibilityLiveRegion="polite" style={[styles.refreshText, { color: colors.text }]}>{copy.refreshFailed}</Text>
-      <Button label={copy.retryRefresh} size="sm" tone="surface" palette={buttonPalette(colors)}
-        onPress={() => onRefresh?.()} />
-    </View> : null}
+    {showRefresh ? <RefreshNotice state="loading" message={copy.refreshing}
+      labels={{ dismiss: copy.dismiss }} palette={colors}
+      background={colors.surfaceStrong} border={colors.border} color={colors.text}
+      onDismiss={() => { setRefreshDismissed(true); onDismissRefresh?.(); }} /> : null}
+    {chrome && model.refreshError ? <RefreshNotice state="error" message={copy.refreshFailed}
+      labels={{ retry: copy.retryRefresh }} palette={colors} background={colors.surface}
+      border={colors.danger} color={colors.text} onRetry={() => onRefresh?.()} /> : null}
 
     {chrome && nav.monthLabel ? <View style={styles.monthNav}>
       <View style={styles.monthNavSide}>
@@ -818,9 +814,6 @@ export function HistoryFeed({
 
 const styles = StyleSheet.create({
   feed: { gap: 16 },
-  refresh: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
-  refreshText: { flex: 1, fontSize: 13, fontWeight: '500' },
-  refreshClose: { fontSize: 14, fontWeight: '700' },
   monthNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   monthNavSide: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   monthLabel: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '600' },

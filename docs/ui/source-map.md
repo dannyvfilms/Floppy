@@ -128,14 +128,25 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## ARTWORK-LOADING
 
+- `frontend/ui/ArtworkImage.jsx` (universal primary/fallback image, loading/unavailable/stale states and provenance input)
+- `frontend/ui/ArtworkImage.web.jsx` (browser image with lazy/deferred loading, provenance and fallback hooks)
+- `frontend/ui/ArtworkImage.native.jsx` (native image implementation)
+- `frontend/ui/MediaCardView.jsx` (shared card consumer on web islands and native)
+- `native-proof/app/surfaces/MediaCardSlot.jsx` (native media-card placement)
 - `src/static/js/artwork-loading.js`
 - `src/static/js/image-fallback.js`
 - `src/static/js/libraries/lazysizes-5.3.2.min.js`
 
 ## ASYNC-STATE
 
-- `src/static/js/cache-updater.js`
+- `frontend/ui/RefreshNotice.jsx` (universal loading, stale, error and complete refresh notice)
+- `frontend/ui/HistoryFeed.jsx` (shared History consumer on web and native)
+- `frontend/discover/DiscoverScreen.jsx` (shared Discover feedback consumer on web and native)
+- `src/static/js/cache-updater.js` (browser poller adapter: bounded retries/timeouts, offline/online recovery and exit cleanup)
 - `src/static/js/cache-updater.selfcheck.mjs`
+- `src/templates/app/history.html`
+- `src/templates/app/statistics.html`
+- `src/templates/app/discover.html`
 
 ## SPINNER
 

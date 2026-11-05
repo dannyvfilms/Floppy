@@ -1897,6 +1897,46 @@
           "evidence": "Shared top bar and mobile navigation render in the Expo shell; no Android runtime was exercised."
         }
       }
+    },
+    "frontend/ui/ArtworkImage.jsx": {
+      "components": [
+        "ArtworkImage"
+      ],
+      "register": "ARTWORK-LOADING",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Compiled by npm run build:ui and the Expo export; no browser, simulator or device runtime pass was performed for this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by npm run build:ui and the Expo export; no browser, simulator or device runtime pass was performed for this change."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by npm run build:ui and the Expo export; no browser, simulator or device runtime pass was performed for this change."
+        }
+      }
+    },
+    "frontend/ui/RefreshNotice.jsx": {
+      "components": [
+        "RefreshNotice"
+      ],
+      "register": "ASYNC-STATE",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Mounted through the shared History feed and Discover feedback on the web bundle; no browser pass in this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native History and Discover screens; no simulator pass."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native History and Discover screens; no emulator pass."
+        }
+      }
     }
   },
   "legacy": {
@@ -2700,6 +2740,50 @@
         "android": {
           "status": "unverified",
           "evidence": "Compiled by the Expo export through the native notes slot and music editors; no emulator interaction pass."
+        }
+      }
+    },
+    "frontend/ui/ArtworkImage.web.jsx": {
+      "kind": "presentation",
+      "register": "ARTWORK-LOADING",
+      "components": [
+        "ArtworkImage"
+      ],
+      "purpose": "Render artwork as a browser image with lazy/deferred loading, source provenance, bounded fallback and loading/error/stale state hooks. Browser observers and remembered-artwork storage stay in artwork-loading.js.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Compiled into the web bundle through MediaCardView consumers; the DOM MediaCard adapter and server fallback remain the browser card. No browser pass in this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to this browser implementation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to this browser implementation."
+        }
+      }
+    },
+    "frontend/ui/ArtworkImage.native.jsx": {
+      "kind": "presentation",
+      "register": "ARTWORK-LOADING",
+      "components": [
+        "ArtworkImage"
+      ],
+      "purpose": "Render the shared artwork fallback and state contract with React Native Image primitives on iOS and Android.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not applicable to this native implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through MediaCardView on the native Home, Library, Discover, Search and History screens; no simulator pass."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through MediaCardView on the native Home, Library, Discover, Search and History screens; no emulator pass."
         }
       }
     }
