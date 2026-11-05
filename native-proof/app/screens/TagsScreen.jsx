@@ -16,7 +16,7 @@ export const surface = {
   status: 'in_progress',
   title: 'Tag index, item assignment, bulk tagging and settings filters',
   where: 'Tags screen; shared by detail assignment, library bulk tagging and settings media-type filters',
-  note: 'The tag index, item assignment modal and settings media-type filter now mount the shared React Native presentation over their server fallbacks on the web. The bulk toolbar quick action, the track-tab tag editor and the server-rendered fragments remain, so this surface stays in progress. Native keeps local demo state; ownership and destructive writes remain server-enforced.',
+  note: 'The tag index, item assignment modal and settings media-type filter mount the shared React Native presentation over their server fallbacks on the web. Finishing the bulk tag dialog, the embedded track-tab editor and the detail tag preview now owns the remaining web consumers; no-JS server fallbacks stay in place. Native keeps local demo state; ownership and destructive writes remain server-enforced.',
 };
 
 const MEDIA_TYPES = [
