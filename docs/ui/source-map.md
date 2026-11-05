@@ -731,15 +731,21 @@ presentation.
 
 ## SET-APPEARANCE
 
+- `frontend/settings/AppearanceEditor.jsx`
+- `native-proof/app/surfaces/AppearanceSettingsSlot.jsx`
 - `src/templates/users/appearance.html`
 
 ## SET-CARDS
 
+- `frontend/settings/CardsEditor.jsx`
+- `native-proof/app/surfaces/CardsSettingsSlot.jsx`
 - `src/templates/users/cards.html`
 - `src/templates/users/cards_preview.html`
 
 ## SET-HOME
 
+- `frontend/settings/HomeScreenEditor.jsx`
+- `native-proof/app/surfaces/HomeSettingsSlot.jsx`
 - `src/templates/users/home_screen.html`
 
 ## SET-PROVIDERS

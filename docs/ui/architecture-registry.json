@@ -1009,6 +1009,66 @@
           "evidence": "Expo export --platform all compiled the shared bulk toolbar and dialogs through the native Library slot; no emulator run or TalkBack interaction pass."
         }
       }
+    },
+    "frontend/settings/AppearanceEditor.jsx": {
+      "components": [
+        "AppearanceEditor"
+      ],
+      "register": "SET-APPEARANCE",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The appearance page remains the Django/Alpine editor; this shared editor is not mounted in the browser bundle during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Settings screen; theme selection, custom palette, detail reorder and save states were not exercised at runtime."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Settings screen; theme selection, custom palette, detail reorder and save states were not exercised at runtime."
+        }
+      }
+    },
+    "frontend/settings/CardsEditor.jsx": {
+      "components": [
+        "CardsEditor"
+      ],
+      "register": "SET-CARDS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The cards page remains the Django/Alpine editor; this shared editor is not mounted in the browser bundle during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Settings screen; per-type lines, field order, preview and save states were not exercised at runtime."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Settings screen; per-type lines, field order, preview and save states were not exercised at runtime."
+        }
+      }
+    },
+    "frontend/settings/HomeScreenEditor.jsx": {
+      "components": [
+        "HomeScreenEditor"
+      ],
+      "register": "SET-HOME",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The Home screen page remains the Django/Alpine/SortableJS editor; this shared editor is not mounted in the browser bundle during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Settings screen; section, row, filter and sort interactions were not exercised at runtime."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Settings screen; section, row, filter and sort interactions were not exercised at runtime."
+        }
+      }
     }
   },
   "legacy": {
