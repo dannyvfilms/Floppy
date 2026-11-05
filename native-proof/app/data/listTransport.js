@@ -1,13 +1,15 @@
-import { createLocalListActions, createRemoteListActions } from './listTransportCore';
+import { getActiveAuthSession } from './authSession.js';
+import { createLocalListActions, createRemoteListActions } from './listTransportCore.js';
 
-// Native credential storage, server selection and CSRF handling are still
-// undesigned. A caller may inject a request function when that transport
-// exists; until then the screen keeps its local preview state.
 export function createListTransport(options = {}) {
   if (typeof options.request === 'function') {
     return createRemoteListActions(options.request);
   }
+  const auth = options.auth || getActiveAuthSession();
+  if (auth && typeof auth.request === 'function') {
+    return createRemoteListActions(auth.request);
+  }
   return createLocalListActions(
-    'Native server login, server selection and CSRF transport are not configured yet.',
+    'Sign in to your Floppy server to save list changes.',
   );
 }
