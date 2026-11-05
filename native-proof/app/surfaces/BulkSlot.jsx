@@ -11,8 +11,8 @@ export const surface = {
   id: 'BULK',
   title: 'Bulk selection and actions',
   where: 'Library, custom lists and smart lists',
-  status: 'ported',
-  note: 'Library select mode, card selection, selected count, Update Status, Add to List, Add to Collection, Apply Tag, confirmation dialogs, busy/partial-failure results and clear/reset use shared bulk presentation. A finished status action publishes a card-change event so the card grid reflects it. The Add Plays history job dock and server write transport remain web-owned.',
+  status: 'in_progress',
+  note: 'Library select mode, card selection, selected count, Update Status, Add to List, Add to Collection, Apply Tag, confirmation dialogs, busy/partial-failure results and clear/reset use shared bulk presentation. A finished status action publishes a card-change event so the card grid reflects it. The Add Plays history job dock is being moved onto the shared surface.',
 };
 
 const STATUS_OPTIONS = [
