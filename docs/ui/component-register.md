@@ -611,6 +611,7 @@ can inform a focused completion pass.
 ### NOTES — Markdown editing and display
 
 - Purpose/usage: detail/media forms/music track notes.
+- Status: `In progress`. The shared Markdown editor and preview are being ported; the server fragments, `markdown-editor.js` and marked remain the web fallback until the mount lands.
 - Implementation: markdown/detail-note/music-note fragments; `src/static/js/markdown-editor.js` and marked.
 - Contract: Write/Preview, toolbar/selection, safe rendering, initialization after full/HTMX loads and save errors.
 - Data: bound note fields and music note handler in `src/app/music_views.py`.

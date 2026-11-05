@@ -3,6 +3,7 @@ import { Screen, Section } from '../components/Screen';
 import DetailChildrenSlot from '../surfaces/DetailChildrenSlot';
 import DetailSlot from '../surfaces/DetailSlot';
 import DetailTrackingSlot from '../surfaces/DetailTrackingSlot';
+import NotesSlot from '../surfaces/NotesSlot';
 import ProgressSlot from '../surfaces/ProgressSlot';
 import RatingSlot from '../surfaces/RatingSlot';
 
@@ -20,6 +21,9 @@ export default function DetailScreen({ params, onBack }) {
     <Section title="Tracking">
       <DetailTrackingSlot target={trackTarget} onOpen={setTrackTarget}
         onClose={() => setTrackTarget(null)} />
+    </Section>
+    <Section title="Your notes">
+      <NotesSlot />
     </Section>
     <Section title="Seasons, episodes and issues">
       <DetailChildrenSlot onTrack={setTrackTarget} />
