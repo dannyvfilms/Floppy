@@ -12,7 +12,7 @@ import { palette, spacing } from '../theme';
 
 export const surface = {
   id: 'LISTS',
-  status: 'ported',
+  status: 'in_progress',
   title: 'Lists hub, list forms and add/recommend flows',
   where: 'Lists screen cards, create/edit list form, item search/preview, recommendations approval and deny',
   note: 'The list hub, create/edit list form, add-item search and preview, recommend flow and recommendations approval/deny use shared React Native presentation with local demo state. Tiers and smart-rule editing remain legacy; server transport and the web list pages remain unchanged.',

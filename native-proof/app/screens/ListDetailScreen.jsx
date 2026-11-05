@@ -10,7 +10,7 @@ import { palette, radius, spacing } from '../theme';
 
 export const surface = {
   id: 'LIST-DETAIL',
-  status: 'ported',
+  status: 'in_progress',
   title: 'List detail results, membership and bulk actions',
   where: 'List detail page for manual, smart and source-backed lists',
   note: 'Results, membership and bulk status/collection/remove/rating write through the list transport. Native login, server selection and CSRF transport remain unconfigured, so the native adapter keeps local preview state; the browser adapter uses the same-origin session.',
