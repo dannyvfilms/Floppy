@@ -30,8 +30,10 @@ The shared React component (`frontend/ui/MediaCard.jsx`) draws every card: artwo
 status, rating, hover buttons, popups and bulk-select checkbox. The server sends the card
 wrapper, a props `<script>` built by `app/media_card_model.py`, and a first-paint poster and
 title link that React replaces on mount. The card's popups open in the shared host: the
-Add-to-lists form is React (a JSON form model from `lists_modal?format=json`), the Track form
-is still the server-rendered form (see POPUP-HOST in `docs/ui/component-register.md`). Tests that care about a chip, rating or button read the
+Add-to-lists form is React (a JSON form model from `lists_modal?format=json`), and the Track
+popup opens the shared Track dialog for every available tab, with Metadata, Collection and
+Episode plays still server-owned inside it (see POPUP-HOST in
+`docs/ui/component-register.md`). Tests that care about a chip, rating or button read the
 model with `app.tests.card_props.card_model`, not the markup. History and the Search list row use
 the same component. `MediaCardInventoryTest` fails if a surface opts out, the template regrows a
 legacy body, or a template draws `media-card` markup that is neither the tag nor listed in its

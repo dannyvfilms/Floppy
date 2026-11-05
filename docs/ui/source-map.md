@@ -69,7 +69,7 @@ PY
 - `frontend/ui/Shell.jsx` (`Shell`, `TopBar`, `MobileNav`), `frontend/ui/mountShell.jsx`, the `shell_topbar_react` tag and `src/templates/base.html` / `base_public.html` (signed-in and public top bars plus the mobile navigation overlay; both templates keep their server fallback)
 - `frontend/ui/Sidebar.jsx` (`Sidebar`) shared React Native presentation, `frontend/ui/mountSidebar.jsx` browser adapter (theme tokens, `floppy:sidebar-pins`/`floppy:sidebar-lists`/`floppy:saved-views-open` storage, HTMX-boosted anchors, Sortable reorder, delete/logout forms, onboarding node slot and mobile aside state), `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html`; shared saved-view rows keep `aria-current` on the active view; the Alpine markup inside the host remains the no-React fallback)
 - `frontend/ui/Icon.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
-- `frontend/ui/ModalHost.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted from `base.html`; the card hover buttons and the legacy Add-to-lists buttons open it through `floppy-open-modal`; the Add-to-lists body is shared presentation in `frontend/ui/ListsFormView.jsx` through the `frontend/ui/ListsForm.web.jsx` adapter with `modal-forms.css`; the Track body is still the server form, see POPUP-HOST in the register)
+- `frontend/ui/ModalHost.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted from `base.html`; the card hover buttons and the legacy Add-to-lists buttons open it through `floppy-open-modal`; the Add-to-lists body is shared presentation in `frontend/ui/ListsFormView.jsx` through the `frontend/ui/ListsForm.web.jsx` adapter with `modal-forms.css`; the Track body opens the shared `TrackDialog` for every available tab, with Metadata/Collection/Episode plays still server-owned inside it, see POPUP-HOST in the register)
 - `src/app/card_events.py` (the floppyCardUpdate event sent by `media_save` and the score views so React cards refresh their status chip and rating)
 - `ScrollRow` and the frozen `FilterChips`/`Tabs` web helpers in `frontend/ui/controls.jsx`; Discover's live media-type tabs are mapped under DISCOVER
 - `src/templates/base_public.html`
@@ -218,8 +218,8 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 - `frontend/ui/ListsFormView.jsx` (universal `ListsForm`: tag filter, count, Add/Remove rows, loading/error/empty states and accessible header; presentation only)
 - `frontend/ui/ListsForm.web.jsx` (browser transport adapter: JSON list model, CSRF toggle, `floppy-list-toggled` event and errors for the shared `ListsForm`)
 - `frontend/ui/TrackForm.jsx` (universal `TrackForm`: General tab fields, date-time fields, notes, validation, tab host, repeat actions and save/delete states; presentation only)
-- `frontend/ui/mountTrackForm.jsx` (browser adapter for the shared General form inside the server track modal: reads the serialized model, hides the legacy form only when htmx is available, and submits/delete/rewatch through htmx so OOB fragments, HX-Trigger events, CSRF and permissions stay server-owned)
-- `frontend/ui/TrackFormTabs.jsx` (universal `TrackTabs`: General, Tags, Metadata, Collection, Plays/Episode plays, Status history and Discover tab strip and bodies with loading, error, retry, empty and pending states; supplied labels drive the tabs and add/remove actions; presentation only)
+- `frontend/ui/mountTrackForm.jsx` (browser adapter for the shared Track dialog: reads the serialized model and tab list, renders General through `TrackForm`, Tags through `TagAssignmentDialog`, Status history and Discover through `TrackTabs`, moves the server-owned Metadata/Collection/Episode plays sections into the shared tabs, keeps the legacy shell hidden as the no-JavaScript fallback, and submits/delete/rewatch through htmx so OOB fragments, HX-Trigger events, CSRF and permissions stay server-owned)
+- `frontend/ui/TrackFormTabs.jsx` (universal `TrackTabs`: General, Tags, Metadata, Collection, Plays/Episode plays, Status history and Discover tab strip and bodies with loading, error, retry, empty and pending states, plus a caller-supplied `content` body for server-owned tabs; supplied labels drive the tabs and add/remove actions; presentation only)
 - `frontend/ui/mediaCardForms.js` (shared lists/track form models, membership helpers, initial values and validation)
 - `native-proof/app/surfaces/MediaCardSlot.jsx` (native placement with realistic library items, Track song/episode variants, Discover plan/hide with candidate removal, link action routing, read-only/selectable states, drag and button reorder with full-order transport and accessibility announcements, bulk refresh through the card-change bus and popup host on Home, Discover and Library)
 - `native-proof/app/surfaces/mediaCardEvents.js` (native-only card-change event bus used by the card, Track, Discover and bulk selection; not presentation)
@@ -237,9 +237,9 @@ host; the native shell's `native-proof/app/surfaces/mediaCardTransport.js` owns 
 transport and CSRF boundary for those forms and is not imported by universal presentation. It
 uses the authenticated request facade from `native-proof/app/data/authTransport.js` when a
 session exists, otherwise the legacy base-URL/token configuration or local demo state. The
-web Track popup remains outstanding; the native card now posts scores, Discover plan/hide,
-list reorder and bulk selection changes through the platform transport and publishes them to
-matching cards. Reorder drag drops use the full-order endpoint when the model supplies item ids
+web Track popup now opens the shared Track dialog for every available tab; the native card
+posts scores, Discover plan/hide, list reorder and bulk selection changes through the platform
+transport and publishes them to matching cards. Reorder drag drops use the full-order endpoint when the model supplies item ids
 and otherwise fall back to the first/back/next/last endpoint. Runtime render evidence is recorded
 in the register.
 
@@ -526,12 +526,12 @@ Shared React Native dialog and native placement:
 - `frontend/ui/TrackDialog.jsx` (universal tracking dialog and embedded General form: General, Tags, Metadata, Collection, Episode plays and Status history tabs, date/status/progress coupling, notes, delete, repeat actions, validation and busy/error states)
 - `frontend/ui/TrackForm.jsx` (reused General fields, rating fields, notes, tabs and save/delete/secondary actions)
 - `frontend/ui/TrackFormTabs.jsx` (reused Tags, Metadata, Collection, Episode plays and Status history bodies)
-- `frontend/ui/mountTrackForm.jsx` (browser adapter that mounts the embedded shared General form inside `fill_track.html` and keeps htmx/OOB saves, CSRF, permissions and repeat routes)
+- `frontend/ui/mountTrackForm.jsx` (browser adapter that mounts the shared `TrackDialog` inside `fill_track.html`: General via `TrackForm`, Tags/Status history/Discover via shared bodies, server-owned Metadata/Collection/Episode plays moved into the dialog, htmx/OOB saves, CSRF, permissions and repeat routes preserved, and the legacy shell kept as fallback)
 - `native-proof/app/surfaces/DetailTrackingSlot.jsx` (native Detail actions and episode/issue row Track actions with demo data)
 
 Server-owned web path retained behind the fallback:
 
-- `src/templates/app/components/fill_track.html` (server General form remains the no-JavaScript fallback; its Tags, Metadata, Collection, Episode plays, Status history and Discover tabs stay active because only General is mounted)
+- `src/templates/app/components/fill_track.html` (server General form and the Metadata, Collection and Episode plays tab bodies remain the no-JavaScript fallback; the adapter moves those sections into the shared dialog when htmx is available)
 - `src/static/js/episodeBulkTrackForm.js`
 - `src/static/js/mediaStatusDateHandler.js`
 - `src/templates/app/components/album_track_modal.html`

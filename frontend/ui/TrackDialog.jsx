@@ -155,6 +155,7 @@ export function TrackDialog({
   onSaveAsNew,
   onRewatch,
   embedded = false,
+  showHeader,
   now = () => new Date(),
 }) {
   const palette = { ...DEFAULT_PALETTE, ...(suppliedPalette || {}) };
@@ -248,7 +249,7 @@ export function TrackDialog({
     onArtworkSave={onArtworkSave}
     onDiscoverToggle={onDiscoverToggle}
     secondaryActions={repeatActions}
-    showHeader={!embedded}
+    showHeader={showHeader === undefined ? !embedded : showHeader}
     embedded={embedded} />;
 
   if (embedded) return form;

@@ -36,6 +36,7 @@ from app.models import (
 from app.providers import hardcover, services, tmdb
 from app.services import bulk_episode_tracking, library_migration, metadata_resolution
 from app.services.metadata_fallback import stored_metadata_fallback
+from users.templatetags.user_tags import user_datetime_format
 
 RUNTIME_UNKNOWN_AIRED = 999998  # aired but runtime unknown
 logger = logging.getLogger(__name__)
@@ -277,8 +278,131 @@ def _track_form_labels():
         "minimum": str(gettext("Must be at least %s.")),
         "maximum": str(gettext("Must be at most %s.")),
         "dateOrder": str(gettext("End date must be on or after the start date.")),
+        "general": str(gettext("General")),
         "dateTime": {},
     }
+
+
+def _track_tab_labels(context):
+    """Return labels only for the tabs this modal actually offers."""
+    labels = {}
+    if context.get("tags_tab_available"):
+        labels.update({
+            "tags": str(gettext("Tags")),
+            "noTags": str(gettext("No tags yet. Create one below.")),
+            "newTag": str(gettext("New tag...")),
+            "addTag": str(gettext("Add")),
+            "add": str(gettext("Add")),
+            "remove": str(gettext("Remove")),
+            "tagFailed": str(gettext("Couldn't update this tag.")),
+        })
+    if context.get("metadata_tab_available"):
+        labels.update({
+            "metadata": str(gettext("Metadata")),
+            "artwork": str(gettext("Artwork URL")),
+            "saveArtwork": str(gettext("Save artwork")),
+            "artworkFailed": str(gettext("Couldn't save the artwork.")),
+            "artworkUnavailable": str(
+                gettext("Save this item before changing its artwork."),
+            ),
+        })
+    if context.get("collection_tab_available"):
+        labels.update({
+            "collection": str(gettext("Collection")),
+            "noCollection": str(gettext("No owned copies recorded.")),
+        })
+    if context.get("episode_plays_tab_available"):
+        labels.update({
+            "plays": str(gettext("Plays")),
+            "noPlays": str(gettext("No plays recorded yet.")),
+        })
+    if context.get("status_history_tab_available"):
+        labels.update({
+            "statusHistory": str(gettext("Status history")),
+            "noStatusChanges": str(gettext("No status changes recorded yet.")),
+            "noStatus": str(gettext("No Status")),
+            "sourceNotRecorded": str(gettext("source not recorded")),
+        })
+    if context.get("discover_tab_available"):
+        labels.update({
+            "discover": str(gettext("Discover")),
+            "hidden": str(gettext("Hidden from Discover")),
+            "shown": str(gettext("Shown in Discover")),
+            "hide": str(gettext("Hide from Discover")),
+            "unhide": str(gettext("Show in Discover")),
+            "discoverFailed": str(gettext("Couldn't update Discover.")),
+        })
+    return labels
+
+
+def _track_tabs_presentation(context):
+    """Serialize the available Track tabs for the shared dialog."""
+    tabs = []
+    tags_data = context.get("tag_assignment_data")
+    if context.get("tags_tab_available") and tags_data:
+        tabs.append({
+            "id": "tags",
+            "label": str(gettext("Tags")),
+            "kind": "tags",
+            "tags": tags_data.get("tags", []),
+            "itemId": tags_data.get("item", {}).get("id"),
+            "urls": tags_data.get("urls", {}),
+            "csrfToken": tags_data.get("csrfToken", ""),
+            "previewGenresJson": tags_data.get("previewGenresJson", "[]"),
+            "previewImpliedGenresJson": tags_data.get(
+                "previewImpliedGenresJson",
+                "[]",
+            ),
+        })
+    if context.get("metadata_tab_available"):
+        tabs.append({
+            "id": "metadata",
+            "label": str(gettext("Metadata")),
+            "kind": "server",
+        })
+    if context.get("collection_tab_available"):
+        tabs.append({
+            "id": "collection",
+            "label": str(gettext("Collection")),
+            "kind": "server",
+        })
+    if context.get("episode_plays_tab_available"):
+        label = context.get("episode_plays_tab_label") or gettext("Plays")
+        tabs.append({
+            "id": "episode-plays",
+            "label": str(label),
+            "kind": "server",
+        })
+    if context.get("status_history_tab_available"):
+        tabs.append({
+            "id": "status-history",
+            "label": str(gettext("Status history")),
+            "kind": "status-history",
+            "changes": [
+                {
+                    "id": index,
+                    "old": change.get("old") or "",
+                    "next": change.get("new") or "",
+                    "date": str(
+                        user_datetime_format(change.get("date"), context.get("user")),
+                    ),
+                    "reason": change.get("reason") or "",
+                }
+                for index, change in enumerate(context.get("status_changes") or [])
+            ],
+        })
+    discover_item = context.get("metadata_item")
+    if context.get("discover_tab_available") and discover_item is not None:
+        tabs.append({
+            "id": "discover",
+            "label": str(gettext("Discover")),
+            "kind": "discover",
+            "hidden": bool(context.get("is_hidden_from_discover")),
+            "canToggle": True,
+            "itemId": discover_item.id,
+            "url": reverse("discover_toggle_hidden"),
+        })
+    return tabs
 
 
 def _track_form_presentation(
@@ -1302,7 +1426,7 @@ def _render_standard_track_modal(
         )
     context.update(_build_track_modal_discover_tab_context(request.user, metadata_item))
     context["track_form_props_id"] = f"{track_form_id}-shared-form"
-    context["track_form_presentation"] = _track_form_presentation(
+    presentation = _track_form_presentation(
         request,
         form,
         track_form_id=track_form_id,
@@ -1319,6 +1443,9 @@ def _render_standard_track_modal(
         save_as_new=bool(media_type == MediaTypes.EPISODE.value and media),
         date_suggestion=date_suggestion,
     )
+    presentation["tabs"] = _track_tabs_presentation(context)
+    presentation["model"]["labels"].update(_track_tab_labels(context))
+    context["track_form_presentation"] = presentation
     response = render(
         request,
         "app/components/fill_track.html",
@@ -1396,49 +1523,72 @@ def _render_podcast_show_track_modal(
         episode_plays_form = None
 
     track_form_id = track_form_id or f"track-form-{uuid4().hex}"
+    date_suggestion = _track_modal_date_suggestion("Release Date", "")
+    context = {
+        "user": request.user,
+        "title": show.title,
+        "media_type": MediaTypes.PODCAST.value,
+        "form": form,
+        "media": tracker,
+        "return_url": return_url,
+        "metadata_tab_available": False,
+        "metadata_fields": [],
+        "general_hidden_fields": field_groups["hidden_fields"],
+        "general_fields": field_groups["general_fields"],
+        "general_submit_formaction": (
+            f"{reverse('podcast_show_save')}?next={return_url}"
+            + (f"&home_row_id={home_row_id}" if home_row_id else "")
+        ),
+        "general_delete_formaction": (
+            f"{reverse('podcast_show_delete')}?next={return_url}"
+        ),
+        "general_existing_instance": tracker,
+        "image_field": None,
+        "image_save_item_id": None,
+        "date_suggestion": date_suggestion,
+        "track_form_id": track_form_id,
+        "track_action_update": track_action_update,
+        "initial_active_tab": initial_active_tab,
+        "episode_plays_tab_available": episode_plays_tab_available,
+        "episode_plays_form": episode_plays_form,
+        "episode_plays_formaction": reverse("episode_bulk_save"),
+        "episode_plays_tab_label": "Episode Plays",
+        "episode_plays_submit_label": "Save plays",
+        "episode_plays_domain": _episode_domain_template_payload(
+            episode_plays_domain,
+        ),
+        "episode_plays_mode_notice": (
+            episode_plays_domain.get("mode_notice", "")
+            if episode_plays_domain
+            else ""
+        ),
+        "episode_plays_domain_script_id": f"{track_form_id}-episode-domain",
+    }
+    context["track_form_props_id"] = f"{track_form_id}-shared-form"
+    presentation = _track_form_presentation(
+        request,
+        form,
+        track_form_id=track_form_id,
+        title=show.title,
+        title_subtitle="",
+        media_type=MediaTypes.PODCAST.value,
+        media=tracker,
+        action=context["general_submit_formaction"],
+        delete_action=context["general_delete_formaction"],
+        hidden_fields=field_groups["hidden_fields"],
+        general_fields=field_groups["general_fields"],
+        rewatch_action=None,
+        rewatch_url="",
+        save_as_new=False,
+        date_suggestion=date_suggestion,
+    )
+    presentation["tabs"] = _track_tabs_presentation(context)
+    presentation["model"]["labels"].update(_track_tab_labels(context))
+    context["track_form_presentation"] = presentation
     response = render(
         request,
         "app/components/fill_track.html",
-        {
-            "user": request.user,
-            "title": show.title,
-            "media_type": MediaTypes.PODCAST.value,
-            "form": form,
-            "media": tracker,
-            "return_url": return_url,
-            "metadata_tab_available": False,
-            "metadata_fields": [],
-            "general_hidden_fields": field_groups["hidden_fields"],
-            "general_fields": field_groups["general_fields"],
-            "general_submit_formaction": (
-                f"{reverse('podcast_show_save')}?next={return_url}"
-                + (f"&home_row_id={home_row_id}" if home_row_id else "")
-            ),
-            "general_delete_formaction": (
-                f"{reverse('podcast_show_delete')}?next={return_url}"
-            ),
-            "general_existing_instance": tracker,
-            "image_field": None,
-            "image_save_item_id": None,
-            "date_suggestion": _track_modal_date_suggestion("Release Date", ""),
-            "track_form_id": track_form_id,
-            "track_action_update": track_action_update,
-            "initial_active_tab": initial_active_tab,
-            "episode_plays_tab_available": episode_plays_tab_available,
-            "episode_plays_form": episode_plays_form,
-            "episode_plays_formaction": reverse("episode_bulk_save"),
-            "episode_plays_tab_label": "Episode Plays",
-            "episode_plays_submit_label": "Save plays",
-            "episode_plays_domain": _episode_domain_template_payload(
-                episode_plays_domain,
-            ),
-            "episode_plays_mode_notice": (
-                episode_plays_domain.get("mode_notice", "")
-                if episode_plays_domain
-                else ""
-            ),
-            "episode_plays_domain_script_id": f"{track_form_id}-episode-domain",
-        },
+        context,
     )
     response["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response["Pragma"] = "no-cache"

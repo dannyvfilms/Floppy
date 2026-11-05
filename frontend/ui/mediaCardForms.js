@@ -96,6 +96,7 @@ export function normalizeTrackForm(payload) {
     trackTime: Boolean(source.trackTime),
     labels: source.labels || {},
     repeatIdentity: source.repeatIdentity || null,
+    tabs: (source.tabs || []).map(tab => ({ ...tab })),
   };
 }
 

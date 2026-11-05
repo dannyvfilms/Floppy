@@ -288,9 +288,10 @@ can inform a focused completion pass.
   native through `ListsForm.jsx`/`ListsForm.web.jsx`; the existing `ModalHost`
   keeps its JSON load, CSRF toggle, permissions, errors and
   `floppy-list-toggled` event. The Track body is shared presentation on native,
-  and the web General tab is now shared presentation through
-  `frontend/ui/mountTrackForm.jsx` inside the server Track modal (see
-  POPUP-HOST and TRACKING); the remaining web tabs stay server-rendered. The
+  and the web popup now opens the shared Track dialog through
+  `frontend/ui/mountTrackForm.jsx` for every available tab (see POPUP-HOST and
+  TRACKING); Metadata, Collection and Episode plays still host their
+  server-owned bodies inside that dialog. The
   native Track body loads live state, tags, metadata, collection copies,
   consumption history, status changes and the Discover hidden flag from the
   API, and writes the General form, tag membership, artwork URL, card score and
@@ -316,9 +317,10 @@ can inform a focused completion pass.
 - Remaining consumers and retirement: (1) Bulk select is still read from the page's Alpine scope (`selectMode`, `isItemSelected`, `toggleItemSelected`) by `mountMediaCard.jsx`. It retires when the Library bulk toolbar (`bulkSelection.js`, `mountBulkToolbar.jsx`, owned by another change in flight) publishes selection through a shared store; reopen then. (2) The save and score responses still send server fragments out of band (`media_card_status_chip.html`, `media_card_rating_oob.html`) for pages that render those slots; a React card ignores the swap (`data-react-owned`) and updates from `floppyCardUpdate`. They retire with the detail-page chips. (3) Documented exceptions that are different kinds of card, not this one: person and cast cards, Statistics highlights and the repeat-player strip, Now Playing, list index cards, and the music album and artist grids (they need an Album or Artist, not an Item). They are listed with reasons in `DOCUMENTED_EXCEPTIONS` in the contract test; reopen if a media item is ever drawn there. (4) The Search list row keeps its `meta` slot (server-rendered per-type metadata) inside the React host.
 - Native blockers: the action presentation, Lists form, tabbed Track body,
   song/episode variants, link routing, drag reorder, read-only/selection states
-  and Discover plan/hide are ported. The web General track form is shared
-  presentation through `mountTrackForm.jsx` while the remaining web tabs keep the
-  server path. No browser, simulator, device or screen-reader interaction pass has
+  and Discover plan/hide are ported. The web Track dialog is shared presentation
+  through `mountTrackForm.jsx` for General, Tags, Status history and Discover,
+  while Metadata, Collection and Episode plays keep server-owned bodies inside
+  it. No browser, simulator, device or screen-reader interaction pass has
   been recorded for this finish change; the Expo export and web bundle are compile
   checks only. The shell's demo items are not a live account. Drag drops use the
   demo ordering's item-id map for the full-order endpoint; a live list model must
@@ -359,37 +361,48 @@ can inform a focused completion pass.
   episode, and a date-only listen/play body for a music or podcast episode.
   Every native save, delete, Discover action, reorder and bulk selection publishes
   a media-card change through `mediaCardEvents.js`, so matching native cards
-  refresh without a page reload. On the web, `frontend/ui/mountTrackForm.jsx`
-  renders the shared General form inside the server Track modal and submits
-  through htmx, so the General tab is React-owned while the Tags, Metadata,
-  Collection, Episode plays, Status history and Discover tabs keep the
-  server-rendered `fill_track.html` path and remain the progressive fallback.
+  refresh without a page reload.
+- Status, web dialog: the standard Track popup now opens the shared `TrackDialog`
+  in `frontend/ui/mountTrackForm.jsx` for every available tab, not only General.
+  The server serializes the tab list, Tags model, Status-history changes and
+  Discover state into `track_form_presentation.tabs`; Tags uses the shared
+  `TagAssignmentDialog`, Status history and Discover use `TrackTabs` bodies, and
+  Discover still posts through `htmx.ajax` so its server fragment and
+  `discoverActionComplete` event continue to fire. Metadata, Collection and
+  Episode plays keep their server-owned bodies because their Django/Alpine forms
+  (provider/language/cover/custom metadata, custom collection fields and the
+  bulk episode range) are not yet serialized; the adapter moves those sections
+  into the shared dialog without re-rendering them, and the untouched
+  `fill_track.html` shell stays hidden behind the dialog as the no-JavaScript
+  fallback. General saves, deletes, rewatch and save-as-new still post through
+  htmx against the legacy form id, so OOB fragments, `HX-Trigger` close/toast
+  events, CSRF, permissions and repeat identity stay server-owned.
   This applies to card, detail and episode Track popups because they share the
-  same `track_modal` response.
-  Blocker (evidence): the Track popup is not one form. `fill_track.html` is a
-  seven-tab shell (General, Tags, Metadata, Collection, Episode plays, Status
-  history, Discover) built from Django model forms that differ by media type, with
-  three more variants (`fill_track_song.html` 13 KB, `fill_track_episode.html`,
-  `fill_track_episode_bulk.html`), roughly 83 KB of included Alpine templates
-  (date-time picker 11 KB, metadata panel 34 KB, collection fields, notes editor),
-  a 1,461-line builder (`track_modal_views.py`) and 2,399 lines of tests. Its save
-  views answer with htmx out-of-band fragments (status pill, score chip, progress
-  card, notes) and `HX-Trigger` events, so the web adapter must keep posting
-  through htmx. About 34 templates still own a `trackOpen` popup. The native
-  change event refreshes native cards in the same shell; it cannot refresh a web
-  card in another runtime, and the browser path still needs the htmx adapter.
+  same `track_modal` response; the album/artist and podcast-show editors expose
+  the same presentation.
+  Blocker (evidence): the remaining server-owned bodies are not one form.
+  `fill_track.html` is a seven-tab shell built from Django model forms that
+  differ by media type, with three more variants (`fill_track_song.html`,
+  `fill_track_episode.html`, `fill_track_episode_bulk.html`), roughly 83 KB of
+  included Alpine templates (date-time picker, metadata panel 34 KB, collection
+  fields, notes editor), a 1,700-line builder (`track_modal_views.py`) and 2,500
+  lines of tests. Their save views answer with htmx out-of-band fragments (status
+  pill, score chip, progress card, notes) and `HX-Trigger` events, so the web
+  adapter keeps posting through htmx. About 34 templates still own a `trackOpen`
+  popup. The song/episode/podcast variants and the three server-owned tab bodies
+  remain the retirement blockers.
 - Reopening condition and plan: (1) the native General, Tags, Metadata, Collection,
   Plays, Status history and Discover bodies are ported and use the API adapter;
   (2) the song and episode variants share the same General body and transport;
   (3) Discover plan/hide, card reorder and the shared card-change event are wired;
-  (4) the web now has the Django-form-to-JSON model and `mountTrackForm.jsx`
-  adapter that submits with `htmx.ajax`; the next web step is mounting the
-  remaining tabs (Tags, Metadata, Collection, Episode plays, Status history and
-  Discover) with equivalent server contracts. The web Track adapter remains the
-  blocker for retiring `fill_track.html`; only the General tab is mounted.
-- Remaining consumers and retirement: `fill_lists.html` is still returned for non-JSON requests; it retires with the existing `ListsModalViewTests` HTML assertions once the Track form leaves htmx popups, or sooner if no caller needs it. `list_item_button.html` is the same.
-- Browser verification before this change (Chromium, built-in browser pane, macOS, throwaway database and test login): the legacy `ListsForm` opened from a Movies grid card (desktop, dark) and a movie detail page (phone width, light); added a list (spinner, then "On 1 list" and Remove), filtered by tag, forced a network failure (inline error, list unchanged), Escape closed it. The shared `ListsForm`/`ListsForm.web.jsx` replacement was not exercised in a browser during this change. Not checked: history/episode/table-row entry points, other theme states beyond dark and light, a screen reader. iOS and Android: not verified.
-- Validation targets: `lists.tests.test_views.ListsModalViewTests`, `ListItemToggleTests`, `app.tests.test_media_card_contract`.
+  (4) the web dialog, tab list, Tags, Status history and Discover are now shared.
+  The next web step is serializing the Metadata, Collection and Episode plays
+  form models so their bodies can leave `fill_track.html`; until then the adapter
+  moves the existing sections into the shared dialog and keeps the server
+  fallback.
+- Remaining consumers and retirement: `fill_lists.html` is still returned for non-JSON requests; it retires with the existing `ListsModalViewTests` HTML assertions once the Track form leaves htmx popups, or sooner if no caller needs it. `list_item_button.html` is the same. `fill_track.html` retires when the three server-owned tab bodies and the song/episode variants have shared replacements; the no-JavaScript fallback retires only with the project-wide fallback policy.
+- Browser verification before this change (Chromium, built-in browser pane, macOS, throwaway database and test login): the legacy `ListsForm` opened from a Movies grid card (desktop, dark) and a movie detail page (phone width, light); added a list (spinner, then "On 1 list" and Remove), filtered by tag, forced a network failure (inline error, list unchanged), Escape closed it. The shared `ListsForm`/`ListsForm.web.jsx` replacement and the shared Track dialog tabs were not exercised in a browser during this change. Not checked: history/episode/table-row entry points, other theme states beyond dark and light, a screen reader. iOS and Android: not verified.
+- Validation targets: `lists.tests.test_views.ListsModalViewTests`, `ListItemToggleTests`, `app.tests.test_media_card_contract`, `app.tests.views.test_track_modal`.
 
 ### RATING — Score display and picker
 
@@ -596,15 +609,15 @@ can inform a focused completion pass.
 ### TRACKING — Add/edit/repeat/bulk logging
 
 - Purpose/usage: detail and episode tracking dialogs, repeat logging and manual creation.
-- Implementation: universal `frontend/ui/TrackDialog.jsx` (`TrackDialog`) hosts the shared `TrackForm`, `TrackTabs`, `MediaCardFormControls`, `DateTimePicker` and `RatingStars`; `frontend/ui/TrackForm.jsx` now also renders rating fields, secondary repeat actions and an embedded variant without dialog chrome. Native placement is `native-proof/app/surfaces/DetailTrackingSlot.jsx`, opened from the native Detail tracking action and from episode/issue row Track actions. On the web, `frontend/ui/mountTrackForm.jsx` renders the embedded dialog in the General section of `fill_track.html`; the server form stays in the DOM as the no-JavaScript fallback and the Tags, Metadata, Collection, Episode plays, Status history and Discover tabs, the song/episode/podcast variants, `media_metadata_panel.html`, `src/static/js/mediaStatusDateHandler.js` and `episodeBulkTrackForm.js` remain server-owned.
+- Implementation: universal `frontend/ui/TrackDialog.jsx` (`TrackDialog`) hosts the shared `TrackForm`, `TrackTabs`, `MediaCardFormControls`, `DateTimePicker` and `RatingStars`; `frontend/ui/TrackForm.jsx` also renders rating fields, secondary repeat actions, an embedded variant and an optional embedded header. Native placement is `native-proof/app/surfaces/DetailTrackingSlot.jsx`, opened from the native Detail tracking action and from episode/issue row Track actions. On the web, `frontend/ui/mountTrackForm.jsx` renders the embedded dialog for every available tab; General, Tags, Status history and Discover use shared bodies, the Metadata, Collection and Episode plays sections are moved into the dialog as server-owned tab content, and the legacy `fill_track.html` shell stays hidden as the no-JavaScript fallback. The song/episode/podcast variants, `media_metadata_panel.html`, `src/static/js/mediaStatusDateHandler.js` and `episodeBulkTrackForm.js` remain server-owned.
 - Contract: General, Tags, Metadata, Collection, Episode plays and Status history tabs; status/start/end/progress coupling; notes; delete; repeat identity (save as new entry, rewatch start/end); client validation, busy, loading, retry and server-error presentation. The dialog receives the model, values, tabs, labels, palette and explicit change/save/delete/retry/tag/artwork/repeat intents; it does not parse URLs, own permissions or write through a transport. Django forms, ownership checks, OOB fragments and redirects remain authoritative on the web.
 - Data: `src/app/track_modal_views.py`, `save_views.py`, Django forms, music/podcast handlers and `src/app/services/tracking_hydration.py`.
-- Status: `Partial / coexisting`. The native Detail screen renders the shared tracking dialog with realistic demo data, local tab/asset/tag/repeat state and no transport. On the web, the General tab is React-owned through `mountTrackForm.jsx`; its shared form owns date/status/progress coupling, notes, delete, repeat identity, validation and busy/error presentation, and submits through htmx so OOB refresh, CSRF, permissions and delete/rewatch routes stay server-owned. The remaining web tabs and song/episode/podcast variants stay server-rendered with the progressive fallback.
-- Native placement: `in_progress` in `native-proof/app/surfaces/DetailTrackingSlot.jsx`; the native Detail tracking action opens the show form and episode/issue Track actions open the repeat form. The surface stays in progress until the remaining web tabs are mounted and runtime evidence exists.
-- Reuse/blockers: reuses `MEDIA-CARD` controls, `DATE-TIME`, `RATING` stars and the shared `Button`; no parallel form or card system was added. Native writes remain demo-only, and duration progress coupling applies where the server model exposes a text duration rather than episode/page counts. The remaining web tabs need equivalent server contracts before `fill_track.html` can retire.
+- Status: `Partial / coexisting`. The native Detail screen renders the shared tracking dialog with realistic demo data, local tab/asset/tag/repeat state and no transport. On the web, the whole standard Track popup is the shared dialog through `mountTrackForm.jsx`: its shared form owns date/status/progress coupling, notes, delete, repeat identity, validation and busy/error presentation and submits through htmx so OOB refresh, CSRF, permissions and delete/rewatch routes stay server-owned; Tags, Status history and Discover use shared bodies, while Metadata, Collection and Episode plays keep their server-owned forms inside the dialog. The song/episode/podcast variants stay server-rendered with the progressive fallback.
+- Native placement: `in_progress` in `native-proof/app/surfaces/DetailTrackingSlot.jsx`; the native Detail tracking action opens the show form and episode/issue Track actions open the repeat form. The surface stays in progress until the remaining server-owned web tab bodies and the song/episode/podcast variants are ported and runtime evidence exists.
+- Reuse/blockers: reuses `MEDIA-CARD` controls, `DATE-TIME`, `RATING` stars and the shared `Button`; no parallel form or card system was added. Native writes remain demo-only, and duration progress coupling applies where the server model exposes a text duration rather than episode/page counts. Metadata, Collection and Episode plays need serialized form models before `fill_track.html` can retire.
 - Verification: `app.tests.views.test_track_modal` now covers the serialized General model and repeat identity alongside the server form; `test_media_details` and `test_rewatch` cover the detail page and repeat semantics; `npm run build:ui`, `npm run check:ui`, architecture checks and the Expo export compile the shared files. Browser, iOS, Android, interaction and accessibility were not exercised in this change.
 - Validation targets: `src/app/tests/views/test_track_modal.py`, `test_episode_bulk_save.py`, `test_music_bulk_save.py`, `test_rewatch.py`.
-- Retirement: the server General form is hidden only where `mountTrackForm` mounts and remains the fallback elsewhere. The remaining server tabs and song/episode/podcast modals retire when a browser adapter mounts the shared dialog with equivalent htmx/OOB fields, permissions, repeat identity, tag/artwork/collection operations and save-error behavior.
+- Retirement: the server shell is hidden where `mountTrackForm` mounts and remains the no-JavaScript fallback. Once Metadata, Collection and Episode plays have serialized form models, and the song/episode/podcast modals share the same dialog, those sections and `fill_track.html` can retire.
 
 ### DATE-TIME — Field picker and activity calendar
 
