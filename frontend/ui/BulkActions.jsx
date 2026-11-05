@@ -35,7 +35,22 @@ const defaultLabels = {
   close: 'Close',
   cancelAction: 'Cancel',
   confirm: 'Confirm',
+  hide: 'Hide',
+  hideHint: 'A running job keeps going.',
+  checking: 'Checking',
+  starting: 'Starting',
+  addingPlays: 'Adding plays',
+  play: 'play',
+  show: 'show',
+  episode: 'episode',
+  playsAdded: 'plays added',
+  nothingToAdd: 'Nothing to add with these choices.',
+  discard: 'Discard',
+  more: 'more',
+  couldNotUse: 'could not be used',
 };
+
+const pluralize = (count, word) => `${Number(count || 0).toLocaleString()} ${word}${Number(count) === 1 ? '' : 's'}`;
 
 function mergePalette(palette) {
   return { ...FALLBACK_PALETTE, ...(palette || {}) };
@@ -192,6 +207,106 @@ export function BulkActionDialog({
   </Modal>;
 }
 
+export function BulkJobProgress({ label, done, total = 0, palette, labels }) {
+  const colors = mergePalette(palette);
+  const copy = mergeLabels(labels);
+  const known = total > 0 && Number.isFinite(done);
+  const percent = known ? Math.max(0, Math.min(100, Math.round((done / total) * 100))) : 0;
+  const text = known ? `${label} ${done.toLocaleString()} of ${pluralize(total, copy.show)}` : label;
+  return <View accessibilityRole="progressbar" accessibilityLabel={text}
+    accessibilityValue={known ? { min: 0, max: total, now: done } : undefined}
+    style={styles.progress}>
+    <Text style={[styles.jobText, { color: colors.textSecondary }]}>{text}</Text>
+    <View style={[styles.progressTrack, { backgroundColor: colors.surfaceMuted }]}>
+      <View style={[styles.progressFill, {
+        width: `${known ? percent : 35}%`,
+        backgroundColor: known ? colors.accent : colors.textMuted,
+      }]} />
+    </View>
+  </View>;
+}
+
+export function BulkJobSummary({ totals = {}, samples = [], notes = [], palette, labels }) {
+  const colors = mergePalette(palette);
+  const copy = mergeLabels(labels);
+  return <View style={styles.jobBody}>
+    <Text style={[styles.jobText, { color: colors.textSecondary }]}>
+      <Text style={[styles.jobStrong, { color: colors.text }]}>
+        {pluralize(totals.plays, copy.play)}
+      </Text>
+      {` across ${pluralize(totals.shows, copy.show)}.`}
+    </Text>
+    {samples.length > 0 ? <View style={styles.jobList}>
+      {samples.map(sample => <Text key={sample.title} style={[styles.jobItem, { color: colors.textMuted }]}>
+        {sample.title}: {pluralize(sample.add, copy.play)}
+      </Text>)}
+    </View> : null}
+    {notes.length > 0 ? <View style={styles.jobList}>
+      {notes.map(note => <Text key={note} style={[styles.jobItem, { color: colors.textMuted }]}>{note}</Text>)}
+    </View> : null}
+  </View>;
+}
+
+export function BulkJobProblems({ count = 0, problems = [], palette, labels }) {
+  const colors = mergePalette(palette);
+  const copy = mergeLabels(labels);
+  if (!count) return null;
+  const remaining = count - problems.length;
+  return <View style={styles.jobProblems}>
+    <Text style={[styles.jobProblemTitle, { color: colors.warning }]}>
+      {pluralize(count, copy.show)} {copy.couldNotUse}
+    </Text>
+    {problems.map((problem, index) => <Text key={index} style={[styles.jobItem, { color: colors.textMuted }]}>
+      {problem.title}: {problem.reason}
+    </Text>)}
+    {remaining > 0 ? <Text style={[styles.jobItem, { color: colors.textMuted }]}>
+      And {remaining.toLocaleString()} {copy.more}.
+    </Text> : null}
+  </View>;
+}
+
+export function BulkNote({ children, palette }) {
+  const colors = mergePalette(palette);
+  return <Text style={[styles.jobItem, { color: colors.textMuted }]}>{children}</Text>;
+}
+
+export function BulkFieldRow({ children }) {
+  return <View style={styles.fieldRow}>{children}</View>;
+}
+
+export function BulkActionRow({ children }) {
+  return <View style={styles.dialogActions}>{children}</View>;
+}
+
+export function BulkJobMessage({ children, tone = 'text', palette }) {
+  const colors = mergePalette(palette);
+  return <Text style={[styles.jobText, { color: colors[tone] || colors.text }]}>{children}</Text>;
+}
+
+export function BulkJobCard({
+  title,
+  palette,
+  labels,
+  onHide,
+  hideDisabled = false,
+  children,
+  footer,
+}) {
+  const colors = mergePalette(palette);
+  const copy = mergeLabels(labels);
+  return <View accessibilityRole="group" accessibilityLabel={title}
+    style={[styles.jobCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    <View style={styles.jobHead}>
+      <Text role="heading" style={[styles.jobTitle, { color: colors.text }]}>{title}</Text>
+      {onHide ? <Button label={copy.hide} tone="surface" disabled={hideDisabled}
+        accessibilityLabel={`${copy.hide}. ${copy.hideHint}`}
+        onPress={onHide} palette={buttonPalette(colors)} /> : null}
+    </View>
+    {children}
+    {footer ? <View style={styles.dialogActions}>{footer}</View> : null}
+  </View>;
+}
+
 const styles = StyleSheet.create({
   toolbar: { borderWidth: 1, borderRadius: 10, padding: 12, gap: 10 },
   countRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' },
@@ -214,4 +329,18 @@ const styles = StyleSheet.create({
   optionLabel: { fontSize: 14, fontWeight: '600' },
   optionDetail: { fontSize: 12, lineHeight: 17 },
   dialogActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' },
+  jobCard: { borderWidth: 1, borderRadius: 10, padding: 12, gap: 10 },
+  jobHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  jobTitle: { fontSize: 15, fontWeight: '700', flex: 1 },
+  jobBody: { gap: 4 },
+  jobText: { fontSize: 13, lineHeight: 18 },
+  jobStrong: { fontWeight: '700' },
+  jobList: { gap: 2 },
+  jobItem: { fontSize: 12, lineHeight: 17 },
+  jobProblems: { gap: 2, padding: 8, borderRadius: 8 },
+  jobProblemTitle: { fontSize: 12, fontWeight: '600' },
+  fieldRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  progress: { gap: 5 },
+  progressTrack: { height: 8, borderRadius: 4, overflow: 'hidden' },
+  progressFill: { height: 8, borderRadius: 4 },
 });
