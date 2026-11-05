@@ -560,6 +560,9 @@ modal is shared React presentation on mount, with the server markup as fallback.
 - `src/templates/app/components/podcast_episode_list.html`
 - `src/templates/app/music_album_detail.html`
 - `src/templates/app/podcast_show_detail.html`
+- `native-proof/app/screens/MusicScreen.jsx` (native artist, album, track and podcast composition; demo state)
+- `native-proof/app/components/MusicParts.jsx` (native music/podcast presentational pages, rows and modal shells)
+- `native-proof/app/data/musicDemo.js` (native demo artist, albums, tracks, show and episodes)
 
 ## PEOPLE
 
