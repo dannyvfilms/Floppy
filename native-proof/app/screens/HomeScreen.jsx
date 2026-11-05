@@ -1,22 +1,17 @@
-<<<<<<< HEAD
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { HomeShelves } from '../../../frontend/ui/HomeShelves';
-import { Screen } from '../components/Screen';
 import {
   createHomeTransport,
   homeScreenFromPayload,
   mergeHomeRowPage,
 } from '../data/homeTransport';
 import { palette, radius, spacing } from '../theme';
-=======
-import React from 'react';
 import { Screen, Section } from '../components/Screen';
 import { Note } from '../components/Note';
 import MediaCardSlot from '../surfaces/MediaCardSlot';
 import PlaybackSlot from '../surfaces/PlaybackSlot';
 import RailsSlot from '../surfaces/RailsSlot';
->>>>>>> native-port/playback
 import SearchSlot from '../surfaces/SearchSlot';
 
 export const surface = {
@@ -162,7 +157,9 @@ export default function HomeScreen({ navigate }) {
       onOpenSearch={params => navigate('Search', params)}
       onOpenSuggestion={item => navigate('Detail', { item })}
     />
-<<<<<<< HEAD
+    <Section title="Now Playing" copy="Live playback and running check-ins in their Home row.">
+      <PlaybackSlot onOpenDetail={() => navigate('Detail')} />
+    </Section>
     {transportError ? <View style={styles.notice}>
       <Text accessibilityLiveRegion="polite" style={styles.noticeText}>{transportError}</Text>
     </View> : null}
@@ -189,20 +186,6 @@ export default function HomeScreen({ navigate }) {
       }}
       onSortRow={row => transport.sortRow({ rowId: row.rowId })}
       onRefreshCovers={(ids, pending) => transport.refreshCovers({ ids, pending })} />
-=======
-    <Section title="Now Playing" copy="Live playback and running check-ins in their Home row.">
-      <PlaybackSlot onOpenDetail={() => navigate('Detail')} />
-    </Section>
-    <Section title="Continue watching" copy="Cards and quick progress in their real Home rail.">
-      <MediaCardSlot onOpenDetail={() => navigate('Detail')} />
-    </Section>
-    <Section title="Next up" copy="Horizontal shelves land here as rails and cards are ported.">
-      <RailsSlot />
-    </Section>
-    <Section title="Recent activity">
-      <Note surface={activity} />
-    </Section>
->>>>>>> native-port/playback
   </Screen>;
 }
 

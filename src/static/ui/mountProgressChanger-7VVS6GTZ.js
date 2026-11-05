@@ -1,1 +1,0 @@
-import{a as n}from"./chunk-5DBQJYVB.js";import"./chunk-G5VBSVI5.js";import"./chunk-2R3NOBVT.js";import{a as f,c as t,d as m}from"./chunk-RU43FRVD.js";import{b as o}from"./chunk-SQE76S5B.js";var g=o(f());var p=o(m());function a(r,e){return t(r,(0,p.jsx)(n,{host:r,props:e}))}export{a as mountProgressChanger};

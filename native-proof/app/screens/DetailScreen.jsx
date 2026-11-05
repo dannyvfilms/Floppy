@@ -29,13 +29,11 @@ export default function DetailScreen({ params, onBack }) {
       <DetailTrackingSlot target={trackTarget} onOpen={setTrackTarget}
         onClose={() => setTrackTarget(null)} />
     </Section>
-<<<<<<< HEAD
     <Section title="Your notes">
       <NotesSlot />
-=======
+    </Section>
     <Section title="Artwork and editions">
       <ArtworkSlot />
->>>>>>> native-port/artwork
     </Section>
     <Section title="Seasons, episodes and issues">
       <DetailChildrenSlot onTrack={setTrackTarget} />
