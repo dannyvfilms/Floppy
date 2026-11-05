@@ -45,6 +45,17 @@ function readFilters(host, props) {
   for (const range of props.options?.ranges || []) {
     ranges[range.key] = rangeState(data, rangeFields[range.key]);
   }
+  const fields = {};
+  const modes = {};
+  for (const section of props.options?.sections || []) {
+    const value = data[section.state];
+    fields[section.key] = section.type === 'multi'
+      ? (Array.isArray(value) ? value.map(String) : [])
+      : (value === undefined || value === null ? '' : String(value));
+    if (section.modeState) {
+      modes[section.key] = data[section.modeState] || section.modeValue || '';
+    }
+  }
   return {
     mediaTypes: [...(data.selectedTypes || [])],
     statuses: [...(data.statuses || [])],
@@ -52,6 +63,8 @@ function readFilters(host, props) {
     direction: data.direction || 'asc',
     view: data.layout || 'grid',
     ranges,
+    fields,
+    modes,
   };
 }
 
@@ -66,9 +79,44 @@ function writeIntent(data, intent, props) {
       data.statuses = intent.value;
     } else if (intent.key === 'view') {
       data.layout = intent.value;
+    } else if (intent.key === 'sort') {
+      if (typeof data.setSort === 'function') {
+        data.setSort(intent.value);
+      } else if (typeof data.toggleSort === 'function') {
+        data.toggleSort(intent.value);
+      } else {
+        data.sort = intent.value;
+      }
     } else {
       data[intent.key] = intent.value;
     }
+    return;
+  }
+  if (intent.type === 'field' || intent.type === 'toggleField' || intent.type === 'clearField' || intent.type === 'fieldMode') {
+    const section = props.options?.sections?.find((item) => item.key === intent.key);
+    if (!section) {
+      return;
+    }
+    if (intent.type === 'fieldMode') {
+      if (section.modeState) {
+        data[section.modeState] = intent.value;
+      }
+      return;
+    }
+    if (intent.type === 'clearField') {
+      data[section.state] = section.type === 'multi'
+        ? []
+        : (section.clearValue === undefined ? '' : section.clearValue);
+      return;
+    }
+    if (intent.type === 'toggleField') {
+      const current = Array.isArray(data[section.state]) ? data[section.state] : [];
+      data[section.state] = current.some((value) => String(value) === String(intent.value))
+        ? current.filter((value) => String(value) !== String(intent.value))
+        : [...current, intent.value];
+      return;
+    }
+    data[section.state] = intent.value;
     return;
   }
   if (intent.type === 'range') {
@@ -89,12 +137,15 @@ function writeIntent(data, intent, props) {
   if (intent.type === 'clear') {
     data.clearFilters?.();
     data.statuses = [];
+    if (typeof data.broadMediaTypes === 'function') {
+      data.selectedTypes = [...data.broadMediaTypes()];
+    }
     return;
   }
   if (intent.type === 'savedView') {
-    const url = props.savedViewUrls?.[intent.value];
-    if (url) {
-      window.location.assign(url);
+    const view = props.options?.savedViews?.find((item) => item.id === intent.value);
+    if (view?.url) {
+      window.location.assign(view.url);
     }
   }
 }
@@ -103,12 +154,28 @@ function Adapter({ host, props }) {
   const [filters, setFilters] = useState(() => readFilters(host, props));
 
   useEffect(() => {
-    const Alpine = window.Alpine;
-    if (!Alpine) {
-      return undefined;
+    let runner = null;
+    const bind = () => {
+      if (!window.Alpine || runner) {
+        return;
+      }
+      runner = window.Alpine.effect(() => setFilters(readFilters(host, props)));
+    };
+    if (!window.Alpine) {
+      document.addEventListener('alpine:initialized', bind);
+      return () => {
+        document.removeEventListener('alpine:initialized', bind);
+        if (runner) {
+          window.Alpine?.release(runner);
+        }
+      };
     }
-    const runner = Alpine.effect(() => setFilters(readFilters(host, props)));
-    return () => Alpine.release(runner);
+    bind();
+    return () => {
+      if (runner) {
+        window.Alpine?.release(runner);
+      }
+    };
   }, [host, props]);
 
   function commit(intent) {

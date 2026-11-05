@@ -7,8 +7,8 @@ export const surface = {
   id: 'FILTERS',
   title: 'Filter toolbar and saved views',
   where: 'Library, lists, History and Calendar',
-  status: 'in_progress',
-  note: 'The shared filter bar renders media type, status, sort, view and range controls with local selection, busy feedback, clear defaults and accessible labels.',
+  status: 'ported',
+  note: 'The shared filter bar renders media type, status, attribute, sort, view, range and saved-view controls with local selection, busy feedback, clear defaults and accessible labels.',
 };
 
 const filterPalette = {
@@ -76,6 +76,55 @@ const options = {
       ],
     },
   ],
+  sections: [
+    {
+      key: 'genre',
+      label: 'Genre',
+      state: 'genre',
+      type: 'single',
+      clearValue: '',
+      searchable: true,
+      options: [
+        { value: 'Drama', label: 'Drama' },
+        { value: 'Comedy', label: 'Comedy' },
+        { value: 'Science Fiction', label: 'Science Fiction' },
+        { value: 'Documentary', label: 'Documentary' },
+      ],
+    },
+    {
+      key: 'year',
+      label: 'Year',
+      state: 'year',
+      type: 'single',
+      clearValue: '',
+      searchable: true,
+      options: [
+        { value: '2026', label: '2026' },
+        { value: '2025', label: '2025' },
+        { value: '2024', label: '2024' },
+      ],
+    },
+    {
+      key: 'tags',
+      label: 'Tags',
+      state: 'selectedTags',
+      type: 'multi',
+      clearValue: '',
+      searchable: true,
+      modes: [
+        { value: 'or', label: 'Any' },
+        { value: 'and', label: 'All' },
+        { value: 'not', label: 'Not' },
+      ],
+      modeState: 'tagMode',
+      modeValue: 'or',
+      options: [
+        { value: 'favorite', label: 'Favorite' },
+        { value: 'rewatch', label: 'Rewatch' },
+        { value: 'cozy', label: 'Cozy' },
+      ],
+    },
+  ],
 };
 
 function defaultFilters() {
@@ -89,6 +138,8 @@ function defaultFilters() {
       rating: { from: '', to: '', within: '', unit: 'days' },
       dateAdded: { from: '', to: '', within: '7', unit: 'days' },
     },
+    fields: { genre: '', year: '', tags: [] },
+    modes: { tags: 'or' },
   };
 }
 
@@ -131,6 +182,44 @@ export default function FiltersSlot() {
       setFilters((current) => ({
         ...current,
         ranges: { ...current.ranges, [intent.key]: intent.value },
+      }));
+      markBusy();
+      return;
+    }
+    if (intent.type === 'field' || intent.type === 'clearField') {
+      setFilters((current) => {
+        const section = options.sections.find((item) => item.key === intent.key);
+        if (!section) {
+          return current;
+        }
+        const value = intent.type === 'clearField'
+          ? (section.clearValue === undefined ? '' : section.clearValue)
+          : intent.value;
+        return { ...current, fields: { ...current.fields, [intent.key]: value } };
+      });
+      markBusy();
+      return;
+    }
+    if (intent.type === 'toggleField') {
+      setFilters((current) => {
+        const values = current.fields[intent.key] || [];
+        return {
+          ...current,
+          fields: {
+            ...current.fields,
+            [intent.key]: values.includes(intent.value)
+              ? values.filter((value) => value !== intent.value)
+              : [...values, intent.value],
+          },
+        };
+      });
+      markBusy();
+      return;
+    }
+    if (intent.type === 'fieldMode') {
+      setFilters((current) => ({
+        ...current,
+        modes: { ...current.modes, [intent.key]: intent.value },
       }));
       markBusy();
       return;

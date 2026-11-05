@@ -285,16 +285,21 @@ in the register.
 ## FILTERS
 
 - `frontend/ui/FilterBar.jsx`
-- `frontend/ui/mountFilterBar.jsx`
+- `frontend/ui/mountFilterBar.jsx` (web adapter; mounted on library and custom-list toolbars)
 - `native-proof/app/surfaces/FiltersSlot.jsx` (native placement on the Library screen)
+- `src/app/filter_bar.py` (server-owned normalized props and option descriptors)
+- `src/users/templatetags/ui_tags.py` (`filter_bar` slot tag)
 - `src/static/js/libraryFilterState.js`
 - `src/static/js/savedViews.js`
+- `src/templates/app/components/filter_bar.html`
 - `src/templates/app/components/filter_form.html`
-- `src/templates/app/components/filter_menu.html`
+- `src/templates/app/components/filter_menu.html` (legacy fallback and smart-rule builder)
 - `src/templates/app/components/filter_range_panel.html`
-- `src/templates/app/components/filter_toolbar.html`
+- `src/templates/app/components/filter_toolbar.html` (server fallback and person filmography)
 - `src/templates/app/components/filter_toolbar_scripts.html`
 - `src/templates/app/components/sidebar_saved_views.html`
+- `src/templates/lists/list_detail.html`
+- `src/templates/app/media_list.html`
 
 ## TABLES
 
