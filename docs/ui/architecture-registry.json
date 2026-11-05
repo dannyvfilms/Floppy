@@ -1290,6 +1290,70 @@
           "evidence": "Expo export only; the native tier board, move and edit dialogs were not exercised on an emulator."
         }
       }
+    },
+    "frontend/ui/CollectionBrowser.jsx": {
+      "components": [
+        "CollectionBrowser"
+      ],
+      "register": "OWNERSHIP",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The shared browser is compiled by the UI build and Expo web export; it is not mounted in the Django collection page, which keeps the server-rendered collection and filter fallback."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Collection screen; grid, rows, table, filter sheets and copy opening were not exercised on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Collection screen; grid, rows, table, filter sheets and copy opening were not exercised on an emulator or device."
+        }
+      }
+    },
+    "frontend/ui/CollectionCopies.jsx": {
+      "components": [
+        "CollectionCopySummary",
+        "CollectionCopyEditor",
+        "CollectionSeasonCascade",
+        "CollectionCopyDialog"
+      ],
+      "register": "OWNERSHIP",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The shared copy summary, medium-field editor and duplicate dialog are compiled by the UI build and Expo web export; the Django collection modal and its HTMX forms remain the browser owner."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Collection screen; copy add/edit/remove, medium fields and the season cascade were not exercised on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Collection screen; copy add/edit/remove, medium fields and the season cascade were not exercised on an emulator or device."
+        }
+      }
+    },
+    "frontend/ui/CollectionCustomFields.jsx": {
+      "components": [
+        "CollectionFieldValueInputs",
+        "CollectionFieldManager"
+      ],
+      "register": "CUSTOM-FIELDS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The shared value and definition editors are compiled by the UI build and Expo web export; collectionCustomFields.js, its JSON save and SortableJS remain the browser owner."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Collection screen; typed values, group/field add-remove, reorder and owner-only gating were not exercised on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native Collection screen; typed values, group/field add-remove, reorder and owner-only gating were not exercised on an emulator or device."
+        }
+      }
     }
   },
   "legacy": {

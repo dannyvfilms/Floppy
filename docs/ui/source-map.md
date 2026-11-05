@@ -516,6 +516,9 @@ modal is shared React presentation on mount, with the server markup as fallback.
 
 ## OWNERSHIP
 
+- `frontend/ui/CollectionBrowser.jsx`
+- `frontend/ui/CollectionCopies.jsx`
+- `native-proof/app/screens/CollectionScreen.jsx` (native placement)
 - `src/templates/app/collection_list.html`
 - `src/templates/app/components/collection_entry_summary.html`
 - `src/templates/app/components/collection_form_fields.html`
@@ -528,6 +531,7 @@ modal is shared React presentation on mount, with the server markup as fallback.
 
 ## CUSTOM-FIELDS
 
+- `frontend/ui/CollectionCustomFields.jsx`
 - `src/static/js/collectionCustomFields.js`
 - `src/templates/app/components/collection_custom_field_inputs.html`
 - `src/templates/app/components/collection_custom_fields.html`
