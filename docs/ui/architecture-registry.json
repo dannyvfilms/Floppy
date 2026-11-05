@@ -1897,6 +1897,26 @@
           "evidence": "Shared top bar and mobile navigation render in the Expo shell; no Android runtime was exercised."
         }
       }
+    },
+    "frontend/ui/Sidebar.jsx": {
+      "components": [
+        "Sidebar"
+      ],
+      "register": "SHELL",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Compiled into the web bundle through mountSidebar; the shared sidebar was not exercised in a browser in this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native shell drawer; no iOS simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native shell drawer; no Android emulator run was performed."
+        }
+      }
     }
   },
   "legacy": {
@@ -2137,31 +2157,6 @@
         "225719cf3a9a2de2c16f5035eb6e7e095f39bce4d1d3799bd7367e51b5ed3c1f",
         "79ceeaad821593d6650ae50a51b3333adb8bd5c0d895d17049bc37da2e5134d2",
         "cdf6ea1f01c3a7cd3237d8d735125c85456cf3eb0129cd7e8256eb3e708ad956"
-      ]
-    },
-    "frontend/ui/Sidebar.jsx": {
-      "sha256": "fddfcea7ff73590bcd8bdb11dc1fc650753b83ae1b906862f5e329fc42a3ea69",
-      "statements": [
-        "672adddf32b13c956f1bb3dff412396c71a70acbbc8d3d2f58d5803e7af673da",
-        "8d277ce5917fdab1c2a67c8bf79d7c2eced62d7585458c970fd0d4a8fbaa6262",
-        "d4f206a2d3d21b9195a8595e9e397e849ed72ca297216ed66c5dd1fe96c42fc9",
-        "c725d5bf0b10224f07ef586a21df6765de7eeaba82c7e3801052f8117f0fadc6",
-        "3d46a573bfe95ecbaebbcbd6d17b1e7004249e56d7649aa4dede4c229d187c7a",
-        "c5bf3e4a870d9754702c414eb939feecfbd8b9d62a2ea691e6d00d15c8953c93",
-        "b51a22272fb733fdb16cead7af95ae3ebb04adcb64d83bcbacf67992f2e98977",
-        "072dae6e6815a76514bc3268a4a4b9b98f7b82023c396487dc9748e9e3de3cca",
-        "40bcc14ec3fc66a8e590abd04f99b8a4bf0d2eb8c2ec48a3aba301fdfb347b2b",
-        "4d016207af2a759a074424726f4b6d778cca6ff878f805540406ee24ced3bae9",
-        "389d22d5c4cddffa71eb6cab4d784cfb8222fb1c0b028e8f1d42ab9406a5ffcf",
-        "8eedd9e304b150d931567e6fe223b997d98702f038f18092cbe98bf437cb7389",
-        "e6578e078c00c107dd1cc06b8eb5d2fcd07a1510780a792838c32a46616a620d",
-        "8cd7a2773038468b4568b04311eb1a06ab451ae6c54cdf12ac6afab41c5684fc",
-        "0da55d58eac30085fc07c2e563458a530e51a221595a31a57cb119438273ef95",
-        "61eb1f304891ad8492bee1fcf9d0d1e051aa83eb47c9304dec2d1444711b062a",
-        "df3b9c5d56ec6772917be8f93943f726e407319797b1bf49a150314528b08620",
-        "909e0047f0f814864179a0256d36b10702f4a16ddd8523db52bfa5f96cb104c2",
-        "503f58a7c4cc86c9010b5ffd14017d4a6e99d489c871e214ec846c6f636fa19c",
-        "2c75d2250a58a9a4e108c651f92694b218030fc4fd7e78b8f5ae2256cba70e2c"
       ]
     },
     "frontend/ui/controls.jsx": {
@@ -2735,7 +2730,7 @@
     },
     "frontend/ui/mountSidebar.jsx": {
       "register": "SHELL",
-      "purpose": "Django/browser integration for the registered surface."
+      "purpose": "Django/browser integration for the shared sidebar: resolve theme tokens, read and write the existing pin, pinned-list and saved-view-localStorage keys, supply HTMX-boosted anchors and Sortable drag, submit saved-view and logout forms, lift the server onboarding slot, and control the aside's mobile open state while the Alpine server fallback remains."
     },
     "frontend/ui/mountGlobalSearch.jsx": {
       "register": "SEARCH",

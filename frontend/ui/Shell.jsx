@@ -179,22 +179,26 @@ export function MobileNav({
             <Text aria-hidden style={[styles.closeGlyph, { color: palette.textMuted }]}>×</Text>
           </Pressable>
         </View>
-        <ScrollView>
-          {links.map(link => <NavLink key={link.key || link.label} link={link}
-            palette={palette}
-            onPress={() => { onNavigate?.(link); onClose?.(); }} />)}
+        <View style={styles.drawerBody}>
+          {links.length ? <ScrollView>
+            {links.map(link => <NavLink key={link.key || link.label} link={link}
+              palette={palette}
+              onPress={() => { onNavigate?.(link); onClose?.(); }} />)}
+          </ScrollView> : null}
           {children}
-        </ScrollView>
+        </View>
       </View> : null}
     </View>
   </Modal>;
 }
 
-export function Shell({ open = false, onToggleMenu, onCloseMenu, links, onNavigate, ...topBarProps }) {
+export function Shell({ open = false, onToggleMenu, onCloseMenu, links, onNavigate, children, ...topBarProps }) {
   return <View style={styles.shell}>
     <TopBar {...topBarProps} menuOpen={open} onToggleMenu={onToggleMenu} />
     <MobileNav open={open} onClose={onCloseMenu} links={links}
-      onNavigate={onNavigate} labels={topBarProps.labels} palette={topBarProps.palette} />
+      onNavigate={onNavigate} labels={topBarProps.labels} palette={topBarProps.palette}>
+      {children}
+    </MobileNav>
   </View>;
 }
 
@@ -231,6 +235,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 24,
   },
+  drawerBody: { flex: 1, minHeight: 0 },
   drawerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 },
   drawerTitle: { fontSize: 15, fontWeight: '600' },
   closeButton: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
