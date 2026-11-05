@@ -255,6 +255,7 @@ function SavedViewRow({ view, reordering, palette, labels, rowActions, icons, re
     </View> : null}
     <Pressable {...(reordering ? {} : view.platformProps || {})} accessibilityRole="link"
       accessibilityLabel={view.name} accessibilityState={{ selected: view.current }}
+      {...(view.platformProps?.href ? { 'aria-current': view.current ? 'page' : undefined } : {})}
       disabled={reordering}
       onPress={view.platformProps?.href ? undefined : () => onNavigate?.(view)}
       style={({ focused }) => [styles.savedViewLink, focused && palette.focusStyle]}>
