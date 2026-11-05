@@ -229,7 +229,9 @@ browser adapter and popup host; `MediaCardView` and `MediaCardActions` are the n
 and do not yet replace that DOM card. `ListsFormView` is used on web through `ListsForm.web.jsx`
 and on native through the media-card slot. `TrackForm` and `TrackTabs` render in the native action
 host; the native shell's `native-proof/app/surfaces/mediaCardTransport.js` owns the `/api/v1`
-transport and CSRF boundary for those forms and is not imported by universal presentation. The
+transport and CSRF boundary for those forms and is not imported by universal presentation. It
+uses the authenticated request facade from `native-proof/app/data/authTransport.js` when a
+session exists, otherwise the legacy base-URL/token configuration or local demo state. The
 web Track popup and a native drag gesture remain outstanding; the native card now
 posts scores, Discover plan/hide, list reorder and bulk selection changes through the platform
 transport and publishes them to matching cards. Runtime render evidence is recorded in the register.
@@ -696,6 +698,7 @@ remain the web owner until a browser adapter mounts the shared sections.
 - `frontend/ui/mountCalendarLinks.jsx`
 - `native-proof/app/data/calendarPreferences.js` (native filter/week-start persistence with the document file system)
 - `native-proof/app/data/calendarPreferences.web.js` (browser filter/week-start persistence with localStorage)
+- `native-proof/app/data/calendarTransport.js` (native calendar refresh/read transport through the authenticated request, or a local fallback)
 - `native-proof/app/surfaces/CalendarSlot.jsx`
 - `native-proof/app/screens/CalendarScreen.jsx`
 - `src/templates/events/calendar.html`
@@ -709,7 +712,7 @@ remain the web owner until a browser adapter mounts the shared sections.
 - `frontend/ui/ListResults.jsx`
 - `frontend/ui/ListMembership.jsx`
 - `native-proof/app/data/listTransportCore.js` (shared list action contract and existing endpoint mapping)
-- `native-proof/app/data/listTransport.js` (native list transport; requires an injected request, otherwise local preview)
+- `native-proof/app/data/listTransport.js` (native list transport; uses the authenticated request or an injected request, otherwise local preview)
 - `native-proof/app/data/listTransport.web.js` (browser list transport; same-origin session, CSRF header and local fallback)
 - `frontend/ui/ListFormView.jsx` (universal create/edit list form: name, description, visibility, public slug, notes/recommendation/smart toggles, tags, roles and delete guard; presentation only)
 - `frontend/ui/ListSearchView.jsx` (universal list add/recommend item search and preview dialog)
@@ -932,7 +935,14 @@ Shared `AuthEntrance`, `SocialProviders` and `AuthNotice` own entrance, social-p
 
 - `frontend/auth/AuthEntrance.jsx`
 - `frontend/auth/AccountSecurity.jsx`
-- `native-proof/app/screens/AuthScreen.jsx` (native placement; status `in_progress`)
+- `native-proof/app/screens/AuthScreen.jsx` (native placement; status `in_progress`; presentation still uses demo values)
+- `native-proof/app/data/authTransportCore.js` (platform-neutral server URL, token/session, CSRF, connection-test and error-state core; Node-tested)
+- `native-proof/app/data/authTransport.js` (native session transport; Expo SecureStore and active request facade)
+- `native-proof/app/data/authTransport.web.js` (browser no-secret fallback; same-origin web auth is unchanged)
+- `native-proof/app/data/authStorage.js` (Expo SecureStore adapter for the saved session)
+- `native-proof/app/data/authSession.js` (in-memory active-session registry consumed by data transports)
+- `native-proof/app/data/authTransportCore.test.mjs` (Node tests for URL, credential, CSRF, revocation, redaction and restore boundaries)
+- `native-proof/app/data/transportRoutes.test.mjs` (Node tests for media-card, list and calendar session wiring)
 - `src/templates/account/login.html`
 - `src/templates/account/messages/logged_in.txt`
 - `src/templates/account/messages/logged_out.txt`
