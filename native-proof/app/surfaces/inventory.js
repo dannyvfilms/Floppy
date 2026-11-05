@@ -1,4 +1,5 @@
 import { surface as bulk } from './BulkSlot';
+import { surface as artwork } from './ArtworkSlot';
 import { surface as button } from './ButtonSlot';
 import { surface as calendar } from './CalendarSlot';
 import { surface as dateTime } from './DateTimeSlot';
@@ -17,4 +18,4 @@ import { surface as providerSettings } from './ProviderSettingsSlot';
 import { surface as users } from './UsersSlot';
 import { surface as dataAccessNotifications } from './DataAccessNotificationsSlot';
 
-export const surfaces = [search, mediaCard, rails, filters, rating, progress, dateTime, calendar, bulk, button, settingsCard, providerSettings, preferences, appearanceSettings, cardsSettings, homeSettings, dataAccessNotifications, users];
+export const surfaces = [artwork, search, mediaCard, rails, filters, rating, progress, dateTime, calendar, bulk, button, settingsCard, providerSettings, preferences, appearanceSettings, cardsSettings, homeSettings, dataAccessNotifications, users];
