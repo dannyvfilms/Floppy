@@ -29,6 +29,7 @@ from app.models import Item, MediaTypes, Sources, Video
 from app.providers import (
     bgg,
     comicvine,
+    credentials,
     gcd,
     googlebooks,
     gpodder,
@@ -1403,39 +1404,33 @@ def _normalize_source_value(source):
     return str(source) if source is not None else None
 
 
-def _resolve_search_source(media_type, source=None):
-    """Return the effective search provider for a media type."""
-    resolved = _normalize_source_value(source)
-    if resolved:
-        if (
-            resolved == Sources.TVDB.value
-            and not tvdb.enabled()
-        ) or (
-            resolved == Sources.GOOGLEBOOKS.value
-            and not googlebooks.enabled()
-        ):
-            resolved = None
-        else:
-            return resolved
+def _source_can_search(provider, user=None):
+    """Return whether a provider has the credentials a search needs."""
+    if credentials.get_spec(provider) is None:
+        return True
+    return credentials.is_configured(provider, user)
 
-    default_source = config.get_default_source_name(media_type)
-    default_value = _normalize_source_value(default_source)
-    if default_value not in {Sources.TVDB.value, Sources.GOOGLEBOOKS.value} or (
-        default_value == Sources.TVDB.value
-        and tvdb.enabled()
-    ) or (
-        default_value == Sources.GOOGLEBOOKS.value
-        and googlebooks.enabled()
-    ):
+
+def _resolve_search_source(media_type, source=None, user=None):
+    """Return the effective search provider for a media type.
+
+    A provider without usable credentials is skipped whether it was requested
+    or is the media type's default, so a search falls back to one that can
+    answer instead of failing (#1856).
+    """
+    resolved = _normalize_source_value(source)
+    if resolved and _source_can_search(resolved, user):
+        return resolved
+
+    default_value = _normalize_source_value(
+        config.get_default_source_name(media_type)
+    )
+    if _source_can_search(default_value, user):
         return default_value
 
     for candidate in config.get_sources(media_type) or []:
         candidate_value = _normalize_source_value(candidate)
-        if candidate_value == Sources.TVDB.value and not tvdb.enabled():
-            continue
-        if candidate_value == Sources.GOOGLEBOOKS.value and not googlebooks.enabled():
-            continue
-        if candidate_value:
+        if candidate_value and _source_can_search(candidate_value, user):
             return candidate_value
 
     return default_value
@@ -1717,7 +1712,7 @@ def search_by_id(media_type, query, source=None, user=None):
     from app import helpers
 
     query = query.strip()
-    source = _resolve_search_source(media_type, source)
+    source = _resolve_search_source(media_type, source, user)
     metadata = None
 
     try:
@@ -1814,7 +1809,7 @@ def search(
             user=user,
         )
 
-    source = _resolve_search_source(media_type, source)
+    source = _resolve_search_source(media_type, source, user)
 
     if media_type in _SERIES_BARCODE_TYPES:
         isbn = _normalize_isbn_candidate(query)

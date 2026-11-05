@@ -2800,8 +2800,9 @@ paths:
         name: source
         schema:
           type: string
-        description: Provider to search (e.g. `tmdb`, `igdb`). Defaults to the media
-          type's default provider when omitted.
+        description: Provider to search (e.g. `tmdb`, `igdb`). Defaults to the viewer's
+          preferred provider for the media type (Settings > Metadata), falling back
+          to the media type's default provider when that one is not configured.
       tags:
       - api
       security:

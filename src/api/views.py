@@ -4784,7 +4784,9 @@ class SearchProviderView(drf_views.APIView):
                 location=OpenApiParameter.QUERY,
                 required=False,
                 description="Provider to search (e.g. `tmdb`, `igdb`). Defaults to "
-                "the media type's default provider when omitted.",
+                "the viewer's preferred provider for the media type (Settings > "
+                "Metadata), falling back to the media type's default provider "
+                "when that one is not configured.",
             ),
             OpenApiParameter(
                 name="limit",
@@ -4843,7 +4845,6 @@ class SearchProviderView(drf_views.APIView):
     def get(self, request, media_type):
         """Search for media using the specified provider."""
         search = request.GET.get("search", "")
-        source = request.GET.get("source", None)
         limit, offset, err = parse_limit_offset(request)
         if err:
             return err
@@ -4862,6 +4863,17 @@ class SearchProviderView(drf_views.APIView):
                     "detail": f"Search for {media_type} is not supported.",
                 },
                 status=HTTP.BAD_REQUEST,
+            )
+
+        # API clients don't know which providers the instance can serve, so an
+        # omitted source follows the viewer's preferred provider for this media
+        # type (Settings > Metadata) and falls back to a configured one, as the
+        # web search does (#1856).
+        source = request.GET.get("source")
+        if not source:
+            source = metadata_resolution.metadata_default_source(
+                request.user,
+                media_type,
             )
 
         results_accum = []
