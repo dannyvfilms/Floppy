@@ -1,1 +1,0 @@
-import{a as u}from"./chunk-3USTXJAY.js";import{a as B,c as m,d as r}from"./chunk-7SN4BCPP.js";import{b as t}from"./chunk-SQE76S5B.js";var h=t(B());var e=t(r());function R(o,{label:f,type:i,attrs:n,...p}){let c=m(o,(0,e.jsx)(u,{flat:!0,type:i,...n,...p,children:f}));return Object.keys(n).some(s=>s.startsWith("hx-"))&&window.htmx?.process(o),c}export{R as mountButton};
