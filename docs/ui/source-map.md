@@ -208,7 +208,7 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 ## MEDIA-CARD
 
 - `frontend/ui/MediaCardView.jsx` (universal native card shell: layouts, artwork fallback, chips, progress, title/lines, rating affordance and read-only/selectable states; presentation only)
-- `frontend/ui/MediaCardActions.jsx` (universal action overlay, row buttons and list-reorder controls; explicit action/reorder/reveal callbacks, no transport)
+- `frontend/ui/MediaCardActions.jsx` (universal action overlay, row buttons and list-reorder controls; native drag gesture with `adjustable` accessibility actions, explicit action/reorder/reorder-drag/reveal callbacks, no transport)
 - `frontend/ui/MediaCardActionHost.jsx` (universal popup shell for the card action callback contract; the browser ModalHost remains the web host)
 - `frontend/ui/MediaCardFormControls.jsx` (`FormHeader`, `FormField`, `FormTextField`, `FormSelect`, `FormStatus` and `FormError` for the shared action forms; presentation only)
 - `frontend/ui/ListsFormView.jsx` (universal `ListsForm`: tag filter, count, Add/Remove rows, loading/error/empty states and accessible header; presentation only)
@@ -216,7 +216,7 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 - `frontend/ui/TrackForm.jsx` (universal `TrackForm`: General tab fields, date-time fields, notes, validation, tab host and save/delete states; presentation only)
 - `frontend/ui/TrackFormTabs.jsx` (universal `TrackTabs`: General, Tags, Metadata, Collection, Plays/Episode plays, Status history and Discover tab strip and bodies with loading, error, retry, empty and pending states; supplied labels drive the tabs and add/remove actions; presentation only)
 - `frontend/ui/mediaCardForms.js` (shared lists/track form models, membership helpers, initial values and validation)
-- `native-proof/app/surfaces/MediaCardSlot.jsx` (native placement with realistic library items, Track song/episode variants, Discover plan/hide, reorder controls and popup host on Home, Discover and Library)
+- `native-proof/app/surfaces/MediaCardSlot.jsx` (native placement with realistic library items, Track song/episode variants, Discover plan/hide with candidate removal, drag and button reorder with full-order transport, bulk refresh through the card-change bus and popup host on Home, Discover and Library)
 - `native-proof/app/surfaces/mediaCardEvents.js` (native-only card-change event bus used by the card, Track, Discover and bulk selection; not presentation)
 - `src/templates/app/components/card_lines.html`
 - `src/templates/app/components/media_card.html` (shell: wrapper classes, props script and first-paint poster and title; React replaces it on mount)
@@ -232,9 +232,11 @@ host; the native shell's `native-proof/app/surfaces/mediaCardTransport.js` owns 
 transport and CSRF boundary for those forms and is not imported by universal presentation. It
 uses the authenticated request facade from `native-proof/app/data/authTransport.js` when a
 session exists, otherwise the legacy base-URL/token configuration or local demo state. The
-web Track popup and a native drag gesture remain outstanding; the native card now
-posts scores, Discover plan/hide, list reorder and bulk selection changes through the platform
-transport and publishes them to matching cards. Runtime render evidence is recorded in the register.
+web Track popup remains outstanding; the native card now posts scores, Discover plan/hide,
+list reorder and bulk selection changes through the platform transport and publishes them to
+matching cards. Reorder drag drops use the full-order endpoint when the model supplies item ids
+and otherwise fall back to the first/back/next/last endpoint. Runtime render evidence is recorded
+in the register.
 
 ## RATING
 

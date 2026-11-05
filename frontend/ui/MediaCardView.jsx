@@ -299,6 +299,8 @@ export function MediaCardView({
   onOpenLink,
   onAction,
   onReorder,
+  onReorderDrag,
+  dragging = false,
   onRevealChange,
   revealed,
   renderActionIcon,
@@ -392,7 +394,8 @@ export function MediaCardView({
       <ProgressBar bar={model.progressBar} palette={colors} />
       {shownActions && !selection?.active ? <MediaCardActions actions={shownActions}
         palette={colors} labels={copy} revealed={isRevealed} onOpen={onOpen}
-        onAction={onAction} onReorder={onReorder} renderIcon={renderActionIcon} /> : null}
+        onAction={onAction} onReorder={onReorder} onReorderDrag={onReorderDrag}
+        dragging={dragging} renderIcon={renderActionIcon} /> : null}
     </View>
     <View style={styles.body}>
       <CardMetadata model={model} palette={colors} labels={copy} onOpen={gatedOpen}
