@@ -477,7 +477,7 @@ def about_props(request) -> dict[str, object]:
             "releases": releases,
             "releasesLoaded": cached is not None,
             "releasesUrl": release_notes.RELEASES_PAGE_URL,
-            "url": reverse("whats_new"),
+            "url": reverse("whats_new") + "?format=json",
         },
         "install": {
             "kind": "install",
