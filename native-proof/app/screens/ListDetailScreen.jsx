@@ -1,19 +1,22 @@
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { Screen } from '../components/Screen';
+import { Button } from '../../../frontend/ui/Button';
 import { FilterBar } from '../../../frontend/ui/FilterBar';
 import { ListHeader } from '../../../frontend/ui/ListHeader';
 import { ListMembershipPopup } from '../../../frontend/ui/ListMembership';
 import { ListResults } from '../../../frontend/ui/ListResults';
+import { SmartRuleBuilder, SmartRuleSummary } from '../../../frontend/ui/SmartRules';
+import { TierBoard } from '../../../frontend/ui/TierBoard';
 import { createListTransport } from '../data/listTransport';
 import { palette, radius, spacing } from '../theme';
 
 export const surface = {
   id: 'LIST-DETAIL',
-  status: 'in_progress',
-  title: 'List detail results, membership and bulk actions',
-  where: 'List detail page for manual, smart and source-backed lists',
-  note: 'Results, membership and bulk status/collection/remove/rating write through the list transport. Native login, server selection and CSRF transport remain unconfigured, so the native adapter keeps local preview state; the browser adapter uses the same-origin session.',
+  status: 'ported',
+  title: 'List detail results, membership, bulk actions, smart rules and tiers',
+  where: 'List detail page for manual, smart and source-backed lists, including the smart-rule editor and tier board',
+  note: 'Results, membership, bulk actions, smart-rule summary/editor and the tier board use shared React Native presentation. Mutations route through the list transport; native login, server selection and CSRF transport remain unconfigured, so the native adapter keeps local preview state while the browser adapter uses the same-origin session.',
 };
 
 const BULK_STATUSES = [
@@ -170,6 +173,178 @@ const LIST_ITEMS = {
   3: ['dune', 'severance', 'bear', 'outerWilds', 'signal'].map(key => ALL_ITEMS[key]),
 };
 
+const DEMO_TIER_ASSIGNMENTS = {
+  dune: 's',
+  quietOrbit: 'a',
+  signal: 'b',
+  paper: 'a',
+  hades: 's',
+  severance: 'a',
+  bear: 'b',
+  studio: 'c',
+  memory: 'c',
+  blueEye: 'd',
+  outerWilds: 's',
+  cinder: 'b',
+};
+
+const DEFAULT_TIERS = [
+  { id: 's', name: 'S', color: '#ff7f7f' },
+  { id: 'a', name: 'A', color: '#ffbf7f' },
+  { id: 'b', name: 'B', color: '#ffdf7f' },
+  { id: 'c', name: 'C', color: '#bfff7f' },
+  { id: 'd', name: 'D', color: '#7fbfff' },
+  { id: 'f', name: 'F', color: '#c4a7ff' },
+];
+
+const SMART_OPTIONS = {
+  mediaTypes: [
+    { value: 'movie', label: 'Movie' },
+    { value: 'tv', label: 'TV Show' },
+    { value: 'book', label: 'Book' },
+    { value: 'game', label: 'Game' },
+    { value: 'anime', label: 'Anime' },
+    { value: 'video', label: 'Video' },
+  ],
+  statuses: [
+    { value: 'Completed', label: 'Completed' },
+    { value: 'In progress', label: 'In Progress' },
+    { value: 'Planning', label: 'Planning' },
+    { value: 'Paused', label: 'Paused' },
+    { value: 'Dropped', label: 'Dropped' },
+  ],
+  relativeUnits: [
+    { value: 'days', label: 'Days' },
+    { value: 'weeks', label: 'Weeks' },
+    { value: 'months', label: 'Months' },
+    { value: 'years', label: 'Years' },
+  ],
+  genres: ['Science Fiction', 'Fantasy', 'Drama', 'Adventure', 'Mystery', 'Animation'],
+  impliedGenres: ['Science Fiction', 'Fantasy', 'Drama'],
+  years: [
+    { value: '2025', label: '2025' },
+    { value: '2024', label: '2024' },
+    { value: '2023', label: '2023' },
+    { value: '2022', label: '2022' },
+    { value: 'unknown', label: 'Unknown' },
+  ],
+  sources: [
+    { value: 'tmdb', label: 'The Movie Database' },
+    { value: 'openlibrary', label: 'Open Library' },
+    { value: 'igdb', label: 'Internet Game Database' },
+    { value: 'manual', label: 'Manual' },
+  ],
+  languages: [
+    { value: 'en', label: 'EN' },
+    { value: 'ja', label: 'JA' },
+    { value: 'fr', label: 'FR' },
+  ],
+  countries: [
+    { value: 'US', label: 'US' },
+    { value: 'GB', label: 'GB' },
+    { value: 'JP', label: 'JP' },
+  ],
+  platforms: [
+    { value: 'PC', label: 'PC' },
+    { value: 'Switch', label: 'Switch' },
+    { value: 'PlayStation 5', label: 'PlayStation 5' },
+  ],
+  origins: [
+    { value: 'JP', label: 'JP' },
+    { value: 'US', label: 'US' },
+  ],
+  formats: [
+    { value: 'hardcover', label: 'Hardcover' },
+    { value: 'paperback', label: 'Paperback' },
+    { value: 'ebook', label: 'eBook' },
+  ],
+  authors: [
+    { value: 'Martha Wells', label: 'Martha Wells' },
+    { value: 'Ursula K. Le Guin', label: 'Ursula K. Le Guin' },
+  ],
+  providers: [
+    { value: 'Netflix', label: 'Netflix' },
+    { value: 'Max', label: 'Max' },
+  ],
+  tags: ['sci-fi', 'favourites', 'weekend'],
+  lists: [
+    { id: '1', label: 'Weekend Watchlist' },
+    { id: '3', label: 'Shared with Friends' },
+  ],
+  showGenres: true,
+  showImpliedGenres: true,
+  showYears: true,
+  showSources: true,
+  showLanguages: true,
+  showCountries: true,
+  showPlatforms: true,
+  showOrigins: true,
+  showFormats: true,
+  showAuthors: true,
+  showProviders: true,
+};
+
+const DEFAULT_SMART_RULES = {
+  media_types: [],
+  status: [],
+  rating: 'all',
+  rating_min: '',
+  rating_max: '',
+  collection: 'all',
+  genre: '',
+  implied_genre: '',
+  year: '',
+  release: 'all',
+  completed_date_from: '',
+  completed_date_to: '',
+  completed_date_within: '',
+  completed_date_within_unit: 'days',
+  release_date_from: '',
+  release_date_to: '',
+  release_date_within: '',
+  release_date_within_unit: 'days',
+  date_added_from: '',
+  date_added_to: '',
+  date_added_within: '',
+  date_added_within_unit: 'days',
+  source: '',
+  search: '',
+  sort: 'date_added',
+  sort_direction: 'desc',
+  language: '',
+  country: '',
+  platform: '',
+  origin: '',
+  format: '',
+  author: '',
+  provider: '',
+  tag: [],
+  tag_mode: 'or',
+  list: [],
+  semantics_version: '2',
+};
+
+const DEMO_SMART_RULES = {
+  2: {
+    ...DEFAULT_SMART_RULES,
+    media_types: ['book', 'movie'],
+    rating: 'rated',
+    rating_min: '7.5',
+    genre: 'Science Fiction',
+    tag: ['sci-fi'],
+    tag_mode: 'or',
+  },
+};
+
+function smartRulesFor(list) {
+  return { ...DEFAULT_SMART_RULES, ...(DEMO_SMART_RULES[list?.id] || {}) };
+}
+
+function tiersFor(list) {
+  return DEFAULT_TIERS.map(tier => ({ ...tier }));
+}
+
+
 const DEFAULT_LIST = {
   id: '1',
   name: 'Weekend Watchlist',
@@ -228,7 +403,18 @@ function buildList(source) {
 }
 
 function itemsFor(list) {
-  return LIST_ITEMS[list.id] || LIST_ITEMS['1'];
+  const source = LIST_ITEMS[list.id] || LIST_ITEMS['1'];
+  const ranks = {};
+  return source.map(item => {
+    const tier = DEMO_TIER_ASSIGNMENTS[item.id] || '';
+    ranks[tier] = (ranks[tier] || 0) + 1;
+    return { ...item, tier, tierRank: ranks[tier] };
+  });
+}
+
+function tierIndexForScore(score, tierCount) {
+  const steps = Math.floor(((10 - Number(score)) * tierCount) / 10);
+  return Math.max(0, Math.min(steps, tierCount - 1));
 }
 
 function defaultFilters(list) {
@@ -309,6 +495,14 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
   const [notice, setNotice] = useState(null);
   const [membersOpen, setMembersOpen] = useState(false);
   const [suggestions, setSuggestions] = useState(() => SUGGESTIONS[list.id] || []);
+  const [smartRules, setSmartRules] = useState(() => smartRulesFor(buildList(params?.list)));
+  const [draftRules, setDraftRules] = useState(() => smartRulesFor(buildList(params?.list)));
+  const [smartEdit, setSmartEdit] = useState(false);
+  const [smartSaveState, setSmartSaveState] = useState('idle');
+  const [tiers, setTiers] = useState(() => tiersFor(buildList(params?.list)));
+  const [tierNotice, setTierNotice] = useState('');
+  const [tierUndo, setTierUndo] = useState([]);
+  const isSmart = !!list.isSmart;
 
   const options = useMemo(() => {
     const mediaTypes = [];
@@ -337,6 +531,7 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
       views: [
         { value: 'grid', label: 'Grid' },
         { value: 'table', label: 'Table' },
+        ...(isSmart ? [] : [{ value: 'tiers', label: 'Tiers' }]),
       ],
       ranges: [
         { key: 'rating', label: 'Rating', type: 'number', placeholder: '0–10' },
@@ -355,7 +550,7 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
         },
       ],
     };
-  }, [items]);
+  }, [items, isSmart]);
 
   const visibleItems = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -390,6 +585,17 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
     });
     return sortItems(filtered, filters);
   }, [items, search, filters]);
+
+  const tierColumns = useMemo(() => tiers.map(tier => ({
+    tier,
+    items: visibleItems
+      .filter(item => item.tier === tier.id)
+      .sort((a, b) => (a.tierRank || 0) - (b.tierRank || 0)),
+  })), [tiers, visibleItems]);
+
+  const tierUnranked = useMemo(() => visibleItems
+    .filter(item => !tiers.some(tier => tier.id === item.tier))
+    .sort((a, b) => (a.tierRank || 0) - (b.tierRank || 0)), [tiers, visibleItems]);
 
   function changeFilters(intent) {
     setFilters(current => {
@@ -618,6 +824,137 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
     }
   }
 
+  function changeSmartRule(next) {
+    setDraftRules(next);
+    setSmartSaveState('dirty');
+  }
+
+  async function saveSmartRules(next) {
+    const saved = {
+      ...next,
+      semantics_version: smartRules.semantics_version || next.semantics_version || '',
+    };
+    setSmartSaveState('saving');
+    try {
+      await transport.saveSmartRules?.({ listId: list.id, rules: saved });
+      setSmartRules(saved);
+      setDraftRules(saved);
+      setSmartSaveState('saved');
+      setNotice(transport.mode === 'local'
+        ? 'Smart rules saved in the local preview. The server evaluation is unchanged.'
+        : 'Smart rules saved.');
+    } catch (error) {
+      setSmartSaveState('error');
+      setNotice(error.message || 'The smart rules could not be saved.');
+    }
+  }
+
+  function startSmartEdit() {
+    setDraftRules(smartRules);
+    setSmartEdit(true);
+    setSmartSaveState('idle');
+  }
+
+  function cancelSmartEdit() {
+    setDraftRules(smartRules);
+    setSmartEdit(false);
+    setSmartSaveState('idle');
+  }
+
+  function saveTiers(nextTiers) {
+    const validIds = new Set(nextTiers.map(tier => tier.id));
+    const removed = items.some(item => item.tier && !validIds.has(item.tier));
+    setTiers(nextTiers);
+    setItems(current => current.map((item, index) => (
+      validIds.has(item.tier) ? item : { ...item, tier: '', tierRank: index }
+    )));
+    setTierUndo([]);
+    setTierNotice(removed
+      ? 'Tier definitions saved; items from removed tiers are now unranked in this demo.'
+      : 'Tier definitions saved in this demo.');
+  }
+
+  function moveTierItem({ itemId, tierId, itemIds }) {
+    const order = new Map((itemIds || []).map((id, index) => [id, index]));
+    setItems(current => current.map(item => {
+      if (item.id === itemId) {
+        return { ...item, tier: tierId, tierRank: order.get(item.id) ?? (item.tierRank || 0) };
+      }
+      if (order.has(item.id)) {
+        return { ...item, tierRank: order.get(item.id) };
+      }
+      return item;
+    }));
+    setTierUndo([]);
+    setTierNotice('Item moved in the local preview; the server saves the tier and order.');
+  }
+
+  function reorderTierItem({ itemId, tierId, direction }) {
+    setItems(current => {
+      const group = current
+        .filter(item => item.tier === tierId)
+        .sort((a, b) => (a.tierRank || 0) - (b.tierRank || 0));
+      const index = group.findIndex(item => item.id === itemId);
+      const target = group[index + (direction === 'up' ? -1 : 1)];
+      if (!target) {
+        return current;
+      }
+      const rank = group[index].tierRank;
+      return current.map(item => {
+        if (item.id === itemId) {
+          return { ...item, tierRank: target.tierRank };
+        }
+        if (item.id === target.id) {
+          return { ...item, tierRank: rank };
+        }
+        return item;
+      });
+    });
+    setTierNotice('Item order updated in the local preview.');
+  }
+
+  function fillTiersFromRatings() {
+    const unranked = items.filter(item => (
+      !tiers.some(tier => tier.id === item.tier) && item.score != null
+    ));
+    if (!unranked.length) {
+      setTierNotice('None of the unranked items have a rating.');
+      return { placed: 0 };
+    }
+    const placements = unranked.map(item => ({
+      itemId: item.id,
+      tier: tiers[tierIndexForScore(item.score, tiers.length)].id,
+    }));
+    const counts = {};
+    const placementByItem = new Map(placements.map(entry => [entry.itemId, entry.tier]));
+    setItems(current => current.map(item => {
+      const tier = placementByItem.get(item.id);
+      if (!tier) {
+        return item;
+      }
+      counts[tier] = (counts[tier] || 0) + 1;
+      return { ...item, tier, tierRank: counts[tier] };
+    }));
+    setTierUndo(placements);
+    setTierNotice('Filled from ratings in the local preview; the server performs the real fill.');
+    return { placed: placements.length };
+  }
+
+  function undoTierFill() {
+    const placed = new Map(tierUndo.map(entry => [entry.itemId, entry.tier]));
+    setItems(current => current.map((item, index) => (
+      placed.get(item.id) === item.tier
+        ? { ...item, tier: '', tierRank: index }
+        : item
+    )));
+    setTierUndo([]);
+    setTierNotice('Fill undone in the local preview.');
+  }
+
+  function openTierExport() {
+    setTierNotice('Tier image export is ready for the platform download adapter.');
+  }
+
   function openLink(row) {
     setMembersOpen(false);
     setNotice(`${row.label} link is ready for the platform browser or download adapter.`);
@@ -651,6 +988,30 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
       onMore={() => setMembersOpen(true)}
       onEdit={() => setMembersOpen(true)} />
     {notice ? <Text style={styles.notice}>{notice}</Text> : null}
+    {isSmart ? <View style={styles.smartPanel}>
+      <View style={styles.smartActions}>
+        {list.canEdit ? <Button
+          label={smartEdit ? 'Done editing' : 'Edit smart rules'}
+          tone={smartEdit ? 'surface' : 'primary'}
+          onPress={() => (smartEdit ? cancelSmartEdit() : startSmartEdit())} /> : null}
+      </View>
+      <SmartRuleSummary
+        rules={smartEdit ? draftRules : smartRules}
+        options={SMART_OPTIONS}
+        editMode={smartEdit}
+        saveState={smartSaveState}
+        palette={LIST_PALETTE} />
+      {list.canEdit && smartEdit ? <SmartRuleBuilder
+        rules={draftRules}
+        options={SMART_OPTIONS}
+        editMode
+        canEdit
+        saveState={smartSaveState}
+        palette={LIST_PALETTE}
+        onChange={changeSmartRule}
+        onSave={saveSmartRules}
+        onCancel={cancelSmartEdit} /> : null}
+    </View> : null}
     <View style={styles.controls}>
       <TextInput
         style={styles.search}
@@ -674,7 +1035,23 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
         }}
         onChange={changeFilters} />
     </View>
-    <ListResults
+    {!isSmart && filters.view === 'tiers' ? <TierBoard
+      tiers={tiers}
+      columns={tierColumns}
+      unranked={tierUnranked}
+      canEdit={!!list.canEdit}
+      canFill={!!list.canEdit}
+      maxTiers={12}
+      notice={tierNotice}
+      undoAvailable={tierUndo.length > 0}
+      palette={LIST_PALETTE}
+      onSaveTiers={saveTiers}
+      onMoveItem={moveTierItem}
+      onReorderItem={reorderTierItem}
+      onFillFromRatings={fillTiersFromRatings}
+      onUndoFill={undoTierFill}
+      onExport={openTierExport}
+      onOpenItem={openItem} /> : <ListResults
       items={visibleItems}
       layout={filters.view}
       sort={filters.sort}
@@ -699,7 +1076,7 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
       emptyMode={emptyMode}
       hasSearch={!!search.trim()}
       onRecommend={recommendItem}
-      onBrowse={() => navigate?.('Search', { query: '' })} />
+      onBrowse={() => navigate?.('Search', { query: '' })} />}
     <ListMembershipPopup
       open={membersOpen}
       list={list}
@@ -715,6 +1092,8 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
 
 const styles = StyleSheet.create({
   controls: { gap: spacing.md },
+  smartPanel: { gap: spacing.md },
+  smartActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   search: {
     backgroundColor: palette.surfaceStrong,
     color: palette.text,

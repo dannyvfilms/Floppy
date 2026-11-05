@@ -690,6 +690,9 @@ presentation.
 
 ## SMART-RULES
 
+- `frontend/ui/SmartRules.jsx` (universal smart-rule summary and rule-group/operator/date builder; presentation only)
+- `native-proof/app/screens/ListsScreen.jsx` (smart-list saved-rule summary on the native hub)
+- `native-proof/app/screens/ListDetailScreen.jsx` (native smart-rule summary, editor and read-only filtering state)
 - `src/templates/lists/components/smart_rules_builder.html`
 - `src/templates/lists/components/smart_rules_summary.html`
 - `src/templates/lists/smart_list_detail.html`
@@ -708,6 +711,8 @@ presentation.
 
 ## TIERS
 
+- `frontend/ui/TierBoard.jsx` (universal tier rows, tiles, unranked pool, move/edit dialogs, fill/undo and read-only state)
+- `native-proof/app/screens/ListDetailScreen.jsx` (native tier layout and demo move/fill state)
 - `src/static/js/listTiers.js`
 - `src/templates/lists/components/tier_board.html`
 - `src/templates/lists/components/tier_tile.html`

@@ -706,19 +706,19 @@ can inform a focused completion pass.
 
 - Native hub: `frontend/ui/ListCard.jsx` maps list records onto the shared media card with visibility/smart/source state and member/role metadata in the card body lines; list-specific metadata must not use overlapping artwork corner chips or unlabelled status glyphs. The ListCard metadata placement was fixed after the first Android render.
 - Native hub: `frontend/ui/ListCard.jsx` maps list records onto the shared media card with visibility/smart/source state and member/role metadata in the card body lines; list-specific metadata must not use overlapping artwork corner chips or unlabelled status glyphs. The ListCard metadata placement was fixed after the first Android render.
-- Native detail: `frontend/ui/ListResults.jsx` owns the detail grid/table, sort metadata, selection, bulk status/collection/remove intents and empty states; `frontend/ui/ListMembership.jsx` owns the membership/visibility popup and the RSS/Radarr/Sonarr/CSV link rows. Both reuse `MediaCardView`, `FilterBar`, `RatingStars`, `Badge`, `Button` and the shared `MediaCardActionHost`; the screen keeps search, filters, filters' sort/view state and navigation.
+- Native detail: `frontend/ui/ListResults.jsx` owns the detail grid/table, sort metadata, selection, bulk status/collection/remove intents and empty states; `frontend/ui/ListMembership.jsx` owns the membership/visibility popup and the RSS/Radarr/Sonarr/CSV link rows; `frontend/ui/SmartRules.jsx` owns the smart-rule summary/editor and `frontend/ui/TierBoard.jsx` owns the tier board. Both reuse `MediaCardView`, `FilterBar`, `RatingStars`, `Badge`, `Button` and the shared `MediaCardActionHost`; the screen keeps search, filters, filters' sort/view state and navigation.
 - Native forms and flows: `frontend/ui/ListFormView.jsx` owns the create/edit list form (name, description, visibility, public slug, include-notes, recommendation and smart toggles, tags, roles, delete guard). `frontend/ui/ListSearchView.jsx` owns add/recommend item search and its preview dialog; `frontend/ui/ListRecommendationsView.jsx` owns the approval/deny view. They reuse the shared form controls, cards and action dialog.
 - Components: `ListResults`, `ListResultGrid`, `ListResultTable`, `ListBulkBar`, `ListEmptyState`, `ListMembershipPopup`, `ListMembershipSection`, `ListShareLinks`, `ListForm`.
-- Native transport: `native-proof/app/data/listTransport.js` (native) and `listTransport.web.js` (browser) expose the same action contract; `listTransportCore.js` maps it to the existing JSON and form endpoints. Visibility and collaborators use the list PATCH, ratings and item removal use the media/list item endpoints, and bulk status/collection use the Django form actions. The browser adapter uses the same-origin session and `X-CSRFToken` cookie; without that session it returns the local preview adapter instead of pretending a write succeeded. Native login/server selection/CSRF transport is still undesigned, so the native adapter requires an injected request function and otherwise keeps the local preview.
+- Native transport: `native-proof/app/data/listTransport.js` (native) and `listTransport.web.js` (browser) expose the same action contract; `listTransportCore.js` maps it to the existing JSON and form endpoints. Visibility and collaborators use the list PATCH, ratings and item removal use the media/list item endpoints, bulk status/collection use the Django form actions, smart rules use `list_smart_rules_update`, and tier move/save/fill/undo use the tier actions. The browser adapter uses the same-origin session and `X-CSRFToken` cookie; without that session it returns the local preview adapter instead of pretending a write succeeded. Native login/server selection/CSRF transport is still undesigned, so the native adapter requires an injected request function and otherwise keeps the local preview.
 
 - Purpose/usage: list browser/detail/activity/profile/forms and membership popup.
 - Status: `Partial / coexisting`. The lists hub, list detail header, result grid/table, bulk selection bar, membership/visibility popup, create/edit list form, add/recommend search and preview, and recommendations approval/deny are React-owned through shared components. The native detail screen routes visibility, collaborator, rating, removal and bulk status/collection actions through `listTransport`; the Lists screen renders the hub, form and curation flows in local demo state. The web list pages remain server-owned, including their result grid/table, bulk toolbar and list form.
-- Migration state by surface: manual-list grid/table/tiers and public detail pages consume the fully React-owned ALPHABET sibling. Existing list headers, toolbars, cards/tables and editing controls retain legacy ownership on web; migrate each when edited. The native shell now renders the shared hub, header, results, membership popup, list form, add/recommend search/preview and recommendations approval/deny. Smart-rule editing, the tiers board and server transport for add/recommend remain legacy or unported.
+- Migration state by surface: manual-list grid/table/tiers and public detail pages consume the fully React-owned ALPHABET sibling. Existing list headers, toolbars, cards/tables and editing controls retain legacy ownership on web; migrate each when edited. The native shell now renders the shared hub, header, results, membership popup, list form, add/recommend search/preview, recommendations approval/deny, smart-rule summary/editor and tier board. Server transport for add/recommend, smart-rule saves and tier mutations remains demo/local on native.
 - Implementation: `frontend/ui/ListCard.jsx`, `ListHeader.jsx`, `ListResults.jsx`, `ListMembership.jsx`, `ListFormView.jsx`, `ListSearchView.jsx` and `ListRecommendationsView.jsx` (shared universal components); `native-proof/app/data/listTransportCore.js`, `listTransport.js` and `listTransport.web.js` (list action transport); `src/templates/lists/custom_lists.html`, `list_detail.html`, `user_profile.html`, `list_activity.html`, list grid/form/visibility/membership/table components remain web-owned.
 - Contract: manual/smart/source-backed distinction, search/tags/roles, public/private visibility and public read-only rendering, membership/pins/feed/export/sync. The Django model's visibility choices are public and private; the popup labels any future value without inventing an unlisted state.
 - Data: `src/lists/views.py`, browse/action/helper views, models/forms; REST parity separately assessed.
 - Reuse/blockers: list card/editor/membership/form/curation presentation shared; consume canonical media/filter/table systems; collection ownership is separate. Android 15 Pixel 7 AVD rendered the shared list cards in the Lists hub; the header, results, membership popup, list form, add/recommend/approval views and iOS were not opened. The native transport adapter keeps local preview state because native login, server selection and CSRF transport are not designed. Add/recommend and approval writes, add-to-list/tag pickers, add-plays jobs, CSV/RSS/Radarr/Sonarr browser/download handoff and server list hydration are not connected. Retirement condition for the web grid/table/toolbar and list form: migrate those templates to the same shared components.
-- Verification: `lists.tests.test_views`, `test_list_detail_filters`, `test_bulk_actions`, `test_forms`, `test_item_rank`, `npm run build:ui`, `npm run check:ui-architecture`, `npm run test:ui-architecture` and Expo export (web, iOS, Android) are compile/regression checks only. Android rendered the Lists hub cards; the detail results, membership popup, list form, add/recommend/approval flows, browser and iOS were not exercised.
+- Verification: `lists.tests.test_views`, `test_list_detail_filters`, `test_bulk_actions`, `test_forms`, `test_item_rank`, `npm run build:ui`, `npm run check:ui-architecture`, `npm run test:ui-architecture` and Expo export (web, iOS, Android) are compile/regression checks only. Android rendered the Lists hub cards; the detail results, membership popup, list form, add/recommend/approval flows, smart-rule editor, tier board, browser and iOS were not exercised.
 - Validation targets: `src/lists/tests/test_views.py`, `test_list_detail_filters.py`, `test_bulk_actions.py`, `test_forms.py`, `test_rss_feed.py`, `test_csv_export_import.py`.
 - Validation targets: `src/lists/tests/test_views.py`, `test_list_detail_filters.py`, `test_bulk_actions.py`, `test_forms.py`, `test_rss_feed.py`, `test_csv_export_import.py`.
 
@@ -726,13 +726,33 @@ can inform a focused completion pass.
 ### SMART-RULES — Rule editing and results
 
 - Purpose/usage: smart-list detail/editor/summary.
-- Migration state by surface: smart-list grid/table detail pages consume the fully
-  React-owned ALPHABET sibling; rule editing, summaries and result components remain
-  legacy. Alphabet view state does not alter their saved rule or permission contracts.
-- Implementation: `src/templates/lists/smart_list_detail.html`, smart rules builder/summary components.
+- Status: `Partial / coexisting`. `frontend/ui/SmartRules.jsx` owns the universal
+  `SmartRuleSummary` and `SmartRuleBuilder`: filter groups for media types, status,
+  rating, collection, release, tags with the Any/All/No tag operator, genres,
+  years, source, language, country, platform, origin, format, author/provider,
+  linked lists, search and absolute or relative date windows. The builder validates
+  rating, date and relative-window input before emitting a save, preserves the
+  saved `semantics_version` and sort fields, and supports an editor or a read-only
+  public filtering state. It never evaluates membership or weakens permissions;
+  callers save through the existing smart-rules action and the Django page remains
+  the browser consumer.
+- Migration state by surface: the native Lists hub shows the saved-rule summary
+  for smart lists; native list detail renders the summary plus the editing/filter
+  builder. The server-rendered smart-list detail page and its Alpine builder still
+  own the web surface. Alphabet view state does not alter saved rules or permissions.
+- Implementation: `frontend/ui/SmartRules.jsx` (`SmartRuleSummary`,
+  `SmartRuleBuilder`) with `native-proof/app/screens/ListDetailScreen.jsx` and
+  `native-proof/app/screens/ListsScreen.jsx`; `native-proof/app/data/listTransportCore.js`
+  maps saves to `list_smart_rules_update`. The browser templates remain
+  `src/templates/lists/smart_list_detail.html` and smart rules builder/summary components.
 - Contract: initial JSON/live editing/save/errors, results/sort/bulk and shared rule semantics.
+  The shared builder emits the same rule vocabulary the server normalizes; the
+  client validates only presentation input and does not fork evaluation.
 - Data: `src/lists/views_smart_list.py`, `smart_rules.py`, library query engine.
 - Reuse/blockers: normalized filter state/schema shared; never fork evaluation for native/Home.
+  The native smart-rule save uses local preview state because native login, server
+  selection and CSRF transport remain undesigned. Browser interaction and actual
+  iOS/Android runtime for the new components are unverified.
 - Validation targets: `src/lists/tests/test_smart_list_semantics.py`, `test_smart_list_sync_deferral.py`.
 
 ### LIST-CURATION — Search, add and recommend
@@ -749,10 +769,29 @@ can inform a focused completion pass.
 ### TIERS — Board, order and export
 
 - Purpose/usage: editable/public list tier boards.
-- Implementation: tier board/tile components, `src/static/js/listTiers.js`, SortableJS.
-- Contract: moves/order/colors/unranked/fill-from-ratings/undo/export/truncation; editable only for authorized manual non-smart lists.
+- Status: `Partial / coexisting`. `frontend/ui/TierBoard.jsx` owns the universal
+  `TierBoard`: coloured tier rows, compact media tiles, unranked pool, tier
+  add/edit/delete and up/down order, item move and earlier/later ordering,
+  fill-from-ratings with undo, export intent, truncation notice and read-only
+  public state. Every mutation is an explicit callback; the component does not
+  evaluate tiers or grant edit access, and caller-supplied `canEdit`/`canFill`
+  capabilities control the controls. Smart lists render the no-tier state.
+- Migration state by surface: native list detail renders the tier board when the
+  Tiers view is selected; the Django tier board, `listTiers.js` and SortableJS
+  remain the browser owner. Drag-and-drop is replaced on native by the accessible
+  move dialog and earlier/later order controls; the browser still provides drag.
+- Implementation: `frontend/ui/TierBoard.jsx` (`TierBoard`) with
+  `native-proof/app/screens/ListDetailScreen.jsx`; `native-proof/app/data/listTransportCore.js`
+  maps move/save/fill/undo to the existing tier actions. Legacy browser files are
+  tier board/tile components, `src/static/js/listTiers.js` and SortableJS.
+- Contract: moves/order/colors/unranked/fill-from-ratings/undo/export/truncation;
+  editable only for authorized manual non-smart lists. Server validation of tier
+  ids, colours and names remains authoritative.
 - Data: `src/lists/views_tiers.py`, `tiers.py`, `tier_export.py`, transactional ordering.
 - Reuse/blockers: board state/media values shared; accessible reorder/native export need adapters.
+  Native export is a download intent, not a rendered image adapter. The native
+  board keeps demo preview state without a native request/CSRF transport. Browser
+  interaction and actual iOS/Android runtime were not exercised.
 - Validation targets: `src/lists/tests/test_tiers.py`, `test_tier_fill.py`, `test_tier_export.py`, `test_item_rank.py`.
 
 ## Settings, identity and integrations

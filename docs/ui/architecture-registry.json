@@ -1009,6 +1009,47 @@
           "evidence": "Expo export --platform all compiled the shared bulk toolbar and dialogs through the native Library slot; no emulator run or TalkBack interaction pass."
         }
       }
+    },
+    "frontend/ui/SmartRules.jsx": {
+      "components": [
+        "SmartRuleSummary",
+        "SmartRuleBuilder"
+      ],
+      "register": "SMART-RULES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted on the web list pages; the Django smart-rule builder and summary remain the active browser consumers."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export only; the native smart-rule summary and editor were not exercised on a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export only; the native smart-rule summary and editor were not exercised on an emulator."
+        }
+      }
+    },
+    "frontend/ui/TierBoard.jsx": {
+      "components": [
+        "TierBoard"
+      ],
+      "register": "TIERS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted on the web list page; the Django tier board and listTiers.js remain the active browser consumers."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export only; the native tier board, move and edit dialogs were not exercised on a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export only; the native tier board, move and edit dialogs were not exercised on an emulator."
+        }
+      }
     }
   },
   "legacy": {
