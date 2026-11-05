@@ -62,7 +62,9 @@ function albumModel(album, labels) {
     cornerChips: album.plays
       ? [{ kind: 'runtime', text: countLabel(album.plays, labels.play, labels.plays) }]
       : [],
-    lines: [{ join: 'dot', parts }],
+    lines: album.lines && album.lines.length
+      ? album.lines
+      : [{ join: 'dot', parts }],
     rating: album.score == null ? null : {
       label: String(album.score),
       value: album.score,

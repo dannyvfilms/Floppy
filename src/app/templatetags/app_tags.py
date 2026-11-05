@@ -2545,6 +2545,9 @@ def music_relations_react(context, relations):
 @register.simple_tag(takes_context=True)
 def music_albums_react(context, albums):
     """Return the shared album-card grid props for an artist discography."""
+    from users.card_metadata import card_lines
+
+    user = context.get("user") or getattr(context.get("request"), "user", None)
     items = []
     for album in albums or []:
         image = album.image or ""
@@ -2562,6 +2565,20 @@ def music_albums_react(context, albums):
                 "score": float(album.score)
                 if getattr(album, "score", None) is not None
                 else None,
+                "lines": [
+                    {
+                        "clamp": True,
+                        "dormant": bool(line.get("dormant")),
+                        "parts": [
+                            {
+                                "text": part["text"],
+                                **({"score": True} if part.get("score") else {}),
+                            }
+                            for part in line["parts"]
+                        ],
+                    }
+                    for line in card_lines(user, "music", album, None)
+                ],
             }
         )
     return {

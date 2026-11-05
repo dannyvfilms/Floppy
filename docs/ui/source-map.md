@@ -589,7 +589,7 @@ modal is shared React presentation on mount, with the server markup as fallback.
 - `src/templates/app/podcast_show_detail.html`
 - `frontend/ui/MusicRelationCard.jsx` (shared artist relation card and grid)
 - `frontend/ui/mountMusicRelations.jsx` (browser artist relation grid adapter over the server fallback)
-- `frontend/ui/MusicAlbumCard.jsx` (shared album card and discography grid)
+- `frontend/ui/MusicAlbumCard.jsx` (shared album card and discography grid; browser props carry the resolved music card-line profile)
 - `frontend/ui/mountMusicAlbums.jsx` (browser discography album grid adapter over the server fallback)
 - `native-proof/app/screens/MusicScreen.jsx` (native artist, album, track and podcast composition; demo state, injectable transport)
 - `native-proof/app/components/MusicParts.jsx` (native music/podcast presentational pages, rows and modal shells)

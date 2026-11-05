@@ -2386,6 +2386,18 @@ class MusicAlbumsReactPropsTests(SimpleTestCase):
                     "year": 2025,
                     "plays": 64,
                     "score": 9.0,
+                    "lines": [
+                        {
+                            "clamp": True,
+                            "dormant": False,
+                            "parts": [{"text": "Mira Vale"}],
+                        },
+                        {
+                            "clamp": True,
+                            "dormant": False,
+                            "parts": [{"text": "2025"}],
+                        },
+                    ],
                 },
             ],
         )
