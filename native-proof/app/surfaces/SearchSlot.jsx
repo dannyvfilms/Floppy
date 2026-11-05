@@ -1,4 +1,5 @@
 import React, { useCallback } from 'react';
+import { requestBarcode } from '../../../frontend/ui/barcodeEntry';
 import { GlobalSearch } from '../../../frontend/ui/GlobalSearch';
 import { palette, radius } from '../theme';
 
@@ -6,8 +7,8 @@ export const surface = {
   id: 'SEARCH',
   title: 'Global search and suggestions',
   where: 'Header on Home, Discover and Library, and the Search screen',
-  status: 'in_progress',
-  note: 'The shared search field, media-type menu, suggestion list and result links render here. Barcode entry, result paging, provider scope and the parent pickers are being finished on the Search screen.',
+  status: 'ported',
+  note: 'The shared search field, media-type menu, suggestion list and result links render here. The Search screen adds paged results, source scope, empty/loading/error states, parent TV/season and music album pickers, and the barcode adapter boundary; native camera scanning still needs a barcode module and reports unavailable.',
 };
 
 const mediaTypes = [
@@ -109,6 +110,6 @@ export default function SearchSlot({
     onLoadSuggestions={loadSuggestions}
     onSubmit={onSubmit || onOpenSearch}
     onSelectSuggestion={openSuggestion}
-    onBarcodeRequest={async () => ({ status: 'unavailable' })}
+    onBarcodeRequest={() => requestBarcode({ labels })}
   />;
 }

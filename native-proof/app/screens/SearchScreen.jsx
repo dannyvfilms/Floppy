@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Screen, Section } from '../components/Screen';
+import SearchParentSlot from '../surfaces/SearchParentSlot';
 import SearchResultsSlot from '../surfaces/SearchResultsSlot';
 import SearchSlot from '../surfaces/SearchSlot';
 
@@ -10,8 +11,8 @@ export default function SearchScreen({ params, navigate, onBack }) {
     <Section title="Search">
       <SearchSlot
         expanded
-        initialQuery={params?.query}
-        initialMediaType={params?.mediaType}
+        initialQuery={params?.query || submitted}
+        initialMediaType={params?.mediaType || mediaType}
         onSubmit={({ query, mediaType: nextType }) => {
           setSubmitted(query);
           if (nextType) setMediaType(nextType);
@@ -25,6 +26,9 @@ export default function SearchScreen({ params, navigate, onBack }) {
         mediaType={mediaType}
         onOpenDetail={() => navigate('Detail')}
       />
+    </Section>
+    <Section title="Create entry parents" copy="Choose the parent record when adding a season, episode or track.">
+      <SearchParentSlot />
     </Section>
   </Screen>;
 }
