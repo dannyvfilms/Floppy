@@ -6,6 +6,7 @@ const surface = {
   id: 'WEB-UTILITIES',
   title: 'Clipboard and install',
   where: 'Copy controls, install feedback and static cache',
+  status: 'in_progress',
   note: 'Copy intents, install prompts and service-worker status will replace this note where they have a native equivalent.',
 };
 
