@@ -638,11 +638,14 @@ can inform a focused completion pass.
 ### PEOPLE — People/studios, credits and medium extras
 
 - Purpose/usage: person/studio pages and detail cast/trailers/game-length/reading sections.
-- Implementation: `src/templates/app/person_detail.html`, `studio_detail.html`, cast/filmography/carousel/YouTube/extra fragments.
-- Contract: internal/external links, role credits, bounded rails, carousel/lightbox/playback and medium metadata.
+- Implementation: universal `frontend/ui/People.jsx` (`PersonHero`, `StudioHero`, `PersonCard`, `CreditCard`, `MediaGallery`, `LightboxDialog`, `MediumExtras`) composed by `native-proof/app/screens/PeopleScreen.jsx`; shared `Rail` for bounded cast/filmography/studio rails and `Badge`/`Button` for status chips and history/source actions. The web page remains `src/templates/app/person_detail.html`, `studio_detail.html`, cast/filmography/carousel/YouTube/extra fragments.
+- Contract: internal/external link intents, role credits, bounded rails, carousel selection with fit/play/full-size intents, an accessible lightbox, and time-to-beat, YouTube and reading metadata. Every component receives already-shaped values and explicit navigation/source/play intents; it never parses URLs, fetches providers or owns permissions. Source and website actions open exteriors; person, cast and credit opens stay internal. Server fallbacks remain the web owner.
 - Data: `src/app/people_views.py`, provider/detail projections.
-- Reuse/blockers: presentation/data shared; embeds/playback/semantic navigation need platform decisions. Person cards intentionally differ from tracked media cards.
-- Validation targets: `src/app/tests/views/test_person_detail.py`, `test_studio_detail.py`, `src/app/tests/test_detail_builders_game_credits.py`.
+- Reuse/blockers: reuses `RAILS`, `BADGE` and `BUTTON`; person, cast and credit cards intentionally differ from tracked media cards. Production transport, authorization-sensitive actions and web mounting are not wired. Native playback delegates to an external trailer link rather than an embedded player.
+- Status: `Partial / coexisting`. The person/studio heroes, cast and credit cards with role lines, bounded rails, gallery/lightbox and medium extras are React-owned on the native People screen with demo values. The Django person/studio pages remain the active web consumer, and the native placement is `in_progress` until production data/permissions, web mounting and runtime verification land.
+- Remaining consumers and retirement: the server person/studio templates, filter toolbar, filmography HTMX fragment, cast/filmography grids and carousel/YouTube/game-length/reading fragments stay in place until a browser adapter mounts the shared presentation with equivalent intents and the native transport supplies real values. Retirement requires browser, iOS and Android passes; the Expo export is only a compile check.
+- Validation targets: `src/app/tests/views/test_person_detail.py`, `test_studio_detail.py`, `src/app/tests/test_detail_builders_game_credits.py`; `app.tests.test_media_card_contract` for the distinct person/credit card exceptions.
+- Verification: UI architecture checks and the Expo export compile the shared presentation and native screen. No browser, simulator or device interaction pass was run; iOS and Android remain unverified.
 
 ### TAGS — Management and assignment
 

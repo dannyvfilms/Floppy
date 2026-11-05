@@ -563,6 +563,8 @@ modal is shared React presentation on mount, with the server markup as fallback.
 
 ## PEOPLE
 
+- `frontend/ui/People.jsx`
+- `native-proof/app/screens/PeopleScreen.jsx` (native placement)
 - `src/templates/app/components/cast_card.html`
 - `src/templates/app/components/detail_carousel_fragment.html`
 - `src/templates/app/components/detail_cast_grid.html`
