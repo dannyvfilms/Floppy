@@ -1244,6 +1244,66 @@
           "evidence": "Expo export only; the native tier board, move and edit dialogs were not exercised on an emulator."
         }
       }
+    },
+    "frontend/ui/CopyField.jsx": {
+      "components": [
+        "CopyField"
+      ],
+      "register": "WEB-UTILITIES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; src/static/js/copy-item.js remains the browser copy control. No browser pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled CopyField through the native WebUtilities screen; no simulator copy, recovery dialog or accessibility pass."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled CopyField through the native WebUtilities screen; no emulator copy, recovery dialog or accessibility pass."
+        }
+      }
+    },
+    "frontend/ui/InstallPromptCard.jsx": {
+      "components": [
+        "InstallPromptCard"
+      ],
+      "register": "WEB-UTILITIES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the About page install control in users/about.html remains the browser implementation. No browser pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled InstallPromptCard through the native WebUtilities screen; no simulator install state, guide launch or accessibility pass."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled InstallPromptCard through the native WebUtilities screen; no emulator install state, guide launch or accessibility pass."
+        }
+      }
+    },
+    "frontend/ui/CacheStatusCard.jsx": {
+      "components": [
+        "CacheStatusCard"
+      ],
+      "register": "WEB-UTILITIES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; base.html still registers the service worker and the About page does not show cache status. No browser pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled CacheStatusCard through the native WebUtilities screen; no simulator refresh or accessibility pass."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled CacheStatusCard through the native WebUtilities screen; no emulator refresh or accessibility pass."
+        }
+      }
     }
   },
   "legacy": {
@@ -1831,6 +1891,144 @@
         "android": {
           "status": "unverified",
           "evidence": "Compiled by the Expo export; not exercised on an emulator."
+        }
+      }
+    },
+    "frontend/ui/clipboard.web.js": {
+      "kind": "adapter",
+      "components": [
+        "copyText"
+      ],
+      "purpose": "Browser clipboard service using the async Clipboard API and the legacy selection/execCommand fallback.",
+      "register": "WEB-UTILITIES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; existing copy controls still use src/static/js/copy-item.js. No browser pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to the browser implementation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to the browser implementation."
+        }
+      }
+    },
+    "frontend/ui/clipboard.native.js": {
+      "kind": "adapter",
+      "components": [
+        "copyText"
+      ],
+      "purpose": "Native clipboard service using the React Native Clipboard module.",
+      "register": "WEB-UTILITIES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not applicable to the native implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native WebUtilities screen; the system clipboard was not exercised on a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native WebUtilities screen; the system clipboard was not exercised on an emulator."
+        }
+      }
+    },
+    "frontend/ui/installPrompt.web.js": {
+      "kind": "adapter",
+      "components": [
+        "getInstallState",
+        "subscribeInstallState",
+        "requestInstall",
+        "openInstallGuide"
+      ],
+      "purpose": "Browser install service reading the base.html prompt capture, consuming the one-use prompt and opening the install guide.",
+      "register": "WEB-UTILITIES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; the About page Alpine install control remains the active browser consumer. No browser pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to the browser implementation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to the browser implementation."
+        }
+      }
+    },
+    "frontend/ui/installPrompt.native.js": {
+      "kind": "adapter",
+      "components": [
+        "getInstallState",
+        "subscribeInstallState",
+        "requestInstall",
+        "openInstallGuide"
+      ],
+      "purpose": "Native install state for an already-installed app and guide launch through the platform browser.",
+      "register": "WEB-UTILITIES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not applicable to the native implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native WebUtilities screen; guide launch was not exercised on a simulator."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native WebUtilities screen; guide launch was not exercised on an emulator."
+        }
+      }
+    },
+    "frontend/ui/serviceWorkerStatus.web.js": {
+      "kind": "adapter",
+      "components": [
+        "getCacheStatus"
+      ],
+      "purpose": "Browser service-worker and static-cache status reader for the shared cache card.",
+      "register": "WEB-UTILITIES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not mounted by the web bundle; base.html still owns registration and no browser pass read registration or cache state during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to the browser implementation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to the browser implementation."
+        }
+      }
+    },
+    "frontend/ui/serviceWorkerStatus.native.js": {
+      "kind": "adapter",
+      "components": [
+        "getCacheStatus"
+      ],
+      "purpose": "Honest not-applicable cache state for the native app.",
+      "register": "WEB-UTILITIES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not applicable to the native implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native WebUtilities screen; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the native WebUtilities screen; no emulator run was performed."
         }
       }
     }
