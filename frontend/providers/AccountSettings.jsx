@@ -189,7 +189,7 @@ export function AccountSettings({
         busy={pending === 'disconnect'} disabled={Boolean(pending)}
         onPress={() => disconnect()} palette={buttons} />
     </View> : null}
-    {notice ? <Text accessibilityRole="status" style={[styles.copy, { color: colors.success }]}>{notice}</Text> : null}
+    {notice ? <Text accessibilityLiveRegion="polite" style={[styles.copy, { color: colors.success }]}>{notice}</Text> : null}
     {error ? <Text accessibilityRole="alert" style={[styles.copy, { color: colors.danger }]}>{error}</Text> : null}
   </SettingsCard>;
 }

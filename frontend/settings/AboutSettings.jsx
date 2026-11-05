@@ -78,7 +78,7 @@ export function ReleaseUpdateBanner({
 }) {
   const colors = { ...defaultPalette, ...palette };
   if (!releaseTag) return null;
-  return <View accessibilityRole="status" style={[styles.banner, {
+  return <View accessibilityLiveRegion="polite" style={[styles.banner, {
     backgroundColor: colors.surfaceStrong, borderColor: colors.accent,
   }]}>
     <Text style={[styles.bannerText, { color: colors.textSecondary }]}>Floppy was updated to {releaseTag}.</Text>

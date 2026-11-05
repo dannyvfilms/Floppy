@@ -174,7 +174,7 @@ export function ImportPreferencesCard({
           onChangeText={time => save({ ...values, time })} /> : null}
       </>}
     </View>}
-    <Text accessibilityRole="status" style={[styles.copy, { color: saveState === 'error' ? colors.danger : colors.textMuted }]}>
+    <Text accessibilityLiveRegion="polite" style={[styles.copy, { color: saveState === 'error' ? colors.danger : colors.textMuted }]}>
       {saveState === 'saving' ? labels.saving : saveState === 'saved' ? labels.saved : saveState === 'error' ? labels.saveError : ''}
     </Text>
     {saveState === 'error' ? <Button label={labels.retry} tone="surface" onPress={() => save(values)} palette={buttons} /> : null}
@@ -247,7 +247,7 @@ export function ImportSettings({
         </View>
       </>}
       {blocked ? <Text style={[styles.copy, { color: colors.textMuted }]}>{model.modeUnsupported || labels.modeUnsupported}</Text> : null}
-      {notice ? <Text accessibilityRole="status" style={[styles.copy, { color: colors.success }]}>{notice}</Text> : null}
+      {notice ? <Text accessibilityLiveRegion="polite" style={[styles.copy, { color: colors.success }]}>{notice}</Text> : null}
       {error ? <Text accessibilityRole="alert" style={[styles.copy, { color: colors.danger }]}>{error}</Text> : null}
     </SettingsCard>
   </View>;

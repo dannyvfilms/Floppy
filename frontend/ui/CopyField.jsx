@@ -71,10 +71,10 @@ export function CopyField({
   };
 
   const status = state === 'copied'
-    ? <Text accessibilityLiveRegion="polite" role="status" style={[styles.status, { color: colors.success }]}>{copiedLabel}</Text>
+    ? <Text accessibilityLiveRegion="polite" style={[styles.status, { color: colors.success }]}>{copiedLabel}</Text>
     : state === 'error'
       ? <View style={styles.error}>
-        <Text accessibilityLiveRegion="polite" role="status" style={[styles.errorText, { color: colors.danger }]}>{errorMessage}</Text>
+        <Text accessibilityLiveRegion="polite" style={[styles.errorText, { color: colors.danger }]}>{errorMessage}</Text>
         <View style={styles.errorActions}>
           <Button label={manualLabel} tone="surface" onPress={() => setRecoveryOpen(true)} palette={buttons} />
           <Button label={retryLabel} tone="surface" onPress={copy} palette={buttons} />

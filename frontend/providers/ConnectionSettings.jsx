@@ -204,7 +204,7 @@ export function ConnectionSettings({
           disabled={Boolean(pending)} onPress={clear} palette={buttons} /> : null}
       </View> : <Text style={[styles.copy, { color: colors.textMuted }]}>{model.readOnlyReason || labels.fallback}</Text>}
       {editable ? <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.fallback}</Text> : null}
-      {notice?.kind === 'instance' ? <Text accessibilityRole="status" style={[styles.copy, { color: colors.success }]}>{notice.text}</Text> : null}
+      {notice?.kind === 'instance' ? <Text accessibilityLiveRegion="polite" style={[styles.copy, { color: colors.success }]}>{notice.text}</Text> : null}
       {error?.kind === 'instance' ? <Text accessibilityRole="alert" style={[styles.copy, { color: colors.danger }]}>{error.text}</Text> : null}
     </SettingsCard>
     {model.personalFields?.length ? <SettingsCard title={model.personalTitle || 'Personal credentials'} palette={colors}>
@@ -220,7 +220,7 @@ export function ConnectionSettings({
           busy={pending === 'personal'} disabled={Boolean(pending)} onPress={() => submit('personal')}
           palette={buttons} />
       </View>
-      {notice?.kind === 'personal' ? <Text accessibilityRole="status" style={[styles.copy, { color: colors.success }]}>{notice.text}</Text> : null}
+      {notice?.kind === 'personal' ? <Text accessibilityLiveRegion="polite" style={[styles.copy, { color: colors.success }]}>{notice.text}</Text> : null}
       {error?.kind === 'personal' ? <Text accessibilityRole="alert" style={[styles.copy, { color: colors.danger }]}>{error.text}</Text> : null}
     </SettingsCard> : null}
     <Modal transparent visible={helpOpen} animationType="fade" accessibilityViewIsModal

@@ -111,7 +111,7 @@ export function InstallPromptCard({
     {state.canInstall && !attempted ? <View style={styles.action}>
       <Button label={text.installLabel} busy={pending || busy} onPress={install} palette={buttons} />
     </View> : null}
-    {message ? <Text accessibilityLiveRegion="polite" role="status" style={[styles.status, { color: tone }]}>{message}</Text> : null}
+    {message ? <Text accessibilityLiveRegion="polite" style={[styles.status, { color: tone }]}>{message}</Text> : null}
     <View style={[styles.steps, { borderColor: colors.border, backgroundColor: colors.surfaceStrong }]}>
       <Text role="heading" aria-level={5} style={[styles.stepsTitle, { color: colors.text }]}>{steps.title}</Text>
       {steps.items.map((item, index) => <Text key={`${steps.title}-${index}`} style={[styles.step, { color: colors.textMuted }]}>{`${index + 1}. ${item}`}</Text>)}
