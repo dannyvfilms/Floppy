@@ -37,7 +37,7 @@ const authPalette = {
   surface: palette.surface,
   surfaceStrong: palette.surfaceStrong,
   surfaceMuted: palette.surfaceMuted,
-  border: palette.border,
+  border: '#4b5563',
   text: palette.text,
   textSecondary: palette.textSecondary,
   textMuted: palette.textMuted,
@@ -51,7 +51,8 @@ const authPalette = {
   badgeText: palette.textSecondary,
   badgeHover: palette.surfaceMuted,
   overlay: 'rgba(0, 0, 0, 0.65)',
-  radius: radius.md,
+  radius: 12,
+  inputBackground: '#39404b',
   focusStyle: {},
 };
 
@@ -60,7 +61,7 @@ const buttonPalette = {
   surface: { background: palette.surfaceStrong, pressed: palette.surfaceMuted, hovered: palette.surfaceMuted, text: palette.text, border: palette.border },
   'danger-solid': { background: palette.danger, pressed: '#b91c1c', hovered: '#b91c1c', text: '#ffffff', border: 'transparent' },
   'danger-deep': { background: '#b91c1c', pressed: '#991b1b', hovered: '#991b1b', text: '#ffffff', border: 'transparent' },
-  radius: radius.sm,
+  radius: 12,
   focusStyle: {},
 };
 
@@ -707,7 +708,7 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
 }
 
 const styles = StyleSheet.create({
-  entrance: { gap: 16 },
+  entrance: { gap: 8 },
   viewStack: { gap: spacing.md, minWidth: 0 },
   viewRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   guardRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },

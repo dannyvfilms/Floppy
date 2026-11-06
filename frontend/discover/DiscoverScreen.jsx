@@ -361,8 +361,8 @@ function ToolbarButton({ label, onPress, disabled, palette, primary = false, chi
   return <Pressable accessibilityRole="button" accessibilityLabel={label}
     accessibilityState={{ disabled: !!disabled }} disabled={disabled} onPress={onPress}
     style={({ pressed }) => [styles.toolbarButton, {
-      backgroundColor: primary ? palette.accent : palette.surface,
-      borderColor: primary ? palette.accent : palette.border,
+      backgroundColor: primary ? (palette.accentStrong || palette.accent) : palette.surface,
+      borderColor: primary ? (palette.accentStrong || palette.accent) : palette.border,
       opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
     }]}>
     {children || <Text style={[styles.toolbarText, { color: primary ? palette.accentText : palette.textSecondary }]}>{label}</Text>}

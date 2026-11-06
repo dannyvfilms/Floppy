@@ -26,6 +26,7 @@ export function Button({
   const content = children ?? label;
   const colors = palette[tone] || defaultTones[tone] || defaultTones.primary;
   const text = typeof content === 'string' ? content : null;
+  const large = size === 'lg';
   return <Pressable
     accessibilityRole="button"
     accessibilityLabel={accessibilityLabel || text || undefined}
@@ -37,10 +38,11 @@ export function Button({
       {
         backgroundColor: pressed ? colors.pressed : hovered ? colors.hovered : colors.background,
         borderColor: colors.border,
+        borderWidth: large ? 0 : 1,
         borderRadius: palette.radius ?? 6,
         opacity: disabled ? 0.5 : 1,
-        paddingVertical: size === 'sm' ? 6 : 8,
-        paddingHorizontal: width === 'full' ? 12 : 10,
+        paddingVertical: large ? 12 : size === 'sm' ? 6 : 8,
+        paddingHorizontal: large ? 16 : width === 'full' ? 12 : 10,
         width: width === 'full' ? '100%' : undefined,
         alignSelf: width === 'full' ? 'stretch' : 'flex-start',
       },
@@ -50,7 +52,7 @@ export function Button({
       {icon ? <View style={[styles.icon, { color: colors.text, fontSize: size === 'sm' ? 14 : 16 }]}>
         <Icon spec={icon} color={colors.text} />
       </View> : null}
-      {text === null ? content : <Text style={[styles.label, { color: colors.text, fontSize: size === 'sm' ? 13 : 14 }]}>{busy ? '…' : text}</Text>}
+      {text === null ? content : <Text style={[styles.label, { color: colors.text, fontSize: large ? 16 : size === 'sm' ? 13 : 14, lineHeight: large ? 24 : undefined }]}>{busy ? '…' : text}</Text>}
     </View>
   </Pressable>;
 }

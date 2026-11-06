@@ -304,6 +304,9 @@ class UserNavigationView(drf_views.APIView):
 
         model = sidebar_model(request, request.user, None)
         model.pop("csrfToken", None)
+        model["lastSearchType"] = (
+            getattr(request.user, "last_search_type", None) or "all"
+        )
         return Response(model, status=HTTP.OK)
 
 

@@ -234,6 +234,7 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 ## MEDIA-CARD
 
 - `frontend/ui/MediaCard.jsx` (universal React Native card shell for native and shared React Native surfaces: layouts, `ArtworkImage` fallback/lazy loading, chips, progress, title/lines and rating overlay on the artwork bottom for poster layouts, explicit read-only mode and selectable states; presentation only)
+- `frontend/ui/CardScrim.jsx` (poster text scrim with the same stops as the web `.bg-card-body` gradient; used by the universal card)
 - `frontend/ui/MediaCard.web.jsx` (browser implementation for every surface: established DOM classes, theme rules, artwork, status/corner chips, progress, rating popup, faded title/rating/subtitle overlay on the poster bottom, and hover/touch action overlay; presentation only)
 - `frontend/ui/MediaCard.native.jsx` (native implementation entry that delegates to the universal `MediaCard` React Native card)
 - `frontend/ui/MediaCardActions.jsx` (universal action overlay, row buttons and list-reorder controls; native drag gesture with an `adjustable` value, hint and accessibility actions, explicit action/reorder/reorder-drag/reveal callbacks, no transport)

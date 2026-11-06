@@ -122,5 +122,5 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: palette.background },
   body: { flex: 1, minHeight: 0 },
   entrance: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 16, paddingVertical: 24 },
-  entranceLogo: { width: 158, height: 64, alignSelf: 'center' },
+  entranceLogo: { width: 211, height: 64, alignSelf: 'center' },
 });

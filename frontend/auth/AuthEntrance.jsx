@@ -218,8 +218,8 @@ export function AuthEntrance({
     {mode === 'recovery' ? <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.recoveryNotice}</Text> : null}
     {mode === 'signup' ? <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.authenticatorWarning}</Text> : null}
 
-    <View style={styles.fields}>
-      <TextField id="auth-server" name="serverUrl" label={copy.serverAddress} type="url"
+    <View style={[styles.fields, styles.serverFields]}>
+      <TextField size="lg" id="auth-server" name="serverUrl" label={copy.serverAddress} type="url"
         value={serverUrl} placeholder={copy.serverPlaceholder} autoComplete="url"
         disabled={busy || serverBusy} error={serverError} help={serverHelp}
         palette={colors} onChangeText={value => onServerChange?.(value)}
@@ -238,14 +238,14 @@ export function AuthEntrance({
     </Notice> : null}
 
     {!socialOnly && mode === 'login' ? <View style={styles.fields}>
-      <TextField id="auth-login" name="login" label={copy.login} value={values.login}
+      <TextField size="lg" id="auth-login" name="login" label={copy.login} value={values.login}
         placeholder="Enter your username" autoComplete="username" required disabled={busy}
         error={errors.login} palette={colors} onChangeText={value => update('login', value)} />
-      <TextField id="auth-password" name="password" label={copy.password} type="password"
+      <TextField size="lg" id="auth-password" name="password" label={copy.password} type="password"
         value={values.password} placeholder="Enter your password" autoComplete="current-password"
         required disabled={busy} error={errors.password} palette={colors}
         onChangeText={value => update('password', value)} />
-      <Button label={busy ? busyLabel : copy.signIn} tone="primary" width="full" icon={loginIcon}
+      <Button label={busy ? busyLabel : copy.signIn} tone="primary" size="lg" width="full" icon={loginIcon}
         busy={busy} disabled={busy} onPress={() => submit()} palette={buttons} />
       {registrationEnabled
         ? <View style={styles.footerLink}>
@@ -256,27 +256,27 @@ export function AuthEntrance({
           <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.signupsDisabled}</Text>
           <LinkButton label={copy.hostYourOwn} onPress={onHostOwn || (() => onSwitchMode?.('login'))} palette={colors} />
         </View>}
-      {firstRun ? null : <View style={styles.footerBlock}>
-        <LinkButton label={copy.forgotPassword} onPress={onForgotPassword} palette={colors} />
-      </View>}
+    </View> : null}
+    {!socialOnly && mode === 'login' && !firstRun ? <View style={styles.footerBlock}>
+      <LinkButton label={copy.forgotPassword} onPress={onForgotPassword} palette={colors} />
     </View> : null}
 
     {!socialOnly && mode === 'signup' ? <View style={styles.fields}>
-      <TextField id="auth-username" name="username" label={copy.username} value={values.username}
+      <TextField size="lg" id="auth-username" name="username" label={copy.username} value={values.username}
         placeholder="Choose a username" autoComplete="username" required disabled={busy}
         error={errors.username} palette={colors} onChangeText={value => update('username', value)} />
-      <TextField id="auth-password1" name="password1" label={copy.password} type="password"
+      <TextField size="lg" id="auth-password1" name="password1" label={copy.password} type="password"
         value={values.password1} placeholder="Choose a password" autoComplete="new-password"
         required disabled={busy} error={errors.password1} palette={colors}
         onChangeText={value => update('password1', value)} />
-      <TextField id="auth-password2" name="password2" label={copy.confirmPassword} type="password"
+      <TextField size="lg" id="auth-password2" name="password2" label={copy.confirmPassword} type="password"
         value={values.password2} placeholder="Confirm your password" autoComplete="new-password"
         required disabled={busy} error={errors.password2} palette={colors}
         onChangeText={value => update('password2', value)} />
       <View style={styles.actions}>
-        <Button label={busy ? busyLabel : copy.createAccount} tone="primary" width="full" busy={busy} disabled={busy}
+        <Button label={busy ? busyLabel : copy.createAccount} tone="primary" size="lg" width="full" busy={busy} disabled={busy}
           onPress={() => submit({ setupAuthenticator: false })} palette={buttons} />
-        <Button label={copy.createAccountWithAuthenticator} tone="surface" width="full" disabled={busy}
+        <Button label={copy.createAccountWithAuthenticator} tone="surface" size="lg" width="full" disabled={busy}
           onPress={() => submit({ setupAuthenticator: true })} palette={buttons} />
       </View>
       <View style={styles.footerLink}>
@@ -286,14 +286,14 @@ export function AuthEntrance({
     </View> : null}
 
     {!socialOnly && mode === 'recovery' ? <View style={styles.fields}>
-      <TextField id="recover-username" name="username" label={copy.username} value={values.username}
+      <TextField size="lg" id="recover-username" name="username" label={copy.username} value={values.username}
         placeholder="Your username" autoComplete="username" required disabled={busy}
         error={errors.username} palette={colors} onChangeText={value => update('username', value)} />
       {useRecoveryCode
-        ? <TextField id="recover-recovery-code" name="recoveryCode" label={copy.recoveryCode}
+        ? <TextField size="lg" id="recover-recovery-code" name="recoveryCode" label={copy.recoveryCode}
           value={values.recoveryCode} placeholder="Enter a recovery code" required disabled={busy}
           error={errors.recoveryCode} palette={colors} onChangeText={value => update('recoveryCode', value)} />
-        : <TextField id="recover-authenticator-code" name="authenticatorCode" label={copy.authenticatorCode}
+        : <TextField size="lg" id="recover-authenticator-code" name="authenticatorCode" label={copy.authenticatorCode}
           value={values.authenticatorCode} placeholder="6-digit code" maxLength={6}
           required disabled={busy} error={errors.authenticatorCode} palette={colors}
           onChangeText={value => update('authenticatorCode', value)} />}
@@ -301,17 +301,17 @@ export function AuthEntrance({
         <Chip label={useRecoveryCode ? copy.useAuthenticatorCode : copy.useRecoveryCode}
           palette={colors} onPress={() => setUseRecoveryCode(current => !current)} />
       </View>
-      <TextField id="recover-new-password1" name="newPassword1" label={copy.newPassword} type="password"
+      <TextField size="lg" id="recover-new-password1" name="newPassword1" label={copy.newPassword} type="password"
         value={values.newPassword1} placeholder="Choose a new password" autoComplete="new-password"
         required disabled={busy} error={errors.newPassword1} palette={colors}
         onChangeText={value => update('newPassword1', value)} />
-      <TextField id="recover-new-password2" name="newPassword2" label={copy.confirmNewPassword} type="password"
+      <TextField size="lg" id="recover-new-password2" name="newPassword2" label={copy.confirmNewPassword} type="password"
         value={values.newPassword2} placeholder="Confirm the new password" autoComplete="new-password"
         required disabled={busy} error={errors.newPassword2} palette={colors}
         onChangeText={value => update('newPassword2', value)} />
       {useRecoveryCode ? <Text style={[styles.help, { color: colors.textMuted }]}>{copy.recoveryHelp}</Text> : null}
       <View style={styles.actions}>
-        <Button label={busy ? busyLabel : copy.resetPassword} tone="primary" width="full" busy={busy} disabled={busy}
+        <Button label={busy ? busyLabel : copy.resetPassword} tone="primary" size="lg" width="full" busy={busy} disabled={busy}
           onPress={() => submit({ useRecoveryCode })} palette={buttons} />
         <View style={styles.footerBlock}>
           <LinkButton label={copy.signInLink} onPress={() => onSwitchMode?.('login')} palette={colors} />
@@ -328,13 +328,14 @@ export function AuthEntrance({
 
 const styles = StyleSheet.create({
   root: { gap: 32 },
-  card: { padding: 32, gap: 16, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 }, elevation: 6 },
+  card: { padding: 32, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 15,
+    shadowOffset: { width: 0, height: 10 }, elevation: 6 },
   heading: { alignItems: 'center' },
-  title: { fontSize: 18, fontWeight: '400', lineHeight: 24, textAlign: 'center' },
+  title: { fontSize: 16, fontWeight: '400', lineHeight: 24, textAlign: 'center' },
   copy: { fontSize: 13, lineHeight: 19 },
   help: { fontSize: 12, lineHeight: 17 },
-  fields: { gap: 12 },
+  fields: { gap: 24 },
+  serverFields: { marginBottom: 24 },
   section: { gap: 8, borderTopWidth: 1, paddingTop: 14 },
   sectionRule: { borderTopWidth: 1 },
   sectionTitle: { fontSize: 13, fontWeight: '600' },
@@ -343,7 +344,7 @@ const styles = StyleSheet.create({
   serverButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 6 },
   serverGlyph: { fontSize: 19, fontWeight: '700', lineHeight: 22 },
   actions: { gap: 12 },
-  footerLink: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 24 },
+  footerLink: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 6 },
   footerBlock: { alignItems: 'center', marginTop: 8 },
   methodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   inlineAction: { marginTop: 8 },

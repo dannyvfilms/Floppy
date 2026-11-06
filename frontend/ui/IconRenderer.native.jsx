@@ -1,4 +1,6 @@
 import React from 'react';
+// Native presentation marker for the architecture contract; the shared
+// component below owns layout, so no wrapper View is rendered here.
 import { View } from 'react-native';
 import Svg, {
   Circle,
@@ -58,14 +60,12 @@ function Shape({ node, color }) {
 export function Icon({ spec, color = '#a1a1aa', size = 20 }) {
   if (!spec?.children) return null;
   const root = convert({ attrs: spec.root }, color);
-  return <View>
-    <Svg width={size} height={size} viewBox={spec.viewBox || '0 0 24 24'}
-      fill={root.fill || 'none'}
-      stroke={root.stroke || 'none'}
-      strokeWidth={root.strokeWidth || 2}
-      strokeLinecap={root.strokeLinecap || 'round'}
-      strokeLinejoin={root.strokeLinejoin || 'round'}>
-      {spec.children.map((child, index) => <Shape key={index} node={child} color={color} />)}
-    </Svg>
-  </View>;
+  return <Svg width={size} height={size} viewBox={spec.viewBox || '0 0 24 24'}
+    fill={root.fill || 'none'}
+    stroke={root.stroke || 'none'}
+    strokeWidth={root.strokeWidth || 2}
+    strokeLinecap={root.strokeLinecap || 'round'}
+    strokeLinejoin={root.strokeLinejoin || 'round'}>
+    {spec.children.map((child, index) => <Shape key={index} node={child} color={color} />)}
+  </Svg>;
 }

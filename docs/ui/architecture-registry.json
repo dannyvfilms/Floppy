@@ -2223,6 +2223,26 @@
         }
       }
     },
+    "frontend/ui/CardScrim.jsx": {
+      "components": [
+        "CardScrim"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Rendered through the Expo web export at 440px; the Django web card keeps the equivalent .bg-card-body CSS gradient. No side-by-side browser capture of the two adapters yet."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Rendered by the MediaCard on the iPhone Duo simulator; no pixel comparison against the web gradient yet."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "No Android emulator pass was run."
+        }
+      }
+    },
     "frontend/ui/RefreshNotice.jsx": {
       "components": [
         "RefreshNotice"

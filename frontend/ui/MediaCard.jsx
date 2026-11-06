@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ArtworkImage } from './ArtworkImage';
+import { CardScrim } from './CardScrim';
 import { MediaCardActionRow, MediaCardActions } from './MediaCardActions';
 
 const ASPECT = { poster: 2 / 3, square: 1, landscape: 16 / 9 };
@@ -386,10 +387,13 @@ export function MediaCard({
         palette={colors} labels={copy} revealed={isRevealed} onOpen={onOpen}
         onAction={onAction} onReorder={onReorder} onReorderDrag={onReorderDrag}
         dragging={dragging} renderIcon={renderActionIcon} /> : null}
-      <View style={[styles.body, styles.bodyOverlay]}>
-        <CardMetadata model={model} palette={colors} labels={copy} onOpen={gatedOpen}
-          onOpenLink={gatedOpenLink} onRate={onRate} renderRating={renderRating} readOnly={readOnly}
-          altOpen={altOpen} setAltOpen={setAltOpen} />
+      <View style={styles.bodyStack}>
+        <CardScrim style={styles.scrim} />
+        <View style={styles.body}>
+          <CardMetadata model={model} palette={colors} labels={copy} onOpen={gatedOpen}
+            onOpenLink={gatedOpenLink} onRate={onRate} renderRating={renderRating} readOnly={readOnly}
+            altOpen={altOpen} setAltOpen={setAltOpen} />
+        </View>
       </View>
     </View>
   </View>;
@@ -405,15 +409,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   artworkPlaceholder: { paddingHorizontal: 8, textAlign: 'center', fontSize: 11, fontWeight: '600' },
-  body: { padding: 10, gap: 2 },
-  bodyOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 9,
-    backgroundColor: 'rgba(0, 0, 0, 0.58)',
-  },
+  body: { padding: 10, gap: 2, zIndex: 1 },
+  bodyStack: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 9 },
+  // The web card darkens a fixed 3rem above its body, not a percentage of the
+  // body, so square and 2:3 cards read the same.
+  scrim: { position: 'absolute', left: 0, right: 0, bottom: 0, top: -48, zIndex: 0 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 0 },
   titleColumn: { flex: 1, minWidth: 0 },
   titleLinkPress: { minWidth: 0 },

@@ -1,4 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
+import { useWindowDimensions } from 'react-native';
 import { GlobalSearch } from '../../../frontend/ui/GlobalSearch.jsx';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import { palette, radius } from '../theme';
@@ -103,6 +104,8 @@ export default function SearchSlot({
   onOpenSuggestion,
   onSubmit,
 }) {
+  const { width } = useWindowDimensions();
+  const compact = width < 640;
   const selectedType = mediaTypes.find(option => option.value === initialMediaType) || mediaTypes[0];
   const [scannerVisible, setScannerVisible] = useState(false);
   const pendingBarcode = useRef(null);
@@ -144,6 +147,7 @@ export default function SearchSlot({
   return <>
     <GlobalSearch
       expanded={expanded}
+      compact={compact}
       query={initialQuery}
       selectedType={selectedType}
       mediaTypes={mediaTypes}

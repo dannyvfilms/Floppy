@@ -1,7 +1,9 @@
 import React from 'react';
+// Native presentation marker for the architecture contract; the shared
+// component below owns layout, so no wrapper View is rendered here.
 import { View } from 'react-native';
 import { Button as SharedButton } from './Button.jsx';
 
 export function Button(props) {
-  return <View><SharedButton {...props} /></View>;
+  return <SharedButton {...props} />;
 }

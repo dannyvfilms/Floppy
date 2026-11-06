@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { DiscoverView } from '../../../frontend/pages/DiscoverView';
 import { defaultLabels } from '../../../frontend/discover/DiscoverScreen';
 import { mediaCardPalette, palette } from '../theme';
+import { getActiveAuthSession } from '../data/authSession';
 
 export const surface = {
   id: 'DISCOVER',
@@ -11,7 +12,9 @@ export const surface = {
   note: 'The shared DiscoverView owns the page heading/toolbar order, tabs, recommendation rails, hidden grid, feedback and empty/loading states; this slot keeps the demo candidates, local planning/hide/Undo state and navigation intents. The web page still mounts the same shared row/feedback/state sections inside its Alpine-owned chrome because the row islands keep the pre-mount grid measurement; a page-level web adapter needs JSON row props. iOS, Android, browser interaction and screen-reader passes were not run; the Expo export is a compile check.',
 };
 
-const mediaOptions = [
+const DISCOVER_MEDIA_TYPES = new Set(['movie', 'tv', 'anime', 'manga', 'game', 'book', 'comic', 'boardgame', 'music', 'podcast']);
+
+const DEFAULT_MEDIA_OPTIONS = [
   { value: 'all', label: 'All Media' },
   { value: 'movie', label: 'Movies' },
   { value: 'tv', label: 'TV Shows' },
@@ -150,10 +153,28 @@ export function useDiscoverSurface({ navigate } = {}) {
   const [cacheRefreshing, setCacheRefreshing] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState({ visible: false, message: '' });
   const [toast, setToast] = useState({ visible: false, message: '', undoToken: '' });
+  const [mediaOptions, setMediaOptions] = useState(DEFAULT_MEDIA_OPTIONS);
   const snapshot = useRef(null);
   const refreshTimer = useRef(null);
   const statusTimer = useRef(null);
   const toastTimer = useRef(null);
+
+  useEffect(() => {
+    const auth = getActiveAuthSession();
+    if (!auth || typeof auth.request !== 'function') return undefined;
+    let cancelled = false;
+    auth.request('/api/v1/user/navigation/').then(nav => {
+      if (cancelled) return;
+      const types = (nav.primary || [])
+        .filter(item => item.href?.startsWith('/medialist/'))
+        .map(item => ({ value: item.href.split('/').pop(), label: item.label }))
+        .filter(item => DISCOVER_MEDIA_TYPES.has(item.value));
+      if (types.length) {
+        setMediaOptions([{ value: 'all', label: 'All Media' }, ...types, { value: 'hidden', label: 'Hidden' }]);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => () => {
     clearTimeout(refreshTimer.current);

@@ -232,6 +232,7 @@ class SidebarTests(FloppyApiTestCase):
         )
         self.assertTrue(body["logo"]["src"].endswith("floppy-logo.png"))
         self.assertIn("icon", body["primary"][0])
+        self.assertIn("lastSearchType", body)
 
     def test_signed_in_browser_session_can_read_the_api(self):
         """The native client signs in through allauth and then calls the API."""

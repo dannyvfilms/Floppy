@@ -173,6 +173,8 @@ export default function ShellSlot({
 
   const base = serverModel || DEMO_MODEL;
   const model = markActive(withGlyphs(base), activeHref);
+  const routeMediaType = activeHref.match(/^\/medialist\/([^/?#]+)/)?.[1];
+  const searchType = routeMediaType || serverModel?.lastSearchType || 'all';
   const pins = {
     pinned,
     pinnedLists: [],
@@ -198,7 +200,9 @@ export default function ShellSlot({
     showSearch
     showThemeButton={false}
     search={<SearchSlot
+      key={searchType}
       expanded
+      initialMediaType={searchType}
       onOpenSearch={onOpenSearch}
       onOpenSuggestion={onOpenSuggestion}
     />}
