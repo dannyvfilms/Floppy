@@ -53,7 +53,7 @@ function createStorage() {
 function sessionRoutes({ loginStatus = 302, sessionid = 'session-1', loginBody = null, verifyStatus = 200 } = {}) {
   return [
     {
-      match: (url, options) => url.endsWith('/login/') && (options.method || 'GET') === 'GET',
+      match: (url, options) => url.endsWith('/accounts/login/') && (options.method || 'GET') === 'GET',
       respond: () => response({ setCookie: ['csrftoken=csrf-1; Path=/; SameSite=Lax'] }),
     },
     {
@@ -138,6 +138,8 @@ test('session sign-in sends CSRF and stores only the session cookies', async () 
     password: 'hunter2-do-not-store',
   });
   assert.equal(state.status, 'authenticated');
+  const csrfCall = calls.find(call => call.options.method === 'GET' && call.url.endsWith('/accounts/login/'));
+  assert.ok(csrfCall, 'session sign-in asks the all-auth login page for a CSRF cookie');
   const loginCall = calls.find(call => call.options.method === 'POST');
   const body = new URLSearchParams(callbody(loginCall));
   assert.equal(body.get('login'), 'nova');
@@ -167,7 +169,7 @@ test('expired CSRF is refreshed once and the write is retried', async () => {
   let writes = 0;
   const routes = [
     {
-      match: (url, options) => url.endsWith('/login/') && (options.method || 'GET') === 'GET' && writes > 0,
+      match: (url, options) => url.endsWith('/accounts/login/') && (options.method || 'GET') === 'GET' && writes > 0,
       respond: () => response({ setCookie: ['csrftoken=csrf-3; Path=/'] }),
     },
     ...sessionRoutes(),

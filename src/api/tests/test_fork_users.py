@@ -233,6 +233,13 @@ class SidebarTests(FloppyApiTestCase):
         self.assertTrue(body["logo"]["src"].endswith("floppy-logo.png"))
         self.assertIn("icon", body["primary"][0])
 
+    def test_signed_in_browser_session_can_read_the_api(self):
+        """The native client signs in through allauth and then calls the API."""
+        self.client.force_login(self.user1)
+        response = self.client.get("/api/v1/user/sidebar/")
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertIn(MediaTypes.MOVIE.value, response.json()["media_types"])
+
     def test_toggle_media_type(self):
         """A media type can be disabled and re-enabled."""
         response = self.call_api(

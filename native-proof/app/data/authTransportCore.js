@@ -358,7 +358,7 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, now =
 
   async function refreshCsrf(current) {
     const target = current.serverUrl;
-    const response = await perform(`${target}/login/`, {
+    const response = await perform(`${target}/accounts/login/`, {
       method: 'GET',
       headers: { Accept: 'text/html' },
     });
@@ -647,7 +647,7 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, now =
     setState({ status: 'authenticating', serverUrl: baseUrl, authType: 'session', user: { username: login }, error: null, redirectTo: null });
     publish();
 
-    const loginPage = await perform(`${baseUrl}/login/`, {
+    const loginPage = await perform(`${baseUrl}/accounts/login/`, {
       method: 'GET',
       headers: { Accept: 'text/html' },
     });
@@ -680,10 +680,14 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, now =
           'X-CSRFToken': csrfToken,
           Cookie: cookieHeader(cookies),
           Origin: baseUrl,
-          Referer: `${baseUrl}/login/`,
+          Referer: `${baseUrl}/accounts/login/`,
         },
         body: form.toString(),
         credentials: 'omit',
+        // Django answers a successful login with a 302 that carries the
+        // session cookie. Following it would hide that Set-Cookie, so read the
+        // redirect response itself.
+        redirect: 'manual',
       });
     }
 
@@ -692,6 +696,11 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, now =
       cookies = mergeCookies(cookies, response);
       csrfToken = cookies.csrftoken || '';
       if (csrfToken) response = await postLogin();
+    }
+    if (response.status === 200) {
+      setState({ status: 'signed_out', error: AUTH_ERROR_CODES.INVALID_CREDENTIALS });
+      publish();
+      throw fail(AUTH_ERROR_CODES.INVALID_CREDENTIALS, 'Incorrect username or password.', { status: response.status });
     }
     cookies = mergeCookies(cookies, response);
     const candidate = {

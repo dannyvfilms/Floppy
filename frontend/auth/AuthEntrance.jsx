@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Chip } from '../settings/Chip';
 import { Button } from '../ui/Button';
 import { TextField } from '../ui/TextField';
@@ -79,6 +79,8 @@ const defaultLabels = {
   checkServer: 'Check server',
   checkingServer: 'Checking server…',
   serverReady: 'Server found. Choose a sign-in method below.',
+  serverOk: 'Server reachable. Check again',
+  serverFailed: 'Server check failed. Retry',
 };
 
 // The same mark the web login button renders (account/login.html).
@@ -137,6 +139,23 @@ export function SocialProviders({
     </View>
     <Text style={[styles.help, { color: colors.textMuted }]}>Provider sign-in opens the secure browser session. Floppy never receives the provider password.</Text>
   </View>;
+}
+
+// One inline control inside the server field: retry when idle, a spinner while
+// checking, then a check or an x. It replaces the separate Check server button.
+function ServerStatusButton({ state, busy, onPress, palette, labels }) {
+  const color = state === 'ok' ? palette.success : state === 'error' ? palette.danger : palette.textMuted;
+  const label = busy ? labels.checkingServer : state === 'ok' ? labels.serverOk
+    : state === 'error' ? labels.serverFailed : labels.checkServer;
+  return <Pressable accessibilityRole="button" accessibilityLabel={label}
+    accessibilityState={{ busy, disabled: busy }} disabled={busy} onPress={onPress}
+    style={({ pressed, focused }) => [styles.serverButton, pressed && { backgroundColor: palette.surfaceMuted },
+      focused && palette.focusStyle]}>
+    {busy ? <ActivityIndicator size="small" color={color} />
+      : <Text aria-hidden style={[styles.serverGlyph, { color }]}>
+        {state === 'ok' ? '✓' : state === 'error' ? '×' : '↻'}
+      </Text>}
+  </Pressable>;
 }
 
 function LinkButton({ label, onPress, palette, accessibilityLabel }) {
@@ -203,13 +222,10 @@ export function AuthEntrance({
       <TextField id="auth-server" name="serverUrl" label={copy.serverAddress} type="url"
         value={serverUrl} placeholder={copy.serverPlaceholder} autoComplete="url"
         disabled={busy || serverBusy} error={serverError} help={serverHelp}
-        palette={colors} onChangeText={value => onServerChange?.(value)} />
-      <View style={styles.formActions}>
-        <Button label={serverBusy ? copy.checkingServer : copy.checkServer} tone="surface"
-          busy={serverBusy} disabled={busy || serverBusy} onPress={onCheckServer}
-          palette={buttons} />
-        {serverChecked ? <Text style={[styles.help, { color: colors.success }]}>{copy.serverReady}</Text> : null}
-      </View>
+        palette={colors} onChangeText={value => onServerChange?.(value)}
+        trailing={<ServerStatusButton
+          state={serverBusy ? 'idle' : serverError ? 'error' : serverChecked ? 'ok' : 'idle'}
+          busy={serverBusy} onPress={onCheckServer} palette={colors} labels={copy} />} />
     </View>
 
     {error ? <Notice tone="error" title={copy.errorsTitle} palette={colors}>{error}</Notice> : null}
@@ -324,6 +340,8 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 13, fontWeight: '600' },
   providerList: { gap: 8 },
   formActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 },
+  serverButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 6 },
+  serverGlyph: { fontSize: 19, fontWeight: '700', lineHeight: 22 },
   actions: { gap: 12 },
   footerLink: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 24 },
   footerBlock: { alignItems: 'center', marginTop: 8 },
