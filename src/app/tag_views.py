@@ -551,9 +551,11 @@ def tag_item_toggle(request):
 @require_POST
 def tag_bulk_toggle(request):
     """Add or remove a tag across multiple items for the current user."""
+    from app.bulk_actions import posted_item_ids
+
     tag_name = (request.POST.get("tag_name") or "").strip()
     action = request.POST.get("action")
-    item_ids = [value for value in request.POST.getlist("item_ids") if value]
+    item_ids = posted_item_ids(request.POST)
 
     if not tag_name or action not in {"add", "remove"} or not item_ids:
         return HttpResponseBadRequest(

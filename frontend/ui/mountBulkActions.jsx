@@ -94,7 +94,8 @@ async function post(url, csrf, body) {
 
 function playsBody(job, dryRun) {
   const data = new URLSearchParams({ ...job.form, dry_run: dryRun ? '1' : '0' });
-  job.itemIds.forEach(id => data.append('item_ids', id));
+  // One field keeps select-all sizes above Django's field-count limit postable.
+  data.set('item_ids', job.itemIds.join(','));
   return data;
 }
 
@@ -110,7 +111,7 @@ async function startPlays(config, job, dryRun) {
 async function runStatus(config, job) {
   try {
     const body = new URLSearchParams({ status: job.status });
-    job.itemIds.forEach(id => body.append('item_ids', id));
+    body.set('item_ids', job.itemIds.join(','));
     const data = await post(config.statusUrl, config.csrfToken, body);
     patchJob(job.id, { phase: 'done', message: data.message || 'Status updated.' });
     notify(data.message || 'Status updated.');
@@ -186,9 +187,11 @@ function JobCard({ config, job, palette }) {
 // ---- dialogs that start a job ---------------------------------------------
 function StatusDialog({ request, close, start, palette }) {
   const count = request.itemIds.length;
-  const description = `Set ${plural(count, 'item')} to ${request.statusLabel}? ${request.status === 'Completed'
-    ? 'Completed also adds a play for every episode not yet played, dated today. To choose the dates, use Add Plays to History first.'
-    : 'This changes status only. Nothing is added to History, Statistics or streaks. To record viewing activity, use Add Plays to History.'}`;
+  const description = request.status === 'no_status'
+    ? `Clear the status for ${plural(count, 'item')}? They become Not set, leave the normal library view, and can be found again with the No Status filter. Nothing is removed from History or Statistics.`
+    : `Set ${plural(count, 'item')} to ${request.statusLabel}? ${request.status === 'Completed'
+      ? 'Completed also adds a play for every episode not yet played, dated today. To choose the dates, use Add Plays to History first.'
+      : 'This changes status only. Nothing is added to History, Statistics or streaks. To record viewing activity, use Add Plays to History.'}`;
   return <BulkActionDialog open title="Update Status" description={description}
     confirmLabel="Update status" cancelLabel="Cancel" palette={palette}
     onConfirm={start} onClose={close} />;
@@ -231,7 +234,7 @@ function TagDialog({ request, close, palette }) {
     setError('');
     try {
       const data = new URLSearchParams({ tag_name: selectedTag, action });
-      request.itemIds.forEach(id => data.append('item_ids', id));
+      data.set('item_ids', request.itemIds.join(','));
       await post(request.tagUrl, request.csrfToken, data);
       notify(`Tag "${selectedTag}" ${action === 'add' ? 'added to' : 'removed from'} ${plural(request.itemIds.length, 'item')}.`);
       finished();

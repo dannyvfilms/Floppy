@@ -1,1 +1,0 @@
-import{b as m}from"./chunk-5JLOZRMU.js";import{a as f,c as t,d as i}from"./chunk-4MNZL56D.js";import{b as o}from"./chunk-SQE76S5B.js";var c=o(f());var n=o(i());function k(r,p){return t(r,(0,n.jsx)(m,{host:r,props:p}))}export{k as mountEditionPicker};

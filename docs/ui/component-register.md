@@ -548,11 +548,12 @@ can inform a focused completion pass.
 
 - Purpose/usage: library and lists.
 - Implementation: `src/static/js/bulkSelection.js`, `src/templates/app/components/bulk_selection_toolbar.html`, list bulk controls.
-- Contract: identity/count/mode, eligibility, busy/error/reset/refresh and per-user permission checks.
-- Data: `src/app/bulk_action_views.py`, `bulk_actions.py`, list action handlers.
+- Contract: identity/count/mode, eligibility, busy/error/reset/refresh and per-user permission checks. Bulk status accepts a real status or `no_status`, which clears the tracker to Not set. Library pages with SQL pagination also offer Select all matching: the toolbar sends the current filter form to the list URL with `bulk_ids=1` and selects the returned item ids, so a large filtered set does not have to be paged through by hand. Bulk requests comma-join ids into one `item_ids` field, which keeps selections above Django's 1,000-field request limit postable; `posted_item_ids` still accepts one field per id and `item_ids[]`.
+- Data: `src/app/bulk_action_views.py`, `bulk_actions.py`, `src/app/media_list_views.py` (`bulk_ids` lookup), list action handlers.
 - Reuse/blockers: selection/toolbar reusable; action capabilities differ by surface. Public views must stay read-only.
 - Native placement: `native-proof/app/surfaces/BulkSlot.jsx` renders selection, cards, toolbar, dialogs and the Add Plays review/job dock with shared `Button`, `MediaCard` selection state and the shared `BulkJobCard`/`BulkJobProgress`/`BulkJobSummary`/`BulkJobProblems` presentation. A finished status or plays action publishes a media-card change for the selected identities, so a card grid mounted afterwards reflects it through the shared native event bus. Server writes and the browser's real Add Plays transport remain web-owned.
 - Validation targets: `src/app/tests/views/test_bulk_actions.py`, `src/lists/tests/test_bulk_actions.py`.
+- This change's verification: `scripts/test.sh app.tests.views.test_bulk_actions app.tests.views.test_media_list`, `uv run --no-sync ruff check src`, `npm run build:ui` and `npm run check:ui` pass. The bulk tests include a 1,001-id comma-joined request above Django's field-count limit. Browser (Chromium, local gunicorn, throwaway database): five Planning games rendered, Select all matching selected all five, Update Status → No status cleared them (result count 0 and stored statuses null). iOS and Android were not exercised. `npm run check:ui-architecture` still reports pre-existing errors in unrelated in-flight provider, settings, detail and search files; it reports none for the bulk components.
 
 ### SEARCH — Global autocomplete, results, parent pickers and barcode input
 

@@ -33,7 +33,8 @@ const glyphs = {
   close: <Glyph><path d="M18 6 6 18" /><path d="m6 6 12 12" /></Glyph>,
 };
 
-export function BulkActionBar({ count, actions = [], disabled = false, deselectDisabled = false, onDeselect }) {
+export function BulkActionBar({ count, actions = [], disabled = false, deselectDisabled = false, onDeselect,
+  onSelectAll, selectAllDisabled = false, selecting = false }) {
   return <div className="ui-bulk-bar" role="toolbar" aria-label="Bulk actions">
     <div className="ui-bulk-count">
       {glyphs.check}
@@ -46,6 +47,10 @@ export function BulkActionBar({ count, actions = [], disabled = false, deselectD
         : <Button key={action.key} type="button" secondary disabled={disabled}
           aria-label={action.label} title={action.label} onClick={action.onSelect}>{glyphs[action.icon]}</Button>)}
     </div>
+    {onSelectAll ? <button type="button" className="ui-bulk-deselect"
+      disabled={selectAllDisabled || selecting} onClick={onSelectAll}>
+      {selecting ? 'Selecting…' : 'Select all matching'}
+    </button> : null}
     <button type="button" className="ui-bulk-deselect" disabled={deselectDisabled} onClick={onDeselect}>
       {glyphs.close} Deselect All
     </button>

@@ -15,6 +15,7 @@ const notify = (message, type = 'success') => {
 function Toolbar({ config }) {
   const [selection, setSelection] = useState(read);
   const [busy, setBusy] = useState(false);
+  const [selecting, setSelecting] = useState(false);
   useEffect(() => {
     const change = () => setSelection(read());
     window.addEventListener('bulk-selection-change', change);
@@ -27,12 +28,39 @@ function Toolbar({ config }) {
   const none = ids.length === 0;
   const open = detail => window.dispatchEvent(new CustomEvent('bulk-actions-open', { detail: { ...detail, itemIds: [...ids] } }));
 
+  async function selectAll() {
+    if (!config.selectAllUrl || busy || selecting) return;
+    setSelecting(true);
+    try {
+      const params = new URLSearchParams();
+      const form = document.getElementById('filter-form');
+      if (form) {
+        new FormData(form).forEach((value, key) => {
+          if (typeof value === 'string') params.append(key, value);
+        });
+      }
+      const response = await fetch(`${config.selectAllUrl}&${params}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !Array.isArray(data.item_ids)) {
+        throw new Error(data.error || 'Could not select the matching items.');
+      }
+      window.dispatchEvent(new CustomEvent('bulk-selection-select-all', {
+        detail: { ids: data.item_ids },
+      }));
+    } catch (error) {
+      notify(error.message || 'Could not select the matching items.', 'error');
+    } finally {
+      setSelecting(false);
+    }
+  }
+
   async function run(url, fields) {
     if (!ids.length || busy || !url) return;
     setBusy(true);
     try {
       const body = new URLSearchParams();
-      ids.forEach(id => body.append('item_ids', id));
+      // One field keeps select-all sizes above Django's field-count limit postable.
+      body.set('item_ids', ids.join(','));
       Object.entries(fields).forEach(([key, value]) => body.append(key, value));
       const response = await fetch(url, { method: 'POST', headers: { 'X-CSRFToken': config.csrfToken }, body });
       const data = await response.json().catch(() => ({}));
@@ -68,6 +96,7 @@ function Toolbar({ config }) {
   ];
 
   return <BulkActionBar count={ids.length} actions={actions} disabled={locked} deselectDisabled={busy}
+    onSelectAll={config.selectAllUrl ? selectAll : undefined} selectAllDisabled={busy} selecting={selecting}
     onDeselect={() => window.dispatchEvent(new CustomEvent('bulk-actions-clear'))} />;
 }
 

@@ -4,4 +4,5 @@
      x-effect="window.__bulkSelection = { active: selectMode, ids: [...selectedItemIds] }; window.dispatchEvent(new CustomEvent('bulk-selection-change'))"
      @bulk-actions-done.window="if (selectMode) { toggleSelectMode(); refresh(); }"
      @bulk-job-finished.window="refresh()"
+     @bulk-selection-select-all.window="selectAll($event.detail.ids)"
      @bulk-actions-clear.window="clearSelection()"></div>

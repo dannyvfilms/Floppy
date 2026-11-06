@@ -1269,4 +1269,7 @@ Shared `AuthEntrance`, `SocialProviders` and `AuthNotice` own entrance, social-p
 - `native-proof/app/surfaces/BulkSlot.jsx` (native Library selection, cards, toolbar, dialogs and job dock)
 - `src/templates/base.html` (dock mount)
 - `src/app/bulk_action_views.py`
+- `src/app/bulk_actions.py` (status targets including `no_status`)
+- `src/app/media_list_views.py` (`bulk_ids=1` id lookup used by Select all matching)
+- `src/app/tag_views.py` (bulk tag toggle through the shared id parser)
 - `src/app/services/bulk_show_plays.py`

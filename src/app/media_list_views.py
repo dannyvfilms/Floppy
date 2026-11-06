@@ -1895,6 +1895,15 @@ def media_list(request, media_type):
         or (sort_filter == "time_left" and media_type == MediaTypes.TV.value)
         or _skip_generic_media_list
     )
+    if use_sql_media_pagination and request.GET.get("bulk_ids") == "1":
+        # The bulk toolbar asks for the ids behind the current filters so
+        # "Select all matching" does not have to page through the library.
+        # Resolve before any list/order cache work, including its build lock.
+        engine = LibraryQueryExecutor(
+            request.user,
+            from_media_list_filters(sql_media_filters, (media_type,)),
+        )
+        return JsonResponse({"item_ids": sorted(engine.ids())})
 
     anime_library_mode = getattr(
         request.user,
@@ -3760,6 +3769,11 @@ def media_list(request, media_type):
             list_url=reverse("bulk_list_add"),
             collection_url=reverse("bulk_collection_quick_add"),
             tag_url=reverse("tag_bulk_toggle"),
+            select_all_url=(
+                reverse("medialist", args=[route_media_type]) + "?bulk_ids=1"
+                if use_sql_media_pagination
+                else ""
+            ),
         )
 
     if context.get("is_artist_list", False):
