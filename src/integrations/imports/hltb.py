@@ -18,8 +18,20 @@ logger = logging.getLogger(__name__)
 
 def importer(file, user, mode):
     """Import media from CSV file."""
+    # Every row is resolved through IGDB, so an unconfigured provider would
+    # otherwise fail mid-file with an unexpected error (or skip everything).
+    if not app.providers.igdb.enabled(user):
+        msg = (
+            "IGDB is not configured. Add your Twitch application's client ID "
+            "and secret in Settings → Metadata providers before importing "
+            "HowLongToBeat data."
+        )
+        raise MediaImportError(msg)
     hltb_importer = HowLongToBeatImporter(file, user, mode)
-    return hltb_importer.import_data()
+    try:
+        return hltb_importer.import_data()
+    except app.providers.services.ProviderAPIError as error:
+        raise MediaImportError(str(error)) from error
 
 
 class HowLongToBeatImporter:
@@ -72,6 +84,8 @@ class HowLongToBeatImporter:
         for row in rows:
             try:
                 self._process_first_pass(row, media_id_counts, media_id_titles)
+            except app.providers.services.ProviderAPIError:
+                raise
             except Exception as error:
                 error_msg = f"Error processing entry: {row}"
                 raise MediaImportUnexpectedError(error_msg) from error
@@ -82,6 +96,8 @@ class HowLongToBeatImporter:
             import_progress.report(i, total, "HowLongToBeat")
             try:
                 self._process_second_pass(row, media_id_counts)
+            except app.providers.services.ProviderAPIError:
+                raise
             except Exception as error:
                 error_msg = f"Error processing entry: {row}"
                 raise MediaImportUnexpectedError(error_msg) from error

@@ -57,6 +57,10 @@ TRANSIENT_HTTP_STATUS_CODES = frozenset(
         requests.codes.gateway_timeout,
     },
 )
+# Comic Vine signals its quota with 420 ("Enhance Your Calm") rather than 429,
+# so it must use the same retry-and-cooldown path or one rate-limited lookup
+# aborts a whole import.
+RATE_LIMIT_STATUS_CODES = frozenset({420, requests.codes.too_many_requests})
 TRANSIENT_HTTP_MAX_RETRIES = 2
 RATE_LIMIT_MAX_RETRIES = 3
 # Retry-After is attacker-ish input from our perspective: providers occasionally
@@ -855,7 +859,7 @@ def api_request(
         max_retries = (
             RATE_LIMIT_MAX_RETRIES_INTERACTIVE if interactive else RATE_LIMIT_MAX_RETRIES
         )
-        if status_code == requests.codes.too_many_requests:
+        if status_code in RATE_LIMIT_STATUS_CODES:
             max_wait = (
                 RATE_LIMIT_MAX_WAIT_SECONDS_INTERACTIVE
                 if interactive
