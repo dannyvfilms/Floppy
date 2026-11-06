@@ -1878,6 +1878,26 @@
         }
       }
     },
+    "frontend/ui/Reveal.jsx": {
+      "components": [
+        "Reveal"
+      ],
+      "register": "SHELL",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Browser surfaces resolve Reveal.web.jsx through the same import; the release-height reveal is being rechecked."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Native reveal mounts the open block; no simulator pass for the animation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Native reveal mounts the open block; no emulator pass for the animation."
+        }
+      }
+    },
     "frontend/ui/MediaCard.jsx": {
       "components": [
         "MediaCard"
@@ -2799,6 +2819,50 @@
         "android": {
           "status": "unverified",
           "evidence": "Compiled by the Expo export through the native notes slot and music editors; no emulator interaction pass."
+        }
+      }
+    },
+    "frontend/ui/Reveal.web.jsx": {
+      "kind": "presentation",
+      "register": "SHELL",
+      "components": [
+        "Reveal"
+      ],
+      "purpose": "Animate the sidebar Explore block open and closed with the release's 200 ms height reveal on the browser; the native counterpart keeps the same open/closed contract.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Compiled into the browser sidebar; the reveal is being rechecked against the release behavior."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to the browser implementation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to the browser implementation."
+        }
+      }
+    },
+    "frontend/ui/Reveal.native.jsx": {
+      "kind": "presentation",
+      "register": "SHELL",
+      "components": [
+        "Reveal"
+      ],
+      "purpose": "Keep the sidebar reveal contract native-compatible; native mount behavior is unchanged pending a platform animation pass.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not applicable to the native counterpart."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo source graph; no simulator pass for the reveal."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo source graph; no emulator pass for the reveal."
         }
       }
     },

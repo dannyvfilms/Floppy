@@ -113,13 +113,13 @@ function RailRow({
     </View>} />;
 }
 
-function DeferredRow({ group, rowId, labels, palette }) {
-  return <View style={[styles.skeleton, { borderColor: palette.border }]}
+function DeferredRow({ labels, palette, itemWidth = 176 }) {
+  return <View style={styles.skeleton}
     accessibilityRole="progressbar" accessibilityLabel={labels.loadingRow || 'Loading row'}>
     <View style={[styles.skeletonTitle, { backgroundColor: palette.surfaceStrong }]} />
     <View style={styles.skeletonCards}>
       {[0, 1, 2, 3].map(index => <View key={index}
-        style={[styles.skeletonCard, { backgroundColor: palette.surface }]} />)}
+        style={[styles.skeletonCard, { backgroundColor: palette.surface, width: itemWidth }]} />)}
     </View>
   </View>;
 }
@@ -342,7 +342,8 @@ export function HomeShelves({
         </Pressable>
       </View>;
     }
-    return <DeferredRow key={`pending-${key}`} group={group} rowId={id} labels={labels} palette={palette} />;
+    return <DeferredRow key={`pending-${key}`} group={group} rowId={id} labels={labels}
+      palette={palette} itemWidth={itemWidth} />;
   }
 
   function sectionHeader(group) {
@@ -399,8 +400,8 @@ const styles = StyleSheet.create({
   group: { gap: 12 },
   groupHeader: { borderBottomWidth: 1, paddingBottom: 10 },
   groupTitle: { fontSize: 24, fontWeight: '600', lineHeight: 30 },
-  skeleton: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 10 },
-  skeletonTitle: { width: 160, height: 18, borderRadius: 4 },
+  skeleton: { gap: 8 },
+  skeletonTitle: { width: 160, height: 24, borderRadius: 4 },
   skeletonCards: { flexDirection: 'row', gap: 16, overflow: 'hidden' },
   cardStack: { gap: 0 },
   progress: { marginTop: 8, alignItems: 'center', justifyContent: 'center' },

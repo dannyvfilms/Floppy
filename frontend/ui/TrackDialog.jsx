@@ -164,6 +164,7 @@ export function TrackDialog({
   onRewatch,
   onSecondaryAction,
   embedded = false,
+  maxWidth = 720,
   showHeader,
   now = () => new Date(),
 }) {
@@ -270,7 +271,7 @@ export function TrackDialog({
       <Pressable accessible={false} accessibilityLabel={labels.close || 'Close'} onPress={onClose}
         style={[StyleSheet.absoluteFill, { backgroundColor: palette.backdrop }]} />
       <View accessibilityViewIsModal role="dialog" accessibilityLabel={model?.title || labels.title || 'Tracking'}
-        style={[styles.dialog, { maxHeight: height * 0.92 }]}>
+        style={[styles.dialog, { maxWidth, maxHeight: height * 0.92 }]}>
         {form}
       </View>
     </View>

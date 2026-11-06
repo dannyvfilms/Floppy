@@ -436,14 +436,15 @@ export function StatisticsHoursByMediaTypeChart({ chart = {}, labels, palette })
   </ChartCard>;
 }
 
-export function StatisticsHoursChart({ chart = {}, labels, palette }) {
+export function StatisticsHoursChart({ chart = {}, labels, palette, title }) {
   const copy = mergeLabels(labels);
   const colors = mergePalette(palette);
   const chartLabels = chart.labels || [];
   const data = (chart.data || []).map(numberValue);
   const total = data.reduce((sum, value) => sum + value, 0);
-  const summary = `${chart.title || copy.hoursTitle}. ${chartLabels.map((label, index) => `${label} ${formatHours(data[index] || 0)} hours`).join('. ')}.`;
-  return <ChartCard title={chart.title || copy.hoursTitle} copy={chart.copy} palette={colors}>
+  const heading = title || chart.title || copy.hoursTitle;
+  const summary = `${heading}. ${chartLabels.map((label, index) => `${label} ${formatHours(data[index] || 0)} hours`).join('. ')}.`;
+  return <ChartCard title={heading} copy={chart.copy} palette={colors}>
     <BarChart labels={chartLabels} values={data}
       colors={data.map(() => chart.color || colors.accent)}
       palette={colors} accessibilityLabel={summary}
@@ -693,13 +694,16 @@ export function StatisticsCharts({
       : null}
     {visible.has('hours') ? <View style={styles.row}>
       <View style={styles.cardThird}>
-        <StatisticsHoursChart chart={model.hoursByMonth} labels={copy} palette={colors} />
+        <StatisticsHoursChart chart={model.hoursByMonth} labels={copy} palette={colors}
+          title={copy.hoursMonthTitle} />
       </View>
       <View style={styles.cardThird}>
-        <StatisticsHoursChart chart={model.hoursByWeekday} labels={copy} palette={colors} />
+        <StatisticsHoursChart chart={model.hoursByWeekday} labels={copy} palette={colors}
+          title={copy.hoursWeekdayTitle} />
       </View>
       <View style={styles.cardThird}>
-        <StatisticsHoursChart chart={model.hoursByTimeOfDay} labels={copy} palette={colors} />
+        <StatisticsHoursChart chart={model.hoursByTimeOfDay} labels={copy} palette={colors}
+          title={copy.hoursTimeTitle} />
       </View>
     </View> : null}
     {visible.has('status') ? <View style={styles.row}>
@@ -731,11 +735,11 @@ const styles = StyleSheet.create({
   cardHalf: { flexGrow: 1, flexBasis: 320, minWidth: 0 },
   cardThird: { flexGrow: 1, flexBasis: 220, minWidth: 0 },
   cardWide: { flexGrow: 2, flexBasis: 460, minWidth: 0 },
-  card: { borderRadius: 10, padding: 16, gap: 12, flexGrow: 1 },
+  card: { borderRadius: 12, padding: 24, gap: 12, flexGrow: 1 },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
   cardHeaderCopy: { flexShrink: 1, gap: 2 },
-  cardTitle: { fontSize: 15, fontWeight: '600' },
-  cardCopy: { fontSize: 11, lineHeight: 16 },
+  cardTitle: { fontSize: 16, fontWeight: '600' },
+  cardCopy: { fontSize: 12, lineHeight: 16 },
   emptyCopy: { fontSize: 12, textAlign: 'center', paddingVertical: 24 },
   ring: { alignItems: 'center', justifyContent: 'center' },
   ringTick: { position: 'absolute' },

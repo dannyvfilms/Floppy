@@ -133,6 +133,7 @@ export function GlobalSearch({
 }) {
   const palette = { ...defaultPalette, ...paletteOverrides };
   const [query, setQuery] = useState(initialQuery);
+  const [userTyped, setUserTyped] = useState(false);
   const [type, setType] = useState(selectedType || mediaTypes[0] || { display: 'All', value: 'all' });
   const [menuOpen, setMenuOpen] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -145,7 +146,7 @@ export function GlobalSearch({
   const isBarcodeType = barcodeTypes.includes(type.value);
 
   useEffect(() => { loader.current = onLoadSuggestions; }, [onLoadSuggestions]);
-  useEffect(() => { setQuery(initialQuery || ''); }, [initialQuery]);
+  useEffect(() => { setQuery(initialQuery || ''); setUserTyped(false); }, [initialQuery]);
   useEffect(() => {
     setMenuOpen(false);
     setPanel({ status: 'idle', suggestions: [] });
@@ -154,7 +155,7 @@ export function GlobalSearch({
 
   useEffect(() => {
     setActiveIndex(-1);
-    if (trimmed.length < MIN_QUERY_LENGTH || !loader.current) {
+    if (!userTyped || trimmed.length < MIN_QUERY_LENGTH || !loader.current) {
       setPanel({ status: 'idle', suggestions: [] });
       return undefined;
     }
@@ -176,7 +177,7 @@ export function GlobalSearch({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [trimmed, type.value]);
+  }, [trimmed, type.value, userTyped]);
 
   const footerOption = panel.status === 'ready' && panel.suggestions.length
     ? {
@@ -302,7 +303,7 @@ export function GlobalSearch({
           nativeID="global-search"
           accessibilityLabel={label(labels.inputLabel, 'Search your library or online')}
           value={query}
-          onChangeText={setQuery}
+          onChangeText={value => { setUserTyped(true); setQuery(value); }}
           placeholder={placeholder()}
           placeholderTextColor={palette.textMuted}
           autoComplete="off"

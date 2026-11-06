@@ -15,7 +15,7 @@ function readPalette() {
     textMuted: token('--color-text-muted', '#a1a1aa'),
     accent: token('--color-accent', '#6366f1'),
     accentStrong: token('--color-accent-strong', '#4f46e5'),
-    accentText: token('--color-accent-contrast', '#ffffff'),
+    accentText: '#ffffff',
     link: token('--color-link', '#818cf8'),
   };
 }

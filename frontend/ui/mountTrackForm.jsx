@@ -181,7 +181,7 @@ function Adapter({ host, props }) {
   const model = useMemo(() => normalizeTrackForm(props?.model || {}), [props]);
   const initialValues = useMemo(() => initialTrackValues(model), [model]);
   const [values, setValues] = useState(initialValues);
-  const [tabs, setTabs] = useState(() => model.tabs || []);
+  const [tabs, setTabs] = useState(() => props?.tabs || model.tabs || []);
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState('');
   const [palette, setPalette] = useState(readPalette);
@@ -295,8 +295,8 @@ function Adapter({ host, props }) {
   });
 
   return <TrackDialog
-    embedded
     open
+    maxWidth={1152}
     showHeader
     model={model}
     values={values}

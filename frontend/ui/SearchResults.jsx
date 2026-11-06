@@ -125,21 +125,23 @@ function ResultGroup({
   const columns = width >= 920 ? 5 : width >= 720 ? 4 : width >= 520 ? 3 : 2;
   const cardWidth = Math.min(190, Math.max(128, (width - 40 - (columns - 1) * 12) / columns));
   return <View style={styles.grid}>
-    {items.map((item, index) => <ResultCard
-      key={item.cardKey || item.key || `${item.title}-${index}`}
-      item={item}
-      layout="grid"
-      width={cardWidth}
-      labels={labels}
-      palette={palette}
-      onOpenResult={onOpenResult}
-      onOpenLink={onOpenLink}
-      onAction={onAction}
-      onReorder={onReorder}
-      onRate={onRate}
-      renderRating={renderRating}
-      renderActionIcon={renderActionIcon}
-    />)}
+    {items.map((item, index) => <View key={item.cardKey || item.key || `${item.title}-${index}`}
+      style={{ width: cardWidth }}>
+      <ResultCard
+        item={item}
+        layout="grid"
+        width={cardWidth}
+        labels={labels}
+        palette={palette}
+        onOpenResult={onOpenResult}
+        onOpenLink={onOpenLink}
+        onAction={onAction}
+        onReorder={onReorder}
+        onRate={onRate}
+        renderRating={renderRating}
+        renderActionIcon={renderActionIcon}
+      />
+    </View>)}
   </View>;
 }
 

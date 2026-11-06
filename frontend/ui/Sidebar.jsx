@@ -9,6 +9,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { Reveal } from './Reveal';
 
 // The signed-in sidebar as shared React Native presentation. The browser
 // adapter supplies links, storage, drag and transport; this file only lays out
@@ -130,7 +131,9 @@ function HoverRow({ active, palette, rowActions = 'always', children, actions, s
     onBlur: () => setFocused(false),
   } : {};
   return <View {...rest} {...hoverProps}
-    style={[styles.row, style, { borderRadius: palette.radius }, active && { backgroundColor: palette.border }]}>
+    style={[styles.row, style, { borderRadius: palette.radius },
+      hovered && !active && { backgroundColor: palette.hoverDim },
+      active && { backgroundColor: palette.border }]}>
     {children}
     {actions ? <View {...focusProps}
       style={[styles.rowActions, { opacity: visible ? 1 : 0 }]}>{actions}</View> : null}
@@ -344,7 +347,7 @@ function BottomLink({ item, palette, renderIcon, onNavigate }) {
   return <Pressable {...(item.platformProps || {})} accessibilityRole={item.platformProps?.href ? 'link' : 'button'}
     accessibilityLabel={item.label}
     onPress={item.platformProps?.href ? undefined : () => onNavigate?.(item)}
-    style={({ pressed, hovered, focused }) => [styles.bottomLink,
+    style={({ pressed, hovered, focused }) => [styles.bottomLink, { borderRadius: palette.radius },
       (pressed || hovered) && { backgroundColor: palette.hoverDim },
       focused && palette.focusStyle]}>
     <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={20}
@@ -424,8 +427,11 @@ export function Sidebar({
       {model.primary.map(item => renderItem({ ...item, pinKey: null }))}
     </ScrollView>
     {secondaryVisible ? <View style={[styles.secondary, { borderTopColor: palette.border }]}>
-      <ScrollView ref={list} style={[styles.secondaryScroll, { maxHeight: Math.round(height * 0.4) }]}>
-        {navOpen ? <View style={styles.navContent}>{unpinned.map(renderItem)}</View> : null}
+      <ScrollView ref={list} style={[styles.secondaryScroll, { maxHeight: Math.round(height * 0.4) }]}
+        contentContainerStyle={styles.secondaryContent}>
+        <Reveal open={navOpen}>
+          <View style={styles.navContent}>{unpinned.map(renderItem)}</View>
+        </Reveal>
         <View style={styles.navContent}>{pinned.map(renderItem)}</View>
       </ScrollView>
     </View> : null}
@@ -434,7 +440,7 @@ export function Sidebar({
       <Pressable accessibilityRole="button" accessibilityLabel={labels.explore}
         accessibilityState={{ expanded: navOpen, disabled: !hasUnpinned }}
         onPress={hasUnpinned ? toggleNav : undefined}
-        style={({ pressed, hovered, focused }) => [styles.explore,
+        style={({ pressed, hovered, focused }) => [styles.explore, { borderRadius: palette.radius },
           !hasUnpinned && styles.exploreReserved,
           (pressed || hovered) && hasUnpinned && { backgroundColor: palette.hoverDim },
           focused && hasUnpinned && palette.focusStyle]}>
@@ -447,7 +453,7 @@ export function Sidebar({
       <BottomLink item={model.bottom.settings} palette={palette}
         renderIcon={renderIcon} onNavigate={onNavigate} />
       <Pressable accessibilityRole="button" accessibilityLabel={labels.logout} onPress={onLogout}
-        style={({ pressed, hovered, focused }) => [styles.bottomLink,
+        style={({ pressed, hovered, focused }) => [styles.bottomLink, { borderRadius: palette.radius },
           (pressed || hovered) && { backgroundColor: palette.hoverDim },
           focused && palette.focusStyle]}>
         <IconSlot spec={model.bottom.logoutIcon} glyph={model.bottom.logoutGlyph}
@@ -467,11 +473,13 @@ const styles = StyleSheet.create({
   logoText: { fontSize: 20, fontWeight: '700', letterSpacing: 0.2 },
   primary: { flex: 1, minHeight: 0 },
   navContent: { padding: 16, gap: 4 },
-  secondary: { borderTopWidth: 1, paddingHorizontal: 16, paddingVertical: 16 },
+  secondary: { borderTopWidth: 1 },
   secondaryScroll: { minHeight: 0 },
+  secondaryContent: { width: '100%' },
   row: { minHeight: 36, flexDirection: 'row', alignItems: 'center',
     backgroundColor: 'transparent' },
-  rowActions: { flexDirection: 'row', alignItems: 'center' },
+  rowActions: { position: 'absolute', right: 8, top: 0, bottom: 0,
+    flexDirection: 'row', alignItems: 'center' },
   link: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center',
     gap: 12, paddingHorizontal: 16, paddingVertical: 8 },
   linkText: { flexShrink: 1, fontSize: 14 },

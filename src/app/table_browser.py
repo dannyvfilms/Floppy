@@ -465,12 +465,12 @@ def column_width(key: str) -> int:
     if key == "image":
         return 56
     if key in WIDE_COLUMNS:
-        return 280
+        return 154
     if key in {"genres", "tags", "notes", "synopsis"}:
-        return 220
+        return 80
     if key in {"author", "channel", "album_artist"}:
-        return 180
-    return 128
+        return 70
+    return 56
 
 
 def column_descriptor(column: ColumnDef) -> dict[str, Any]:
