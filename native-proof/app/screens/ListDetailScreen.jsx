@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { Screen } from '../components/Screen';
 import { ListDetailPageView } from '../../../frontend/pages/ListDetailPageView';
@@ -9,7 +9,7 @@ import { ListMembershipPopup } from '../../../frontend/ui/ListMembership';
 import { ListResults } from '../../../frontend/ui/ListResults';
 import { SmartRuleBuilder, SmartRuleSummary } from '../../../frontend/ui/SmartRules';
 import { TierBoard } from '../../../frontend/ui/TierBoard';
-import { createListTransport } from '../data/listTransport';
+import { createListTransport, listItemsFromPayload } from '../data/listTransport';
 import { palette, radius, spacing } from '../theme';
 
 export const surface = {
@@ -17,7 +17,7 @@ export const surface = {
   status: 'ported',
   title: 'List detail results, membership, bulk actions, smart rules and tiers',
   where: 'List detail page for manual, smart and source-backed lists, including the smart-rule editor and tier board',
-  note: 'The list-detail page renders the shared ListDetailPageView composition (header, notice, smart-rule editor, controls, results/tier board, membership dialog). Results, the configurable table and column menu, membership, bulk actions, smart-rule summary/editor and the tier board use shared React Native presentation. Mutations route through the list transport; native login, server selection and CSRF transport remain unconfigured, so the native adapter keeps local preview state while the browser adapter uses the same-origin session.',
+  note: 'The list-detail page renders the shared ListDetailPageView composition (header, notice, smart-rule editor, controls, results/tier board, membership dialog). Signed-in loads map /api/v1/lists/{id}/ items into the shared results/table models, and bulk status/collection and rating mutations route through the list transport with the numeric Item ids the payload exposes. The payload does not include the per-list membership id that DELETE needs, so removal is blocked; it also does not expose tier assignments or smart-rule definitions, so the tier board and smart editor start from their local defaults. Add-item, preview and membership suggestions remain local flows. Browser, iOS and Android runtime interaction were not exercised.',
 };
 
 const BULK_STATUSES = [
@@ -488,7 +488,10 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
   );
   const [list, setList] = useState(() => buildList(params?.list));
   const [filters, setFilters] = useState(() => defaultFilters(buildList(params?.list)));
-  const [items, setItems] = useState(() => itemsFor(buildList(params?.list)));
+  const [items, setItems] = useState(() => (transport.mode === 'server' ? [] : itemsFor(buildList(params?.list))));
+  const [loading, setLoading] = useState(transport.mode === 'server');
+  const [loadError, setLoadError] = useState('');
+  const [reloadToken, setReloadToken] = useState(0);
   const [search, setSearch] = useState('');
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -505,6 +508,46 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
   const [tierUndo, setTierUndo] = useState([]);
   const isSmart = !!list.isSmart;
 
+  useEffect(() => {
+    if (transport.mode !== 'server') {
+      setLoading(false);
+      return undefined;
+    }
+    const listId = params?.list?.id || list.id;
+    if (!listId) {
+      setLoading(false);
+      setLoadError('No list was selected.');
+      return undefined;
+    }
+    let active = true;
+    setLoading(true);
+    setLoadError('');
+    transport.loadDetail({ listId })
+      .then(payload => {
+        if (!active) return;
+        setList(current => buildList({
+          ...current,
+          ...(params?.list || {}),
+          id: String(payload.id),
+          name: payload.name || current.name,
+          itemsCount: Number(payload.items_count) || 0,
+          visibility: payload.visibility || current.visibility,
+          allowRecommendations: Boolean(payload.allow_recommendations),
+          href: `/lists/${payload.id}`,
+        }));
+        setItems(listItemsFromPayload(payload));
+        setLoading(false);
+      })
+      .catch(cause => {
+        if (!active) return;
+        setItems([]);
+        setLoadError(cause?.message || 'This list could not be loaded from the server.');
+        setLoading(false);
+      });
+    return () => { active = false; };
+  }, [transport, params?.list?.id, list.id, reloadToken]);
+
+
   const options = useMemo(() => {
     const mediaTypes = [];
     const statuses = [];
@@ -512,9 +555,9 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
       if (!mediaTypes.some(entry => entry.value === item.mediaType)) {
         mediaTypes.push({ value: item.mediaType, label: item.mediaTypeLabel });
       }
-      const value = item.status.toLowerCase();
-      if (!statuses.some(entry => entry.value === value)) {
-        statuses.push({ value, label: item.statusLabel });
+      const value = String(item.status || '').toLowerCase();
+      if (value && !statuses.some(entry => entry.value === value)) {
+        statuses.push({ value, label: item.statusLabel || item.status });
       }
     });
     return {
@@ -564,7 +607,7 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
       if (filters.mediaTypes.length && !filters.mediaTypes.includes(item.mediaType)) {
         return false;
       }
-      if (filters.statuses.length && !filters.statuses.includes(item.status.toLowerCase())) {
+      if (filters.statuses.length && !filters.statuses.includes(String(item.status || '').toLowerCase())) {
         return false;
       }
       if (rating.from != null && (item.score == null || item.score < rating.from)) {
@@ -646,6 +689,10 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
     if (!targets.length) {
       return;
     }
+    if (transport.mode === 'server' && targets.some(item => item.listItemId == null)) {
+      setNotice('Removing list items needs the per-list item id, which the list API does not return yet.');
+      return;
+    }
     const previousItems = items;
     setItems(current => current.filter(item => !ids.includes(item.id)));
     setSelectedIds([]);
@@ -653,7 +700,7 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
     try {
       await Promise.all(targets.map(item => transport.removeItem({
         listId: list.id,
-        itemId: item.itemId ?? item.id,
+        itemId: item.listItemId ?? item.itemId ?? item.id,
       })));
       setNotice(transport.mode === 'local'
         ? `${targets.length} item(s) removed from the local preview. ${transport.reason}`
@@ -669,6 +716,9 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
     if (!ids.length) {
       return;
     }
+    const numericIds = ids
+      .map(id => items.find(item => item.id === id)?.itemId)
+      .filter(itemId => itemId != null);
     if (kind === 'remove') {
       await removeItems(ids);
       return;
@@ -686,7 +736,7 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
       )));
       setBulkMessage(null);
       try {
-        await transport.bulkStatus({ itemIds: ids, status: value });
+        await transport.bulkStatus({ itemIds: numericIds, status: value });
         setNotice(transport.mode === 'local'
           ? `Set ${ids.length} item(s) to ${value} in the local preview. ${transport.reason}`
           : `Set ${ids.length} item(s) to ${value}.`);
@@ -698,7 +748,7 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
     }
     if (kind === 'collection') {
       try {
-        await transport.bulkCollection({ itemIds: ids });
+        await transport.bulkCollection({ itemIds: numericIds });
         setBulkMessage(transport.mode === 'local'
           ? `${ids.length} selected · collection changes stay in the local preview. ${transport.reason}`
           : `${ids.length} item(s) added to your collection.`);
@@ -989,7 +1039,9 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
         onExport={() => setNotice('CSV export is ready for the platform download adapter.')}
         onMore={() => setMembersOpen(true)}
         onEdit={() => setMembersOpen(true)} />}
-      notice={notice ? <Text style={styles.notice}>{notice}</Text> : null}
+      notice={loading || loadError || notice
+        ? <Text style={styles.notice}>{loading ? 'Loading list…' : (loadError || notice)}</Text>
+        : null}
       smart={isSmart ? <View style={styles.smartPanel}>
         <View style={styles.smartActions}>
           {list.canEdit ? <Button

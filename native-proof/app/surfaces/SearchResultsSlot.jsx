@@ -3,6 +3,19 @@ import { Text } from 'react-native';
 import { RatingStars } from '../../../frontend/ui/RatingStars';
 import { SearchResults } from '../../../frontend/ui/SearchResults';
 import { palette, mediaCardPalette, radius } from '../theme';
+import {
+  createSearchTransport,
+  localResultsFromPayload,
+  onlineResultsFromPayload,
+} from '../data/searchTransport';
+
+export const surface = {
+  id: 'SEARCH-RESULTS',
+  status: 'in_progress',
+  title: 'Search result sections, paging and source scope',
+  where: 'Search results',
+  note: 'The shared SearchResults view keeps grouped local sections, online sections, source scope, grid/list layouts, paging, load-more, empty/loading/error states and rating stars. Signed-in search queries /api/v1/media/ (all media types group the local library) and /api/v1/search/{media_type}/ for provider results through the session facade; the demo fixtures are gone. Rating changes stay local because the search endpoint returns untracked candidates and the demo never persisted them.',
+};
 
 const labels = {
   title: 'Search Results',
@@ -45,8 +58,15 @@ const searchPalette = {
 const TYPE_LABEL = {
   movie: 'Movies',
   tv: 'TV',
+  anime: 'Anime',
   book: 'Books',
+  manga: 'Manga',
+  comic: 'Comics',
+  game: 'Games',
+  boardgame: 'Board Games',
   music: 'Music',
+  podcast: 'Podcasts',
+  video: 'Videos',
 };
 
 const SOURCE_OPTIONS = {
@@ -72,33 +92,18 @@ const DEFAULT_SOURCE = {
   music: 'musicbrainz',
 };
 
-const LIBRARY_ITEMS = [
-  { key: 'dune', type: 'movie', title: 'Dune', year: '2021', note: '2h 35m', image: 'https://picsum.photos/seed/floppy-dune/400/600', status: 'Completed', rating: 9 },
-  { key: 'dune-two', type: 'movie', title: 'Dune: Part Two', year: '2024', note: '2h 46m', image: 'https://picsum.photos/seed/floppy-dune-two/400/600', status: 'Completed', rating: 9 },
-  { key: 'dune-1984', type: 'movie', title: 'Dune', year: '1984', note: '2h 17m', image: 'https://picsum.photos/seed/floppy-dune-1984/400/600', status: 'Paused', rating: 6 },
-  { key: 'dune-messiah', type: 'book', title: 'Dune Messiah', year: '1969', note: 'Frank Herbert', image: 'https://picsum.photos/seed/floppy-messiah/400/600', status: 'In progress', rating: 7 },
-  { key: 'children-of-dune', type: 'tv', title: 'Children of Dune', year: '2003', note: '3 episodes', image: 'https://picsum.photos/seed/floppy-children/400/600', status: 'Planning', rating: null },
-  { key: 'dune-prophecy', type: 'tv', title: 'Dune: Prophecy', year: '2024', note: '6 episodes', image: 'https://picsum.photos/seed/floppy-prophecy/400/600', status: 'In progress', rating: 6 },
-  { key: 'road-to-dune', type: 'book', title: 'The Road to Dune', year: '2005', note: 'Brian Herbert', image: 'https://picsum.photos/seed/floppy-road/400/600', status: null, rating: null },
-  { key: 'dune-ost', type: 'music', title: 'Dune (Original Motion Picture Soundtrack)', year: '2021', note: 'Hans Zimmer', image: 'https://picsum.photos/seed/floppy-dune-ost/400/600', status: 'Completed', rating: 8 },
-  { key: 'dune-sketchbook', type: 'music', title: 'The Dune Sketchbook', year: '2021', note: 'Hans Zimmer', image: 'https://picsum.photos/seed/floppy-sketchbook/400/600', status: 'In progress', rating: 7 },
-];
+const ONLINE_PAGE_SIZE = 20;
+const LOCAL_ALL_LIMIT = 60;
+const LOCAL_LIMIT = 24;
 
-const ONLINE_ITEMS = [
-  { key: 'jodorowsky-dune', type: 'movie', title: "Jodorowsky's Dune", year: '2013', note: '1h 30m', image: 'https://picsum.photos/seed/floppy-jodorowsky/400/600', status: null, rating: null },
-  { key: 'dreamer-dune', type: 'movie', title: 'The Dreamer of Dune', year: '2022', note: 'Documentary', image: 'https://picsum.photos/seed/floppy-dreamer/400/600', status: null, rating: null },
-  { key: 'dune-companion', type: 'book', title: 'The Dune Companion', year: '2020', note: 'Reference', image: 'https://picsum.photos/seed/floppy-companion/400/600', status: null, rating: null },
-  { key: 'sisterhood-dune', type: 'tv', title: 'Dune: The Sisterhood', year: '2024', note: '6 episodes', image: 'https://picsum.photos/seed/floppy-sisterhood/400/600', status: null, rating: null },
-  { key: 'dune-two-ost', type: 'music', title: 'Dune: Part Two (Original Motion Picture Soundtrack)', year: '2024', note: 'Hans Zimmer', image: 'https://picsum.photos/seed/floppy-dune-two-ost/400/600', status: null, rating: null },
-  { key: 'dune-prophecy-ost', type: 'music', title: 'Dune: Prophecy (Soundtrack)', year: '2024', note: 'Various artists', image: 'https://picsum.photos/seed/floppy-prophecy-ost/400/600', status: null, rating: null },
-];
-
-function demoModel(item, ratings) {
+function resultModel(item, ratings) {
   const rated = ratings[item.key];
+  const value = rated ?? item.rating;
   return {
     mediaType: item.type,
     shape: 'poster',
-    href: `/demo/${item.key}`,
+    href: item.href || '',
+    identity: item.identity || null,
     image: { src: item.image, fallback: '', source: 'primary' },
     title: item.title,
     altTitle: null,
@@ -106,10 +111,10 @@ function demoModel(item, ratings) {
     cornerChips: [],
     titleLinks: [],
     progressBar: null,
-    lines: [{ join: 'plain', parts: [{ text: item.year }, { text: `• ${item.note}`, muted: true }] }],
-    rating: item.rating == null && rated == null ? null : {
-      label: String(rated ?? item.rating),
-      value: rated ?? item.rating,
+    lines: [{ join: 'plain', parts: [{ text: item.year || '' }, { text: item.note ? `• ${item.note}` : '', muted: true }] }],
+    rating: value == null ? null : {
+      label: String(value),
+      value,
       scaleMax: 10,
       rateLabel: 'Rate',
     },
@@ -118,22 +123,22 @@ function demoModel(item, ratings) {
   };
 }
 
-function matches(item, needle, mediaType) {
-  return (mediaType === 'all' || item.type === mediaType)
-    && (!needle || item.title.toLowerCase().includes(needle));
-}
-
-export default function SearchResultsSlot({ query = 'dune', mediaType: initialMediaType = 'all', onOpenDetail }) {
+export default function SearchResultsSlot({ query = '', mediaType: initialMediaType = 'all', onOpenDetail }) {
+  const [transport] = useState(() => createSearchTransport());
   const [mediaType, setMediaType] = useState(initialMediaType || 'all');
   const [layout, setLayout] = useState('grid');
   const [onlineOnly, setOnlineOnly] = useState(false);
   const [source, setSource] = useState(DEFAULT_SOURCE[initialMediaType] || null);
   const [page, setPage] = useState(1);
-  const [visibleLocal, setVisibleLocal] = useState(2);
+  const [visibleLocal, setVisibleLocal] = useState(6);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [status, setStatus] = useState('loading');
+  const [status, setStatus] = useState(transport.mode === 'server' ? 'loading' : 'empty');
   const [request, setRequest] = useState(0);
   const [ratings, setRatings] = useState({});
+  const [localItems, setLocalItems] = useState([]);
+  const [localTotal, setLocalTotal] = useState(0);
+  const [onlineItems, setOnlineItems] = useState([]);
+  const [onlineTotal, setOnlineTotal] = useState(0);
   const loadTimer = useRef(null);
   const queryTimer = useRef(null);
 
@@ -144,7 +149,7 @@ export default function SearchResultsSlot({ query = 'dune', mediaType: initialMe
   useEffect(() => {
     setSource(DEFAULT_SOURCE[mediaType] || null);
     setPage(1);
-    setVisibleLocal(2);
+    setVisibleLocal(6);
     setOnlineOnly(false);
   }, [mediaType, query]);
 
@@ -157,74 +162,133 @@ export default function SearchResultsSlot({ query = 'dune', mediaType: initialMe
   const activeSource = sourceOptions.find(option => option.value === source) || sourceOptions[0] || null;
 
   useEffect(() => {
+    if (transport.mode !== 'server') {
+      setStatus('empty');
+      setLocalItems([]);
+      setOnlineItems([]);
+      return undefined;
+    }
+    const needle = String(query || '').trim();
+    if (!needle) {
+      setStatus('empty');
+      setLocalItems([]);
+      setOnlineItems([]);
+      setLocalTotal(0);
+      setOnlineTotal(0);
+      return undefined;
+    }
+    let active = true;
     setStatus('loading');
+    setLoadingMore(false);
     clearTimeout(queryTimer.current);
+    const isAll = mediaType === 'all';
+    const localRequest = transport.searchLocal({
+      search: needle,
+      mediaType: isAll ? 'all' : mediaType,
+      limit: isAll ? LOCAL_ALL_LIMIT : LOCAL_LIMIT,
+      offset: 0,
+    });
+    const onlineRequest = isAll || activeSource?.unavailable
+      ? Promise.resolve(null)
+      : transport.searchOnline({
+        search: needle,
+        mediaType,
+        source: activeSource?.value,
+        limit: ONLINE_PAGE_SIZE,
+        offset: (page - 1) * ONLINE_PAGE_SIZE,
+      });
     queryTimer.current = setTimeout(() => {
-      setStatus(activeSource?.unavailable ? 'error' : 'ready');
-    }, 350);
-    return () => clearTimeout(queryTimer.current);
-  }, [query, mediaType, source, request, activeSource?.unavailable]);
+      Promise.allSettled([localRequest, onlineRequest]).then(([localResult, onlineResult]) => {
+        if (!active) return;
+        let failed = false;
+        if (localResult.status === 'fulfilled') {
+          setLocalItems(localResultsFromPayload(localResult.value));
+          const total = Number(localResult.value?.pagination?.total);
+          setLocalTotal(Number.isFinite(total) ? total : 0);
+        } else {
+          failed = true;
+        }
+        if (onlineResult.status === 'fulfilled' && onlineResult.value) {
+          setOnlineItems(onlineResultsFromPayload(onlineResult.value));
+          const total = Number(onlineResult.value?.pagination?.total);
+          setOnlineTotal(Number.isFinite(total) ? total : 0);
+        } else {
+          setOnlineItems([]);
+          setOnlineTotal(0);
+        }
+        setStatus(failed ? 'error' : 'ready');
+      });
+    }, 300);
+    return () => {
+      active = false;
+      clearTimeout(queryTimer.current);
+    };
+  }, [transport, query, mediaType, source, page, request, activeSource?.value, activeSource?.unavailable]);
 
-  const needle = String(query || '').trim().toLowerCase();
-  const model = (item) => demoModel(item, ratings);
+  const model = (item) => resultModel(item, ratings);
 
-  const localMatches = LIBRARY_ITEMS.filter(item => matches(item, needle, mediaType));
-  const onlineMatches = mediaType === 'all' ? [] : ONLINE_ITEMS.filter(item => matches(item, needle, mediaType));
-
-  const pageSize = 2;
-  const totalPages = Math.max(1, Math.ceil(onlineMatches.length / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const onlinePage = onlineMatches.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const localMatches = localItems;
+  const onlineMatches = onlineItems;
+  const pageCount = Math.max(1, Math.ceil((onlineTotal || onlineMatches.length) / ONLINE_PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
 
   const sections = [];
-  if (mediaType === 'all') {
-    for (const type of ['movie', 'tv', 'book', 'music']) {
-      const items = LIBRARY_ITEMS.filter(item => item.type === type && matches(item, needle, type));
-      if (!items.length) continue;
-      sections.push({
-        key: type,
-        title: TYPE_LABEL[type],
-        totalLabel: `${items.length} results`,
-        subsections: [{ key: type, items: items.map(model), layout }],
+  if (status === 'ready' || (status === 'loading' && localItems.length)) {
+    if (mediaType === 'all') {
+      Object.keys(TYPE_LABEL).forEach(type => {
+        const items = localItems.filter(item => item.type === type);
+        if (!items.length) return;
+        sections.push({
+          key: type,
+          title: TYPE_LABEL[type],
+          totalLabel: `${items.length} results`,
+          subsections: [{ key: type, items: items.map(model), layout }],
+        });
       });
-    }
-  } else {
-    const visible = localMatches.slice(0, visibleLocal);
-    if (!onlineOnly && visible.length) {
-      sections.push({
-        key: 'local',
-        title: 'In Your Library',
-        totalLabel: `${localMatches.length} results`,
-        shownLabel: localMatches.length > visible.length ? `· Showing first ${visible.length}` : null,
-        searchOnline: { label: 'Search online' },
-        subsections: [{ key: 'local', items: visible.map(model), layout }],
-      });
-    }
-    if (onlineMatches.length) {
-      sections.push({
-        key: 'online',
-        title: 'Online Results',
-        totalLabel: `${onlineMatches.length} results`,
-        subsections: [{ key: 'online', items: onlinePage.map(model), layout }],
-      });
+    } else {
+      const visible = localMatches.slice(0, visibleLocal);
+      if (!onlineOnly && visible.length) {
+        sections.push({
+          key: 'local',
+          title: 'In Your Library',
+          totalLabel: `${localMatches.length} results`,
+          shownLabel: localMatches.length > visible.length ? `· Showing first ${visible.length}` : null,
+          searchOnline: { label: 'Search online' },
+          subsections: [{ key: 'local', items: visible.map(model), layout }],
+        });
+      }
+      if (onlineMatches.length) {
+        sections.push({
+          key: 'online',
+          title: 'Online Results',
+          totalLabel: `${onlineTotal || onlineMatches.length} results`,
+          subsections: [{ key: 'online', items: onlineMatches.map(model), layout }],
+        });
+      }
     }
   }
 
-  const paging = onlineMatches.length ? {
+  const paging = onlineMatches.length && !onlineOnly ? {
     page: currentPage,
-    totalPages,
-    totalResults: onlineMatches.length,
+    totalPages: pageCount,
+    totalResults: onlineTotal || onlineMatches.length,
     previous: currentPage > 1 ? { number: currentPage - 1 } : null,
-    next: currentPage < totalPages ? { number: currentPage + 1 } : null,
-    pages: Array.from({ length: totalPages }, (_, index) => ({
+    next: currentPage < pageCount ? { number: currentPage + 1 } : null,
+    pages: Array.from({ length: pageCount }, (_, index) => ({
       number: index + 1,
       current: index + 1 === currentPage,
     })),
-    summary: `Page ${currentPage} of ${totalPages} (${onlineMatches.length} results)`,
+    summary: `Page ${currentPage} of ${pageCount} (${onlineTotal || onlineMatches.length} results)`,
   } : null;
 
   const hasMore = mediaType !== 'all' && !onlineOnly && visibleLocal < localMatches.length;
-  const viewState = status === 'loading' ? 'loading' : status === 'error' ? 'error' : sections.length ? 'ready' : 'empty';
+  const viewState = status === 'loading' && !sections.length
+    ? 'loading'
+    : status === 'error' && !sections.length
+      ? 'error'
+      : sections.length
+        ? 'ready'
+        : 'empty';
   const sourceScope = sourceOptions.length ? {
     label: 'Source:',
     options: sourceOptions.map(option => ({
@@ -243,9 +307,9 @@ export default function SearchResultsSlot({ query = 'dune', mediaType: initialMe
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
     loadTimer.current = setTimeout(() => {
-      setVisibleLocal(current => current + 2);
+      setVisibleLocal(current => current + 6);
       setLoadingMore(false);
-    }, 450);
+    }, 200);
   }
 
   function retry() {
@@ -276,8 +340,10 @@ export default function SearchResultsSlot({ query = 'dune', mediaType: initialMe
     hasMore={hasMore}
     loadingMore={loadingMore}
     empty={{
-      title: 'No results found',
-      body: `We couldn't find any matches for “${query}”. Try checking the spelling or using a different media type.`,
+      title: status === 'error' ? 'Search could not load' : 'No results found',
+      body: status === 'error'
+        ? 'Please try again.'
+        : `We couldn't find any matches for “${query}”. Try checking the spelling or using a different media type.`,
     }}
     onSelectScope={selectSource}
     onSelectLayout={option => setLayout(option.value)}
@@ -290,7 +356,9 @@ export default function SearchResultsSlot({ query = 'dune', mediaType: initialMe
     onLoadMore={loadMore}
     onRetry={retry}
     onRate={(item, score) => {
-      const key = item?.href?.split('/').pop();
+      const key = item?.identity
+        ? `${item.identity.mediaType}-${item.identity.source}-${item.identity.mediaId}`
+        : item?.href?.split('/').pop();
       if (key) setRatings(current => ({ ...current, [key]: score }));
     }}
     renderRating={({ value, label, scaleMax, palette: ratingPalette, onSelect }) => <RatingStars

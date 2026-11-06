@@ -5,6 +5,8 @@ from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.response import Response
@@ -298,6 +300,7 @@ class UserNavigationView(drf_views.APIView):
         SessionAuthentication,
     )
 
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         """Return the sidebar model without the CSRF token."""
         from app.sidebar_model import sidebar_model

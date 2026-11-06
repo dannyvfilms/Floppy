@@ -1,6 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Screen } from '../components/Screen';
+import { getActiveAuthSession } from '../data/authSession';
+import { createListTransport } from '../data/listTransport';
 import { ListsPageView } from '../../../frontend/pages/ListsPageView';
 import { Button } from '../../../frontend/ui/Button';
 import { ListForm } from '../../../frontend/ui/ListFormView';
@@ -13,7 +15,7 @@ export const surface = {
   status: 'ported',
   title: 'Lists hub, list forms, add/recommend flows and smart summaries',
   where: 'Lists screen cards, create/edit list form, item search/preview, recommendations approval and deny, saved smart-rule summary',
-  note: 'The lists page renders the shared ListsPageView composition (heading, actions, search, tag filter, card grid, empty/loading/error states); the create/edit form, add-item search, preview and recommendations approval/deny use shared React Native presentation with local demo state. Server transport and the web list pages remain unchanged.',
+  note: 'The lists page renders the shared ListsPageView composition (heading, actions, search, tag filter, card grid, empty/loading/error states). Signed-in loads map /api/v1/lists/ and creates, edits and deletes manual lists through the same route. Tags, completion percentages and public slugs are not exposed by the list serializer, so tag chips and completion stay empty; smart lists still have no create/list mapping and add-item, preview and recommendation approval remain local.',
 };
 
 const URL_PREFIX = 'https://floppy.example/lists/';
@@ -33,114 +35,6 @@ const PEOPLE = [
   { id: 'sam', name: 'Sam', handle: '@sam' },
   { id: 'riley', name: 'Riley', handle: '@riley' },
   { id: 'jordan', name: 'Jordan', handle: '@jordan' },
-];
-
-const demoLists = [
-  {
-    id: '1',
-    name: 'Weekend Watchlist',
-    description: 'Films and shows for a slow weekend.',
-    coverUrl: 'https://picsum.photos/seed/floppy-list-1/400/300',
-    isSmart: false,
-    source: 'local',
-    visibility: 'public',
-    visibilityLabel: 'Public',
-    role: 'Owner',
-    isOwner: true,
-    memberCount: 3,
-    members: [
-      { id: 'you', name: 'Danny', handle: '@danny', role: 'owner' },
-      { id: 'sam', name: 'Sam', handle: '@sam', role: 'collaborator' },
-      { id: 'riley', name: 'Riley', handle: '@riley', role: 'collaborator' },
-    ],
-    itemsCount: 12,
-    completionPercent: 25,
-    canEdit: true,
-    canDelete: true,
-    allowRecommendations: true,
-    includeNotes: true,
-    publicSlug: 'weekend-watchlist',
-    tags: ['Movies', 'Shows'],
-    href: '/demo/lists/1',
-  },
-  {
-    id: '2',
-    name: 'Sci-Fi Essentials',
-    description: 'The books and films worth revisiting.',
-    coverUrl: 'https://picsum.photos/seed/floppy-list-2/400/300',
-    isSmart: true,
-    smartRules: {
-      media_types: ['book', 'movie'],
-      status: [],
-      rating: 'rated',
-      rating_min: '7.5',
-      rating_max: '',
-      collection: 'all',
-      genre: 'Science Fiction',
-      implied_genre: '',
-      year: '',
-      release: 'all',
-      source: '',
-      language: '',
-      country: '',
-      platform: '',
-      origin: '',
-      format: '',
-      author: '',
-      provider: '',
-      tag: ['sci-fi'],
-      tag_mode: 'or',
-      list: [],
-      search: '',
-      semantics_version: '2',
-    },
-    source: 'local',
-    visibility: 'private',
-    visibilityLabel: 'Private',
-    role: 'Owner',
-    isOwner: true,
-    memberCount: 1,
-    members: [{ id: 'you', name: 'Danny', handle: '@danny', role: 'owner' }],
-    itemsCount: 8,
-    completionPercent: 50,
-    canEdit: true,
-    canDelete: true,
-    allowRecommendations: false,
-    includeNotes: false,
-    publicSlug: '',
-    tags: ['Sci-Fi'],
-    href: '/demo/lists/2',
-  },
-  {
-    id: '3',
-    name: 'Shared with Friends',
-    description: 'A public list curated with friends.',
-    coverUrl: 'https://picsum.photos/seed/floppy-list-3/400/300',
-    isSmart: false,
-    source: 'trakt',
-    sourceLabel: 'Trakt',
-    visibility: 'public',
-    visibilityLabel: 'Public',
-    role: 'Collaborator',
-    isOwner: false,
-    memberCount: 5,
-    members: [
-      { id: 'northstar', name: 'Northstar', handle: '@northstar', role: 'owner' },
-      { id: 'you', name: 'Danny', handle: '@danny', role: 'collaborator' },
-      { id: 'sam', name: 'Sam', handle: '@sam', role: 'collaborator' },
-      { id: 'riley', name: 'Riley', handle: '@riley', role: 'collaborator' },
-      { id: 'jordan', name: 'Jordan', handle: '@jordan', role: 'collaborator' },
-    ],
-    itemsCount: 5,
-    completionPercent: 75,
-    canEdit: true,
-    canDelete: false,
-    allowRecommendations: true,
-    includeNotes: false,
-    publicSlug: 'shared-with-friends',
-    tags: ['Movies'],
-    href: '/demo/lists/3',
-  },
 ];
 
 const CATALOG = [
@@ -312,41 +206,6 @@ const SEARCH_RESULTS = CATALOG.map(item => ({
   preview: previewFor(item),
 }));
 
-const demoRecommendations = {
-  1: [
-    {
-      id: 'rec-1',
-      catalogId: 'wild-robot',
-      title: 'The Wild Robot',
-      recommender: 'Sam',
-      dateLabel: '2 days',
-      note: 'The whole family loved this one.',
-      media: cardFor(CATALOG.find(item => item.id === 'wild-robot')),
-    },
-    {
-      id: 'rec-2',
-      catalogId: 'shogun',
-      title: 'Shōgun',
-      recommender: 'Riley',
-      dateLabel: '5 hours',
-      note: '',
-      media: cardFor(CATALOG.find(item => item.id === 'shogun')),
-    },
-  ],
-  2: [
-    {
-      id: 'rec-3',
-      catalogId: 'ministry-of-time',
-      title: 'The Ministry of Time',
-      recommender: 'Avery',
-      dateLabel: '1 week',
-      note: 'A good fit for the time-travel shelf.',
-      media: cardFor(CATALOG.find(item => item.id === 'ministry-of-time')),
-    },
-  ],
-  3: [],
-};
-
 const SEARCH_IDLE = { query: '', mediaType: 'movie', page: 1 };
 
 function normalizeSlug(value) {
@@ -371,6 +230,53 @@ function visibilityLabel(visibility) {
   return 'Private';
 }
 
+function memberFromUser(user, role) {
+  if (!user) return null;
+  return {
+    id: String(user.id),
+    name: user.username,
+    handle: `@${user.username}`,
+    role,
+  };
+}
+
+function listFromApi(list, currentUsername) {
+  const owner = list.owner || {};
+  const collaborators = list.collaborators || [];
+  const viewers = list.viewers || [];
+  const isOwner = owner.username === currentUsername;
+  const isCollaborator = collaborators.some(member => member.username === currentUsername);
+  const members = [
+    memberFromUser(owner, 'owner'),
+    ...collaborators.map(member => memberFromUser(member, 'collaborator')),
+    ...viewers.map(member => memberFromUser(member, 'viewer')),
+  ].filter(Boolean);
+  const role = isOwner ? 'Owner' : isCollaborator ? 'Collaborator' : 'Viewer';
+  return {
+    id: String(list.id),
+    name: list.name || '',
+    description: list.description || '',
+    coverUrl: list.image || null,
+    isSmart: false,
+    source: 'local',
+    visibility: list.visibility || (list.is_public ? 'public' : 'private'),
+    visibilityLabel: visibilityLabel(list.visibility || (list.is_public ? 'public' : 'private')),
+    role,
+    isOwner,
+    memberCount: members.length,
+    members,
+    itemsCount: Number(list.items_count) || 0,
+    completionPercent: null,
+    canEdit: isOwner || isCollaborator,
+    canDelete: isOwner,
+    allowRecommendations: Boolean(list.allow_recommendations),
+    includeNotes: false,
+    publicSlug: list.public_slug || '',
+    tags: [],
+    href: `/lists/${list.id}`,
+  };
+}
+
 function ListTools({ list, approvals, onEdit, onAdd, onRecommend, onApprovals }) {
   const canAdd = list.canEdit && !list.isSmart;
   if (!list.canEdit && !list.allowRecommendations) {
@@ -386,7 +292,11 @@ function ListTools({ list, approvals, onEdit, onAdd, onRecommend, onApprovals })
 }
 
 export default function ListsScreen({ onBack, navigate }) {
-  const [lists, setLists] = useState(demoLists);
+  const [transport] = useState(() => createListTransport());
+  const [lists, setLists] = useState([]);
+  const [loading, setLoading] = useState(transport.mode === 'server');
+  const [loadError, setLoadError] = useState('');
+  const [reloadToken, setReloadToken] = useState(0);
   const [search, setSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState('All');
   const [notice, setNotice] = useState(null);
@@ -397,13 +307,38 @@ export default function ListsScreen({ onBack, navigate }) {
   const [approvalsFor, setApprovalsFor] = useState(null);
   const [searchState, setSearchState] = useState(SEARCH_IDLE);
   const [preview, setPreview] = useState(null);
-  const [recommendations, setRecommendations] = useState(demoRecommendations);
+  const [recommendations, setRecommendations] = useState({});
   const [addedItems, setAddedItems] = useState({});
 
+  useEffect(() => {
+    if (transport.mode !== 'server') {
+      setLoading(false);
+      return undefined;
+    }
+    let active = true;
+    setLoading(true);
+    setLoadError('');
+    const username = getActiveAuthSession()?.user?.username || '';
+    transport.load()
+      .then(payload => {
+        if (!active) return;
+        setLists((payload?.results || []).map(list => listFromApi(list, username)));
+        setLoading(false);
+      })
+      .catch(cause => {
+        if (!active) return;
+        setLists([]);
+        setLoadError(cause?.message || 'Lists could not be loaded from the server.');
+        setLoading(false);
+      });
+    return () => { active = false; };
+  }, [transport, reloadToken]);
+
   const tags = useMemo(() => {
-    const values = ['All', 'Movies', 'Shows', 'Books', 'Games', 'Anime', 'Sci-Fi'];
-    return values;
-  }, []);
+    const values = new Set(['All']);
+    lists.forEach(list => (list.tags || []).forEach(tag => values.add(tag)));
+    return [...values];
+  }, [lists]);
 
   const filtered = lists.filter(list => {
     const matchesSearch = list.name.toLowerCase().includes(search.toLowerCase());
@@ -547,75 +482,77 @@ export default function ListsScreen({ onBack, navigate }) {
     return { errors, name, slug };
   }
 
-  function submitForm(values) {
-    const { errors, name, slug } = validate(values);
+  async function submitForm(values) {
+    const { errors, name } = validate(values);
     if (Object.keys(errors).length) {
       setFormErrors(errors);
       return;
     }
     const isPublic = values.visibility === 'public';
-    const isLinkVisible = values.visibility === 'public' || values.visibility === 'unlisted';
     const allowRecommendations = isPublic && values.allowRecommendations;
-    const includeNotes = isLinkVisible && values.includeNotes;
-
-    if (form.mode === 'edit') {
-      setLists(current => current.map(list => list.id === form.listId
-        ? {
-            ...list,
-            name,
-            description: values.description,
-            visibility: values.visibility,
-            visibilityLabel: visibilityLabel(values.visibility),
-            allowRecommendations,
-            includeNotes,
-            publicSlug: slug,
-            isSmart: values.isSmart,
-            tags: values.tags,
-            members: values.members,
-            memberCount: values.members.length,
-          }
-        : list));
-      setNotice(`"${name}" was saved in this demo. The server save is not connected.`);
-    } else {
-      const id = `demo-${Date.now()}`;
-      const next = {
-        id,
-        name,
-        description: values.description,
-        coverUrl: `https://picsum.photos/seed/floppy-list-${id}/400/300`,
-        isSmart: values.isSmart,
-        source: 'local',
-        visibility: values.visibility,
-        visibilityLabel: visibilityLabel(values.visibility),
-        role: 'Owner',
-        isOwner: true,
-        memberCount: values.members.length,
-        members: values.members,
-        itemsCount: 0,
-        completionPercent: 0,
-        canEdit: true,
-        canDelete: true,
-        allowRecommendations,
-        includeNotes,
-        publicSlug: slug,
-        tags: values.tags,
-        href: `/demo/lists/${id}`,
-      };
-      setLists(current => [next, ...current]);
-      setNotice(`"${name}" was created in this demo. The server save is not connected.`);
+    const numeric = member => /^\d+$/.test(String(member.id));
+    const collaborators = (values.members || [])
+      .filter(member => numeric(member) && member.role === 'collaborator')
+      .map(member => Number(member.id));
+    const viewers = (values.members || [])
+      .filter(member => numeric(member) && member.role === 'viewer')
+      .map(member => Number(member.id));
+    if (transport.mode !== 'server') {
+      setNotice('Sign in to create or edit lists.');
+      return;
     }
-    closeForm();
+    if (values.isSmart) {
+      setNotice('Smart-list creation is not exposed by the list API.');
+      return;
+    }
+    try {
+      if (form.mode === 'edit') {
+        await transport.update({
+          listId: form.listId,
+          name,
+          description: values.description,
+          visibility: values.visibility,
+          isPublic,
+          allowRecommendations,
+        });
+        setNotice(`"${name}" was saved.`);
+      } else {
+        await transport.create({
+          name,
+          description: values.description,
+          visibility: values.visibility,
+          isPublic,
+          allowRecommendations,
+          collaborators,
+          viewers,
+        });
+        setNotice(`"${name}" was created.`);
+      }
+      setReloadToken(current => current + 1);
+      closeForm();
+    } catch (cause) {
+      setFormErrors({ form: cause?.message || 'The list could not be saved.' });
+    }
   }
 
-  function deleteList(list) {
-    setLists(current => current.filter(entry => entry.id !== list.id));
-    setRecommendations(current => {
-      const next = { ...current };
-      delete next[list.id];
-      return next;
-    });
-    setNotice(`"${list.name}" was deleted in this demo. The server delete is not connected.`);
-    closeForm();
+  async function deleteList(list) {
+    if (transport.mode !== 'server') {
+      setNotice('Sign in to delete lists.');
+      return;
+    }
+    try {
+      await transport.remove({ listId: list.id });
+      setLists(current => current.filter(entry => entry.id !== list.id));
+      setRecommendations(current => {
+        const next = { ...current };
+        delete next[list.id];
+        return next;
+      });
+      setNotice(`"${list.name}" was deleted.`);
+      closeForm();
+    } catch (cause) {
+      setNotice(cause?.message || 'The list could not be deleted.');
+    }
   }
 
   function approveRecommendation(rec) {
@@ -696,7 +633,9 @@ export default function ListsScreen({ onBack, navigate }) {
           openForm('edit', list.id);
         }
       }}
-      state={filtered.length ? 'ready' : 'empty'}
+      state={loading ? 'loading' : loadError ? 'error' : filtered.length ? 'ready' : 'empty'}
+      error={loadError ? { title: 'Lists could not load', body: loadError } : undefined}
+      onRetry={() => setReloadToken(current => current + 1)}
       empty={{
         title: 'No lists found.',
         body: search || selectedTag !== 'All'

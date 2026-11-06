@@ -161,7 +161,7 @@ function ServerStatusButton({ state, busy, onPress, palette, labels }) {
 function LinkButton({ label, onPress, palette, accessibilityLabel }) {
   return <Pressable accessibilityRole="link" accessibilityLabel={accessibilityLabel || label} onPress={onPress}
     style={({ pressed, focused }) => [styles.link, pressed && styles.linkPressed, focused && palette.focusStyle]}>
-    <Text style={[styles.linkText, { color: palette.accent }]}>{label}</Text>
+    <Text style={[styles.linkText, { color: palette.link || palette.accent }]}>{label}</Text>
   </Pressable>;
 }
 

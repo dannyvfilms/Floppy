@@ -67,7 +67,7 @@ PY
 - `src/templates/app/components/sidebar_pin_menu.html`
 - `src/templates/base.html`
 - `frontend/ui/Shell.jsx` (`Shell`, `TopBar`, `MobileNav`), `frontend/ui/mountShell.jsx`, the `shell_topbar_react` tag and `src/templates/base.html` / `base_public.html` (signed-in and public top bars plus the mobile navigation overlay; both templates keep their server fallback)
-- `frontend/ui/Sidebar.jsx` (`Sidebar`) shared React Native presentation, `frontend/ui/mountSidebar.jsx` browser adapter (theme tokens, `floppy:sidebar-pins`/`floppy:sidebar-lists`/`floppy:saved-views-open` storage, HTMX-boosted anchors, Sortable reorder, delete/logout forms, onboarding node slot and mobile aside state), `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html`; shared saved-view rows keep `aria-current` on the active view; the Alpine markup inside the host remains the no-React fallback; nav padding, link width, label size, hover and theme-radius rows match the server sidebar; pointer focus is suppressed after click; the Explore slot and server fallback reserve their height so pin/list hydration does not move the footer)
+- `frontend/ui/Sidebar.jsx` (`Sidebar`) shared React Native presentation with one scroll for primary and Explore items, `frontend/ui/mountSidebar.jsx` browser adapter (theme tokens, `floppy:sidebar-pins`/`floppy:sidebar-lists`/`floppy:saved-views-open` storage, HTMX-boosted anchors, Sortable reorder, delete/logout forms, onboarding node slot and mobile aside state), `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html`; shared saved-view rows keep `aria-current` on the active view; the Alpine markup inside the host remains the no-React fallback; nav padding, link width, label size, hover and theme-radius rows match the server sidebar; pointer focus is suppressed after click; the Explore slot and server fallback reserve their height so pin/list hydration does not move the footer)
 - `frontend/ui/Reveal.jsx`, `frontend/ui/Reveal.web.jsx`, `frontend/ui/Reveal.native.jsx` (sidebar Explore reveal: native mount contract plus the browser's release-height animation)
 - `frontend/ui/Icon.jsx` (universal renderer contract), `frontend/ui/IconRenderer.web.jsx`, `frontend/ui/IconRenderer.native.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
 - `frontend/ui/ModalHost.web.jsx`, `frontend/ui/ModalHost.native.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted from `base.html`; the card hover buttons and the Add-to-lists buttons open it through `floppy-open-modal`; the Add-to-lists body is shared presentation in `frontend/ui/ListsFormView.jsx` through the `frontend/ui/ListsForm.web.jsx` adapter with `modal-forms.css`; the Track body opens the shared `TrackDialog` for every available tab, with Metadata/Collection/Episode plays still server-owned inside it, see POPUP-HOST in the register)
@@ -520,7 +520,8 @@ Shared React presentation and browser integration:
 - `frontend/ui/DetailComposition.jsx`
 - `frontend/ui/DetailCompositionTheme.web.jsx`
 - `frontend/ui/mountDetailComposition.jsx`
-- `native-proof/app/surfaces/DetailSlot.jsx` (native composition on the Detail screen)
+- `native-proof/app/surfaces/DetailSlot.jsx` (native composition on the Detail screen; loads the tapped card's stored metadata from `/api/v1/media/<type>/<source>/<id>/metadata/`)
+- `src/api/fork_views_metadata.py` (`MediaMetadataView`; projects a tracked item by provider identity)
 - `src/templates/app/components/detail_composition.html`
 - `src/users/templatetags/ui_tags.py` (`{% detail_composition %}`)
 
@@ -1342,3 +1343,13 @@ Shared `AuthEntrance`, `SocialProviders` and `AuthNotice` own entrance, social-p
 - `src/app/media_list_views.py` (`bulk_ids=1` id lookup used by Select all matching)
 - `src/app/tag_views.py` (bulk tag toggle through the shared id parser)
 - `src/app/services/bulk_show_plays.py`
+
+## NATIVE_SERVER_DATA
+
+- `native-proof/app/data/calendarTransport.js` (session facade over `GET /api/v1/calendar/`, including `readAll` offset paging, and `POST /api/v1/calendar/update/`)
+- `native-proof/app/data/discoverTransport.js` (Discover rows/hidden/refresh/plan/hide/unhide over `/api/v1/discover/*` and `/api/v1/media/{type}/`)
+- `native-proof/app/data/libraryTransport.js` (media list reads plus tracked-row PATCH/DELETE over `/api/v1/media/*`)
+- `native-proof/app/data/searchTransport.js` (local library search over `/api/v1/media/` and provider search over `/api/v1/search/{type}/`)
+- `native-proof/app/data/collectionTransport.js` (owned copies over `/api/v1/collection/`)
+- `native-proof/app/data/settingsTransport.js` (preferences, notification settings, exclusions and playback webhook over `/api/v1/user/*`)
+- `native-proof/app/data/listTransport.js` (list hub/detail reads and manual list create/edit/delete over `/api/v1/lists/*`)

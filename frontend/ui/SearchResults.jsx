@@ -387,7 +387,7 @@ export function SearchResults({
       <Text role="heading" aria-level={2} style={[styles.stateTitle, { color: palette.text }]}>{copy.errorTitle}</Text>
       <Text style={[styles.stateText, { color: palette.textMuted }]}>{copy.errorBody}</Text>
       <Pressable accessibilityRole="button" onPress={onRetry}
-        style={[styles.retry, { backgroundColor: palette.accent }]}>
+        style={[styles.retry, { backgroundColor: palette.accentStrong || palette.accent }]}>
         <Text style={[styles.retryText, { color: palette.accentText }]}>{copy.retry}</Text>
       </Pressable>
     </View> : null}

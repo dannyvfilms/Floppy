@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Button } from '../../../frontend/ui/Button';
 import { HomeView } from '../../../frontend/pages/HomeView';
+import { Icon } from '../../../frontend/ui/Icon';
 import { shelfCardWidth } from '../../../frontend/ui/HomeShelves';
 import { Rail } from '../../../frontend/ui/Rail.jsx';
 import {
@@ -457,6 +458,7 @@ export default function HomeScreen({ navigate }) {
       readOnly={model.readOnly}
       itemWidth={itemWidth}
       railComponent={Rail}
+      renderActionIcon={action => action.icon ? <Icon spec={action.icon} color="#ffffff" size={18} /> : null}
       loading={loading}
       error={error}
       onRetry={() => setAttempt(current => current + 1)}

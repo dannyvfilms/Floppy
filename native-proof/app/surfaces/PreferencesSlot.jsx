@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { SettingsPreferencesView } from '../../../frontend/pages/SettingsPreferencesView';
+import { createSettingsTransport, preferencesToForm } from '../data/settingsTransport';
 import { palette, radius } from '../theme';
 
 export const surface = {
@@ -7,7 +8,7 @@ export const surface = {
   title: 'Preferences and save states',
   where: 'Settings preferences',
   status: 'ported',
-  note: 'Theme, logo, date/time, locale, title, region, week start and general tracking fields render from the shared React Native preferences form with local dirty/saving/error state and a polite save bar.',
+  note: 'Theme, logo, date/time, locale, title, region, week start and general tracking fields render from the shared React Native preferences form with dirty/saving/error state and a polite save bar. Signed-in loads read /api/v1/user/preferences/ and saves PATCH the same route. The endpoint exposes the date/time, currency, week-start, locale, grid, title, rating, session and automation fields, but not theme, logo style, watch-provider region, metadata/UI language, or auto-pause rules, so those controls keep their defaults until a read endpoint exists.',
 };
 
 const settingsPalette = {
@@ -287,16 +288,52 @@ function wait(ms) {
 }
 
 export default function PreferencesSlot() {
+  const [transport] = useState(() => createSettingsTransport());
   const [values, setValues] = useState(initialValues);
   const [savedValues, setSavedValues] = useState(initialValues);
+  const [loading, setLoading] = useState(transport.mode === 'server');
+  const [formError, setFormError] = useState('');
+
+  useEffect(() => {
+    if (transport.mode !== 'server') {
+      setLoading(false);
+      return undefined;
+    }
+    let active = true;
+    transport.loadPreferences()
+      .then(payload => {
+        if (!active) return;
+        const loaded = preferencesToForm(payload);
+        const next = { ...initialValues, ...loaded };
+        setValues(next);
+        setSavedValues(next);
+        setLoading(false);
+      })
+      .catch(cause => {
+        if (!active) return;
+        setLoading(false);
+        setFormError(cause?.message || 'Preferences could not be loaded from the server.');
+      });
+    return () => { active = false; };
+  }, [transport]);
 
   function change(name, value) {
     setValues(current => ({ ...current, [name]: value }));
   }
 
   async function save({ values: submitted }) {
-    await wait(450);
-    setSavedValues(submitted);
+    if (transport.mode !== 'server') {
+      await wait(450);
+      setSavedValues(submitted);
+      return;
+    }
+    setFormError('');
+    try {
+      await transport.savePreferences(submitted);
+      setSavedValues(submitted);
+    } catch (cause) {
+      setFormError(cause?.message || 'Preferences could not be saved.');
+    }
   }
 
   return <SettingsPreferencesView
@@ -306,6 +343,8 @@ export default function PreferencesSlot() {
     onChange={change}
     onSave={save}
     validate={validate}
+    disabled={loading}
+    formError={formError}
     palette={settingsPalette}
     buttonPalette={buttonPalette}
   />;

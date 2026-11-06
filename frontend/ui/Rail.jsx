@@ -162,7 +162,7 @@ export function Rail({
             : <Text style={[styles.summaryInline, { color: palette.textMuted }]}>{summaryInline}</Text>) : null}
           {viewAll ? <Pressable accessibilityRole="link" accessibilityLabel={viewAll.accessibilityLabel || viewAll.label}
             onPress={viewAll.onPress} style={styles.sortButton}>
-            <Text style={[styles.summaryInline, { color: palette.accent }]}>{viewAll.label}</Text>
+            <Text style={[styles.summaryInline, { color: palette.link || palette.accent }]}>{viewAll.label}</Text>
           </Pressable> : null}
         </View>
         {summary ? <Text style={[styles.summary, { color: palette.textMuted }]}>{summary}</Text> : null}

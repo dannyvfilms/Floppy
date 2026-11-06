@@ -423,18 +423,16 @@ export function Sidebar({
           style={logo.mono ? styles.logoMono : styles.logo} />
         : <Text style={[styles.logoText, { color: palette.text }]}>{logo.text || labels.logo}</Text>}
     </View> : null}
-    <ScrollView style={styles.primary} contentContainerStyle={styles.navContent}>
+    <ScrollView ref={list} style={styles.primary} contentContainerStyle={styles.navContent}
+      onContentSizeChange={() => { if (navOpen) list.current?.scrollToEnd?.({ animated: false }); }}>
       {model.primary.map(item => renderItem({ ...item, pinKey: null }))}
-    </ScrollView>
-    {secondaryVisible ? <View style={[styles.secondary, { borderTopColor: palette.border }]}>
-      <ScrollView ref={list} style={[styles.secondaryScroll, { maxHeight: Math.round(height * 0.4) }]}
-        contentContainerStyle={styles.secondaryContent}>
+      {secondaryVisible ? <View style={[styles.secondary, { borderTopColor: palette.border }]}>
         <Reveal open={navOpen}>
-          <View style={styles.navContent}>{unpinned.map(renderItem)}</View>
+          <View style={styles.navGroup}>{unpinned.map(renderItem)}</View>
         </Reveal>
-        <View style={styles.navContent}>{pinned.map(renderItem)}</View>
-      </ScrollView>
-    </View> : null}
+        <View style={styles.navGroup}>{pinned.map(renderItem)}</View>
+      </View> : null}
+    </ScrollView>
     <View>{onboarding}</View>
     <View style={[styles.bottom, { borderTopColor: palette.border }]}>
       <Pressable accessibilityRole="button" accessibilityLabel={labels.explore}
@@ -473,7 +471,8 @@ const styles = StyleSheet.create({
   logoText: { fontSize: 20, fontWeight: '700', letterSpacing: 0.2 },
   primary: { flex: 1, minHeight: 0 },
   navContent: { padding: 16, gap: 4 },
-  secondary: { borderTopWidth: 1 },
+  navGroup: { gap: 4 },
+  secondary: { borderTopWidth: 1, marginTop: 4, paddingTop: 4 },
   secondaryScroll: { minHeight: 0 },
   secondaryContent: { width: '100%' },
   row: { minHeight: 36, flexDirection: 'row', alignItems: 'center',

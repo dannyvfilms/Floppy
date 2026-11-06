@@ -1,5 +1,9 @@
 import { getActiveAuthSession } from './authSession.js';
-import { createLocalListActions, createRemoteListActions } from './listTransportCore.js';
+import {
+  createLocalListActions,
+  createRemoteListActions,
+  listItemsFromPayload,
+} from './listTransportCore.js';
 
 export function createListTransport(options = {}) {
   if (typeof options.request === 'function') {
@@ -13,3 +17,5 @@ export function createListTransport(options = {}) {
     'Sign in to your Floppy server to save list changes.',
   );
 }
+
+export { listItemsFromPayload };

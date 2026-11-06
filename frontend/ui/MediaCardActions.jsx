@@ -122,6 +122,7 @@ function DragHandle({ label, hint, position, count, icon, stepLabels = {}, palet
 
 export function MediaCardActions({
   actions,
+  style,
   palette,
   labels = {},
   revealed = false,
@@ -135,7 +136,7 @@ export function MediaCardActions({
   if (!actions?.items?.length || !revealed) return null;
   const colors = { ...FALLBACK_PALETTE, ...(palette || {}) };
   const ordering = actions.ordering;
-  return <View style={styles.overlay}>
+  return <View style={[styles.overlay, style]}>
     <Pressable accessibilityRole="button" accessibilityLabel={labels.open || actions.title}
       onPress={onOpen} style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay }]} />
     <View style={styles.overlayBody}>
@@ -165,7 +166,9 @@ export function MediaCardActions({
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    left: 0,
+    right: 0,
     zIndex: 30,
     alignItems: 'center',
     justifyContent: 'center',

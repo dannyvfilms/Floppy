@@ -193,6 +193,7 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_watched_state.SyncConnectionsView": {"GET": "sync:read"},
     "api.fork_views_watched_state.SyncConflictsView": {"GET": "sync:read"},
     "api.fork_views_watched_state.SyncConflictResolveView": {"POST": "sync:write"},
+    "api.fork_views_metadata.MediaMetadataView": {"GET": "metadata:read"},
     "api.fork_views_users.UserNavigationView": {"GET": "user:read"},
     "api.fork_views_users.UserPreferencesView": {
         "GET": "user:read",

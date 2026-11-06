@@ -2,6 +2,7 @@ import React, { useCallback, useRef, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { GlobalSearch } from '../../../frontend/ui/GlobalSearch.jsx';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
+import { createSearchTransport, localResultsFromPayload } from '../data/searchTransport';
 import { palette, radius } from '../theme';
 
 export const surface = {
@@ -9,7 +10,7 @@ export const surface = {
   title: 'Global search and suggestions',
   where: 'Header on Home, Discover and Library, and the Search screen',
   status: 'in_progress',
-  note: 'The shared React Native search field renders here with the media-type menu, two-character suggestions, the search-all/search-online footer, loading/empty/error rows and the search, suggestion and barcode callbacks. Book, Manga, Comic and Comic Issue scopes open the Expo camera/photo/manual-ISBN sheet. Suggestions come from local demo rows because the native shell has no search transport, and the web adapter keeps the GET search action and JSON suggestion endpoint. Expo export is compile-only evidence: camera, photo, permission, manual-ISBN, suggestion, menu and screen-reader interaction were not exercised on iOS or Android.',
+  note: 'The shared React Native search field renders here with the media-type menu, two-character suggestions, the search-all/search-online footer, loading/empty/error rows and the search, suggestion and barcode callbacks. Book, Manga, Comic and Comic Issue scopes open the Expo camera/photo/manual-ISBN sheet. Signed-in suggestions query /api/v1/media/?search= through the session facade; signed-out keeps the sample rows. The web adapter keeps the GET search action and JSON suggestion endpoint. Expo export is compile-only evidence: camera, photo, permission, manual-ISBN, suggestion, menu and screen-reader interaction were not exercised on iOS or Android.',
 };
 
 const mediaTypes = [
@@ -105,6 +106,7 @@ export default function SearchSlot({
   onSubmit,
 }) {
   const { width } = useWindowDimensions();
+  const [transport] = useState(() => createSearchTransport());
   const compact = width < 640;
   const selectedType = mediaTypes.find(option => option.value === initialMediaType) || mediaTypes[0];
   const [scannerVisible, setScannerVisible] = useState(false);
@@ -124,6 +126,17 @@ export default function SearchSlot({
 
   const loadSuggestions = useCallback(async ({ query, mediaType }) => {
     await wait(180);
+    if (transport.mode === 'server') {
+      const payload = await transport.searchLocal({ search: query, mediaType, limit: 8, offset: 0 });
+      return {
+        suggestions: localResultsFromPayload(payload).slice(0, 8).map((item, index) => ({
+          id: `${item.type}-${index}`,
+          title: item.title,
+          subtitle: [item.note, item.year, item.status].filter(Boolean).join(' · '),
+          mediaType: item.type,
+        })),
+      };
+    }
     const needle = query.toLowerCase();
     return {
       suggestions: library
@@ -137,7 +150,7 @@ export default function SearchSlot({
           mediaType: item.type,
         })),
     };
-  }, []);
+  }, [transport]);
 
   function openSuggestion(suggestion) {
     if (onOpenSuggestion) onOpenSuggestion(suggestion);

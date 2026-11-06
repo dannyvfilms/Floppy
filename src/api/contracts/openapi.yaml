@@ -55,6 +55,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -209,6 +210,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -293,6 +295,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '202':
           content:
@@ -327,6 +330,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -473,6 +477,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '201':
           content:
@@ -598,6 +603,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -716,6 +722,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '204':
           description: No response body
@@ -735,6 +742,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -1046,6 +1054,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -1354,6 +1363,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -1434,6 +1444,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '201':
           content:
@@ -1520,6 +1531,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -1614,6 +1626,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -1693,6 +1706,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '204':
           description: No response body
@@ -1750,6 +1764,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -1835,6 +1850,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '204':
           description: No response body
@@ -1898,6 +1914,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -1989,6 +2006,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '204':
           description: No response body
@@ -2040,6 +2058,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '400':
           content:
@@ -2113,6 +2132,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '201':
           content:
@@ -2166,6 +2186,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -2209,6 +2230,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '400':
           content:
@@ -2294,6 +2316,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -2386,6 +2409,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -2451,6 +2475,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '204':
           description: No response body
@@ -2488,6 +2513,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -2537,6 +2563,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '400':
           content:
@@ -2599,6 +2626,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -2674,6 +2702,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -2717,6 +2746,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '201':
           content:
@@ -2743,6 +2773,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -2808,6 +2839,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -2866,6 +2898,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -2892,6 +2925,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -2987,6 +3021,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -3150,6 +3185,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -3315,6 +3351,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -3444,6 +3481,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -3486,6 +3524,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '201':
           content:
@@ -3529,6 +3568,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -3565,6 +3605,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '204':
           description: No response body
@@ -3584,6 +3625,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -3622,6 +3664,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -3658,6 +3701,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:

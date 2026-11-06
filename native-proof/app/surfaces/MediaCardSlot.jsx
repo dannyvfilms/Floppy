@@ -4,6 +4,7 @@ import { Button } from '../../../frontend/ui/Button';
 import { ListsForm } from '../../../frontend/ui/ListsFormView';
 import { MediaCardActionHost } from '../../../frontend/ui/MediaCardActionHost';
 import { MediaCard } from '../../../frontend/ui/MediaCard';
+import { Icon } from '../../../frontend/ui/Icon';
 import { TrackForm } from '../../../frontend/ui/TrackForm';
 import { RatingStars } from '../../../frontend/ui/RatingStars';
 import {
@@ -357,6 +358,7 @@ function actionGlyph(action) {
 }
 
 function renderActionIcon(action) {
+  if (action.icon) return <Icon spec={action.icon} color="#ffffff" size={18} />;
   return <Text accessible={false} style={styles.actionGlyph}>{actionGlyph(action)}</Text>;
 }
 

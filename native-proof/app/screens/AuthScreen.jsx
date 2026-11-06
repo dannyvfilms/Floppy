@@ -43,6 +43,7 @@ const authPalette = {
   textMuted: palette.textMuted,
   accent: palette.accent,
   accentStrong: palette.accentStrong,
+  link: palette.link,
   success: palette.success,
   warning: palette.warning,
   danger: palette.danger,

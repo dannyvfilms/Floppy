@@ -12,7 +12,7 @@ export const surface = {
   status: 'in_progress',
   title: 'Table view and columns',
   where: 'Library and list table layouts',
-  note: 'The shared React Native media table keeps the release outer rounded outline, header rule and row separators. It and the column menu render configurable columns with real client-side sorting (title, media type, score, progress, status, runtime, time watched, release and added dates, genres), score/status/progress/units cells and accessible horizontal scrolling. The column menu reorders and hides columns while keeping the fixed poster and title columns. Each row exposes Track and Open actions: Track opens the shared tracking form in the shared action host and updates that row status and score in local demo state, and Open follows the row detail route. Column changes and tracking edits stay in local component state until account transport is wired; the browser interaction pass and iOS/Android runtime and accessibility passes remain.',
+  note: 'The shared React Native media table keeps the release outer rounded outline, header rule and row separators. The Library screen supplies rows from /api/v1/media/ and the table renders configurable columns with real client-side sorting (title, media type, score, progress, status, runtime, time watched, release and added dates, genres), score/status/progress/units cells and accessible horizontal scrolling. The column menu reorders and hides columns while keeping the fixed poster and title columns. Each row exposes Track and Open actions: Track opens the shared tracking form and updates that row status and score in local state, and Open follows the row detail route. Track saves PATCH the row provider identity and the delete action removes it through /api/v1/media/{type}/{source}/{id}/; the browser interaction pass and iOS/Android runtime and accessibility passes remain.',
 };
 
 const STATUS_RANK = {
@@ -40,153 +40,6 @@ const COLUMNS = [
 ];
 
 const ACTION_COLUMN = { key: 'actions', label: 'Actions', width: 150, align: 'center', sortable: false };
-
-const ROWS = [
-  {
-    id: 'dune', title: 'Dune: Part Two',
-    sort: {
-      score: 8.6, progress: 1, status: STATUS_RANK.Completed, runtime: 166,
-      time_watched: 166, release_date: 20240301, date_added: 20250212, genres: 'Sci-Fi',
-    },
-    track: {
-      mediaType: 'movie', progressLabel: 'Times watched', progressValue: '1', progressMax: 1,
-      startDate: '2025-02-12', endDate: '2025-02-13',
-    },
-    cells: {
-      image: { kind: 'image', src: 'https://picsum.photos/seed/floppy-table-dune/80/80', alt: 'Dune: Part Two' },
-      title: { kind: 'title', text: 'Dune: Part Two', href: '#open:dune' },
-      media_type: { kind: 'text', text: 'Movie', muted: true },
-      score: { kind: 'score', rated: true, text: '8.6' },
-      progress: { kind: 'text', text: 'Watched' },
-      status: { kind: 'status', text: 'Completed' },
-      runtime: { kind: 'text', text: '2h 46m' },
-      time_watched: { kind: 'text', text: '2h 46m' },
-      release_date: { kind: 'text', text: 'Mar 1, 2024' },
-      date_added: { kind: 'text', text: 'Feb 12, 2025' },
-      genres: { kind: 'genres', items: [{ label: 'Sci-Fi' }, { label: 'Drama' }] },
-    },
-  },
-  {
-    id: 'orbit', title: 'The Quiet Orbit',
-    sort: {
-      score: 8.0, progress: 0.6, status: STATUS_RANK['In progress'], runtime: 48,
-      time_watched: 288, release_date: 20240101, date_added: 20250130, genres: 'Mystery',
-    },
-    track: {
-      mediaType: 'tv', progressLabel: 'Episodes watched', progressValue: '6', progressMax: 10,
-      startDate: '2025-01-30', endDate: '',
-    },
-    cells: {
-      image: { kind: 'image', src: 'https://picsum.photos/seed/floppy-table-orbit/80/80', alt: 'The Quiet Orbit' },
-      title: { kind: 'title', text: 'The Quiet Orbit', href: '#open:orbit' },
-      media_type: { kind: 'text', text: 'Show', muted: true },
-      score: { kind: 'score', rated: true, text: '8.0' },
-      progress: { kind: 'progress', text: '6', maxText: ' / 10 episodes', note: 'Total' },
-      status: { kind: 'status', text: 'In progress' },
-      runtime: { kind: 'text', text: '48m' },
-      time_watched: { kind: 'text', text: '4h 48m' },
-      release_date: { kind: 'text', text: '2024' },
-      date_added: { kind: 'text', text: 'Jan 30, 2025' },
-      genres: { kind: 'genres', items: [{ label: 'Mystery' }] },
-    },
-  },
-  {
-    id: 'hades', title: 'Hades II',
-    sort: {
-      score: 9.1, progress: 0.23, status: STATUS_RANK['In progress'], runtime: null,
-      time_watched: 840, release_date: 20240101, date_added: 20250602, genres: 'Roguelike',
-    },
-    track: {
-      mediaType: 'game', progressLabel: 'Hours played', progressValue: '14', progressMax: 60,
-      startDate: '2025-06-02', endDate: '',
-    },
-    cells: {
-      image: { kind: 'image', src: 'https://picsum.photos/seed/floppy-table-hades/80/80', alt: 'Hades II' },
-      title: { kind: 'title', text: 'Hades II', href: '#open:hades' },
-      media_type: { kind: 'text', text: 'Game', muted: true },
-      score: { kind: 'score', rated: true, text: '9.1' },
-      progress: { kind: 'progress', text: '14h played', note: 'Total' },
-      status: { kind: 'status', text: 'In progress' },
-      runtime: { kind: 'text', text: '—', muted: true },
-      time_watched: { kind: 'text', text: '14h' },
-      release_date: { kind: 'text', text: '2024' },
-      date_added: { kind: 'text', text: 'Jun 2, 2025' },
-      genres: { kind: 'genres', items: [{ label: 'Roguelike' }, { label: 'Action' }] },
-    },
-  },
-  {
-    id: 'signal', title: 'Signal & Static',
-    sort: {
-      score: 4.5, progress: 0.375, status: STATUS_RANK['In progress'], runtime: 52,
-      time_watched: 156, release_date: 20230101, date_added: 20250304, genres: 'Fiction',
-    },
-    track: {
-      mediaType: 'podcast', progressLabel: 'Episodes played', progressValue: '3', progressMax: 8,
-      startDate: '2025-03-04', endDate: '',
-    },
-    cells: {
-      image: { kind: 'image', src: 'https://picsum.photos/seed/floppy-table-signal/80/80', alt: 'Signal & Static' },
-      title: { kind: 'title', text: 'Signal & Static', href: '#open:signal' },
-      media_type: { kind: 'text', text: 'Podcast', muted: true },
-      score: { kind: 'score', rated: true, text: '4.5' },
-      progress: { kind: 'progress', text: '3', maxText: ' / 8 episodes', note: 'Total' },
-      status: { kind: 'status', text: 'In progress' },
-      runtime: { kind: 'text', text: '52m' },
-      time_watched: { kind: 'text', text: '2h 36m' },
-      release_date: { kind: 'text', text: '2023' },
-      date_added: { kind: 'text', text: 'Mar 4, 2025' },
-      genres: { kind: 'genres', items: [{ label: 'Fiction' }] },
-    },
-  },
-  {
-    id: 'paper', title: 'Paper Lanterns',
-    sort: {
-      score: 6.5, progress: 0, status: STATUS_RANK.Planning, runtime: null,
-      time_watched: null, release_date: 20220101, date_added: 20250418, genres: 'Fantasy',
-    },
-    track: {
-      mediaType: 'book', progressLabel: 'Pages read', progressValue: '0', progressMax: 320,
-      startDate: '', endDate: '',
-    },
-    cells: {
-      image: { kind: 'image', src: 'https://picsum.photos/seed/floppy-table-paper/80/80', alt: 'Paper Lanterns' },
-      title: { kind: 'title', text: 'Paper Lanterns', href: '#open:paper' },
-      media_type: { kind: 'text', text: 'Book', muted: true },
-      score: { kind: 'score', rated: true, text: '6.5' },
-      progress: { kind: 'progress', text: '0', maxText: ' / 320 pages' },
-      status: { kind: 'status', text: 'Planning' },
-      runtime: { kind: 'text', text: '—', muted: true },
-      time_watched: { kind: 'text', text: '—', muted: true },
-      release_date: { kind: 'text', text: '2022' },
-      date_added: { kind: 'text', text: 'Apr 18, 2025' },
-      genres: { kind: 'genres', items: [{ label: 'Fantasy' }] },
-    },
-  },
-  {
-    id: 'studio', title: 'Building a Home Studio',
-    sort: {
-      score: null, progress: 1, status: STATUS_RANK.Completed, runtime: 12.7,
-      time_watched: 12, release_date: 20240101, date_added: 20250512, genres: 'How-to',
-    },
-    track: {
-      mediaType: 'video', progressLabel: 'Times watched', progressValue: '1', progressMax: 1,
-      startDate: '2025-05-12', endDate: '2025-05-12',
-    },
-    cells: {
-      image: { kind: 'image', src: 'https://picsum.photos/seed/floppy-table-studio/80/80', alt: 'Building a Home Studio' },
-      title: { kind: 'title', text: 'Building a Home Studio', href: '#open:studio' },
-      media_type: { kind: 'text', text: 'Video', muted: true },
-      score: { kind: 'score', rated: false, text: '' },
-      progress: { kind: 'text', text: '12:40 watched' },
-      status: { kind: 'status', text: 'Completed' },
-      runtime: { kind: 'text', text: '12:40' },
-      time_watched: { kind: 'text', text: '12m' },
-      release_date: { kind: 'text', text: '2024' },
-      date_added: { kind: 'text', text: 'May 12, 2025' },
-      genres: { kind: 'genres', items: [{ label: 'How-to' }] },
-    },
-  },
-];
 
 const TABLE_PALETTE = { ...palette, link: '#818cf8', accentContrast: '#ffffff' };
 
@@ -349,7 +202,7 @@ function QuickTrack({ row, onSave, onDelete, onClose }) {
     onClose={onClose} />;
 }
 
-export default function TableSlot({ onOpenDetail }) {
+export default function TableSlot({ rows = [], onOpenDetail, onTrackSave, onTrackDelete }) {
   const [columns, setColumns] = useState(() => COLUMNS.map(column => ({ ...column })));
   const [sort, setSort] = useState('title');
   const [direction, setDirection] = useState('asc');
@@ -385,12 +238,18 @@ export default function TableSlot({ onOpenDetail }) {
       return;
     }
     const id = href.startsWith('#open:') ? href.slice('#open:'.length) : '';
-    openDetail(ROWS.find(row => row.id === id) || { href });
+    openDetail(rows.find(row => row.id === id) || { href });
   }
 
-  function saveTrack(row, values) {
+  async function saveTrack(row, values) {
     const status = values.status || '';
     const score = values.score === '' || values.score == null ? null : Number(values.score);
+    try {
+      if (onTrackSave) await onTrackSave(row, values);
+    } catch (cause) {
+      AccessibilityInfo.announceForAccessibility?.(cause?.message || `${row.title} could not be updated`);
+      return;
+    }
     setOverrides(current => ({
       ...current,
       [row.id]: {
@@ -406,7 +265,13 @@ export default function TableSlot({ onOpenDetail }) {
     AccessibilityInfo.announceForAccessibility?.(`${row.title} updated`);
   }
 
-  function removeTrack(row) {
+  async function removeTrack(row) {
+    try {
+      if (onTrackDelete) await onTrackDelete(row);
+    } catch (cause) {
+      AccessibilityInfo.announceForAccessibility?.(cause?.message || `${row.title} could not be removed`);
+      return;
+    }
     setOverrides(current => ({
       ...current,
       [row.id]: {
@@ -421,12 +286,12 @@ export default function TableSlot({ onOpenDetail }) {
 
   const visibleColumns = useMemo(() => columns.filter(column => column.visible !== false), [columns]);
   const tableColumns = useMemo(() => [...visibleColumns, ACTION_COLUMN], [visibleColumns]);
-  const rows = useMemo(() => sortRows(
-    ROWS.map(row => displayRow(row, overrides[row.id])),
+  const sortedRows = useMemo(() => sortRows(
+    rows.map(row => displayRow(row, overrides[row.id])),
     sort,
     direction,
-  ), [overrides, sort, direction]);
-  const trackRow = tracking ? rows.find(row => row.id === tracking) : null;
+  ), [rows, overrides, sort, direction]);
+  const trackRow = tracking ? sortedRows.find(row => row.id === tracking) : null;
   const sortLabel = COLUMNS.find(column => column.key === sort)?.label || sort;
 
   return <View style={styles.root}>
@@ -443,7 +308,7 @@ export default function TableSlot({ onOpenDetail }) {
     </View>
     <MediaTable
       columns={tableColumns}
-      rows={rows}
+      rows={sortedRows}
       sort={sort}
       sortDirection={direction}
       onSort={sortBy}

@@ -139,7 +139,7 @@ export function ArtworkPicker({
       borderStyle: dragActive ? 'dashed' : 'solid',
     }]}>
       <Pressable accessibilityRole="button" accessibilityLabel={copy.choose} onPress={onChooseFile}>
-        <Text style={[styles.action, { color: palette.accent }]}>{copy.choose}</Text>
+        <Text style={[styles.action, { color: palette.link || palette.accent }]}>{copy.choose}</Text>
       </Pressable>
       {supportsDrag ? <>
         <Text style={[styles.dot, { color: palette.textMuted }]}>·</Text>
@@ -147,12 +147,12 @@ export function ArtworkPicker({
       </> : null}
       <Text style={[styles.dot, { color: palette.textMuted }]}>·</Text>
       <Pressable accessibilityRole="button" accessibilityLabel={copy.urlToggle} onPress={onToggleUrl}>
-        <Text style={[styles.action, { color: palette.accent }]}>{copy.urlToggle}</Text>
+        <Text style={[styles.action, { color: palette.link || palette.accent }]}>{copy.urlToggle}</Text>
       </Pressable>
       {onCamera ? <>
         <Text style={[styles.dot, { color: palette.textMuted }]}>·</Text>
         <Pressable accessibilityRole="button" accessibilityLabel={cameraLabel || copy.camera} onPress={onCamera}>
-          <Text style={[styles.action, { color: palette.accent }]}>{cameraLabel || copy.camera}</Text>
+          <Text style={[styles.action, { color: palette.link || palette.accent }]}>{cameraLabel || copy.camera}</Text>
         </Pressable>
       </> : null}
     </View>
@@ -200,7 +200,7 @@ export function ArtworkPicker({
       {candidatesState === 'error' ? <View style={styles.state}>
         <Text style={[styles.stateText, { color: palette.textMuted }]}>{copy.candidatesError}</Text>
         {onRetryCandidates ? <Pressable accessibilityRole="button" accessibilityLabel={copy.retry} onPress={onRetryCandidates}>
-          <Text style={[styles.action, { color: palette.accent }]}>{copy.retry}</Text>
+          <Text style={[styles.action, { color: palette.link || palette.accent }]}>{copy.retry}</Text>
         </Pressable> : null}
       </View> : null}
       {candidatesState === 'ready' ? visibleCandidates.map((candidate, index) => {
@@ -315,7 +315,7 @@ export function EditionPicker({
         {state === 'error' ? <View style={styles.state}>
           <Text style={[styles.stateText, { color: palette.textMuted }]}>{copy.editionsError}</Text>
           {onRetry ? <Pressable accessibilityRole="button" accessibilityLabel={copy.retry} onPress={onRetry}>
-            <Text style={[styles.action, { color: palette.accent }]}>{copy.retry}</Text>
+            <Text style={[styles.action, { color: palette.link || palette.accent }]}>{copy.retry}</Text>
           </Pressable> : null}
         </View> : null}
         {state === 'ready' ? (results.length ? results.map((row, index) => {

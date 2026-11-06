@@ -3,7 +3,10 @@ import { CalendarView } from '../../../frontend/pages/CalendarView';
 import { CalendarLinks } from '../../../frontend/ui/CalendarLinks';
 import { Screen } from '../components/Screen';
 import { readCalendarPreferences, writeCalendarPreferences } from '../data/calendarPreferences';
-import { createCalendarTransport } from '../data/calendarTransport';
+import {
+  calendarModelFromPayload,
+  createCalendarTransport,
+} from '../data/calendarTransport';
 import CalendarSlot from '../surfaces/CalendarSlot';
 import { palette } from '../theme';
 
@@ -57,12 +60,23 @@ const calendarLinkPalette = {
   link: '#818cf8',
 };
 
+function currentMonth() {
+  const now = new Date();
+  return { month: now.getMonth() + 1, year: now.getFullYear() };
+}
+
 export default function CalendarScreen({ navigate }) {
+  const [transport] = useState(() => createCalendarTransport());
   const preferences = useRef({ filters: null, weekStart: defaultWeekStart });
   const [filters, setFilters] = useState(null);
   const [weekStart, setWeekStart] = useState(defaultWeekStart);
   const [hydrated, setHydrated] = useState(false);
   const [actionNote, setActionNote] = useState('');
+  const [period, setPeriod] = useState(currentMonth);
+  const [model, setModel] = useState(null);
+  const [loading, setLoading] = useState(transport.mode === 'server');
+  const [loadError, setLoadError] = useState('');
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -84,6 +98,34 @@ export default function CalendarScreen({ navigate }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (transport.mode !== 'server' || !hydrated) {
+      return undefined;
+    }
+    let active = true;
+    setLoading(true);
+    setLoadError('');
+    transport.readAll({ month: period.month, year: period.year })
+      .then(payload => {
+        if (!active) return;
+        setModel(calendarModelFromPayload(payload, {
+          month: period.month,
+          year: period.year,
+          weekStart,
+        }));
+        setLoading(false);
+      })
+      .catch(error => {
+        if (!active) return;
+        setModel(null);
+        setLoadError(error?.message || 'Calendar could not be loaded from the server.');
+        setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [transport, hydrated, period, weekStart, reloadToken]);
+
   function savePreferences(patch) {
     const next = { ...preferences.current, ...patch };
     preferences.current = next;
@@ -95,6 +137,32 @@ export default function CalendarScreen({ navigate }) {
     savePreferences({ filters: next });
   }
 
+  function moveMonth(delta) {
+    setPeriod(current => {
+      const index = current.month - 1 + delta;
+      return {
+        month: ((index + 12) % 12) + 1,
+        year: current.year + Math.floor(index / 12),
+      };
+    });
+    setActionNote('');
+  }
+
+  function handleNavigate(target) {
+    if (target === 'previous') {
+      moveMonth(-1);
+      return;
+    }
+    if (target === 'next') {
+      moveMonth(1);
+      return;
+    }
+    if (target === 'today') {
+      setPeriod(currentMonth());
+      setActionNote('');
+    }
+  }
+
   function handleMenuAction({ key, value }) {
     if (key === 'weekStart') {
       setWeekStart(value);
@@ -102,15 +170,22 @@ export default function CalendarScreen({ navigate }) {
       setActionNote(`Week starts on ${value === 'sunday' ? 'Sunday' : 'Monday'}.`);
       return;
     }
+    if (key === 'today') {
+      setPeriod(currentMonth());
+      setActionNote('');
+      return;
+    }
     if (key === 'fetch') {
-      const transport = createCalendarTransport();
       if (transport.mode !== 'server') {
         setActionNote('Sign in to your Floppy server to fetch new releases.');
         return;
       }
       setActionNote('Fetching new releases…');
       transport.fetchReleases()
-        .then(() => setActionNote('Release fetch queued on the Django server.'))
+        .then(() => {
+          setActionNote('Release fetch queued on the Django server.');
+          setReloadToken(current => current + 1);
+        })
         .catch(error => setActionNote(error.message || 'Could not fetch new releases.'));
       return;
     }
@@ -119,17 +194,26 @@ export default function CalendarScreen({ navigate }) {
     }
   }
 
+  const localNotice = transport.mode === 'local'
+    ? 'Sign in to your Floppy server to see the calendar.'
+    : '';
+  const notice = loadError || actionNote || localNotice;
+  const empty = transport.mode === 'server' && !loading && Boolean(model?.empty);
+
   return <Screen chrome={false}>
     <CalendarView
       palette={palette}
-      loading={!hydrated}
-      notice={actionNote}
-      calendar={hydrated ? <CalendarSlot
+      loading={transport.mode === 'server' && (!hydrated || loading)}
+      empty={empty}
+      notice={notice}
+      calendar={model ? <CalendarSlot
+        model={model}
         initialFilters={filters || undefined}
         weekStart={weekStart}
+        onNavigate={handleNavigate}
+        onOpenRelease={() => navigate('Detail')}
         onFiltersChange={handleFiltersChange}
-        onMenuAction={handleMenuAction}
-        onOpenRelease={() => navigate('Detail')} /> : null}
+        onMenuAction={handleMenuAction} /> : null}
       links={<CalendarLinks
         releaseMediaTypes={releaseMediaTypes}
         historyMediaTypes={historyMediaTypes}

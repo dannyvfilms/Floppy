@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Badge } from '../../../frontend/ui/Badge';
 import { palette, spacing } from '../theme';
+import { getActiveAuthSession } from '../data/authSession';
 
 export const surface = {
   id: 'DETAIL',
@@ -55,7 +56,7 @@ function ProviderList() {
 
 // Production-shaped detail model for the native proof. The shared DetailView
 // owns section order, labels and states; this factory only supplies values.
-export function createDetailModel() {
+function createDetailModel() {
   return {
     title: 'The Quiet Orbit',
     altTitle: 'La órbita silenciosa',
@@ -84,6 +85,101 @@ export function createDetailModel() {
       { id: 'genres', title: 'Genres', body: <GenreBadges /> },
       { id: 'providers', title: 'Where to watch', body: <ProviderList /> },
     ],
+  };
+}
+
+
+function identityFromItem(item) {
+  if (item?.identity?.mediaId) {
+    return {
+      mediaType: item.identity.mediaType,
+      source: item.identity.source,
+      mediaId: item.identity.mediaId,
+    };
+  }
+  const match = String(item?.href || '').match(/^\/details\/([^/]+)\/([^/]+)\/([^/]+)/);
+  return match ? { source: match[1], mediaType: match[2], mediaId: match[3] } : null;
+}
+
+function factList(fields) {
+  const facts = [];
+  const year = String(fields.release_datetime || '').slice(0, 4);
+  if (year) facts.push({ label: 'Year', value: year });
+  if (fields.runtime_minutes) facts.push({ label: 'Runtime', value: `${fields.runtime_minutes}m` });
+  if (fields.status) facts.push({ label: 'Status', value: fields.status });
+  if (fields.format) facts.push({ label: 'Format', value: fields.format });
+  return facts;
+}
+
+function genreNames(fields) {
+  if (Array.isArray(fields.genres)) return fields.genres.filter(Boolean);
+  return fields.genres ? [String(fields.genres)] : [];
+}
+
+// A card-only model is still real data from the row the viewer tapped; it is
+// what the detail page shows while metadata loads or when the item is untracked.
+export function createDetailModelForItem(item) {
+  return {
+    title: item?.title || 'Detail',
+    subtitle: '',
+    publicView: false,
+    readOnly: false,
+    artwork: {
+      src: item?.image?.src || '',
+      alt: item?.title || 'Detail',
+      aspect: 'poster',
+    },
+    facts: [],
+    synopsis: null,
+    labels,
+    palette: detailPalette,
+    actions: null,
+    sections: [],
+  };
+}
+
+export async function loadDetailModel(item) {
+  const identity = identityFromItem(item);
+  const auth = getActiveAuthSession();
+  if (!identity || typeof auth?.request !== 'function') return createDetailModelForItem(item);
+  const payload = await auth.request(
+    `/api/v1/media/${encodeURIComponent(identity.mediaType)}/${encodeURIComponent(identity.source)}/${encodeURIComponent(identity.mediaId)}/metadata/`,
+  );
+  const fields = payload?.fields || {};
+  const genres = genreNames(fields);
+  const studios = Array.isArray(fields.studios) ? fields.studios.filter(Boolean) : [];
+  return {
+    title: fields.title || item?.title || 'Detail',
+    subtitle: fields.original_title && fields.original_title !== fields.title ? fields.original_title : '',
+    publicView: false,
+    readOnly: false,
+    artwork: {
+      src: fields.image || item?.image?.src || '',
+      alt: fields.title || item?.title || 'Detail',
+      aspect: 'poster',
+    },
+    facts: factList(fields),
+    synopsis: fields.synopsis ? { text: fields.synopsis, previewLines: 3 } : null,
+    labels,
+    palette: detailPalette,
+    actions: null,
+    sections: [
+      genres.length ? {
+        id: 'genres',
+        title: 'Genres',
+        body: <View style={styles.badgeRow}>
+          {genres.map(genre => <Badge key={genre} label={genre} tone="outline"
+            palette={{ outline: { color: palette.textSecondary, borderColor: palette.surfaceMuted, borderWidth: 1 } }} />)}
+        </View>,
+      } : null,
+      studios.length ? {
+        id: 'providers',
+        title: 'Studios',
+        body: <View style={styles.providerList}>
+          {studios.map(studio => <Text key={studio} style={styles.provider}>{studio}</Text>)}
+        </View>,
+      } : null,
+    ].filter(Boolean),
   };
 }
 

@@ -114,7 +114,7 @@ export function InstallPromptCard({
     {message ? <Text accessibilityLiveRegion="polite" style={[styles.status, { color: tone }]}>{message}</Text> : null}
     {platform === 'desktop' && text.guideNote ? <Text style={[styles.copy, { color: colors.textMuted }]}>
       {text.guideNote.prefix}{' '}
-      <Text accessibilityRole="link" onPress={onOpenGuide} style={[styles.inlineLink, { color: colors.accent }]}>{text.guideNote.linkLabel}</Text>{' '}
+      <Text accessibilityRole="link" onPress={onOpenGuide} style={[styles.inlineLink, { color: colors.link || colors.accent }]}>{text.guideNote.linkLabel}</Text>{' '}
       {text.guideNote.suffix}
     </Text> : <View style={[styles.steps, { borderColor: colors.border, backgroundColor: colors.surfaceStrong }]}>
       <Text role="heading" aria-level={5} style={[styles.stepsTitle, { color: colors.text }]}>{steps.title}</Text>

@@ -103,6 +103,32 @@ class ItemMetadataTests(FloppyApiTestCase):
         )
 
 
+class MediaMetadataReadTests(FloppyApiTestCase):
+    """GET /media/{type}/{source}/{id}/metadata returns a tracked item."""
+
+    def test_tracked_item_is_projected_by_identity(self):
+        """The native detail page resolves the same item the card names."""
+        item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        self.client.force_login(self.user1)
+        response = self.client.get(
+            f"/api/v1/media/{item.media_type}/{item.source}/{item.media_id}/metadata/"
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        body = response.json()
+        self.assertEqual(body["item_id"], item.id)
+        self.assertEqual(body["identity"]["media_id"], item.media_id)
+        self.assertEqual(body["fields"]["title"], item.title)
+
+    def test_untracked_item_is_not_found(self):
+        """Another user's item is not readable through this endpoint."""
+        item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        self.client.force_login(self.user1)
+        response = self.client.get(
+            f"/api/v1/media/{item.media_type}/{item.source}/missing-metadata-id/metadata/"
+        )
+        self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+
+
 class ManualEpisodeMetadataTests(FloppyApiTestCase):
     """PATCH /metadata/items/{id} on a manual episode.
 

@@ -674,7 +674,7 @@ class OpenAPIArtifactTests(SimpleTestCase):
                     )
                 self.assertEqual(
                     operation["security"],
-                    [{"bearerAuth": []}, {"ApiKeyAuth": []}],
+                    [{"bearerAuth": []}, {"ApiKeyAuth": []}, {"cookieAuth": []}],
                 )
 
     def test_search_media_type_enum_matches_supported_provider_types(self):

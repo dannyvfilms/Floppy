@@ -376,17 +376,15 @@ export function MediaCard({
       if (event?.nativeEvent?.pointerType === 'mouse' && shownActions && !activeSelection?.active) setReveal(false);
     }}>
     <View style={styles.artworkWrap}>
-      <Artwork model={model} palette={colors} selection={activeSelection} onPress={open} />
-      {model.statusChip?.kind === 'media-type'
-        ? <MediaTypeChip chip={model.statusChip} palette={colors} />
-        : <StatusChip chip={model.statusChip} palette={colors} labels={copy} />}
-      {model.cornerChips?.map((chip, index) => <CornerChip key={`${chip.kind}-${index}`}
-        chip={chip} palette={colors} labels={copy} onOpenLink={gatedOpenLink} />)}
-      <ProgressBar bar={model.progressBar} palette={colors} />
-      {shownActions && !activeSelection?.active ? <MediaCardActions actions={shownActions}
-        palette={colors} labels={copy} revealed={isRevealed} onOpen={onOpen}
-        onAction={onAction} onReorder={onReorder} onReorderDrag={onReorderDrag}
-        dragging={dragging} renderIcon={renderActionIcon} /> : null}
+      <View style={styles.artworkStage}>
+        <Artwork model={model} palette={colors} selection={activeSelection} onPress={open} />
+        {model.statusChip?.kind === 'media-type'
+          ? <MediaTypeChip chip={model.statusChip} palette={colors} />
+          : <StatusChip chip={model.statusChip} palette={colors} labels={copy} />}
+        {model.cornerChips?.map((chip, index) => <CornerChip key={`${chip.kind}-${index}`}
+          chip={chip} palette={colors} labels={copy} onOpenLink={gatedOpenLink} />)}
+        <ProgressBar bar={model.progressBar} palette={colors} />
+      </View>
       <View style={styles.bodyStack}>
         <CardScrim style={styles.scrim} />
         <View style={styles.body}>
@@ -395,13 +393,19 @@ export function MediaCard({
             altOpen={altOpen} setAltOpen={setAltOpen} />
         </View>
       </View>
+      {shownActions && !activeSelection?.active ? <MediaCardActions actions={shownActions}
+        palette={colors} labels={copy} revealed={isRevealed} onOpen={onOpen}
+        onAction={onAction} onReorder={onReorder} onReorderDrag={onReorderDrag}
+        dragging={dragging} renderIcon={renderActionIcon}
+        style={{ top: 0, height: width / (ASPECT[model.shape] || ASPECT.poster) }} /> : null}
     </View>
   </View>;
 }
 
 const styles = StyleSheet.create({
-  card: { borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
+  card: { position: 'relative', borderWidth: 1, borderRadius: 8, overflow: 'hidden' },
   artworkWrap: { position: 'relative' },
+  artworkStage: { position: 'relative' },
   artworkFrame: {
     width: '100%',
     overflow: 'hidden',

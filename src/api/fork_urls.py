@@ -51,6 +51,11 @@ urlpatterns = [
         name="api_media_provider_preference",
     ),
     re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/metadata/?$",
+        fork_views_metadata.MediaMetadataView.as_view(),
+        name="api_media_metadata",
+    ),
+    re_path(
         r"^metadata/items/(?P<item_id>\d+)/image/?$",
         fork_views_metadata.ItemImageView.as_view(),
         name="api_item_image",

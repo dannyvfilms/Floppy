@@ -1,7 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { SettingsAccessView } from '../../../frontend/pages/SettingsAccessView';
 import { SettingsDataView } from '../../../frontend/pages/SettingsDataView';
 import { SettingsNotificationsView } from '../../../frontend/pages/SettingsNotificationsView';
+import {
+  createSettingsTransport,
+  notificationPatchFromForm,
+  notificationsToForm,
+} from '../data/settingsTransport';
 import { palette, radius } from '../theme';
 
 export const surface = {
@@ -9,7 +14,7 @@ export const surface = {
   title: 'Data, access and notification settings',
   where: 'Settings data export, RSS, access tokens, OAuth grants and notifications',
   status: 'ported',
-  note: 'Export schedules and history, restore, RSS building, access tokens, install credentials, OAuth grants and notification preferences render from shared React Native components with demo busy, error and success state. Server transport, secure credential storage and iOS/Android runtime verification remain unverified.',
+  note: 'Export schedules and history, restore, RSS building, access tokens, install credentials, OAuth grants and notification preferences render from shared React Native components. The Notifications page reads /api/v1/user/notifications/ and its exclusion list, saves through the same route and the playback webhook through /api/v1/user/preferences/, and searches tracked items through /api/v1/media/. Export, restore, RSS, access tokens, install credentials and OAuth grants still have no JSON read/write endpoints, so those sections keep their demo state. Secure credential storage and iOS/Android runtime verification remain unverified.',
 };
 
 const settingsPalette = {
@@ -101,23 +106,12 @@ const demoApplications = [
   { id: 'app-2', name: 'Tiny Media Manager', clientId: 'flp_oauth_tmm_402c', active: false, connectedAt: 'Aug 19, 2026, 09:12', lastUsedAt: '', scopes: [{ label: 'Lists', description: 'Read custom lists and collection exports.' }] },
 ];
 
-const notificationCatalog = [
-  { id: 'n1', title: 'The Last Signal', mediaType: 'Movie' },
-  { id: 'n2', title: 'Harbour Lights', mediaType: 'TV Show' },
-  { id: 'n3', title: 'Paper Moons', mediaType: 'Book' },
-  { id: 'n4', title: 'Neon District', mediaType: 'Game' },
-];
-
-const demoExcluded = [
-  { id: 'n5', title: 'Old News', mediaType: 'TV Show' },
-  { id: 'n6', title: 'Archive Replay', mediaType: 'Movie' },
-];
-
 function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 export default function DataAccessNotificationsSlot({ page = 'data' }) {
+  const [transport] = useState(() => createSettingsTransport());
   const [exportModel, setExportModel] = useState({
     frequency: 'weekly',
     time: '03:00',
@@ -159,9 +153,12 @@ export default function DataAccessNotificationsSlot({ page = 'data' }) {
     notificationUrls: '',
     playbackWebhookUrl: '',
     playbackWebhookSecret: '',
-    dailyDigestEnabled: true,
-    releaseNotificationsEnabled: true,
+    dailyDigestEnabled: false,
+    releaseNotificationsEnabled: false,
     premiereNotificationsEnabled: false,
+  });
+  const [notificationStored, setNotificationStored] = useState({
+    notificationUrls: false, notificationUrlCount: null, playbackWebhookUrl: false, playbackWebhookSecret: false,
   });
   const [notificationDirty, setNotificationDirty] = useState(false);
   const [notificationBusy, setNotificationBusy] = useState(false);
@@ -170,10 +167,37 @@ export default function DataAccessNotificationsSlot({ page = 'data' }) {
   const [excludedQuery, setExcludedQuery] = useState('');
   const [excludedSearching, setExcludedSearching] = useState(false);
   const [excludedResults, setExcludedResults] = useState([]);
-  const [excludedItems, setExcludedItems] = useState(demoExcluded);
+  const [excludedItems, setExcludedItems] = useState([]);
   const [excludedBusyId, setExcludedBusyId] = useState('');
   const [excludedError, setExcludedError] = useState('');
   const [excludedSuccess, setExcludedSuccess] = useState('');
+
+  useEffect(() => {
+    if (page !== 'notifications' || transport.mode !== 'server') return undefined;
+    let active = true;
+    Promise.all([
+      transport.loadNotifications(),
+      transport.loadNotificationExclusions(),
+    ]).then(([settings, exclusions]) => {
+      if (!active) return;
+      const mapped = notificationsToForm(settings);
+      setNotificationValues(current => ({ ...current, ...mapped }));
+      setNotificationStored({
+        notificationUrls: mapped.notificationUrlsConfigured,
+        notificationUrlCount: null,
+        playbackWebhookUrl: false,
+        playbackWebhookSecret: false,
+      });
+      setExcludedItems((exclusions?.results || []).map(item => ({
+        id: item.item_id,
+        title: item.title,
+        mediaType: item.media_type,
+      })));
+    }).catch(cause => {
+      if (active) setNotificationError(cause?.message || 'Notification settings could not be loaded.');
+    });
+    return () => { active = false; };
+  }, [page, transport]);
 
   const rssFeedUrl = rssValues.mediaType && rssValues.rowKey
     ? `https://floppy.example.com/rss/${rssValues.mediaType}/${rssValues.rowKey}.xml?skip_planning=${rssValues.skipPlanning ? '1' : '0'}&skip_collected=${rssValues.skipCollected ? '1' : '0'}`
@@ -300,19 +324,53 @@ export default function DataAccessNotificationsSlot({ page = 'data' }) {
     setNotificationBusy(true);
     setNotificationError('');
     setNotificationSuccess('');
-    await wait(400);
-    setNotificationBusy(false);
-    setNotificationDirty(false);
-    setNotificationSuccess('Notification settings saved.');
+    if (transport.mode !== 'server') {
+      await wait(400);
+      setNotificationBusy(false);
+      setNotificationDirty(false);
+      setNotificationSuccess('Sign in to save notification settings.');
+      return;
+    }
+    try {
+      await transport.saveNotifications(notificationPatchFromForm(notificationValues));
+      const webhook = {};
+      if (notificationValues.playbackWebhookUrl) webhook.playback_webhook_url = notificationValues.playbackWebhookUrl;
+      if (notificationValues.playbackWebhookSecret) webhook.playback_webhook_secret = notificationValues.playbackWebhookSecret;
+      if (Object.keys(webhook).length) await transport.savePlaybackWebhook(webhook);
+      setNotificationStored(current => ({
+        ...current,
+        notificationUrls: current.notificationUrls || Boolean(notificationValues.notificationUrls),
+        playbackWebhookUrl: current.playbackWebhookUrl || Boolean(notificationValues.playbackWebhookUrl),
+        playbackWebhookSecret: current.playbackWebhookSecret || Boolean(notificationValues.playbackWebhookSecret),
+      }));
+      setNotificationValues(current => ({ ...current, playbackWebhookSecret: '' }));
+      setNotificationDirty(false);
+      setNotificationSuccess('Notification settings saved.');
+    } catch (cause) {
+      setNotificationError(cause?.message || 'Notification settings could not be saved.');
+    } finally {
+      setNotificationBusy(false);
+    }
   }
 
   async function testNotifications() {
     setNotificationBusy(true);
     setNotificationError('');
     setNotificationSuccess('');
-    await wait(500);
-    setNotificationBusy(false);
-    setNotificationSuccess('Test notification sent.');
+    if (transport.mode !== 'server') {
+      await wait(500);
+      setNotificationBusy(false);
+      setNotificationSuccess('Sign in to send a test notification.');
+      return;
+    }
+    try {
+      await transport.testNotification();
+      setNotificationSuccess('Test notification queued.');
+    } catch (cause) {
+      setNotificationError(cause?.message || 'The test notification could not be sent.');
+    } finally {
+      setNotificationBusy(false);
+    }
   }
 
   function searchExcluded(query) {
@@ -324,34 +382,66 @@ export default function DataAccessNotificationsSlot({ page = 'data' }) {
       setExcludedSearching(false);
       return;
     }
-    setExcludedSearching(true);
-    setTimeout(() => {
-      const excludedIds = new Set(excludedItems.map(item => item.id));
-      setExcludedResults(notificationCatalog.filter(item => !excludedIds.has(item.id)
-        && item.title.toLowerCase().includes(query.trim().toLowerCase())));
+    if (transport.mode !== 'server') {
+      setExcludedResults([]);
       setExcludedSearching(false);
-    }, 250);
+      return;
+    }
+    setExcludedSearching(true);
+    transport.searchNotificationItems({ search: query.trim() })
+      .then(payload => {
+        const excludedIds = new Set(excludedItems.map(item => item.id));
+        setExcludedResults((payload?.results || [])
+          .map(result => ({
+            id: result.id,
+            title: result.item?.title || result.title || '',
+            mediaType: result.item?.library_media_type || result.item?.media_type || '',
+          }))
+          .filter(item => !excludedIds.has(item.id)));
+      })
+      .catch(cause => setExcludedError(cause?.message || 'Search failed.'))
+      .finally(() => setExcludedSearching(false));
   }
 
   async function excludeItem(item) {
     setExcludedBusyId(item.id);
     setExcludedError('');
     setExcludedSuccess('');
-    await wait(250);
-    setExcludedItems(current => [...current, item]);
-    setExcludedResults(current => current.filter(result => result.id !== item.id));
-    setExcludedBusyId('');
-    setExcludedSuccess(`${item.title} excluded from notifications.`);
+    if (transport.mode !== 'server') {
+      setExcludedBusyId('');
+      setExcludedError('Sign in to exclude items from notifications.');
+      return;
+    }
+    try {
+      await transport.excludeNotificationItem({ itemId: item.id });
+      setExcludedItems(current => [...current, item]);
+      setExcludedResults(current => current.filter(result => result.id !== item.id));
+      setExcludedSuccess(`${item.title} excluded from notifications.`);
+    } catch (cause) {
+      setExcludedError(cause?.message || 'Could not exclude that item.');
+    } finally {
+      setExcludedBusyId('');
+    }
   }
 
   async function includeItem(item) {
     setExcludedBusyId(item.id);
     setExcludedError('');
     setExcludedSuccess('');
-    await wait(250);
-    setExcludedItems(current => current.filter(result => result.id !== item.id));
-    setExcludedBusyId('');
-    setExcludedSuccess(`${item.title} included in notifications again.`);
+    if (transport.mode !== 'server') {
+      setExcludedBusyId('');
+      setExcludedError('Sign in to include items in notifications.');
+      return;
+    }
+    try {
+      await transport.includeNotificationItem({ itemId: item.id });
+      setExcludedItems(current => current.filter(result => result.id !== item.id));
+      setExcludedSuccess(`${item.title} included in notifications again.`);
+    } catch (cause) {
+      setExcludedError(cause?.message || 'Could not include that item.');
+    } finally {
+      setExcludedBusyId('');
+    }
   }
 
   const rssModel = {
@@ -399,7 +489,7 @@ export default function DataAccessNotificationsSlot({ page = 'data' }) {
       preferences={{
         model: {
           values: notificationValues,
-          stored: { notificationUrls: true, notificationUrlCount: 2, playbackWebhookUrl: true, playbackWebhookSecret: false },
+          stored: notificationStored,
           dirty: notificationDirty,
         },
         busy: notificationBusy, error: notificationError, success: notificationSuccess,

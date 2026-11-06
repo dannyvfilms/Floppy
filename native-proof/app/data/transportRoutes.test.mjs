@@ -7,7 +7,27 @@ import {
 } from './statisticsTransport.js';
 import { createHistoryTransport, historyEntriesFromPayload } from './historyTransport.js';
 import { createHomeTransport, mergeHomeRowPage } from './homeTransport.js';
-import { createListTransport } from './listTransport.js';
+import { createListTransport, listItemsFromPayload } from './listTransport.js';
+import { calendarModelFromPayload } from './calendarTransport.js';
+import {
+  createDiscoverTransport,
+  discoverRowsFromPayload,
+  hiddenFromPayload,
+} from './discoverTransport.js';
+import { createLibraryTransport, mediaRowsFromPayload } from './libraryTransport.js';
+import {
+  createSearchTransport,
+  localResultsFromPayload,
+  onlineResultsFromPayload,
+} from './searchTransport.js';
+import {
+  collectionItemsFromPayload,
+  createCollectionTransport,
+} from './collectionTransport.js';
+import {
+  createSettingsTransport,
+  preferencesToForm,
+} from './settingsTransport.js';
 import { createMusicTransport } from './musicTransport.js';
 import {
   configureMediaCardTransport,
@@ -305,4 +325,242 @@ test('home transport keeps the local preview and merges row pages', () => {
   assert.deepEqual(merged.items.map(item => item.id), ['a', 'b']);
   assert.equal(merged.loadedCount, 2);
   assert.equal(merged.seed, 4);
+});
+
+test('calendar transport loads a month and maps releases', async () => {
+  const { calls, session } = authFixture(() => ({
+    pagination: { total: 1 },
+    results: [{
+      id: 9,
+      datetime: '2026-11-07T01:00:00Z',
+      release_type: '',
+      content_number: 5,
+      item: {
+        media_type: 'episode',
+        library_media_type: 'season',
+        title: 'Sheriff Country',
+        season_number: 2,
+        episode_number: 5,
+        image: 'https://example.com/poster.jpg',
+        url: '/details/tvdb/tv/1/season/2',
+        release_datetime: '2026-01-01T00:00:00Z',
+      },
+    }],
+  }));
+  const transport = createCalendarTransport({ auth: session });
+  await transport.read({ month: 11, year: 2026 });
+  assert.equal(calls[0].path, '/api/v1/calendar/');
+  assert.deepEqual(calls[0].options.query, { month: 11, year: 2026 });
+
+  const model = calendarModelFromPayload({
+    results: [{
+      id: 9,
+      datetime: '2026-11-07T12:00:00Z',
+      release_type: '',
+      content_number: 5,
+      item: {
+        media_type: 'episode',
+        library_media_type: 'season',
+        title: 'Sheriff Country',
+        season_number: 2,
+        image: 'https://example.com/poster.jpg',
+        release_datetime: '2026-01-01T00:00:00Z',
+      },
+    }],
+  }, { month: 11, year: 2026, today: new Date(2026, 10, 4) });
+  assert.equal(model.monthName, 'November');
+  assert.equal(model.selectedDay, 4);
+  assert.equal(model.releases['7'][0].mediaType, 'season');
+  assert.equal(model.releases['7'][0].episodeLabel, 'S02E05');
+  assert.equal(model.releases['7'][0].title, 'Sheriff Country');
+});
+
+test('calendar transport pages a full month through the offset envelope', async () => {
+  const { calls, session } = authFixture((path, options) => {
+    const offset = options.query.offset;
+    if (offset === 0) {
+      return { pagination: { total: 3, next: 'http://floppy.example/api/v1/calendar/?offset=2' }, results: [{ id: 1 }, { id: 2 }] };
+    }
+    return { pagination: { total: 3, next: null }, results: [{ id: 3 }] };
+  });
+  const transport = createCalendarTransport({ auth: session });
+  const page = await transport.readAll({ month: 11, year: 2026 });
+  assert.equal(calls[0].options.query.limit, 200);
+  assert.equal(calls[1].options.query.offset, 2);
+  assert.equal(page.results.length, 3);
+  assert.equal(page.pagination.total, 3);
+});
+
+test('discover transport loads rows, hidden entries and queues refresh', async () => {
+  const { calls, session } = authFixture(path => {
+    if (path === '/api/v1/discover/') return { rows: [{ key: 'top', title: 'Top', why: 'Why', items: [] }] };
+    if (path === '/api/v1/discover/hidden/') return { results: [] };
+    return { accepted: true };
+  });
+  const transport = createDiscoverTransport({ auth: session });
+  await transport.loadRows({ mediaType: 'movie' });
+  assert.equal(calls[0].path, '/api/v1/discover/');
+  assert.equal(calls[0].options.query.media_type, 'movie');
+  await transport.refresh({ mediaType: 'movie' });
+  assert.equal(calls[1].path, '/api/v1/discover/refresh/');
+  assert.equal(calls[1].options.method, 'POST');
+
+  const rows = discoverRowsFromPayload({
+    rows: [{
+      key: 'top',
+      title: 'Top',
+      why: 'Because',
+      items: [{ media_type: 'movie', source: 'tmdb', media_id: '1', title: 'Film', image: null, rating: 8, release_date: '2024-01-01' }],
+    }],
+  });
+  assert.equal(rows[0].items[0].identity.source, 'tmdb');
+  assert.equal(rows[0].items[0].lines[0].parts[0].text, '2024');
+  assert.deepEqual(hiddenFromPayload({ results: [{ item_id: 3, title: 'Old', media_type: 'movie' }] })[0].itemId, 3);
+});
+
+test('library transport loads tracked media and maps table rows', async () => {
+  const { calls, session } = authFixture(() => ({ pagination: { total: 1 }, results: [{
+    id: 10,
+    item_id: 'tv/tmdb/1',
+    status: 1,
+    score: 8.5,
+    progress: 6,
+    episodes_left: 4,
+    progress_unit: 'episodes',
+    created_at: '2025-01-30T00:00:00Z',
+    item: {
+      media_type: 'tv',
+      library_media_type: 'tv',
+      title: 'The Quiet Orbit',
+      image: 'https://example.com/show.jpg',
+      runtime_minutes: 48,
+      release_datetime: '2024-01-01T00:00:00Z',
+      genres: ['Mystery'],
+    },
+  }] }));
+  const transport = createLibraryTransport({ auth: session });
+  await transport.load({ mediaType: 'tv', limit: 30 });
+  assert.equal(calls[0].path, '/api/v1/media/tv/');
+  assert.equal(calls[0].options.query.limit, 30);
+
+  const rows = mediaRowsFromPayload({ results: [{
+    id: 10,
+    item_id: 'tv/tmdb/1',
+    status: 1,
+    score: 8.5,
+    progress: 6,
+    episodes_left: 4,
+    progress_unit: 'episodes',
+    created_at: '2025-01-30T00:00:00Z',
+    item: {
+      media_type: 'tv',
+      library_media_type: 'tv',
+      title: 'The Quiet Orbit',
+      image: 'https://example.com/show.jpg',
+      runtime_minutes: 48,
+      release_datetime: '2024-01-01T00:00:00Z',
+      genres: ['Mystery'],
+    },
+  }] });
+  assert.equal(rows[0].cells.status.text, 'In progress');
+  assert.equal(rows[0].cells.progress.maxText, ' / 10 episodes');
+  assert.equal(rows[0].identity.source, undefined);
+});
+
+test('library transport PATCHes and deletes a tracked row by identity', async () => {
+  const { calls, session } = authFixture(() => ({}));
+  const transport = createLibraryTransport({ auth: session });
+  await transport.update({
+    identity: { mediaType: 'movie', source: 'tmdb', mediaId: '42' },
+    values: { status: 'Completed', score: 9, start_date: '' },
+  });
+  assert.equal(calls[0].path, '/api/v1/media/movie/tmdb/42/');
+  assert.equal(calls[0].options.method, 'PATCH');
+  assert.deepEqual(calls[0].options.body, { status: 'Completed', score: 9, start_date: null });
+  await transport.remove({ identity: { mediaType: 'movie', source: 'tmdb', mediaId: '42' } });
+  assert.equal(calls[1].options.method, 'DELETE');
+});
+
+test('search transport searches local and provider routes', async () => {
+  const { calls, session } = authFixture(path => {
+    if (path === '/api/v1/media/') return { pagination: { total: 1 }, results: [{ id: 1, status: 3, score: 9, item: { media_type: 'movie', library_media_type: 'movie', title: 'Dune', media_id: '1' } }] };
+    return { pagination: { total: 1 }, results: [{ media_type: 'movie', source: 'tmdb', media_id: '1', title: 'Dune', image: null, rating: 8 }] };
+  });
+  const transport = createSearchTransport({ auth: session });
+  await transport.searchLocal({ search: 'dune', mediaType: 'all' });
+  assert.equal(calls[0].path, '/api/v1/media/');
+  assert.equal(calls[0].options.query.search, 'dune');
+  await transport.searchOnline({ search: 'dune', mediaType: 'movie', source: 'tmdb' });
+  assert.equal(calls[1].path, '/api/v1/search/movie/');
+  assert.equal(calls[1].options.query.source, 'tmdb');
+
+  assert.equal(localResultsFromPayload({ results: [{ id: 1, status: 3, score: 9, item: { media_type: 'movie', library_media_type: 'movie', title: 'Dune', media_id: '1' } }] })[0].status, 'Completed');
+  assert.equal(onlineResultsFromPayload({ results: [{ media_type: 'movie', source: 'tmdb', media_id: '1', title: 'Dune' }] })[0].type, 'movie');
+});
+
+test('collection transport groups copies and settings transport reads preferences', async () => {
+  const { calls, session } = authFixture(path => {
+    if (path === '/api/v1/collection/') return { results: [{
+      id: 5,
+      media_type: '4K Blu-ray',
+      resolution: '4K',
+      hdr: 'Dolby Vision',
+      audio_codec: 'Dolby Atmos',
+      audio_channels: '7.1.4',
+      bitrate: 80,
+      is_3d: false,
+      collected_at: '2026-10-01T00:00:00Z',
+      item: { media_type: 'movie', library_media_type: 'movie', title: 'Dune', source: 'tmdb', media_id: '693134', image: null, release_datetime: '2024-03-01T00:00:00Z' },
+    }] };
+    return { preferences: { week_start_day: 'monday', session_duration: 604800, date_format: 'iso_8601' }, choices: {} };
+  });
+  const collection = createCollectionTransport({ auth: session });
+  await collection.load();
+  assert.equal(calls[0].path, '/api/v1/collection/');
+  const items = collectionItemsFromPayload({ results: [{
+    id: 5,
+    media_type: '4K Blu-ray',
+    collected_at: '2026-10-01T00:00:00Z',
+    item: { media_type: 'movie', library_media_type: 'movie', title: 'Dune', source: 'tmdb', media_id: '693134' },
+  }] });
+  assert.equal(items[0].format, '4K Blu-ray');
+  assert.equal(items[0].copies.length, 1);
+
+  const settings = createSettingsTransport({ auth: session });
+  await settings.loadPreferences();
+  assert.equal(calls[1].path, '/api/v1/user/preferences/');
+  assert.deepEqual(preferencesToForm({ preferences: { week_start_day: 'sunday', session_duration: 86400 } }), {
+    week_start_day: 'sunday',
+    session_duration: '86400',
+  });
+});
+
+test('list items map tracked and untracked entries into list-detail rows', () => {
+  const rows = listItemsFromPayload({
+    items: {
+      pagination: { total: 1 },
+      results: [{
+        item_id: 'movie/tmdb/1',
+        status: 1,
+        score: 8.5,
+        progress: 1,
+        progress_unit: 'plays',
+        created_at: '2025-01-30T00:00:00Z',
+        start_date: null,
+        end_date: null,
+        item: {
+          media_type: 'movie',
+          library_media_type: 'movie',
+          title: 'Dune',
+          image: 'https://example.com/dune.jpg',
+          release_datetime: '2024-03-01T00:00:00Z',
+        },
+      }],
+    },
+  });
+  assert.equal(rows[0].title, 'Dune');
+  assert.equal(rows[0].status, 'In progress');
+  assert.equal(rows[0].progressLabel, '1 play');
+  assert.equal(rows[0].releaseLabel, '2024');
+  assert.equal(rows[0].rank, 1);
 });
