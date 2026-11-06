@@ -6,6 +6,7 @@ from heapq import nsmallest
 from types import SimpleNamespace
 
 from django.conf import settings
+from django.db import connection
 from django.db.models import Q
 
 from app import credits as credit_helpers
@@ -29,6 +30,10 @@ logger = logging.getLogger(__name__)
 # Controls the maximum items shown in every top-N statistics card.
 # Change this ONE value to resize all top cards simultaneously.
 STATISTICS_TOP_N = 50
+# Dense SQLite libraries are faster with a sequential credits scan than
+# thousands of index probes followed by random person lookups.
+DENSE_CREDIT_SCAN_MIN_ITEMS = 1_000
+DENSE_CREDIT_SCAN_RATIO = 0.8
 # Cross-type global top-rated heap — intentionally same value but a distinct card.
 STATISTICS_TOP_RATED_OVERALL = 50
 
@@ -116,6 +121,7 @@ def _tv_episode_play_rows(user, start_date, end_date, *, is_all_time=None):
     if season_item_ids:
         for credit in (
             ItemPersonCredit.objects.filter(item_id__in=season_item_ids)
+            .order_by()
             .values_list("item_id", "role_type", "department", "role", named=True)
             .iterator(chunk_size=500)
         ):
@@ -346,16 +352,20 @@ def _get_person_talent_totals_from_context(user, person, context):
     director_credit_item_ids = set()
     writer_credit_item_ids = set()
 
-    person_credits = ItemPersonCredit.objects.filter(
-        item_id__in=played_item_ids,
-        person_id=person.id,
-    ).values_list(
-        "item_id",
-        "role_type",
-        "department",
-        "role",
-        "sort_order",
-        named=True,
+    person_credits = (
+        ItemPersonCredit.objects.filter(
+            item_id__in=played_item_ids,
+            person_id=person.id,
+        )
+        .order_by()
+        .values_list(
+            "item_id",
+            "role_type",
+            "department",
+            "role",
+            "sort_order",
+            named=True,
+        )
     )
     for credit in person_credits.iterator(chunk_size=500):
         item_media_type = item_media_type_by_id.get(credit.item_id)
@@ -784,9 +794,21 @@ def _aggregate_top_talent(
 
     # Project only aggregation fields. A cached select_related queryset keeps a
     # separate Person instance (including biography) alive for every credit.
-    person_credits = ItemPersonCredit.objects.filter(
-        item_id__in=played_item_ids
-    ).values_list(
+    # The indexed IN query is pathological for very dense SQLite histories:
+    # a representative production test fetched only 2,000 rows in 5 s,
+    # while scanning 200,000 rows took about 1 s. Retain the indexed path
+    # for sparse histories and other database backends.
+    dense_credit_scan = (
+        connection.vendor == "sqlite"
+        and len(played_item_ids) >= DENSE_CREDIT_SCAN_MIN_ITEMS
+        and len(played_item_ids) >= Item.objects.count() * DENSE_CREDIT_SCAN_RATIO
+    )
+    person_credit_qs = (
+        ItemPersonCredit.objects.all()
+        if dense_credit_scan
+        else ItemPersonCredit.objects.filter(item_id__in=played_item_ids)
+    )
+    person_credits = person_credit_qs.order_by().values_list(
         "item_id",
         "person_id",
         "role_type",
@@ -797,7 +819,9 @@ def _aggregate_top_talent(
         "person__name",
         named=True,
     )
-    for credit in person_credits.iterator(chunk_size=500):
+    for credit in person_credits.iterator(chunk_size=2000):
+        if dense_credit_scan and credit.item_id not in played_item_ids:
+            continue
         person_names[credit.person_id] = credit.person__name.lower()
         if credit.role_type == CreditRoleType.CAST.value:
             item_media_type = item_media_type_by_id.get(credit.item_id)
@@ -822,9 +846,11 @@ def _aggregate_top_talent(
                 writer_ids_by_item[credit.item_id].add(credit.person_id)
 
     studio_item_ids = movie_item_ids | show_item_ids | game_item_ids
-    studio_credits = ItemStudioCredit.objects.filter(
-        item_id__in=studio_item_ids
-    ).values_list("item_id", "studio_id", "studio__name")
+    studio_credits = (
+        ItemStudioCredit.objects.filter(item_id__in=studio_item_ids)
+        .order_by()
+        .values_list("item_id", "studio_id", "studio__name")
+    )
     for item_id, studio_id, name in studio_credits.iterator(chunk_size=500):
         studio_names[studio_id] = name.lower()
         studio_ids_by_item[item_id].add(studio_id)
