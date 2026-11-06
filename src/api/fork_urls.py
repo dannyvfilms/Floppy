@@ -361,6 +361,11 @@ urlpatterns = [
         name="api_user_preferences",
     ),
     re_path(
+        r"^user/navigation/?$",
+        fork_views_users.UserNavigationView.as_view(),
+        name="api_user_navigation",
+    ),
+    re_path(
         r"^user/sidebar/?$",
         fork_views_users.UserSidebarView.as_view(),
         name="api_user_sidebar",

@@ -110,7 +110,7 @@ function GuardChip({ label, active, onPress }) {
   return <Chip label={label} palette={authPalette} pressed={active} onPress={onPress} />;
 }
 
-export default function AuthScreen({ onBack }) {
+export default function AuthScreen({ onBack, entranceOnly = false }) {
   const initialAuthState = getAuthState();
   const [view, setView] = useState('login');
   const [authState, setAuthState] = useState(initialAuthState);
@@ -575,6 +575,46 @@ export default function AuthScreen({ onBack }) {
       ? 'This session was revoked or is no longer valid. Sign in again.'
       : '';
 
+  const authForm = view === 'login' || view === 'signup' || view === 'recovery' ? <AuthView
+    mode={view}
+    heading={false}
+    notice={null}
+    palette={authPalette}
+    buttonPalette={buttonPalette}
+    entrance={{
+      firstRun: authConfig.firstRun,
+      registrationEnabled: authConfig.registrationEnabled,
+      socialOnly: authConfig.socialOnly,
+      providers,
+      serverUrl,
+      serverError,
+      serverHelp,
+      serverBusy,
+      serverChecked,
+      values: authValues,
+      errors: authErrors,
+      error: authError,
+      success: authSuccess,
+      redirectLabel,
+      busy: authBusy,
+      busyProvider,
+      onChange: (name, value) => updateAuth(name, value),
+      onServerChange: value => updateAuth('serverUrl', value),
+      onCheckServer: checkServer,
+      onSubmit: submitAuth,
+      onSwitchMode: chooseView,
+      onForgotPassword: () => chooseView('recovery'),
+      onProvider: signInWithProvider,
+      onContinue: continueFromNotice,
+    }} /> : null;
+
+  if (entranceOnly) {
+    return <View style={styles.entrance}>
+      {sessionNotice ? <AuthNotice tone="warning" palette={authPalette}>{sessionNotice}</AuthNotice> : null}
+      {authForm}
+    </View>;
+  }
+
   return <Screen title="Account" subtitle="Authentication and account security" onBack={onBack}>
     <View style={styles.viewRow}>
       {views.map(item => <GuardChip key={item.key} label={item.label} active={view === item.key} onPress={() => chooseView(item.key)} />)}
@@ -582,37 +622,7 @@ export default function AuthScreen({ onBack }) {
 
     {sessionNotice ? <AuthNotice tone="warning" palette={authPalette}>{sessionNotice}</AuthNotice> : null}
 
-    {view === 'login' || view === 'signup' || view === 'recovery' ? <AuthView
-      mode={view}
-      notice={null}
-      palette={authPalette}
-      buttonPalette={buttonPalette}
-      entrance={{
-        firstRun: authConfig.firstRun,
-        registrationEnabled: authConfig.registrationEnabled,
-        socialOnly: authConfig.socialOnly,
-        providers,
-        serverUrl,
-        serverError,
-        serverHelp,
-        serverBusy,
-        serverChecked,
-        values: authValues,
-        errors: authErrors,
-        error: authError,
-        success: authSuccess,
-        redirectLabel,
-        busy: authBusy,
-        busyProvider,
-        onChange: (name, value) => updateAuth(name, value),
-        onServerChange: value => updateAuth('serverUrl', value),
-        onCheckServer: checkServer,
-        onSubmit: submitAuth,
-        onSwitchMode: chooseView,
-        onForgotPassword: () => chooseView('recovery'),
-        onProvider: signInWithProvider,
-        onContinue: continueFromNotice,
-      }} /> : null}
+    {authForm}
 
     {view === 'account' ? <View style={styles.viewStack}>
       {!signedIn || !account ? <>
@@ -697,6 +707,7 @@ export default function AuthScreen({ onBack }) {
 }
 
 const styles = StyleSheet.create({
+  entrance: { gap: 16 },
   viewStack: { gap: spacing.md, minWidth: 0 },
   viewRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   guardRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },

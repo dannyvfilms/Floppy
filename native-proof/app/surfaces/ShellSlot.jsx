@@ -1,14 +1,18 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
+import { signOut } from '../data/authTransport';
 import { Shell } from '../../../frontend/ui/Shell';
 import { Sidebar } from '../../../frontend/ui/Sidebar';
+import { renderNativeIcon } from '../iconRenderer';
+import SearchSlot from './SearchSlot';
 import { palette, radius } from '../theme';
 
 export const surface = {
   id: 'SHELL',
   title: 'Application shell and navigation',
   where: 'Signed-in top bar, public header and mobile navigation',
-  status: 'ported',
-  note: 'The shared React Native top bar and mobile navigation overlay render at the top of the native shell, and the shared sidebar fills the navigation drawer. The web adapter keeps the signed-in and public navigation values, HTMX-boosted links, search island, sidebar storage and server fallback. iOS and Android runtime are not verified by this export.',
+  status: 'in_progress',
+  note: 'The native shell mirrors the web compact layout: a top bar with the menu button and global search, and a navigation drawer built from /api/v1/user/navigation/ — the same sidebar model the web template renders, including icons, order and saved views. Signed out it falls back to demo navigation because there is no server session. The persistent desktop sidebar and the web-only onboarding card are not ported yet.',
 };
 
 const labels = {
@@ -55,60 +59,123 @@ const SIDEBAR_LABELS = {
   navigation: 'Navigation',
   savedViews: 'Saved %(name)s views',
   viewOptions: 'Options for %(name)s',
-  confirmDelete: 'Delete the saved view \u201c%(name)s\u201d?',
+  confirmDelete: 'Delete the saved view "%(name)s"?',
 };
 
 const PIN_KEYS = ['calendar', 'collection', 'custom', 'history', 'lists', 'statistics', 'tags'];
 
-const SIDEBAR_MODEL = {
+// Signed-out demo navigation. A real session replaces this with the server
+// model, so the demo fallback is only ever shown behind the Demo data banner.
+const DEMO_MODEL = {
   userId: 'demo',
   currentUrl: '/',
   logo: { text: 'Floppy' },
   pinKeys: PIN_KEYS,
   primary: [
-    { type: 'link', label: 'Home', href: '/', glyph: '\u2302', active: true, pinKey: null, tab: 'home' },
-    { type: 'link', label: 'Discover', href: '/discover', glyph: '\u25a6', active: false, pinKey: null, tab: 'discover' },
-    {
-      type: 'group', key: 'movie', label: 'Movies', href: '/movie', glyph: '\u25b6', active: false, pinKey: null,
-      views: [
-        { id: 'movie-finished', name: 'Finished', href: '/movie?status=Completed', current: false },
-        { id: 'movie-watchlist', name: 'To watch', href: '/movie?status=Planning', current: false },
-      ],
-    },
-    {
-      type: 'group', key: 'tv', label: 'TV Shows', href: '/tv', glyph: '\u25a4', active: false, pinKey: null,
-      views: [
-        { id: 'tv-next', name: 'Up next', href: '/tv?status=In+progress', current: false },
-      ],
-    },
-    { type: 'link', label: 'Anime', href: '/anime', glyph: '\u2726', active: false, pinKey: null, tab: 'library' },
-    { type: 'link', label: 'Games', href: '/games', glyph: '\u25c6', active: false, pinKey: null, tab: 'library' },
+    { type: 'link', label: 'Home', href: '/', glyph: '\u2302', active: true, pinKey: null },
+    { type: 'link', label: 'Discover', href: '/discover', glyph: '\u25a6', active: false, pinKey: null },
   ],
   secondary: [
-    { type: 'link', key: 'calendar', label: 'Calendar', href: '/calendar', glyph: '\u25a6', active: false, pinKey: 'calendar', tab: 'calendar' },
-    { type: 'link', key: 'collection', label: 'Collection', href: '/collection', glyph: '\u25a3', active: false, pinKey: 'collection' },
-    { type: 'link', key: 'custom', label: 'Custom', href: '/new', glyph: '\uff0b', active: false, pinKey: 'custom' },
+    { type: 'link', key: 'calendar', label: 'Calendar', href: '/calendar', glyph: '\u25a6', active: false, pinKey: 'calendar' },
     { type: 'link', key: 'history', label: 'History', href: '/history', glyph: '\u25f7', active: false, pinKey: 'history' },
-    { type: 'lists', key: 'lists', label: 'Lists', href: '/lists', glyph: '\u2630', active: false, pinKey: 'lists' },
-    { type: 'link', key: 'statistics', label: 'Statistics', href: '/statistics', glyph: '\u25a5', active: false, pinKey: 'statistics' },
+    { type: 'link', key: 'lists', label: 'Lists', href: '/lists', glyph: '\u2630', active: false, pinKey: 'lists' },
     { type: 'link', key: 'tags', label: 'Tags', href: '/tags', glyph: '#', active: false, pinKey: 'tags' },
   ],
   bottom: {
     appearance: { label: 'Appearance', glyph: '\u263e', active: false },
-    settings: { label: 'Settings', glyph: '\u2699', active: false, tab: 'settings' },
+    settings: { label: 'Settings', glyph: '\u2699', active: false },
     logoutIcon: null,
     logoutGlyph: '\u21e5',
     logoutAction: '/logout',
   },
 };
 
-export default function ShellSlot({ active = 'home', onNavigate }) {
+// If an icon spec cannot render, a one-character fallback keeps the row
+// readable instead of showing an identical bullet everywhere.
+const GLYPHS = {
+  Home: '\u2302', Discover: '\u25a6', 'TV Shows': '\u25a4', Movies: '\u25b6',
+  Anime: '\u2726', Manga: '\u25a4', Games: '\u25c6', Books: '\u25a4',
+  Comics: '\u25a4', 'Board Games': '\u25c6', Music: '\u266b', Podcasts: '\u25c9',
+  'TV Seasons': '\u25a4', Videos: '\u25b6', Calendar: '\u25a6', Collection: '\u25a3',
+  Custom: '\uff0b', History: '\u25f7', Lists: '\u2630', Statistics: '\u25a5',
+  Tags: '#', Appearance: '\u263e', Settings: '\u2699', Logout: '\u21e5',
+};
+
+function withGlyphs(model) {
+  const add = item => ({ ...item, glyph: item.glyph || GLYPHS[item.label] || undefined });
+  return {
+    ...model,
+    primary: (model.primary || []).map(add),
+    secondary: (model.secondary || []).map(add),
+    bottom: model.bottom ? {
+      ...model.bottom,
+      appearance: add(model.bottom.appearance),
+      settings: add(model.bottom.settings),
+    } : model.bottom,
+  };
+}
+
+function markActive(model, activeHref) {
+  if (!activeHref) return model;
+  const active = href => Boolean(href) && (href === activeHref
+    || (href !== '/' && activeHref.startsWith(href)));
+  const mark = item => ({
+    ...item,
+    active: active(item.href),
+    views: (item.views || []).map(view => ({ ...view, current: view.href === activeHref })),
+  });
+  return {
+    ...model,
+    primary: (model.primary || []).map(mark),
+    secondary: (model.secondary || []).map(mark),
+    bottom: model.bottom ? {
+      ...model.bottom,
+      appearance: mark(model.bottom.appearance),
+      settings: mark(model.bottom.settings),
+    } : model.bottom,
+  };
+}
+
+function absoluteLogo(model, serverUrl) {
+  const src = model?.logo?.src;
+  if (!src || !serverUrl || /^https?:\/\//.test(src)) return model;
+  return { ...model, logo: { ...model.logo, src: `${serverUrl}${src}` } };
+}
+
+export default function ShellSlot({
+  active = 'home',
+  activeHref = '/',
+  onNavigate,
+  onOpenHref,
+  onOpenSearch,
+  onOpenSuggestion,
+}) {
+  const [session, setSession] = useState(() => getActiveAuthSession());
+  const [serverModel, setServerModel] = useState(null);
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState([]);
-  const [pinnedLists] = useState([]);
+
+  useEffect(() => subscribeAuthSession(setSession), []);
+
+  useEffect(() => {
+    const auth = session;
+    if (!auth || typeof auth.request !== 'function') {
+      setServerModel(null);
+      setPinned([]);
+      return undefined;
+    }
+    let cancelled = false;
+    auth.request('/api/v1/user/navigation/')
+      .then(model => { if (!cancelled) setServerModel(absoluteLogo(model, auth.serverUrl)); })
+      .catch(() => { if (!cancelled) setServerModel(null); });
+    return () => { cancelled = true; };
+  }, [session]);
+
+  const base = serverModel || DEMO_MODEL;
+  const model = markActive(withGlyphs(base), activeHref);
   const pins = {
     pinned,
-    pinnedLists,
+    pinnedLists: [],
     isPinned: key => pinned.includes(key),
     toggle: key => setPinned(current => (
       current.includes(key) ? current.filter(entry => entry !== key) : [...current, key]
@@ -117,8 +184,8 @@ export default function ShellSlot({ active = 'home', onNavigate }) {
   };
 
   const openItem = item => {
-    if (item?.tab) onNavigate?.(item.tab);
     setOpen(false);
+    if (item?.href) onOpenHref?.(item.href, item);
   };
 
   return <Shell
@@ -126,17 +193,23 @@ export default function ShellSlot({ active = 'home', onNavigate }) {
     onToggleMenu={() => setOpen(value => !value)}
     onCloseMenu={() => setOpen(false)}
     links={[]}
-    onNavigate={link => onNavigate?.(link.key)}
     variant="app"
     showMenu
-    showSearch={false}
+    showSearch
     showThemeButton={false}
-    logoText="Floppy"
+    search={<SearchSlot
+      expanded
+      onOpenSearch={onOpenSearch}
+      onOpenSuggestion={onOpenSuggestion}
+    />}
     labels={labels}
     palette={shellPalette}
   >
-    <Sidebar model={SIDEBAR_MODEL} pins={pins} palette={shellPalette}
-      labels={SIDEBAR_LABELS} onNavigate={openItem} onLogout={() => setOpen(false)}
+    <Sidebar model={model} pins={pins} palette={shellPalette}
+      labels={SIDEBAR_LABELS}
+      renderIcon={renderNativeIcon}
+      onNavigate={openItem}
+      onLogout={() => { setOpen(false); signOut().catch(() => {}); }}
       showLogo={false} />
   </Shell>;
 }

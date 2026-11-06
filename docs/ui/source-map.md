@@ -75,7 +75,9 @@ PY
 - `ScrollRow` and the shared `FilterChips`/`Tabs` helpers; Discover's live media-type tabs are mapped under DISCOVER
 - `src/templates/base_public.html`
 
-- `native-proof/app/surfaces/ShellSlot.jsx` (native top bar and mobile navigation overlay on the app shell; the shared `Sidebar` fills the drawer with demo media types, saved-view groups, pins and bottom actions)
+- `native-proof/app/surfaces/ShellSlot.jsx` (native top bar with menu button and global search; the shared `Sidebar` fills the drawer from `/api/v1/user/navigation/`, the same model the web template renders, falling back to demo navigation only while signed out)
+- `native-proof/app/iconRenderer.jsx` and `frontend/ui/IconRenderer.native.jsx` (install the parsed-shape SVG renderer for native icons; `native-proof/App.js` maps server sidebar hrefs onto native tabs and stack screens)
+- `src/api/fork_views_users.py` (`UserNavigationView`) and `src/api/fork_urls.py` (`/api/v1/user/navigation/`)
 
 ## SETTINGS-CARD
 
@@ -467,7 +469,7 @@ The `frontend/settings/index.js` island loader (owned under SET-USERS) resolves 
 - `frontend/pages/registry.js` (web ↔ Expo page inventory)
 - `frontend/ui/HomeShelves.jsx` (universal shelves, deferred rows, coalesced cover poller and empty/error states)
 - `frontend/ui/mountHome.jsx` (browser mount over the server Home shelves, row/window and cover-poll requests)
-- `native-proof/app/screens/HomeScreen.jsx` (native placement with real transport and demo fallback)
+- `native-proof/app/screens/HomeScreen.jsx` (native placement with real transport; signed-out demo shelves sit behind the shared `notice` gate)
 - `native-proof/app/data/homeTransport.js` (auth transport boundary)
 - `native-proof/app/data/homeTransportCore.js` (Home routes, payload shaping and row-page merging)
 - `src/app/home_presentation.py` (plain group/row/card presentation models)
@@ -489,6 +491,8 @@ detail tracking split button remain server/HTMX-owned fallbacks.
 - `frontend/ui/mountPlaybackCard.jsx`
 - `frontend/ui/mountCheckInState.jsx`
 - `native-proof/app/surfaces/PlaybackSlot.jsx`
+- `native-proof/app/data/playbackTransport.js` (native Now Playing from `/api/v1/playback/now-playing/`)
+- `src/api/fork_views_playback.py` (read route; accepts bearer, API key and signed-in browser session)
 - `src/templates/app/components/active_playback_card.html`
 - `src/templates/app/components/active_playback_cards.html`
 - `src/templates/app/components/detail_checkin_state.html`
@@ -1187,7 +1191,8 @@ Shared `AuthEntrance`, `SocialProviders` and `AuthNotice` own entrance, social-p
 
 - `frontend/auth/AuthEntrance.jsx`
 - `frontend/auth/AccountSecurity.jsx`
-- `native-proof/app/screens/AuthScreen.jsx` (native placement; shared presentation wired to the authenticated transport, account state and redirect intents)
+- `native-proof/app/screens/AuthScreen.jsx` (native placement; entrance-only mode mirrors the web login composition and the account view is wired to the authenticated transport)
+- `native-proof/App.js` (signed-out auth gate; native shelf card widths come from the shared `shelfCardWidth` helper)
 - `native-proof/app/data/authTransportCore.js` (platform-neutral server URL, token/session/signup/recovery, CSRF, config/redirect, verify and error-state core; Node-tested)
 - `native-proof/app/data/authTransport.js` (native session transport; Expo SecureStore, active request facade and account transport)
 - `native-proof/app/data/authTransport.web.js` (browser no-secret fallback; same-origin web auth is unchanged)

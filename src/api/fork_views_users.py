@@ -6,8 +6,10 @@ from http import HTTPStatus as HTTP  # noqa: N814
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 from rest_framework import views as drf_views
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.response import Response
 
+from api.authentication import APIKeyAuthentication, BearerAuthentication
 from app import history_cache, statistics_cache
 from app.models import Item
 from users.forms import NotificationSettingsForm
@@ -280,6 +282,29 @@ class UserPreferencesView(drf_views.APIView):
             },
             status=HTTP.OK,
         )
+
+
+# /api/v1/user/navigation/
+class UserNavigationView(drf_views.APIView):
+    """The signed-in sidebar as data, for the native app.
+
+    Reads the same builder the web sidebar template uses, so labels, order,
+    icons and saved views cannot drift between surfaces.
+    """
+
+    authentication_classes = (
+        BearerAuthentication,
+        APIKeyAuthentication,
+        SessionAuthentication,
+    )
+
+    def get(self, request):
+        """Return the sidebar model without the CSRF token."""
+        from app.sidebar_model import sidebar_model
+
+        model = sidebar_model(request, request.user, None)
+        model.pop("csrfToken", None)
+        return Response(model, status=HTTP.OK)
 
 
 # /api/v1/user/sidebar/

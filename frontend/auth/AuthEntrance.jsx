@@ -81,6 +81,17 @@ const defaultLabels = {
   serverReady: 'Server found. Choose a sign-in method below.',
 };
 
+// The same mark the web login button renders (account/login.html).
+const loginIcon = {
+  viewBox: '0 0 24 24',
+  root: { fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+  children: [
+    { tag: 'path', attrs: { d: 'M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4' }, children: [] },
+    { tag: 'polyline', attrs: { points: '10 17 15 12 10 7' }, children: [] },
+    { tag: 'line', attrs: { x1: '15', x2: '3', y1: '12', y2: '12' }, children: [] },
+  ],
+};
+
 function Notice({ tone = 'info', title, children, palette }) {
   const toneColor = tone === 'error' ? palette.danger : tone === 'warning' ? palette.warning : tone === 'success' ? palette.success : palette.accent;
   return <View accessibilityLiveRegion="polite" style={[styles.notice, { borderColor: toneColor, backgroundColor: palette.surfaceStrong }]}>
@@ -180,12 +191,13 @@ export function AuthEntrance({
       : (firstRun ? copy.firstRunLoginTitle : copy.loginTitle);
   const busyLabel = mode === 'signup' ? copy.busySignUp : mode === 'recovery' ? copy.busyRecovery : copy.busySignIn;
 
-  return <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: colors.radius }]}>
+  return <View style={styles.root}>
     <View style={styles.heading}>
-      <Text role="heading" aria-level={2} style={[styles.title, { color: colors.text }]}>{title}</Text>
-      {mode === 'recovery' ? <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.recoveryNotice}</Text> : null}
-      {mode === 'signup' ? <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.authenticatorWarning}</Text> : null}
+      <Text role="heading" aria-level={2} style={[styles.title, { color: colors.textMuted }]}>{title}</Text>
     </View>
+    <View style={[styles.card, { backgroundColor: colors.surface, borderRadius: colors.radius }]}>
+    {mode === 'recovery' ? <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.recoveryNotice}</Text> : null}
+    {mode === 'signup' ? <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.authenticatorWarning}</Text> : null}
 
     <View style={styles.fields}>
       <TextField id="auth-server" name="serverUrl" label={copy.serverAddress} type="url"
@@ -217,11 +229,8 @@ export function AuthEntrance({
         value={values.password} placeholder="Enter your password" autoComplete="current-password"
         required disabled={busy} error={errors.password} palette={colors}
         onChangeText={value => update('password', value)} />
-      <View style={styles.formActions}>
-        <Button label={busy ? busyLabel : copy.signIn} tone="primary" busy={busy} disabled={busy}
-          onPress={() => submit()} palette={buttons} />
-        {registrationEnabled ? <LinkButton label={copy.forgotPassword} onPress={onForgotPassword} palette={colors} /> : null}
-      </View>
+      <Button label={busy ? busyLabel : copy.signIn} tone="primary" width="full" icon={loginIcon}
+        busy={busy} disabled={busy} onPress={() => submit()} palette={buttons} />
       {registrationEnabled
         ? <View style={styles.footerLink}>
           <Text style={[styles.copy, { color: colors.textMuted }]}>{firstRun ? copy.noAccountFirstRun : copy.noAccount}</Text>
@@ -231,6 +240,9 @@ export function AuthEntrance({
           <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.signupsDisabled}</Text>
           <LinkButton label={copy.hostYourOwn} onPress={onHostOwn || (() => onSwitchMode?.('login'))} palette={colors} />
         </View>}
+      {firstRun ? null : <View style={styles.footerBlock}>
+        <LinkButton label={copy.forgotPassword} onPress={onForgotPassword} palette={colors} />
+      </View>}
     </View> : null}
 
     {!socialOnly && mode === 'signup' ? <View style={styles.fields}>
@@ -245,10 +257,10 @@ export function AuthEntrance({
         value={values.password2} placeholder="Confirm your password" autoComplete="new-password"
         required disabled={busy} error={errors.password2} palette={colors}
         onChangeText={value => update('password2', value)} />
-      <View style={styles.formActions}>
-        <Button label={busy ? busyLabel : copy.createAccount} tone="primary" busy={busy} disabled={busy}
+      <View style={styles.actions}>
+        <Button label={busy ? busyLabel : copy.createAccount} tone="primary" width="full" busy={busy} disabled={busy}
           onPress={() => submit({ setupAuthenticator: false })} palette={buttons} />
-        <Button label={copy.createAccountWithAuthenticator} tone="surface" disabled={busy}
+        <Button label={copy.createAccountWithAuthenticator} tone="surface" width="full" disabled={busy}
           onPress={() => submit({ setupAuthenticator: true })} palette={buttons} />
       </View>
       <View style={styles.footerLink}>
@@ -282,23 +294,28 @@ export function AuthEntrance({
         required disabled={busy} error={errors.newPassword2} palette={colors}
         onChangeText={value => update('newPassword2', value)} />
       {useRecoveryCode ? <Text style={[styles.help, { color: colors.textMuted }]}>{copy.recoveryHelp}</Text> : null}
-      <View style={styles.formActions}>
-        <Button label={busy ? busyLabel : copy.resetPassword} tone="primary" busy={busy} disabled={busy}
+      <View style={styles.actions}>
+        <Button label={busy ? busyLabel : copy.resetPassword} tone="primary" width="full" busy={busy} disabled={busy}
           onPress={() => submit({ useRecoveryCode })} palette={buttons} />
-        <LinkButton label={copy.signInLink} onPress={() => onSwitchMode?.('login')} palette={colors} />
+        <View style={styles.footerBlock}>
+          <LinkButton label={copy.signInLink} onPress={() => onSwitchMode?.('login')} palette={colors} />
+        </View>
       </View>
     </View> : null}
 
     {providers.length && (mode === 'login' || mode === 'signup') ? <SocialProviders
       providers={providers} busyProvider={busyProvider} palette={colors}
       buttonPalette={buttons} labels={copy} onProvider={onProvider} /> : null}
+    </View>
   </View>;
 }
 
 const styles = StyleSheet.create({
-  card: { borderWidth: 1, padding: 16, gap: 16 },
-  heading: { gap: 6 },
-  title: { fontSize: 20, fontWeight: '700', lineHeight: 27 },
+  root: { gap: 32 },
+  card: { padding: 32, gap: 16, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 }, elevation: 6 },
+  heading: { alignItems: 'center' },
+  title: { fontSize: 18, fontWeight: '400', lineHeight: 24, textAlign: 'center' },
   copy: { fontSize: 13, lineHeight: 19 },
   help: { fontSize: 12, lineHeight: 17 },
   fields: { gap: 12 },
@@ -307,7 +324,9 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 13, fontWeight: '600' },
   providerList: { gap: 8 },
   formActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 },
-  footerLink: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  actions: { gap: 12 },
+  footerLink: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 24 },
+  footerBlock: { alignItems: 'center', marginTop: 8 },
   methodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   inlineAction: { marginTop: 8 },
   notice: { borderWidth: 1, borderRadius: 8, padding: 10, gap: 4 },

@@ -13,6 +13,7 @@ from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.response import Response
 
 import app.providers.tmdb
@@ -34,6 +35,7 @@ from app.templatetags.app_tags import media_url
 from integrations.delivery import get_or_record_receipt
 from integrations.models import IntegrationToken
 
+from .authentication import APIKeyAuthentication, BearerAuthentication
 from .helpers import paginate_data, parse_limit_offset, try_parse_datetime_input
 
 logger = logging.getLogger(__name__)
@@ -897,6 +899,15 @@ def build_now_playing_payload(user):
 # /api/v1/playback/now-playing/
 class NowPlayingView(drf_views.APIView):
     """Read-only snapshot of the user's active playback (from scrobble/webhook state)."""
+
+    # Home-style endpoint: the Expo app authenticates with the signed-in
+    # browser session, the same way the web Home endpoints do. Without
+    # SessionAuthentication here DRF answers 403 for that session.
+    authentication_classes = (
+        BearerAuthentication,
+        APIKeyAuthentication,
+        SessionAuthentication,
+    )
 
     @extend_schema(
         description=(

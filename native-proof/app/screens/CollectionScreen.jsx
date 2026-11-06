@@ -982,7 +982,7 @@ export default function CollectionScreen({ navigate, onBack }) {
 
   const readOnlyLabel = owner ? 'Read-only preview' : 'Return to owner view';
 
-  return <Screen title="Collection" subtitle="Every copy you own, grouped and labelled" onBack={onBack}>
+  return <Screen onBack={onBack}>
     <View style={styles.demoBar}>
       <View style={styles.demoCopy}>
         <Text style={styles.demoTitle}>Owner collection</Text>

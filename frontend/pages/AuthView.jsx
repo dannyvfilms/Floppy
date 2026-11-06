@@ -39,13 +39,14 @@ export function AuthView({
   palette = {},
   buttonPalette = {},
   entrance = {},
+  heading = true,
 }) {
   const defaults = authModes[mode] || authModes.login;
   return <View style={styles.page}>
-    <View style={styles.heading}>
+    {heading ? <View style={styles.heading}>
       <Text role="heading" aria-level={2} style={[styles.title, { color: palette.text || '#fafafa' }]}>{title || defaults.title}</Text>
       <Text style={[styles.copy, { color: palette.textMuted || '#a1a1aa' }]}>{copy || defaults.copy}</Text>
-    </View>
+    </View> : null}
     {notice}
     <AuthEntrance mode={mode} labels={labels} palette={palette}
       buttonPalette={buttonPalette} {...entrance} />

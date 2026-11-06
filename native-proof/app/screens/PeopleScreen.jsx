@@ -485,7 +485,7 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
   const liveKind = live?.kind;
   const liveLightboxItems = live ? (params?.gallery || profile?.gallery || []) : demoGallery;
 
-  return <Screen title="People, studios" subtitle="People, studios and credits" onBack={onBack}>
+  return <Screen onBack={onBack}>
     {mode === 'loading' ? <Section title="Loading profile">
       <Text style={styles.statusText}>Loading the person or studio profile from your server.</Text>
     </Section> : null}

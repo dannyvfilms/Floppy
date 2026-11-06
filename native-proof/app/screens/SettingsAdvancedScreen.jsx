@@ -200,9 +200,7 @@ export default function SettingsAdvancedScreen({ onBack, params }) {
   }
 
   const page = params?.page === 'about' ? 'about' : 'advanced';
-  return <Screen title={page === 'about' ? 'About' : 'Advanced'}
-    subtitle={page === 'about' ? 'Version, resources and specifications' : 'System, logs, caches and server port'}
-    onBack={onBack}>
+  return <Screen onBack={onBack}>
     {page === 'advanced' ? <SettingsAdvancedView
       logs={{
         isSuperuser: true, logsSince: 'Oct 2, 2026 13:39', lastUncleanExit: 'Oct 28, 2026 22:14',

@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CheckInState, PlaybackCard } from '../../../frontend/ui/PlaybackCard';
+import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
+import { createPlaybackTransport } from '../data/playbackTransport';
 import { Note } from '../components/Note';
 import { palette, playbackPalette, spacing } from '../theme';
 
@@ -9,7 +11,7 @@ export const surface = {
   status: 'ported',
   title: 'Now Playing and check-in',
   where: 'Home playback card and detail check-in state',
-  note: 'The Home row renders the shared Now Playing card with artwork fallback, playing/paused status, live offset and progress, token-owned stop/cancel controls and stale-state labelling. The detail check-in state renders the shared phase, elapsed clock and ordered action intents. Demo data drives the native shell; the web Home row mounts the same card over the server fragments and the detail split button keeps htmx behind the shared state.',
+  note: 'The Home row renders the shared Now Playing card from /api/v1/playback/now-playing/ when signed in, and renders nothing when the server reports no active session — the same visibility rule as web Home. Stop/cancel stay absent until the native check-in transport exists, so no control is faked. The detail check-in state below still uses local demo state; wiring it to the server is outstanding. Web Home polls the server fragment and keeps the same card presentation.',
 };
 
 const labels = {
@@ -28,67 +30,48 @@ const labels = {
   elapsed: 'elapsed',
 };
 
-function seededCards() {
-  const now = Math.floor(Date.now() / 1000);
-  return [
-    {
-      id: 'orbit',
-      title: 'The Quiet Orbit',
-      episodeCode: 'S02E05',
-      episodeTitle: 'Halcyon',
-      subtitleLine: '',
-      href: '/demo/detail',
-      image: { src: '', alt: 'The Quiet Orbit' },
-      status: 'playing',
-      offsetSeconds: 1280,
-      durationSeconds: 2880,
-      updatedAtSeconds: now - 120,
-      staleAfterSeconds: 45 * 60,
-      progressPercent: 44,
-      checkin: true,
-    },
-    {
-      id: 'signal',
-      title: 'Signal & Static',
-      episodeCode: '',
-      episodeTitle: 'Signal & Static',
-      subtitleLine: 'Book · Chapter 12',
-      href: '/demo/detail',
-      image: { src: '', alt: 'Signal & Static' },
-      status: 'paused',
-      offsetSeconds: 1520,
-      durationSeconds: 0,
-      updatedAtSeconds: now - 240,
-      staleAfterSeconds: 45 * 60,
-      progressPercent: 0,
-      checkin: true,
-    },
-  ];
-}
+const POLL_MS = 30000;
 
 export default function PlaybackSlot({ onOpenDetail }) {
-  const [cards, setCards] = useState(seededCards);
-  const [busy, setBusy] = useState(null);
+  const [session, setSession] = useState(() => getActiveAuthSession());
+  const [cards, setCards] = useState([]);
   const [message, setMessage] = useState('');
+  const mounted = useRef(true);
 
-  function stop(card) {
-    setBusy('stop');
-    setTimeout(() => {
-      setCards(current => current.map(entry => entry.id === card.id
-        ? { ...entry, status: 'paused', updatedAtSeconds: Math.floor(Date.now() / 1000) }
-        : entry));
-      setBusy(null);
-      setMessage(`${card.title} stopped. Its position stays saved.`);
-    }, 250);
-  }
+  useEffect(() => subscribeAuthSession(setSession), []);
 
-  function cancel(card) {
-    setBusy('cancel');
-    setTimeout(() => {
-      setCards(current => current.filter(entry => entry.id !== card.id));
-      setBusy(null);
-      setMessage(`${card.title} check-in cancelled.`);
-    }, 250);
+  useEffect(() => {
+    mounted.current = true;
+    const transport = createPlaybackTransport({ auth: session });
+    if (!transport) {
+      setCards([]);
+      return () => { mounted.current = false; };
+    }
+    let cancelled = false;
+    const load = () => {
+      transport.load().then(next => {
+        if (!cancelled && mounted.current) {
+          setCards(next);
+          setMessage('');
+        }
+      }).catch(cause => {
+        if (!cancelled && mounted.current) {
+          setCards([]);
+          setMessage(cause?.message || 'Now Playing could not be loaded from the server.');
+        }
+      });
+    };
+    load();
+    const timer = setInterval(load, POLL_MS);
+    return () => {
+      cancelled = true;
+      mounted.current = false;
+      clearInterval(timer);
+    };
+  }, [session]);
+
+  if (!cards.length) {
+    return message ? <Text style={styles.copy}>{message}</Text> : null;
   }
 
   return <View style={styles.root}>
@@ -96,14 +79,9 @@ export default function PlaybackSlot({ onOpenDetail }) {
       contentContainerStyle={styles.row}>
       {cards.map(card => <View key={card.id} style={styles.card}>
         <PlaybackCard model={card} labels={labels} palette={playbackPalette}
-          onOpenDetails={() => onOpenDetail?.()}
-          onStop={() => stop(card)}
-          onCancel={() => cancel(card)}
-          busyAction={busy} />
+          onOpenDetails={() => onOpenDetail?.(card)} />
       </View>)}
     </ScrollView>
-    {cards.length ? null : <Note surface={{ ...surface, status: 'in_progress', title: 'No active playback', note: 'The shared card is still placed here; this demo row is empty after both check-ins were stopped or cancelled.' }} />}
-    {message ? <Text style={styles.copy}>{message}</Text> : null}
   </View>;
 }
 

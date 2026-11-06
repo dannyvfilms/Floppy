@@ -3,6 +3,16 @@ import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-na
 import { MediaCard } from './MediaCard.jsx';
 import { Rail } from './Rail';
 
+// Web and native shelves must pick the same card width. Web computes it from
+// the phone breakpoint in mountHome; native passes the same value from here.
+export const SHELF_BREAKPOINTS = { phone: 640 };
+export const SHELF_CARD_WIDTHS = { phone: 106, default: 176 };
+export function shelfCardWidth(viewportWidth) {
+  return viewportWidth < SHELF_BREAKPOINTS.phone
+    ? SHELF_CARD_WIDTHS.phone
+    : SHELF_CARD_WIDTHS.default;
+}
+
 const DEFAULT_PALETTE = {
   text: '#fafafa',
   textSecondary: '#d4d4d8',
@@ -66,16 +76,18 @@ function RailRow({
   renderProgress,
   renderRating,
   renderActionIcon,
+  railComponent,
   onOpenCard,
   onOpenLink,
   onAction,
   onRate,
   onSortRow,
   onLoadMore,
+  RailComponent = Rail,
 }) {
   const items = row.items || [];
   const hasMore = !rowLoaded(row);
-  return <Rail
+  return <RailComponent
     title={row.titleMain || row.title}
     titleDetail={row.titleDetail}
     summaryInline={row.summaryInline}
@@ -139,6 +151,7 @@ export function HomeShelves({
   renderProgress,
   renderRating,
   renderActionIcon,
+  railComponent,
   onOpenCard,
   onOpenLink,
   onAction,
@@ -321,6 +334,7 @@ export function HomeShelves({
       loadingMore={!!loadingMore[rowKey(row)]}
       renderCard={renderCard} renderProgress={renderProgress}
       renderRating={renderRating} renderActionIcon={renderActionIcon}
+      RailComponent={railComponent}
       onOpenCard={onOpenCard} onOpenLink={onOpenLink} onAction={onAction} onRate={onRate}
       onSortRow={onSortRow ? sortRow : undefined}
       onLoadMore={onLoadMore ? loadMore : undefined} />);

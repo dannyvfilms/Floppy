@@ -615,7 +615,7 @@ export default function MusicScreen({ onBack, transport: injectedTransport }) {
     show: { status: show.status, score: show.score, notes: show.notes || '' },
   }[dialog.target] : null;
 
-  return <Screen title="Music" subtitle="Artist, album and podcast detail" onBack={onBack}>
+  return <Screen onBack={onBack}>
     <MusicView tabs={TABS} active={tab} onChange={changeTab}
       palette={palette} error={transportError} notice={notice}>
 

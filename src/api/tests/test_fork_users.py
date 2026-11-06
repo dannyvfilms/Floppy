@@ -217,6 +217,22 @@ class PreferencesTests(FloppyApiTestCase):
 class SidebarTests(FloppyApiTestCase):
     """GET/PUT user/sidebar."""
 
+    def test_navigation_model_matches_the_web_sidebar(self):
+        """The native shell reads the same links, order and labels as web."""
+        self.client.force_login(self.user1)
+        response = self.client.get("/api/v1/user/navigation/")
+        self.assertEqual(response.status_code, HTTP.OK)
+        body = response.json()
+        self.assertNotIn("csrfToken", body)
+        self.assertEqual(body["primary"][0]["label"], "Home")
+        self.assertEqual(body["primary"][0]["href"], "/")
+        self.assertEqual(
+            [item["label"] for item in body["secondary"]],
+            ["Calendar", "Collection", "Custom", "History", "Lists", "Statistics", "Tags"],
+        )
+        self.assertTrue(body["logo"]["src"].endswith("floppy-logo.png"))
+        self.assertIn("icon", body["primary"][0])
+
     def test_toggle_media_type(self):
         """A media type can be disabled and re-enabled."""
         response = self.call_api(

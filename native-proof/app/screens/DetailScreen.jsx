@@ -14,7 +14,6 @@ import RatingSlot from '../surfaces/RatingSlot';
 import { palette } from '../theme';
 
 export default function DetailScreen({ params, onBack }) {
-  const title = params?.item?.title || 'Detail';
   const [trackTarget, setTrackTarget] = useState(null);
   const [actionStatus, setActionStatus] = useState('');
   const model = createDetailModel();
@@ -28,7 +27,7 @@ export default function DetailScreen({ params, onBack }) {
       onPress: () => setActionStatus('In your library') })),
   };
 
-  return <Screen title={title} subtitle="Detail, tracking and rating" onBack={onBack}>
+  return <Screen onBack={onBack}>
     <DetailView
       model={model}
       labels={model.labels}

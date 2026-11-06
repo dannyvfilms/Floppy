@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
 import { HomeView } from '../pages/HomeView';
+import { SHELF_BREAKPOINTS, shelfCardWidth } from './HomeShelves';
 import { MediaCard } from './MediaCard.web';
 import { ProgressChanger } from './ProgressChangerTheme.web';
 
@@ -65,9 +66,10 @@ function assign(url) {
 const PHONE_RAIL = window.matchMedia('(max-width: 600px)');
 
 function useShelfCardWidth() {
-  const [width, setWidth] = useState(() => (PHONE_RAIL.matches ? 106 : 176));
+  const current = () => shelfCardWidth(PHONE_RAIL.matches ? 0 : SHELF_BREAKPOINTS.phone);
+  const [width, setWidth] = useState(current);
   useEffect(() => {
-    const update = () => setWidth(PHONE_RAIL.matches ? 106 : 176);
+    const update = () => setWidth(current());
     PHONE_RAIL.addEventListener('change', update);
     return () => PHONE_RAIL.removeEventListener('change', update);
   }, []);

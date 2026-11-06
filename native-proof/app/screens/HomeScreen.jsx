@@ -1,17 +1,19 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Button } from '../../../frontend/ui/Button';
 import { HomeView } from '../../../frontend/pages/HomeView';
+import { shelfCardWidth } from '../../../frontend/ui/HomeShelves';
+import { Rail } from '../../../frontend/ui/Rail.jsx';
 import {
   createHomeTransport,
   homeScreenFromPayload,
   mergeHomeRowPage,
 } from '../data/homeTransport';
+import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
 import { palette, radius, spacing } from '../theme';
 import { Screen } from '../components/Screen';
 import MediaCardSlot from '../surfaces/MediaCardSlot';
 import PlaybackSlot from '../surfaces/PlaybackSlot';
-import SearchSlot from '../surfaces/SearchSlot';
 
 export const surface = {
   id: 'HOME',
@@ -35,17 +37,11 @@ function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function artwork(seed, shape = 'poster') {
-  const [width, height] = shape === 'square'
-    ? [400, 400]
-    : shape === 'landscape'
-      ? [800, 450]
-      : [400, 600];
-  return {
-    src: `https://picsum.photos/seed/floppy-home-${seed}/${width}/${height}`,
-    fallback: '',
-    source: 'primary',
-  };
+// Sample data has no artwork. Returning null makes the shared card render the
+// same flat placeholder the web uses for an item without a poster, instead of
+// loading unrelated stock photos from an external host.
+function artwork() {
+  return null;
 }
 
 function line(meta) {
@@ -334,7 +330,16 @@ function demoModel() {
 }
 
 export default function HomeScreen({ navigate }) {
-  const [transport] = useState(() => createHomeTransport());
+  const { width } = useWindowDimensions();
+  // The same breakpoint helper the web mount uses, so a card is never a
+  // different size on one surface.
+  const itemWidth = shelfCardWidth(width);
+  const [session, setSession] = useState(() => getActiveAuthSession());
+  useEffect(() => subscribeAuthSession(setSession), []);
+  const transport = useMemo(
+    () => createHomeTransport(session ? { auth: session } : {}),
+    [session],
+  );
   const serverMode = transport.mode === 'server';
   const [model, setModel] = useState(() => (serverMode ? emptyModel() : demoModel()));
   const [loading, setLoading] = useState(serverMode);
@@ -342,7 +347,12 @@ export default function HomeScreen({ navigate }) {
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (!serverMode) return undefined;
+    if (!serverMode) {
+      setModel(demoModel());
+      setLoading(false);
+      setError('');
+      return undefined;
+    }
     let cancelled = false;
     setLoading(true);
     setError('');
@@ -430,10 +440,14 @@ export default function HomeScreen({ navigate }) {
 
   return <Screen chrome={false}>
     <HomeView
-      search={<SearchSlot
-        onOpenSearch={params => navigate?.('Search', params)}
-        onOpenSuggestion={item => navigate?.('Detail', { item })}
-      />}
+      notice={serverMode ? null : <View style={[styles.demoNotice, { borderColor: palette.warning || '#f59e0b', backgroundColor: (palette.warning || '#f59e0b') + '14' }]}>
+        <Text style={[styles.demoTitle, { color: palette.warning || '#f59e0b' }]}>Demo data</Text>
+        <Text style={[styles.demoBody, { color: palette.textSecondary }]}>
+          You are signed out, so Home shows sample shelves. Connect your Floppy server to see your own library.
+        </Text>
+        <Button label="Connect server" tone="surface" palette={palette}
+          onPress={() => navigate?.('Auth')} />
+      </View>}
       playback={<PlaybackSlot onOpenDetail={() => navigate?.('Detail')} />}
       groups={model.groups}
       deferredGroups={model.deferredGroups}
@@ -441,7 +455,8 @@ export default function HomeScreen({ navigate }) {
       labels={model.labels}
       palette={palette}
       readOnly={model.readOnly}
-      itemWidth={168}
+      itemWidth={itemWidth}
+      railComponent={Rail}
       loading={loading}
       error={error}
       onRetry={() => setAttempt(current => current + 1)}
@@ -457,6 +472,16 @@ export default function HomeScreen({ navigate }) {
 }
 
 const styles = StyleSheet.create({
+  demoNotice: {
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.xs,
+    alignItems: 'flex-start',
+  },
+  demoTitle: { fontSize: 13, fontWeight: '600' },
+  demoBody: { fontSize: 13, lineHeight: 18 },
   notice: {
     borderWidth: 1,
     borderColor: 'rgba(248, 113, 113, 0.4)',

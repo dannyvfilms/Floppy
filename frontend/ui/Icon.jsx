@@ -11,8 +11,8 @@ export function setIconRenderer(renderer) {
   iconRenderer = typeof renderer === 'function' ? renderer : null;
 }
 
-export function Icon({ spec, style, children }) {
-  const rendered = iconRenderer ? iconRenderer(spec) : null;
+export function Icon({ spec, style, children, color, size }) {
+  const rendered = iconRenderer ? iconRenderer(spec, { color, size }) : null;
   if (rendered !== null && rendered !== undefined) {
     return rendered;
   }

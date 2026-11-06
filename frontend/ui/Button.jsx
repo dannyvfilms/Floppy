@@ -48,7 +48,7 @@ export function Button({
     ]}>
     <View style={styles.content}>
       {icon ? <View style={[styles.icon, { color: colors.text, fontSize: size === 'sm' ? 14 : 16 }]}>
-        <Icon spec={icon} />
+        <Icon spec={icon} color={colors.text} />
       </View> : null}
       {text === null ? content : <Text style={[styles.label, { color: colors.text, fontSize: size === 'sm' ? 13 : 14 }]}>{busy ? '…' : text}</Text>}
     </View>

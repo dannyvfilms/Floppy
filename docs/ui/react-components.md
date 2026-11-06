@@ -8,6 +8,21 @@ describe legacy web consumers and guide a native-compatible replacement;
 universal code must not import that web-only file. Feature adapters supply domain
 data and actions and own requests, permissions and platform integration.
 
+Structural rules for page parity:
+
+- Page titles, subtitles and section framing belong to the shared page view.
+  Platform chrome may add only navigation affordances the platform requires
+  (a native back button, safe-area insets), never a second page title.
+- Breakpoints and card sizes come from shared helpers (for example
+  `shelfCardWidth` in `frontend/ui/HomeShelves.jsx`), not per-surface numbers.
+- Icons are parsed shapes rendered by `IconRenderer.web.jsx` and
+  `IconRenderer.native.jsx`; a surface must not invent its own icon set.
+- A platform-only control is allowed only when it is unavoidable and explicit
+  (the native server-address field). Everything else must be the same
+  composition on web and native.
+- Themes resolve through the shared theme contract; do not hardcode a palette
+  per screen.
+
 | Component | Contract |
 | --- | --- |
 | `Card`, `CardGrid` | Shared settings frame/header, optional header action, two-column or automatically fitting layout; all card badges stay at the top right while titles wrap |

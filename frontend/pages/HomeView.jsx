@@ -12,7 +12,7 @@ const defaultLabels = {
 // bar, search field and live playback host) arrives through slots; the shelves,
 // empty/loading/error states and action contract stay shared.
 export function HomeView({
-  search,
+  notice,
   playback,
   groups = [],
   deferredGroups = [],
@@ -30,6 +30,7 @@ export function HomeView({
   onRate,
   renderRating,
   renderActionIcon,
+  railComponent,
   onLoadRow,
   onLoadMore,
   onSortRow,
@@ -38,7 +39,7 @@ export function HomeView({
 }) {
   const copy = { ...defaultLabels, ...(labels || {}) };
   return <View style={styles.root}>
-    {search || null}
+    {notice || null}
     {playback || null}
     {error ? <View style={[styles.notice, { borderColor: palette.danger || '#ef4444' }]}>
       <Text accessibilityLiveRegion="polite" style={[styles.noticeText, { color: palette.danger || '#ef4444' }]}>{error}</Text>
@@ -61,6 +62,7 @@ export function HomeView({
       onRate={onRate}
       renderRating={renderRating}
       renderActionIcon={renderActionIcon}
+      railComponent={railComponent}
       onLoadRow={onLoadRow}
       onLoadMore={onLoadMore}
       onSortRow={onSortRow}
