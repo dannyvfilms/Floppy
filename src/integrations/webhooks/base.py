@@ -1656,6 +1656,25 @@ class BaseWebhookProcessor:
         if started_at is None or started_at > now:
             started_at = None
 
+        # Kodi and generic scrobbles can describe one player session. A
+        # non-completing stop delivered after its completed event is not a
+        # second viewing and must not open another In Progress row.
+        same_session = (
+            started_at is not None
+            and self.SOURCE_LABEL in {"kodi", "scrobble"}
+        )
+        if same_session and not movie_played and movie_instances.filter(
+            start_date=started_at,
+            status=Status.COMPLETED.value,
+            end_date__isnull=False,
+            entry_source__in=("kodi", "scrobble"),
+        ).exists():
+            logger.info(
+                "Ignoring unfinished movie stop after same-session completion: %s",
+                movie_item,
+            )
+            return movie_item
+
         if current_instance and current_instance.status != Status.COMPLETED.value:
             current_instance.progress = progress
 
@@ -1727,9 +1746,70 @@ class BaseWebhookProcessor:
                     else Status.IN_PROGRESS.value,
                 )
 
+        if same_session:
+            self._reconcile_kodi_scrobble_movie_session(user, movie_item, started_at)
+
         # Queue collection metadata update if supported
         self._queue_collection_metadata_update(payload, user, movie_item)
         return movie_item
+
+    def _reconcile_kodi_scrobble_movie_session(self, user, item, started_at):
+        """Collapse a competing unfinished write for the same player session.
+
+        A generic stop and a Kodi end can race. A timestamp-based completed
+        play check cannot dedupe the unfinished row, and their initial reads
+        can both predate either write. Only merge rows sharing the exact
+        session start; a later rewatch has a different start.
+        """
+        rows = app.models.Movie.objects.filter(
+            user=user,
+            item=item,
+            start_date=started_at,
+            entry_source__in=("kodi", "scrobble"),
+        )
+        completed = (
+            rows.filter(status=Status.COMPLETED.value, end_date__isnull=False)
+            .order_by("-end_date", "-pk")
+            .first()
+        )
+        if completed is None:
+            return
+
+        for pending in rows.filter(
+            status=Status.IN_PROGRESS.value,
+            end_date__isnull=True,
+        ):
+            if (
+                completed.score is not None
+                and pending.score is not None
+                and completed.score != pending.score
+            ) or (
+                completed.notes
+                and pending.notes
+                and completed.notes != pending.notes
+            ):
+                logger.warning(
+                    "Retaining conflicting same-session movie rows: %s and %s",
+                    completed.pk,
+                    pending.pk,
+                )
+                continue
+
+            updates = []
+            if completed.score is None and pending.score is not None:
+                completed.score = pending.score
+                updates.append("score")
+            if not completed.notes and pending.notes:
+                completed.notes = pending.notes
+                updates.append("notes")
+            if updates:
+                completed.save(update_fields=updates)
+            pending.delete()
+            logger.info(
+                "Reconciled same-session Kodi/scrobble movie rows: kept=%s removed=%s",
+                completed.pk,
+                pending.pk,
+            )
 
     def _queue_collection_metadata_update_for_tv(self, payload, user, tv_item):
         """Queue collection metadata update for TV show (not episode-specific)."""
