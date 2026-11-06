@@ -307,6 +307,21 @@ in the register.
 - `src/templates/app/components/alphabet_filter.html`
 - `src/templates/app/components/alphabet_results_empty.html`
 
+## CONTROL-KIT
+
+- `frontend/ui/controls/Tooltip.jsx` (`Tooltip`)
+- `frontend/ui/controls/ComboField.jsx` (`ComboField`)
+- `frontend/ui/controls/FilePicker.jsx`, `frontend/ui/controls/FilePicker.web.jsx`, `frontend/ui/controls/FilePicker.native.jsx` (`FilePicker` platform trio)
+- `frontend/ui/controls/Dialog.jsx` (`Dialog`)
+- `frontend/ui/controls/Form.jsx` (`Form`, `FormProvider`, `useForm`)
+- `frontend/ui/controls/ActivityList.jsx` (`ActivityList`)
+- `frontend/ui/controls/Catalog.jsx` (`CatalogGrid`, `CatalogCard`)
+- `frontend/ui/controls/FeatureList.jsx` (`FeatureList`, `MediaIcon`)
+- `frontend/ui/controls/Navigation.jsx` (`ScrollRow`, `Tabs`, `FilterToolbar`)
+- `frontend/ui/controls/Menu.jsx` (`ActionMenu`, `FilterDropdown`)
+
+These are the universal provider controls. `frontend/ui/controls.jsx` remains the legacy web migration source until the provider consumers are rewired.
+
 ## FILTERS
 
 - `frontend/ui/FilterBar.jsx`

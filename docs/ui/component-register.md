@@ -508,6 +508,15 @@ can inform a focused completion pass.
   Query-budget pins explicitly account for that fixed lookup and pass.
 - Related work: none recorded. Deferrals: none for the browser component.
 
+### CONTROL-KIT — Shared provider control primitives
+
+- Purpose/usage: provider pages and settings forms that need a universal control not covered by the existing button/field/card primitives.
+- Implementation: `frontend/ui/controls/Tooltip.jsx` (`Tooltip`), `ComboField.jsx` (`ComboField`), `FilePicker.jsx`/`FilePicker.web.jsx`/`FilePicker.native.jsx` (`FilePicker`), `Dialog.jsx` (`Dialog`), `Form.jsx` (`Form`, `FormProvider`, `useForm`), `ActivityList.jsx` (`ActivityList`), `Catalog.jsx` (`CatalogGrid`, `CatalogCard`), `FeatureList.jsx` (`FeatureList`, `MediaIcon`), `Navigation.jsx` (`ScrollRow`, `Tabs`, `FilterToolbar`) and `Menu.jsx` (`ActionMenu`, `FilterDropdown`).
+- Contract: presentation-only RN primitives with explicit data/action props; file selection, form submission and URL navigation are adapter callbacks. The browser-only pieces live in the `FilePicker.web.jsx`/`FilePicker.native.jsx` pair. Existing legacy `frontend/ui/controls.jsx` remains the migration source and is not imported by these files.
+- Status: `Partial / coexisting`. The new kit is compiled but not yet wired into provider consumers; the legacy controls still render those pages until the next provider batch.
+- Verification: Babel/esbuild parse and universal AST checks passed per component. No browser, iOS or Android runtime pass has been recorded.
+- Reuse/blockers: use these components for the provider ports; do not add another provider-local primitive with the same contract. `Tooltip` and `ActionMenu` still need anchored-popover parity work, and `FilePicker` needs a native `pickFiles` adapter.
+
 ### FILTERS — Filter state, menus and saved views
 
 - Purpose/usage: library/lists, History and Home configuration where included.

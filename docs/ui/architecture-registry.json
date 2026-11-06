@@ -1898,6 +1898,122 @@
         }
       }
     },
+    "frontend/ui/controls/ActivityList.jsx": {
+      "components": [
+        "ActivityList"
+      ],
+      "register": "CONTROL-KIT",
+      "verification": {
+        "web": {"status": "unverified", "evidence": "Compiled into the web bundle; no browser interaction pass in this foundation batch."},
+        "ios": {"status": "unverified", "evidence": "Universal file is native-compatible; no simulator pass in this foundation batch."},
+        "android": {"status": "unverified", "evidence": "Universal file is native-compatible; no emulator pass in this foundation batch."}
+      }
+    },
+    "frontend/ui/controls/Catalog.jsx": {
+      "components": [
+        "CatalogGrid",
+        "CatalogCard"
+      ],
+      "register": "CONTROL-KIT",
+      "verification": {
+        "web": {"status": "unverified", "evidence": "Compiled into the web bundle; no browser interaction pass in this foundation batch."},
+        "ios": {"status": "unverified", "evidence": "Universal file is native-compatible; no simulator pass in this foundation batch."},
+        "android": {"status": "unverified", "evidence": "Universal file is native-compatible; no emulator pass in this foundation batch."}
+      }
+    },
+    "frontend/ui/controls/ComboField.jsx": {
+      "components": [
+        "ComboField"
+      ],
+      "register": "CONTROL-KIT",
+      "verification": {
+        "web": {"status": "unverified", "evidence": "Compiled into the web bundle; no browser interaction pass in this foundation batch."},
+        "ios": {"status": "unverified", "evidence": "Universal file is native-compatible; no simulator pass in this foundation batch."},
+        "android": {"status": "unverified", "evidence": "Universal file is native-compatible; no emulator pass in this foundation batch."}
+      }
+    },
+    "frontend/ui/controls/Dialog.jsx": {
+      "components": [
+        "Dialog"
+      ],
+      "register": "CONTROL-KIT",
+      "verification": {
+        "web": {"status": "unverified", "evidence": "Compiled into the web bundle; no browser interaction pass in this foundation batch."},
+        "ios": {"status": "unverified", "evidence": "Universal file is native-compatible; no simulator pass in this foundation batch."},
+        "android": {"status": "unverified", "evidence": "Universal file is native-compatible; no emulator pass in this foundation batch."}
+      }
+    },
+    "frontend/ui/controls/FeatureList.jsx": {
+      "components": [
+        "FeatureList",
+        "MediaIcon"
+      ],
+      "register": "CONTROL-KIT",
+      "verification": {
+        "web": {"status": "unverified", "evidence": "Compiled into the web bundle; no browser interaction pass in this foundation batch."},
+        "ios": {"status": "unverified", "evidence": "Universal file is native-compatible; no simulator pass in this foundation batch."},
+        "android": {"status": "unverified", "evidence": "Universal file is native-compatible; no emulator pass in this foundation batch."}
+      }
+    },
+    "frontend/ui/controls/FilePicker.jsx": {
+      "components": [
+        "FilePicker"
+      ],
+      "register": "CONTROL-KIT",
+      "verification": {
+        "web": {"status": "unverified", "evidence": "Compiled into the web bundle; no browser interaction pass in this foundation batch."},
+        "ios": {"status": "unverified", "evidence": "Universal file is native-compatible; no simulator pass in this foundation batch."},
+        "android": {"status": "unverified", "evidence": "Universal file is native-compatible; no emulator pass in this foundation batch."}
+      }
+    },
+    "frontend/ui/controls/Form.jsx": {
+      "components": [
+        "Form",
+        "FormProvider"
+      ],
+      "register": "CONTROL-KIT",
+      "verification": {
+        "web": {"status": "unverified", "evidence": "Compiled into the web bundle; no browser interaction pass in this foundation batch."},
+        "ios": {"status": "unverified", "evidence": "Universal file is native-compatible; no simulator pass in this foundation batch."},
+        "android": {"status": "unverified", "evidence": "Universal file is native-compatible; no emulator pass in this foundation batch."}
+      }
+    },
+    "frontend/ui/controls/Menu.jsx": {
+      "components": [
+        "ActionMenu",
+        "FilterDropdown"
+      ],
+      "register": "CONTROL-KIT",
+      "verification": {
+        "web": {"status": "unverified", "evidence": "Compiled into the web bundle; no browser interaction pass in this foundation batch."},
+        "ios": {"status": "unverified", "evidence": "Universal file is native-compatible; no simulator pass in this foundation batch."},
+        "android": {"status": "unverified", "evidence": "Universal file is native-compatible; no emulator pass in this foundation batch."}
+      }
+    },
+    "frontend/ui/controls/Navigation.jsx": {
+      "components": [
+        "ScrollRow",
+        "Tabs",
+        "FilterToolbar"
+      ],
+      "register": "CONTROL-KIT",
+      "verification": {
+        "web": {"status": "unverified", "evidence": "Compiled into the web bundle; no browser interaction pass in this foundation batch."},
+        "ios": {"status": "unverified", "evidence": "Universal file is native-compatible; no simulator pass in this foundation batch."},
+        "android": {"status": "unverified", "evidence": "Universal file is native-compatible; no emulator pass in this foundation batch."}
+      }
+    },
+    "frontend/ui/controls/Tooltip.jsx": {
+      "components": [
+        "Tooltip"
+      ],
+      "register": "CONTROL-KIT",
+      "verification": {
+        "web": {"status": "unverified", "evidence": "Compiled into the web bundle; no browser interaction pass in this foundation batch."},
+        "ios": {"status": "unverified", "evidence": "Universal file is native-compatible; no simulator pass in this foundation batch."},
+        "android": {"status": "unverified", "evidence": "Universal file is native-compatible; no emulator pass in this foundation batch."}
+      }
+    },
     "frontend/ui/MediaCard.jsx": {
       "components": [
         "MediaCard"
@@ -2820,6 +2936,28 @@
           "status": "unverified",
           "evidence": "Compiled by the Expo export through the native notes slot and music editors; no emulator interaction pass."
         }
+      }
+    },
+    "frontend/ui/controls/FilePicker.web.jsx": {
+      "kind": "presentation",
+      "register": "CONTROL-KIT",
+      "components": ["FilePicker"],
+      "purpose": "Platform FilePicker implementation for the shared control kit.",
+      "verification": {
+        "web": {"status": "unverified", "evidence": "Compiled; browser file selection not exercised in this batch."},
+        "ios": {"status": "unverified", "evidence": "Compiled through Expo; no simulator pass."},
+        "android": {"status": "unverified", "evidence": "Compiled through Expo; no emulator pass."}
+      }
+    },
+    "frontend/ui/controls/FilePicker.native.jsx": {
+      "kind": "presentation",
+      "register": "CONTROL-KIT",
+      "components": ["FilePicker"],
+      "purpose": "Platform FilePicker implementation for the shared control kit.",
+      "verification": {
+        "web": {"status": "unverified", "evidence": "Compiled; browser file selection not exercised in this batch."},
+        "ios": {"status": "unverified", "evidence": "Compiled through Expo; no simulator pass."},
+        "android": {"status": "unverified", "evidence": "Compiled through Expo; no emulator pass."}
       }
     },
     "frontend/ui/Reveal.web.jsx": {
