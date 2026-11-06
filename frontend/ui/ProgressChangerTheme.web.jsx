@@ -50,6 +50,7 @@ function readAppearance(host, unit) {
     iconSize: 12,
     fontSize,
     minWidth: ch * 4,
+    compact: window.innerWidth < 600,
     showButtons: !mobile || quick === 'true',
     unit: mobile && mobileGrid === 'compact' ? '' : unit,
   };

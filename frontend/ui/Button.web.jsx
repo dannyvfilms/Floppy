@@ -1,4 +1,5 @@
 import React from 'react';
+import { Icon } from './Icon';
 
 function buttonClasses({ tone, small, auto, flat, danger, secondary }) {
   let classes = 'ui-button';
@@ -33,7 +34,8 @@ export function Button({
   width,
   size,
   accessibilityLabel,
-  palette: _palette,
+  palette,
+  icon,
   ...props
 }) {
   const shared = width !== undefined || size !== undefined || onPress !== undefined || busy;
@@ -47,10 +49,17 @@ export function Button({
   });
   const content = children ?? label;
   const shown = busy && typeof content === 'string' ? '…' : content;
+  const body = icon ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375em' }}>
+    <span style={{ display: 'inline-flex', fontSize: '1em' }}><Icon spec={icon} /></span>
+    {shown}
+  </span> : shown;
   const onClick = onPress || props.onClick;
   const { onClick: _legacyClick, ...rest } = props;
-  const sharedStyle = shared && tone === 'surface'
-    ? { borderColor: 'var(--color-surface-border)' }
+  const sharedStyle = shared
+    ? {
+      ...(tone === 'surface' ? { borderColor: 'var(--color-surface-border)' } : {}),
+      ...(palette?.radius ? { borderRadius: palette.radius } : {}),
+    }
     : undefined;
   const common = {
     className,
@@ -61,6 +70,6 @@ export function Button({
     ...attrs,
     ...rest,
   };
-  if (href) return <a href={href} {...common}>{shown}</a>;
-  return <button type={type} disabled={disabled} {...common}>{shown}</button>;
+  if (href) return <a href={href} {...common}>{body}</a>;
+  return <button type={type} disabled={disabled} {...common}>{body}</button>;
 }

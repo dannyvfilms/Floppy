@@ -14,7 +14,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.core.exceptions import FieldError
 from django.core.paginator import Paginator
-from django.db.models import Count, F, Min, Q
+from django.db.models import Count, F, Min, Prefetch, Q
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import render
@@ -511,7 +511,12 @@ def _hydrate_media_list_page(user, media_type, order_slice):
             media_by_key[(model_name, media.pk)] = media
 
     items_by_pk = (
-        {item.pk: item for item in Item.objects.filter(pk__in=item_pks)}
+        {
+            item.pk: item
+            for item in Item.objects.filter(pk__in=item_pks).prefetch_related(
+                Prefetch("item_tags", queryset=ItemTag.objects.select_related("tag")),
+            )
+        }
         if item_pks
         else {}
     )
@@ -1953,10 +1958,20 @@ def media_list(request, media_type):
         statusless = {}
         for model_name in model_names:
             model = django_apps.get_model(app_label="app", model_name=model_name)
-            for media in model.objects.filter(
-                user=request.user,
-                status__isnull=True,
-            ).select_related("item"):
+            media_rows = (
+                model.objects.filter(
+                    user=request.user,
+                    status__isnull=True,
+                )
+                .select_related("item")
+                .prefetch_related(
+                    Prefetch(
+                        "item__item_tags",
+                        queryset=ItemTag.objects.select_related("tag"),
+                    ),
+                )
+            )
+            for media in media_rows:
                 statusless[media.item_id] = media
         return statusless
 
@@ -2061,6 +2076,9 @@ def media_list(request, media_type):
         candidate_items = list(
             Item.objects.filter(id__in=candidate_item_ids)
             .filter(initial_condition(initial, request.user))
+            .prefetch_related(
+                Prefetch("item_tags", queryset=ItemTag.objects.select_related("tag")),
+            )
             .order_by("title", "id"),
         )
         for item in candidate_items:

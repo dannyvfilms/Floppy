@@ -476,7 +476,9 @@ def build_history_day(
         or MediaTypes.BOOK.value in requested_media_types
     ):
         sessions = (
-            BookListeningSession.objects.filter(
+            prefetch.listening_sessions(day_date)
+            if prefetch
+            else BookListeningSession.objects.filter(
                 book__user=user,
                 started_at__gte=day_start,
                 started_at__lt=day_end,

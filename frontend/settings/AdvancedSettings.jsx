@@ -239,7 +239,7 @@ export function LogsCard({
   icons = {},
 }) {
   const colors = useColors(palette);
-  const buttons = { ...defaultButtonPalette, ...buttonPalette };
+  const buttons = { ...defaultButtonPalette, ...buttonPalette, radius: buttonPalette.radius ?? colors.radius ?? defaultButtonPalette.radius };
   const copy = mergeLabels(defaultLabels.logs, labels);
   return <Panel colors={colors} headingIcon={icons.logs} title={copy.title}>
     <Text style={[styles.copy, styles.logsIntro, { color: colors.textMuted }]}>{copy.intro}
@@ -250,7 +250,7 @@ export function LogsCard({
       </> : null}
     </Text>
     <View style={styles.actions}>
-      {isSuperuser ? <Button label={copy.download} busy={busy}
+      {isSuperuser ? <Button label={copy.download} busy={busy} icon={icons.download}
         onPress={onDownloadLogs} palette={buttons} width="auto" /> : null}
       <Button label={copy.bugReport} tone="surface" disabled={!onOpenUrl}
         onPress={() => onOpenUrl?.(bugReportUrl)} palette={buttons} width="auto" />
@@ -276,7 +276,7 @@ export function ImageCacheCard({
   icons = {},
 }) {
   const colors = useColors(palette);
-  const buttons = { ...defaultButtonPalette, ...buttonPalette };
+  const buttons = { ...defaultButtonPalette, ...buttonPalette, radius: buttonPalette.radius ?? colors.radius ?? defaultButtonPalette.radius };
   const copy = mergeLabels(defaultLabels.imageCache, labels);
   const { width } = useWindowDimensions();
   const [draft, setDraft] = useState(Boolean(enabled));
@@ -362,7 +362,7 @@ export function CacheManagementCard({
   icons = {},
 }) {
   const colors = useColors(palette);
-  const buttons = { ...defaultButtonPalette, ...buttonPalette };
+  const buttons = { ...defaultButtonPalette, ...buttonPalette, radius: buttonPalette.radius ?? colors.radius ?? defaultButtonPalette.radius };
   const copy = mergeLabels(defaultLabels.cache, labels);
   const { width } = useWindowDimensions();
   const twoColumns = width >= 640;
@@ -429,7 +429,7 @@ export function ServerPortCard({
   icons = {},
 }) {
   const colors = useColors(palette);
-  const buttons = { ...defaultButtonPalette, ...buttonPalette };
+  const buttons = { ...defaultButtonPalette, ...buttonPalette, radius: buttonPalette.radius ?? colors.radius ?? defaultButtonPalette.radius };
   const copy = mergeLabels(defaultLabels.serverPort, labels);
   const { width } = useWindowDimensions();
   const [port, setPort] = useState(String(savedPort ?? configuredPort ?? defaultPort));
@@ -574,7 +574,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.75 },
   cacheGrid: { gap: 12, marginTop: 16 },
   cacheGridTwo: { flexDirection: 'row', flexWrap: 'wrap' },
-  cacheCell: { flexBasis: '48.8%', flexGrow: 1, minWidth: 0 },
+  cacheCell: { flexBasis: '48%', flexGrow: 1, minWidth: 0 },
   cacheRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 12, minWidth: 0 },
   cacheCopy: { flexShrink: 1, gap: 2, minWidth: 0 },
   rowTitle: { fontSize: 14, lineHeight: 20, fontWeight: '500' },

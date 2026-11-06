@@ -204,12 +204,39 @@ Check both states for any page you touch:
    and record the shifting selectors/rects.
 
 If the fallback and mounted states differ, fix the layout (column sizing, row
-heights, card shape, control widths) — hiding the fallback or accepting a small
-CLS is not enough. Known example: the media-list table. The release fallback
-uses an auto-width `<table>` that fits all columns; the mounted universal table
-used fixed widths plus horizontal scrolling, so the whole table visibly
-re-laid-out after hydration. A 0.00x CLS does not guarantee this is fixed
-because the swap can happen inside one already-sized region.
+heights, card shape, control widths). `visibility: hidden` keeps the stale box
+from painting but does not excuse a different box: if the hidden fallback and
+the mounted island size differently, the page still shifts when it swaps.
+
+### Enumerating island roots
+
+`scripts/check_island_reveals.py` automates the whole matrix. It logs in, loads
+each page with `/static/ui/*.js` aborted, and then normally. It fails when a
+top-level `[data-props-id]` root paints in the chunk-blocked state, never sets
+`data-react-mounted`, stays hidden after mounting, or when an excluded no-op
+adapter (the media table and its Alpine column menu) changes size. Nested roots
+are reported as part of their owning island, not as separate gates. Add
+`--only calendar` while iterating, and `--json /tmp/islands.json` to keep the
+per-root state.
+
+Known example: the media-list table. The release fallback uses an auto-width
+`<table>` that fits all columns; the mounted universal table used fixed widths
+plus horizontal scrolling, so the whole table visibly re-laid-out after
+hydration. A 0.00x CLS does not guarantee this is fixed because the swap can
+happen inside one already-sized region.
+
+### Checking pointer focus rings
+
+React Native Web's `focused` state is also true after a pointer click. A
+component that applies a custom outline there leaves a ring on Explore,
+progress arrows, chips and menus after a mouse click. The global rule in
+`frontend/ui/controls.css` removes the outline for `:focus:not(:focus-visible)`
+and keeps it for `:focus-visible`.
+
+When checking a control page, click the control and assert
+`getComputedStyle(el).outlineStyle === 'none'`; then press Tab to it and assert
+a visible outline. Check the sidebar Explore button and a progress breakdown
+arrow at minimum.
 
 ## Getting a user to log in as
 

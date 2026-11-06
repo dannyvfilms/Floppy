@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { MediaCard } from './MediaCard';
 import { RatingStars } from './RatingStars';
 
@@ -46,7 +46,7 @@ function resolveLabels(labels) {
 }
 
 function webColumns(width) {
-  if (width <= 900) return 3;
+  if (width <= 768) return 3;
   const gap = 16;
   return Math.max(3, Math.floor((width + gap) / (150 + gap)));
 }
@@ -167,10 +167,14 @@ export function DetailRelated({
   const colors = resolvePalette(palette);
   const [measuredWidth, setMeasuredWidth] = useState(0);
   const [expanded, setExpanded] = useState({});
+  const { width: viewportWidth } = useWindowDimensions();
   const width = measuredWidth || 320;
   const columns = web ? webColumns(width) : width >= 720 ? 4 : width >= 520 ? 3 : 2;
   const gap = web ? (width <= 600 ? 12 : width <= 768 ? 12 : 16) : 12;
-  const cardWidth = Math.max(96, Math.floor((width - gap * (columns - 1)) / columns));
+  const computedWidth = Math.max(96, Math.floor((width - gap * (columns - 1)) / columns));
+  // The release grid caps phone cards at 6.75rem (108px) and lets the spare
+  // width sit at the end of the row.
+  const cardWidth = web && viewportWidth <= 600 ? Math.min(computedWidth, 108) : computedWidth;
   const sections = (model?.sections || []).filter(section => section?.items?.length);
   const steamDlcs = model?.steamDlcs || [];
 

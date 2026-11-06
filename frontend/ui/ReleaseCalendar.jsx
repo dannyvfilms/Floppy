@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   Modal,
@@ -210,6 +210,19 @@ export function ReleaseCalendar({
   const [filterOpen, setFilterOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [weekStart, setWeekStart] = useState(menu?.weekStart || 'monday');
+  const [layoutWidth, setLayoutWidth] = useState(0);
+  const layoutRef = useRef(null);
+  // Measure the calendar row before paint so the agenda column and week cells
+  // start at their final width instead of reflowing after the first frame.
+  useLayoutEffect(() => {
+    const node = layoutRef.current;
+    const measured = node?.offsetWidth || node?.getBoundingClientRect?.().width || 0;
+    if (measured > 0) setLayoutWidth(current => Math.abs(current - measured) > 0.5 ? measured : current);
+  }, []);
+  // The release grid gives the agenda a 15rem–22rem column at 30% of the row.
+  const agendaWidth = layoutWidth
+    ? Math.min(352, Math.max(240, layoutWidth * 0.3))
+    : 240;
 
   const visibleByDay = useMemo(() => {
     const result = {};
@@ -489,7 +502,8 @@ export function ReleaseCalendar({
       </View>
     </View>
 
-    <View style={[styles.layout, !compact && agendaOpen && styles.layoutWithAgenda]}>
+    <View ref={layoutRef} style={[styles.layout, !compact && agendaOpen && styles.layoutWithAgenda]}
+      onLayout={event => setLayoutWidth(event.nativeEvent.layout.width)}>
       <View style={styles.monthCard}>
         <View style={styles.weekHeaderRow}>
           {weekdayHeaders.map((header) => <Text key={header} style={styles.weekHeader}>{header}</Text>)}
@@ -535,7 +549,7 @@ export function ReleaseCalendar({
         </View>
       </View>
 
-      {agendaOpen ? <View style={styles.agendaCard}>
+      {agendaOpen ? <View style={[styles.agendaCard, { width: compact ? '100%' : agendaWidth }]}>
         <View style={styles.agendaHeader}>
           <View style={styles.agendaHeading}>
             <Text style={styles.agendaTitle}>
@@ -938,11 +952,11 @@ function createStyles(colors, compact) {
       flex: 1,
       minWidth: 0,
       backgroundColor: colors.surface,
-      borderRadius: 10,
+      borderRadius: 12,
       padding: compact ? 8 : 24,
       gap: 8,
     },
-    weekHeaderRow: { flexDirection: 'row', gap: 6 },
+    weekHeaderRow: { flexDirection: 'row', gap: compact ? 4 : 6 },
     weekHeader: {
       flex: 1,
       textAlign: 'center',
@@ -952,13 +966,13 @@ function createStyles(colors, compact) {
       fontWeight: '500',
       paddingVertical: compact ? 4 : 8,
     },
-    weeks: { gap: 6 },
-    weekRow: { flexDirection: 'row', gap: 6 },
+    weeks: { gap: compact ? 4 : 6 },
+    weekRow: { flexDirection: 'row', gap: compact ? 4 : 6 },
     dayCell: {
       flex: 1,
       minWidth: 0,
       aspectRatio: compact ? 1 : 0.75,
-      borderRadius: 8,
+      borderRadius: 12,
       overflow: 'hidden',
       backgroundColor: colors.surfaceMutedSoft,
       borderWidth: 1,
@@ -1004,12 +1018,12 @@ function createStyles(colors, compact) {
       minWidth: 0,
       paddingHorizontal: 0,
       paddingVertical: 0,
-      borderRadius: 8,
+      borderRadius: 12,
       backgroundColor: 'rgba(0, 0, 0, 0.5)',
       justifyContent: 'center',
     },
     dayNumberToday: { backgroundColor: colors.accentStrong },
-    dayNumberText: { color: '#ffffff', fontSize: 11, fontWeight: '700' },
+    dayNumberText: { color: '#ffffff', fontSize: 12, fontWeight: '500' },
     dayNumberTextCompact: { fontSize: 16, fontWeight: '600' },
     moreBadge: {
       position: 'absolute',
@@ -1024,7 +1038,7 @@ function createStyles(colors, compact) {
     agendaCard: {
       width: compact ? '100%' : 336,
       backgroundColor: colors.surface,
-      borderRadius: 10,
+      borderRadius: 12,
       overflow: 'hidden',
     },
     agendaHeader: {

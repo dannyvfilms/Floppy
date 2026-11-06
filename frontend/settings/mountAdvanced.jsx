@@ -30,7 +30,7 @@ export const systemPalette = {
   badgeBackground: 'var(--color-surface-strong)',
   badgeText: 'var(--color-text-secondary)',
   badgeHover: 'var(--color-surface-hover)',
-  radius: 6,
+  radius: 'var(--theme-radius, 0.75rem)',
   fontFamily: 'inherit',
   focusStyle: {},
 };

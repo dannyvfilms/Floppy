@@ -306,6 +306,7 @@ def advanced_props(request, context: dict[str, object]) -> dict[str, object]:
             "image": file_icon("image"),
             "trash": file_icon("trashcan"),
             "warning": file_icon("warning"),
+            "download": file_icon("download"),
         },
         "urls": _advanced_urls(request.user.is_superuser),
     }

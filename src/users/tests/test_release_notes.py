@@ -1,3 +1,4 @@
+import json
 from unittest import mock
 
 import requests
@@ -188,15 +189,20 @@ class WhatsNewViewTests(TestCase):
         self.assertEqual(soup.find("a")["href"], release_notes.RELEASES_PAGE_URL)
 
     def test_about_loads_the_notes_in_the_background(self):
+        """The About card hands the browser a JSON URL instead of blocking."""
         response = self.client.get(reverse("about"))
 
         soup = BeautifulSoup(response.content, "html.parser")
         section = soup.find(id="whats-new")
         self.assertIsNotNone(section)
         self.assertEqual(
-            section.find(attrs={"hx-get": True})["hx-get"],
-            reverse("whats_new"),
+            section.find_parent(attrs={"data-props-id": True})["data-props-id"],
+            "about-whats-new-props",
         )
+        props = json.loads(soup.find("script", id="about-whats-new-props").string)
+        self.assertEqual(props["kind"], "whatsNew")
+        self.assertEqual(props["url"], reverse("whats_new") + "?format=json")
+        self.assertFalse(props["releasesLoaded"])
 
     def test_anonymous_visitors_cannot_read_the_fragment(self):
         self.client.logout()

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Icon } from './Icon';
 
 const defaultTones = {
   primary: { background: '#4f46e5', pressed: '#4338ca', hovered: '#4338ca', text: '#ffffff', border: 'transparent' },
@@ -20,6 +21,7 @@ export function Button({
   onPress,
   accessibilityLabel,
   palette = {},
+  icon,
 }) {
   const content = children ?? label;
   const colors = palette[tone] || defaultTones[tone] || defaultTones.primary;
@@ -44,11 +46,18 @@ export function Button({
       },
       focused && palette.focusStyle,
     ]}>
-    {text === null ? content : <Text style={[styles.label, { color: colors.text, fontSize: size === 'sm' ? 13 : 14 }]}>{busy ? '…' : text}</Text>}
+    <View style={styles.content}>
+      {icon ? <View style={[styles.icon, { color: colors.text, fontSize: size === 'sm' ? 14 : 16 }]}>
+        <Icon spec={icon} />
+      </View> : null}
+      {text === null ? content : <Text style={[styles.label, { color: colors.text, fontSize: size === 'sm' ? 13 : 14 }]}>{busy ? '…' : text}</Text>}
+    </View>
   </Pressable>;
 }
 
 const styles = StyleSheet.create({
   button: { borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  content: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  icon: { alignItems: 'center', justifyContent: 'center' },
   label: { fontWeight: '600', textAlign: 'center' },
 });

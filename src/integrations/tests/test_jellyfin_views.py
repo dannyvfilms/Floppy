@@ -1,6 +1,8 @@
+import json
 from pathlib import Path
 from unittest.mock import patch
 
+from bs4 import BeautifulSoup
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
@@ -404,12 +406,16 @@ class JellyfinViewTests(TestCase):
             jellyfin_user_id="jf-1",
             last_error_message="Could not reach Jellyfin: Read timed out.",
         )
-        hint = "Jellyfin rejected the API key"
+
+        def account_props(response):
+            soup = BeautifulSoup(response.content, "html.parser")
+            props = soup.find("script", id="account-connection-props")
+            return json.loads(props.string)
 
         response = self.client.get(
             reverse("provider_detail", args=["jellyfin"]) + "?tab=connection"
         )
-        self.assertNotContains(response, hint)
+        self.assertFalse(account_props(response)["attention"])
         self.assertContains(response, "Read timed out")
 
         account.connection_broken = True
@@ -417,4 +423,4 @@ class JellyfinViewTests(TestCase):
         response = self.client.get(
             reverse("provider_detail", args=["jellyfin"]) + "?tab=connection"
         )
-        self.assertContains(response, hint)
+        self.assertTrue(account_props(response)["attention"])

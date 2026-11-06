@@ -94,6 +94,8 @@ can inform a focused completion pass.
 
 ### SETTINGS-CARD — Shared settings card shell
 
+- Layout stability: `frontend/settings/island-reveal.css` hides a top-level React island's server fallback until `data-react-mounted`, preserving its layout box and revealing it after four seconds if the bundle fails. Nested roots inherit the owning island gate; the server-owned media table/column menu are exempt. `scripts/check_island_reveals.py` verifies every parity page and every top-level island root.
+
 - Purpose/usage: provider Connection instance/personal credentials and account setup, Import preferences/options, and Metadata library source controls.
 - Shared runtime: body responses compare the retained head's loader/CSS versions
   with the current build and reload after a stale boosted navigation. This applies
@@ -187,6 +189,8 @@ can inform a focused completion pass.
 - Validation: `users.tests.test_badge_tag`, `users.tests.test_badge_browser`, architecture checks and tests, UI assets, and Expo web/iOS/Android exports.
 
 ### BUTTON — Solid action button
+
+- Optional `icon` prop: the leading icon is rendered inside the same button contract; callers supply a platform icon node.
 
 - Purpose/usage: the solid indigo (primary) or red (danger) button, the surface "Load more" button and the red text button that templates used to write by hand for form saves, submits and the odd htmx action.
 - Status: `Partial / coexisting`. 78 sites in 30 templates are on the shared `Button` (74 plain or form-submit, 4 htmx: the two History Load more branches and two podcast history Delete buttons); 198 hand-written solid indigo or red `<button>` tags remain in 81 templates, plus roughly 1,000 other buttons of other looks (872 carry Alpine bindings). The shared tag mounts universal presentation through a browser platform implementation. The former the removed legacy control module module and its React-island consumers were removed when the provider pages moved to the shared control kit. Browser verification: the web bundle was built by `npm run build:ui`; no browser comparison was run. Native: Android 15 Pixel 7 AVD rendered the primary, surface and danger actions on Settings and Library; iOS, press/disabled behavior and accessibility remain unverified.

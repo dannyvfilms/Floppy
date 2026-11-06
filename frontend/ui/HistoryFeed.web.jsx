@@ -119,7 +119,6 @@ function HistoryDay({ day, mode, labels, onLoadMore, onLoadDay, onRetryDay }) {
   const standard = entries.filter(entry => !NON_POSTER_TYPES.has(entry.mediaType));
   const square = entries.filter(entry => SQUARE_TYPES.has(entry.mediaType));
   const video = entries.filter(entry => entry.mediaType === 'video');
-  const gridClass = standard.length ? ' mt-4' : '';
 
   return <div id={`history-day-${day.key}`} className="history-day space-y-4">
     <div className="flex items-center justify-between gap-4 pb-3 border-b border-[var(--color-border)]">
@@ -138,8 +137,8 @@ function HistoryDay({ day, mode, labels, onLoadMore, onLoadDay, onRetryDay }) {
       ? <LazyDay day={day} labels={copy} onLoadDay={onLoadDay} onRetryDay={onRetryDay} />
       : <>
         <DayGrid entries={standard} extraClass="" labels={copy} />
-        <DayGrid entries={square} extraClass={gridClass} labels={copy} />
-        <DayGrid entries={video} extraClass={`${standard.length ? ' mt-4' : ''} media-grid-video`} labels={copy} />
+        <DayGrid entries={square} extraClass=" mt-4" labels={copy} />
+        <DayGrid entries={video} extraClass=" mt-4 media-grid-video" labels={copy} />
         {day.hasMore ? <div className="flex justify-center pt-2">
           <Button
             label={day.remaining ? `${copy.loadMore} (${day.remaining} remaining)` : copy.loadMore}

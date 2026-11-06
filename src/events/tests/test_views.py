@@ -115,29 +115,29 @@ class CalendarViewTests(TestCase):
 
     @patch("events.models.Event.objects.get_user_events")
     @patch.object(get_user_model(), "update_preference")
-    def test_calendar_with_view_param(
+    def test_calendar_view_param_keeps_grid_fallback(
         self,
         mock_update_preference,
         mock_get_user_events,
     ):
-        """Test the calendar view with view parameter."""
+        """The stored legacy list preference must not render the old list surface."""
         # Set up mocks
         mock_update_preference.return_value = "list"
         mock_get_user_events.return_value = []
 
-        # Make the request with view parameter
+        # Make the request with the legacy view parameter
         response = self.client.get(reverse("calendar") + "?view=list")
 
         # Check response
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "events/calendar.html")
-        self.assertContains(response, 'data-calendar-view="list"')
-        self.assertNotContains(response, 'data-calendar-view="grid"')
+        self.assertContains(response, 'data-calendar-view="grid"')
+        self.assertNotContains(response, 'data-calendar-view="list"')
 
         # Check that the view called the mocked methods
         mock_update_preference.assert_called_once_with("calendar_layout", "list")
 
-        # Check context data
+        # The preference is still stored even though the page renders the shared grid.
         self.assertEqual(response.context["view_type"], "list")
 
     @patch("events.models.Event.objects.get_user_events")

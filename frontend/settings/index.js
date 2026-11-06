@@ -7,6 +7,7 @@ import '../ui/sidebar.css';
 import '../ui/modal-forms.css';
 import '../ui/statistics-fallback.css';
 import '../ui/people-parity.css';
+import './island-reveal.css';
 import '../providers/provider-page.css';
 import React from 'react';
 import { setIconRenderer } from '../ui/Icon';
@@ -86,12 +87,16 @@ function unmountWithin(element) {
   }
 }
 
-// Alpine teleports popups (card ratings) to <body> without an htmx load event.
+// Alpine x-html previews, teleported popups and other late DOM inserts can add
+// an island after the initial sweep without an htmx:load event. Mount roots in
+// the added subtree; nested roots are left to the adapter that owns their
+// ancestor, exactly as they are on first load.
 new MutationObserver(records => {
   for (const record of records) for (const node of record.addedNodes) {
-    if (node.nodeType === 1 && (node.matches('[data-rating-stars-root]') || node.querySelector('[data-rating-stars-root]'))) mountWithin(node);
+    if (node.nodeType !== 1) continue;
+    if (node.matches?.(selector) || node.querySelector?.(selector)) mountWithin(node);
   }
-}).observe(document.body, { childList: true });
+}).observe(document.body, { childList: true, subtree: true });
 document.addEventListener('htmx:beforeCleanupElement', (event) => unmountWithin(event.detail.elt));
 document.addEventListener('htmx:load', (event) => mountWithin(event.detail.elt));
 // A bfcache document retains its DOM and React state; disposing it would discard

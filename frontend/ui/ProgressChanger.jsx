@@ -44,7 +44,8 @@ export function ProgressChanger({
         : <AdjustIcon operation={operation} color={color} size={palette.iconSize} />}
     </Pressable>;
   }
-  return <View style={[styles.row, palette.showButtons === false && styles.textOnly]}>
+  return <View style={[styles.row, palette.compact && styles.rowCompact,
+    palette.showButtons === false && styles.textOnly]}>
     {showButtons && <AdjustButton operation="decrease" label={decreaseLabel} enabled={canDecrease} />}
     <View accessibilityLiveRegion="polite" aria-atomic
       style={[styles.valueWrap, { minWidth: palette.minWidth }]}>
@@ -64,6 +65,7 @@ function AdjustIcon({ operation, color, size }) {
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16 },
+  rowCompact: { width: '100%', justifyContent: 'flex-start', gap: 8 },
   textOnly: { width: '100%' },
   button: { alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   valueWrap: { alignItems: 'center', justifyContent: 'center' },

@@ -29,6 +29,7 @@ from app.models import (
     Anime,
     BoardGame,
     Book,
+    BookListeningSession,
     Comic,
     Episode,
     Game,
@@ -118,11 +119,23 @@ class HistoryRangePrefetch:
         self.videos_by_day = {}
         self.games_by_day = {}
         self.boardgames_by_day = {}
+        self.listening_sessions_by_day = {}
 
         if self._wants(MediaTypes.EPISODE.value):
             self._load_episodes(on_window)
         if self._wants(MediaTypes.MOVIE.value):
             self._load_movies(on_window)
+        if self._wants(MediaTypes.BOOK.value):
+            rows = (
+                BookListeningSession.objects.filter(
+                    book__user=user,
+                    started_at__gte=win_start,
+                    started_at__lt=win_end,
+                )
+                .select_related("book__item")
+                .defer(*history_deferred_item_fields("book__item"))
+            )
+            self.listening_sessions_by_day = self._bucket(rows, lambda r: r.started_at)
         for media_type, model in READING_MODELS.items():
             if self._wants(media_type):
                 rows = (
@@ -394,6 +407,10 @@ class HistoryRangePrefetch:
     def reading(self, media_type, day):
         """Rows for ``day``."""
         return self.reading_by_day.get(media_type, {}).get(day, [])
+
+    def listening_sessions(self, day):
+        """Audiobook listening sessions that started on ``day``."""
+        return self.listening_sessions_by_day.get(day, [])
 
     def anime(self, day):
         """Rows for ``day``."""

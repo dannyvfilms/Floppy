@@ -86,6 +86,7 @@ wrappers; `controls.jsx` keeps its web wrapper and the server fallback classes
 remain in `settings-card.css`.
 
 - `frontend/settings/Chip.jsx`
+- `frontend/settings/island-reveal.css` (global island reveal contract: stale server fallbacks stay hidden until `data-react-mounted`, 4s failure reveal)
 - `frontend/settings/Chip.web.jsx`
 
 - `frontend/settings/SettingsCard.jsx`
@@ -649,7 +650,9 @@ React presentation mounted by `ProgressDetailTheme.web.jsx`; the card keeps the
 detail-chip classes through its browser implementation. The legacy Alpine card,
 teleported modal and breakdown remain as the server fallback.
 
-- `frontend/ui/ProgressChanger.jsx`
+- `frontend/ui/ProgressChanger.jsx` (compact left-aligned progress row at phone widths)
+- `frontend/ui/ReleaseCalendar.jsx` (pre-paint layout measurement and the final two-row day cards)
+- `frontend/ui/Button.jsx` (optional leading icon slot)
 - `frontend/ui/ProgressBar.jsx`
 - `frontend/ui/ProgressCard.jsx` (universal card)
 - `frontend/ui/ProgressCard.web.jsx` (browser card implementation)

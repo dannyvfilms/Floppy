@@ -22,7 +22,7 @@
   <div class="mb-6"
        data-release-calendar-root
        data-props-id="calendar-props">
-    <div class="flex flex-wrap justify-between items-center mb-4 gap-2">
+    <div class="flex flex-wrap items-center mb-4 gap-2">
       <div class="flex items-center min-w-0">
         <div class="flex items-center bg-[var(--color-surface-strong)] rounded-md p-1">
           <a class="p-1 sm:p-2 hover:bg-[var(--color-surface-hover)] rounded-md transition-colors"
@@ -36,31 +36,9 @@
           </a>
         </div>
       </div>
-
-      <div class="flex items-center gap-2 shrink-0">
-        <a href="{% url 'calendar' %}?month={{ today.month }}&year={{ today.year }}"
-           class="h-10 px-3 text-sm bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex items-center">{% translate "Go to Today" %}</a>
-      </div>
     </div>
 
-    <div class="inline-flex bg-[var(--color-surface-strong)] rounded-md p-1 mb-3 text-sm"
-         role="tablist"
-         aria-label="{% translate 'Calendar view' %}">
-      <a role="tab"
-         aria-selected="{% if view_type == 'list' %}false{% else %}true{% endif %}"
-         href="{% url 'calendar' %}?view=grid&month={{ month }}&year={{ year }}"
-         class="px-3 py-1.5 rounded-md transition-colors {% if view_type == 'list' %}text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]{% else %}bg-indigo-600 text-white{% endif %}">{% translate "Month" %}</a>
-      <a role="tab"
-         aria-selected="{% if view_type == 'list' %}true{% else %}false{% endif %}"
-         href="{% url 'calendar' %}?view=list&month={{ month }}&year={{ year }}"
-         class="px-3 py-1.5 rounded-md transition-colors {% if view_type == 'list' %}bg-indigo-600 text-white{% else %}text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]{% endif %}">{% translate "List" %}</a>
-    </div>
-
-    {% if view_type == 'list' %}
-      {% include "events/components/calendar_list.html" %}
-    {% else %}
-      {% include "events/components/calendar_grid.html" %}
-    {% endif %}
+    {% include "events/components/calendar_grid.html" %}
   </div>
 
   {{ calendar_links_props|json_script:"calendar-links-props" }}
