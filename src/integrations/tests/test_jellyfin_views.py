@@ -1,8 +1,8 @@
 import json
+import re
 from pathlib import Path
 from unittest.mock import patch
 
-from bs4 import BeautifulSoup
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
@@ -397,6 +397,15 @@ class JellyfinViewTests(TestCase):
         self.assertEqual(Path(queued).read_bytes(), payload)
         self.assertEqual(mock_delay.call_args.args[1:], (self.user.id, "new"))
 
+    @staticmethod
+    def _account_connection_props(response):
+        match = re.search(
+            r'<script id="account-connection-props" type="application/json">(.*?)</script>',
+            response.content.decode(),
+            re.DOTALL,
+        )
+        return json.loads(match.group(1))
+
     def test_integrations_page_explains_rejected_key(self):
         """Only a rejected key shows the reconnect hint; a transient error does not."""
         account = JellyfinAccount.objects.create(
@@ -406,16 +415,15 @@ class JellyfinViewTests(TestCase):
             jellyfin_user_id="jf-1",
             last_error_message="Could not reach Jellyfin: Read timed out.",
         )
-
-        def account_props(response):
-            soup = BeautifulSoup(response.content, "html.parser")
-            props = soup.find("script", id="account-connection-props")
-            return json.loads(props.string)
+        hint = "Jellyfin rejected the API key"
 
         response = self.client.get(
             reverse("provider_detail", args=["jellyfin"]) + "?tab=connection"
         )
-        self.assertFalse(account_props(response)["attention"])
+        # The account card is React: every message travels in its props and the
+        # card picks one from the `attention` flag.
+        props = self._account_connection_props(response)
+        self.assertFalse(props["attention"])
         self.assertContains(response, "Read timed out")
 
         account.connection_broken = True
@@ -423,4 +431,6 @@ class JellyfinViewTests(TestCase):
         response = self.client.get(
             reverse("provider_detail", args=["jellyfin"]) + "?tab=connection"
         )
-        self.assertTrue(account_props(response)["attention"])
+        props = self._account_connection_props(response)
+        self.assertTrue(props["attention"])
+        self.assertEqual(props["messages"]["attention"][:len(hint)], hint)

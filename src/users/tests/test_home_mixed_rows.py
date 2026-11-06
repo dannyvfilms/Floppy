@@ -33,6 +33,7 @@ from app.models import (
     Status,
     Tag,
 )
+from app.tests.card_props import card_text
 from users import home_mixed_rows, home_screen
 from users.models import HomeScreenRow, HomeScreenRowTypeChoices
 
@@ -507,13 +508,16 @@ class MixedDisplayLevelTests(TestCase):
         entries, _ = self.window(row)
         request = RequestFactory().get("/")
         request.user = self.user
-        content = render_to_string(
-            "app/components/home_grid.html",
-            {
-                "media_list": {"items": entries, "mixed_media": True},
-                "user": self.user,
-            },
-            request=request,
+        # The card is React: its subtitle lines travel in the props script.
+        content = card_text(
+            render_to_string(
+                "app/components/home_grid.html",
+                {
+                    "media_list": {"items": entries, "mixed_media": True},
+                    "user": self.user,
+                },
+                request=request,
+            )
         )
         self.assertIn("Episode F", content)
         # The card model is embedded as JSON, where the separator is escaped.

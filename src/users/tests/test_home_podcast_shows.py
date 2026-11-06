@@ -17,6 +17,7 @@ from app.models import (
     Sources,
     Status,
 )
+from app.tests.card_props import card_models
 from users import home_screen
 from users.home_screen import build_home_page_groups
 from users.models import (
@@ -215,7 +216,9 @@ class HomePodcastShowShelfTests(TestCase):
         response = self.client.get(reverse("home"))
 
         self.assertEqual(response.status_code, 200)
-        # title, alt text, link, and the title in the React card's props
-        self.assertContains(response, "The Show", count=4)
+        # One card for the show, whatever its episode count; the React card
+        # carries its title in the props script.
+        titles = [model["title"] for model in card_models(response.content)]
+        self.assertEqual(titles.count("The Show"), 1)
         self.assertNotContains(response, "Episode 1")
         self.assertNotContains(response, "Episode 2")

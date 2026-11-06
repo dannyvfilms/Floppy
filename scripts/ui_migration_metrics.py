@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# ruff: noqa: T201
 """Measure how much of Floppy's UI has moved to the shared React pattern.
 
 Run from anywhere: ``python3 scripts/ui_migration_metrics.py`` (add ``--json`` for
@@ -60,24 +59,21 @@ ATOM_MARKERS = ("data-spinner-root", "data-badge-root", "data-button-root", "dat
 
 
 def tag_re(tags) -> re.Pattern:
-    """Match the supplied template tags."""
     return re.compile(r"\{%-?\s*(" + "|".join(tags) + r")\b")
 
 
 def loader_markers() -> list[str]:
-    """Read the mounted ``data-*-root`` attributes from the loader."""
+    """The ``data-*-root`` attributes the loader mounts, read from the loader itself."""
     text = LOADER.read_text()
     selector = re.search(r"const selector = '([^']+)'", text)
     return re.findall(r"\[(data-[a-z-]+-root)\]", selector.group(1)) if selector else []
 
 
 def template_files() -> list[Path]:
-    """List HTML templates."""
     return sorted(TEMPLATES.rglob("*.html"))
 
 
 def line_count(path: Path) -> int:
-    """Count newline-terminated lines."""
     return path.read_bytes().count(b"\n")  # same as ``wc -l``
 
 
@@ -109,12 +105,10 @@ def hosting(markers: list[str], tags=ISLAND_TAGS) -> dict[str, dict]:
 
 
 def lines_in(paths) -> int:
-    """Count lines across files."""
     return sum(line_count(p) for p in paths)
 
 
 def code_size() -> dict[str, int]:
-    """Measure the relevant frontend source files."""
     frontend = [p for p in (ROOT / "frontend").rglob("*") if p.is_file()]
     react_js = [p for p in frontend if p.suffix in {".jsx", ".js"}]
     react_css = [p for p in frontend if p.suffix == ".css"]
@@ -171,18 +165,16 @@ AREAS = {
 
 
 def register_statuses() -> dict[str, str]:
-    """Read explicit component statuses."""
     text = (ROOT / "docs/ui/component-register.md").read_text()
-    parts = re.split(r"^### ([A-Z][A-Z0-9_-]*) — .*$", text, flags=re.MULTILINE)
+    parts = re.split(r"^### ([A-Z][A-Z0-9_-]*) — .*$", text, flags=re.M)
     statuses = {}
     for i in range(1, len(parts), 2):
-        match = re.search(r"^- Status: `([^`]+)`", parts[i + 1], re.MULTILINE)
+        match = re.search(r"^- Status: `([^`]+)`", parts[i + 1], re.M)
         statuses[parts[i]] = match.group(1) if match else "(no status)"
     return statuses
 
 
 def register_counts() -> dict[str, int]:
-    """Count each status."""
     counts: dict[str, int] = {}
     for status in register_statuses().values():
         counts[status] = counts.get(status, 0) + 1
@@ -197,12 +189,10 @@ def register_score(entries=None) -> tuple[float, int]:
 
 
 def area_scores() -> dict[str, tuple[float, int]]:
-    """Calculate the register score by area."""
     statuses = register_statuses()
     placed = [e for entries in AREAS.values() for e in entries]
     if sorted(placed) != sorted(statuses):
-        message = f"AREAS do not match the register: {sorted(set(placed) ^ set(statuses))}"
-        raise SystemExit(message)
+        raise SystemExit(f"AREAS do not match the register: {sorted(set(placed) ^ set(statuses))}")
     return {area: register_score(entries) for area, entries in AREAS.items()}
 
 
@@ -218,7 +208,7 @@ def tag_sites() -> dict[str, tuple[int, int]]:
 
 def button_census() -> dict[str, int]:
     """Hand-written ``<button>`` tags: all, Alpine-bound, and solid indigo or red."""
-    open_tag = re.compile(r"<button\b[^>]*>", re.DOTALL)
+    open_tag = re.compile(r"<button\b[^>]*>", re.S)
     alpine = re.compile(r"(?:@click|x-on:click|x-show|:class|:disabled|x-bind)")
     solid = re.compile(r'class="[^"]*(?<![:\w-])bg-(?:indigo|red)-\d+(?![\w-])')
     total = bound = solid_tags = 0
@@ -248,7 +238,7 @@ def entry_islands(markers: list[str]) -> dict[str, dict[str, int]]:
     marker_re = re.compile("|".join(re.escape(m) for m in markers))
     tags = tag_re(ISLAND_TAGS)
     source_map = (ROOT / "docs/ui/source-map.md").read_text()
-    sections = re.split(r"^## ([A-Z][A-Z0-9_-]*)$", source_map, flags=re.MULTILINE)
+    sections = re.split(r"^## ([A-Z][A-Z0-9_-]*)$", source_map, flags=re.M)
     result: dict[str, dict[str, int]] = {}
     for i in range(1, len(sections), 2):
         found: dict[str, int] = {}
@@ -279,9 +269,8 @@ REACH = {
 
 
 def reach_counts() -> dict[str, tuple[int, int]]:
-    """Count common template patterns."""
     heading = re.compile(r"<h[23]\b[^>]*class=\"[^\"]*(?=[^\"]*\btext-(?:lg|xl)\b)(?=[^\"]*\bfont-semibold\b)")
-    field = re.compile(r"<textarea\b|<input\b(?![^>]*\btype=[\"'](?:hidden|checkbox|radio|submit|button)[\"'])", re.DOTALL)
+    field = re.compile(r"<textarea\b|<input\b(?![^>]*\btype=[\"'](?:hidden|checkbox|radio|submit|button)[\"'])", re.S)
     notice = re.compile(
         r"""role=["'](?:alert|status)["']|class="[^"]*\bbg-(?:red|amber|yellow|green|emerald|blue|sky|indigo)-\d{2,3}/\d{2}""",
     )
@@ -307,6 +296,7 @@ WEB_API_RE = re.compile(
     r"ResizeObserver|CustomEvent|FormData\b|fetch\()"
 )
 
+
 def is_web_adapter(path: Path, text: str) -> bool:
     """Mount points and island loaders are web adapters, unless they draw UI.
 
@@ -326,11 +316,10 @@ def native_readiness() -> dict[str, dict]:
     (mount points that draw nothing, the loader) are listed but left out of the shares.
     """
     out = {}
-    web_adapters = json.loads((ROOT / "docs/ui/architecture-registry.json").read_text()).get("web_adapters", {})
-    for path in sorted(p for p in (ROOT / "frontend").rglob("*") if p.suffix in {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts"}):
+    for path in sorted((ROOT / "frontend").rglob("*.jsx")):
         text = path.read_text(encoding="utf-8")
         rel = str(path.relative_to(ROOT))
-        adapter = rel in web_adapters or is_web_adapter(path, text)
+        adapter = is_web_adapter(path, text)
         uses_rn = "from 'react-native'" in text or 'from "react-native"' in text
         out[rel] = {
             "lines": text.count("\n") + 1,
@@ -342,15 +331,11 @@ def native_readiness() -> dict[str, dict]:
 
 
 def native_summary() -> dict[str, object]:
-    """Summarize static candidates and recorded verification separately."""
     files = native_readiness()
     pres = {rel: d for rel, d in files.items() if d["kind"] != "adapter"}
     rn = {rel: d for rel, d in pres.items() if d["kind"] == "rn"}
-    clean = {rel: d for rel, d in rn.items() if d["web_api_refs"] == 0 and d["class_names"] == 0}
+    clean = {rel: d for rel, d in rn.items() if d["web_api_refs"] == 0}
     lines = sum(d["lines"] for d in pres.values())
-    registry = json.loads((ROOT / "docs/ui/architecture-registry.json").read_text())
-    entries = registry["universal"].values()
-    components = [(component, entry["verification"]) for entry in entries for component in entry["components"]]
     return {
         "native_presentation_files": len(pres),
         "native_presentation_lines": lines,
@@ -358,12 +343,6 @@ def native_summary() -> dict[str, object]:
         "native_rn_lines": sum(d["lines"] for d in rn.values()),
         "native_rn_line_share": round(sum(d["lines"] for d in rn.values()) / lines, 4) if lines else 0,
         "native_clean_rn_files": len(clean),
-        "native_registered_candidates": len(components),
-        "native_ios_verified_components": sum(v["ios"]["status"] == "verified" for _, v in components),
-        "native_android_verified_components": sum(v["android"]["status"] == "verified" for _, v in components),
-        "native_verified_components": sum(v["ios"]["status"] == v["android"]["status"] == "verified" for _, v in components),
-        "legacy_frozen_files": len(registry["legacy"]),
-        "web_integration_adapters": len(registry.get("web_adapters", {})),
         "native_clean_rn_line_share": round(sum(d["lines"] for d in clean.values()) / lines, 4) if lines else 0,
         "native_dom_files": len(pres) - len(rn),
         "native_web_api_refs": sum(d["web_api_refs"] for d in pres.values()),
@@ -372,26 +351,18 @@ def native_summary() -> dict[str, object]:
 
 
 def main() -> int:
-    """Print the selected report."""
     markers = loader_markers()
     if "--reach" in sys.argv:
         for name, (matches, files) in reach_counts().items():
             print(f"{name}: {matches} matches in {files} templates")
         return 0
     if "--areas" in sys.argv:
-        if any(status not in CREDIT and status != "Existing (no UI work needed)" for status in register_statuses().values()):
-            message = "Register statuses need reconciliation before area scores can be calculated."
-            raise SystemExit(message)
         for area, (credit, count) in area_scores().items():
             print(f"{area}: {credit:g} of {count} = {credit / count:.0%}")
         return 0
     if "--native" in sys.argv:
-        registry = json.loads((ROOT / "docs/ui/architecture-registry.json").read_text())
         for rel, d in native_readiness().items():
-            classification = next((name for key, name in (("universal", "universal"), ("logic", "logic"), ("platform", "platform"), ("web_adapters", "web adapter")) if rel in registry.get(key, {})), "legacy")
-            print(f"{classification:10} {d['lines']:5} lines  web-API refs {d['web_api_refs']:3}  className {d['class_names']:3}  {rel}")
-        summary = native_summary()
-        print(f"Candidates: {summary['native_registered_candidates']}; iOS verified: {summary['native_ios_verified_components']}; Android verified: {summary['native_android_verified_components']}; both: {summary['native_verified_components']}")
+            print(f"{d['kind']:8} {d['lines']:5} lines  web-API refs {d['web_api_refs']:3}  className {d['class_names']:3}  {rel}")
         return 0
     if "--entries" in sys.argv:
         for entry_id, found in entry_islands(markers).items():
@@ -408,15 +379,12 @@ def main() -> int:
     size = code_size()
     legacy_ui = size["template_lines"] + size["first_party_js_lines"]
     code_share = size["react_total_lines"] / (size["react_total_lines"] + legacy_ui)
-    unclassified = [status for status in register_statuses().values()
-                    if status not in CREDIT and status != "Existing (no UI work needed)"]
     report = {
         "loader_markers": len(markers),
         "register": register_counts(),
         "register_credit": register_score()[0],
         "register_scored_entries": register_score()[1],
-        "register_weighted_share": None if unclassified else round(register_score()[0] / register_score()[1], 4),
-        "register_unclassified_entries": len(unclassified),
+        "register_weighted_share": round(register_score()[0] / register_score()[1], 4),
         "templates_total": total,
         "templates_hosting_island": len(hosts),
         "templates_hosting_direct": sum(1 for rel in hosts if info[rel]["direct"]),

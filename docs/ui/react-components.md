@@ -23,6 +23,18 @@ Structural rules for page parity:
 - Themes resolve through the shared theme contract; do not hardcode a palette
   per screen.
 
+## Writing a component so it can reach native
+
+Only `AlphabetBar`, `RatingStars`, `SettingsCard` and `Chip` (in `frontend/settings`)
+are written with `react-native` primitives today. Everything else in this file is
+React DOM with CSS classes and will need its presentation rewritten before it can run
+on iOS or Android. Do not extend that debt: write new and edited shared components
+with primitives and theme tokens, props only and no browser API, put browser behavior
+in a `mount*.jsx` or `*.web.jsx` adapter, and record a `Native readiness` line in the
+register. The rules, the measured state and the proposed native proof are in
+[From React on the web to native
+apps](../architecture/ui-modernization.md#from-react-on-the-web-to-native-apps).
+
 | Component | Contract |
 | --- | --- |
 | `Card`, `CardGrid` | Shared settings frame/header, optional header action, two-column or automatically fitting layout; all card badges stay at the top right while titles wrap |

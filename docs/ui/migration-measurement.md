@@ -10,6 +10,7 @@ python3 scripts/ui_migration_metrics.py --areas    # the by-area table
 python3 scripts/ui_migration_metrics.py --entries  # React islands each register entry mounts
 python3 scripts/ui_migration_metrics.py --templates  # every template that hosts an island
 python3 scripts/ui_migration_metrics.py --reach    # pattern counts behind the next-items list
+python3 scripts/check_ui_docs.py                   # register and source map agree with the code
 ```
 
 `--json` prints the first form as JSON. The scripts use only the Python standard library.
@@ -76,7 +77,7 @@ much of that React could run on iOS or Android. A component can be 100% React on
 and 0% ready for a phone, so this measure is reported on its own and must never be
 added to, or read as part of, the migration percentage.
 
-- **Presentation files:** frontend JavaScript and TypeScript files except web adapters. A web
+- **Presentation files:** every `frontend/**/*.jsx` file except web adapters. A web
   adapter is a `mount*.jsx`, `web.jsx` or loader file that draws nothing (it sets no
   `className`). A mount file that does draw UI, such as the bulk toolbar and dock,
   counts as presentation.
@@ -95,24 +96,9 @@ added to, or read as part of, the migration percentage.
 Run `python3 scripts/ui_migration_metrics.py --native` for the per-file list, or read
 the `native_*` keys of the full report.
 
-The registry is authoritative for candidates and separate iOS and Android evidence;
-its universal entries must pass `npm run check:ui-architecture`. Each listed
-component counts once. The legacy count is frozen **files** and is not a component
-count; browser integration adapters are counted separately. The RN import/clean-line figures are
-historical heuristics, not native-compatible or verified percentages: imports and
-indirect dependencies do not prove behavior. The registry currently records Spinner,
-Badge and ProgressChanger as exercised on both iOS and Android; GlobalSearch,
-FilterBar, MediaCardView, ProgressBar, ProgressCard, DateTimePicker, Button,
-RatingChip, SettingsCard, Chip, SearchResults, ListCard, HistoryFeed and
-DetailComposition as rendered on Android; and GlobalSearch, MediaCardView and Rail
-as rendered on iOS. ListHeader, MediaCardActions, MediaCardActionHost,
-ProgressBreakdown, RatingStars and the web-only candidates remain unverified on the
-relevant runtime. The Android pass reached Home, Library, Calendar, Settings, Search
-results, Lists, History and Detail but demo images did not load; the iOS pass
-rendered Home only. Neither pass included VoiceOver/TalkBack or a full interaction
-pass. The native shell's demo placement does not count as runtime evidence. Evidence
-is reviewed by humans; the script cannot prove its truth. An Expo export is never
-runtime evidence.
+Result, 3 Nov 2026: 27 presentation files, 2,864 lines; 4 `rn` files (123 lines,
+**4.3%**), all four free of browser APIs; 23 `dom` files with 216 browser-API
+references and 352 `className` uses; no component verified on iOS or Android.
 
 ## Headline and range
 
@@ -121,13 +107,7 @@ other two: code size at the low end, templates hosting a substantive island at t
 end. The count of templates hosting any island is shown beside them but not used for the
 range, since it counts every Save button.
 
-## Historical results from the unmerged native-path branch
-
-These numbers use that branch's reconciled register, not this checkout's register.
-Here, many entries lack explicit statuses and the script reports the weighted
-score as unavailable rather than silently excluding them. Reconcile the ledger
-before comparing register percentages; the web template and code measures remain
-independently available. This does not alter the historical web measurement.
+## Results, 3 Nov 2026 (`f2ef6eba1`)
 
 | Measure | Earlier audit | Now |
 | --- | --- | --- |

@@ -475,17 +475,18 @@ def build_history_day(
         requested_media_types is None
         or MediaTypes.BOOK.value in requested_media_types
     ):
-        sessions = (
-            prefetch.listening_sessions(day_date)
-            if prefetch
-            else BookListeningSession.objects.filter(
-                book__user=user,
-                started_at__gte=day_start,
-                started_at__lt=day_end,
+        if prefetch and day_date:
+            sessions = prefetch.listening_sessions(day_date)
+        else:
+            sessions = (
+                BookListeningSession.objects.filter(
+                    book__user=user,
+                    started_at__gte=day_start,
+                    started_at__lt=day_end,
+                )
+                .select_related("book__item")
+                .defer(*history_deferred_item_fields("book__item"))
             )
-            .select_related("book__item")
-            .defer(*history_deferred_item_fields("book__item"))
-        )
         entries.extend(build_listening_session_entry(session) for session in sessions)
 
     # Page-based books: the days their progress rose, dated by the change log.
@@ -493,19 +494,25 @@ def build_history_day(
         requested_media_types is None
         or MediaTypes.BOOK.value in requested_media_types
     ):
-        HistoricalBook = apps.get_model("app", "HistoricalBook")
-        changed_ids = HistoricalBook.objects.filter(
-            id__in=Book.objects.filter(user=user).values("id"),
-            history_type="~",
-            history_date__gte=day_start,
-            history_date__lt=day_end,
-        ).values("id")
-        books = (
-            Book.objects.filter(user=user, id__in=changed_ids)
-            .select_related("item")
-            .defer(*history_deferred_item_fields("item"))
-        )
-        entries.extend(build_book_page_entries(books, day_start, day_end))
+        if prefetch and day_date:
+            books, history_rows = prefetch.book_pages(day_date)
+            entries.extend(
+                build_book_page_entries(books, day_start, day_end, history_rows),
+            )
+        else:
+            HistoricalBook = apps.get_model("app", "HistoricalBook")
+            changed_ids = HistoricalBook.objects.filter(
+                id__in=Book.objects.filter(user=user).values("id"),
+                history_type="~",
+                history_date__gte=day_start,
+                history_date__lt=day_end,
+            ).values("id")
+            books = (
+                Book.objects.filter(user=user, id__in=changed_ids)
+                .select_related("item")
+                .defer(*history_deferred_item_fields("item"))
+            )
+            entries.extend(build_book_page_entries(books, day_start, day_end))
 
     # Music (HistoricalMusic for the day)
     music_history = []
@@ -521,12 +528,6 @@ def build_history_day(
             ).values("id", "end_date", "album_id", "track_id")
         )
     if music_history:
-        album_ids = {
-            record["album_id"] for record in music_history if record["album_id"]
-        }
-        track_ids = {
-            record["track_id"] for record in music_history if record["track_id"]
-        }
         music_ids = {record["id"] for record in music_history if record["id"]}
 
         if prefetch:
@@ -536,6 +537,28 @@ def build_history_day(
             track_duration_cache = prefetch.track_durations
             album_scores = prefetch.album_scores
         else:
+            music_map = (
+                {
+                    music.id: music
+                    for music in Music.objects.filter(id__in=music_ids, user=user)
+                    .select_related("item", "album", "album__artist", "track")
+                    .defer(*history_deferred_item_fields("item"))
+                }
+                if music_ids
+                else {}
+            )
+
+            # Prefer current Music relations over stale HistoricalMusic snapshots.
+            album_ids = {music.album_id for music in music_map.values() if music.album_id}
+            album_ids.update(
+                record["album_id"] for record in music_history if record["album_id"]
+            )
+
+            track_ids = {music.track_id for music in music_map.values() if music.track_id}
+            track_ids.update(
+                record["track_id"] for record in music_history if record["track_id"]
+            )
+
             album_map = (
                 {
                     album.id: album
@@ -549,18 +572,6 @@ def build_history_day(
             track_map = (
                 {track.id: track for track in Track.objects.filter(id__in=track_ids)}
                 if track_ids
-                else {}
-            )
-            music_map = (
-                {
-                    music.id: music
-                    for music in Music.objects.filter(
-                        id__in=music_ids, user=user
-                    )
-                    .select_related("item", "album", "track")
-                    .defer(*history_deferred_item_fields("item"))
-                }
-                if music_ids
                 else {}
             )
 
@@ -590,17 +601,25 @@ def build_history_day(
                     if tracker["score"] is not None:
                         album_scores[tracker["album_id"]] = tracker["score"]
 
-
         album_groups = {}
         for record in music_history:
             played_at_local = _localize_datetime(record["end_date"])
             if not played_at_local:
                 continue
-            album_id = record["album_id"]
-            track_id = record["track_id"]
+            music_entry = music_map.get(record["id"])
+
+            album_id = (
+                music_entry.album_id
+                if music_entry and music_entry.album_id
+                else record["album_id"]
+            )
+            track_id = (
+                music_entry.track_id
+                if music_entry and music_entry.track_id
+                else record["track_id"]
+            )
             runtime_minutes = 0
 
-            music_entry = music_map.get(record["id"])
             if music_entry:
                 runtime_minutes = _get_music_runtime_minutes(
                     music_entry, track_duration_cache
