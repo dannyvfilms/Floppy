@@ -255,6 +255,20 @@ class ImportYamtrackEpisodeHistoryDate(TestCase):
             password="12345",
         )
 
+    def test_created_at_restores_tracking_record_added_time(self):
+        """A Floppy CSV's created_at is preserved, not replaced by import time."""
+        csv_data = """media_id,source,media_type,title,image,season_number,episode_number,score,progress,status,start_date,end_date,notes,created_at,progressed_at
+603,tmdb,movie,Some Movie,https://image.url,,,,1,Completed,,,,2020-04-03T12:34:56+00:00,2025-11-19T19:00:05+00:00
+"""
+
+        yamtrack.importer(BytesIO(csv_data.encode()), self.user, "new")
+
+        movie = Movie.objects.get(user=self.user)
+        self.assertEqual(
+            movie.created_at,
+            datetime(2020, 4, 3, 12, 34, 56, tzinfo=UTC),
+        )
+
     def test_episode_history_date_falls_back_to_end_date(self):
         """A blank progressed_at uses the episode watch date."""
         csv_data = """media_id,source,media_type,title,image,season_number,episode_number,score,progress,status,start_date,end_date,notes,progressed_at
