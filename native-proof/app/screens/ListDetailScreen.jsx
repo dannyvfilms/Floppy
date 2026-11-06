@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { Screen } from '../components/Screen';
+import { ListDetailPageView } from '../../../frontend/pages/ListDetailPageView';
 import { Button } from '../../../frontend/ui/Button';
 import { FilterBar } from '../../../frontend/ui/FilterBar';
 import { ListHeader } from '../../../frontend/ui/ListHeader';
@@ -16,7 +17,7 @@ export const surface = {
   status: 'ported',
   title: 'List detail results, membership, bulk actions, smart rules and tiers',
   where: 'List detail page for manual, smart and source-backed lists, including the smart-rule editor and tier board',
-  note: 'Results, the configurable table and column menu, membership, bulk actions, smart-rule summary/editor and the tier board use shared React Native presentation. Mutations route through the list transport; native login, server selection and CSRF transport remain unconfigured, so the native adapter keeps local preview state while the browser adapter uses the same-origin session.',
+  note: 'The list-detail page renders the shared ListDetailPageView composition (header, notice, smart-rule editor, controls, results/tier board, membership dialog). Results, the configurable table and column menu, membership, bulk actions, smart-rule summary/editor and the tier board use shared React Native presentation. Mutations route through the list transport; native login, server selection and CSRF transport remain unconfigured, so the native adapter keeps local preview state while the browser adapter uses the same-origin session.',
 };
 
 const BULK_STATUSES = [
@@ -978,115 +979,116 @@ export default function ListDetailScreen({ params, onBack, navigate }) {
       : activeFilter(filters) ? 'filters'
         : 'empty';
 
-  return <Screen title={list.name} subtitle="List detail" onBack={onBack}>
-    <ListHeader
-      list={list}
-      palette={LIST_PALETTE}
-      labels={{ more: 'Members' }}
-      onAddItem={() => setNotice('Add New Item remains a server flow; the native add-item screen is not ported.')}
-      onExport={() => setNotice('CSV export is ready for the platform download adapter.')}
-      onMore={() => setMembersOpen(true)}
-      onEdit={() => setMembersOpen(true)} />
-    {notice ? <Text style={styles.notice}>{notice}</Text> : null}
-    {isSmart ? <View style={styles.smartPanel}>
-      <View style={styles.smartActions}>
-        {list.canEdit ? <Button
-          label={smartEdit ? 'Done editing' : 'Edit smart rules'}
-          tone={smartEdit ? 'surface' : 'primary'}
-          onPress={() => (smartEdit ? cancelSmartEdit() : startSmartEdit())} /> : null}
-      </View>
-      <SmartRuleSummary
-        rules={smartEdit ? draftRules : smartRules}
-        options={SMART_OPTIONS}
-        editMode={smartEdit}
-        saveState={smartSaveState}
-        palette={LIST_PALETTE} />
-      {list.canEdit && smartEdit ? <SmartRuleBuilder
-        rules={draftRules}
-        options={SMART_OPTIONS}
-        editMode
-        canEdit
-        saveState={smartSaveState}
+  return <Screen onBack={onBack}>
+    <ListDetailPageView
+      header={<ListHeader
+        list={list}
         palette={LIST_PALETTE}
-        onChange={changeSmartRule}
-        onSave={saveSmartRules}
-        onCancel={cancelSmartEdit} /> : null}
-    </View> : null}
-    <View style={styles.controls}>
-      <TextInput
-        style={styles.search}
-        placeholder="Search this list or recommend something…"
-        placeholderTextColor={palette.textMuted}
-        value={search}
-        onChangeText={setSearch}
-        autoCorrect={false}
-        accessibilityLabel="Search this list" />
-      <FilterBar
-        filters={filters}
-        options={options}
-        palette={FILTER_PALETTE}
-        resultCount={visibleItems.length}
-        labels={{
-          filters: 'Filters',
-          status: 'Status',
-          sort: 'Sort',
-          view: 'View',
-          range: 'Range',
+        labels={{ more: 'Members' }}
+        onAddItem={() => setNotice('Add New Item remains a server flow; the native add-item screen is not ported.')}
+        onExport={() => setNotice('CSV export is ready for the platform download adapter.')}
+        onMore={() => setMembersOpen(true)}
+        onEdit={() => setMembersOpen(true)} />}
+      notice={notice ? <Text style={styles.notice}>{notice}</Text> : null}
+      smart={isSmart ? <View style={styles.smartPanel}>
+        <View style={styles.smartActions}>
+          {list.canEdit ? <Button
+            label={smartEdit ? 'Done editing' : 'Edit smart rules'}
+            tone={smartEdit ? 'surface' : 'primary'}
+            onPress={() => (smartEdit ? cancelSmartEdit() : startSmartEdit())} /> : null}
+        </View>
+        <SmartRuleSummary
+          rules={smartEdit ? draftRules : smartRules}
+          options={SMART_OPTIONS}
+          editMode={smartEdit}
+          saveState={smartSaveState}
+          palette={LIST_PALETTE} />
+        {list.canEdit && smartEdit ? <SmartRuleBuilder
+          rules={draftRules}
+          options={SMART_OPTIONS}
+          editMode
+          canEdit
+          saveState={smartSaveState}
+          palette={LIST_PALETTE}
+          onChange={changeSmartRule}
+          onSave={saveSmartRules}
+          onCancel={cancelSmartEdit} /> : null}
+      </View> : null}
+      controls={<View style={styles.controls}>
+        <TextInput
+          style={styles.search}
+          placeholder="Search this list or recommend something…"
+          placeholderTextColor={palette.textMuted}
+          value={search}
+          onChangeText={setSearch}
+          autoCorrect={false}
+          accessibilityLabel="Search this list" />
+        <FilterBar
+          filters={filters}
+          options={options}
+          palette={FILTER_PALETTE}
+          resultCount={visibleItems.length}
+          labels={{
+            filters: 'Filters',
+            status: 'Status',
+            sort: 'Sort',
+            view: 'View',
+            range: 'Range',
+          }}
+          onChange={changeFilters} />
+      </View>}
+      content={!isSmart && filters.view === 'tiers' ? <TierBoard
+        tiers={tiers}
+        columns={tierColumns}
+        unranked={tierUnranked}
+        canEdit={!!list.canEdit}
+        canFill={!!list.canEdit}
+        maxTiers={12}
+        notice={tierNotice}
+        undoAvailable={tierUndo.length > 0}
+        palette={LIST_PALETTE}
+        onSaveTiers={saveTiers}
+        onMoveItem={moveTierItem}
+        onReorderItem={reorderTierItem}
+        onFillFromRatings={fillTiersFromRatings}
+        onUndoFill={undoTierFill}
+        onExport={openTierExport}
+        onOpenItem={openItem} /> : <ListResults
+        items={visibleItems}
+        layout={filters.view}
+        sort={filters.sort}
+        palette={LIST_PALETTE}
+        canEdit={list.canEdit}
+        canRecommend={list.canRecommend}
+        isSmart={list.isSmart}
+        selectMode={selectMode}
+        selectedIds={selectedIds}
+        onToggleItem={toggleItem}
+        onToggleSelectMode={toggleSelectMode}
+        onClearSelection={() => {
+          setSelectedIds([]);
+          setBulkMessage(null);
         }}
-        onChange={changeFilters} />
-    </View>
-    {!isSmart && filters.view === 'tiers' ? <TierBoard
-      tiers={tiers}
-      columns={tierColumns}
-      unranked={tierUnranked}
-      canEdit={!!list.canEdit}
-      canFill={!!list.canEdit}
-      maxTiers={12}
-      notice={tierNotice}
-      undoAvailable={tierUndo.length > 0}
-      palette={LIST_PALETTE}
-      onSaveTiers={saveTiers}
-      onMoveItem={moveTierItem}
-      onReorderItem={reorderTierItem}
-      onFillFromRatings={fillTiersFromRatings}
-      onUndoFill={undoTierFill}
-      onExport={openTierExport}
-      onOpenItem={openItem} /> : <ListResults
-      items={visibleItems}
-      layout={filters.view}
-      sort={filters.sort}
-      palette={LIST_PALETTE}
-      canEdit={list.canEdit}
-      canRecommend={list.canRecommend}
-      isSmart={list.isSmart}
-      selectMode={selectMode}
-      selectedIds={selectedIds}
-      onToggleItem={toggleItem}
-      onToggleSelectMode={toggleSelectMode}
-      onClearSelection={() => {
-        setSelectedIds([]);
-        setBulkMessage(null);
-      }}
-      onBulkAction={runBulkAction}
-      bulkStatuses={BULK_STATUSES}
-      onRemoveItems={removeItems}
-      bulkMessage={bulkMessage}
-      onOpenItem={openItem}
-      onRate={rateItem}
-      emptyMode={emptyMode}
-      hasSearch={!!search.trim()}
-      onRecommend={recommendItem}
-      onBrowse={() => navigate?.('Search', { query: '' })} />}
-    <ListMembershipPopup
-      open={membersOpen}
-      list={list}
-      palette={LIST_PALETTE}
-      suggestions={suggestions}
-      onClose={() => setMembersOpen(false)}
-      onChangeVisibility={changeVisibility}
-      onAddMember={addMember}
-      onRemoveMember={removeMember}
-      onOpenLink={openLink} />
+        onBulkAction={runBulkAction}
+        bulkStatuses={BULK_STATUSES}
+        onRemoveItems={removeItems}
+        bulkMessage={bulkMessage}
+        onOpenItem={openItem}
+        onRate={rateItem}
+        emptyMode={emptyMode}
+        hasSearch={!!search.trim()}
+        onRecommend={recommendItem}
+        onBrowse={() => navigate?.('Search', { query: '' })} />}
+      dialogs={<ListMembershipPopup
+        open={membersOpen}
+        list={list}
+        palette={LIST_PALETTE}
+        suggestions={suggestions}
+        onClose={() => setMembersOpen(false)}
+        onChangeVisibility={changeVisibility}
+        onAddMember={addMember}
+        onRemoveMember={removeMember}
+        onOpenLink={openLink} />} />
   </Screen>;
 }
 

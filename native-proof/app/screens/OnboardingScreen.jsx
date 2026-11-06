@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text } from 'react-native';
 import {
   OnboardingCompleteStep,
   OnboardingImportStatusStep,
@@ -9,12 +8,12 @@ import {
   OnboardingServiceSetupStep,
   OnboardingServicesStep,
   OnboardingSummaryStep,
-  OnboardingWizard,
 } from '../../../frontend/onboarding/OnboardingWizard';
+import { OnboardingView } from '../../../frontend/pages/OnboardingView';
 import { ConfirmDialog } from '../../../frontend/settings/ConfirmDialog';
 import { Screen } from '../components/Screen';
 import { readOnboardingState, writeOnboardingState } from '../data/onboardingState';
-import { palette, spacing } from '../theme';
+import { palette } from '../theme';
 
 export const surface = {
   id: 'ONBOARDING',
@@ -749,12 +748,12 @@ export default function OnboardingScreen({ onBack }) {
 
   if (!hydrated) {
     return <Screen title="Onboarding" subtitle="First-run media, metadata, services and connection steps" onBack={onBack}>
-      <Text style={styles.loading}>Loading setup…</Text>
+      <OnboardingView loading palette={palette} />
     </Screen>;
   }
 
   return <Screen title="Onboarding" subtitle="First-run media, metadata, services and connection steps" onBack={onBack}>
-    <OnboardingWizard
+    <OnboardingView
       steps={STEPS}
       activeStep={state.status === 'completed' ? '' : state.step}
       completedSteps={completedSteps}
@@ -764,22 +763,18 @@ export default function OnboardingScreen({ onBack }) {
       notice={notice}
       onSaveAndFinish={state.status === 'completed' ? undefined : handleSaveAndFinish}
       palette={palette}
+      footer={<ConfirmDialog
+        visible={restartOpen}
+        title="Restart guided setup?"
+        message="This reopens the wizard from the media types step. Your existing media types, selected services and connections are kept."
+        confirmLabel="Restart setup"
+        cancelLabel="Keep setup"
+        palette={palette}
+        onCancel={() => setRestartOpen(false)}
+        onConfirm={restartSetup}
+      />}
     >
       {body}
-    </OnboardingWizard>
-    <ConfirmDialog
-      visible={restartOpen}
-      title="Restart guided setup?"
-      message="This reopens the wizard from the media types step. Your existing media types, selected services and connections are kept."
-      confirmLabel="Restart setup"
-      cancelLabel="Keep setup"
-      palette={palette}
-      onCancel={() => setRestartOpen(false)}
-      onConfirm={restartSetup}
-    />
+    </OnboardingView>
   </Screen>;
 }
-
-const styles = StyleSheet.create({
-  loading: { color: palette.textMuted, fontSize: 13, paddingHorizontal: spacing.xs },
-});

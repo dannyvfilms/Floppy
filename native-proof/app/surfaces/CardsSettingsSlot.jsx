@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { CardsEditor } from '../../../frontend/settings/CardsEditor';
-import { SettingsCard } from '../../../frontend/settings/SettingsCard';
-import { palette, radius, spacing } from '../theme';
+import { SettingsCardsView } from '../../../frontend/pages/SettingsCardsView';
+import { palette, radius } from '../theme';
 
 export const surface = {
   id: 'SET-CARDS',
@@ -224,23 +222,15 @@ export default function CardsSettingsSlot() {
     setSavedValues({ saved: submitted.saved, touchActions: submitted.touchActions });
   }
 
-  return <SettingsCard title="Media Cards" palette={settingsPalette}>
-    <View style={styles.form}>
-      <CardsEditor
-        catalog={catalog}
-        saved={values.saved}
-        initialSaved={savedValues.saved}
-        active="tv"
-        touchActions={values.touchActions}
-        onChange={setValues}
-        onSave={save}
-        palette={settingsPalette}
-        buttonPalette={buttonPalette}
-      />
-    </View>
-  </SettingsCard>;
+  return <SettingsCardsView
+    catalog={catalog}
+    saved={values.saved}
+    initialSaved={savedValues.saved}
+    active="tv"
+    touchActions={values.touchActions}
+    onChange={setValues}
+    onSave={save}
+    palette={settingsPalette}
+    buttonPalette={buttonPalette}
+  />;
 }
-
-const styles = StyleSheet.create({
-  form: { gap: spacing.sm },
-});

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
-import { MediumExtras, PersonCard, PersonHero, StudioHero } from './People';
-import { Rail } from './Rail';
+import { PeopleView } from '../pages/PeopleView';
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;
@@ -86,19 +85,19 @@ function CastRail({ props, palette }) {
     label: props.viewAll.label,
     onPress: () => openInternal(props.viewAll.href),
   } : undefined;
-  return <Rail items={props.items} title={props.title}
-      palette={{
-        ...palette,
-        surfaceHover: palette.surfaceStrong,
-        arrow: palette.textSecondary,
-        arrowDisabled: palette.surfaceMuted,
-        loading: palette.accent,
-      }}
-      renderItem={person => <PersonCard person={person} web labels={props.labels}
-        palette={palette} onOpen={entry => openInternal(entry.href)} />}
-      itemWidth={128} viewAll={viewAll}
-      collapsible={Boolean(props.collapseKey)} collapsed={props.collapseKey ? collapsed : undefined}
-      onCollapsedChange={props.collapseKey ? setCollapsed : undefined} />;
+  return <PeopleView
+    part="cast"
+    items={props.items}
+    title={props.title}
+    labels={props.labels}
+    palette={palette}
+    web
+    castWidth={128}
+    viewAll={viewAll}
+    collapsible={Boolean(props.collapseKey)}
+    collapsed={props.collapseKey ? collapsed : undefined}
+    onCollapsedChange={props.collapseKey ? setCollapsed : undefined}
+    onOpenPerson={entry => openInternal(entry.href)} />;
 }
 
 function Adapter({ props }) {
@@ -121,12 +120,19 @@ function Adapter({ props }) {
   }
 
   if (props.kind === 'extras') {
-    return <MediumExtras gameLengths={props.gameLengths} youtubeWatch={props.youtubeWatch}
-      labels={props.labels} palette={palette} onOpenSource={openExternal} />;
+    return <PeopleView
+      part="extras"
+      gameLengths={props.gameLengths}
+      youtubeWatch={props.youtubeWatch}
+      labels={props.labels}
+      palette={palette}
+      onOpenSource={openExternal} />;
   }
 
   if (props.kind === 'studio') {
-    return <StudioHero
+    return <PeopleView
+      part="hero"
+      kind="studio"
       studio={props.studio}
       counts={props.counts}
       labels={props.labels}
@@ -137,7 +143,9 @@ function Adapter({ props }) {
       onOpenWebsite={openExternal} />;
   }
 
-  return <PersonHero
+  return <PeopleView
+    part="hero"
+    kind="person"
     person={props.person}
     counts={props.counts}
     labels={props.labels}

@@ -2,12 +2,12 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { palette, spacing } from '../theme';
 
-export function Screen({ title, subtitle, children, scroll = true, onBack }) {
+export function Screen({ title, subtitle, children, scroll = true, onBack, chrome = true }) {
   const body = scroll
     ? <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">{children}</ScrollView>
     : <View style={styles.content}>{children}</View>;
   return <View style={styles.screen}>
-    <View style={styles.header}>
+    {chrome ? <View style={styles.header}>
       {onBack ? <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={onBack} style={styles.back}>
         <Text style={styles.backText}>Back</Text>
       </Pressable> : null}
@@ -15,7 +15,7 @@ export function Screen({ title, subtitle, children, scroll = true, onBack }) {
         <Text role="heading" aria-level={1} style={styles.title}>{title}</Text>
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       </View>
-    </View>
+    </View> : null}
     {body}
   </View>;
 }

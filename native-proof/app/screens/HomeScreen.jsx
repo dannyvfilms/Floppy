@@ -1,15 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../../../frontend/ui/Button';
-import { HomeShelves } from '../../../frontend/ui/HomeShelves';
+import { HomeView } from '../../../frontend/pages/HomeView';
 import {
   createHomeTransport,
   homeScreenFromPayload,
   mergeHomeRowPage,
 } from '../data/homeTransport';
 import { palette, radius, spacing } from '../theme';
-import { Screen, Section } from '../components/Screen';
-import HomeSettingsSlot from '../surfaces/HomeSettingsSlot';
+import { Screen } from '../components/Screen';
 import MediaCardSlot from '../surfaces/MediaCardSlot';
 import PlaybackSlot from '../surfaces/PlaybackSlot';
 import SearchSlot from '../surfaces/SearchSlot';
@@ -341,7 +340,6 @@ export default function HomeScreen({ navigate }) {
   const [loading, setLoading] = useState(serverMode);
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     if (!serverMode) return undefined;
@@ -430,57 +428,31 @@ export default function HomeScreen({ navigate }) {
     return { rows: [hydratedAiredRow()], pollRowIds: [] };
   }, [serverMode, transport]);
 
-  return <Screen title="Home" subtitle="Your next episodes, progress and shelves">
-    <SearchSlot
-      onOpenSearch={params => navigate?.('Search', params)}
-      onOpenSuggestion={item => navigate?.('Detail', { item })}
-    />
-    <Section title="Now Playing"
-      copy="Live playback and running check-ins. Stop or cancel one and the row updates in place.">
-      <PlaybackSlot onOpenDetail={() => navigate?.('Detail')} />
-    </Section>
-    {error ? <View style={styles.notice}>
-      <Text accessibilityLiveRegion="polite" style={styles.noticeText}>{error}</Text>
-      <Button label="Try again" tone="surface" onPress={() => setAttempt(current => current + 1)} />
-    </View> : null}
-    {loading
-      ? <View accessibilityLiveRegion="polite" style={styles.loading}>
-        <ActivityIndicator color={palette.accent} />
-        <Text style={styles.loadingText}>Loading Home from your server…</Text>
-      </View>
-      : <HomeShelves
-        groups={model.groups}
-        deferredGroups={model.deferredGroups}
-        showMediaTypeHeaders={model.showMediaTypeHeaders}
-        labels={model.labels}
-        palette={palette}
-        readOnly={model.readOnly}
-        itemWidth={168}
-        onOpenCard={item => navigate?.('Detail', { item: item?.card })}
-        onOpenLink={(_href, item) => navigate?.('Detail', { item: item?.card })}
-        onAction={(_action, item) => navigate?.('Detail', { item: item?.card })}
-        onLoadRow={loadRow}
-        onLoadMore={loadMore}
-        onSortRow={sortRow}
-        onRefreshCovers={refreshCovers}
-        onOpenSettings={() => setSettingsOpen(true)}
+  return <Screen chrome={false}>
+    <HomeView
+      search={<SearchSlot
+        onOpenSearch={params => navigate?.('Search', params)}
+        onOpenSuggestion={item => navigate?.('Detail', { item })}
       />}
-    {serverMode ? null : <Section title="Recently added"
-      copy="New in your library, with the shared card actions, rating and list forms.">
-      <MediaCardSlot
-        onOpenDetail={() => navigate?.('Detail')}
-        onOpenLink={() => navigate?.('Detail')}
-      />
-    </Section>}
-    <Section title="Customize Home"
-      copy="Open the shared Home screen editor to configure groups, rows, filters and sort order.">
-      <Button
-        label={settingsOpen ? 'Hide Home screen settings' : 'Open Home screen settings'}
-        tone="surface"
-        onPress={() => setSettingsOpen(current => !current)}
-      />
-      {settingsOpen ? <HomeSettingsSlot /> : null}
-    </Section>
+      playback={<PlaybackSlot onOpenDetail={() => navigate?.('Detail')} />}
+      groups={model.groups}
+      deferredGroups={model.deferredGroups}
+      showMediaTypeHeaders={model.showMediaTypeHeaders}
+      labels={model.labels}
+      palette={palette}
+      readOnly={model.readOnly}
+      itemWidth={168}
+      loading={loading}
+      error={error}
+      onRetry={() => setAttempt(current => current + 1)}
+      onOpenCard={item => navigate?.('Detail', { item: item?.card })}
+      onOpenLink={(_href, item) => navigate?.('Detail', { item: item?.card })}
+      onAction={(_action, item) => navigate?.('Detail', { item: item?.card })}
+      onLoadRow={loadRow}
+      onLoadMore={loadMore}
+      onSortRow={sortRow}
+      onRefreshCovers={refreshCovers}
+    />
   </Screen>;
 }
 

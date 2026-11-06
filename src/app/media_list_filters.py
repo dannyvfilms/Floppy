@@ -7,7 +7,6 @@ from dataclasses import dataclass, replace
 
 from django.apps import apps
 from django.core.cache import cache
-from django.db.models import Prefetch
 from django.utils import timezone
 
 from app import helpers
@@ -15,7 +14,6 @@ from app.models import (
     BasicMedia,
     CollectionEntry,
     Item,
-    ItemTag,
     MediaTypes,
     Season,
     Sources,
@@ -969,21 +967,9 @@ def media_list_entries_for_items(user, items) -> list[MediaListEntry]:
     # A tracked entry keeps its row's own item: the prefetches (events, tags)
     # hang off that instance. Generic/API hydration must not query CollectionEntry
     # for card decoration; HTML surfaces attach platforms from page context (#1004).
-    # Untracked rows have no tracker item to inherit those prefetches from, so
-    # load their tags here rather than letting each card query its own.
-    untracked_items = {
-        item.pk: item for item in items if item.pk not in media_by_item_id
-    }
-    if untracked_items:
-        untracked_items = {
-            item.pk: item
-            for item in Item.objects.filter(pk__in=untracked_items).prefetch_related(
-                Prefetch("item_tags", queryset=ItemTag.objects.select_related("tag")),
-            )
-        }
     return [
         MediaListEntry(
-            item=media.item if media is not None else untracked_items.get(item.pk, item),
+            item=media.item if media is not None else item,
             media=media,
         )
         for item in items

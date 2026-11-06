@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Button } from '../../../frontend/ui/Button';
-import { CollectionBrowser } from '../../../frontend/ui/CollectionBrowser';
+import { CollectionView } from '../../../frontend/pages/CollectionView';
 import {
   CollectionCopyDialog,
 } from '../../../frontend/ui/CollectionCopies';
@@ -999,7 +999,9 @@ export default function CollectionScreen({ navigate, onBack }) {
         }} />
     </View>
 
-    <CollectionBrowser
+    <CollectionView
+      title=""
+      subtitle=""
       items={visibleItems}
       groups={groups}
       filters={filters}
@@ -1009,13 +1011,11 @@ export default function CollectionScreen({ navigate, onBack }) {
       hasMore={hasMore}
       loadingMore={loadingMore}
       palette={palette}
+      notice={collectionNotice}
       onFilterChange={changeFilters}
       onLoadMore={loadMore}
       onLoadMoreGroup={loadMoreGroup}
-      onOpenCopy={item => openCopy(items.find(entry => entry.id === item.id) || item)}
-    />
-    {collectionNotice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{collectionNotice}</Text> : null}
-
+      onOpenCopy={item => openCopy(items.find(entry => entry.id === item.id) || item)}>
     <CollectionCopyDialog
       visible={!!selectedItem}
       item={selectedItem}
@@ -1069,6 +1069,7 @@ export default function CollectionScreen({ navigate, onBack }) {
           setCustomErrors({});
         }} /> : null}
     </CollectionCopyDialog>
+    </CollectionView>
   </Screen>;
 }
 

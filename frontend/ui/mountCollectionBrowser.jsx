@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { mountRoot } from '../settings/root';
-import { CollectionBrowser } from './CollectionBrowser';
+import { CollectionView } from '../pages/CollectionView';
 import { MediaCard } from './MediaCard.web';
 
 const canvas = document.createElement('canvas');
@@ -162,7 +162,9 @@ function Adapter({ host, props }) {
     };
   }, [model.nextUrl, model.items.length]);
 
-  return <CollectionBrowser
+  return <CollectionView
+    title=""
+    subtitle=""
     items={model.items || []}
     groups={model.groups ? groups : null}
     filters={model.filters || {}}

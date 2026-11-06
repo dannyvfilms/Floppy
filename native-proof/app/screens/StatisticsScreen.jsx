@@ -1,11 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { StatisticsSummary, StatisticsState } from '../../../frontend/ui/StatisticsSummary';
-import { StatisticsCharts } from '../../../frontend/ui/StatisticsCharts';
-import {
-  StatisticsComparison,
-  StatisticsMediaTypeOverviews,
-  StatisticsTalentSection,
-} from '../../../frontend/ui/StatisticsSections';
+import { StatisticsView } from '../../../frontend/pages/StatisticsView';
 import { Screen } from '../components/Screen';
 import { statisticsPalette } from '../theme';
 import {
@@ -18,7 +12,7 @@ export const surface = {
   status: 'in_progress',
   title: 'Statistics summary, charts, talent and per-media overviews',
   where: 'Statistics screen summary cards, highlights, range/media-type controls, charts, comparison, taste/talent, role/studio leaders, featured repeat and per-media-type overviews',
-  note: 'Summary, controls, highlights, comparison, every chart family, talent and per-media overviews use the shared React Native components. Range, refresh and sort actions call the authenticated statistics endpoints, and loading, error/retry and empty states cover the summary, charts, talent and overview sections. Blockers: the select-featured-person endpoint returns server HTML and the transport has no action for it, so a server-mode role-leader selection highlights the row but cannot refresh the featured card; the person media strip has no shared model, so it is not rendered; loadTalent has no media-type parameter, so talent stays all-types while the selected media types change; the web page still renders talent through the server fragment, so shared talent adoption is incomplete there. iOS and Android runtime are unverified.',
+  note: 'The shared StatisticsView owns the heading, summary/comparison/charts/talent/overviews order and section states; summary, controls, highlights, comparison, every chart family, talent and per-media overviews use the shared React Native components. Range, refresh and sort actions call the authenticated statistics endpoints, and loading, error/retry and empty states cover the summary, charts, talent and overview sections. Blockers: the select-featured-person endpoint returns server HTML and the transport has no action for it, so a server-mode role-leader selection highlights the row but cannot refresh the featured card; the person media strip has no shared model, so it is not rendered; loadTalent has no media-type parameter, so talent stays all-types while the selected media types change; the web page still renders talent through the server fragment, so shared talent adoption is incomplete there. iOS and Android runtime are unverified.',
 };
 
 const charts = {
@@ -1638,30 +1632,27 @@ export default function StatisticsScreen({ navigate, onBack }) {
     });
   }
 
-  return <Screen title="Statistics" subtitle="Your viewing and reading over time" onBack={onBack}>
-    <StatisticsSummary model={model}
+  return <Screen chrome={false}>
+    <StatisticsView
+      model={model}
+      comparison={comparisonModel}
+      charts={chartModel}
+      talent={talentModel}
+      mediaOverviews={mediaOverviewModel}
+      talentState={talentState}
       palette={statisticsPalette}
       onChangeRange={changeRange}
       onChangeMediaTypes={changeMediaTypes}
       onRefresh={refresh}
       onSelectHighlight={item => navigate('Detail', { item })}
+      onCompareMode={changeCompareMode}
+      onRoleSortChange={changeRoleSort}
+      onStudioSortChange={changeStudioSort}
+      onTasteSortChange={changeTasteSort}
+      onSelectPerson={selectPerson}
+      onOpenPerson={openPerson}
+      onSelectItem={item => navigate('Detail', { item })}
       onRetry={retry} />
-    {!loading && !error ? <React.Fragment>
-      <StatisticsComparison model={comparisonModel} palette={statisticsPalette}
-        onCompareMode={changeCompareMode} onRetry={retry} />
-      <StatisticsCharts model={chartModel} palette={statisticsPalette}
-        onSelectPerson={openPerson} />
-      {talentState === 'ready'
-        ? <StatisticsTalentSection model={talentModel} palette={statisticsPalette}
-          onRoleSortChange={changeRoleSort}
-          onStudioSortChange={changeStudioSort}
-          onTasteSortChange={changeTasteSort}
-          onSelectPerson={selectPerson} />
-        : <StatisticsState kind={talentState === 'error' ? 'error' : 'loading'}
-          palette={statisticsPalette} onRetry={retry} />}
-      <StatisticsMediaTypeOverviews model={mediaOverviewModel} palette={statisticsPalette}
-        onSelectItem={item => navigate('Detail', { item })} />
-    </React.Fragment> : null}
   </Screen>;
 }
 

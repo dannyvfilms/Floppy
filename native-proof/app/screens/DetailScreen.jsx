@@ -1,45 +1,48 @@
 import React, { useState } from 'react';
 import { Linking } from 'react-native';
-import { Screen, Section } from '../components/Screen';
+import { DetailView } from '../../../frontend/pages/DetailView';
+import { Screen } from '../components/Screen';
 import ArtworkSlot from '../surfaces/ArtworkSlot';
 import DetailChildrenSlot from '../surfaces/DetailChildrenSlot';
 import DetailRelatedSlot from '../surfaces/DetailRelatedSlot';
-import DetailSlot from '../surfaces/DetailSlot';
 import DetailTrackingSlot from '../surfaces/DetailTrackingSlot';
 import { CheckInStateSlot } from '../surfaces/PlaybackSlot';
+import { createDetailModel } from '../surfaces/DetailSlot';
 import NotesSlot from '../surfaces/NotesSlot';
 import ProgressSlot from '../surfaces/ProgressSlot';
 import RatingSlot from '../surfaces/RatingSlot';
+import { palette } from '../theme';
 
 export default function DetailScreen({ params, onBack }) {
   const title = params?.item?.title || 'Detail';
   const [trackTarget, setTrackTarget] = useState(null);
+  const [actionStatus, setActionStatus] = useState('');
+  const model = createDetailModel();
+  const actions = model.actions || {};
+  model.actions = {
+    primary: actions.primary
+      ? { ...actions.primary, label: actionStatus || actions.primary.label,
+        onPress: () => setActionStatus('Watching episode 7') }
+      : null,
+    items: (actions.items || []).map(item => ({ ...item,
+      onPress: () => setActionStatus('In your library') })),
+  };
+
   return <Screen title={title} subtitle="Detail, tracking and rating" onBack={onBack}>
-    <DetailSlot />
-    <Section title="Your score">
-      <RatingSlot />
-    </Section>
-    <Section title="Your progress">
-      <ProgressSlot />
-    </Section>
-    <Section title="Check-in">
-      <CheckInStateSlot />
-    </Section>
-    <Section title="Tracking">
-      <DetailTrackingSlot target={trackTarget} onOpen={setTrackTarget}
-        onClose={() => setTrackTarget(null)} />
-    </Section>
-    <Section title="Your notes">
-      <NotesSlot />
-    </Section>
-    <Section title="Artwork and editions">
-      <ArtworkSlot />
-    </Section>
-    <Section title="Seasons, episodes and issues">
-      <DetailChildrenSlot onTrack={setTrackTarget} />
-    </Section>
-    <Section title="Related media">
-      <DetailRelatedSlot onOpenExternal={url => { Linking.openURL(url).catch(() => {}); }} />
-    </Section>
+    <DetailView
+      model={model}
+      labels={model.labels}
+      palette={palette}
+      sectionBodies={{
+        score: <RatingSlot />,
+        progress: <ProgressSlot />,
+        'check-in': <CheckInStateSlot />,
+        tracking: <DetailTrackingSlot target={trackTarget} onOpen={setTrackTarget}
+          onClose={() => setTrackTarget(null)} />,
+        notes: <NotesSlot />,
+        artwork: <ArtworkSlot />,
+        children: <DetailChildrenSlot onTrack={setTrackTarget} />,
+        related: <DetailRelatedSlot onOpenExternal={url => { Linking.openURL(url).catch(() => {}); }} />,
+      }} />
   </Screen>;
 }

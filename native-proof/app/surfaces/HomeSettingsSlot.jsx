@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { HomeScreenEditor } from '../../../frontend/settings/HomeScreenEditor';
-import { SettingsCard } from '../../../frontend/settings/SettingsCard';
-import { palette, radius, spacing } from '../theme';
+import { SettingsHomeView } from '../../../frontend/pages/SettingsHomeScreenView';
+import { palette, radius } from '../theme';
 
 export const surface = {
   id: 'SET-HOME',
@@ -429,25 +427,17 @@ export default function HomeSettingsSlot() {
     setSavedValues(submitted);
   }
 
-  return <SettingsCard title="Home Screen" palette={settingsPalette}>
-    <View style={styles.form}>
-      <HomeScreenEditor
-        sections={values.sections}
-        initialSections={savedValues.sections}
-        listChoices={listChoices}
-        mediaTypeChipStyles={mediaTypeChipStyles}
-        showMediaTypeHeaders={values.showMediaTypeHeaders}
-        mediaTypeChipsEnabled={values.mediaTypeChipsEnabled}
-        mediaTypeChipStyle={values.mediaTypeChipStyle}
-        onChange={setValues}
-        onSave={save}
-        palette={settingsPalette}
-        buttonPalette={buttonPalette}
-      />
-    </View>
-  </SettingsCard>;
+  return <SettingsHomeView
+    sections={values.sections}
+    initialSections={savedValues.sections}
+    listChoices={listChoices}
+    mediaTypeChipStyles={mediaTypeChipStyles}
+    showMediaTypeHeaders={values.showMediaTypeHeaders}
+    mediaTypeChipsEnabled={values.mediaTypeChipsEnabled}
+    mediaTypeChipStyle={values.mediaTypeChipStyle}
+    onChange={setValues}
+    onSave={save}
+    palette={settingsPalette}
+    buttonPalette={buttonPalette}
+  />;
 }
-
-const styles = StyleSheet.create({
-  form: { gap: spacing.sm },
-});

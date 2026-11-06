@@ -1,50 +1,70 @@
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Screen, Section } from '../components/Screen';
-import { EXTRA_LABELS, EXTRA_SCREENS } from '../extraScreens';
+import React, { useEffect, useState } from 'react';
+import { SettingsView } from '../../../frontend/pages/SettingsView';
+import { Screen } from '../components/Screen';
 import AppearanceSettingsSlot from '../surfaces/AppearanceSettingsSlot';
 import CardsSettingsSlot from '../surfaces/CardsSettingsSlot';
 import DataAccessNotificationsSlot from '../surfaces/DataAccessNotificationsSlot';
 import HomeSettingsSlot from '../surfaces/HomeSettingsSlot';
 import PreferencesSlot from '../surfaces/PreferencesSlot';
-import ProviderSettingsSlot from '../surfaces/ProviderSettingsSlot';
-import SettingsCardSlot from '../surfaces/SettingsCardSlot';
 import UsersSlot from '../surfaces/UsersSlot';
-import { palette, radius, spacing } from '../theme';
+import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
+import { palette } from '../theme';
 
-function NavigationRow({ label, onPress }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress}
-    style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
-    <Text style={styles.rowLabel}>{label}</Text>
-    <Text style={styles.rowMeta}>Open</Text>
-  </Pressable>;
+// Real settings navigation shared with the web page. The settings tab no longer
+// lists demo screens: each entry opens the same page composition the browser
+// uses. Routes without a native adapter (providers directory/activity, sidebar
+// media ordering) are marked server-only by the shared navigation model instead
+// of showing a native-only fake.
+const INLINE_PAGES = {
+  settingsPreferences: PreferencesSlot,
+  settingsAppearance: AppearanceSettingsSlot,
+  settingsCards: CardsSettingsSlot,
+  settingsHome: HomeSettingsSlot,
+  settingsUsers: UsersSlot,
+  settingsData: DataAccessNotificationsSlot,
+  settingsAccess: DataAccessNotificationsSlot,
+  settingsNotifications: DataAccessNotificationsSlot,
+};
+
+const DATA_PAGE_KIND = {
+  settingsData: 'data',
+  settingsAccess: 'access',
+  settingsNotifications: 'notifications',
+};
+
+function isSuperuser(session) {
+  const user = session?.user;
+  return Boolean(user?.isSuperuser || user?.is_superuser);
 }
 
 export default function SettingsScreen({ navigate }) {
-  return <Screen title="Settings" subtitle="Account, providers, appearance and data">
-    <SettingsCardSlot />
-    <DataAccessNotificationsSlot />
-    <ProviderSettingsSlot />
-    <Section title="Screens">
-      <NavigationRow label="Lists" onPress={() => navigate('Lists')} />
-      <NavigationRow label="History" onPress={() => navigate('History')} />
-      <NavigationRow label="Statistics" onPress={() => navigate('Statistics')} />
-      <NavigationRow label="Search" onPress={() => navigate('Search')} />
-      {Object.keys(EXTRA_SCREENS).map(key => <NavigationRow key={key} label={EXTRA_LABELS[key]} onPress={() => navigate(key)} />)}
-    </Section>
-    <PreferencesSlot />
-    <AppearanceSettingsSlot />
-    <CardsSettingsSlot />
-    <HomeSettingsSlot />
-    <Section title="Administration" copy="Superuser-only account management.">
-      <UsersSlot />
-    </Section>
+  const [active, setActive] = useState('settingsPreferences');
+  const [superuser, setSuperuser] = useState(() => isSuperuser(getActiveAuthSession()));
+
+  useEffect(() => subscribeAuthSession(session => setSuperuser(isSuperuser(session))), []);
+
+  function selectPage(item) {
+    if (item.page === 'settingsAccount') {
+      navigate('Auth');
+      return;
+    }
+    if (item.page === 'settingsAdvanced' || item.page === 'settingsAbout') {
+      navigate('SettingsAdvanced', { page: item.page === 'settingsAbout' ? 'about' : 'advanced' });
+      return;
+    }
+    if (INLINE_PAGES[item.page]) setActive(item.page);
+  }
+
+  const Page = INLINE_PAGES[active];
+  const pageKind = DATA_PAGE_KIND[active];
+  const content = Page
+    ? pageKind ? <Page page={pageKind} /> : <Page />
+    : null;
+
+  return <Screen chrome={false}>
+    <SettingsView active={active} onNavigate={selectPage}
+      permissions={{ superuser }} palette={palette}>
+      {content}
+    </SettingsView>
   </Screen>;
 }
-
-const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: palette.border, borderRadius: radius.md, backgroundColor: palette.surface, paddingHorizontal: spacing.md, paddingVertical: spacing.md },
-  pressed: { opacity: 0.7 },
-  rowLabel: { color: palette.text, fontSize: 15, fontWeight: '500' },
-  rowMeta: { color: palette.accent, fontSize: 12 },
-});

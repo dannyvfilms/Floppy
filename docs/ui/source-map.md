@@ -192,6 +192,7 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 - Remaining legacy: `frontend/ui/controls.jsx` Button (its frozen `Dialog`/`ActionMenu` statements and the React-island consumers that import it), 198 hand-written solid indigo or red buttons in 81 templates, Alpine-bound buttons (872 tags), in-place htmx toggles, icon buttons, composed-attribute/composed-label buttons and the look variants listed in the BUTTON register entry.
 
 ## WEB-UTILITIES
+- `frontend/pages/UtilitiesView.jsx` (shared clipboard/install/cache page composition)
 
 - `frontend/ui/CopyField.jsx`
 - `frontend/ui/InstallPromptCard.jsx`
@@ -210,6 +211,7 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 - `src/static/js/serviceworker.js`
 
 ## ERRORS-DOCS
+- `frontend/pages/ErrorsView.jsx` (shared error and API-docs page compositions)
 
 - `frontend/errors/ErrorRecovery.jsx` (universal error status selector, recovery hero, quick checks, provider support note, actions, report panel and safe copyable traceback; presentation only)
 - `frontend/errors/ApiDocs.jsx` (universal API task index, first-request/workflow commands, cheat sheet, status/media vocabularies, glossary and schema links; presentation only)
@@ -293,8 +295,15 @@ in the register.
 - `src/templates/app/components/media_card_rating_oob.html`
 - `src/templates/app/components/rating_picker.html`
 
+## PAGE
+
+- `frontend/pages/PageChrome.jsx` (shared `PageHeading`, `PageSection` and `PageState` page chrome used by the shared page compositions)
+- `frontend/ui/PageSlot.web.jsx` (`PageSlot`, `collectPageSlots` browser slot host: adopts server-owned page regions into the shared composition order, keeps them as the no-JavaScript fallback and restores them on unmount)
+
 ## LIBRARY
 
+- `frontend/pages/LibraryPageView.jsx` (shared library page composition: heading/count, filters, selection, group banner, table/grid area and loading/empty/error order)
+- `frontend/ui/mountLibraryPage.jsx` (browser adapter: adopts the server heading, Alpine filter form/toolbar, bulk selection, group banner, htmx table/grid and loading indicator into `LibraryPageView` section slots)
 - `src/templates/app/components/_release_year_fetch_js.html`
 - `src/templates/app/components/game_grouped_items.html`
 - `src/templates/app/components/game_grouped_ungrouped.html`
@@ -429,6 +438,7 @@ These are the universal provider controls. `frontend/ui/controls.jsx` remains th
 - `src/static/js/searchAutocomplete.js`
 - `src/static/js/searchParentFallback.js`
 - `src/static/js/searchShortcut.js`
+- `frontend/pages/SearchPageView.jsx` (shared Search page composition: optional platform search field, shared SearchResults surface and footer)
 - `src/templates/app/components/search_local_album_cards.html`
 - `src/templates/app/components/search_parent_season.html`
 - `src/templates/app/components/search_parent_tv.html`
@@ -439,6 +449,8 @@ These are the universal provider controls. `frontend/ui/controls.jsx` remains th
 
 - `frontend/ui/Rail.jsx`
 - `frontend/ui/Rail.web.jsx`
+- `frontend/pages/HomeView.jsx` (shared Home content composition)
+- `frontend/pages/registry.js` (web ↔ Expo page inventory)
 - `frontend/ui/HomeShelves.jsx` (Home shelves on web and native)
 - `frontend/ui/mountRails.jsx`
 - `native-proof/app/surfaces/RailsSlot.jsx` (native placement on the Home and Discover screens)
@@ -451,6 +463,8 @@ These are the universal provider controls. `frontend/ui/controls.jsx` remains th
 
 The `frontend/settings/index.js` island loader (owned under SET-USERS) resolves this family's browser roots; its selector, kind mapping, dynamic import and mount selection must all name the same root, or the host is never mounted even when it has a kind.
 
+- `frontend/pages/HomeView.jsx` (shared Home content composition)
+- `frontend/pages/registry.js` (web ↔ Expo page inventory)
 - `frontend/ui/HomeShelves.jsx` (universal shelves, deferred rows, coalesced cover poller and empty/error states)
 - `frontend/ui/mountHome.jsx` (browser mount over the server Home shelves, row/window and cover-poll requests)
 - `native-proof/app/screens/HomeScreen.jsx` (native placement with real transport and demo fallback)
@@ -482,6 +496,7 @@ detail tracking split button remain server/HTMX-owned fallbacks.
 
 ## DISCOVER
 
+- `frontend/pages/DiscoverView.jsx`
 - `frontend/discover/DiscoverScreen.jsx`
 - `frontend/discover/mountDiscover.jsx`
 - `frontend/ui/mountFilterChips.jsx`
@@ -496,6 +511,7 @@ detail tracking split button remain server/HTMX-owned fallbacks.
 
 Shared React presentation and browser integration:
 
+- `frontend/pages/DetailView.jsx` (shared detail content composition and section order)
 - `frontend/ui/DetailComposition.jsx`
 - `frontend/ui/DetailCompositionTheme.web.jsx`
 - `frontend/ui/mountDetailComposition.jsx`
@@ -673,6 +689,7 @@ teleported modal and breakdown remain as the server fallback.
 
 ## OWNERSHIP
 
+- `frontend/pages/CollectionView.jsx` (shared collection composition and state order)
 - `frontend/ui/CollectionBrowser.jsx` (universal grid, rows, table, filters and card model)
 - `frontend/ui/mountCollectionBrowser.jsx` (browser grid, grouped-row and table adapter with page and per-row JSON load-more)
 - `frontend/ui/CollectionCopies.jsx`
@@ -733,6 +750,7 @@ teleported modal and breakdown remain as the server fallback.
 - `src/templates/app/podcast_show_detail.html`
 - `frontend/ui/MusicRelationCard.jsx` (shared artist relation card and grid)
 - `frontend/ui/mountMusicRelations.jsx` (browser artist relation grid adapter over the server fallback)
+- `frontend/pages/MusicView.jsx` (shared music/podcast page composition, tabs and section order)
 - `frontend/ui/MusicAlbumCard.jsx` (shared album card and discography grid; browser props carry the resolved music card-line profile)
 - `frontend/ui/mountMusicAlbums.jsx` (browser discography album grid adapter over the server fallback)
 - `native-proof/app/screens/MusicScreen.jsx` (native artist, album, track and podcast composition; demo state, injectable transport)
@@ -742,6 +760,7 @@ teleported modal and breakdown remain as the server fallback.
 
 ## PEOPLE
 
+- `frontend/pages/PeopleView.jsx` (shared person/studio page composition and section order)
 - `frontend/ui/People.jsx`
 - `frontend/ui/mountPeople.jsx` (browser mount for the person/studio heroes, cast/crew rails and game extras)
 - `native-proof/app/screens/PeopleScreen.jsx` (native placement; live profile transport or demo preview)
@@ -766,6 +785,7 @@ teleported modal and breakdown remain as the server fallback.
 
 ## TAGS
 
+- `frontend/pages/TagsPageView.jsx` (shared Tags page composition: heading, subtitle, Name/Most-used sort control, tag index and loading/error states)
 - `frontend/ui/TagManagement.jsx` (universal `TagIndex`, `TagMediaFilter`, `TagPreview`, `TagAssignmentDialog` and `TagBulkDialog`; presentation only)
 - `frontend/ui/mountTags.jsx` (browser adapter for the tag index, detail preview, assignment dialog in its modal and embedded track-tab forms, and media-type filter)
 - `src/templates/app/components/detail_tag_preview.html`
@@ -807,6 +827,7 @@ activity sessions from `activity_sessions_modal?format=json`. The server
 template keeps the day list and its chrome as the no-JS/chunk-failure fallback.
 The native read transport maps the bounded `/api/v1/history/` route.
 
+- `frontend/pages/HistoryView.jsx`
 - `frontend/ui/HistoryFeed.jsx`
 - `frontend/ui/mountHistoryFeed.jsx`
 - `frontend/ui/SearchResultCard.jsx`
@@ -851,6 +872,7 @@ by `src/static/js/date-range.js`. The server role-leader, featured-repeat and pe
 strip fragments remain the web owner, and the copied stacked-hours chart stays
 server-owned.
 
+- `frontend/pages/StatisticsView.jsx`
 - `frontend/ui/StatisticsSummary.jsx`
 - `frontend/ui/StatisticsCharts.jsx`
 - `frontend/ui/StatisticsSections.jsx`
@@ -890,6 +912,7 @@ server-owned.
 
 ## RELEASE-CALENDAR
 
+- `frontend/pages/CalendarView.jsx`
 - `frontend/ui/ReleaseCalendar.jsx`
 - `frontend/ui/CalendarLinks.jsx` (shared release/history subscription panel)
 - `frontend/ui/mountReleaseCalendar.jsx`
@@ -913,6 +936,10 @@ server-owned.
 - `native-proof/app/data/listTransport.js` (native list transport; uses the authenticated request or an injected request, otherwise local preview)
 - `native-proof/app/data/listTransport.web.js` (browser list transport; same-origin session, CSRF header and local fallback)
 - `frontend/ui/ListFormView.jsx` (universal create/edit list form: name, description, public/unlisted/private visibility, public slug, notes/recommendation/smart toggles, tags, collaborator/viewer roles and delete guard; presentation only. The web modal remains the active consumer and mirrors these fields.)
+- `frontend/pages/ListsPageView.jsx` (shared Lists hub composition: heading/actions, search, tag filter, card grid and empty/loading/error states)
+- `frontend/pages/ListDetailPageView.jsx` (shared list-detail order: header, notice, smart panel, controls, tier board/results and dialogs)
+- `frontend/ui/mountListsPage.jsx` (browser adapter: adopts the server heading/actions, Alpine search and sort/type toolbar, htmx card grid or empty state, create/import modals and loading indicator into `ListsPageView` slots)
+- `frontend/ui/mountListDetailPage.jsx` (browser adapter: adopts the server list header, Alpine filter/search toolbar, htmx table/grid/tier results, create/edit modal and loading indicator into `ListDetailPageView` slots)
 - `frontend/ui/ListSearchView.jsx` (universal list add/recommend item search and preview dialog)
 - `frontend/ui/ListRecommendationsView.jsx` (universal list recommendations approval/deny presentation)
 - `native-proof/app/screens/ListsScreen.jsx`
@@ -965,6 +992,13 @@ server-owned.
 - `src/templates/lists/components/tier_tile.html`
 
 ## SET-NAV
+- `frontend/pages/SettingsNavLink.jsx` (shared settings navigation row)
+- `frontend/pages/SettingsNavLink.web.jsx` (browser anchor adapter for the settings row)
+- `frontend/settings/mountSettingsView.jsx` (browser settings page composition over the server form slot)
+- `src/users/settings_nav.py` (server settings navigation/page model with URLs and parsed icon shapes)
+- `src/users/templatetags/ui_tags.py` (`settings_view_react`)
+- `frontend/pages/SettingsView.jsx` (shared settings navigation and page shell: `SettingsView`, `SettingsNav`, `SettingsPage`)
+- `native-proof/app/screens/SettingsScreen.jsx` (native settings tab: shared navigation and page compositions)
 
 - `src/templates/users/base.html`
 - `src/templates/users/components/_media_type_order_js.html`
@@ -972,6 +1006,7 @@ server-owned.
 - `src/templates/users/sidebar.html`
 
 ## SET-PREFERENCES
+- `frontend/pages/SettingsPreferencesView.jsx` (shared preferences page composition)
 
 - `frontend/ui/PreferencesForm.jsx`
 - `frontend/ui/SelectField.jsx`
@@ -982,12 +1017,14 @@ server-owned.
 - `src/templates/users/components/form_save_bar.html`
 
 ## SET-APPEARANCE
+- `frontend/pages/SettingsAppearanceView.jsx` (shared appearance page composition)
 
 - `frontend/settings/AppearanceEditor.jsx` (effect steppers honor decrement; native placement is the parity-tested editor)
 - `native-proof/app/surfaces/AppearanceSettingsSlot.jsx`
 - `src/templates/users/appearance.html`
 
 ## SET-CARDS
+- `frontend/pages/SettingsCardsView.jsx` (shared media-cards page composition)
 
 - `frontend/settings/CardsEditor.jsx` (release title/save/help copy; native placement opens TV by default)
 - `native-proof/app/surfaces/CardsSettingsSlot.jsx`
@@ -995,12 +1032,14 @@ server-owned.
 - `src/templates/users/cards_preview.html`
 
 ## SET-HOME
+- `frontend/pages/SettingsHomeScreenView.jsx` (shared Home Screen page composition)
 
 - `frontend/settings/HomeScreenEditor.jsx`
 - `native-proof/app/surfaces/HomeSettingsSlot.jsx`
 - `src/templates/users/home_screen.html`
 
 ## SET-PROVIDERS
+- `frontend/pages/ProvidersView.jsx` (shared provider directory/activity page compositions)
 
 - `frontend/providers/AccountSettings.jsx`
 - `frontend/providers/ConnectionSettings.jsx`
@@ -1115,6 +1154,7 @@ dialog, the credential modal and `frontend/providers/Credentials.jsx`.
 - `src/templates/users/providers/outbound_sync.html`
 
 ## SET-DATA
+- `frontend/pages/SettingsDataView.jsx` (shared data-management page composition)
 
 - `frontend/settings/BackupStatus.jsx`
 - `frontend/settings/ConfirmDialog.jsx`
@@ -1129,6 +1169,7 @@ dialog, the credential modal and `frontend/providers/Credentials.jsx`.
 - `src/templates/users/rss.html`
 
 ## SET-ACCESS
+- `frontend/pages/SettingsAccessView.jsx` (shared access-and-tokens page composition)
 
 - `frontend/settings/AccessSettings.jsx`
 - `src/templates/integrations/oauth_applications.html`
@@ -1139,6 +1180,8 @@ dialog, the credential modal and `frontend/providers/Credentials.jsx`.
 - `src/templates/users/providers/access_tokens.html`
 
 ## AUTH
+- `frontend/pages/AuthView.jsx` (shared authentication and account-security compositions)
+- `frontend/pages/SettingsAccountView.jsx` (settings account page composition)
 
 Shared `AuthEntrance`, `SocialProviders` and `AuthNotice` own entrance, social-provider and notice presentation. `AccountSecurity` owns the profile, account-type, password, authenticator, recovery-code, connection and deletion cards. The Django templates below remain the browser implementation and fallback.
 
@@ -1181,6 +1224,7 @@ Shared `AuthEntrance`, `SocialProviders` and `AuthNotice` own entrance, social-p
 - `src/templates/users/password_recover.html`
 
 ## SET-NOTIFICATIONS
+- `frontend/pages/SettingsNotificationsView.jsx` (shared notifications page composition)
 
 - `frontend/settings/NotificationSettings.jsx`
 - `src/templates/users/components/excluded_items.html`
@@ -1188,6 +1232,7 @@ Shared `AuthEntrance`, `SocialProviders` and `AuthNotice` own entrance, social-p
 - `src/templates/users/notifications.html`
 
 ## ONBOARDING
+- `frontend/pages/OnboardingView.jsx` (shared onboarding page composition)
 
 - `frontend/onboarding/OnboardingWizard.jsx`
 - `native-proof/app/screens/OnboardingScreen.jsx`
@@ -1209,6 +1254,7 @@ Shared `AuthEntrance`, `SocialProviders` and `AuthNotice` own entrance, social-p
 - `src/templates/users/onboarding/services_summary.html`
 
 ## SET-USERS
+- `frontend/pages/SettingsUsersView.jsx` (shared superuser-users page composition)
 
 - `frontend/users/UsersManagement.jsx`
 - `frontend/settings/index.js`
@@ -1220,6 +1266,8 @@ Shared `AuthEntrance`, `SocialProviders` and `AuthNotice` own entrance, social-p
 - `src/users/tests/views/test_users_management.py`
 
 ## SET-SYSTEM
+- `frontend/pages/SettingsAdvancedView.jsx` (shared advanced page composition)
+- `frontend/pages/SettingsAboutView.jsx` (shared About page composition)
 
 - `src/templates/users/about.html`
 - `src/templates/users/advanced.html`

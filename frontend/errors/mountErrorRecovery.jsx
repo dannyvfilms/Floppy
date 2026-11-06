@@ -1,7 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import { mountRoot } from '../settings/root';
-import { ErrorRecovery } from './ErrorRecovery';
+import { ErrorsView } from '../pages/ErrorsView';
 import { Icon } from '../ui/Icon';
 import { copyText } from '../ui/clipboard.web';
 
@@ -86,25 +86,30 @@ function ErrorRecoveryAdapter({ props }) {
   const support = props.support
     ? { ...props.support, onOpen: () => openExternal(props.support.href) }
     : undefined;
-  return <ErrorRecovery
-    status={props.status}
-    heading={props.heading}
-    message={props.message}
-    checks={props.checks}
-    support={support}
-    report={props.report}
-    reportTitle={props.reportTitle}
-    reportNote={props.reportNote}
+  return <ErrorsView
+    error={{
+      status: props.status,
+      heading: props.heading,
+      message: props.message,
+      checks: props.checks,
+      support,
+      report: props.report,
+      reportTitle: props.reportTitle,
+      reportNote: props.reportNote,
+      statusSize: 128,
+      headingLevel: 1,
+    }}
+    recovery={{
+      labels: props.labels,
+      onCopyReport: copyText,
+      onReportIssue: actions.reportIssueHref ? () => openExternal(actions.reportIssueHref) : undefined,
+      onRetry: actions.retryHref ? () => assign(actions.retryHref) : undefined,
+      onLogin: actions.loginHref ? () => assign(actions.loginHref) : undefined,
+      onGoHome: actions.homeHref ? () => assign(actions.homeHref) : undefined,
+    }}
     labels={props.labels}
     icons={icons}
-    statusSize={128}
-    headingLevel={1}
     palette={palette}
-    onCopyReport={copyText}
-    onReportIssue={actions.reportIssueHref ? () => openExternal(actions.reportIssueHref) : undefined}
-    onRetry={actions.retryHref ? () => assign(actions.retryHref) : undefined}
-    onLogin={actions.loginHref ? () => assign(actions.loginHref) : undefined}
-    onGoHome={actions.homeHref ? () => assign(actions.homeHref) : undefined}
   />;
 }
 

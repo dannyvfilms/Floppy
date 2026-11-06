@@ -8,25 +8,25 @@
 {% endblock title %}
 
 {% block content %}
-  <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-    <div>
-      <h1 class="text-3xl font-bold mb-2">{% translate "Tags" %}</h1>
-      <p class="text-[var(--color-text-muted)]">{% translate "All tags you've created, with how many items use each one" %}</p>
-    </div>
-    <div class="flex items-center gap-2 text-sm">
-      <a href="?sort=name"
-         class="px-3 py-1.5 rounded-md transition-colors {% if sort == 'name' %}bg-[var(--color-border)] text-[var(--color-text)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)]{% endif %}">
-        {% translate "Name" %}
-      </a>
-      <a href="?sort=count"
-         class="px-3 py-1.5 rounded-md transition-colors {% if sort == 'count' %}bg-[var(--color-border)] text-[var(--color-text)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)]{% endif %}">
-        {% translate "Most used" %}
-      </a>
-    </div>
-  </div>
-
-  {{ tag_index_data|json_script:"tag-index-props" }}
   <div data-tag-index-root data-props-id="tag-index-props">
+    {{ tag_index_data|json_script:"tag-index-props" }}
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+      <div>
+        <h1 class="text-3xl font-bold mb-2">{% translate "Tags" %}</h1>
+        <p class="text-[var(--color-text-muted)]">{% translate "All tags you've created, with how many items use each one" %}</p>
+      </div>
+      <div class="flex items-center gap-2 text-sm">
+        <a href="?sort=name"
+           class="px-3 py-1.5 rounded-md transition-colors {% if sort == 'name' %}bg-[var(--color-border)] text-[var(--color-text)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)]{% endif %}">
+          {% translate "Name" %}
+        </a>
+        <a href="?sort=count"
+           class="px-3 py-1.5 rounded-md transition-colors {% if sort == 'count' %}bg-[var(--color-border)] text-[var(--color-text)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)]{% endif %}">
+          {% translate "Most used" %}
+        </a>
+      </div>
+    </div>
+
     <div id="tag-index-list" class="space-y-2">
       {% for tag in tags %}
         <div class="flex items-center justify-between bg-[var(--color-surface-strong)] p-4 rounded-md gap-4"

@@ -1,5 +1,85 @@
 {
   "universal": {
+    "frontend/pages/DiscoverView.jsx": {
+      "components": [
+        "DiscoverView"
+      ],
+      "register": "DISCOVER",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not yet a page-level web mount: the browser Discover page keeps its Alpine-owned chrome and mounts the shared row/feedback/state sections because the row islands preserve pre-mount grid measurement. No 1440/390 browser pass was taken for this wrapper."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "native-proof/app/screens/DiscoverScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "native-proof/app/screens/DiscoverScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
+        }
+      }
+    },
+    "frontend/pages/HistoryView.jsx": {
+      "components": [
+        "HistoryView"
+      ],
+      "register": "HISTORY",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Mounted by frontend/ui/mountHistoryFeed.jsx with chrome=false over the server history fallback. Chromium on macOS loaded /history at 1440x900 and 390x844 with CLS 0.00, no horizontal overflow and no console errors; section order and spacing matched the release baseline."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "native-proof/app/screens/HistoryScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "native-proof/app/screens/HistoryScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
+        }
+      }
+    },
+    "frontend/pages/StatisticsView.jsx": {
+      "components": [
+        "StatisticsView"
+      ],
+      "register": "STATISTICS",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "frontend/ui/mountStatisticsSummary.jsx renders the summary section through this view over the server fallback. Chromium on macOS loaded the mounted summary at 1440x900 and 390x844 with CLS 0.00, no horizontal overflow and no console errors; the remaining web sections still mount their own adapters."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "native-proof/app/screens/StatisticsScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "native-proof/app/screens/StatisticsScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
+        }
+      }
+    },
+    "frontend/pages/CalendarView.jsx": {
+      "components": [
+        "CalendarView"
+      ],
+      "register": "RELEASE-CALENDAR",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "frontend/ui/mountReleaseCalendar.jsx and mountCalendarLinks.jsx render the calendar and links sections through this view over the existing server fallbacks. Chromium on macOS loaded /calendar at 1440x900 and 390x844 with CLS 0.00, no horizontal overflow and no console errors; the month grid and subscription panel keep the release geometry."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "native-proof/app/screens/CalendarScreen.jsx renders this view. No iOS simulator pass was run; the Expo export is a compile check only."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "native-proof/app/screens/CalendarScreen.jsx renders this view. No Android emulator pass was run; the Expo export is a compile check only."
+        }
+      }
+    },
     "frontend/auth/AuthEntrance.jsx": {
       "components": [
         "AuthEntrance",
@@ -2525,6 +2605,593 @@
           "evidence": "Expo export --platform all compiled the shared card; no emulator run was performed."
         }
       }
+    },
+    "frontend/pages/HomeView.jsx": {
+      "components": [
+        "HomeView"
+      ],
+      "register": "HOME",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The Home adapter renders the shared HomeView around the server shelf model; no browser interaction pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled HomeView on the native Home screen; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled HomeView on the native Home screen; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/pages/PageChrome.jsx": {
+      "components": [
+        "PageHeading",
+        "PageSection",
+        "PageState"
+      ],
+      "register": "PAGE",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Consumed by the shared Tags and Search page compositions; a browser interaction pass over heading, section and loading/error/empty states was not run in this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the shared page views; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export through the shared page views; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/pages/LibraryPageView.jsx": {
+      "components": [
+        "LibraryPageView"
+      ],
+      "register": "LIBRARY",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Native placement only: the release web library keeps its server table, Alpine filter form and htmx pagination. No browser pass was run."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export on the native Library screen; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export on the native Library screen; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/pages/SearchPageView.jsx": {
+      "components": [
+        "SearchPageView"
+      ],
+      "register": "SEARCH",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The browser results adapter composes SearchPageView around the shared SearchResults surface; no browser interaction pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export on the native Search screen; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export on the native Search screen; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/pages/ListsPageView.jsx": {
+      "components": [
+        "ListsPageView"
+      ],
+      "register": "LISTS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Native placement only: the web Lists hub remains a server-owned page with Alpine modals and htmx fragments. No browser pass was run."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export on the native Lists screen; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export on the native Lists screen; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/pages/ListDetailPageView.jsx": {
+      "components": [
+        "ListDetailPageView"
+      ],
+      "register": "LISTS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Native placement only: the web list-detail page keeps its server header, table, tiers and editing forms. No browser pass was run."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export on the native ListDetail screen; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export on the native ListDetail screen; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/pages/TagsPageView.jsx": {
+      "components": [
+        "TagsPageView"
+      ],
+      "register": "TAGS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The browser tag index mount composes TagsPageView over the server fallback inside data-tag-index-root; no browser interaction pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export on the native Tags screen; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export on the native Tags screen; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/pages/DetailView.jsx": {
+      "components": [
+        "DetailView"
+      ],
+      "register": "DETAIL",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Shared detail content composition: header, synopsis, actions and the ordered rating/progress/check-in/tracking/notes/artwork/children/related sections with loading, error and retry states. Web mounts it in header/synopsis parts over the server-owned detail shell; the native Detail screen mounts the full composition. Build, architecture and targeted tests only; no browser interaction pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the shared view on the native screen; no simulator runtime pass during this change."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the shared view on the native screen; no emulator runtime pass during this change."
+        }
+      }
+    },
+    "frontend/pages/PeopleView.jsx": {
+      "components": [
+        "PeopleView"
+      ],
+      "register": "PEOPLE",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Shared person/studio composition: hero, watched/read credits, filmography/bibliography, cast, crew, gallery and medium extras with loading, error and retry states. Web mounts it in hero/cast/extras parts over the server fallbacks; the native People screen mounts the full composition. Build, architecture and targeted tests only; no browser interaction pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the shared view on the native screen; no simulator runtime pass during this change."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the shared view on the native screen; no emulator runtime pass during this change."
+        }
+      }
+    },
+    "frontend/pages/MusicView.jsx": {
+      "components": [
+        "MusicView"
+      ],
+      "register": "MUSIC",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Shared music/podcast composition: tabs, notice and loading/error states plus the ordered artist, album, track and show sections; the same view renders the album and relation grids for the web islands. Build, architecture and targeted tests only; no browser interaction pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the shared view on the native screen; no simulator runtime pass during this change."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the shared view on the native screen; no emulator runtime pass during this change."
+        }
+      }
+    },
+    "frontend/pages/CollectionView.jsx": {
+      "components": [
+        "CollectionView"
+      ],
+      "register": "OWNERSHIP",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Shared collection composition: heading, loading/error/retry and notice states around the shared CollectionBrowser, with server copy dialogs supplied through a slot. Web mounts it without chrome over the server toolbar; the native Collection screen mounts it with the copy dialog. Build, architecture and targeted tests only; no browser interaction pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the shared view on the native screen; no simulator runtime pass during this change."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiles the shared view on the native screen; no emulator runtime pass during this change."
+        }
+      }
+    },
+    "frontend/pages/SettingsView.jsx": {
+      "components": [
+        "SettingsView",
+        "SettingsNav",
+        "SettingsPage"
+      ],
+      "register": "SET-NAV",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Shared settings navigation and page shell added for SettingsView, SettingsNav and SettingsPage; browser adapter and native runtime not exercised in this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Shared settings navigation and page shell added for SettingsView, SettingsNav and SettingsPage; browser adapter and native runtime not exercised in this change."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Shared settings navigation and page shell added for SettingsView, SettingsNav and SettingsPage; browser adapter and native runtime not exercised in this change."
+        }
+      }
+    },
+    "frontend/pages/SettingsAccountView.jsx": {
+      "components": [
+        "SettingsAccountView"
+      ],
+      "register": "AUTH",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Account settings page composition added on the shared account-security cards; browser account page stays server-owned and native runtime was not exercised."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Account settings page composition added on the shared account-security cards; browser account page stays server-owned and native runtime was not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Account settings page composition added on the shared account-security cards; browser account page stays server-owned and native runtime was not exercised."
+        }
+      }
+    },
+    "frontend/pages/SettingsPreferencesView.jsx": {
+      "components": [
+        "SettingsPreferencesView"
+      ],
+      "register": "SET-PREFERENCES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Preferences page composition added over the shared PreferencesForm; browser page stays server-owned and native runtime was not exercised."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Preferences page composition added over the shared PreferencesForm; browser page stays server-owned and native runtime was not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Preferences page composition added over the shared PreferencesForm; browser page stays server-owned and native runtime was not exercised."
+        }
+      }
+    },
+    "frontend/pages/SettingsAppearanceView.jsx": {
+      "components": [
+        "SettingsAppearanceView"
+      ],
+      "register": "SET-APPEARANCE",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Appearance page composition added over the shared AppearanceEditor; browser page and native runtime were not exercised."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Appearance page composition added over the shared AppearanceEditor; browser page and native runtime were not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Appearance page composition added over the shared AppearanceEditor; browser page and native runtime were not exercised."
+        }
+      }
+    },
+    "frontend/pages/SettingsCardsView.jsx": {
+      "components": [
+        "SettingsCardsView"
+      ],
+      "register": "SET-CARDS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Media Cards page composition added over the shared CardsEditor; browser page and native runtime were not exercised."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Media Cards page composition added over the shared CardsEditor; browser page and native runtime were not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Media Cards page composition added over the shared CardsEditor; browser page and native runtime were not exercised."
+        }
+      }
+    },
+    "frontend/pages/SettingsHomeScreenView.jsx": {
+      "components": [
+        "SettingsHomeView"
+      ],
+      "register": "SET-HOME",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Home Screen page composition added over the shared HomeScreenEditor; browser page and native runtime were not exercised."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Home Screen page composition added over the shared HomeScreenEditor; browser page and native runtime were not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Home Screen page composition added over the shared HomeScreenEditor; browser page and native runtime were not exercised."
+        }
+      }
+    },
+    "frontend/pages/SettingsNotificationsView.jsx": {
+      "components": [
+        "SettingsNotificationsView"
+      ],
+      "register": "SET-NOTIFICATIONS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Notifications page composition added over the shared notification cards; browser page stays server-owned and native runtime was not exercised."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Notifications page composition added over the shared notification cards; browser page stays server-owned and native runtime was not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Notifications page composition added over the shared notification cards; browser page stays server-owned and native runtime was not exercised."
+        }
+      }
+    },
+    "frontend/pages/SettingsDataView.jsx": {
+      "components": [
+        "SettingsDataView"
+      ],
+      "register": "SET-DATA",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Data Management page composition added over the shared export/restore/RSS cards; browser page stays server-owned and native runtime was not exercised."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Data Management page composition added over the shared export/restore/RSS cards; browser page stays server-owned and native runtime was not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Data Management page composition added over the shared export/restore/RSS cards; browser page stays server-owned and native runtime was not exercised."
+        }
+      }
+    },
+    "frontend/pages/SettingsAccessView.jsx": {
+      "components": [
+        "SettingsAccessView"
+      ],
+      "register": "SET-ACCESS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Access and Tokens page composition added over the shared token/grant cards; browser page stays server-owned and native runtime was not exercised."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Access and Tokens page composition added over the shared token/grant cards; browser page stays server-owned and native runtime was not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Access and Tokens page composition added over the shared token/grant cards; browser page stays server-owned and native runtime was not exercised."
+        }
+      }
+    },
+    "frontend/pages/SettingsAdvancedView.jsx": {
+      "components": [
+        "SettingsAdvancedView"
+      ],
+      "register": "SET-SYSTEM",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Advanced page composition added over the shared log/cache/server-port cards; browser page and native runtime were not exercised."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Advanced page composition added over the shared log/cache/server-port cards; browser page and native runtime were not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Advanced page composition added over the shared log/cache/server-port cards; browser page and native runtime were not exercised."
+        }
+      }
+    },
+    "frontend/pages/SettingsAboutView.jsx": {
+      "components": [
+        "SettingsAboutView"
+      ],
+      "register": "SET-SYSTEM",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "About page composition added over the shared About cards; browser page and native runtime were not exercised."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "About page composition added over the shared About cards; browser page and native runtime were not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "About page composition added over the shared About cards; browser page and native runtime were not exercised."
+        }
+      }
+    },
+    "frontend/pages/SettingsUsersView.jsx": {
+      "components": [
+        "SettingsUsersView"
+      ],
+      "register": "SET-USERS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Users page composition added over the shared user-management component; browser page and native runtime were not exercised."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Users page composition added over the shared user-management component; browser page and native runtime were not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Users page composition added over the shared user-management component; browser page and native runtime were not exercised."
+        }
+      }
+    },
+    "frontend/pages/ProvidersView.jsx": {
+      "components": [
+        "ProvidersView",
+        "ProviderActivityPage"
+      ],
+      "register": "SET-PROVIDERS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Provider directory and activity page compositions added over the shared provider views; native transport is not implemented and browser pages keep their existing mounts."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Provider directory and activity page compositions added over the shared provider views; native transport is not implemented and browser pages keep their existing mounts."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Provider directory and activity page compositions added over the shared provider views; native transport is not implemented and browser pages keep their existing mounts."
+        }
+      }
+    },
+    "frontend/pages/AuthView.jsx": {
+      "components": [
+        "AuthView",
+        "AccountSecurityView"
+      ],
+      "register": "AUTH",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Authentication and account-security page compositions added; the browser keeps the allauth/server pages and native runtime was not exercised."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Authentication and account-security page compositions added; the browser keeps the allauth/server pages and native runtime was not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Authentication and account-security page compositions added; the browser keeps the allauth/server pages and native runtime was not exercised."
+        }
+      }
+    },
+    "frontend/pages/OnboardingView.jsx": {
+      "components": [
+        "OnboardingView"
+      ],
+      "register": "ONBOARDING",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Onboarding page composition added over the shared wizard; the browser setup pages stay server-owned and native runtime was not exercised."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Onboarding page composition added over the shared wizard; the browser setup pages stay server-owned and native runtime was not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Onboarding page composition added over the shared wizard; the browser setup pages stay server-owned and native runtime was not exercised."
+        }
+      }
+    },
+    "frontend/pages/ErrorsView.jsx": {
+      "components": [
+        "ErrorsView",
+        "ApiDocsView"
+      ],
+      "register": "ERRORS-DOCS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Error and API documentation page compositions added; the browser error templates and script-free /api/docs/ page keep their server rendering and native runtime was not exercised."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Error and API documentation page compositions added; the browser error templates and script-free /api/docs/ page keep their server rendering and native runtime was not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Error and API documentation page compositions added; the browser error templates and script-free /api/docs/ page keep their server rendering and native runtime was not exercised."
+        }
+      }
+    },
+    "frontend/pages/UtilitiesView.jsx": {
+      "components": [
+        "UtilitiesView"
+      ],
+      "register": "WEB-UTILITIES",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Clipboard/install/cache utility page composition added; browser surfaces stay server-owned and native runtime was not exercised."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Clipboard/install/cache utility page composition added; browser surfaces stay server-owned and native runtime was not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Clipboard/install/cache utility page composition added; browser surfaces stay server-owned and native runtime was not exercised."
+        }
+      }
+    },
+    "frontend/pages/SettingsNavLink.jsx": {
+      "components": [
+        "SettingsNavLink"
+      ],
+      "register": "SET-NAV",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Settings nav row added for the shared settings navigation; browser anchors are supplied by the web adapter and iOS/Android runtime was not exercised."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Settings nav row added for the shared settings navigation; browser anchors are supplied by the web adapter and iOS/Android runtime was not exercised."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Settings nav row added for the shared settings navigation; browser anchors are supplied by the web adapter and iOS/Android runtime was not exercised."
+        }
+      }
     }
   },
   "legacy": {},
@@ -2644,6 +3311,26 @@
         "android": {
           "status": "unverified",
           "evidence": "Expo export --platform all compiled the context; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/pages/registry.js": {
+      "components": [
+        "pages"
+      ],
+      "register": "HOME",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Consumed by the page parity check; no browser surface."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Static page inventory; not imported by the native runtime."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Static page inventory; not imported by the native runtime."
         }
       }
     }
@@ -3637,7 +4324,23 @@
       "register": "SETTINGS-CARD",
       "purpose": "Django/browser integration for the registered surface."
     },
-    "frontend/ui/mountMediaCard.jsx": {
+    "frontend/ui/PageSlot.web.jsx": {
+    "register": "PAGE",
+    "purpose": "Browser slot host for the shared page compositions: adopt a server-owned region's nodes into the shared view's section order only after React renders, keep the server node as the no-JavaScript fallback and return every node on unmount, without generating HTML or moving Alpine/htmx behaviour into presentation props."
+  },
+  "frontend/ui/mountLibraryPage.jsx": {
+    "register": "LIBRARY",
+    "purpose": "Wire the release library page into LibraryPageView: the server heading, Alpine filter form/toolbar, bulk selection, group banner, htmx table/grid and loading indicator are adopted as slots so the shared view owns section order while the release table and column menu keep their server implementation."
+  },
+  "frontend/ui/mountListsPage.jsx": {
+    "register": "LISTS",
+    "purpose": "Wire the release Lists hub into ListsPageView: the server heading/actions, Alpine search and sort/type toolbar, htmx card grid or empty state, create/import modals and loading indicator are adopted as slots so sorting, creation and links keep their release behaviour."
+  },
+  "frontend/ui/mountListDetailPage.jsx": {
+    "register": "LISTS",
+    "purpose": "Wire the release list detail page into ListDetailPageView: the server header, Alpine filter/search toolbar, htmx table/grid/tier results, create/edit modal and loading indicator are adopted as slots so permissions, htmx swaps and server forms stay server-owned."
+  },
+  "frontend/ui/mountMediaCard.jsx": {
       "register": "MEDIA-CARD",
       "purpose": "Django/browser integration for the registered surface."
     },
@@ -3875,7 +4578,7 @@
     },
     "frontend/errors/mountErrorRecovery.jsx": {
       "register": "ERRORS-DOCS",
-      "purpose": "Mount the shared error recovery presentation over the server-rendered 400/403/CSRF/404/500 fallback: resolve theme tokens, copy the safe diagnostic report through the browser clipboard adapter, and keep report-issue, retry, login and home navigation as browser intents."
+      "purpose": "Mount the shared error page composition (ErrorsView) over the server-rendered 400/403/CSRF/404/500 fallback: resolve theme tokens, copy the safe diagnostic report through the browser clipboard adapter, and keep report-issue, retry, login and home navigation as browser intents."
     },
     "frontend/ui/mountCopyField.jsx": {
       "register": "WEB-UTILITIES",
@@ -3960,6 +4663,14 @@
     "frontend/settings/root.web.js": {
       "register": "SET-DATA",
       "purpose": "Browser React root adapter shared by every settings island: createRoot/flushSync and the fallback clone."
+    },
+    "frontend/pages/SettingsNavLink.web.jsx": {
+      "register": "SET-NAV",
+      "purpose": "Attach the server navigation URL to the shared settings row as a browser anchor so the page keeps HTMX boosted navigation, aria-current and the shared hover/focus styling."
+    },
+    "frontend/settings/mountSettingsView.jsx": {
+      "register": "SET-NAV",
+      "purpose": "Mount the shared settings page composition from the server navigation/page model: render the shared nav and page wrapper, keep the existing server-owned forms by re-parenting the page content into the composition slot, and process the new boosted anchors with HTMX."
     }
   }
 }

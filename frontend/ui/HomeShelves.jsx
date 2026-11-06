@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { MediaCard } from './MediaCard';
+import { MediaCard } from './MediaCard.jsx';
 import { Rail } from './Rail';
 
 const DEFAULT_PALETTE = {

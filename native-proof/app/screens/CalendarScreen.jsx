@@ -1,12 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { CalendarView } from '../../../frontend/pages/CalendarView';
 import { CalendarLinks } from '../../../frontend/ui/CalendarLinks';
-import { Screen, Section } from '../components/Screen';
+import { Screen } from '../components/Screen';
 import { readCalendarPreferences, writeCalendarPreferences } from '../data/calendarPreferences';
 import { createCalendarTransport } from '../data/calendarTransport';
 import CalendarSlot from '../surfaces/CalendarSlot';
-import DateTimeSlot from '../surfaces/DateTimeSlot';
-import { palette, spacing } from '../theme';
+import { palette } from '../theme';
 
 const defaultWeekStart = 'monday';
 
@@ -120,18 +119,18 @@ export default function CalendarScreen({ navigate }) {
     }
   }
 
-  return <Screen title="Calendar" subtitle="Upcoming releases and what lands next">
-    <Section title="This month">
-      {hydrated ? <CalendarSlot
+  return <Screen chrome={false}>
+    <CalendarView
+      palette={palette}
+      loading={!hydrated}
+      notice={actionNote}
+      calendar={hydrated ? <CalendarSlot
         initialFilters={filters || undefined}
         weekStart={weekStart}
         onFiltersChange={handleFiltersChange}
         onMenuAction={handleMenuAction}
         onOpenRelease={() => navigate('Detail')} /> : null}
-      {actionNote ? <Text style={styles.note}>{actionNote}</Text> : null}
-    </Section>
-    <Section title="Calendar links">
-      <CalendarLinks
+      links={<CalendarLinks
         releaseMediaTypes={releaseMediaTypes}
         historyMediaTypes={historyMediaTypes}
         statuses={statuses}
@@ -139,14 +138,6 @@ export default function CalendarScreen({ navigate }) {
         initialHistoryMediaTypes={historyDefaultTypes}
         releaseBaseUrl="https://app.floppy.example/calendar/demo-token.ics"
         historyBaseUrl="https://app.floppy.example/calendar/history/demo-token.ics"
-        palette={calendarLinkPalette} />
-    </Section>
-    <Section title="Tracking dates">
-      <DateTimeSlot />
-    </Section>
+        palette={calendarLinkPalette} />} />
   </Screen>;
 }
-
-const styles = StyleSheet.create({
-  note: { color: palette.textMuted, fontSize: 12, paddingHorizontal: spacing.xs },
-});

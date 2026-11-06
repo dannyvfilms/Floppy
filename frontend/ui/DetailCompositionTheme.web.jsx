@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { DetailHeader } from './DetailComposition';
+import { DetailView } from '../pages/DetailView';
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;
@@ -189,15 +189,16 @@ function Adapter({ host, props }) {
   }, []);
 
   if (props.part === 'header') {
-    return <DetailHeader model={props} labels={props.labels} palette={palette} showArtwork={false} />;
+    return <DetailView part="header" model={props} labels={props.labels} palette={palette} showArtwork={false} />;
   }
   return <>
     <style>{DETAIL_CSS}</style>
-    <WebSynopsis
-      text={props.synopsis?.text}
-      previewLines={props.synopsis?.previewLines}
-      labels={props.labels}
-      mobile={mobile} />
+    <DetailView part="synopsis" model={props} labels={props.labels} palette={palette}
+      renderSynopsis={({ model }) => <WebSynopsis
+        text={model.synopsis?.text}
+        previewLines={model.synopsis?.previewLines}
+        labels={model.labels}
+        mobile={mobile} />} />
   </>;
 }
 

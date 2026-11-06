@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Linking, StyleSheet, Text, View } from 'react-native';
-import { ApiDocs } from '../../../frontend/errors/ApiDocs';
-import { ErrorRecovery, ErrorStatusSelector } from '../../../frontend/errors/ErrorRecovery';
+import { ApiDocsView, ErrorsView } from '../../../frontend/pages/ErrorsView';
 import { copyText as copyToClipboard } from '../../../frontend/ui/clipboard';
 import { Screen } from '../components/Screen';
 import { palette } from '../theme';
@@ -268,33 +267,34 @@ export default function ErrorDocsScreen({ onBack }) {
   }
 
   return <Screen title="Errors" subtitle="Errors and API docs" onBack={onBack}>
-    <ErrorStatusSelector options={statusOptions} selected={selected} onSelect={selectStatus}
-      palette={docsPalette} accessibilityLabel="Choose an error page example" />
-
-    {notice ? <Text accessibilityLiveRegion="polite" style={[styles.notice, { color: palette.textMuted }]}>{notice}</Text> : null}
-
-    <ErrorRecovery
-      status={error.status}
-      heading={error.heading}
-      message={error.message}
-      checks={error.checks}
-      support={error.support ? {
-        ...error.support,
-        onOpen: () => openLink(error.support),
-      } : undefined}
-      report={error.report}
-      labels={{ reportNote: 'Safe demo diagnostics. Copy this block when opening a ticket so the traceback and request details are preserved.' }}
-      palette={docsPalette}
-      onCopyReport={copyValue}
-      onReportIssue={() => openLink({ label: 'Report the issue', href: 'https://github.com/dannyvfilms/Floppy/issues' })}
-      onRetry={selected === '500' ? retry : undefined}
-      onLogin={selected === '403' || selected === 'csrf' ? login : undefined}
-      onGoHome={onBack}
-    />
-
+    <ErrorsView
+      statuses={statusOptions}
+      selected={selected}
+      onSelectStatus={selectStatus}
+      notice={notice ? <Text accessibilityLiveRegion="polite" style={[styles.notice, { color: palette.textMuted }]}>{notice}</Text> : null}
+      error={{
+        status: error.status,
+        heading: error.heading,
+        message: error.message,
+        checks: error.checks,
+        support: error.support ? {
+          ...error.support,
+          onOpen: () => openLink(error.support),
+        } : undefined,
+        report: error.report,
+      }}
+      recovery={{
+        labels: { reportNote: 'Safe demo diagnostics. Copy this block when opening a ticket so the traceback and request details are preserved.' },
+        onCopyReport: copyValue,
+        onReportIssue: () => openLink({ label: 'Report the issue', href: 'https://github.com/dannyvfilms/Floppy/issues' }),
+        onRetry: selected === '500' ? retry : undefined,
+        onLogin: selected === '403' || selected === 'csrf' ? login : undefined,
+        onGoHome: onBack,
+      }}
+      palette={docsPalette} />
     <View style={[styles.divider, { backgroundColor: palette.border }]} />
-    <Text role="heading" aria-level={2} style={[styles.sectionTitle, { color: palette.text }]}>API documentation</Text>
-    <ApiDocs model={apiDocs} palette={docsPalette} onOpenLink={openLink} onCopy={copyValue} />
+    <ApiDocsView model={apiDocs} palette={docsPalette}
+      onOpenLink={openLink} onCopy={copyValue} />
   </Screen>;
 }
 

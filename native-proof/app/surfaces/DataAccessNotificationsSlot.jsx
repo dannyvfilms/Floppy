@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { AccessTokenCard, AppTokensCard, AuthorizedApplicationsCard, CatalogGrantsCard } from '../../../frontend/settings/AccessSettings';
-import { ExportHistoryCard, ExportScheduleCard, RestoreBackupCard, RssFeedCard, ScheduledExportsCard } from '../../../frontend/settings/DataSettings';
-import { ExcludedMediaCard, NotificationPreferencesCard } from '../../../frontend/settings/NotificationSettings';
-import { Section } from '../components/Screen';
-import { palette, radius, spacing } from '../theme';
+import { SettingsAccessView } from '../../../frontend/pages/SettingsAccessView';
+import { SettingsDataView } from '../../../frontend/pages/SettingsDataView';
+import { SettingsNotificationsView } from '../../../frontend/pages/SettingsNotificationsView';
+import { palette, radius } from '../theme';
 
 export const surface = {
   id: 'SET-DATA',
@@ -119,7 +117,7 @@ function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-export default function DataAccessNotificationsSlot() {
+export default function DataAccessNotificationsSlot({ page = 'data' }) {
   const [exportModel, setExportModel] = useState({
     frequency: 'weekly',
     time: '03:00',
@@ -356,66 +354,81 @@ export default function DataAccessNotificationsSlot() {
     setExcludedSuccess(`${item.title} included in notifications again.`);
   }
 
-  return <Section title="Data, access & notifications" copy="Export, restore, feeds, tokens and notification choices.">
-    <View style={styles.stack}>
-      <ExportScheduleCard model={exportModel} busy={exportBusy} error={exportError}
-        success={exportSuccess} palette={settingsPalette} buttonPalette={buttonPalette}
-        onChange={setExportModel} onSubmit={submitExport} />
-      <ScheduledExportsCard schedules={schedules} busyId={scheduleBusyId}
-        error={scheduleError} success={scheduleSuccess} palette={settingsPalette}
-        buttonPalette={buttonPalette} onDelete={deleteSchedule} />
-      <ExportHistoryCard results={exportHistory} palette={settingsPalette} />
-      <RestoreBackupCard fileName={restoreFileName} busy={restoreBusy} error={restoreError}
-        success={restoreSuccess} palette={settingsPalette} buttonPalette={buttonPalette}
-        onChoose={chooseBackup} onRestore={restoreBackup} />
-      <RssFeedCard model={{
-        mediaTypes: [
-          { value: 'movie', label: 'Movies' },
-          { value: 'tv', label: 'TV Shows' },
-          { value: 'anime', label: 'Anime' },
-        ],
-        rows: rssRows[rssValues.mediaType] || [],
-        values: rssValues,
-        feedUrl: rssFeedUrl,
-        preview: { state: 'ready', title: 'Movies · Trending Right Now', items: rssPreviewItems },
-      }} success={rssSuccess} palette={settingsPalette} buttonPalette={buttonPalette}
-        onChange={setRssValues} onCopy={copyRssFeed} />
-      <AccessTokenCard maskedToken="••••••••••••" busy={tokenBusy} error={tokenError}
-        success={tokenSuccess} palette={settingsPalette} buttonPalette={buttonPalette}
-        onCopy={() => setTokenSuccess('API token copied.')} onRegenerate={regenerateToken} />
-      <AppTokensCard model={{
-        tokens: appTokens,
-        scopes: demoScopes,
-        presetScopes: ['library:read', 'progress:write', 'lists:read'],
-        oneTimeSecret,
-      }} busy={appTokensBusy} error={appTokensError} success={appTokensSuccess}
-        palette={settingsPalette} buttonPalette={buttonPalette}
-        onCreate={createAppToken} onRevoke={revokeAppToken} onCopySecret={copyOneTimeSecret} />
-      <CatalogGrantsCard grants={grants} busy={grantsBusy} error={grantsError}
-        success={grantsSuccess} palette={settingsPalette} buttonPalette={buttonPalette}
-        onCreate={createGrant} onRevoke={revokeGrant} />
-      <AuthorizedApplicationsCard applications={applications} busy={applicationsBusy}
-        error={applicationsError} success={applicationsSuccess} palette={settingsPalette}
-        buttonPalette={buttonPalette} onRevoke={revokeApplication} />
-      <NotificationPreferencesCard model={{
-        values: notificationValues,
-        stored: { notificationUrls: true, notificationUrlCount: 2, playbackWebhookUrl: true, playbackWebhookSecret: false },
-        dirty: notificationDirty,
-      }} busy={notificationBusy} error={notificationError} success={notificationSuccess}
-        palette={settingsPalette} buttonPalette={buttonPalette}
-        onChange={changeNotifications} onSave={saveNotifications} onTest={testNotifications} />
-      <ExcludedMediaCard model={{
-        query: excludedQuery,
-        searching: excludedSearching,
-        results: excludedResults,
-        excluded: excludedItems,
-      }} busyId={excludedBusyId} error={excludedError} success={excludedSuccess}
-        palette={settingsPalette} buttonPalette={buttonPalette}
-        onSearchChange={searchExcluded} onExclude={excludeItem} onInclude={includeItem} />
-    </View>
-  </Section>;
-}
+  const rssModel = {
+    mediaTypes: [
+      { value: 'movie', label: 'Movies' },
+      { value: 'tv', label: 'TV Shows' },
+      { value: 'anime', label: 'Anime' },
+    ],
+    rows: rssRows[rssValues.mediaType] || [],
+    values: rssValues,
+    feedUrl: rssFeedUrl,
+    preview: { state: 'ready', title: 'Movies · Trending Right Now', items: rssPreviewItems },
+  };
 
-const styles = StyleSheet.create({
-  stack: { gap: spacing.md },
-});
+  if (page === 'access') {
+    return <SettingsAccessView
+      accountToken={{
+        maskedToken: '••••••••••••', busy: tokenBusy, error: tokenError,
+        success: tokenSuccess, onCopy: () => setTokenSuccess('API token copied.'),
+        onRegenerate: regenerateToken,
+      }}
+      appTokens={{
+        model: {
+          tokens: appTokens,
+          scopes: demoScopes,
+          presetScopes: ['library:read', 'progress:write', 'lists:read'],
+          oneTimeSecret,
+        },
+        busy: appTokensBusy, error: appTokensError, success: appTokensSuccess,
+        onCreate: createAppToken, onRevoke: revokeAppToken, onCopySecret: copyOneTimeSecret,
+      }}
+      catalogGrants={{
+        grants, busy: grantsBusy, error: grantsError, success: grantsSuccess,
+        onCreate: createGrant, onRevoke: revokeGrant,
+      }}
+      applications={{
+        applications, busy: applicationsBusy, error: applicationsError,
+        success: applicationsSuccess, onRevoke: revokeApplication,
+      }}
+      palette={settingsPalette} buttonPalette={buttonPalette} />;
+  }
+
+  if (page === 'notifications') {
+    return <SettingsNotificationsView
+      preferences={{
+        model: {
+          values: notificationValues,
+          stored: { notificationUrls: true, notificationUrlCount: 2, playbackWebhookUrl: true, playbackWebhookSecret: false },
+          dirty: notificationDirty,
+        },
+        busy: notificationBusy, error: notificationError, success: notificationSuccess,
+        onChange: changeNotifications, onSave: saveNotifications, onTest: testNotifications,
+      }}
+      excluded={{
+        model: { query: excludedQuery, searching: excludedSearching, results: excludedResults, excluded: excludedItems },
+        busyId: excludedBusyId, error: excludedError, success: excludedSuccess,
+        onSearchChange: searchExcluded, onExclude: excludeItem, onInclude: includeItem,
+      }}
+      palette={settingsPalette} buttonPalette={buttonPalette} />;
+  }
+
+  return <SettingsDataView
+    schedule={{
+      model: exportModel, busy: exportBusy, error: exportError, success: exportSuccess,
+      onChange: setExportModel, onSubmit: submitExport,
+    }}
+    scheduled={{
+      schedules, busyId: scheduleBusyId, error: scheduleError, success: scheduleSuccess,
+      onDelete: deleteSchedule,
+    }}
+    history={{ results: exportHistory }}
+    restore={{
+      fileName: restoreFileName, busy: restoreBusy, error: restoreError,
+      success: restoreSuccess, onChoose: chooseBackup, onRestore: restoreBackup,
+    }}
+    rss={{
+      model: rssModel, success: rssSuccess, onChange: setRssValues, onCopy: copyRssFeed,
+    }}
+    palette={settingsPalette} buttonPalette={buttonPalette} />;
+}

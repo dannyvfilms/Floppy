@@ -2,12 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Button } from '../../../frontend/ui/Button';
 import { DetailHistoryDialog } from '../../../frontend/ui/DetailChildren';
+import { MarkdownPreview } from '../../../frontend/ui/MarkdownPreview.native';
 import { Screen } from '../components/Screen';
 import {
   AlbumPage,
   ArtistPage,
   DateEntryModal,
-  MusicTabs,
+  MusicView,
   NotesModal,
   SectionHeading,
   SheetModal,
@@ -15,7 +16,7 @@ import {
   TrackPage,
   TrackingModal,
   listenDate,
-} from '../components/MusicParts';
+} from '../../../frontend/pages/MusicView';
 import {
   createMusicLibrary,
   findAlbum,
@@ -615,17 +616,8 @@ export default function MusicScreen({ onBack, transport: injectedTransport }) {
   }[dialog.target] : null;
 
   return <Screen title="Music" subtitle="Artist, album and podcast detail" onBack={onBack}>
-    {transportError
-      ? <View style={styles.notice}>
-        <Text accessibilityLiveRegion="polite" style={styles.noticeText}>{transportError}</Text>
-      </View>
-      : null}
-    {notice
-      ? <View style={styles.successNotice}>
-        <Text accessibilityLiveRegion="polite" style={styles.successText}>{notice}</Text>
-      </View>
-      : null}
-    <MusicTabs tabs={TABS} active={tab} onChange={changeTab} />
+    <MusicView tabs={TABS} active={tab} onChange={changeTab}
+      palette={palette} error={transportError} notice={notice}>
 
     {tab === 'artist'
       ? <>
@@ -700,7 +692,7 @@ export default function MusicScreen({ onBack, transport: injectedTransport }) {
         onOpenNotes={() => openNotes('track', selected.track)}
         onSaveNotes={value => saveTrackNotes(selected.track.id, value)}
         onDeleteListen={entry => deleteListen(selected.track.id, entry)}
-        onOpenHistory={() => openHistory('track', selected.track)} />
+        onOpenHistory={() => openHistory('track', selected.track)} Preview={MarkdownPreview} />
       : null}
 
     {tab === 'podcast'
@@ -725,6 +717,7 @@ export default function MusicScreen({ onBack, transport: injectedTransport }) {
         </View>
       </>
       : null}
+    </MusicView>
 
     <SheetModal open={Boolean(confirm)}
       title={confirm?.title || 'Confirm'}
@@ -746,7 +739,7 @@ export default function MusicScreen({ onBack, transport: injectedTransport }) {
       confirmLabel={dialog?.target === 'track' ? 'Add listen' : 'Add play'}
       suggestionDate={dialog?.suggestionDate || ''} />
 
-    <TrackingModal open={dialog?.type === 'tracking'}
+    <TrackingModal open={dialog?.type === 'tracking'} Preview={MarkdownPreview}
       title={dialog?.title || 'Tracking'}
       subtitle={dialog?.target === 'show' ? 'Podcast show' : dialog?.target === 'album' ? 'Album' : 'Artist'}
       status={tracking?.status || null}
@@ -755,7 +748,7 @@ export default function MusicScreen({ onBack, transport: injectedTransport }) {
       onClose={() => setDialog(EMPTY_DIALOG)}
       onSave={saveTracking} />
 
-    <NotesModal open={dialog?.type === 'notes'}
+    <NotesModal open={dialog?.type === 'notes'} Preview={MarkdownPreview}
       title={dialog?.title || 'Notes'}
       subtitle={dialog?.subtitle}
       value={dialog?.value || ''}

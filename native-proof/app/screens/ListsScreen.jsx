@@ -1,13 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
-import { Screen, Section } from '../components/Screen';
-import { ListCard } from '../../../frontend/ui/ListCard';
+import { StyleSheet, Text, View } from 'react-native';
+import { Screen } from '../components/Screen';
+import { ListsPageView } from '../../../frontend/pages/ListsPageView';
 import { Button } from '../../../frontend/ui/Button';
-import { Badge } from '../../../frontend/ui/Badge';
 import { ListForm } from '../../../frontend/ui/ListFormView';
 import { ListItemPreview, ListItemSearch } from '../../../frontend/ui/ListSearchView';
 import { ListRecommendations } from '../../../frontend/ui/ListRecommendationsView';
-import { SmartRuleSummary } from '../../../frontend/ui/SmartRules';
 import { palette, spacing } from '../theme';
 
 export const surface = {
@@ -15,7 +13,7 @@ export const surface = {
   status: 'ported',
   title: 'Lists hub, list forms, add/recommend flows and smart summaries',
   where: 'Lists screen cards, create/edit list form, item search/preview, recommendations approval and deny, saved smart-rule summary',
-  note: 'The list hub, create/edit list form, add-item search and preview, recommend flow, recommendations approval/deny and saved smart-rule summary use shared React Native presentation with local demo state. Server transport and the web list pages remain unchanged.',
+  note: 'The lists page renders the shared ListsPageView composition (heading, actions, search, tag filter, card grid, empty/loading/error states); the create/edit form, add-item search, preview and recommendations approval/deny use shared React Native presentation with local demo state. Server transport and the web list pages remain unchanged.',
 };
 
 const URL_PREFIX = 'https://floppy.example/lists/';
@@ -28,25 +26,6 @@ const MEDIA_TYPES = [
   { value: 'game', label: 'Games' },
   { value: 'anime', label: 'Anime' },
 ];
-
-const SMART_HUB_OPTIONS = {
-  mediaTypes: [
-    { value: 'movie', label: 'Movie' },
-    { value: 'tv', label: 'TV Show' },
-    { value: 'book', label: 'Book' },
-    { value: 'game', label: 'Game' },
-    { value: 'anime', label: 'Anime' },
-  ],
-  statuses: [
-    { value: 'Completed', label: 'Completed' },
-    { value: 'In progress', label: 'In Progress' },
-    { value: 'Planning', label: 'Planning' },
-    { value: 'Paused', label: 'Paused' },
-    { value: 'Dropped', label: 'Dropped' },
-  ],
-  tags: ['sci-fi', 'favourites'],
-  lists: [],
-};
 
 const PEOPLE = [
   { id: 'avery', name: 'Avery', handle: '@avery' },
@@ -685,81 +664,50 @@ export default function ListsScreen({ onBack, navigate }) {
   const addList = lists.find(list => list.id === addFor);
   const recommendList = lists.find(list => list.id === recommendFor);
   const approvalsList = lists.find(list => list.id === approvalsFor);
-  const searchList = addList || recommendList;
 
-  return <Screen title="Lists" subtitle="Curated, smart and shared collections" onBack={onBack}>
-    <View style={styles.toolbar}>
-      <Button label="Public Profile" tone="surface" onPress={() => setNotice('Public profiles use the platform browser or share adapter.')} />
-      <Button label="New List" tone="primary" onPress={() => openForm('create')} />
-    </View>
-    <TextInput
-      style={styles.search}
-      placeholder="Search lists..."
-      value={search}
-      onChangeText={setSearch}
-      placeholderTextColor={palette.textMuted}
-    />
-    <View style={styles.tags}>
-      {tags.map(tag => (
-        <Badge
-          key={tag}
-          label={tag}
-          tone={tag === selectedTag ? 'indigo' : 'outline'}
-          palette={{
-            indigo: { color: '#fff', backgroundColor: palette.accentStrong },
-            outline: { color: palette.textSecondary, borderColor: palette.surfaceMuted, borderWidth: 1 },
-          }}
-          onPress={() => setSelectedTag(tag)}
-        />
-      ))}
-    </View>
-    {notice ? <Text style={styles.notice}>{notice}</Text> : null}
-    {filtered.length === 0 ? (
-      <View style={styles.state}>
-        <Text style={styles.stateText}>No lists found.</Text>
-        <Button label="Create Your First List" tone="primary" onPress={() => openForm('create')} />
-      </View>
-    ) : (
-      <Section title="Your lists">
-        <View style={styles.grid}>
-          {filtered.map(list => (
-            <View key={list.id} style={styles.cardBlock}>
-              <ListCard
-                list={list}
-                palette={palette}
-                onOpen={() => navigate?.('ListDetail', { list })}
-                onAction={(action) => {
-                  if (action.title === 'Settings') {
-                    openForm('edit', list.id);
-                  }
-                }}
-              />
-              <ListTools
-                list={list}
-                approvals={(recommendations[list.id] || []).length}
-                onEdit={() => openForm('edit', list.id)}
-                onAdd={() => openAdd(list)}
-                onRecommend={() => openRecommend(list)}
-                onApprovals={() => setApprovalsFor(list.id)}
-              />
-            </View>
-          ))}
-        </View>
-      </Section>
-    )}
-    <Section title="Smart list rules" copy="Saved rules are evaluated by the server; this hub shows their current summary.">
-      {lists.filter(list => list.isSmart).length ? lists.filter(list => list.isSmart).map(list => (
-        <View key={list.id} style={styles.smartBlock}>
-          <Text style={styles.smartName}>{list.name}</Text>
-          <SmartRuleSummary
-            rules={list.smartRules}
-            options={SMART_HUB_OPTIONS}
-            palette={palette} />
-        </View>
-      )) : <Text style={styles.stateText}>No smart lists yet.</Text>}
-    </Section>
+  const listTools = list => <ListTools
+    list={list}
+    approvals={(recommendations[list.id] || []).length}
+    onEdit={() => openForm('edit', list.id)}
+    onAdd={() => openAdd(list)}
+    onRecommend={() => openRecommend(list)}
+    onApprovals={() => setApprovalsFor(list.id)} />;
 
-    {form ? <ListForm
+  return <Screen onBack={onBack}>
+    <ListsPageView
+      title="Lists"
+      subtitle="Curated, smart and shared collections"
+      labels={{ search: 'Search lists', searchPlaceholder: 'Search lists...' }}
+      palette={palette}
+      actions={<>
+        <Button label="Public Profile" tone="surface" onPress={() => setNotice('Public profiles use the platform browser or share adapter.')} />
+        <Button label="New List" tone="primary" onPress={() => openForm('create')} />
+      </>}
+      searchValue={search}
+      onSearchChange={setSearch}
+      tags={tags}
+      activeTag={selectedTag}
+      onSelectTag={setSelectedTag}
+      lists={filtered}
+      renderListTools={listTools}
+      onOpenList={list => navigate?.('ListDetail', { list })}
+      onListAction={(action, list) => {
+        if (action.title === 'Settings') {
+          openForm('edit', list.id);
+        }
+      }}
+      state={filtered.length ? 'ready' : 'empty'}
+      empty={{
+        title: 'No lists found.',
+        body: search || selectedTag !== 'All'
+          ? 'Clear the search or choose another tag to see your lists.'
+          : 'Create a list to collect and order the media you track.',
+        actionLabel: 'Create Your First List',
+      }}
+      onEmptyAction={() => openForm('create')}
+      dialogs={<>
+        {notice ? <Text style={styles.notice}>{notice}</Text> : null}
+        {form ? <ListForm
       key={form.listId || 'create'}
       mode={form.mode}
       list={formList}
@@ -828,26 +776,12 @@ export default function ListsScreen({ onBack, navigate }) {
         setNotice('Item details use the platform navigation adapter.');
       }}
       onClose={() => setApprovalsFor(null)} /> : null}
+      </>}
+    />
   </Screen>;
 }
 
 const styles = StyleSheet.create({
-  toolbar: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
-  search: {
-    backgroundColor: palette.surfaceStrong,
-    color: palette.text,
-    borderRadius: 6,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  tags: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  cardBlock: { gap: spacing.sm },
   cardActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  state: { alignItems: 'center', gap: spacing.sm, padding: spacing.xl },
-  stateText: { color: palette.textMuted, fontSize: 14 },
-  notice: { color: palette.textMuted, fontSize: 12, lineHeight: 17, marginBottom: spacing.md },
-  smartBlock: { gap: spacing.xs },
-  smartName: { color: palette.text, fontSize: 15, fontWeight: '600' },
+  notice: { color: palette.textMuted, fontSize: 12, lineHeight: 17 },
 });

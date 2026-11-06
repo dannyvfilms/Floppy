@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Screen, Section } from '../components/Screen';
-import { CacheStatusCard } from '../../../frontend/ui/CacheStatusCard';
-import { CopyField } from '../../../frontend/ui/CopyField';
-import { InstallPromptCard } from '../../../frontend/ui/InstallPromptCard';
+import { Screen } from '../components/Screen';
+import { UtilitiesView } from '../../../frontend/pages/UtilitiesView';
 import { copyText } from '../../../frontend/ui/clipboard';
 import { getInstallState, openInstallGuide, requestInstall, subscribeInstallState } from '../../../frontend/ui/installPrompt';
 import { getCacheStatus } from '../../../frontend/ui/serviceWorkerStatus';
@@ -74,24 +72,28 @@ export default function WebUtilitiesScreen({ onBack }) {
   ].join('\n');
 
   return <Screen title="Clipboard" subtitle="Clipboard and install" onBack={onBack}>
-    <Section title="Copy controls" copy="Copy a URL or diagnostic report. The native app uses the system clipboard; the browser uses its clipboard API and a selection fallback.">
-      <CopyField label="Server URL" value="https://floppy.example.com" onCopy={copyText}
-        help="Used by clients and webhooks that connect to this instance."
-        palette={uiPalette} buttonPalette={buttonPalette} />
-      <CopyField label="Webhook URL" value="https://floppy.example.com/hooks/library/demo-01" onCopy={copyText}
-        help="Paste this into a media server to report plays."
-        palette={uiPalette} buttonPalette={buttonPalette} />
-      <CopyField label="Diagnostic report" value={report} onCopy={copyText}
-        help="If a copy or install step fails, paste this report into your issue."
-        copyLabel="Copy report" palette={uiPalette} buttonPalette={buttonPalette} />
-    </Section>
-    <Section title="Install and launch">
-      <InstallPromptCard state={installState} onInstall={requestInstall} onOpenGuide={openInstallGuide}
-        palette={uiPalette} buttonPalette={buttonPalette} />
-    </Section>
-    <Section title="Static cache">
-      <CacheStatusCard status={cache} onRefresh={refreshCache} busy={cache.loading}
-        palette={uiPalette} buttonPalette={buttonPalette} />
-    </Section>
+    <UtilitiesView
+      onCopy={copyText}
+      copyFields={[
+        {
+          id: 'server-url', label: 'Server URL', value: 'https://floppy.example.com',
+          help: 'Used by clients and webhooks that connect to this instance.',
+        },
+        {
+          id: 'webhook-url', label: 'Webhook URL',
+          value: 'https://floppy.example.com/hooks/library/demo-01',
+          help: 'Paste this into a media server to report plays.',
+        },
+        {
+          id: 'diagnostics', label: 'Diagnostic report', value: report,
+          help: 'If a copy or install step fails, paste this report into your issue.',
+          copyLabel: 'Copy report',
+        },
+      ]}
+      installState={installState}
+      install={{ onInstall: requestInstall, onOpenGuide: openInstallGuide }}
+      cacheStatus={cache}
+      cache={{ onRefresh: refreshCache, busy: cache.loading }}
+      palette={uiPalette} buttonPalette={buttonPalette} />
   </Screen>;
 }

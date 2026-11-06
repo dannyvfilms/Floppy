@@ -1,11 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
 import {
   HistoryActivityDialog,
   HistoryDeleteDialog,
   HistoryEditDialog,
-  HistoryFeed,
 } from '../../../frontend/ui/HistoryFeed';
+import { HistoryView } from '../../../frontend/pages/HistoryView';
 import { Screen } from '../components/Screen';
 import { createHistoryTransport, historyEntriesFromPayload } from '../data/historyTransport';
 import { historyPalette } from '../theme';
@@ -15,7 +14,7 @@ export const surface = {
   status: 'in_progress',
   title: 'History feed and activity',
   where: 'History screen and per-item activity dialog',
-  note: 'Bounded day groups, lazy days, load-more, month navigation, filters and date ranges, session/activity, edit and delete dialogs, refresh notices and loading/empty/error states use the shared React feed. Signed-in loads map the bounded /api/v1/history/ route with month, range, media-type and genre filters and day pagination; signed-out keeps the realistic demo days. Edit, score and delete writes remain demo-only: the payload exposes instance ids rather than the history-record ids the delete route needs, and no history update endpoint is mapped. Saved views are not exposed natively, the server activity dialog shows only the row\'s own play because the activity-sessions contract is not mapped, release-date mode only re-groups the loaded activity page because the API has no release-date view, and month navigation still uses the fixed demo month fixture rather than server month links. Browser, iOS and Android runtime interaction remain unverified, so the surface stays in progress.',
+  note: 'The shared HistoryView owns the page heading, notice order and feed section; the shared React feed owns bounded day groups, lazy days, load-more, month navigation, filters and date ranges, session/activity, edit and delete dialogs, refresh notices and loading/empty/error states. Signed-in loads map the bounded /api/v1/history/ route with month, range, media-type and genre filters and day pagination; signed-out keeps the realistic demo days. Edit, score and delete writes remain demo-only: the payload exposes instance ids rather than the history-record ids the delete route needs, and no history update endpoint is mapped. Saved views are not exposed natively, the server activity dialog shows only the row\'s own play because the activity-sessions contract is not mapped, release-date mode only re-groups the loaded activity page because the API has no release-date view, and month navigation still uses the fixed demo month fixture rather than server month links. Browser, iOS and Android runtime interaction remain unverified, so the surface stays in progress.',
 };
 
 const TODAY = '2026-11-04';
@@ -703,16 +702,12 @@ export default function HistoryScreen({ navigate, onBack, transport: injectedTra
     beginRefresh();
   }
 
-  return <Screen title="History" subtitle="Everything you have watched, read and played" onBack={onBack}>
-    {transportError
-      ? <View style={styles.notice}>
-        <Text accessibilityLiveRegion="polite" style={styles.noticeText}>{transportError}</Text>
-      </View>
-      : null}
-    <HistoryFeed
+  return <Screen chrome={false}>
+    <HistoryView
       model={model}
       labels={labels}
       palette={historyPalette}
+      notice={transportError}
       onNavigate={handleNavigate}
       onLoadMore={loadMore}
       onLoadDay={loadDay}
@@ -724,39 +719,28 @@ export default function HistoryScreen({ navigate, onBack, transport: injectedTra
       onApplyFilters={applyFilters}
       onClearFilters={clearFilters}
       onRetry={beginRefresh}
-      onRefresh={beginRefresh} />
-    <HistoryActivityDialog
-      entry={activityEntry}
-      labels={labels}
-      palette={historyPalette}
-      onClose={() => setActivityEntry(null)}
-      onEdit={openEditor}
-      onDelete={requestDelete}
-      onSelectScore={score => setEntryScore(activityEntry, score)} />
-    <HistoryEditDialog
-      entry={editingEntry}
-      labels={labels}
-      palette={historyPalette}
-      onClose={() => setEditingEntry(null)}
-      onSave={saveEntry}
-      onDelete={requestDelete} />
-    <HistoryDeleteDialog
-      entry={deletingEntry}
-      labels={labels}
-      palette={historyPalette}
-      onClose={() => setDeletingEntry(null)}
-      onConfirm={deleteEntry} />
+      onRefresh={beginRefresh}>
+      <HistoryActivityDialog
+        entry={activityEntry}
+        labels={labels}
+        palette={historyPalette}
+        onClose={() => setActivityEntry(null)}
+        onEdit={openEditor}
+        onDelete={requestDelete}
+        onSelectScore={score => setEntryScore(activityEntry, score)} />
+      <HistoryEditDialog
+        entry={editingEntry}
+        labels={labels}
+        palette={historyPalette}
+        onClose={() => setEditingEntry(null)}
+        onSave={saveEntry}
+        onDelete={requestDelete} />
+      <HistoryDeleteDialog
+        entry={deletingEntry}
+        labels={labels}
+        palette={historyPalette}
+        onClose={() => setDeletingEntry(null)}
+        onConfirm={deleteEntry} />
+    </HistoryView>
   </Screen>;
 }
-
-const styles = StyleSheet.create({
-  notice: {
-    borderWidth: 1,
-    borderColor: 'rgba(248, 113, 113, 0.4)',
-    borderRadius: 8,
-    backgroundColor: 'rgba(248, 113, 113, 0.1)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  noticeText: { color: '#f87171', fontSize: 13 },
-});

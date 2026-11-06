@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { UsersManagement } from '../../../frontend/users/UsersManagement';
+import { SettingsUsersView } from '../../../frontend/pages/SettingsUsersView';
 import { palette } from '../theme';
 
 export const surface = {
@@ -211,6 +211,6 @@ export default function UsersSlot() {
     },
   };
 
-  return <UsersManagement initialUsers={currentMembers()} labels={labels}
+  return <SettingsUsersView users={currentMembers()} labels={labels}
     palette={settingsPalette} actions={actions} />;
 }

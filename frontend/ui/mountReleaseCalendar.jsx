@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { mountRoot } from '../settings/root';
+import { CalendarView } from '../pages/CalendarView';
 import { ReleaseCalendar } from './ReleaseCalendar';
 
 function post(url, csrf, fields) {
@@ -142,15 +143,21 @@ function Adapter({ props }) {
     }
   }
 
-  return <ReleaseCalendar
-    {...props}
+  return <CalendarView
+    title=""
+    subtitle=""
+    chrome={false}
+    sections={['calendar']}
     palette={palette}
-    initialFilters={initialFilters}
-    onNavigate={navigate}
-    onOpenRelease={(release) => navigate(release.href)}
-    onViewChange={(view) => navigate(props.navigation?.views?.[view])}
-    onFiltersChange={persistFilters}
-    onMenuAction={menuAction} />;
+    calendar={<ReleaseCalendar
+      {...props}
+      palette={palette}
+      initialFilters={initialFilters}
+      onNavigate={navigate}
+      onOpenRelease={(release) => navigate(release.href)}
+      onViewChange={(view) => navigate(props.navigation?.views?.[view])}
+      onFiltersChange={persistFilters}
+      onMenuAction={menuAction} />} />;
 }
 
 export function mountReleaseCalendar(host, props) {

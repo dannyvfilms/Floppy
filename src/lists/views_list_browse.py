@@ -346,6 +346,7 @@ def lists(request):
                 trakt_account and trakt_account.is_configured
             ),
             "mdblist_account": mdblist_account,
+            "lists_page_model": {"testID": "lists-page"},
             "cache_buster": cache_buster,
             "list_url_template": _build_list_url_template(request),
         },

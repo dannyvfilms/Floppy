@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Badge } from '../../../frontend/ui/Badge';
-import { DetailComposition } from '../../../frontend/ui/DetailComposition';
 import { palette, spacing } from '../theme';
 
 export const surface = {
@@ -9,7 +8,7 @@ export const surface = {
   status: 'ported',
   title: 'Detail composition and metadata',
   where: 'Film, show, game, book, music and podcast detail pages',
-  note: 'Hero artwork, title facts, synopsis, primary actions, configurable sections and public/read-only states use the shared DetailComposition. Rating, progress, children rows, tracking dialogs and the provider graph stay separate.',
+  note: 'Hero artwork, title facts, synopsis, primary actions, configurable sections and public/read-only states use the shared DetailComposition through the shared DetailView section order. Rating, progress, children rows, tracking dialogs and the provider graph stay separate.',
 };
 
 const labels = {
@@ -54,9 +53,10 @@ function ProviderList() {
   </View>;
 }
 
-export default function DetailSlot() {
-  const [status, setStatus] = useState('Continue watching');
-  const model = {
+// Production-shaped detail model for the native proof. The shared DetailView
+// owns section order, labels and states; this factory only supplies values.
+export function createDetailModel() {
+  return {
     title: 'The Quiet Orbit',
     altTitle: 'La órbita silenciosa',
     subtitle: 'Season 2',
@@ -74,16 +74,17 @@ export default function DetailSlot() {
       { label: 'Status', value: 'Returning series' },
     ],
     synopsis: { text: synopsis, previewLines: 3 },
+    labels,
+    palette: detailPalette,
     actions: {
-      primary: { label: status, tone: 'primary', onPress: () => setStatus('Watching episode 7') },
-      items: [{ label: 'Add to library', tone: 'surface', onPress: () => setStatus('In your library') }],
+      primary: { label: 'Continue watching', tone: 'primary' },
+      items: [{ label: 'Add to library', tone: 'surface' }],
     },
     sections: [
       { id: 'genres', title: 'Genres', body: <GenreBadges /> },
       { id: 'providers', title: 'Where to watch', body: <ProviderList /> },
     ],
   };
-  return <DetailComposition model={model} labels={labels} palette={detailPalette} />;
 }
 
 const styles = StyleSheet.create({

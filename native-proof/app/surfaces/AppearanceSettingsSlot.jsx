@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { AppearanceEditor } from '../../../frontend/settings/AppearanceEditor';
-import { SettingsCard } from '../../../frontend/settings/SettingsCard';
-import { palette, radius, spacing } from '../theme';
+import { SettingsAppearanceView } from '../../../frontend/pages/SettingsAppearanceView';
+import { palette, radius } from '../theme';
 
 export const surface = {
   id: 'SET-APPEARANCE',
@@ -262,24 +260,16 @@ export default function AppearanceSettingsSlot() {
     setSavedValues(submitted);
   }
 
-  return <SettingsCard title="Appearance" palette={settingsPalette}>
-    <View style={styles.form}>
-      <AppearanceEditor
-        presets={presets}
-        colors={colors}
-        effects={effects}
-        families={families}
-        values={values}
-        initialValues={savedValues}
-        onChange={setValues}
-        onSave={save}
-        palette={settingsPalette}
-        buttonPalette={buttonPalette}
-      />
-    </View>
-  </SettingsCard>;
+  return <SettingsAppearanceView
+    presets={presets}
+    colors={colors}
+    effects={effects}
+    families={families}
+    values={values}
+    initialValues={savedValues}
+    onChange={setValues}
+    onSave={save}
+    palette={settingsPalette}
+    buttonPalette={buttonPalette}
+  />;
 }
-
-const styles = StyleSheet.create({
-  form: { gap: spacing.sm },
-});

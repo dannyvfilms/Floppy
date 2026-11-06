@@ -1,10 +1,15 @@
 {% extends "base.html" %}
 {% load i18n %}
+{% load ui_tags %}
 
 {% load static %}
 
 {% block content %}
   <div class="mx-auto max-w-6xl">
+    {% settings_view_react as settings_view %}
+    {% if settings_view.props %}{{ settings_view.props|json_script:settings_view.id }}{% endif %}
+    <div data-settings-view-root data-props-id="{{ settings_view.id }}">
+    <div data-settings-fallback>
     <div class="mb-8">
       <h1 class="text-3xl font-bold">{% translate "Settings" %}</h1>
       <p class="text-[var(--color-text-muted)] mt-2 text-sm">{% translate "Configure your account and preferences" %}</p>
@@ -147,10 +152,12 @@
       </div>
 
       <!-- min-w-0 prevents flex item overflow, happens when creating periodic import for Simkl -->
-      <div class="flex-1 min-w-0">
+      <div class="flex-1 min-w-0" data-settings-page-content>
         {% block settings_content %}
         {% endblock settings_content %}
       </div>
+    </div>
+    </div>
     </div>
   </div>
 {% endblock content %}

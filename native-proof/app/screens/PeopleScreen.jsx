@@ -1,15 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Rail } from '../../../frontend/ui/Rail';
-import {
-  CreditCard,
-  LightboxDialog,
-  MediaGallery,
-  MediumExtras,
-  PersonCard,
-  PersonHero,
-  StudioHero,
-} from '../../../frontend/ui/People';
+import { PeopleView } from '../../../frontend/pages/PeopleView';
+import { LightboxDialog } from '../../../frontend/ui/People';
 import { Screen, Section } from '../components/Screen';
 import { createPeopleTransport } from '../data/peopleTransport';
 import { palette, radius, spacing } from '../theme';
@@ -357,79 +349,82 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
     const youtubeWatch = extras?.youtubeWatch;
     const reading = extras?.reading;
     if (!gallery.length && !gameLengths && !youtubeWatch && !reading) return null;
-    return <>
-      {gallery.length ? <Section title="Trailers and photos"
-        copy={params?.galleryTitle || profile?.person?.name || profile?.studio?.name || ''}>
-        <MediaGallery items={gallery} labels={labels} palette={palette}
-          onPlay={playGalleryItem}
-          onOpenLightbox={(items, index) => setLightbox({ visible: true, index })} />
-      </Section> : null}
-      {gameLengths || youtubeWatch || reading ? <Section title="Medium extras">
-        <MediumExtras gameLengths={gameLengths} youtubeWatch={youtubeWatch} reading={reading}
-          labels={labels} palette={palette}
-          onOpenSource={openExternal} onOpenItem={openExtra} />
-      </Section> : null}
-    </>;
+    return <PeopleView
+      part="extras"
+      gallery={gallery}
+      galleryTitle={params?.galleryTitle || profile?.person?.name || profile?.studio?.name || ''}
+      gameLengths={gameLengths}
+      youtubeWatch={youtubeWatch}
+      reading={reading}
+      labels={labels}
+      palette={palette}
+      onOpenSource={openExternal}
+      onOpenExtra={openExtra}
+      onPlayGallery={playGalleryItem}
+      onOpenLightbox={(items, index) => setLightbox({ visible: true, index })} />;
   }
 
   function livePerson(personProfile) {
     const person = personProfile.person;
     const labels = personProfile.labels || {};
-    const watched = personProfile.watched || [];
-    const filmography = personProfile.filmography || [];
-    const cast = params?.cast || personProfile.cast || [];
-    const crew = params?.crew || personProfile.crew || [];
     const extras = params?.extras || personProfile.extras || {};
-    return <>
-      <PersonHero person={person} counts={personProfile.counts} labels={labels}
-        palette={palette} headingLevel={1}
-        showBiography={personProfile.showBiography} canViewHistory={personProfile.canViewHistory}
-        actionPalette={{ radius: radius.md || 8 }}
-        onOpenSource={openExternal}
-        onViewHistory={personProfile.historyUrl
-          ? () => navigate?.('History', { filters: personProfile.historyUrl })
-          : undefined} />
-      {watched.length ? <Rail items={watched}
-        renderItem={entry => <CreditCard entry={entry} labels={labels} palette={palette} onOpen={openCredit} />}
-        title={labels.watchedContent || 'Watched Content'}
-        summary={`${watched.length} ${watched.length === 1 ? 'title' : 'titles'}`}
-        itemWidth={176} emptyLabel={labels.noWatched} palette={palette} /> : null}
-      {filmography.length ? <Rail items={filmography}
-        renderItem={entry => <CreditCard entry={entry} labels={labels} palette={palette} onOpen={openCredit} />}
-        title={personProfile.isAuthor ? labels.bibliography || 'Bibliography' : labels.filmography || 'Filmography'}
-        summary={`${filmography.length} ${filmography.length === 1 ? 'title' : 'titles'}`}
-        summaryInline="Most recent" itemWidth={176}
-        emptyLabel={personProfile.isAuthor ? labels.noBibliography : labels.noFilmography}
-        palette={palette} /> : null}
-      {cast.length ? <Rail items={cast}
-        renderItem={member => <PersonCard person={member} labels={labels} palette={palette} onOpen={openPerson} />}
-        title={labels.cast || 'Cast'} summary={`${cast.length} ${cast.length === 1 ? 'person' : 'people'}`}
-        itemWidth={132} emptyLabel={labels.noCast || 'No cast available.'} palette={palette} /> : null}
-      {crew.length ? <Rail items={crew}
-        renderItem={member => <PersonCard person={member} labels={labels} palette={palette} onOpen={openPerson} />}
-        title={labels.crew || 'Crew'} summary={`${crew.length} ${crew.length === 1 ? 'person' : 'people'}`}
-        itemWidth={132} emptyLabel={labels.noCrew || 'No crew available.'} palette={palette} /> : null}
-      {extrasView(extras)}
-    </>;
+    const gallery = params?.gallery || personProfile.gallery || [];
+    return <PeopleView
+      part="full"
+      kind="person"
+      person={person}
+      counts={personProfile.counts}
+      labels={labels}
+      palette={palette}
+      watched={personProfile.watched || []}
+      filmography={personProfile.filmography || []}
+      cast={params?.cast || personProfile.cast || []}
+      crew={params?.crew || personProfile.crew || []}
+      gallery={gallery}
+      galleryTitle={params?.galleryTitle || person?.name || ''}
+      gameLengths={extras.gameLengths}
+      youtubeWatch={extras.youtubeWatch}
+      reading={extras.reading}
+      isAuthor={personProfile.isAuthor}
+      showBiography={personProfile.showBiography}
+      canViewHistory={personProfile.canViewHistory}
+      actionPalette={{ radius: radius.md || 8 }}
+      onOpenSource={openExternal}
+      onViewHistory={personProfile.historyUrl
+        ? () => navigate?.('History', { filters: personProfile.historyUrl })
+        : undefined}
+      onOpenCredit={openCredit}
+      onOpenPerson={openPerson}
+      onOpenExtra={openExtra}
+      onPlayGallery={playGalleryItem}
+      onOpenLightbox={(items, index) => setLightbox({ visible: true, index })} />;
   }
 
   function liveStudio(studioProfile) {
     const labels = studioProfile.labels || {};
-    const titles = studioProfile.titles || [];
     const extras = params?.extras || studioProfile.extras || {};
-    return <>
-      <StudioHero studio={studioProfile.studio} counts={studioProfile.counts} labels={labels}
-        palette={palette} headingLevel={1} sourcePlacement="facts"
-        showBiography={studioProfile.showBiography}
-        onOpenWebsite={openExternal} />
-      {titles.length ? <Rail items={titles}
-        renderItem={entry => <CreditCard entry={entry} labels={labels} palette={palette} onOpen={openCredit} />}
-        title={studioProfile.studio.mediaLabel || labels.titles || 'Titles'}
-        summary={`${titles.length} ${titles.length === 1 ? 'title' : 'titles'}`}
-        summaryInline="Newest first" itemWidth={176} emptyLabel={labels.noTitles}
-        palette={palette} /> : null}
-      {extrasView(extras)}
-    </>;
+    return <PeopleView
+      part="full"
+      kind="studio"
+      studio={studioProfile.studio}
+      counts={studioProfile.counts}
+      labels={labels}
+      palette={palette}
+      filmography={studioProfile.titles || []}
+      creditsTitle={studioProfile.studio.mediaLabel || labels.titles || 'Titles'}
+      gallery={params?.gallery || studioProfile.gallery || []}
+      galleryTitle={params?.galleryTitle || studioProfile.studio?.name || ''}
+      gameLengths={extras.gameLengths}
+      youtubeWatch={extras.youtubeWatch}
+      reading={extras.reading}
+      sourcePlacement="facts"
+      showBiography={studioProfile.showBiography}
+      onOpenWebsite={openExternal}
+      onOpenSource={openExternal}
+      onOpenCredit={openCredit}
+      onOpenExtra={openExtra}
+      onPlayGallery={playGalleryItem}
+      onOpenLightbox={(items, index) => setLightbox({ visible: true, index })} />;
   }
 
   const demoGallery = params?.gallery?.length ? params.gallery : GALLERY;
@@ -441,48 +436,48 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
   function demoView() {
     return <>
       <Menu value={view} onChange={setView} />
-      {view === 'person' ? <>
-        <PersonHero person={DEMO_PERSON} counts={PERSON_COUNTS} palette={palette}
-          onViewHistory={() => navigate?.('History')} onOpenSource={openExternal} />
-        <Rail items={WATCHED_CREDITS} renderItem={entry => <CreditCard entry={entry} onOpen={openCredit} />}
-          title="Watched Content" summary={`${WATCHED_CREDITS.length} titles`} itemWidth={176}
-          palette={palette} emptyLabel="No watched titles yet." />
-        <Rail items={FILMOGRAPHY} renderItem={entry => <CreditCard entry={entry} onOpen={openCredit} />}
-          title="Filmography" summary={`${FILMOGRAPHY.length} titles`} summaryInline="Most recent"
-          itemWidth={176} palette={palette} emptyLabel="No filmography available." />
-        <Rail items={CAST} renderItem={person => <PersonCard person={person} onOpen={openPerson} />}
-          title="Cast" summary="Signal Fires · season one" summaryInline={`${CAST.length} people`}
-          itemWidth={132} palette={palette} emptyLabel="No cast available." />
-        <Rail items={CREW} renderItem={person => <PersonCard person={person} onOpen={openPerson} />}
-          title="Crew" summary="Signal Fires · season one" summaryInline={`${CREW.length} people`}
-          itemWidth={132} palette={palette} emptyLabel="No crew available." />
-        <Section title="Medium extras">
-          <MediumExtras reading={demoReading} youtubeWatch={demoYoutubeWatch}
-            palette={palette} onOpenItem={openExtra} />
-        </Section>
-      </> : null}
-      {view === 'studio' ? <>
-        <StudioHero studio={DEMO_STUDIO} counts={STUDIO_COUNTS} palette={palette}
-          onOpenWebsite={openExternal} />
-        <Rail items={STUDIO_TITLES} renderItem={entry => <CreditCard entry={entry} onOpen={openCredit} />}
-          title="Games" summary={`${STUDIO_TITLES.length} titles`} summaryInline="Newest first"
-          itemWidth={176} palette={palette} emptyLabel="No titles available." />
-        <Section title="Medium extras">
-          <MediumExtras gameLengths={demoGameLengths} palette={palette} onOpenSource={openExternal} />
-        </Section>
-      </> : null}
-      {view === 'extras' ? <>
-        <Section title="Trailers and photos"
-          copy={params?.galleryTitle || 'Signal Fires · season one'}>
-          <MediaGallery items={demoGallery} palette={palette}
-            onPlay={playGalleryItem}
-            onOpenLightbox={(items, index) => setLightbox({ visible: true, index })} />
-        </Section>
-        <Section title="Medium extras">
-          <MediumExtras gameLengths={demoGameLengths} youtubeWatch={demoYoutubeWatch} reading={demoReading}
-            palette={palette} onOpenSource={openExternal} onOpenItem={openExtra} />
-        </Section>
-      </> : null}
+      {view === 'person' ? <PeopleView
+        part="full"
+        kind="person"
+        person={DEMO_PERSON}
+        counts={PERSON_COUNTS}
+        palette={palette}
+        watched={WATCHED_CREDITS}
+        filmography={FILMOGRAPHY}
+        cast={CAST}
+        crew={CREW}
+        youtubeWatch={demoYoutubeWatch}
+        reading={demoReading}
+        onViewHistory={() => navigate?.('History')}
+        onOpenSource={openExternal}
+        onOpenCredit={openCredit}
+        onOpenPerson={openPerson}
+        onOpenExtra={openExtra} /> : null}
+      {view === 'studio' ? <PeopleView
+        part="full"
+        kind="studio"
+        studio={DEMO_STUDIO}
+        counts={STUDIO_COUNTS}
+        palette={palette}
+        filmography={STUDIO_TITLES}
+        creditsTitle="Games"
+        gameLengths={demoGameLengths}
+        onOpenWebsite={openExternal}
+        onOpenSource={openExternal}
+        onOpenCredit={openCredit}
+        onOpenExtra={openExtra} /> : null}
+      {view === 'extras' ? <PeopleView
+        part="extras"
+        gallery={demoGallery}
+        galleryTitle={params?.galleryTitle || 'Signal Fires · season one'}
+        gameLengths={demoGameLengths}
+        youtubeWatch={demoYoutubeWatch}
+        reading={demoReading}
+        palette={palette}
+        onOpenSource={openExternal}
+        onOpenExtra={openExtra}
+        onPlayGallery={playGalleryItem}
+        onOpenLightbox={(items, index) => setLightbox({ visible: true, index })} /> : null}
     </>;
   }
 

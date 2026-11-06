@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
-import { MusicRelationGrid } from './MusicRelationCard';
+import { MusicView } from '../pages/MusicView';
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;
@@ -60,8 +60,8 @@ function Grid({ props }) {
       scheme.removeEventListener('change', update);
     };
   }, []);
-  return <MusicRelationGrid relations={props.relations} labels={props.labels}
-    palette={palette} onOpen={openRelation} />;
+  return <MusicView part="relations" relations={props.relations} labels={props.labels}
+    palette={palette} onOpenRelation={openRelation} />;
 }
 
 export function mountMusicRelations(host, props) {

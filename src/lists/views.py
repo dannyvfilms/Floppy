@@ -499,6 +499,10 @@ def list_detail(request, list_reference):
                 ),
                 "collaborators_count": custom_list.collaborators.count() + 1,
                 "viewers_count": custom_list.viewers.count(),
+                "list_detail_page_model": {
+                    "testID": "list-detail-page",
+                    "title": custom_list.name,
+                },
                 "completion_percent": completion_percent,
                 "completed_count": completed_count,
                 "media_type_breakdown": media_type_breakdown,

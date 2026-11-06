@@ -16,6 +16,8 @@
     "build:ui": "node scripts/build_ui.mjs",
     "check:ui": "node scripts/build_ui.mjs --check",
     "check:ui-architecture": "node scripts/check_ui_architecture.mjs",
-    "test:ui-architecture": "node --test scripts/check_ui_architecture.test.mjs"
+    "test:ui-architecture": "node --test scripts/check_ui_architecture.test.mjs",
+    "check:page-parity": "node scripts/check_page_parity.mjs",
+    "check:page-parity:strict": "node scripts/check_page_parity.mjs --strict"
   }
 }

@@ -1,24 +1,43 @@
 import React from 'react';
-import { Screen, Section } from '../components/Screen';
+import { LibraryPageView } from '../../../frontend/pages/LibraryPageView';
+import { Screen } from '../components/Screen';
+import { palette } from '../theme';
 import BulkSlot from '../surfaces/BulkSlot';
 import ButtonSlot from '../surfaces/ButtonSlot';
 import FiltersSlot from '../surfaces/FiltersSlot';
 import SearchSlot from '../surfaces/SearchSlot';
 import TableSlot from '../surfaces/TableSlot';
 
-export default function LibraryScreen({ navigate }) {
-  return <Screen title="Library" subtitle="Everything you track, filtered the way you left it">
-    <SearchSlot
-      onOpenSearch={params => navigate('Search', params)}
-      onOpenSuggestion={item => navigate('Detail', { item })}
+const MEDIA_TYPE_LABELS = {
+  movie: 'Movies',
+  tv: 'Shows',
+  anime: 'Anime',
+  book: 'Books',
+  comic: 'Comics',
+  manga: 'Manga',
+  game: 'Games',
+  boardgame: 'Board Games',
+  music: 'Music',
+  podcast: 'Podcasts',
+};
+
+export default function LibraryScreen({ params, navigate }) {
+  const mediaType = params?.mediaType;
+  const title = MEDIA_TYPE_LABELS[mediaType] || 'Library';
+  return <Screen chrome={false}>
+    <LibraryPageView
+      title={title}
+      subtitle="Everything you track, filtered the way you left it"
+      labels={{ loading: 'Loading your library…' }}
+      palette={palette}
+      search={<SearchSlot
+        onOpenSearch={next => navigate('Search', next)}
+        onOpenSuggestion={item => navigate('Detail', { item })}
+      />}
+      filters={<FiltersSlot />}
+      selection={<BulkSlot onOpenDetail={() => navigate('Detail')} />}
+      content={<TableSlot onOpenDetail={() => navigate('Detail')} />}
+      footer={<ButtonSlot />}
     />
-    <FiltersSlot />
-    <Section title="Movies and shows">
-      <BulkSlot onOpenDetail={() => navigate('Detail')} />
-    </Section>
-    <Section title="Table view">
-      <TableSlot onOpenDetail={() => navigate('Detail')} />
-    </Section>
-    <ButtonSlot />
   </Screen>;
 }

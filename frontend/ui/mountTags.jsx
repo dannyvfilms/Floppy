@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { mountRoot } from '../settings/root';
+import { TagsPageView } from '../pages/TagsPageView';
 import {
   TagAssignmentDialog,
   TagIndex,
@@ -89,18 +90,13 @@ export function readTags(parsed) {
 
 function TagIndexAdapter({ props }) {
   const [tags, setTags] = useState(props.tags || []);
-  const [query, setQuery] = useState('');
   const [sort, setSort] = useState(props.sort || 'name');
 
   const visible = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    const filtered = needle
-      ? tags.filter((tag) => tag.name.toLowerCase().includes(needle))
-      : tags;
-    return [...filtered].sort((left, right) => sort === 'count'
+    return [...tags].sort((left, right) => sort === 'count'
       ? right.count - left.count || left.name.toLowerCase().localeCompare(right.name.toLowerCase())
       : left.name.toLowerCase().localeCompare(right.name.toLowerCase()));
-  }, [query, sort, tags]);
+  }, [sort, tags]);
 
   function openType(_tag, type) {
     if (type.url) window.location.assign(type.url);
@@ -128,14 +124,13 @@ function TagIndexAdapter({ props }) {
     });
   }
 
-  return <TagIndex
+  return <TagsPageView
+    title={props.title}
+    subtitle={props.subtitle}
     tags={visible}
     sort={sort}
-    query={query}
+    labels={{ ...(props.labels || {}), empty: props.emptyText || props.labels?.empty }}
     palette={palette}
-    showControls={false}
-    emptyText={props.emptyText}
-    onQueryChange={setQuery}
     onSortChange={changeSort}
     onDelete={remove}
     onOpenType={openType} />;

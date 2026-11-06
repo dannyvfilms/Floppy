@@ -477,6 +477,27 @@ def _serialize_media_list_order(entries):
     return result
 
 
+def _prefetch_untracked_item_tags(entries):
+    """Load tags for item-only rows in one query instead of one per card.
+
+    Tracked rows inherit the ``item__item_tags`` prefetch from their tracker
+    query. Untracked (collected but unstatused) rows have no tracker to inherit
+    it from, and every card renders the Tags column.
+    """
+    item_pks = [entry.item.pk for entry in entries if entry.media is None]
+    if not item_pks:
+        return
+    tagged_items = {
+        item.pk: item
+        for item in Item.objects.filter(pk__in=item_pks).prefetch_related(
+            Prefetch("item_tags", queryset=ItemTag.objects.select_related("tag")),
+        )
+    }
+    for entry in entries:
+        if entry.media is None:
+            entry.item = tagged_items.get(entry.item.pk, entry.item)
+
+
 def _hydrate_media_list_page(user, media_type, order_slice):
     """Rebuild MediaListEntry objects for a slice of a cached compact order."""
     pks_by_model: dict[str, list] = {}
@@ -511,12 +532,7 @@ def _hydrate_media_list_page(user, media_type, order_slice):
             media_by_key[(model_name, media.pk)] = media
 
     items_by_pk = (
-        {
-            item.pk: item
-            for item in Item.objects.filter(pk__in=item_pks).prefetch_related(
-                Prefetch("item_tags", queryset=ItemTag.objects.select_related("tag")),
-            )
-        }
+        {item.pk: item for item in Item.objects.filter(pk__in=item_pks)}
         if item_pks
         else {}
     )
@@ -536,6 +552,8 @@ def _hydrate_media_list_page(user, media_type, order_slice):
         if item is None:
             continue
         entries.append(MediaListEntry(item=item, media=None))
+
+    _prefetch_untracked_item_tags(entries)
 
     # Grouped anime (TV items in the anime bucket) are surfaced in the anime
     # list via the warm-cache hydration path too. _mark_grouped_anime_route is
@@ -1958,20 +1976,10 @@ def media_list(request, media_type):
         statusless = {}
         for model_name in model_names:
             model = django_apps.get_model(app_label="app", model_name=model_name)
-            media_rows = (
-                model.objects.filter(
-                    user=request.user,
-                    status__isnull=True,
-                )
-                .select_related("item")
-                .prefetch_related(
-                    Prefetch(
-                        "item__item_tags",
-                        queryset=ItemTag.objects.select_related("tag"),
-                    ),
-                )
-            )
-            for media in media_rows:
+            for media in model.objects.filter(
+                user=request.user,
+                status__isnull=True,
+            ).select_related("item"):
                 statusless[media.item_id] = media
         return statusless
 
@@ -2076,9 +2084,6 @@ def media_list(request, media_type):
         candidate_items = list(
             Item.objects.filter(id__in=candidate_item_ids)
             .filter(initial_condition(initial, request.user))
-            .prefetch_related(
-                Prefetch("item_tags", queryset=ItemTag.objects.select_related("tag")),
-            )
             .order_by("title", "id"),
         )
         for item in candidate_items:
@@ -2382,6 +2387,7 @@ def media_list(request, media_type):
             total=engine_total,
         )
         page_entries = media_list_entries_for_items(request.user, engine_page.items)
+        _prefetch_untracked_item_tags(page_entries)
         media_page.object_list = [
             MediaListEntry(item=entry.item, media=entry.media) for entry in page_entries
         ]
@@ -3275,6 +3281,10 @@ def media_list(request, media_type):
         "media_type_plural": app_tags.media_type_readable_plural(media_type).lower(),
         "media_list": media_page,
         "result_count": result_count,
+        "library_page_model": {
+            "title": app_tags.media_type_readable_plural(route_media_type),
+            "count": result_count,
+        },
         "current_layout": layout,
         "layout_class": _layout_class,
         "media_list_url": reverse("medialist", args=[route_media_type]),

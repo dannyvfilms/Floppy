@@ -1,23 +1,8 @@
 import React, { useState } from 'react';
 import { Linking } from 'react-native';
-import { Screen, Section } from '../components/Screen';
-import {
-  AboutOverviewCard,
-  AboutVersionFooter,
-  AttributionsCard,
-  DeveloperSpecsCard,
-  InstallCard,
-  LicenseCard,
-  ProjectResourcesCard,
-  ReleaseUpdateBanner,
-  WhatsNewCard,
-} from '../../../frontend/settings/AboutSettings';
-import {
-  CacheManagementCard,
-  ImageCacheCard,
-  LogsCard,
-  ServerPortCard,
-} from '../../../frontend/settings/AdvancedSettings';
+import { Screen } from '../components/Screen';
+import { SettingsAboutView } from '../../../frontend/pages/SettingsAboutView';
+import { SettingsAdvancedView } from '../../../frontend/pages/SettingsAdvancedView';
 import { palette, radius } from '../theme';
 
 export const surface = {
@@ -122,7 +107,7 @@ function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-export default function SettingsAdvancedScreen({ onBack }) {
+export default function SettingsAdvancedScreen({ onBack, params }) {
   const [updateVisible, setUpdateVisible] = useState(true);
   const [logsBusy, setLogsBusy] = useState(false);
   const [logsSuccess, setLogsSuccess] = useState('');
@@ -214,49 +199,54 @@ export default function SettingsAdvancedScreen({ onBack }) {
     setInstallStatus('Installing Floppy. Look for it alongside your other apps.');
   }
 
-  return <Screen title="Advanced" subtitle="System, updates and about" onBack={onBack}>
-    {updateVisible ? <ReleaseUpdateBanner releaseTag={releaseTag}
-      onDismiss={() => setUpdateVisible(false)}
-      onViewWhatsNew={() => {
-        setUpdateVisible(false);
-        openUrl(releasesUrl);
-      }} /> : null}
-    <LogsCard isSuperuser logsSince="Oct 2, 2026 13:39" lastUncleanExit="Oct 28, 2026 22:14"
-      bugReportUrl="https://github.com/dannyvfilms/Floppy/issues/new?title=%5BBUG%5D%20"
-      busy={logsBusy} success={logsSuccess}
-      onDownloadLogs={downloadLogs} onOpenUrl={openUrl}
+  const page = params?.page === 'about' ? 'about' : 'advanced';
+  return <Screen title={page === 'about' ? 'About' : 'Advanced'}
+    subtitle={page === 'about' ? 'Version, resources and specifications' : 'System, logs, caches and server port'}
+    onBack={onBack}>
+    {page === 'advanced' ? <SettingsAdvancedView
+      logs={{
+        isSuperuser: true, logsSince: 'Oct 2, 2026 13:39', lastUncleanExit: 'Oct 28, 2026 22:14',
+        bugReportUrl: 'https://github.com/dannyvfilms/Floppy/issues/new?title=%5BBUG%5D%20',
+        busy: logsBusy, success: logsSuccess,
+        onDownloadLogs: downloadLogs, onOpenUrl: openUrl,
+      }}
+      imageCache={{
+        isSuperuser: true, enabled: imageEnabled, count: 1284, size: '412 MB',
+        busy: imageBusy, success: imageSuccess,
+        onSave: saveImageCache, onClear: clearImageCache,
+      }}
+      cacheManagement={{
+        busyKind: cacheBusyKind, success: cacheSuccess, onClear: clearCache,
+      }}
+      serverPort={{
+        canManage: true, ...port, busy: portBusy, success: portSuccess,
+        onSave: savePort, onReset: resetPort,
+      }}
       palette={settingsPalette} buttonPalette={buttonPalette} />
-    <ImageCacheCard isSuperuser enabled={imageEnabled} count={1284} size="412 MB"
-      busy={imageBusy} success={imageSuccess}
-      onSave={saveImageCache} onClear={clearImageCache}
-      palette={settingsPalette} buttonPalette={buttonPalette} />
-    <CacheManagementCard busyKind={cacheBusyKind} success={cacheSuccess}
-      onClear={clearCache} palette={settingsPalette} buttonPalette={buttonPalette} />
-    <ServerPortCard canManage runtimePort={port.runtimePort}
-      configuredPort={port.configuredPort} configuredSource={port.configuredSource}
-      savedPort={port.savedPort} defaultPort={port.defaultPort}
-      savedFallbackUnreadable={port.savedFallbackUnreadable}
-      environmentOverride={port.environmentOverride}
-      environmentName={port.environmentName}
-      configError={port.configError} configErrorSource={port.configErrorSource}
-      showReset={port.showReset} busy={portBusy} success={portSuccess}
-      onSave={savePort} onReset={resetPort}
-      palette={settingsPalette} buttonPalette={buttonPalette} />
-    <Section title="About">
-      <AboutOverviewCard onOpenUrl={openUrl} palette={settingsPalette} />
-      <WhatsNewCard releases={releases} releasesUrl={releasesUrl}
-        onOpenUrl={openUrl} palette={settingsPalette} />
-      <InstallCard installAvailable={false} installBusy={installBusy} installStatus={installStatus}
-        onInstall={install} onOpenUrl={openUrl}
-        palette={settingsPalette} buttonPalette={buttonPalette} />
-      <ProjectResourcesCard resources={resources} onOpenUrl={openUrl} palette={settingsPalette} />
-      <DeveloperSpecsCard specs={specs} onOpenUrl={openUrl}
-        onPreview={spec => openUrl(spec.url)}
-        onDownload={spec => openUrl(`${spec.url}${spec.url.includes('?') ? '&' : '?'}download=1`)}
-        palette={settingsPalette} />
-      <AttributionsCard attributions={attributions} onOpenUrl={openUrl} palette={settingsPalette} />
-      <LicenseCard licenses={licenses} onOpenUrl={openUrl} palette={settingsPalette} />
-      <AboutVersionFooter version="v0.3.0" commit="a1b2c3d" palette={settingsPalette} />
-    </Section>
+      : <SettingsAboutView
+        banner={updateVisible ? {
+          releaseTag,
+          onDismiss: () => setUpdateVisible(false),
+          onViewWhatsNew: () => {
+            setUpdateVisible(false);
+            openUrl(releasesUrl);
+          },
+        } : null}
+        overview={{ onOpenUrl: openUrl }}
+        whatsNew={{ releases, releasesUrl, onOpenUrl: openUrl }}
+        install={{
+          installAvailable: false, installBusy, installStatus,
+          onInstall: install, onOpenUrl: openUrl,
+        }}
+        resources={{ resources, onOpenUrl: openUrl }}
+        specs={{
+          specs, onOpenUrl: openUrl,
+          onPreview: spec => openUrl(spec.url),
+          onDownload: spec => openUrl(`${spec.url}${spec.url.includes('?') ? '&' : '?'}download=1`),
+        }}
+        attributions={{ attributions, onOpenUrl: openUrl }}
+        licenses={{ licenses, onOpenUrl: openUrl }}
+        version={{ version: 'v0.3.0', commit: 'a1b2c3d' }}
+        palette={settingsPalette} buttonPalette={buttonPalette} />}
   </Screen>;
 }

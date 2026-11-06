@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { mountRoot } from '../settings/root';
+import { CalendarView } from '../pages/CalendarView';
 import { CalendarLinks } from './CalendarLinks';
 
 function readPalette() {
@@ -36,12 +37,19 @@ function Adapter({ props }) {
     }
   }
 
-  return <CalendarLinks
-    {...props}
-    embedded
+  return <CalendarView
+    title=""
+    subtitle=""
+    chrome={false}
+    sections={['links']}
+    labels={{ linksTitle: '', linksCopy: '' }}
     palette={palette}
-    onCopyLink={copyLink}
-    onDownload={download} />;
+    links={<CalendarLinks
+      {...props}
+      embedded
+      palette={palette}
+      onCopyLink={copyLink}
+      onDownload={download} />} />;
 }
 
 export function mountCalendarLinks(host, props) {

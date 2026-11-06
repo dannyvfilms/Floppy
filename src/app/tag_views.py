@@ -368,6 +368,14 @@ def tag_index(request):
         tags.sort(key=lambda tag: tag.name.lower())
 
     tag_index_data = {
+        "title": gettext("Tags"),
+        "subtitle": gettext(
+            "All tags you've created, with how many items use each one"
+        ),
+        "labels": {
+            "name": gettext("Name"),
+            "mostUsed": gettext("Most used"),
+        },
         "tags": [
             {
                 "id": tag.id,

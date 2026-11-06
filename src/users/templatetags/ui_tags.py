@@ -1308,3 +1308,17 @@ def _detail_children_issue_props(context):
 def detail_children_props(context):
     """Return the shared child-row model for a surface that has one."""
     return _detail_children_issue_props(context)
+
+
+@register.simple_tag(takes_context=True)
+def settings_view_react(context):
+    """Return the shared settings navigation/page model for the browser root."""
+    from users.settings_nav import settings_view_model
+
+    request = context.get("request")
+    if request is None:
+        return {"id": "settings-view-props", "props": None}
+    return {
+        "id": f"settings-view-{uuid4().hex}",
+        "props": settings_view_model(request),
+    }

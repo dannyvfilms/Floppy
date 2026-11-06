@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
-import { HistoryActivityDialog, HistoryFeed } from './HistoryFeed';
+import { HistoryActivityDialog } from './HistoryFeed';
+import { HistoryView } from '../pages/HistoryView';
 import { openModal } from './ModalHost';
 
 const canvas = document.createElement('canvas');
@@ -325,27 +326,28 @@ function Adapter({ host, props }) {
       .catch(() => {});
   }
 
-  return <>
-    <HistoryFeed
-      model={model}
-      labels={props.labels}
-      palette={palette}
-      chrome={false}
-      onNavigate={navigate}
-      onLoadMore={loadMore}
-      onLoadDay={loadDay}
-      onOpenEntry={openEntry}
-      onOpenActivity={openActivity}
-      onEditEntry={editEntry}
-      onDeleteEntry={deleteEntry}
-      onApplyFilters={applyFilters}
-      onClearFilters={clearFilters}
-      onSaveView={saveView}
-      onRequestOptions={loadFilterOptions}
-      onRetry={() => assign(props.baseUrl || window.location.pathname)}
-      onRetryDay={loadDay}
-      onRefresh={() => assign(props.baseUrl || window.location.pathname)}
-      onDismissRefresh={() => window.dispatchEvent(new CustomEvent('history-refresh-dismiss'))} />
+  return <HistoryView
+    title=""
+    subtitle=""
+    chrome={false}
+    model={model}
+    labels={props.labels}
+    palette={palette}
+    onNavigate={navigate}
+    onLoadMore={loadMore}
+    onLoadDay={loadDay}
+    onOpenEntry={openEntry}
+    onOpenActivity={openActivity}
+    onEditEntry={editEntry}
+    onDeleteEntry={deleteEntry}
+    onApplyFilters={applyFilters}
+    onClearFilters={clearFilters}
+    onSaveView={saveView}
+    onRequestOptions={loadFilterOptions}
+    onRetry={() => assign(props.baseUrl || window.location.pathname)}
+    onRetryDay={loadDay}
+    onRefresh={() => assign(props.baseUrl || window.location.pathname)}
+    onDismissRefresh={() => window.dispatchEvent(new CustomEvent('history-refresh-dismiss'))}>
     <HistoryActivityDialog
       entry={activityEntry}
       labels={props.labels}
@@ -353,7 +355,7 @@ function Adapter({ host, props }) {
       onClose={() => setActivityEntry(null)}
       onEdit={editEntry}
       onDelete={deleteEntry} />
-  </>;
+  </HistoryView>;
 }
 
 export function mountHistoryFeed(host, props) {

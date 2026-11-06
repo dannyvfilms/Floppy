@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { mountRoot } from '../settings/root';
+import { StatisticsView } from '../pages/StatisticsView';
 import { StatisticsActivityOverview } from './StatisticsSummary';
 
 const WEEKDAY_NAMES = [
@@ -217,10 +218,16 @@ function Adapter({ props }) {
     if (item?.href) window.location.assign(item.href);
   }
 
-  return <StatisticsActivityOverview
-    model={model}
+  return <StatisticsView
+    title=""
+    subtitle=""
+    chrome={false}
+    sections={['summary']}
     palette={palette}
-    onSelectHighlight={openHighlight} />;
+    summary={<StatisticsActivityOverview
+      model={model}
+      palette={palette}
+      onSelectHighlight={openHighlight} />} />;
 }
 
 export function mountStatisticsSummary(host, props) {

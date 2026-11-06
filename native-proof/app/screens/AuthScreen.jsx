@@ -16,22 +16,12 @@ import {
   verifyAuthSession,
 } from '../data/authTransport';
 import { subscribeAuthSession } from '../data/authSession';
-import {
-  AuthEntrance,
-  AuthNotice,
-} from '../../../frontend/auth/AuthEntrance';
-import {
-  AccountTypeCard,
-  AuthenticatorCard,
-  ConnectionsCard,
-  DeleteAccountCard,
-  PasswordCard,
-  ProfileCard,
-  RecoveryCodesCard,
-} from '../../../frontend/auth/AccountSecurity';
+import { AuthNotice } from '../../../frontend/auth/AuthEntrance';
+import { AuthView } from '../../../frontend/pages/AuthView';
+import { SettingsAccountView } from '../../../frontend/pages/SettingsAccountView';
 import { Button } from '../../../frontend/ui/Button';
 import { Chip } from '../../../frontend/settings/Chip';
-import { Screen, Section } from '../components/Screen';
+import { Screen } from '../components/Screen';
 import { palette, radius, spacing } from '../theme';
 
 export const surface = {
@@ -592,121 +582,122 @@ export default function AuthScreen({ onBack }) {
 
     {sessionNotice ? <AuthNotice tone="warning" palette={authPalette}>{sessionNotice}</AuthNotice> : null}
 
-    {view === 'login' || view === 'signup' || view === 'recovery' ? <Section
-      title={view === 'login' ? 'Sign in' : view === 'signup' ? 'Create account' : 'Recover password'}
-      copy="Credentials go straight to your Floppy server. This device keeps only the server session in secure storage.">
-      <AuthEntrance
-        mode={view}
-        firstRun={authConfig.firstRun}
-        registrationEnabled={authConfig.registrationEnabled}
-        socialOnly={authConfig.socialOnly}
-        providers={providers}
-        serverUrl={serverUrl}
-        serverError={serverError}
-        serverHelp={serverHelp}
-        serverBusy={serverBusy}
-        serverChecked={serverChecked}
-        values={authValues}
-        errors={authErrors}
-        error={authError}
-        success={authSuccess}
-        redirectLabel={redirectLabel}
-        busy={authBusy}
-        busyProvider={busyProvider}
-        palette={authPalette}
-        buttonPalette={buttonPalette}
-        onChange={(name, value) => {
-          if (name === 'serverUrl') updateAuth(name, value);
-          else updateAuth(name, value);
+    {view === 'login' || view === 'signup' || view === 'recovery' ? <AuthView
+      mode={view}
+      notice={null}
+      palette={authPalette}
+      buttonPalette={buttonPalette}
+      entrance={{
+        firstRun: authConfig.firstRun,
+        registrationEnabled: authConfig.registrationEnabled,
+        socialOnly: authConfig.socialOnly,
+        providers,
+        serverUrl,
+        serverError,
+        serverHelp,
+        serverBusy,
+        serverChecked,
+        values: authValues,
+        errors: authErrors,
+        error: authError,
+        success: authSuccess,
+        redirectLabel,
+        busy: authBusy,
+        busyProvider,
+        onChange: (name, value) => updateAuth(name, value),
+        onServerChange: value => updateAuth('serverUrl', value),
+        onCheckServer: checkServer,
+        onSubmit: submitAuth,
+        onSwitchMode: chooseView,
+        onForgotPassword: () => chooseView('recovery'),
+        onProvider: signInWithProvider,
+        onContinue: continueFromNotice,
+      }} /> : null}
+
+    {view === 'account' ? <View style={styles.viewStack}>
+      {!signedIn || !account ? <>
+        {!signedIn ? <AuthNotice tone="warning" palette={authPalette}>Sign in first to load your account and security settings.</AuthNotice> : null}
+        {signedIn && accountLoading ? <Text style={[styles.loading, { color: palette.textMuted }]}>Loading account security…</Text> : null}
+        {accountError ? <AuthNotice tone="error" palette={authPalette}>{accountError}</AuthNotice> : null}
+        {accountSuccess ? <AuthNotice tone="success" palette={authPalette}>{accountSuccess}</AuthNotice> : null}
+      </> : <SettingsAccountView
+        labels={{
+          title: 'Account security',
+          copy: sessionLabel ? `Signed in to ${authState.serverUrl} as ${sessionLabel}.` : 'Manage your account and security settings.',
         }}
-        onServerChange={value => updateAuth('serverUrl', value)}
-        onCheckServer={checkServer}
-        onSubmit={submitAuth}
-        onSwitchMode={chooseView}
-        onForgotPassword={() => chooseView('recovery')}
-        onProvider={signInWithProvider}
-        onContinue={continueFromNotice}
-      />
-    </Section> : null}
-
-    {view === 'account' ? <Section title="Account security" copy={signedIn && sessionLabel ? `Signed in to ${authState.serverUrl} as ${sessionLabel}.` : 'Sign in to manage account security.'}>
-      {!signedIn ? <AuthNotice tone="warning" palette={authPalette}>Sign in first to load your account and security settings.</AuthNotice> : null}
-      {signedIn && accountLoading ? <Text style={[styles.loading, { color: palette.textMuted }]}>Loading account security…</Text> : null}
-      {accountError ? <AuthNotice tone="error" palette={authPalette}>{accountError}</AuthNotice> : null}
-      {accountSuccess ? <AuthNotice tone="success" palette={authPalette}>{accountSuccess}</AuthNotice> : null}
-
-      {signedIn && account ? <>
-        <View style={styles.guardRow}>
-          <Button label="Sign out" tone="surface" onPress={handleSignOut} palette={buttonPalette} />
-        </View>
-
-        {demoAccount ? <AuthNotice tone="warning" palette={authPalette}>Demo accounts are view-only for authenticator, recovery, profile and deletion changes.</AuthNotice> : null}
-        {lastSuperuser ? <AuthNotice tone="warning" palette={authPalette}>You are the only active superuser. Promote another account before deleting this one.</AuthNotice> : null}
-
-        <ProfileCard username={username} error={profileError} success={profileSuccess}
-          busy={profileBusy} disabled={demoAccount} palette={authPalette}
-          buttonPalette={buttonPalette} onChangeUsername={setUsername} onSave={saveProfile} />
-
-        <AccountTypeCard isSuperuser={Boolean(accountUser?.isSuperuser)} username={username} palette={authPalette} />
-
-        <PasswordCard values={passwordValues} errors={passwordErrors} error={passwordError}
-          success={passwordSuccess} busy={passwordBusy} disabled={demoAccount}
-          palette={authPalette} buttonPalette={buttonPalette}
-          onChange={(name, value) => {
+        notices={<>
+          {accountError ? <AuthNotice tone="error" palette={authPalette}>{accountError}</AuthNotice> : null}
+          {accountSuccess ? <AuthNotice tone="success" palette={authPalette}>{accountSuccess}</AuthNotice> : null}
+          {demoAccount ? <AuthNotice tone="warning" palette={authPalette}>Demo accounts are view-only for authenticator, recovery, profile and deletion changes.</AuthNotice> : null}
+          {lastSuperuser ? <AuthNotice tone="warning" palette={authPalette}>You are the only active superuser. Promote another account before deleting this one.</AuthNotice> : null}
+          {deleteSuccess ? <AuthNotice tone="success" palette={authPalette}>{deleteSuccess}</AuthNotice> : null}
+        </>}
+        actions={<Button label="Sign out" tone="surface" onPress={handleSignOut} palette={buttonPalette} />}
+        profile={{
+          username, error: profileError, success: profileSuccess, busy: profileBusy,
+          disabled: demoAccount, onChangeUsername: setUsername, onSave: saveProfile,
+        }}
+        accountType={{ isSuperuser: Boolean(accountUser?.isSuperuser), username }}
+        password={{
+          values: passwordValues, errors: passwordErrors, error: passwordError,
+          success: passwordSuccess, busy: passwordBusy, disabled: demoAccount,
+          onChange: (name, value) => {
             setPasswordValues(current => ({ ...current, [name]: value }));
             setPasswordErrors(current => ({ ...current, [name]: undefined }));
             setPasswordError('');
-          }}
-          onSubmit={savePassword} />
-
-        <AuthenticatorCard configured={Boolean(account?.authenticator?.configured)} setup={authenticatorSetup}
-          demo={demoAccount} values={authenticatorValues} error={authenticatorError}
-          success={authenticatorSuccess} busy={authenticatorBusy}
-          palette={authPalette} buttonPalette={buttonPalette}
-          qrSlot={account?.authenticator?.qrDataUri
+          },
+          onSubmit: savePassword,
+        }}
+        authenticator={{
+          configured: Boolean(account?.authenticator?.configured), setup: authenticatorSetup,
+          demo: demoAccount, values: authenticatorValues, error: authenticatorError,
+          success: authenticatorSuccess, busy: authenticatorBusy,
+          qrSlot: account?.authenticator?.qrDataUri
             ? <Image accessibilityLabel="Authenticator setup QR code" source={{ uri: account.authenticator.qrDataUri }} style={styles.qrImage} />
-            : null}
-          secretSlot={account?.authenticator?.secret
+            : null,
+          secretSlot: account?.authenticator?.secret
             ? <Text selectable style={[styles.secret, { color: palette.textSecondary }]}>{account.authenticator.secret}</Text>
-            : <Text style={[styles.secretHint, { color: palette.textMuted }]}>The server did not return a setup secret.</Text>}
-          onChange={(name, value) => {
+            : <Text style={[styles.secretHint, { color: palette.textMuted }]}>The server did not return a setup secret.</Text>,
+          onChange: (name, value) => {
             setAuthenticatorValues(current => ({ ...current, [name]: value }));
             setAuthenticatorError('');
-          }}
-          onEnable={enableAuthenticator}
-          onStartSetup={startAuthenticatorSetup}
-          onDisable={disableAuthenticator} />
-
-        <RecoveryCodesCard unusedCount={unusedRecoveryCodes} freshCodes={freshRecoveryCodes}
-          values={recoveryValues} error={recoveryError} success={recoverySuccess}
-          busy={recoveryBusy} demo={demoAccount} palette={authPalette}
-          buttonPalette={buttonPalette}
-          onChange={(name, value) => {
+          },
+          onEnable: enableAuthenticator,
+          onStartSetup: startAuthenticatorSetup,
+          onDisable: disableAuthenticator,
+        }}
+        recovery={{
+          unusedCount: unusedRecoveryCodes, freshCodes: freshRecoveryCodes,
+          values: recoveryValues, error: recoveryError, success: recoverySuccess,
+          busy: recoveryBusy, demo: demoAccount,
+          onChange: (name, value) => {
             setRecoveryValues(current => ({ ...current, [name]: value }));
             setRecoveryError('');
-          }}
-          onRegenerate={regenerateRecoveryCodes} />
-
-        <ConnectionsCard providerCount={account.providers?.length || 0} disabled={demoAccount}
-          palette={authPalette} buttonPalette={buttonPalette}
-          onManageConnections={() => openExternal(account.connectionsUrl, 'Account connections opened in the secure browser session.')}
-          onApproveDevice={() => openExternal(account.deviceUrl || buildDeviceVerificationUrl({ serverUrl: authState.serverUrl || serverUrl }), 'Device sign-in approval opened in the secure browser session.')} />
-
-        {deleteSuccess ? <AuthNotice tone="success" palette={authPalette}>{deleteSuccess}</AuthNotice> : null}
-        <DeleteAccountCard account={{
-          username: accountUser?.username || username,
-          isDemo: demoAccount,
-          isLastSuperuser: lastSuperuser,
-          hasUsablePassword: accountUser?.hasUsablePassword !== false,
-          isSuperuser: Boolean(accountUser?.isSuperuser),
-        }} error={deleteError} busy={deleteBusy}
-          palette={authPalette} buttonPalette={buttonPalette} onDelete={deleteAccount} />
-      </> : null}
-    </Section> : null}
+          },
+          onRegenerate: regenerateRecoveryCodes,
+        }}
+        connections={{
+          providerCount: account.providers?.length || 0, disabled: demoAccount,
+          onManageConnections: () => openExternal(account.connectionsUrl, 'Account connections opened in the secure browser session.'),
+          onApproveDevice: () => openExternal(account.deviceUrl || buildDeviceVerificationUrl({ serverUrl: authState.serverUrl || serverUrl }), 'Device sign-in approval opened in the secure browser session.'),
+        }}
+        deletion={{
+          account: {
+            username: accountUser?.username || username,
+            isDemo: demoAccount,
+            isLastSuperuser: lastSuperuser,
+            hasUsablePassword: accountUser?.hasUsablePassword !== false,
+            isSuperuser: Boolean(accountUser?.isSuperuser),
+          },
+          error: deleteError, busy: deleteBusy, onDelete: deleteAccount,
+        }}
+        palette={authPalette} buttonPalette={buttonPalette} />}
+    </View> : null}
   </Screen>;
 }
 
 const styles = StyleSheet.create({
+  viewStack: { gap: spacing.md, minWidth: 0 },
   viewRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   guardRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   loading: { fontSize: 13, lineHeight: 19 },

@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { PreferencesForm } from '../../../frontend/ui/PreferencesForm';
-import { SettingsCard } from '../../../frontend/settings/SettingsCard';
-import { palette, radius, spacing } from '../theme';
+import { SettingsPreferencesView } from '../../../frontend/pages/SettingsPreferencesView';
+import { palette, radius } from '../theme';
 
 export const surface = {
   id: 'SET-PREFERENCES',
@@ -301,22 +299,14 @@ export default function PreferencesSlot() {
     setSavedValues(submitted);
   }
 
-  return <SettingsCard title="Preferences" palette={settingsPalette}>
-    <View style={styles.form}>
-      <PreferencesForm
-        sections={sections}
-        values={values}
-        initialValues={savedValues}
-        onChange={change}
-        onSave={save}
-        validate={validate}
-        palette={settingsPalette}
-        buttonPalette={buttonPalette}
-      />
-    </View>
-  </SettingsCard>;
+  return <SettingsPreferencesView
+    sections={sections}
+    values={values}
+    initialValues={savedValues}
+    onChange={change}
+    onSave={save}
+    validate={validate}
+    palette={settingsPalette}
+    buttonPalette={buttonPalette}
+  />;
 }
-
-const styles = StyleSheet.create({
-  form: { gap: spacing.sm },
-});

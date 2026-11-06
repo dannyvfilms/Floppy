@@ -1,15 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Screen } from '../components/Screen';
-import { DiscoverScreen, defaultLabels } from '../../../frontend/discover/DiscoverScreen';
+import { DiscoverView } from '../../../frontend/pages/DiscoverView';
+import { defaultLabels } from '../../../frontend/discover/DiscoverScreen';
 import { mediaCardPalette, palette } from '../theme';
-import SearchSlot from './SearchSlot';
 
 export const surface = {
   id: 'DISCOVER',
   title: 'Discover rows, tabs and feedback',
   where: 'Discover',
   status: 'ported',
-  note: 'The shared media-type tabs, recommendation rails, card actions, hidden grid, refresh and action feedback and empty/loading states render here with demo candidates. Planning and hide update the local rows and hidden grid with Undo; the web adapter keeps the server row fragments, htmx actions and Alpine feedback. iOS, Android, browser interaction and screen-reader passes were not run; the Expo export is a compile check.',
+  note: 'The shared DiscoverView owns the page heading/toolbar order, tabs, recommendation rails, hidden grid, feedback and empty/loading states; this slot keeps the demo candidates, local planning/hide/Undo state and navigation intents. The web page still mounts the same shared row/feedback/state sections inside its Alpine-owned chrome because the row islands keep the pre-mount grid measurement; a page-level web adapter needs JSON row props. iOS, Android, browser interaction and screen-reader passes were not run; the Expo export is a compile check.',
 };
 
 const mediaOptions = [
@@ -142,7 +141,7 @@ const initialHidden = [
   hiddenCard({ id: 'rebel-moon', title: 'Rebel Moon', meta: 'Hidden 5 days ago' }),
 ];
 
-export default function DiscoverSlot({ navigate }) {
+export function useDiscoverSurface({ navigate } = {}) {
   const [selectedMedia, setSelectedMedia] = useState('all');
   const [showMore, setShowMore] = useState(false);
   const [rows, setRows] = useState(initialRows);
@@ -242,32 +241,31 @@ export default function DiscoverSlot({ navigate }) {
     .filter(row => row.items.length);
   const visibleRows = showMore ? filteredRows : filteredRows.slice(0, 2);
 
-  return <Screen title="Discover" subtitle="Recommendations for the media types you follow">
-    <DiscoverScreen
-      search={<SearchSlot
-        onOpenSearch={params => navigate?.('Search', params)}
-        onOpenSuggestion={item => navigate?.('Detail', { item })}
-      />}
-      mediaOptions={mediaOptions}
-      selectedMediaType={selectedMedia}
-      onSelectMedia={setSelectedMedia}
-      showMore={showMore}
-      onToggleShowMore={() => setShowMore(current => !current)}
-      onRefresh={refresh}
-      refreshing={refreshing}
-      cacheRefreshing={cacheRefreshing}
-      refreshStatus={refreshStatus}
-      toast={toast}
-      rows={visibleRows}
-      hidden={{ entries: hidden, count: hidden.length }}
-      loading={false}
-      labels={labels}
-      palette={{ ...palette, ...mediaCardPalette, arrow: palette.textSecondary, arrowDisabled: palette.surfaceMuted, loading: palette.accent, focus: palette.accent }}
-      onOpenCard={() => navigate?.('Detail')}
-      onAction={runAction}
-      onUndo={undo}
-      onDismissRefreshStatus={dismissRefreshStatus}
-      onDismissToast={dismissToast}
-    />
-  </Screen>;
+  return {
+    mediaOptions,
+    selectedMediaType: selectedMedia,
+    onSelectMedia: setSelectedMedia,
+    showMore,
+    onToggleShowMore: () => setShowMore(current => !current),
+    onRefresh: refresh,
+    refreshing,
+    cacheRefreshing,
+    refreshStatus,
+    toast,
+    rows: visibleRows,
+    hidden: { entries: hidden, count: hidden.length },
+    loading: false,
+    labels,
+    palette: { ...palette, ...mediaCardPalette, arrow: palette.textSecondary, arrowDisabled: palette.surfaceMuted, loading: palette.accent, focus: palette.accent },
+    onOpenCard: () => navigate?.('Detail'),
+    onAction: runAction,
+    onUndo: undo,
+    onDismissRefreshStatus: dismissRefreshStatus,
+    onDismissToast: dismissToast,
+  };
+}
+
+export default function DiscoverSlot({ navigate }) {
+  const props = useDiscoverSurface({ navigate });
+  return <DiscoverView {...props} palette={props.palette} />;
 }

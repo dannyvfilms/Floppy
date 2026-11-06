@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
-import { HomeShelves } from './HomeShelves';
+import { HomeView } from '../pages/HomeView';
 import { MediaCard } from './MediaCard.web';
 import { ProgressChanger } from './ProgressChangerTheme.web';
 
@@ -156,7 +156,7 @@ function Adapter({ host, props }) {
     return <ProgressChanger host={host} props={progress} />;
   }
 
-  return <HomeShelves
+  return <HomeView
     groups={props.groups || []}
     deferredGroups={props.deferredGroups || []}
     showMediaTypeHeaders={!!props.showMediaTypeHeaders}
