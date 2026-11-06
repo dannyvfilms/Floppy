@@ -26,7 +26,7 @@ const defaultButtonPalette = {
 };
 
 const defaultLabels = {
-  mediaCards: 'Media cards',
+  mediaCards: 'Media Cards',
   cardActions: 'Card actions',
   cardActionsHelp: 'Applies to every media type. Desktop hover actions stay available.',
   hoverActions: 'Hover actions on mobile',
@@ -74,7 +74,7 @@ const defaultLabels = {
   moveLineUp: 'Move line up',
   moveLineDown: 'Move line down',
   unmatched: 'Not available on this media type',
-  save: 'Save media cards',
+  save: 'Save',
   saving: 'Saving…',
   savedTitle: 'All changes saved',
   savedCopy: 'Your card layouts are up to date.',
@@ -473,7 +473,7 @@ export function CardsEditor({
     <View style={styles.section}>
       <View style={styles.sectionHeading}>
         <Text role="heading" aria-level={3} style={[styles.sectionTitle, { color: colors.text }]}>{copy.mediaCards}</Text>
-        <Text style={[styles.help, { color: colors.textMuted }]}>Choose how cards look for each media type. Up to three properties can share a line.</Text>
+        <Text style={[styles.help, { color: colors.textMuted }]}>Choose how cards look for each media type. Add properties below; up to three can share a line.</Text>
       </View>
       <SelectField
         id="cards-media-type"

@@ -90,11 +90,11 @@ function canMove(order, sectionKey, direction) {
   return index >= 0 && index + direction >= 0 && index + direction < order.length;
 }
 
-function clampEffect(value, definition) {
+function clampEffect(value, definition, direction = 1) {
   const step = definition.step || 1;
   const min = definition.min ?? 0;
   const max = definition.max ?? 100;
-  return Math.min(max, Math.max(min, Number(value) + step));
+  return Math.min(max, Math.max(min, Number(value) + step * direction));
 }
 
 /**
@@ -153,7 +153,7 @@ export function AppearanceEditor({
     const definition = effects[key] || {};
     update({
       ...values,
-      palette: { ...paletteValues, [key]: clampEffect(paletteValues[key] ?? definition.default ?? 0, definition) },
+      palette: { ...paletteValues, [key]: clampEffect(paletteValues[key] ?? definition.default ?? 0, definition, direction) },
     });
   }
 

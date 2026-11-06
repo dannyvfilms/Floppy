@@ -10,7 +10,6 @@ import {
   PersonHero,
   StudioHero,
 } from '../../../frontend/ui/People';
-import { Note } from '../components/Note';
 import { Screen, Section } from '../components/Screen';
 import { createPeopleTransport } from '../data/peopleTransport';
 import { palette, radius, spacing } from '../theme';
@@ -19,8 +18,8 @@ export const surface = {
   id: 'PEOPLE',
   status: 'in_progress',
   title: 'People, studios and credits',
-  where: 'Person and studio pages, cast/filmography/credit rows, trailers, lightbox and medium extras',
-  note: 'Person and studio heroes, watched/filmography credit rails and studio title rails load through the authenticated profile transport, with the person and studio demos kept only when no identity is supplied. Cast rows and game extras mount the shared presentation on the web over their server fallback; the filmography grid stays on the shared media card so hover/tracking actions survive, and the detail carousel stays server-owned because the shared gallery delegates playback externally instead of keeping the embedded YouTube player. Gallery data, live cast/extras transport, permissions and iOS/Android runtime verification remain outstanding.',
+  where: 'Person and studio pages, cast/crew/filmography/credit rows, trailers, lightbox and medium extras',
+  note: 'Person and studio heroes, watched/filmography credit rails and studio title rails load through the authenticated profile transport, with realistic person, studio and detail-extra demos kept only when no identity is supplied. Cast, crew, gallery, lightbox and medium-extra rails render the shared native presentation, and the same rails accept cast/crew/gallery/extras payloads from navigation params or, for crew, a profile payload. Exact blockers: the person and studio JSON contract still carries no cast, crew, gallery or extras payload, so live profiles show only hero and credit rails; permissions and iOS/Android runtime verification remain outstanding.',
 };
 
 const DEMO_PERSON = {
@@ -116,14 +115,27 @@ const FILMOGRAPHY = [
 const CAST = [
   { id: 'nora', name: 'Nora Voss', subtitle: 'Det. Iona Reyes', episodeCount: 18,
     imageUrl: 'https://picsum.photos/seed/floppy-person-nora/300/450' },
-  { id: 'eli', name: 'Eli Mercer', subtitle: 'Chief Arlo Dane · 12 eps', episodeCount: 12,
+  { id: 'eli', name: 'Eli Mercer', subtitle: 'Chief Arlo Dane', episodeCount: 12,
     imageUrl: 'https://picsum.photos/seed/floppy-person-eli/300/450' },
-  { id: 'mira', name: 'Mira Adeyemi', subtitle: 'Dr. Sena Okafor · 10 eps', episodeCount: 10,
+  { id: 'mira', name: 'Mira Adeyemi', subtitle: 'Dr. Sena Okafor', episodeCount: 10,
     imageUrl: 'https://picsum.photos/seed/floppy-person-mira/300/450' },
-  { id: 'tomas', name: 'Tomás Ibarra', subtitle: 'Rafael Quill · 8 eps', episodeCount: 8,
+  { id: 'tomas', name: 'Tomás Ibarra', subtitle: 'Rafael Quill', episodeCount: 8,
     imageUrl: 'https://picsum.photos/seed/floppy-person-tomas/300/450' },
-  { id: 'june', name: 'June Park', subtitle: 'Lena Hsu · 6 eps', episodeCount: 6,
+  { id: 'june', name: 'June Park', subtitle: 'Lena Hsu', episodeCount: 6,
     imageUrl: 'https://picsum.photos/seed/floppy-person-june/300/450' },
+];
+
+const CREW = [
+  { id: 'harriet', name: 'Harriet Okonkwo', subtitle: 'Director', lines: ['Directing'],
+    imageUrl: 'https://picsum.photos/seed/floppy-crew-harriet/300/450' },
+  { id: 'samuel', name: 'Samuel Reyes', subtitle: 'Writer', lines: ['Writing'],
+    imageUrl: 'https://picsum.photos/seed/floppy-crew-samuel/300/450' },
+  { id: 'ines', name: 'Inés Duarte', subtitle: 'Cinematographer', lines: ['Camera'],
+    imageUrl: 'https://picsum.photos/seed/floppy-crew-ines/300/450' },
+  { id: 'arlo', name: 'Arlo Voss', subtitle: 'Composer', lines: ['Sound'],
+    imageUrl: 'https://picsum.photos/seed/floppy-crew-arlo/300/450' },
+  { id: 'priya', name: 'Priya Nandakumar', subtitle: 'Production Designer', lines: ['Art'],
+    imageUrl: 'https://picsum.photos/seed/floppy-crew-priya/300/450' },
 ];
 
 const DEMO_STUDIO = {
@@ -149,18 +161,18 @@ const STUDIO_COUNTS = [
 ];
 
 const STUDIO_TITLES = [
-  { id: 'harbour-lights', title: 'Harbour Lights', mediaTypeLabel: 'Game', year: 2025,
+  { id: 'harbour-lights', title: 'Harbour Lights', mediaTypeLabel: 'Game', mediaType: 'game', year: 2025,
     role: 'Developer, Publisher', imageUrl: 'https://picsum.photos/seed/floppy-harbour-lights/400/600',
     watchedRuntimeLabel: '12h tracked', watched: true },
-  { id: 'salt-and-iron', title: 'Salt & Iron', mediaTypeLabel: 'Game', year: 2024,
+  { id: 'salt-and-iron', title: 'Salt & Iron', mediaTypeLabel: 'Game', mediaType: 'game', year: 2024,
     role: 'Developer', imageUrl: 'https://picsum.photos/seed/floppy-salt-iron/400/600', voteAverage: 8.4 },
-  { id: 'north-sea-radio', title: 'North Sea Radio', mediaTypeLabel: 'Game', year: 2023,
+  { id: 'north-sea-radio', title: 'North Sea Radio', mediaTypeLabel: 'Game', mediaType: 'game', year: 2023,
     role: 'Developer, Publisher', imageUrl: 'https://picsum.photos/seed/floppy-radio/400/600', voteAverage: 7.9 },
-  { id: 'the-long-wake', title: 'The Long Wake', mediaTypeLabel: 'Game', year: 2022,
+  { id: 'the-long-wake', title: 'The Long Wake', mediaTypeLabel: 'Game', mediaType: 'game', year: 2022,
     role: 'Developer', imageUrl: 'https://picsum.photos/seed/floppy-long-wake/400/600', voteAverage: 8.1 },
-  { id: 'tidal-lock', title: 'Tidal Lock', mediaTypeLabel: 'Game', year: 2020,
+  { id: 'tidal-lock', title: 'Tidal Lock', mediaTypeLabel: 'Game', mediaType: 'game', year: 2020,
     role: 'Publisher', imageUrl: 'https://picsum.photos/seed/floppy-tidal-lock/400/600', voteAverage: 7.4 },
-  { id: 'lantern-keepers', title: 'Lantern Keepers', mediaTypeLabel: 'Game', year: 2018,
+  { id: 'lantern-keepers', title: 'Lantern Keepers', mediaTypeLabel: 'Game', mediaType: 'game', year: 2018,
     role: 'Developer', imageUrl: 'https://picsum.photos/seed/floppy-lantern-keepers/400/600', voteAverage: 7.8 },
 ];
 
@@ -346,7 +358,8 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
     const reading = extras?.reading;
     if (!gallery.length && !gameLengths && !youtubeWatch && !reading) return null;
     return <>
-      {gallery.length ? <Section title="Trailers and photos" copy={params?.galleryTitle || profile?.person?.name || ''}>
+      {gallery.length ? <Section title="Trailers and photos"
+        copy={params?.galleryTitle || profile?.person?.name || profile?.studio?.name || ''}>
         <MediaGallery items={gallery} labels={labels} palette={palette}
           onPlay={playGalleryItem}
           onOpenLightbox={(items, index) => setLightbox({ visible: true, index })} />
@@ -365,6 +378,7 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
     const watched = personProfile.watched || [];
     const filmography = personProfile.filmography || [];
     const cast = params?.cast || personProfile.cast || [];
+    const crew = params?.crew || personProfile.crew || [];
     const extras = params?.extras || personProfile.extras || {};
     return <>
       <PersonHero person={person} counts={personProfile.counts} labels={labels}
@@ -389,8 +403,12 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
         palette={palette} /> : null}
       {cast.length ? <Rail items={cast}
         renderItem={member => <PersonCard person={member} labels={labels} palette={palette} onOpen={openPerson} />}
-        title="Cast" summary={`${cast.length} ${cast.length === 1 ? 'person' : 'people'}`}
-        itemWidth={132} emptyLabel="No cast available." palette={palette} /> : null}
+        title={labels.cast || 'Cast'} summary={`${cast.length} ${cast.length === 1 ? 'person' : 'people'}`}
+        itemWidth={132} emptyLabel={labels.noCast || 'No cast available.'} palette={palette} /> : null}
+      {crew.length ? <Rail items={crew}
+        renderItem={member => <PersonCard person={member} labels={labels} palette={palette} onOpen={openPerson} />}
+        title={labels.crew || 'Crew'} summary={`${crew.length} ${crew.length === 1 ? 'person' : 'people'}`}
+        itemWidth={132} emptyLabel={labels.noCrew || 'No crew available.'} palette={palette} /> : null}
       {extrasView(extras)}
     </>;
   }
@@ -414,6 +432,12 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
     </>;
   }
 
+  const demoGallery = params?.gallery?.length ? params.gallery : GALLERY;
+  const demoExtras = params?.extras || {};
+  const demoGameLengths = demoExtras.gameLengths || GAME_LENGTHS;
+  const demoYoutubeWatch = demoExtras.youtubeWatch || YOUTUBE_WATCH;
+  const demoReading = demoExtras.reading || READING;
+
   function demoView() {
     return <>
       <Menu value={view} onChange={setView} />
@@ -429,8 +453,13 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
         <Rail items={CAST} renderItem={person => <PersonCard person={person} onOpen={openPerson} />}
           title="Cast" summary="Signal Fires · season one" summaryInline={`${CAST.length} people`}
           itemWidth={132} palette={palette} emptyLabel="No cast available." />
-        <MediumExtras reading={READING} youtubeWatch={YOUTUBE_WATCH}
-          palette={palette} onOpenItem={openExtra} />
+        <Rail items={CREW} renderItem={person => <PersonCard person={person} onOpen={openPerson} />}
+          title="Crew" summary="Signal Fires · season one" summaryInline={`${CREW.length} people`}
+          itemWidth={132} palette={palette} emptyLabel="No crew available." />
+        <Section title="Medium extras">
+          <MediumExtras reading={demoReading} youtubeWatch={demoYoutubeWatch}
+            palette={palette} onOpenItem={openExtra} />
+        </Section>
       </> : null}
       {view === 'studio' ? <>
         <StudioHero studio={DEMO_STUDIO} counts={STUDIO_COUNTS} palette={palette}
@@ -438,16 +467,19 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
         <Rail items={STUDIO_TITLES} renderItem={entry => <CreditCard entry={entry} onOpen={openCredit} />}
           title="Games" summary={`${STUDIO_TITLES.length} titles`} summaryInline="Newest first"
           itemWidth={176} palette={palette} emptyLabel="No titles available." />
-        <MediumExtras gameLengths={GAME_LENGTHS} palette={palette} onOpenSource={openExternal} />
+        <Section title="Medium extras">
+          <MediumExtras gameLengths={demoGameLengths} palette={palette} onOpenSource={openExternal} />
+        </Section>
       </> : null}
       {view === 'extras' ? <>
-        <Section title="Trailers and photos" copy="Signal Fires · season one">
-          <MediaGallery items={GALLERY} palette={palette}
+        <Section title="Trailers and photos"
+          copy={params?.galleryTitle || 'Signal Fires · season one'}>
+          <MediaGallery items={demoGallery} palette={palette}
             onPlay={playGalleryItem}
             onOpenLightbox={(items, index) => setLightbox({ visible: true, index })} />
         </Section>
         <Section title="Medium extras">
-          <MediumExtras gameLengths={GAME_LENGTHS} youtubeWatch={YOUTUBE_WATCH} reading={READING}
+          <MediumExtras gameLengths={demoGameLengths} youtubeWatch={demoYoutubeWatch} reading={demoReading}
             palette={palette} onOpenSource={openExternal} onOpenItem={openExtra} />
         </Section>
       </> : null}
@@ -456,7 +488,7 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
 
   const live = mode === 'ready' && profile;
   const liveKind = live?.kind;
-  const liveLightboxItems = live ? (params?.gallery || profile?.gallery || []) : GALLERY;
+  const liveLightboxItems = live ? (params?.gallery || profile?.gallery || []) : demoGallery;
 
   return <Screen title="People, studios" subtitle="People, studios and credits" onBack={onBack}>
     {mode === 'loading' ? <Section title="Loading profile">
@@ -471,7 +503,6 @@ export default function PeopleScreen({ navigate, onBack, params, transport: inje
     {liveKind === 'person' ? livePerson(profile) : null}
     {liveKind === 'studio' ? liveStudio(profile) : null}
     {!identity ? demoView() : null}
-    <Note surface={surface} compact />
     <LightboxDialog visible={lightbox.visible} items={liveLightboxItems} index={lightbox.index}
       palette={palette}
       onClose={() => setLightbox({ visible: false, index: lightbox.index })}

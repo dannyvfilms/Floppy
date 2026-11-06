@@ -9,7 +9,7 @@ export const surface = {
   status: 'in_progress',
   title: 'Detail tracking and edit dialogs',
   where: 'Detail actions, episode and issue rows',
-  note: 'The General, Tags, Metadata, Collection, Episode plays and Status history tracking tabs run on the shared TrackForm and TrackDialog with demo detail data. Date/status/progress coupling, notes, delete, repeat identity, validation, busy and error states are presentation-owned by the shared dialog. On the web the General, song, episode and bulk range forms are now shared presentation over the server htmx/OOB forms; the rich Metadata and Collection editors plus Status history and Discover keep server-owned bodies. Permissions and the progressive fallback stay server-owned.',
+  note: 'The General, Tags, Metadata, Collection, Episode plays, Status history and Discover tabs run on the shared TrackDialog, TrackForm and TrackTabs with demo detail data. Status/start/end/progress coupling, notes, delete, repeat identity, save-as-new, validation, busy, loading, retry and server-error states are presentation-owned by the shared dialog. Episode and issue rows open the same dialog with their own play dates, score and note. Demo writes stay on the device; the web keeps its server htmx/OOB forms, the richer Metadata and Collection editors, permissions and the progressive fallback.',
 };
 
 const trackLabels = {
@@ -47,19 +47,35 @@ const trackLabels = {
   noStatusChanges: 'No status changes recorded yet.',
   noStatus: 'No Status',
   sourceNotRecorded: 'source not recorded',
+  discover: 'Discover',
+  hidden: 'Hidden from Discover',
+  shown: 'Shown in Discover',
+  hide: 'Hide from Discover',
+  unhide: 'Show in Discover',
+  discoverFailed: "Couldn't update Discover.",
+  tagExists: 'Tag "%s" already exists.',
+  artworkInvalid: 'Enter a full image URL starting with http:// or https://.',
+  saveFailed: "Couldn't save this entry.",
   dateTime: {},
 };
 
+// Leave `surface` to the shared form default: the same value doubles as the
+// Button surface tone, so passing the colour here would replace that tone.
 const formPalette = {
-  ...palette,
+  background: palette.background,
+  text: palette.text,
   textSecondary: palette.textSecondary,
-  surface: palette.surface,
+  textMuted: palette.textMuted,
   surfaceStrong: palette.surfaceStrong,
   surfaceMuted: palette.surfaceMuted,
   border: palette.border,
   accent: palette.accent,
+  accentStrong: palette.accentStrong,
   accentContrast: '#ffffff',
+  link: '#818cf8',
   danger: palette.danger,
+  success: palette.success,
+  warning: palette.warning,
   radius: radius.md,
   focusStyle: {},
   backdrop: 'rgba(0, 0, 0, 0.65)',
@@ -96,6 +112,7 @@ const buttonPalette = {
 };
 
 const statusOptions = [
+  { value: '', label: 'No Status' },
   { value: 'Planning', label: 'Planning' },
   { value: 'In progress', label: 'In progress' },
   { value: 'Paused', label: 'Paused' },
@@ -114,12 +131,10 @@ const showModel = {
   deleteAction: '/demo/detail/track/delete',
   trackTime: false,
   fields: [
-    { name: 'status', label: 'Status', type: 'select', value: 'In progress', required: true, options: statusOptions },
+    { name: 'status', label: 'Status', type: 'select', value: 'In progress', required: false, options: statusOptions },
     { name: 'score', label: 'Score', type: 'rating', value: '8', max: 10 },
-    { name: 'progress', label: 'Progress', type: 'number', value: '6', min: 0, max: 10, help: 'Episodes watched' },
-    { name: 'start_date', label: 'Start date', type: 'date', value: '2026-10-01' },
     { name: 'end_date', label: 'End date', type: 'date', value: '' },
-    { name: 'entry_source', label: 'Source', type: 'text', value: 'tmdb', placeholder: 'Where this entry came from' },
+    { name: 'entry_source', label: 'Source', type: 'text', value: 'tmdb', placeholder: 'e.g. Plex, Jellyfin, Theatre...' },
     { name: 'notes', label: 'Notes', type: 'textarea', value: 'Watching with the family.\nThe relay arc holds up on a rewatch.' },
   ],
   repeatIdentity: {
@@ -131,22 +146,27 @@ const showModel = {
 function episodeModel(target) {
   const item = target?.item || {};
   const existing = Boolean(item.historyRows?.length);
+  const recorded = item.historyRows?.[0]?.dateValue || item.historyRows?.[0]?.dateLabel || '';
+  const recordedIso = recorded && !Number.isNaN(Date.parse(recorded)) ? new Date(recorded).toISOString().slice(0, 10) : '';
+  const fallbackCode = target?.kind === 'issue' ? 'Issue' : 'Episode';
   return {
-    title: item.title || 'Track episode',
-    subtitle: `The Quiet Orbit · ${item.code || 'Episode'}`,
-    formId: `detail-episode-track-${item.key || 'episode'}`,
-    instanceId: existing ? `${item.key || 'episode'}-play` : '',
+    title: item.title || `Track ${fallbackCode.toLowerCase()}`,
+    subtitle: `The Quiet Orbit · ${item.code || fallbackCode}`,
+    formId: `detail-${target?.kind === 'issue' ? 'issue' : 'episode'}-track-${item.key || 'entry'}`,
+    instanceId: existing ? `${item.key || 'entry'}-play` : '',
     isNew: !existing,
-    mediaType: 'episode',
+    mediaType: target?.kind === 'issue' ? 'comic' : 'episode',
     submitLabel: existing ? 'Update' : 'Add',
-    deleteAction: existing ? `/demo/detail/episode/${item.key || 'episode'}/delete` : '',
+    deleteAction: existing
+      ? `/demo/detail/${target?.kind === 'issue' ? 'issue' : 'episode'}/${item.key || 'entry'}/delete`
+      : '',
     trackTime: false,
     fields: [
-      { name: 'status', label: 'Status', type: 'select', value: 'Completed', required: true, options: statusOptions.slice(1, 2).concat(statusOptions.slice(3, 4)) },
+      { name: 'status', label: 'Status', type: 'select', value: 'Completed', required: false, options: statusOptions },
       { name: 'score', label: 'Score', type: 'rating', value: item.score == null ? '' : String(item.score), max: 10 },
-      { name: 'start_date', label: 'Start date', type: 'date', value: item.dateValue || '2024-10-04' },
-      { name: 'end_date', label: 'End date', type: 'date', value: item.dateValue || '2024-10-04' },
-      { name: 'entry_source', label: 'Source', type: 'text', value: 'tmdb', placeholder: 'Where this entry came from' },
+      { name: 'start_date', label: 'Start date', type: 'date', value: recordedIso },
+      { name: 'end_date', label: 'End date', type: 'date', value: recordedIso },
+      { name: 'entry_source', label: 'Source', type: 'text', value: 'tmdb', placeholder: 'e.g. Plex, Jellyfin, Theatre...' },
       { name: 'notes', label: 'Notes', type: 'textarea', value: item.historyRows?.[0]?.note || '' },
     ],
     repeatIdentity: existing ? {
@@ -158,6 +178,16 @@ function episodeModel(target) {
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function todayValue() {
+  const now = new Date();
+  const pad = value => String(value).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+function labelTemplate(template, value) {
+  return String(template || '%s').replace('%s', String(value));
 }
 
 function initialValues(model) {
@@ -231,6 +261,16 @@ function demoTabs() {
         { id: 'change-3', old: 'Paused', next: 'In progress', date: 'Sep 16, 2026', reason: 'manual' },
       ],
     },
+    {
+      id: 'discover',
+      label: 'Discover',
+      kind: 'discover',
+      status: 'ready',
+      error: '',
+      hidden: false,
+      canToggle: true,
+      itemId: 'demo-orbit',
+    },
   ];
 }
 
@@ -264,7 +304,16 @@ export default function DetailTrackingSlot({ target, onOpen, onClose }) {
   const [result, setResult] = useState('');
 
   useEffect(() => {
-    setSession(createSession(target));
+    if (!target) {
+      setSession(null);
+      return undefined;
+    }
+    setResult('');
+    setSession({ ...createSession(target), status: 'loading' });
+    const timer = setTimeout(() => {
+      setSession(current => current ? { ...current, status: 'ready' } : current);
+    }, 220);
+    return () => clearTimeout(timer);
   }, [targetKey]);
 
   function close(message) {
@@ -277,44 +326,76 @@ export default function DetailTrackingSlot({ target, onOpen, onClose }) {
       ...current,
       values: { ...current.values, [name]: value },
       errors: { ...current.errors, [name]: '' },
+      serverError: '',
     } : current);
+  }
+
+  function failureText(error, fallback) {
+    return error?.message || fallback;
+  }
+
+  function assertSource(values) {
+    const source = String(values.entry_source || '').trim();
+    if (source && !/^[a-z0-9._-]+$/i.test(source)) {
+      throw new Error('Use a provider key such as tmdb or openlibrary.');
+    }
   }
 
   async function submit(values) {
     setSession(current => current ? { ...current, busy: true, serverError: '' } : current);
-    await delay();
-    const saved = target?.kind === 'episode' || target?.kind === 'issue'
-      ? `${target.item?.title || 'Episode'} saved.`
-      : 'Tracking entry saved.';
-    setSession(current => current ? { ...current, busy: false } : current);
-    close(saved);
+    try {
+      await delay();
+      const title = target?.item?.title || 'Entry';
+      const saved = target?.kind === 'episode' || target?.kind === 'issue'
+        ? `${title} saved${values.status ? ` · ${values.status}` : ''}.`
+        : `Tracking entry saved${values.status ? ` · ${values.status}` : ''}.`;
+      setSession(current => current ? { ...current, busy: false } : current);
+      close(saved);
+    } catch (error) {
+      setSession(current => current ? {
+        ...current,
+        busy: false,
+        serverError: failureText(error, trackLabels.saveFailed),
+      } : current);
+    }
   }
 
   async function saveAsNew(values) {
-    setSession(current => current ? { ...current, busy: true } : current);
-    await delay();
-    setSession(current => current ? { ...current, busy: false } : current);
-    close(`Saved ${target?.item?.title || 'episode'} as a new entry.`);
+    setSession(current => current ? { ...current, busy: true, serverError: '' } : current);
+    try {
+      await delay();
+      const title = target?.item?.title || 'this entry';
+      setSession(current => current ? { ...current, busy: false } : current);
+      close(`Saved ${title} as a new entry${values.status ? ` · ${values.status}` : ''}.`);
+    } catch (error) {
+      setSession(current => current ? {
+        ...current,
+        busy: false,
+        serverError: failureText(error, trackLabels.saveFailed),
+      } : current);
+    }
   }
 
-  function toggleRewatch(action, values) {
+  function toggleRewatch(action) {
     const started = action !== 'stop';
+    const today = todayValue();
     setSession(current => {
       if (!current) return current;
       return {
         ...current,
+        serverError: '',
         model: {
           ...current.model,
           repeatIdentity: {
             ...current.model.repeatIdentity,
             rewatchLabel: started ? 'End rewatch' : 'Start rewatch',
             rewatchAction: started ? 'stop' : 'start',
-            rewatchStartedAt: started ? '2026-11-04' : '',
+            rewatchStartedAt: started ? today : '',
           },
         },
         values: {
           ...current.values,
-          ...(started ? { status: 'In progress', end_date: '' } : { status: 'Completed', end_date: '2026-11-04' }),
+          ...(started ? { status: 'In progress', end_date: '' } : { status: 'Completed', end_date: today }),
         },
       };
     });
@@ -322,13 +403,26 @@ export default function DetailTrackingSlot({ target, onOpen, onClose }) {
   }
 
   async function remove() {
-    setSession(current => current ? { ...current, busy: true } : current);
-    await delay();
-    setSession(current => current ? { ...current, busy: false } : current);
-    close('Entry deleted.');
+    setSession(current => current ? { ...current, busy: true, serverError: '' } : current);
+    try {
+      await delay();
+      setSession(current => current ? { ...current, busy: false } : current);
+      close('Entry deleted.');
+    } catch (error) {
+      setSession(current => current ? {
+        ...current,
+        busy: false,
+        serverError: failureText(error, "Couldn't delete this entry."),
+      } : current);
+    }
   }
 
   async function retryTabs() {
+    setSession(current => current ? {
+      ...current,
+      tabs: current.tabs.map(tab => ({ ...tab, status: 'loading', error: '' })),
+    } : current);
+    await delay(200);
     setSession(current => current ? { ...current, tabs: demoTabs() } : current);
   }
 
@@ -340,17 +434,33 @@ export default function DetailTrackingSlot({ target, onOpen, onClose }) {
         tags: tab.tags.map(entry => entry.id === tag.id ? { ...entry, pending: true, error: '' } : entry),
       })),
     } : current);
-    await delay(200);
-    setSession(current => current ? {
-      ...current,
-      tabs: updateTab(current.tabs, 'tags', tab => ({
-        ...tab,
-        tags: tab.tags.map(entry => entry.id === tag.id ? { ...entry, hasTag: !tag.hasTag, pending: false } : entry),
-      })),
-    } : current);
+    try {
+      await delay(200);
+      setSession(current => current ? {
+        ...current,
+        tabs: updateTab(current.tabs, 'tags', tab => ({
+          ...tab,
+          tags: tab.tags.map(entry => entry.id === tag.id ? { ...entry, hasTag: !tag.hasTag, pending: false } : entry),
+        })),
+      } : current);
+    } catch (error) {
+      setSession(current => current ? {
+        ...current,
+        tabs: updateTab(current.tabs, 'tags', tab => ({
+          ...tab,
+          tags: tab.tags.map(entry => entry.id === tag.id
+            ? { ...entry, pending: false, error: failureText(error, trackLabels.tagFailed) }
+            : entry),
+        })),
+      } : current);
+    }
   }
 
   async function addTag(name) {
+    const tags = session?.tabs?.find(tab => tab.id === 'tags')?.tags || [];
+    if (tags.some(tag => tag.name.toLowerCase() === name.toLowerCase())) {
+      throw new Error(labelTemplate(trackLabels.tagExists, name));
+    }
     await delay(200);
     setSession(current => current ? {
       ...current,
@@ -359,19 +469,45 @@ export default function DetailTrackingSlot({ target, onOpen, onClose }) {
         tags: [...(tab.tags || []), { id: `tag-${name}`, name, hasTag: true, pending: false, error: '' }],
       })),
     } : current);
+    setResult(`Added ${name} to this entry.`);
   }
 
   async function saveArtwork(imageUrl) {
+    const value = String(imageUrl || '').trim();
+    if (!/^https?:\/\/\S+$/i.test(value)) {
+      throw new Error(trackLabels.artworkInvalid);
+    }
     await delay(200);
     setSession(current => current ? {
       ...current,
-      tabs: updateTab(current.tabs, 'metadata', tab => ({ ...tab, imageUrl })),
+      tabs: updateTab(current.tabs, 'metadata', tab => ({ ...tab, imageUrl: value })),
     } : current);
+    setResult('Artwork saved.');
+  }
+
+  async function toggleDiscover(hidden, itemId) {
+    await delay(200);
+    setSession(current => current ? {
+      ...current,
+      tabs: updateTab(current.tabs, 'discover', tab => ({
+        ...tab,
+        hidden,
+        itemId: itemId || tab.itemId,
+      })),
+    } : current);
+    setResult(hidden ? 'Hidden from Discover.' : 'Shown in Discover.');
+  }
+
+  function retryLoad() {
+    setSession(current => current ? { ...current, status: 'loading', serverError: '' } : current);
+    setTimeout(() => {
+      setSession(current => current ? { ...current, status: 'ready' } : current);
+    }, 220);
   }
 
   return <View style={styles.root}>
     <Button label={target ? 'Tracking dialog open' : 'Edit tracking'} palette={buttonPalette}
-      onPress={() => onOpen?.({ kind: 'item' })} />
+      onPress={() => onOpen?.({ kind: 'item', item: { key: 'show-1', title: 'The Quiet Orbit' } })} />
     <Text style={[styles.copy, { color: palette.textMuted }]}>
       {result || 'Edit status, dates, score, notes and tabs for the tracked entry.'}
     </Text>
@@ -390,11 +526,12 @@ export default function DetailTrackingSlot({ target, onOpen, onClose }) {
       onSubmit={submit}
       onDelete={remove}
       onClose={() => close()}
-      onRetry={() => setSession(current => current ? { ...current, status: 'ready', serverError: '' } : current)}
+      onRetry={retryLoad}
       onRetryTabs={retryTabs}
       onTagToggle={toggleTag}
       onTagCreate={addTag}
       onArtworkSave={saveArtwork}
+      onDiscoverToggle={toggleDiscover}
       onSaveAsNew={saveAsNew}
       onRewatch={toggleRewatch} />
   </View>;

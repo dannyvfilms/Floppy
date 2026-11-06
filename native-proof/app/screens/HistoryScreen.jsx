@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
   HistoryActivityDialog,
@@ -15,12 +15,13 @@ export const surface = {
   status: 'in_progress',
   title: 'History feed and activity',
   where: 'History screen and per-item activity dialog',
-  note: 'Bounded day groups, lazy days, bounded load-more, filters and date ranges, session/activity, edit and delete dialogs, refresh/stale notices and loading/empty/error states use the shared React feed. Month navigation, filters, the cache banner, pagination and the activity dialog are adopted on the web, and the native screen loads bounded server days through historyTransport when signed in. Native edit, score and delete writes still use local demo state because the track-write contract is not mapped, so the surface stays in progress.',
+  note: 'Bounded day groups, lazy days, load-more, month navigation, filters and date ranges, session/activity, edit and delete dialogs, refresh notices and loading/empty/error states use the shared React feed. Signed-in loads map the bounded /api/v1/history/ route with month, range, media-type and genre filters and day pagination; signed-out keeps the realistic demo days. Edit, score and delete writes remain demo-only: the payload exposes instance ids rather than the history-record ids the delete route needs, and no history update endpoint is mapped. Saved views are not exposed natively, the server activity dialog shows only the row\'s own play because the activity-sessions contract is not mapped, release-date mode only re-groups the loaded activity page because the API has no release-date view, and month navigation still uses the fixed demo month fixture rather than server month links. Browser, iOS and Android runtime interaction remain unverified, so the surface stays in progress.',
 };
 
 const TODAY = '2026-11-04';
 const INITIAL_DAY_ENTRIES = 2;
 const DAY_ENTRIES_STEP = 2;
+const SERVER_PAGE_DAYS = 31;
 const LAZY_SEED = new Set(['2026-11-01', '2026-10-24', '2026-09-12']);
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
@@ -100,6 +101,15 @@ function durationLabel(minutes) {
   const rest = minutes % 60;
   if (!hours) return `${rest}min`;
   return rest ? `${hours}h ${rest}min` : `${hours}h`;
+}
+
+function monthBounds(index) {
+  const [year, month] = months[index].prefix.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return {
+    from: `${months[index].prefix}-01`,
+    to: `${months[index].prefix}-${String(lastDay).padStart(2, '0')}`,
+  };
 }
 
 function makeEntry(input) {
@@ -373,7 +383,8 @@ function buildSummary(entries, mode) {
 export default function HistoryScreen({ navigate, onBack, transport: injectedTransport }) {
   const [transport] = useState(() => injectedTransport || createHistoryTransport());
   const [transportError, setTransportError] = useState('');
-  const [entries, setEntries] = useState(demoEntries);
+  const [loadError, setLoadError] = useState('');
+  const [entries, setEntries] = useState(() => (transport.mode === 'server' ? [] : demoEntries()));
   const [monthIndex, setMonthIndex] = useState(CURRENT_MONTH_INDEX);
   const [filters, setFilters] = useState({ mode: 'activity', mediaTypes: [], genres: [], impliedGenres: [], activeCount: 0 });
   const [revealedLazy, setRevealedLazy] = useState(() => new Set());
@@ -381,44 +392,94 @@ export default function HistoryScreen({ navigate, onBack, transport: injectedTra
   const [visibleCounts, setVisibleCounts] = useState({});
   const [refreshing, setRefreshing] = useState(true);
   const [refreshError, setRefreshError] = useState(false);
+  const [loading, setLoading] = useState(transport.mode === 'server');
+  const [reloadToken, setReloadToken] = useState(0);
+  const [serverOffset, setServerOffset] = useState(0);
+  const [serverTotal, setServerTotal] = useState(null);
   const [activityEntry, setActivityEntry] = useState(null);
   const [editingEntry, setEditingEntry] = useState(null);
   const [deletingEntry, setDeletingEntry] = useState(null);
+  const entriesRef = useRef(entries);
 
-  useEffect(() => {
-    const timer = setTimeout(() => setRefreshing(false), 900);
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    if (transport.mode !== 'server') return undefined;
-    let active = true;
-    transport.load({ limit: 30, maxEntriesPerDay: 10 })
-      .then(payload => {
-        if (!active) return;
-        const loaded = historyEntriesFromPayload(payload);
-        if (loaded.length) {
-          setEntries(loaded);
-          setRefreshing(false);
-        }
-      })
-      .catch(error => {
-        if (active) {
-          setTransportError(error?.message || 'History could not be loaded from the server.');
-        }
-      });
-    return () => { active = false; };
-  }, [transport]);
-
-  function beginRefresh() {
-    setRefreshing(true);
-    setRefreshError(false);
-    setTimeout(() => setRefreshing(false), 700);
-  }
+  useEffect(() => { entriesRef.current = entries; }, [entries]);
 
   const mode = filters.mode || 'activity';
   const from = filters.from || '';
   const to = filters.to || '';
+  const bounds = useMemo(() => monthBounds(monthIndex), [monthIndex]);
+  const queryFrom = from || (to ? '' : bounds.from);
+  const queryTo = to || (from ? '' : bounds.to);
+  const mediaTypeKey = (filters.mediaTypes || []).join(',');
+  const genreKey = (filters.genres || []).join(',');
+  const impliedGenreKey = (filters.impliedGenres || []).join(',');
+
+  useEffect(() => {
+    if (transport.mode !== 'server') return undefined;
+    let active = true;
+    setLoading(true);
+    setLoadError('');
+    setRefreshError(false);
+    setTransportError('');
+    setServerTotal(null);
+    const params = {
+      limit: SERVER_PAGE_DAYS,
+      offset: serverOffset,
+      maxEntriesPerDay: 10,
+    };
+    if (queryFrom) params.from = queryFrom;
+    if (queryTo) params.to = queryTo;
+    if (mediaTypeKey) params.mediaTypes = mediaTypeKey.split(',');
+    if (genreKey) params.genre = genreKey;
+    if (impliedGenreKey) params.impliedGenre = impliedGenreKey;
+    transport.load(params)
+      .then(payload => {
+        if (!active) return;
+        const loaded = historyEntriesFromPayload(payload).map(entry => {
+          const hasHistoryId = entry.historyId != null
+            && (entry.instanceId == null || String(entry.historyId) !== String(entry.instanceId));
+          return {
+            ...entry,
+            // The feed payload exposes the tracked instance id, not the
+            // history-record id the delete route targets. Only offer delete
+            // when the transport supplied a distinct history id.
+            canDelete: hasHistoryId && Boolean(entry.mediaType),
+          };
+        });
+        setEntries(loaded);
+        const total = Number(payload?.pagination?.total);
+        setServerTotal(Number.isFinite(total) ? total : null);
+        setLoading(false);
+        setRefreshing(false);
+      })
+      .catch(error => {
+        if (!active) return;
+        if (entriesRef.current.length) {
+          setRefreshError(true);
+        } else {
+          setLoadError(error?.message || 'History could not be loaded from the server.');
+        }
+        setLoading(false);
+        setRefreshing(false);
+      });
+    return () => { active = false; };
+  }, [transport, reloadToken, serverOffset, queryFrom, queryTo, mediaTypeKey, genreKey, impliedGenreKey]);
+
+  useEffect(() => {
+    if (transport.mode === 'server') return undefined;
+    const timer = setTimeout(() => setRefreshing(false), 900);
+    return () => clearTimeout(timer);
+  }, [transport]);
+
+  function beginRefresh() {
+    setRefreshError(false);
+    if (transport.mode === 'server') {
+      setRefreshing(true);
+      setReloadToken(current => current + 1);
+      return;
+    }
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 700);
+  }
 
   const filtered = useMemo(() => {
     const monthPrefix = months[monthIndex].prefix;
@@ -474,6 +535,28 @@ export default function HistoryScreen({ navigate, onBack, transport: injectedTra
 
   const summary = useMemo(() => buildSummary(filtered, mode), [filtered, mode]);
 
+  const genreOptions = useMemo(() => {
+    const values = new Set(genres);
+    entries.forEach(entry => {
+      (entry.genres || []).forEach(genre => {
+        if (genre) values.add(genre);
+      });
+    });
+    return [...values].sort((left, right) => left.localeCompare(right));
+  }, [entries]);
+
+  const pagination = useMemo(() => {
+    if (transport.mode !== 'server' || !serverTotal || serverTotal <= SERVER_PAGE_DAYS) return null;
+    const pageCount = Math.ceil(serverTotal / SERVER_PAGE_DAYS);
+    const page = Math.floor(serverOffset / SERVER_PAGE_DAYS) + 1;
+    return {
+      page,
+      pageCount,
+      previousUrl: page > 1 ? `?offset=${Math.max(0, serverOffset - SERVER_PAGE_DAYS)}` : null,
+      nextUrl: page < pageCount ? `?offset=${serverOffset + SERVER_PAGE_DAYS}` : null,
+    };
+  }, [transport.mode, serverTotal, serverOffset]);
+
   const model = useMemo(() => {
     const hasRange = Boolean(from || to);
     const nav = hasRange ? {} : {
@@ -484,6 +567,8 @@ export default function HistoryScreen({ navigate, onBack, transport: injectedTra
     };
     return {
       mode,
+      loading,
+      error: Boolean(loadError),
       refreshing,
       refreshError,
       summary,
@@ -494,21 +579,26 @@ export default function HistoryScreen({ navigate, onBack, transport: injectedTra
       },
       options: {
         mediaTypes: mediaTypeOptions,
-        genres,
+        genres: genreOptions,
       },
       nav,
-      pagination: null,
+      pagination,
     };
-  }, [days, filters, monthIndex, mode, refreshing, refreshError, summary, from, to]);
+  }, [days, filters, genreOptions, loadError, loading, monthIndex, mode, pagination, refreshing, refreshError, summary, from, to]);
 
   function handleNavigate(intent) {
-    if (intent?.kind === 'current') {
+    if (intent?.kind === 'page') {
+      setServerOffset(current => Math.max(0, current + (intent.direction || 0) * SERVER_PAGE_DAYS));
+    } else if (intent?.kind === 'current') {
       setMonthIndex(CURRENT_MONTH_INDEX);
+      setServerOffset(0);
     } else if (intent?.kind === 'month') {
       setMonthIndex(current => Math.max(0, Math.min(months.length - 1, current + (intent.direction || 0))));
+      setServerOffset(0);
     }
     setVisibleCounts({});
     setRevealedLazy(new Set());
+    beginRefresh();
   }
 
   function loadDay(day) {
@@ -536,6 +626,7 @@ export default function HistoryScreen({ navigate, onBack, transport: injectedTra
       + (state.mediaTypes?.length ? 1 : 0) + (state.genres?.length ? 1 : 0)
       + (state.impliedGenres?.length ? 1 : 0) + (state.mode !== 'activity' ? 1 : 0);
     setFilters({ ...state, activeCount });
+    setServerOffset(0);
     setVisibleCounts({});
     setRevealedLazy(new Set());
     beginRefresh();
@@ -543,6 +634,7 @@ export default function HistoryScreen({ navigate, onBack, transport: injectedTra
 
   function clearFilters() {
     setFilters({ mode: 'activity', mediaTypes: [], genres: [], impliedGenres: [], activeCount: 0 });
+    setServerOffset(0);
     setVisibleCounts({});
     setRevealedLazy(new Set());
     beginRefresh();
@@ -594,17 +686,20 @@ export default function HistoryScreen({ navigate, onBack, transport: injectedTra
     beginRefresh();
   }
 
-  function deleteEntry(entry) {
-    setEntries(current => current.filter(item => item.key !== entry.key));
+  async function deleteEntry(entry) {
     setDeletingEntry(null);
     if (transport.mode === 'server' && entry.historyId != null && entry.mediaType) {
-      transport.deleteRecord({
-        mediaType: entry.mediaType,
-        historyId: entry.historyId,
-      }).catch(error => {
+      try {
+        await transport.deleteRecord({
+          mediaType: entry.mediaType,
+          historyId: entry.historyId,
+        });
+      } catch (error) {
         setTransportError(error?.message || 'The server rejected the history change.');
-      });
+        return;
+      }
     }
+    setEntries(current => current.filter(item => item.key !== entry.key));
     beginRefresh();
   }
 
@@ -628,6 +723,7 @@ export default function HistoryScreen({ navigate, onBack, transport: injectedTra
       onDeleteEntry={requestDelete}
       onApplyFilters={applyFilters}
       onClearFilters={clearFilters}
+      onRetry={beginRefresh}
       onRefresh={beginRefresh} />
     <HistoryActivityDialog
       entry={activityEntry}

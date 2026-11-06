@@ -2,7 +2,6 @@
 {% load app_tags %}
 {# Split button for a tracked item: main action, then nothing, one icon-only segment, or a menu. #}
 {% media_track_actions media_type current_instance as track %}
-{% checkin_state_react media media_type track as checkin_state %}
 {% with main=track.actions.0 rest=track.actions|slice:"1:" %}
   {% with status_label=current_instance.status|media_status_readable %}
     <div id="{% component_id 'track-action' media %}"
@@ -19,11 +18,7 @@
          @click.outside="trackMenuOpen = false"
          @keydown.escape.window="trackMenuOpen = false"
          {% if track.reload_ms %}x-init="setTimeout(() => { if ($el.isConnected && !editTrackOpen && !createTrackOpen) {% if media_type == 'game' or media_type == 'movie' %}htmx.trigger($el, 'checkin-refresh'){% else %}location.reload(){% endif %} }, {{ track.reload_ms }})"{% endif %}>
-      {% if checkin_state.props %}
-        {{ checkin_state.props|json_script:checkin_state.id }}
-        <div data-checkin-state-root data-props-id="{{ checkin_state.id }}" class="w-full md:w-auto"></div>
-      {% endif %}
-      <div data-track-split-legacy class="inline-flex w-full overflow-hidden rounded-xl shadow-sm md:w-auto">
+      <div class="inline-flex w-full overflow-hidden rounded-xl shadow-sm md:w-auto">
         {% with action=main %}
           <button type="button"
                   data-track-action-key="{{ action.key }}"

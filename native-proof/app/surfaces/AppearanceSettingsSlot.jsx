@@ -9,7 +9,7 @@ export const surface = {
   title: 'Appearance and detail layout editor',
   where: 'Settings appearance theme, custom palette and detail section layout',
   status: 'in_progress',
-  note: 'Theme presets, custom palette effects and detail section enable/order render from the shared React Native editor with local validation and dirty/saving/error state. Native runtime interaction and a browser adapter remain unverified.',
+  note: 'All theme presets and swatches, the custom palette colours and effect steppers, and every server detail-page family, zone, section toggle and move control render from the shared React Native editor with local validation and dirty/saving/error state. Values and saving are demo state; the web appearance page remains server-owned, and browser mounting plus iOS/Android runtime interaction were not exercised, so Expo parse/export is compile-only evidence.',
 };
 
 const settingsPalette = {
@@ -73,102 +73,180 @@ const effects = {
   surface_opacity: { label: 'Surface opacity', default: 82, min: 40, max: 100, step: 2, unit: '%' },
 };
 
+function zone(label, sections) {
+  return { label, sections: sections.map(([key, title]) => ({ key, label: title })) };
+}
+
+// Mirrors src/users/appearance.py DETAIL_LAYOUT_FAMILIES so the native editor
+// exposes every family, zone and section key the server accepts.
 const families = {
   media: {
     label: 'Films, books and manga',
     zones: {
-      sidebar: {
-        label: 'Information column',
-        sections: [
-          { key: 'history', label: 'Your history' },
-          { key: 'details', label: 'Details' },
-          { key: 'genres', label: 'Genres' },
-          { key: 'studios', label: 'Studios' },
-          { key: 'collection', label: 'Collection' },
-        ],
-      },
-      content: {
-        label: 'Main content',
-        sections: [
-          { key: 'notes', label: 'Notes' },
-          { key: 'related', label: 'Related titles' },
-          { key: 'cast', label: 'Cast' },
-          { key: 'crew', label: 'Crew' },
-          { key: 'recommendations', label: 'Recommendations' },
-        ],
-      },
+      sidebar: zone('Information column', [
+        ['history', 'Your history'],
+        ['details', 'Details'],
+        ['genres', 'Genres'],
+        ['studios', 'Studios'],
+        ['collection', 'Collection'],
+      ]),
+      content: zone('Main content', [
+        ['notes', 'Notes'],
+        ['related', 'Related titles'],
+        ['cast', 'Cast'],
+        ['crew', 'Crew'],
+        ['recommendations', 'Recommendations'],
+      ]),
     },
   },
   series: {
     label: 'Series and seasons',
     zones: {
-      sidebar: {
-        label: 'Information column',
-        sections: [
-          { key: 'history', label: 'Your history' },
-          { key: 'details', label: 'Details' },
-          { key: 'genres', label: 'Genres' },
-          { key: 'studios', label: 'Studios' },
-          { key: 'collection', label: 'Collection' },
-        ],
-      },
-      content: {
-        label: 'Main content',
-        sections: [
-          { key: 'notes', label: 'Notes' },
-          { key: 'seasons', label: 'Seasons' },
-          { key: 'episodes', label: 'Episodes' },
-          { key: 'cast', label: 'Cast' },
-          { key: 'crew', label: 'Crew' },
-          { key: 'recommendations', label: 'Recommendations' },
-        ],
-      },
+      sidebar: zone('Information column', [
+        ['history', 'Your history'],
+        ['details', 'Details'],
+        ['genres', 'Genres'],
+        ['studios', 'Studios'],
+        ['collection', 'Collection'],
+      ]),
+      content: zone('Main content', [
+        ['notes', 'Notes'],
+        ['seasons', 'Seasons'],
+        ['episodes', 'Episodes'],
+        ['cast', 'Cast'],
+        ['crew', 'Crew'],
+        ['recommendations', 'Recommendations'],
+      ]),
     },
   },
   game: {
     label: 'Games',
     zones: {
-      sidebar: {
-        label: 'Information column',
-        sections: [
-          { key: 'history', label: 'Your history' },
-          { key: 'details', label: 'Details' },
-          { key: 'genres', label: 'Genres' },
-          { key: 'studios', label: 'Studios' },
-          { key: 'collection', label: 'Collection' },
-        ],
-      },
-      content: {
-        label: 'Main content',
-        sections: [
-          { key: 'notes', label: 'Notes' },
-          { key: 'playtimes', label: 'Play times' },
-          { key: 'cast', label: 'Cast' },
-          { key: 'crew', label: 'Crew' },
-          { key: 'recommendations', label: 'Recommendations' },
-        ],
-      },
+      sidebar: zone('Information column', [
+        ['history', 'Your history'],
+        ['details', 'Details'],
+        ['genres', 'Genres'],
+        ['studios', 'Studios'],
+        ['collection', 'Collection'],
+      ]),
+      content: zone('Main content', [
+        ['notes', 'Notes'],
+        ['game_lengths', 'Play times'],
+        ['cast', 'Cast'],
+        ['crew', 'Crew'],
+        ['recommendations', 'Recommendations'],
+      ]),
+    },
+  },
+  episode: {
+    label: 'Episodes',
+    zones: {
+      content: zone('Content', [
+        ['genres', 'Genres'],
+        ['notes', 'Notes'],
+        ['cast', 'Cast'],
+        ['crew', 'Crew'],
+      ]),
+    },
+  },
+  comic: {
+    label: 'Comic volumes',
+    zones: {
+      sidebar: zone('Information column', [
+        ['history', 'Your history'],
+        ['details', 'Details'],
+        ['genres', 'Genres'],
+        ['studios', 'Studios'],
+        ['collection', 'Collection'],
+      ]),
+      content: zone('Main content', [
+        ['notes', 'Notes'],
+        ['episodes', 'Issues'],
+        ['recommendations', 'Recommendations'],
+      ]),
+    },
+  },
+  comic_issue: {
+    label: 'Comic issues',
+    zones: {
+      sidebar: zone('Information column', [
+        ['details', 'Details'],
+        ['authors', 'Authors'],
+        ['collection', 'Collection'],
+      ]),
+    },
+  },
+  music_album: {
+    label: 'Music albums',
+    zones: {
+      sidebar: zone('Information column', [
+        ['details', 'Details'],
+        ['genres', 'Genres'],
+        ['collection', 'Collection'],
+      ]),
+      content: zone('Main content', [
+        ['notes', 'Notes'],
+        ['tracks', 'Tracks'],
+      ]),
+    },
+  },
+  music_artist: {
+    label: 'Music artists',
+    zones: {
+      sidebar: zone('Information column', [
+        ['details', 'Details'],
+        ['genres', 'Genres'],
+        ['collection', 'Collection'],
+      ]),
+      content: zone('Main content', [
+        ['notes', 'Notes'],
+        ['relations', 'Related artists'],
+        ['discography', 'Discography'],
+      ]),
+    },
+  },
+  podcast: {
+    label: 'Podcasts',
+    zones: {
+      sidebar: zone('Information column', [
+        ['details', 'Details'],
+        ['genres', 'Genres'],
+      ]),
+      content: zone('Main content', [
+        ['notes', 'Notes'],
+        ['episodes', 'Episodes'],
+      ]),
+    },
+  },
+  person: {
+    label: 'People',
+    zones: {
+      hero: zone('Profile', [['biography', 'Biography and facts']]),
+      content: zone('Content', [['filmography', 'Filmography']]),
+    },
+  },
+  studio: {
+    label: 'Studios',
+    zones: {
+      hero: zone('Profile', [['overview', 'Overview and facts']]),
+      content: zone('Content', [['works', 'Works']]),
     },
   },
 };
 
+// Server default detail layouts keep every section enabled in registry order.
+const defaultLayouts = Object.fromEntries(Object.entries(families).map(([familyKey, family]) => [
+  familyKey,
+  Object.fromEntries(Object.entries(family.zones).map(([zoneKey, value]) => [
+    zoneKey,
+    value.sections.map(section => section.key),
+  ])),
+]));
+
 const initialValues = {
-  theme: 'dark',
+  theme: 'system',
   palette: Object.fromEntries(Object.entries(colors).map(([key, value]) => [key, value.default]).concat(Object.entries(effects).map(([key, value]) => [key, value.default]))),
-  layouts: {
-    media: {
-      sidebar: ['history', 'details', 'genres', 'collection'],
-      content: ['notes', 'cast', 'crew', 'recommendations'],
-    },
-    series: {
-      sidebar: ['history', 'details', 'genres'],
-      content: ['notes', 'seasons', 'episodes', 'cast'],
-    },
-    game: {
-      sidebar: ['history', 'details', 'genres'],
-      content: ['notes', 'playtimes', 'recommendations'],
-    },
-  },
+  layouts: defaultLayouts,
 };
 
 function wait(ms) {

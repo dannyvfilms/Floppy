@@ -967,13 +967,13 @@ server-owned.
 
 ## SET-APPEARANCE
 
-- `frontend/settings/AppearanceEditor.jsx`
+- `frontend/settings/AppearanceEditor.jsx` (effect steppers honor decrement; native placement is the parity-tested editor)
 - `native-proof/app/surfaces/AppearanceSettingsSlot.jsx`
 - `src/templates/users/appearance.html`
 
 ## SET-CARDS
 
-- `frontend/settings/CardsEditor.jsx`
+- `frontend/settings/CardsEditor.jsx` (release title/save/help copy; native placement opens TV by default)
 - `native-proof/app/surfaces/CardsSettingsSlot.jsx`
 - `src/templates/users/cards.html`
 - `src/templates/users/cards_preview.html`

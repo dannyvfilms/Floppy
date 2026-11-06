@@ -8,19 +8,22 @@ export const surface = {
   title: 'Global search and suggestions',
   where: 'Header on Home, Discover and Library, and the Search screen',
   status: 'in_progress',
-  note: 'The shared search field, media-type menu, suggestions, paged results, source scope, empty/loading/error states, parent TV/season and music album pickers, and the Expo camera/photo/manual barcode sheet render here. The web parent picker and pager bundles are React-owned, with their server markup kept as the no-JS fallback. This stays in progress because native results and parent rows use local demo data, and camera, photo, permission, manual-ISBN and accessibility paths have not been exercised on iOS or Android; Expo export is compile-only evidence.',
+  note: 'The shared React Native search field renders here with the media-type menu, two-character suggestions, the search-all/search-online footer, loading/empty/error rows and the search, suggestion and barcode callbacks. Book, Manga, Comic and Comic Issue scopes open the Expo camera/photo/manual-ISBN sheet. Suggestions come from local demo rows because the native shell has no search transport, and the web adapter keeps the GET search action and JSON suggestion endpoint. Expo export is compile-only evidence: camera, photo, permission, manual-ISBN, suggestion, menu and screen-reader interaction were not exercised on iOS or Android.',
 };
 
 const mediaTypes = [
   { display: 'All', value: 'all' },
-  { display: 'Movies', value: 'movie' },
   { display: 'TV Shows', value: 'tv' },
+  { display: 'Movies', value: 'movie' },
   { display: 'Anime', value: 'anime' },
+  { display: 'Manga', value: 'manga' },
+  { display: 'Games', value: 'game' },
   { display: 'Books', value: 'book' },
   { display: 'Comics', value: 'comic' },
-  { display: 'Games', value: 'game' },
+  { display: 'Board Games', value: 'boardgame' },
   { display: 'Music', value: 'music' },
   { display: 'Podcasts', value: 'podcast' },
+  { display: 'Videos', value: 'video' },
 ];
 
 const library = [
@@ -29,9 +32,13 @@ const library = [
   { title: 'Dune Messiah', subtitle: 'Book · Frank Herbert', type: 'book' },
   { title: 'The Bear', subtitle: 'TV Show · In progress', type: 'tv' },
   { title: 'Blue Eye Samurai', subtitle: 'Anime · Completed', type: 'anime' },
+  { title: 'Vinland Saga', subtitle: 'Manga · Makoto Yukimura', type: 'manga' },
   { title: 'Hades', subtitle: 'Game · 12 hours played', type: 'game' },
+  { title: 'Saga #1', subtitle: 'Comic Issue · Brian K. Vaughan', type: 'comicissue' },
+  { title: 'Wingspan', subtitle: 'Board Game · 4 plays', type: 'boardgame' },
   { title: 'Piranesi', subtitle: 'Book · Susanna Clarke', type: 'book' },
   { title: 'The Last of Us', subtitle: 'TV Show · Planning', type: 'tv' },
+  { title: 'Every Frame a Painting', subtitle: 'Video · Essay', type: 'video' },
 ];
 
 const labels = {
@@ -50,6 +57,9 @@ const labels = {
   suggestionsEmptyAll: 'Nothing in your library matches “%(query)s”. Pick a media type to search online.',
   suggestionsEmptyType: 'Nothing saved matches “%(query)s”. Keep typing and press Enter to search online.',
   barcodeUnavailable: 'Barcode scanning is not available on this device. Enter an ISBN instead.',
+  barcodeUnreadable: 'Could not read a barcode from that image. Try again or type the ISBN.',
+  barcodeFailed: 'Error scanning barcode: ',
+  tryAgain: 'Please try again.',
   barcodeTitle: 'Scan a book barcode',
   barcodeHelp: 'Point the camera at the ISBN barcode, or choose a photo. You can also type the ISBN.',
   barcodePermissionTitle: 'Camera access needed',
@@ -121,13 +131,14 @@ export default function SearchSlot({
           id: `${item.type}-${index}`,
           title: item.title,
           subtitle: item.subtitle,
+          mediaType: item.type,
         })),
     };
   }, []);
 
   function openSuggestion(suggestion) {
     if (onOpenSuggestion) onOpenSuggestion(suggestion);
-    else onOpenSearch?.({ query: suggestion.title, mediaType: initialMediaType });
+    else onOpenSearch?.({ query: suggestion.title, mediaType: suggestion.mediaType || initialMediaType });
   }
 
   return <>

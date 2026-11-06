@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { StatisticsSummary } from '../../../frontend/ui/StatisticsSummary';
+import { StatisticsSummary, StatisticsState } from '../../../frontend/ui/StatisticsSummary';
 import { StatisticsCharts } from '../../../frontend/ui/StatisticsCharts';
 import {
   StatisticsComparison,
@@ -17,8 +17,8 @@ export const surface = {
   id: 'STATISTICS',
   status: 'in_progress',
   title: 'Statistics summary, charts, talent and per-media overviews',
-  where: 'Statistics screen summary cards, highlights, controls, charts, comparison, taste/talent, role/studio leaders and per-media-type overviews',
-  note: 'Finishing pass: adopt the shared comparison, taste/talent and per-media overviews on the web page, wire the saved comparison/media-type/sort preferences through a transport boundary, and keep server values authoritative. The person media strip and featured-repeat card stay server-owned for now. iOS and Android runtime are unverified.',
+  where: 'Statistics screen summary cards, highlights, range/media-type controls, charts, comparison, taste/talent, role/studio leaders, featured repeat and per-media-type overviews',
+  note: 'Summary, controls, highlights, comparison, every chart family, talent and per-media overviews use the shared React Native components. Range, refresh and sort actions call the authenticated statistics endpoints, and loading, error/retry and empty states cover the summary, charts, talent and overview sections. Blockers: the select-featured-person endpoint returns server HTML and the transport has no action for it, so a server-mode role-leader selection highlights the row but cannot refresh the featured card; the person media strip has no shared model, so it is not rendered; loadTalent has no media-type parameter, so talent stays all-types while the selected media types change; the web page still renders talent through the server fragment, so shared talent adoption is incomplete there. iOS and Android runtime are unverified.',
 };
 
 const charts = {
@@ -30,17 +30,17 @@ const charts = {
 };
 
 const ranges = [
-  { value: 'Today', label: 'Today', dateLabel: 'Nov 4, 2026' },
-  { value: 'Yesterday', label: 'Yesterday', dateLabel: 'Nov 3, 2026' },
-  { value: 'This Week', label: 'This week', dateLabel: 'Nov 2 – Nov 4, 2026' },
-  { value: 'Last 7 Days', label: 'Last 7 days', dateLabel: 'Oct 29 – Nov 4, 2026' },
-  { value: 'This Month', label: 'Month to date', dateLabel: 'Nov 1 – Nov 4, 2026' },
-  { value: 'Last 30 Days', label: 'Last 30 days', dateLabel: 'Oct 6 – Nov 4, 2026' },
-  { value: 'Last 90 Days', label: 'Last 90 days', dateLabel: 'Aug 7 – Nov 4, 2026' },
-  { value: 'This Year', label: 'Year to date', dateLabel: 'Jan 1 – Nov 4, 2026' },
-  { value: 'Last 6 Months', label: 'Last 6 months', dateLabel: 'May 5 – Nov 4, 2026' },
-  { value: 'Last 12 Months', label: 'Last 12 months', dateLabel: 'Nov 5, 2025 – Nov 4, 2026' },
-  { value: 'All Time', label: 'All time', dateLabel: 'Every tracked day' },
+  { value: 'Today', label: 'Today' },
+  { value: 'Yesterday', label: 'Yesterday' },
+  { value: 'This Week', label: 'This week' },
+  { value: 'Last 7 Days', label: 'Last 7 days' },
+  { value: 'This Month', label: 'Month to date' },
+  { value: 'Last 30 Days', label: 'Last 30 days' },
+  { value: 'Last 90 Days', label: 'Last 90 days' },
+  { value: 'This Year', label: 'Year to date' },
+  { value: 'Last 6 Months', label: 'Last 6 months' },
+  { value: 'Last 12 Months', label: 'Last 12 months' },
+  { value: 'All Time', label: 'All time' },
 ];
 
 function isoDay(value) {
@@ -49,15 +49,33 @@ function isoDay(value) {
   return `${value.getFullYear()}-${month}-${day}`;
 }
 
+function formatDay(value) {
+  return value.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function rangeDateLabel(startDate, endDate) {
+  if (startDate === 'all') return 'Every tracked day';
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return '';
+  if (startDate === endDate) return formatDay(start);
+  return `${formatDay(start)} – ${formatDay(end)}`;
+}
+
 function withRangeDates(option) {
-  if (option.startDate !== undefined) return option;
+  if (option.startDate !== undefined) {
+    return {
+      ...option,
+      dateLabel: option.dateLabel || rangeDateLabel(option.startDate, option.endDate),
+    };
+  }
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   let start = new Date(today);
   let end = new Date(today);
   switch (option.value) {
     case 'All Time':
-      return { ...option, startDate: 'all', endDate: 'all' };
+      return { ...option, startDate: 'all', endDate: 'all', dateLabel: 'Every tracked day' };
     case 'Yesterday':
       start.setDate(start.getDate() - 1);
       end = new Date(start);
@@ -91,8 +109,13 @@ function withRangeDates(option) {
     default:
       break;
   }
-  return { ...option, startDate: isoDay(start), endDate: isoDay(end) };
+  const startDate = isoDay(start);
+  const endDate = isoDay(end);
+  return { ...option, startDate, endDate, dateLabel: rangeDateLabel(startDate, endDate) };
 }
+
+const rangeOptions = ranges.map(withRangeDates);
+const defaultRange = rangeOptions.find(option => option.value === 'Last 12 Months') || rangeOptions[0];
 
 const mediaTypes = [
   { value: 'tv', label: 'TV Shows' },
@@ -564,17 +587,74 @@ const hourLabels = Array.from({ length: 24 }, (_, hour) => (
 const featuredRepeat = {
   name: 'Maya Chen',
   image: 'https://picsum.photos/seed/floppy-featured/300/300',
-  uniqueTitles: 23,
-  uniqueMovies: 9,
-  uniqueGames: 2,
-  uniqueShows: 12,
-  pctOfLibrary: 18.4,
+  source: 'tmdb',
+  personId: 'maya-chen',
+  bucket: 'Actors',
+  uniqueTitles: 9,
+  uniqueMovies: 3,
+  uniqueGames: 1,
+  uniqueShows: 5,
+  pctOfLibrary: 2.6,
   knownFor: [
     { label: 'Production Design' },
     { label: 'Drama' },
     { label: 'Sci-Fi' },
   ],
 };
+
+function featuredFromPerson(entry, column) {
+  if (!entry) return featuredRepeat;
+  const titles = Number(entry.titles) || 0;
+  const uniqueMovies = Math.max(1, Math.round(titles * 0.4));
+  const uniqueGames = column?.bucket === 'actors' ? 1 : 0;
+  const uniqueShows = Math.max(0, titles - uniqueMovies - uniqueGames);
+  const libraryTotal = summaries.all.total || 0;
+  return {
+    name: entry.name,
+    image: `https://picsum.photos/seed/floppy-${entry.personId}/300/300`,
+    source: entry.source,
+    personId: entry.personId,
+    bucket: column?.label || '',
+    uniqueTitles: titles,
+    uniqueMovies,
+    uniqueGames,
+    uniqueShows,
+    pctOfLibrary: libraryTotal ? Math.round((titles / libraryTotal) * 1000) / 10 : 0,
+    knownFor: [
+      { label: column?.label || 'Acting' },
+      { label: 'Drama' },
+      { label: 'Science Fiction' },
+    ],
+  };
+}
+
+function featuredFromServer(person) {
+  if (!person) return null;
+  return {
+    name: person.name || '',
+    image: person.image || '',
+    source: person.source || '',
+    personId: String(person.person_id || person.personId || ''),
+    bucket: person.bucket || '',
+    uniqueTitles: Number(person.unique_titles ?? person.uniqueTitles ?? 0),
+    uniqueMovies: Number(person.unique_movies ?? person.uniqueMovies ?? 0),
+    uniqueGames: Number(person.unique_games ?? person.uniqueGames ?? 0),
+    uniqueShows: Number(person.unique_shows ?? person.uniqueShows ?? 0),
+    pctOfLibrary: Number(person.pct_of_library ?? person.pctOfLibrary ?? 0),
+    knownFor: (person.known_for_pills || person.knownFor || [])
+      .map(pill => ({ label: pill?.label || '' }))
+      .filter(pill => pill.label),
+  };
+}
+
+function findRoleLeader(key) {
+  const [source, personId] = String(key || '').split(':');
+  for (const column of roleLeaderBuckets) {
+    const entry = column.people.find(person => person.source === source && person.personId === personId);
+    if (entry) return { entry, column };
+  }
+  return null;
+}
 
 function activeChartTypes(types) {
   return types.length ? types : chartMediaTypes.map(type => type.value);
@@ -887,6 +967,20 @@ function demoRoleLeadersFor(sort, selectedKey) {
         ...person,
         selected: `${person.source}:${person.personId}` === selectedKey,
         displayMetric: metric(person),
+      })),
+    })),
+  };
+}
+
+function withPersonSelection(roleLeaders, selectedKey) {
+  if (!roleLeaders?.columns) return roleLeaders;
+  return {
+    ...roleLeaders,
+    columns: roleLeaders.columns.map(column => ({
+      ...column,
+      entries: (column.entries || []).map(entry => ({
+        ...entry,
+        selected: `${entry.source || ''}:${entry.personId || ''}` === selectedKey,
       })),
     })),
   };
@@ -1306,107 +1400,156 @@ function demoMediaOverviewsFor(types, rangeLabel) {
 
 
 export default function StatisticsScreen({ navigate, onBack }) {
-  const [range, setRange] = useState({
-    selected: 'Last 12 Months',
-    label: 'Last 12 months',
-    dateLabel: 'Nov 5, 2025 – Nov 4, 2026',
-    startDate: '2025-11-05',
-    endDate: '2026-11-04',
-  });
+  const transport = useMemo(() => createStatisticsTransport(), []);
+  const [range, setRange] = useState(defaultRange);
   const [selectedTypes, setSelectedTypes] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [updatedLabel, setUpdatedLabel] = useState('12 minutes ago');
+  const [modelState, setModelState] = useState(transport.mode === 'server' ? 'loading' : 'ready');
+  const [talentState, setTalentState] = useState(transport.mode === 'server' ? 'loading' : 'ready');
+  const [reloadKey, setReloadKey] = useState(0);
+  const [updatedLabel, setUpdatedLabel] = useState(transport.mode === 'server' ? '' : '12 minutes ago');
   const [compareMode, setCompareMode] = useState('previous_period');
   const [roleSort, setRoleSort] = useState('plays');
   const [studioSort, setStudioSort] = useState('plays');
   const [tasteSort, setTasteSort] = useState('time');
   const [selectedPersonKey, setSelectedPersonKey] = useState('tmdb:maya-chen');
-  const transport = useMemo(() => createStatisticsTransport(), []);
   const [remoteModel, setRemoteModel] = useState(null);
   const [remoteTalent, setRemoteTalent] = useState(null);
+  const [remoteFeatured, setRemoteFeatured] = useState(null);
 
   useEffect(() => {
     if (transport.mode !== 'server') {
       setRemoteModel(null);
+      setModelState('ready');
+      setRefreshing(false);
       return undefined;
     }
     let cancelled = false;
+    setModelState(current => (current === 'ready' || current === 'refreshing' ? 'refreshing' : 'loading'));
     transport.loadModel({
       rangeName: range.selected,
       startDate: range.startDate,
       endDate: range.endDate,
       compareMode,
     }).then(data => {
-      if (!cancelled) setRemoteModel(data?.model || null);
+      if (cancelled) return;
+      setRemoteModel(data?.model || null);
+      setModelState('ready');
+      setRefreshing(false);
     }).catch(error => {
-      if (!cancelled) console.warn('Statistics model could not load', error);
+      if (cancelled) return;
+      console.warn('Statistics model could not load', error);
+      setModelState('error');
+      setRefreshing(false);
     });
     return () => { cancelled = true; };
-  }, [transport, range.selected, range.startDate, range.endDate, compareMode]);
+  }, [transport, reloadKey, range.selected, range.startDate, range.endDate, compareMode]);
 
   useEffect(() => {
     if (transport.mode !== 'server') {
       setRemoteTalent(null);
+      setRemoteFeatured(null);
+      setTalentState('ready');
       return undefined;
     }
     let cancelled = false;
+    setTalentState(current => (current === 'ready' ? 'ready' : 'loading'));
     transport.loadTalent({
       rangeName: range.selected,
       startDate: range.startDate,
       endDate: range.endDate,
       compareMode,
     }).then(data => {
-      if (!cancelled) setRemoteTalent(data?.talent || null);
+      if (cancelled) return;
+      setRemoteTalent(data?.talent || null);
+      setRemoteFeatured(featuredFromServer(data?.featuredPerson));
+      if (data?.selectedPersonKey) setSelectedPersonKey(data.selectedPersonKey);
+      setTalentState('ready');
     }).catch(error => {
-      if (!cancelled) console.warn('Statistics talent could not load', error);
+      if (cancelled) return;
+      console.warn('Statistics talent could not load', error);
+      setTalentState('error');
     });
     return () => { cancelled = true; };
-  }, [transport, range.selected, range.startDate, range.endDate, compareMode]);
+  }, [transport, reloadKey, range.selected, range.startDate, range.endDate, compareMode]);
 
   const remote = useMemo(
     () => (remoteModel ? flattenStatisticsModel(remoteModel, selectedTypes) : null),
     [remoteModel, selectedTypes],
   );
 
+  const summary = remote?.summary || demoSummaryFor(selectedTypes);
+  const remoteEmpty = Boolean(remoteModel)
+    && !Number(summary.total || 0)
+    && !(remote?.highlights || []).length;
+  const loading = modelState === 'loading';
+  const error = modelState === 'error';
+  const empty = modelState === 'ready' && remoteEmpty;
+
+  const featured = useMemo(() => {
+    if (remoteFeatured) return remoteFeatured;
+    if (transport.mode === 'server') return null;
+    const found = findRoleLeader(selectedPersonKey);
+    return found ? featuredFromPerson(found.entry, found.column) : featuredRepeat;
+  }, [transport, remoteFeatured, selectedPersonKey]);
+
   const model = useMemo(() => ({
-    range: { ...range, options: ranges },
+    range: { ...range, options: rangeOptions },
     mediaTypes: { selected: selectedTypes, options: mediaTypes },
-    summary: remote?.summary || demoSummaryFor(selectedTypes),
+    summary,
     highlights: remote
       ? remote.highlights || []
       : selectedTypes.length === 1
         ? (highlights[selectedTypes[0]] || highlights.all)
         : highlights.all,
     scaleMax: remote?.scaleMax || 10,
-    refreshing,
+    loading,
+    error,
+    empty,
+    refreshing: refreshing || modelState === 'refreshing',
     updatedLabel: remote?.updatedLabel || updatedLabel,
-  }), [range, selectedTypes, remote, refreshing, updatedLabel]);
+  }), [range, selectedTypes, summary, remote, loading, error, empty, refreshing, modelState, updatedLabel]);
 
   const chartModel = useMemo(() => {
     const demo = demoChartsFor(selectedTypes);
-    if (!remote?.charts) return demo;
-    return { ...demo, ...remote.charts, featured: demo.featured };
-  }, [remote, selectedTypes]);
-  const comparisonModel = useMemo(
-    () => (remote?.comparison?.rows?.length
-      ? remote.comparison
-      : demoComparisonFor(compareMode, selectedTypes)),
-    [remote, compareMode, selectedTypes],
-  );
+    return {
+      ...demo,
+      ...(remote?.charts || {}),
+      featured,
+      empty,
+    };
+  }, [remote, selectedTypes, featured, empty]);
+
+  const comparisonModel = useMemo(() => {
+    if (remoteModel) {
+      const comparison = remote?.comparison || {};
+      const rows = comparison.rows || [];
+      const filtered = selectedTypes.length
+        ? rows.filter(row => selectedTypes.includes(row.type))
+        : rows;
+      return { ...comparison, rows: filtered, empty: !filtered.length };
+    }
+    return demoComparisonFor(compareMode, selectedTypes);
+  }, [remoteModel, remote, compareMode, selectedTypes]);
+
   const talentModel = useMemo(() => ({
-    roleLeaders: remoteTalent?.roleLeaders || demoRoleLeadersFor(roleSort, selectedPersonKey),
+    roleLeaders: remoteTalent?.roleLeaders
+      ? withPersonSelection(remoteTalent.roleLeaders, selectedPersonKey)
+      : demoRoleLeadersFor(roleSort, selectedPersonKey),
     studioFootprint: remoteTalent?.studioFootprint || demoStudioFootprintFor(studioSort),
     tasteSignals: remoteTalent?.tasteSignals || demoTasteSignalsFor(tasteSort),
   }), [remoteTalent, roleSort, selectedPersonKey, studioSort, tasteSort]);
+
   const mediaOverviewModel = useMemo(() => {
-    if (remote?.overviews?.length) {
+    if (remoteModel) {
+      const all = remote?.overviews || [];
       const items = selectedTypes.length
-        ? remote.overviews.filter(overview => selectedTypes.includes(overview.typeValue))
-        : remote.overviews;
+        ? all.filter(overview => selectedTypes.includes(overview.typeValue))
+        : all;
       return { items };
     }
     return { items: demoMediaOverviewsFor(selectedTypes, range.label) };
-  }, [remote, selectedTypes, range.label]);
+  }, [remoteModel, remote, selectedTypes, range.label]);
 
   const preferenceContext = useMemo(() => ({
     rangeName: range.selected,
@@ -1421,11 +1564,20 @@ export default function StatisticsScreen({ navigate, onBack }) {
     });
   }
 
+  function retry() {
+    setReloadKey(value => value + 1);
+  }
+
   function refresh() {
     setRefreshing(true);
     setUpdatedLabel('just now');
     savePreference(transport.requestRefresh({ rangeName: range.selected }));
-    setTimeout(() => setRefreshing(false), 900);
+    setReloadKey(value => value + 1);
+  }
+
+  function changeRange(option) {
+    setRange(withRangeDates(option));
+    setRefreshing(true);
   }
 
   function changeMediaTypes(types) {
@@ -1471,32 +1623,53 @@ export default function StatisticsScreen({ navigate, onBack }) {
       .catch(error => console.warn('Taste sort could not be saved', error));
   }
 
+  function selectPerson(entry) {
+    if (!entry?.source || !entry?.personId) return;
+    setSelectedPersonKey(`${entry.source}:${entry.personId}`);
+  }
+
+  function openPerson(entry) {
+    if (!entry?.source || !entry?.personId) return;
+    navigate('People', {
+      kind: 'person',
+      source: entry.source,
+      personId: entry.personId,
+      slug: entry.personId,
+    });
+  }
+
   return <Screen title="Statistics" subtitle="Your viewing and reading over time" onBack={onBack}>
     <StatisticsSummary model={model}
       palette={statisticsPalette}
-      onChangeRange={next => setRange(withRangeDates(next))}
+      onChangeRange={changeRange}
       onChangeMediaTypes={changeMediaTypes}
       onRefresh={refresh}
       onSelectHighlight={item => navigate('Detail', { item })}
-      onRetry={refresh} />
-    <Section title="Range comparison">
-      <StatisticsComparison model={comparisonModel} palette={statisticsPalette}
-        onCompareMode={changeCompareMode} />
-    </Section>
-    <Section title="Charts and featured repeats">
-      <StatisticsCharts model={chartModel} palette={statisticsPalette} />
-    </Section>
-    <Section title="Talent and taste">
-      <StatisticsTalentSection model={talentModel} palette={statisticsPalette}
-        onRoleSortChange={changeRoleSort}
-        onStudioSortChange={changeStudioSort}
-        onTasteSortChange={changeTasteSort}
-        onSelectPerson={entry => setSelectedPersonKey(`${entry.source}:${entry.personId}`)} />
-    </Section>
-    <Section title="Per-media activity overviews">
-      <StatisticsMediaTypeOverviews model={mediaOverviewModel} palette={statisticsPalette}
-        onSelectItem={item => navigate('Detail', { item })} />
-    </Section>
+      onRetry={retry} />
+    {!loading && !error ? <React.Fragment>
+      <Section title="Range comparison">
+        <StatisticsComparison model={comparisonModel} palette={statisticsPalette}
+          onCompareMode={changeCompareMode} onRetry={retry} />
+      </Section>
+      <Section title="Charts and featured repeats">
+        <StatisticsCharts model={chartModel} palette={statisticsPalette}
+          onSelectPerson={openPerson} />
+      </Section>
+      <Section title="Talent and taste">
+        {talentState === 'ready'
+          ? <StatisticsTalentSection model={talentModel} palette={statisticsPalette}
+            onRoleSortChange={changeRoleSort}
+            onStudioSortChange={changeStudioSort}
+            onTasteSortChange={changeTasteSort}
+            onSelectPerson={selectPerson} />
+          : <StatisticsState kind={talentState === 'error' ? 'error' : 'loading'}
+            palette={statisticsPalette} onRetry={retry} />}
+      </Section>
+      <Section title="Per-media activity overviews">
+        <StatisticsMediaTypeOverviews model={mediaOverviewModel} palette={statisticsPalette}
+          onSelectItem={item => navigate('Detail', { item })} />
+      </Section>
+    </React.Fragment> : null}
   </Screen>;
 }
 

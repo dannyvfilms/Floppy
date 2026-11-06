@@ -9,7 +9,7 @@ export const surface = {
   title: 'Media card layout editor',
   where: 'Settings media cards per-type line selection, order and preview',
   status: 'in_progress',
-  note: 'Per-media-type card lines, field order, visibility, title and rating options render from the shared React Native editor with a live preview and dirty/saving/error state. Native runtime interaction and a browser adapter remain unverified.',
+  note: 'Every media type in users.card_metadata.editor_catalog() renders from the shared React Native CardsEditor with per-type line visibility, field and line ordering, add/remove, type copy/reset/defaults, title and rating options, a profile-driven card preview and the shared dirty/saving/error save bar. Saved profiles mirror the server defaults plus tuned types so the demo opens clean and the preview changes with each type. Demo saves stay local: native credential transport and on-device interaction remain unverified.',
 };
 
 const settingsPalette = {
@@ -40,6 +40,7 @@ const buttonPalette = {
   focusStyle: {},
 };
 
+// Mirrors the labels in users.card_metadata.CARD_FIELDS.
 const fieldLabels = {
   release_year: 'Release year',
   episode_code: 'Season and episode',
@@ -63,101 +64,175 @@ const fieldLabels = {
   role: 'Role',
 };
 
+// Mirrors editor_catalog(): media types in server order, each with the fields
+// users.card_metadata.field_types() allows, in registry order.
 const typeFields = {
-  movie: ['release_year', 'genres', 'runtime', 'progress', 'status', 'rating', 'last_played', 'date_added', 'synopsis'],
-  tv: ['release_year', 'episode_code', 'progress', 'status', 'rating', 'last_played', 'date_added', 'synopsis'],
-  anime: ['release_year', 'episode_code', 'progress', 'status', 'rating', 'last_played', 'date_added', 'synopsis'],
-  season: ['episode_code', 'release_year', 'progress', 'status', 'rating', 'last_played', 'date_added', 'synopsis'],
-  episode: ['episode_code', 'release_year', 'status', 'rating', 'last_played', 'synopsis'],
-  book: ['release_year', 'series_position', 'progress', 'status', 'rating', 'author', 'date_added', 'synopsis'],
-  comic: ['release_year', 'series_position', 'progress', 'status', 'rating', 'author', 'date_added', 'synopsis'],
-  manga: ['release_year', 'series_position', 'progress', 'status', 'rating', 'author', 'date_added', 'synopsis'],
-  game: ['release_year', 'platforms', 'progress', 'status', 'rating', 'last_played', 'date_added'],
-  music: ['artist', 'album', 'track_number', 'release_year', 'rating', 'last_played', 'date_added'],
-  podcast: ['release_year', 'progress', 'status', 'rating', 'last_played', 'date_added'],
+  tv: ['release_year', 'episode_code', 'genres', 'runtime', 'progress', 'status', 'rating', 'last_played', 'date_added', 'start_date', 'end_date', 'synopsis'],
+  season: ['release_year', 'episode_code', 'genres', 'runtime', 'progress', 'status', 'rating', 'last_played', 'date_added', 'start_date', 'end_date', 'synopsis', 'show_name'],
+  episode: ['release_year', 'episode_code', 'genres', 'runtime', 'progress', 'status', 'rating', 'last_played', 'date_added', 'start_date', 'end_date', 'synopsis', 'show_name'],
+  movie: ['release_year', 'genres', 'runtime', 'progress', 'status', 'rating', 'last_played', 'date_added', 'start_date', 'end_date', 'synopsis'],
+  anime: ['release_year', 'genres', 'runtime', 'progress', 'status', 'rating', 'last_played', 'date_added', 'start_date', 'end_date', 'synopsis'],
+  manga: ['release_year', 'genres', 'runtime', 'progress', 'status', 'rating', 'last_played', 'date_added', 'start_date', 'end_date', 'synopsis', 'author'],
+  game: ['release_year', 'genres', 'platforms', 'runtime', 'progress', 'status', 'rating', 'last_played', 'date_added', 'start_date', 'end_date', 'synopsis'],
+  book: ['release_year', 'genres', 'runtime', 'progress', 'series_position', 'status', 'rating', 'last_played', 'date_added', 'start_date', 'end_date', 'synopsis', 'author'],
+  comic: ['release_year', 'genres', 'runtime', 'progress', 'status', 'rating', 'last_played', 'date_added', 'start_date', 'end_date', 'synopsis', 'author'],
+  comicissue: ['release_year', 'genres', 'runtime', 'progress', 'status', 'rating', 'last_played', 'date_added', 'start_date', 'end_date', 'synopsis', 'author'],
+  boardgame: ['release_year', 'genres', 'runtime', 'progress', 'status', 'rating', 'last_played', 'date_added', 'start_date', 'end_date', 'synopsis'],
+  music: ['release_year', 'genres', 'runtime', 'progress', 'status', 'rating', 'last_played', 'date_added', 'start_date', 'end_date', 'synopsis', 'artist', 'album', 'track_number'],
+  podcast: ['release_year', 'genres', 'runtime', 'progress', 'status', 'rating', 'last_played', 'date_added', 'start_date', 'end_date', 'synopsis'],
+  video: ['release_year', 'genres', 'runtime', 'progress', 'status', 'rating', 'last_played', 'date_added', 'start_date', 'end_date', 'synopsis'],
   person: ['role'],
 };
 
+// Mirrors users.card_metadata.type_label().
 const typeLabels = {
-  movie: 'Movies',
-  tv: 'TV Shows',
+  tv: 'TV Show',
+  season: 'TV Season',
+  episode: 'Episode',
+  movie: 'Movie',
   anime: 'Anime',
-  season: 'Seasons',
-  episode: 'Episodes',
-  book: 'Books',
-  comic: 'Comic Books',
   manga: 'Manga',
-  game: 'Games',
+  game: 'Game',
+  book: 'Book',
+  comic: 'Comic',
+  comicissue: 'Comic Issue',
+  boardgame: 'Board Game',
   music: 'Music',
-  podcast: 'Podcasts',
-  person: 'People',
+  podcast: 'Podcast',
+  video: 'Video',
+  person: 'Person',
 };
 
 const catalog = Object.keys(typeFields).map(id => ({
   id,
   label: typeLabels[id],
-  fields: typeFields[id].map(field => ({ id: field, label: fieldLabels[field] })),
+  fields: typeFields[id].map(fieldId => ({ id: fieldId, label: fieldLabels[fieldId] })),
 }));
 
-const lineSeeds = {
-  movie: [['release_year'], ['genres', 'runtime'], ['progress']],
-  tv: [['release_year'], ['progress', 'episode_code']],
-  anime: [['release_year'], ['progress']],
-  season: [['episode_code'], ['progress']],
-  episode: [['episode_code'], ['last_played']],
-  book: [['release_year'], ['series_position'], ['progress']],
-  comic: [['release_year'], ['progress']],
-  manga: [['release_year'], ['progress']],
-  game: [['release_year'], ['progress']],
-  music: [['artist'], ['album'], ['release_year']],
-  podcast: [['release_year'], ['progress']],
-  person: [['role']],
+const defaultRating = { hide_zero: false, show: true };
+const defaultTitle = { overflow: 'ellipsis', lines: 1, hover: 'bleed', hover_lines: 3 };
+
+// Mirrors users.card_metadata.default_profile(): each default field gets its own
+// hover line; episodes and the global preference columns start empty.
+const defaultTypeFields = {
+  tv: ['release_year', 'progress'],
+  season: ['release_year', 'progress'],
+  episode: [],
+  movie: ['release_year', 'progress'],
+  anime: ['release_year', 'progress'],
+  manga: ['release_year', 'progress'],
+  game: ['release_year', 'progress'],
+  book: ['release_year', 'series_position', 'progress'],
+  comic: ['release_year', 'progress'],
+  comicissue: ['release_year', 'progress'],
+  boardgame: ['release_year', 'progress'],
+  music: ['artist', 'release_year'],
+  podcast: ['release_year', 'progress'],
+  video: ['release_year', 'progress'],
+  person: ['role'],
 };
 
-function defaultProfile(mediaType) {
-  const lines = (lineSeeds[mediaType] || []).map((fields, index) => ({
-    fields,
-    display: index === 0 ? 'dormant' : 'hover',
-  }));
+// A saved account that already tuned a few types: multi-property lines, one
+// always-visible progress line, a wrapped title, hidden ratings and a bare card.
+const tunedProfiles = {
+  movie: {
+    lines: [
+      { fields: ['genres', 'runtime'], display: 'hover' },
+      { fields: ['progress'], display: 'dormant' },
+      { fields: ['release_year', 'status'], display: 'hover' },
+    ],
+    rating: { hide_zero: true },
+    title: { lines: 2, hover_lines: 3 },
+  },
+  tv: {
+    lines: [
+      { fields: ['episode_code'], display: 'hover' },
+      { fields: ['progress'], display: 'dormant' },
+      { fields: ['status', 'rating'], display: 'hover' },
+    ],
+    title: { hover_lines: 2 },
+  },
+  episode: {
+    lines: [
+      { fields: ['show_name', 'episode_code'], display: 'hover' },
+      { fields: ['last_played'], display: 'hover' },
+    ],
+  },
+  game: {
+    lines: [
+      { fields: ['platforms'], display: 'hover' },
+      { fields: ['progress'], display: 'dormant' },
+      { fields: ['release_year', 'rating'], display: 'hover' },
+    ],
+  },
+  book: {
+    lines: [
+      { fields: ['release_year', 'series_position'], display: 'hover' },
+      { fields: ['progress'], display: 'dormant' },
+      { fields: ['author'], display: 'hover' },
+    ],
+    rating: { hide_zero: true },
+  },
+  music: {
+    lines: [
+      { fields: ['artist', 'album'], display: 'hover' },
+      { fields: ['track_number', 'release_year'], display: 'hover' },
+    ],
+    rating: { show: false },
+    title: { hover: 'stay', hover_lines: 1 },
+  },
+  video: {
+    lines: [],
+    title: { overflow: 'wrap', lines: 2, hover_lines: 3 },
+  },
+};
+
+function buildProfile(typeId) {
+  const tuned = tunedProfiles[typeId] || {};
+  const lines = tuned.lines
+    ? tuned.lines.map(line => ({ fields: [...line.fields], display: line.display }))
+    : (defaultTypeFields[typeId] || []).map(fieldId => ({ fields: [fieldId], display: 'hover' }));
   return {
+    display: 'hover',
     lines,
     fields: lines.flatMap(line => line.fields),
     options: {
-      rating: { hide_zero: false, show: mediaType !== 'music' },
-      title: { overflow: 'ellipsis', lines: 1, hover: 'bleed', hover_lines: 3 },
+      rating: { ...defaultRating, ...(tuned.rating || {}) },
+      title: { ...defaultTitle, ...(tuned.title || {}) },
     },
   };
 }
 
-const saved = Object.fromEntries(Object.keys(typeFields).map(id => [id, defaultProfile(id)]));
-const initialSaved = Object.fromEntries(Object.keys(typeFields).map(id => [id, defaultProfile(id)]));
+function buildProfiles() {
+  return Object.fromEntries(catalog.map(entry => [entry.id, buildProfile(entry.id)]));
+}
+
+// Two builds so the editor's baseline stays a separate snapshot of the same state.
+const savedProfiles = buildProfiles();
+const baselineProfiles = buildProfiles();
 
 function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 export default function CardsSettingsSlot() {
-  const [values, setValues] = useState({ saved, touchActions: false });
-  const [savedValues, setSavedValues] = useState({ saved: initialSaved, touchActions: false });
-
-  function change(next) {
-    setValues({ saved: next.saved, touchActions: next.touchActions });
-  }
+  const [values, setValues] = useState({ saved: savedProfiles, touchActions: false });
+  const [savedValues, setSavedValues] = useState({ saved: baselineProfiles, touchActions: false });
 
   async function save({ values: submitted }) {
     await wait(450);
     setSavedValues({ saved: submitted.saved, touchActions: submitted.touchActions });
   }
 
-  return <SettingsCard title="Media cards" palette={settingsPalette}>
+  return <SettingsCard title="Media Cards" palette={settingsPalette}>
     <View style={styles.form}>
       <CardsEditor
         catalog={catalog}
         saved={values.saved}
         initialSaved={savedValues.saved}
-        active="movie"
+        active="tv"
         touchActions={values.touchActions}
-        onChange={change}
+        onChange={setValues}
         onSave={save}
         palette={settingsPalette}
         buttonPalette={buttonPalette}

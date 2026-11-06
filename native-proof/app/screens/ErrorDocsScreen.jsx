@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
-import { Clipboard, Linking, StyleSheet, Text, View } from 'react-native';
+import { Linking, StyleSheet, Text, View } from 'react-native';
 import { ApiDocs } from '../../../frontend/errors/ApiDocs';
 import { ErrorRecovery, ErrorStatusSelector } from '../../../frontend/errors/ErrorRecovery';
+import { copyText as copyToClipboard } from '../../../frontend/ui/clipboard';
 import { Screen } from '../components/Screen';
 import { palette } from '../theme';
 
 export const surface = {
   id: 'ERRORS-DOCS',
-  status: 'in_progress',
+  status: 'ported',
   title: 'Errors and API docs',
   where: '400/403/CSRF/404/500 recovery, safe diagnostics and API documentation',
-  note: 'Self-contained error recovery, copyable diagnostics and the API reference render with shared cards, chips, copy blocks and buttons. The browser error templates mount the same recovery presentation over their server fallback; the public /api/docs/ page keeps its script-free offline contract, so ApiDocs stays server-only on the web. iOS and Android runtime are unverified.',
+  note: 'Self-contained error recovery, copyable diagnostics and the API reference render with shared cards, chips, copy blocks and buttons. Clipboard copy goes through the platform adapter, external links use the system browser and the browser error templates mount the same recovery presentation over their server fallback. The public /api/docs/ page keeps its script-free offline contract, so ApiDocs stays server-only on the web. iOS and Android runtime are unverified.',
 };
 
 const docsPalette = {
@@ -83,6 +84,7 @@ const errors = {
     heading: 'Access Forbidden',
     message: 'CSRF verification failed for this request. This usually means the CSRF cookie was missing, expired, or did not match the form token.',
     checks: [
+      'CSRF reason: CSRF token missing',
       'Reload the page and try again.',
       "If you're using the iOS PWA, open the site in Safari once to refresh cookies.",
       "Confirm cookies are allowed and you're not switching between http and https or different domains.",
@@ -223,9 +225,14 @@ export default function ErrorDocsScreen({ onBack }) {
   const [notice, setNotice] = useState('');
   const error = errors[selected];
 
-  function copyText(text) {
+  async function copyValue(text) {
+    setNotice('');
     try {
-      Clipboard.setString(text);
+      const copied = await copyToClipboard(text);
+      if (copied === false) {
+        setNotice('Copy was blocked. Select the text and copy it manually.');
+        return false;
+      }
       return true;
     } catch {
       setNotice('Copy is unavailable on this device.');
@@ -247,6 +254,11 @@ export default function ErrorDocsScreen({ onBack }) {
     }
   }
 
+  function selectStatus(value) {
+    setSelected(value);
+    setNotice('');
+  }
+
   function retry() {
     setNotice('Retrying the request keeps the same path and query.');
   }
@@ -256,7 +268,7 @@ export default function ErrorDocsScreen({ onBack }) {
   }
 
   return <Screen title="Errors" subtitle="Errors and API docs" onBack={onBack}>
-    <ErrorStatusSelector options={statusOptions} selected={selected} onSelect={setSelected}
+    <ErrorStatusSelector options={statusOptions} selected={selected} onSelect={selectStatus}
       palette={docsPalette} accessibilityLabel="Choose an error page example" />
 
     {notice ? <Text accessibilityLiveRegion="polite" style={[styles.notice, { color: palette.textMuted }]}>{notice}</Text> : null}
@@ -273,7 +285,7 @@ export default function ErrorDocsScreen({ onBack }) {
       report={error.report}
       labels={{ reportNote: 'Safe demo diagnostics. Copy this block when opening a ticket so the traceback and request details are preserved.' }}
       palette={docsPalette}
-      onCopyReport={copyText}
+      onCopyReport={copyValue}
       onReportIssue={() => openLink({ label: 'Report the issue', href: 'https://github.com/dannyvfilms/Floppy/issues' })}
       onRetry={selected === '500' ? retry : undefined}
       onLogin={selected === '403' || selected === 'csrf' ? login : undefined}
@@ -282,7 +294,7 @@ export default function ErrorDocsScreen({ onBack }) {
 
     <View style={[styles.divider, { backgroundColor: palette.border }]} />
     <Text role="heading" aria-level={2} style={[styles.sectionTitle, { color: palette.text }]}>API documentation</Text>
-    <ApiDocs model={apiDocs} palette={docsPalette} onOpenLink={openLink} onCopy={copyText} />
+    <ApiDocs model={apiDocs} palette={docsPalette} onOpenLink={openLink} onCopy={copyValue} />
   </Screen>;
 }
 

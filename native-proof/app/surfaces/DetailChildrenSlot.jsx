@@ -12,7 +12,7 @@ export const surface = {
   status: 'in_progress',
   title: 'Seasons, episodes and issue rows',
   where: 'Show, season, podcast and comic detail pages',
-  note: 'Season rows, episode and issue rows, scores, watch/unwatch/drop/check-in actions, a Track action that opens the shared tracking dialog, spoiler reveal, ordering and history links use the shared React Native presentation. On the web, comic volume issue cards mount the shared rows with their server list view and htmx actions as the fallback; episode and season rows stay server-owned until their rich cards, modals and polling have an equivalent shared presentation.',
+  note: 'Season, episode and issue rows, progress, scores, watch/unwatch/read, check-in, drop/restore, a Track action that opens the shared tracking dialog, spoiler reveal, independent ordering and the history dialog use the shared React Native presentation. The native placement is complete, but CHILDREN stays in progress because episode and season rows are still server/HTMX-owned on the web: their rich overview cards, per-image hover blur, inline track/collection/lists/history modals and episode_history_poll/OOB scroll restoration have no shared adapter. Only comic issue rows mount the shared rows over the server fallback.',
 };
 
 const childrenPalette = {
@@ -39,6 +39,12 @@ const childrenPalette = {
     fill: palette.success,
     text: palette.text,
     textMuted: palette.textMuted,
+  },
+  rating: {
+    lit: palette.warning,
+    unlit: palette.surfaceMuted,
+    muted: palette.textMuted,
+    focusStyle: {},
   },
 };
 
@@ -69,6 +75,7 @@ const seasons = [
     title: 'Season 1',
     subtitle: '10 episodes · 2023',
     statusLabel: 'Completed',
+    restoreStatus: 'Completed',
     countLabel: '10 / 10 watched',
     percent: 100,
     dropped: false,
@@ -80,6 +87,7 @@ const seasons = [
     title: 'Season 2',
     subtitle: '10 episodes · 2024',
     statusLabel: 'In progress',
+    restoreStatus: 'In progress',
     countLabel: '6 / 10 watched',
     percent: 60,
     dropped: false,
@@ -90,7 +98,8 @@ const seasons = [
     number: 3,
     title: 'Season 3',
     subtitle: '8 episodes · 2026',
-    statusLabel: 'Planning',
+    statusLabel: 'Dropped',
+    restoreStatus: 'Planning',
     countLabel: '0 / 8 watched',
     percent: 0,
     dropped: true,
@@ -266,15 +275,27 @@ function issueActions(item) {
   return actions;
 }
 
+function todayEntry(actionLabel, score) {
+  return { dateLabel: 'Today', actionLabel, score: score == null ? null : score };
+}
+
+function withScore(item, score) {
+  const historyRows = (item.historyRows || []).map((row, index) =>
+    index === 0 ? { ...row, score: score == null ? null : score } : row);
+  return { ...item, score, historyRows };
+}
+
 export default function DetailChildrenSlot({ onTrack }) {
   const [episodes, setEpisodes] = useState(initialEpisodes);
   const [issues, setIssues] = useState(initialIssues);
   const [seasonState, setSeasonState] = useState(seasons);
   const [obfuscate, setObfuscate] = useState(true);
-  const [order, setOrder] = useState('asc');
+  const [episodeOrder, setEpisodeOrder] = useState('asc');
+  const [issueOrder, setIssueOrder] = useState('asc');
   const [history, setHistory] = useState(null);
 
   const watchedCount = episodes.filter(item => item.watched).length;
+  const episodeTotal = episodes.length;
 
   function updateEpisode(target, change) {
     setEpisodes(current => current.map(item => item.key === target.key ? change(item) : item));
@@ -291,16 +312,26 @@ export default function DetailChildrenSlot({ onTrack }) {
     }
     updateEpisode(target, item => {
       if (key === 'watch') {
-        return { ...item, watched: true, dropped: false, history: { summary: 'Watched today' } };
+        return {
+          ...item,
+          watched: true,
+          dropped: false,
+          history: { summary: 'Watched today' },
+          historyRows: [todayEntry('Watched', item.score), ...(item.historyRows || [])],
+        };
       }
       if (key === 'unwatch') {
-        return { ...item, watched: false, history: { summary: 'Not watched' } };
+        return { ...item, watched: false, history: { summary: 'Not watched' }, historyRows: [] };
       }
       if (key === 'drop') {
         return { ...item, dropped: true, history: { summary: 'Dropped' } };
       }
       if (key === 'restore') {
-        return { ...item, dropped: false, history: { summary: 'Not watched' } };
+        return {
+          ...item,
+          dropped: false,
+          history: { summary: item.watched ? 'Watched' : 'Not watched' },
+        };
       }
       return item;
     });
@@ -313,30 +344,51 @@ export default function DetailChildrenSlot({ onTrack }) {
     }
     updateIssue(target, item => {
       if (key === 'read') {
-        return { ...item, watched: true, dropped: false, history: { summary: 'Read today' } };
+        return {
+          ...item,
+          watched: true,
+          dropped: false,
+          checkedIn: false,
+          history: { summary: 'Read today' },
+          historyRows: [todayEntry('Read', item.score), ...(item.historyRows || [])],
+        };
       }
       if (key === 'unread') {
-        return { ...item, watched: false, history: { summary: 'Not read' } };
+        return {
+          ...item,
+          watched: false,
+          checkedIn: false,
+          history: { summary: 'Not read' },
+          historyRows: [],
+        };
       }
       if (key === 'checkin') {
-        return { ...item, checkedIn: true, history: { summary: 'Reading now' } };
+        return { ...item, checkedIn: true, dropped: false, history: { summary: 'Reading now' } };
       }
       if (key === 'stop') {
-        return { ...item, checkedIn: false, history: { summary: 'Read today' } };
+        return {
+          ...item,
+          checkedIn: false,
+          history: { summary: item.watched ? 'Read' : 'Not read' },
+        };
       }
       if (key === 'drop') {
-        return { ...item, dropped: true, history: { summary: 'Dropped' } };
+        return { ...item, dropped: true, checkedIn: false, history: { summary: 'Dropped' } };
       }
       if (key === 'restore') {
-        return { ...item, dropped: false, history: { summary: 'Not read' } };
+        return {
+          ...item,
+          dropped: false,
+          history: { summary: item.watched ? 'Read' : 'Not read' },
+        };
       }
       return item;
     });
   }
 
   function handleRate(target, score) {
-    setEpisodes(current => current.map(item => item.key === target.key ? { ...item, score } : item));
-    setIssues(current => current.map(item => item.key === target.key ? { ...item, score } : item));
+    setEpisodes(current => current.map(item => item.key === target.key ? withScore(item, score) : item));
+    setIssues(current => current.map(item => item.key === target.key ? withScore(item, score) : item));
   }
 
   function handleSeasonAction(key, season) {
@@ -344,11 +396,7 @@ export default function DetailChildrenSlot({ onTrack }) {
       if (item.key !== season.key) return item;
       if (key === 'drop') return { ...item, dropped: true, statusLabel: 'Dropped' };
       if (key === 'restore') {
-        return {
-          ...item,
-          dropped: false,
-          statusLabel: item.number === 1 ? 'Completed' : item.number === 3 ? 'Planning' : 'In progress',
-        };
+        return { ...item, dropped: false, statusLabel: item.restoreStatus || 'In progress' };
       }
       return item;
     }));
@@ -362,13 +410,15 @@ export default function DetailChildrenSlot({ onTrack }) {
     handleEpisodeAction(key, target);
   }
 
+  const showProgress = Math.round((watchedCount / Math.max(episodeTotal, 1)) * 100);
+
   const showModel = {
     kind: 'show',
     seasons: seasonState.map(season => season.number === 2
       ? {
         ...season,
-        countLabel: `${watchedCount} / 10 watched`,
-        percent: Math.round((watchedCount / 10) * 100),
+        countLabel: `${watchedCount} / ${episodeTotal} watched`,
+        percent: showProgress,
       }
       : season),
     obfuscation: { active: obfuscate, canToggle: true },
@@ -399,18 +449,27 @@ export default function DetailChildrenSlot({ onTrack }) {
       }]}>★</Text>} />
   );
 
+  function openHistory(item) {
+    setHistory({
+      title: item.code ? `${item.code} · ${item.title}` : item.title,
+      rows: item.historyRows || [],
+    });
+  }
+
   return <View style={styles.root}>
     <DetailChildren model={showModel} labels={labels} palette={childrenPalette}
-      order={order} onOrderChange={() => setOrder(current => current === 'asc' ? 'desc' : 'asc')}
+      order={episodeOrder}
+      onOrderChange={() => setEpisodeOrder(current => current === 'asc' ? 'desc' : 'asc')}
       onOpenSeason={() => {}} onOpenChild={() => {}}
-      onOpenHistory={item => setHistory({ title: item.title, rows: item.historyRows || [] })}
+      onOpenHistory={openHistory}
       onRate={handleRate} onAction={handleShowAction}
       onToggleObfuscation={setObfuscate} renderRating={renderRating} />
     <View style={[styles.divider, { backgroundColor: palette.border }]} />
     <DetailChildren model={comicModel} labels={labels} palette={childrenPalette}
-      order={order}
+      order={issueOrder}
+      onOrderChange={() => setIssueOrder(current => current === 'asc' ? 'desc' : 'asc')}
       onOpenChild={() => {}}
-      onOpenHistory={item => setHistory({ title: item.title, rows: item.historyRows || [] })}
+      onOpenHistory={openHistory}
       onRate={handleRate} onAction={handleIssueAction}
       onToggleObfuscation={setObfuscate} renderRating={renderRating} />
     <DetailHistoryDialog open={Boolean(history)} title={history?.title}
