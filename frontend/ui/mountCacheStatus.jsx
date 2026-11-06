@@ -59,7 +59,8 @@ function CacheStatusAdapter({ props }) {
   }, []);
 
   return <CacheStatusCard status={status} onRefresh={refresh} busy={status.loading}
-    copy={props.labels} palette={palette} buttonPalette={buttonPalette} />;
+    copy={props.labels} palette={{ ...palette, link: 'var(--color-link)' }}
+    buttonPalette={buttonPalette} section icons={props.icons} />;
 }
 
 export function mountCacheStatus(host, props) {

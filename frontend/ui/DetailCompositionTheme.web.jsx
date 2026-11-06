@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { DetailHeader } from './DetailComposition';
 
 const canvas = document.createElement('canvas');
@@ -44,6 +44,14 @@ const DETAIL_CSS = `
     align-items: flex-start;
     line-height: 0;
   }
+  #detail-secondary-content .detail-media-grid .media-card > .media-card-visual {
+    position: relative;
+    height: auto;
+  }
+  #detail-secondary-content .detail-media-grid .media-card-poster {
+    height: auto !important;
+    aspect-ratio: auto !important;
+  }
 `;
 
 const SYNOPSIS_SUFFIX = ' Read more';
@@ -58,11 +66,11 @@ function collapsed(value) {
 function WebSynopsis({ text, previewLines = 3, labels, mobile }) {
   const body = text || '';
   const [expanded, setExpanded] = useState(false);
-  const [measured, setMeasured] = useState({ clamped: false, preview: collapsed(body) });
+  const [measured, setMeasured] = useState({ clamped: true, preview: collapsed(body) });
   const rootRef = useRef(null);
   const measureRef = useRef(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = rootRef.current;
     const measure = measureRef.current;
     if (!root || !measure || !body) return undefined;
@@ -121,7 +129,7 @@ function WebSynopsis({ text, previewLines = 3, labels, mobile }) {
       className="pointer-events-none invisible absolute inset-x-0 top-0"
       style={{ fontSize: 16, lineHeight: '24px', textWrap: 'pretty' }} />
     {mobile ? <>
-      <p className="text-[var(--color-text-secondary)] text-pretty"
+      <p className={`text-[var(--color-text-secondary)] text-pretty${!expanded ? ' line-clamp-3' : ''}`}
         style={{ fontSize: 16, lineHeight: '24px' }}>
         {expanded ? collapsed(body) : measured.preview}
         {!expanded && measured.clamped
@@ -154,7 +162,7 @@ function Adapter({ host, props }) {
   const [palette, setPalette] = useState(readPalette);
   const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 639.98px)').matches);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const part = props.part === 'header' ? 'header' : 'synopsis';
     const scope = scopeFor(host);
     const legacy = scope ? scope.querySelectorAll(`[data-detail-composition-legacy="${part}"]`) : [];

@@ -549,6 +549,7 @@ def about_props(request) -> dict[str, object]:
         "cache": {
             "kind": "cache",
             "labels": labels["cache"],
+            "icons": {"server": file_icon("server")},
         },
         "resources": {
             "kind": "resources",

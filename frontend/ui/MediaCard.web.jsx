@@ -10,6 +10,8 @@ import { RatingStars } from './RatingStars';
 
 const aspect = { square: 'aspect-[1/1]', poster: 'aspect-[2/3] aspect-2/3', landscape: 'aspect-[2/3] aspect-2/3' };
 const chipBase = 'absolute z-20 bg-gray-900/90 text-white text-[11px] font-medium px-2 py-1 rounded-md shadow-md';
+const gridVariantClass = 'search-result-card media-card-hover-outline transition-all media-card-title-ellipsis media-card-title-bleed';
+const gridSquareVariantClass = 'search-result-card-square media-card-hover-outline transition-all media-card-title-ellipsis media-card-title-bleed';
 
 function Slot({ name, node }) {
   const ref = useRef(null);
@@ -422,10 +424,10 @@ export function MediaCard({
   host,
   actions,
   standalone = true,
-  variant,
   readOnly = false,
   onAction,
   onRate,
+  variant = '',
   className = '',
 }) {
   const copy = {
@@ -440,7 +442,7 @@ export function MediaCard({
   // `grid` is the release's `.search-result-card`: the poster fills the card,
   // the body sits over its lower edge, and the subtitle stays hidden until
   // hover. Surfaces that render their own shell leave it off.
-  const grid = variant === 'grid';
+  const grid = variant === 'grid' || variant === 'grid-square';
   const cardRef = useRef(null);
   const revealed = useTapToReveal(cardRef, host, !!shownActions, !!selection?.active);
   const live = useLiveCard(model);
@@ -508,11 +510,11 @@ export function MediaCard({
   if (!standalone) return card;
   const rootClass = [
     'media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative group',
-    grid ? 'media-card-hover-outline transition-all search-result-card media-card-title-ellipsis media-card-title-bleed' : '',
+    variant === 'grid-square' ? gridSquareVariantClass : grid ? gridVariantClass : '',
     className,
   ].filter(Boolean).join(' ');
   return <div ref={cardRef} className={rootClass}
     style={grid ? { '--card-title-rest-lines': '1', '--card-title-hover-lines': '3' } : undefined}>
-    {card}
+    <div data-media-card-root="">{card}</div>
   </div>;
 }

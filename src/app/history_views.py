@@ -1458,6 +1458,10 @@ def _history_feed_entry(entry, history_mode, user, request, index=0):
             when = user_tags.user_datetime_format(played_at, user)
     return {
         "key": entry.get("entry_key") or f"history-entry-{index}",
+        # The full shared card the release page renders: status/runtime chips,
+        # hover actions and the play-count line. Callers that only need the row
+        # contract keep using the flattened fields below.
+        "card": card,
         "mediaType": card.get("mediaType") or media_type,
         "title": card.get("title") or entry.get("display_title")
         or entry.get("title") or "",

@@ -28,6 +28,19 @@ export function mountDirectory(host, model) {
       });
   }
 
+  function subscribeHistory(listener) {
+    const onPop = () => {
+      const params = new URLSearchParams(location.search);
+      listener({
+        q: params.get('q') || '',
+        capability: params.get('capability') || '',
+        media: params.get('media') || '',
+      });
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }
+
   async function onPin(item) {
     const response = await fetch(model.pinUrl, {
       method: 'POST',
@@ -46,6 +59,7 @@ export function mountDirectory(host, model) {
     skipInitialLoad={unchanged}
     onFetch={onFetch}
     onPin={onPin}
+    subscribeHistory={subscribeHistory}
     onNavigate={url => { if (url) location.assign(url); }}
   />);
 }

@@ -50,7 +50,15 @@ function ImportPreferencesHost({ host, initial }) {
   const [values, setValues] = useState(initialValues.current);
 
   function broadcast(next) {
-    if (parent) parent.importPreferences = next;
+    if (parent) {
+      parent.importPreferences = next;
+      // The server-rendered file-import fallback reads these hidden inputs if
+      // its React chunk has not mounted yet. Keep them in sync with the live
+      // preferences so a fallback submit posts the same values.
+      parent.querySelectorAll('[data-import-preference]').forEach(input => {
+        input.value = next?.[input.dataset.importPreference] ?? '';
+      });
+    }
     host.dispatchEvent(new CustomEvent('import-preferences-changed', { bubbles: true, detail: next }));
   }
 

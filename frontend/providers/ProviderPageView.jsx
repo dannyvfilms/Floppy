@@ -146,7 +146,8 @@ function ProviderPageBody({ model, draft, slots, colors }) {
 
     <View accessibilityRole="navigation" accessibilityLabel={t('Provider sections')}>
       <Tabs items={tabs} selected={model.tab} label={t('Provider sections')}
-        palette={colors} onSelect={onNavigate ? selectTab : undefined} />
+        palette={{ ...colors, accent: colors.link || colors.accent }}
+        onSelect={onNavigate ? selectTab : undefined} />
     </View>
 
     {model.onboardingUrl ? <Pressable

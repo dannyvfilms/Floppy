@@ -475,7 +475,7 @@ def _local_library_groups(user, query, limit):
 @require_GET
 def media_search(request):
     """Return the media search page."""
-    requested_media_type = request.GET["media_type"]
+    requested_media_type = request.GET.get("media_type", "")
     if request.user.is_authenticated:
         media_type = request.user.update_preference(
             "last_search_type",
@@ -485,7 +485,7 @@ def media_search(request):
         media_type = requested_media_type
     else:
         media_type = MediaTypes.TV.value
-    query = request.GET["q"]
+    query = request.GET.get("q", "")
     page = helpers.get_page_number(request)
     layout = request.GET.get("layout", "grid")
 
@@ -1170,7 +1170,7 @@ def _online_music_artist_model(artist):
         "titleLinks": [],
         "progressBar": None,
         "lines": [
-            {"parts": [{"text": disambiguation}], "dormant": True}
+            {"clamp": True, "parts": [{"text": disambiguation}], "dormant": True}
         ]
         if disambiguation
         else [],

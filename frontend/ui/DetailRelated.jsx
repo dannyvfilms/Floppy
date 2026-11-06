@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MediaCard } from './MediaCard';
 import { RatingStars } from './RatingStars';
 
@@ -45,27 +45,10 @@ function resolveLabels(labels) {
   return { ...DEFAULT_LABELS, ...(labels || {}) };
 }
 
-// The browser detail page uses the same grid as `.detail-media-grid`: three
-// columns on phones, auto-filled 150px columns on wider screens.
-function webGrid(width) {
-  if (width <= 600) {
-    return {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, min(calc((100% - 24px) / 3), 108px))',
-      gap: 12,
-    };
-  }
-  return {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
-    gap: width <= 768 ? 12 : 16,
-  };
-}
-
 function webColumns(width) {
-  if (width <= 600) return 3;
-  const gap = width <= 768 ? 12 : 16;
-  return Math.max(1, Math.floor((width + gap) / (150 + gap)));
+  if (width <= 900) return 3;
+  const gap = 16;
+  return Math.max(3, Math.floor((width + gap) / (150 + gap)));
 }
 
 function defaultRenderRating({ value, label, scaleMax, palette, onSelect }) {
@@ -77,21 +60,19 @@ function defaultRenderRating({ value, label, scaleMax, palette, onSelect }) {
 function RelatedCard({ item, width, labels, palette, onOpen, onOpenLink, onAction, onRate, renderRating, renderActionIcon }) {
   const model = item?.model || item;
   if (!model) return null;
-  const web = Platform.OS === 'web';
   const card = <MediaCard
     model={model}
     width={width}
     labels={labels}
     palette={palette}
-    style={!web && item?.active ? { borderColor: palette.link, borderWidth: 2 } : undefined}
+    style={undefined}
     onOpen={onOpen ? () => onOpen(model) : undefined}
     onOpenLink={onOpenLink}
     onAction={onAction ? action => onAction(model, action) : undefined}
     onRate={onRate ? score => onRate(model, score) : undefined}
     renderRating={renderRating}
     renderActionIcon={renderActionIcon} />;
-  if (!web) return card;
-  return <View style={styles.cardWrap} dataSet={{ detailRelatedActive: item?.active ? 'true' : 'false' }}>
+  return <View style={[styles.cardWrap, { width }, item?.active && styles.activeCard, item?.active && { borderColor: palette.link }]}>
     {card}
   </View>;
 }
@@ -110,7 +91,7 @@ function RelatedSection({
   onRate,
   renderRating,
   renderActionIcon,
-  gridStyle,
+  web = false,
 }) {
   const items = section.items || [];
   if (!items.length) return null;
@@ -120,7 +101,7 @@ function RelatedSection({
     <Text accessibilityRole="header" aria-level={2} style={[styles.sectionTitle, { color: palette.text }]}>
       {section.label}
     </Text>
-    <View style={[styles.grid, gridStyle]}>
+    <View style={styles.grid}>
       {shown.map((item, index) => <RelatedCard key={item.key || item.model?.cardKey || index}
         item={item} width={cardWidth} labels={labels} palette={palette}
         onOpen={onOpen} onOpenLink={onOpenLink} onAction={onAction} onRate={onRate}
@@ -148,16 +129,15 @@ function SteamDlcCard({ dlc, width, palette }) {
   </View>;
 }
 
-function SteamDlcSection({ dlcs, width, labels, palette, onOpenExternal, gridStyle }) {
+function SteamDlcSection({ dlcs, width, labels, palette, onOpenExternal, web = false }) {
   if (!dlcs?.length) return null;
-  const web = Platform.OS === 'web';
   const gap = 12;
   const cardWidth = web ? '100%' : Math.max(120, Math.floor((width - gap) / 2));
   return <View style={styles.section}>
     <Text accessibilityRole="header" aria-level={2} style={[styles.sectionTitle, { color: palette.text }]}>
       {labels.dlcs}
     </Text>
-    <View style={[styles.grid, gridStyle]}>
+    <View style={styles.grid}>
       {dlcs.map((dlc, index) => <Pressable key={`${dlc.url}-${index}`} accessibilityRole="link"
         accessibilityLabel={dlc.title}
         disabled={!onOpenExternal}
@@ -181,13 +161,13 @@ export function DetailRelated({
   onRate,
   renderRating = defaultRenderRating,
   renderActionIcon,
+  web = false,
 }) {
   const copy = resolveLabels(labels);
   const colors = resolvePalette(palette);
   const [measuredWidth, setMeasuredWidth] = useState(0);
   const [expanded, setExpanded] = useState({});
   const width = measuredWidth || 320;
-  const web = Platform.OS === 'web';
   const columns = web ? webColumns(width) : width >= 720 ? 4 : width >= 520 ? 3 : 2;
   const gap = web ? (width <= 600 ? 12 : width <= 768 ? 12 : 16) : 12;
   const cardWidth = Math.max(96, Math.floor((width - gap * (columns - 1)) / columns));
@@ -226,9 +206,9 @@ export function DetailRelated({
       onRate={onRate}
       renderRating={renderRating}
       renderActionIcon={renderActionIcon}
-      gridStyle={web ? webGrid(width) : undefined} />)}
+      web={web} />)}
     <SteamDlcSection dlcs={steamDlcs} width={width} labels={copy} palette={colors}
-      onOpenExternal={onOpenExternal} gridStyle={web ? webGrid(width) : undefined} />
+      onOpenExternal={onOpenExternal} web={web} />
   </View>;
 }
 
@@ -238,7 +218,8 @@ const styles = StyleSheet.create({
   section: { gap: 16, width: '100%' },
   sectionTitle: { fontSize: 20, fontWeight: '700', lineHeight: 28 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' },
-  cardWrap: { width: '100%' },
+  activeCard: { borderWidth: 2, borderRadius: 10 },
+  cardWrap: { minWidth: 0 },
   toggle: { alignSelf: 'flex-start', paddingVertical: 2 },
   toggleText: { fontSize: 14, fontWeight: '500' },
   steamCard: { gap: 8 },

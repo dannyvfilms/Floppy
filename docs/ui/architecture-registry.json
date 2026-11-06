@@ -1384,8 +1384,7 @@
     "frontend/errors/ErrorRecovery.jsx": {
       "components": [
         "ErrorStatusSelector",
-        "ErrorRecovery",
-        "ErrorReportPanel"
+        "ErrorRecovery"
       ],
       "register": "ERRORS-DOCS",
       "verification": {
@@ -2466,6 +2465,66 @@
           "evidence": "Expo export --platform all compiled the shared bar; no emulator run was performed."
         }
       }
+    },
+    "frontend/ui/Icon.jsx": {
+      "components": [
+        "Icon"
+      ],
+      "register": "SHELL",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The web renderer is installed by the settings island loader and renders parsed SVG shapes; no browser icon pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the glyph fallback; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the glyph fallback; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/errors/ErrorReportPanel.jsx": {
+      "components": [
+        "ErrorReportPanel"
+      ],
+      "register": "ERRORS-DOCS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The browser error mount renders the shared traceback panel; no browser pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared panel; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared panel; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/ui/SearchResultCard.jsx": {
+      "components": [
+        "SearchResultCard"
+      ],
+      "register": "SEARCH",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Used by the browser search/history card wrappers; no browser pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared card; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the shared card; no emulator run was performed."
+        }
+      }
     }
   },
   "legacy": {},
@@ -3212,50 +3271,6 @@
         }
       }
     },
-    "frontend/ui/Icon.web.jsx": {
-      "kind": "presentation",
-      "register": "SHELL",
-      "components": [
-        "Icon"
-      ],
-      "purpose": "Browser icon renderer for the shared parsed-SVG spec used by the sidebar and card actions.",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Imported by the web bundle and UI build; no browser interaction pass during this change."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Not applicable to this browser implementation."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Not applicable to this browser implementation."
-        }
-      }
-    },
-    "frontend/ui/Icon.native.jsx": {
-      "kind": "presentation",
-      "register": "SHELL",
-      "components": [
-        "Icon"
-      ],
-      "purpose": "Native icon fallback that renders the spec name as a text glyph without DOM.",
-      "verification": {
-        "web": {
-          "status": "unverified",
-          "evidence": "Not applicable to this native implementation."
-        },
-        "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the native module; no simulator run was performed."
-        },
-        "android": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the native module; no emulator run was performed."
-        }
-      }
-    },
     "frontend/ui/ModalHost.web.jsx": {
       "kind": "presentation",
       "register": "POPUP-HOST",
@@ -3329,6 +3344,270 @@
         "ListsForm"
       ],
       "purpose": "Native placement for the shared lists form through ListsFormView; no DOM.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not applicable to this native implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the native wrapper; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the native wrapper; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/ui/IconRenderer.web.jsx": {
+      "kind": "presentation",
+      "register": "SHELL",
+      "components": [
+        "Icon"
+      ],
+      "purpose": "Browser SVG renderer for parsed icon specs.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Imported by the web island loader; no browser icon pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to this browser implementation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to this browser implementation."
+        }
+      }
+    },
+    "frontend/ui/IconRenderer.native.jsx": {
+      "kind": "presentation",
+      "register": "SHELL",
+      "components": [
+        "Icon"
+      ],
+      "purpose": "Native glyph fallback wrapper for the icon contract.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not applicable to this native implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the native module; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the native module; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/errors/ErrorReportPanel.web.jsx": {
+      "kind": "presentation",
+      "register": "ERRORS-DOCS",
+      "components": [
+        "ErrorReportPanel"
+      ],
+      "purpose": "Browser/native traceback panel placement for the shared error report component.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "No browser interaction pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to this browser implementation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to this browser implementation."
+        }
+      }
+    },
+    "frontend/errors/ErrorReportPanel.native.jsx": {
+      "kind": "presentation",
+      "register": "ERRORS-DOCS",
+      "components": [
+        "ErrorReportPanel"
+      ],
+      "purpose": "Browser/native traceback panel placement for the shared error report component.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not applicable to this native implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the native wrapper; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the native wrapper; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/ui/SearchResultCard.web.jsx": {
+      "kind": "presentation",
+      "register": "SEARCH",
+      "components": [
+        "SearchResultCard"
+      ],
+      "purpose": "Browser/native search-result card placement over the shared card model.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "No browser interaction pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to this browser implementation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to this browser implementation."
+        }
+      }
+    },
+    "frontend/ui/SearchResultCard.native.jsx": {
+      "kind": "presentation",
+      "register": "SEARCH",
+      "components": [
+        "SearchResultCard"
+      ],
+      "purpose": "Browser/native search-result card placement over the shared card model.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not applicable to this native implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the native wrapper; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the native wrapper; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/ui/HistoryFeed.web.jsx": {
+      "kind": "presentation",
+      "register": "HISTORY",
+      "components": [
+        "HistoryFeed"
+      ],
+      "purpose": "Browser/native history feed placement over the shared day and card model.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "No browser interaction pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to this browser implementation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to this browser implementation."
+        }
+      }
+    },
+    "frontend/ui/HistoryFeed.native.jsx": {
+      "kind": "presentation",
+      "register": "HISTORY",
+      "components": [
+        "HistoryFeed"
+      ],
+      "purpose": "Browser/native history feed placement over the shared day and card model.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not applicable to this native implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the native wrapper; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the native wrapper; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/ui/DetailCompositionTheme.web.jsx": {
+      "kind": "presentation",
+      "register": "DETAIL",
+      "components": [
+        "DetailCompositionTheme"
+      ],
+      "purpose": "Browser/native platform theme adapter for the shared detail presentation.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Rendered by the detail page; no browser interaction pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to this browser implementation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to this browser implementation."
+        }
+      }
+    },
+    "frontend/ui/DetailCompositionTheme.native.jsx": {
+      "kind": "presentation",
+      "register": "DETAIL",
+      "components": [
+        "DetailCompositionTheme"
+      ],
+      "purpose": "Browser/native platform theme adapter for the shared detail presentation.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Not applicable to this native implementation."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the native wrapper; no simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Expo export --platform all compiled the native wrapper; no emulator run was performed."
+        }
+      }
+    },
+    "frontend/ui/DetailRelatedTheme.web.jsx": {
+      "kind": "presentation",
+      "register": "DETAIL",
+      "components": [
+        "DetailRelatedTheme"
+      ],
+      "purpose": "Browser/native platform theme adapter for the shared detail presentation.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Rendered by the detail page; no browser interaction pass during this change."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to this browser implementation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to this browser implementation."
+        }
+      }
+    },
+    "frontend/ui/DetailRelatedTheme.native.jsx": {
+      "kind": "presentation",
+      "register": "DETAIL",
+      "components": [
+        "DetailRelatedTheme"
+      ],
+      "purpose": "Browser/native platform theme adapter for the shared detail presentation.",
       "verification": {
         "web": {
           "status": "unverified",
@@ -3474,17 +3753,9 @@
       "register": "RATING",
       "purpose": "Django/browser integration for the shared star row."
     },
-    "frontend/ui/DetailCompositionTheme.web.jsx": {
-      "register": "DETAIL",
-      "purpose": "Resolve the browser theme and hide the legacy synopsis fallback while the shared DetailSynopsis owns the block; title facts, actions, artwork and lazy sections stay server-owned."
-    },
     "frontend/ui/mountDetailComposition.jsx": {
       "register": "DETAIL",
       "purpose": "Django/browser integration for the shared detail synopsis block."
-    },
-    "frontend/ui/DetailRelatedTheme.web.jsx": {
-      "register": "DETAIL-RELATED",
-      "purpose": "Resolve the browser theme and route card opens, hover actions, ratings and Steam DLC links to the existing navigation, modal, htmx and store boundaries."
     },
     "frontend/ui/mountDetailRelated.jsx": {
       "register": "DETAIL-RELATED",
@@ -3584,7 +3855,7 @@
     },
     "frontend/ui/mountMediaTable.jsx": {
       "register": "TABLES",
-      "purpose": "Mounts the shared media table and column menu over the server row projection, posts order/hidden to the existing column preference endpoint and reads bounded table JSON pages."
+      "purpose": "Web no-op: keeps the release server-rendered table and Alpine column controls. The shared RN MediaTable is native-only until a page-level composition can replace the server table without a fallback-to-mounted reflow."
     },
     "frontend/ui/mountRails.jsx": {
       "register": "RAILS",

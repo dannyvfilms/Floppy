@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Button } from './Button';
+import { Icon } from './Icon';
 import { SettingsCard } from '../settings/SettingsCard';
 
 const defaultPalette = {
@@ -66,6 +67,8 @@ export function CacheStatusCard({
   palette = {},
   buttonPalette = {},
   copy = {},
+  section = false,
+  icons = {},
 }) {
   const colors = { ...defaultPalette, ...palette };
   const buttons = { ...defaultButtonPalette, ...buttonPalette };
@@ -85,7 +88,7 @@ export function CacheStatusCard({
     ['caches', caches],
   ] : [];
 
-  return <SettingsCard title={text.title} badge={text.badge} palette={colors}>
+  const body = <>
     <Text style={[styles.copy, { color: colors.textSecondary }]}>{text.description}</Text>
     {supported ? <View style={styles.rows}>
       {rows.map(([key, value]) => <View key={key} style={styles.row}>
@@ -96,11 +99,42 @@ export function CacheStatusCard({
     {supported && onRefresh ? <View style={styles.action}>
       <Button label={text.refreshLabel} tone="surface" busy={busy} onPress={onRefresh} palette={buttons} />
     </View> : null}
+  </>;
+  if (section) {
+    return <View style={styles.section}>
+      <View style={styles.headingRow}>
+        <View style={styles.heading}>
+          {icons.server ? <View style={[styles.headingIcon, { fontSize: 20, color: colors.link || colors.accent }]}>
+            <Icon spec={icons.server} />
+          </View> : null}
+          <Text role="heading" aria-level={3}
+            style={[styles.headingText, { color: colors.textSecondary }]}>{text.title}</Text>
+        </View>
+        {text.badge ? <View style={[styles.sectionBadge, {
+          borderColor: colors.badgeBorder || colors.border,
+          backgroundColor: colors.badgeBackground || colors.surfaceStrong,
+        }]}>
+          <Text style={[styles.sectionBadgeText, { color: colors.badgeText || colors.textSecondary }]}>{text.badge}</Text>
+        </View> : null}
+      </View>
+      <View style={styles.sectionBody}>{body}</View>
+    </View>;
+  }
+  return <SettingsCard title={text.title} badge={text.badge} palette={colors}>
+    {body}
   </SettingsCard>;
 }
 
 const styles = StyleSheet.create({
-  copy: { fontSize: 13, lineHeight: 19 },
+  copy: { fontSize: 16, lineHeight: 26 },
+  section: { gap: 12, minWidth: 0 },
+  headingRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, minWidth: 0 },
+  heading: { flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0, flexShrink: 1 },
+  sectionBadge: { borderWidth: 1, borderRadius: 4, paddingHorizontal: 8, paddingVertical: 4, flexShrink: 0 },
+  sectionBadgeText: { fontSize: 12, lineHeight: 16 },
+  headingIcon: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
+  headingText: { fontSize: 18, lineHeight: 28, fontWeight: '500', flexShrink: 1 },
+  sectionBody: { marginLeft: 28, gap: 12, minWidth: 0 },
   rows: { gap: 6 },
   row: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
   label: { flexShrink: 0, fontSize: 12 },

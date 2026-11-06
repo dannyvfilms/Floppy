@@ -113,6 +113,15 @@ export function mountProvider(host, model) {
     return submitNativeForm({ action: credentials?.clearUrl, csrf, returnTo, values: {} });
   }
 
+  function setDefaultProvider(item) {
+    return submitNativeForm({
+      action: item?.action,
+      csrf,
+      returnTo,
+      values: { source: credentials?.slug },
+    });
+  }
+
   function savePreferences(values) {
     return savePreferenceValues({ url: imports?.saveUrl, csrf, values });
   }
@@ -195,6 +204,8 @@ export function mountProvider(host, model) {
         onSave={saveCredentials}
         onClear={clearCredentials}
         onOpenLink={onOpenLink}
+        onSetDefault={setDefaultProvider}
+        onFollowUp={onNavigate}
         onConnect={connectAccount}
         onDisconnect={disconnectAccount}
         onCopy={copyText}

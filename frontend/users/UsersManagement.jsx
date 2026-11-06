@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Chip } from '../settings/Chip';
-import { SettingsCard } from '../settings/SettingsCard';
 import { Button } from '../ui/Button';
 import { SelectField } from '../ui/SelectField';
 import { TextField } from '../ui/TextField';
@@ -26,6 +25,7 @@ const defaultPalette = {
   badgeBackground: '#3f3f46',
   badgeText: '#d4d4d8',
   badgeHover: '#52525b',
+  radius: 8,
 };
 
 const buttonPalette = {
@@ -92,6 +92,16 @@ function fill(template, values) {
   ));
 }
 
+function Panel({ title, badge, palette, children }) {
+  return <View style={[styles.panel, { backgroundColor: palette.surface, borderRadius: palette.radius }]}>
+    <View style={styles.panelHeading}>
+      <Text role="heading" aria-level={2} style={[styles.panelTitle, { color: palette.text }]}>{title}</Text>
+      {badge ?? null}
+    </View>
+    {children}
+  </View>;
+}
+
 function roleOptions(labels) {
   return [
     { value: 'all', label: labels.roleAll },
@@ -146,7 +156,7 @@ function PasswordDialog({ open, title, copy, value, label, saveLabel, cancelLabe
 
 function UserRow({ member, labels, palette, busy, onToggle, onPassword, onDelete }) {
   const rowBusy = busy.startsWith(`${member.id}:`);
-  return <View style={[styles.row, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+  return <View style={[styles.row, { backgroundColor: palette.surfaceStrong, borderRadius: palette.radius }]}>
     <View style={styles.rowTop}>
       <View style={styles.identity}>
         <Text style={[styles.username, { color: palette.text }]}>{member.username}</Text>
@@ -289,7 +299,7 @@ export function UsersManagement({ initialUsers = [], labels: suppliedLabels = {}
 
   return <View style={styles.page}>
     {statusMessage}
-    <SettingsCard title={labels.createTitle} palette={palette}>
+    <Panel title={labels.createTitle} palette={palette}>
       <Text style={[styles.copy, { color: palette.textMuted }]}>{labels.createCopy}</Text>
       <View style={styles.filters}>
         <View style={styles.field}>
@@ -301,17 +311,19 @@ export function UsersManagement({ initialUsers = [], labels: suppliedLabels = {}
             onChangeText={value => updateDraft('email', value)} autoComplete="off" palette={palette} />
         </View>
       </View>
-      <TextField id="managed-user-initial-password" label={labels.password} type="password"
-        help={labels.passwordHelp} value={draft.password}
-        onChangeText={value => updateDraft('password', value)} autoComplete="new-password" palette={palette} />
+      <View style={styles.passwordField}>
+        <TextField id="managed-user-initial-password" label={labels.password} type="password"
+          help={labels.passwordHelp} value={draft.password}
+          onChangeText={value => updateDraft('password', value)} autoComplete="new-password" palette={palette} />
+      </View>
       <View style={styles.createAction}>
         <Button label={labels.createAction} busy={busy === 'create'} disabled={busy === 'create'}
           onPress={createUser} palette={buttonPalette} />
       </View>
-    </SettingsCard>
+    </Panel>
 
-    <SettingsCard title={labels.overviewTitle} palette={palette}
-      headerAction={<Chip label={String(rows.length)} palette={palette}
+    <Panel title={labels.overviewTitle} palette={palette}
+      badge={<Chip label={String(rows.length)} palette={palette}
         accessibilityLabel={`${labels.accounts}: ${rows.length}`} />}>
       <Text style={[styles.copy, { color: palette.textMuted }]}>{labels.overviewCopy}</Text>
       <View style={styles.filters}>
@@ -334,7 +346,7 @@ export function UsersManagement({ initialUsers = [], labels: suppliedLabels = {}
         labels={labels} palette={palette} busy={busy}
         onToggle={toggle} onPassword={openPassword} onDelete={openDelete} />)
         : <Text style={[styles.copy, { color: palette.textMuted }]}>{rows.length ? labels.empty : labels.noUsers}</Text>}
-    </SettingsCard>
+    </Panel>
 
     <ConfirmDialog open={Boolean(deleteTarget)} title={labels.deleteTitle}
       copy={fill(labels.deleteCopy, { username: deleteTarget ? deleteTarget.username : '' })}
@@ -355,22 +367,26 @@ export function UsersManagement({ initialUsers = [], labels: suppliedLabels = {}
 }
 
 const styles = StyleSheet.create({
-  page: { gap: 16 },
-  copy: { fontSize: 13, lineHeight: 19 },
+  page: { gap: 24 },
+  panel: { padding: 24, gap: 0, minWidth: 0 },
+  panelHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 8 },
+  panelTitle: { flexShrink: 1, fontSize: 20, lineHeight: 28, fontWeight: '600' },
+  copy: { fontSize: 14, lineHeight: 20 },
   message: { fontSize: 13, lineHeight: 19 },
-  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 16 },
   searchField: { flexGrow: 1, flexShrink: 1, minWidth: 220 },
   filterField: { width: 190 },
   field: { flexGrow: 1, flexShrink: 1, minWidth: 220 },
-  row: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 8 },
+  row: { padding: 16, gap: 8, marginTop: 12 },
   rowTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' },
   identity: { flexShrink: 1, gap: 2, minWidth: 160 },
-  username: { fontSize: 15, fontWeight: '600' },
+  username: { fontSize: 16, lineHeight: 24, fontWeight: '600' },
   meta: { fontSize: 12, lineHeight: 17 },
   metaRows: { gap: 2 },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  createAction: { alignSelf: 'flex-start' },
+  passwordField: { marginTop: 16 },
+  createAction: { alignSelf: 'flex-start', marginTop: 16 },
   overlay: { flex: 1, justifyContent: 'center', padding: 16 },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0, 0, 0, 0.55)' },
   dialog: { gap: 12, borderWidth: 1, borderRadius: 12, padding: 16 },

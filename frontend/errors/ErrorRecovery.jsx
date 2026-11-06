@@ -59,7 +59,37 @@ function ActionButton({ label, onPress, icon, tone = 'primary', wide, palette })
   </Pressable>;
 }
 
+function InlineCode({ children, palette }) {
+  return <Text style={{
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    color: palette.text,
+    backgroundColor: palette.surfaceStrong,
+    borderRadius: 4,
+    paddingHorizontal: 4,
+  }}>{children}</Text>;
+}
+
+function ReverseProxyNote({ support, palette }) {
+  const [detail, example = ''] = support.body.split(' For example, ');
+  const [before, ...after] = detail.split('URLS');
+  const exampleValue = example.replace(/\.$/, '');
+  return <View style={[styles.sectionCard, { backgroundColor: palette.surface }]}>
+    <Text style={[styles.sectionTitle, { color: palette.textSecondary }]}>{support.title}</Text>
+    <Text style={[styles.checkLine, { color: palette.textMuted }]}>
+      {before}{after.length ? <InlineCode palette={palette}>URLS</InlineCode> : null}{after.join('URLS')}
+    </Text>
+    {example
+      ? <Text style={[styles.checkLine, { color: palette.textMuted, marginTop: 8 }]}>
+        For example, <InlineCode palette={palette}>{exampleValue}</InlineCode>.
+      </Text>
+      : null}
+  </View>;
+}
+
 function SupportNote({ support, icon, palette }) {
+  if (support.title === 'Using a Reverse Proxy?' || (!support.linkLabel && /URLS/.test(support.body))) {
+    return <ReverseProxyNote support={support} palette={palette} />;
+  }
   return <View style={styles.supportCard}>
     <Text style={styles.supportTitle}>{support.title}</Text>
     <Text style={styles.supportBody}>{support.body}</Text>
@@ -92,10 +122,15 @@ export function ErrorRecovery({
   onLogin,
   onGoHome,
   statusSize = 56,
+  headingLevel = 2,
 }) {
   const copy = { ...defaultLabels, ...labels };
   const { width } = useWindowDimensions();
   const stacked = width < 640;
+  const headingMargin = status === 500 ? 12 : 8;
+  const messageMargin = status === 400 ? 32 : status === 403 ? 12 : 16;
+  const csrfReason = (checks || []).find(check => check.startsWith('CSRF reason:'));
+  const checkItems = csrfReason ? checks.filter(check => check !== csrfReason) : checks;
 
   return <View style={styles.root}>
     <View style={styles.hero}>
@@ -104,12 +139,20 @@ export function ErrorRecovery({
         fontSize: statusSize,
         lineHeight: statusSize,
       }]}>{status}</Text>
-      <Text role="heading" aria-level={2} style={[styles.heading, { color: palette.text }]}>{heading}</Text>
-      <Text style={[styles.message, { color: palette.textMuted }]}>{message}</Text>
+      <Text role="heading" aria-level={headingLevel} style={[styles.heading, {
+        color: palette.text, marginBottom: headingMargin,
+      }]}>{heading}</Text>
+      <Text style={[styles.message, {
+        color: palette.textMuted, marginBottom: messageMargin,
+      }]}>{message}</Text>
 
-      {checks?.length ? <View style={[styles.sectionCard, { backgroundColor: palette.surface }]}>
+      {csrfReason ? <Text style={styles.csrfReason}>{csrfReason}</Text> : null}
+
+      {checkItems?.length ? <View style={[styles.sectionCard, { backgroundColor: palette.surface }]}>
         <Text style={[styles.sectionTitle, { color: palette.textSecondary }]}>{checksTitle}</Text>
-        {checks.map(check => <Text key={check} style={[styles.checkLine, { color: palette.textMuted }]}>• {check}</Text>)}
+        {checkItems.map((check, index) => <Text key={check} style={[styles.checkLine, {
+          color: palette.textMuted, marginTop: index ? 4 : 0,
+        }]}>•  {check}</Text>)}
       </View> : null}
 
       {support ? <SupportNote support={support} icon={icons.support} palette={palette} /> : null}
@@ -147,6 +190,7 @@ const styles = StyleSheet.create({
   status: { fontWeight: '700', textAlign: 'center' },
   heading: { marginTop: 16, marginBottom: 8, fontSize: 30, lineHeight: 36, fontWeight: '700', textAlign: 'center' },
   message: { marginBottom: 16, fontSize: 16, lineHeight: 24, textAlign: 'center' },
+  csrfReason: { marginBottom: 12, fontSize: 14, lineHeight: 20, textAlign: 'center', color: '#fde68a' },
   sectionCard: { width: '100%', marginBottom: 16, padding: 16, borderRadius: 12, textAlign: 'left' },
   sectionTitle: { marginBottom: 8, fontSize: 16, lineHeight: 24, fontWeight: '500' },
   checkLine: { fontSize: 14, lineHeight: 20 },

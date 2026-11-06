@@ -45,6 +45,8 @@ const defaultLabels = {
   modeHelp: 'New items leaves existing entries unchanged. Overwrite replaces matching imported entries.',
   modeTitle: 'Import mode help',
   modeText: 'Choose whether the import adds history, a watchlist, or updates your collection.',
+  overrideTitle: 'Override mode help',
+  frequencyTitle: 'Import frequency help',
   clzModeHelp: 'CLZ imports owned copies and wishlist entries. It does not import reading or viewing history.',
   collectionWishlist: 'Collection and wishlist',
   wishlistItems: 'Wishlist items',
@@ -96,12 +98,28 @@ function statusPalette(colors, tone) {
   if (tone === 'success') return { ...colors, badgeBorder: colors.success, badgeBackground: 'rgba(16, 185, 129, 0.15)', badgeText: '#a7f3d0' };
   if (tone === 'warning') return { ...colors, badgeBorder: colors.warning, badgeBackground: 'rgba(245, 158, 11, 0.15)', badgeText: '#fde68a' };
   if (tone === 'info') return { ...colors, badgeBorder: colors.accent, badgeBackground: 'rgba(99, 102, 241, 0.15)', badgeText: '#c7d2fe' };
-  return colors;
+  return { ...colors, badgeBackground: colors.surface };
 }
 
 function Select({ id, label, value, options, disabled, colors, onChange }) {
   return <SelectField id={id} name={id} label={label} value={value} options={options}
     disabled={disabled} palette={colors} onChange={event => onChange(event.target.value)} />;
+}
+
+/** Legacy guidance row: visible caption plus an info trigger, the control follows unlabeled. */
+function GuidanceLabel({ label, helpLabel, helpText, colors }) {
+  return <View style={styles.helpHeading}>
+    <Text style={[styles.caption, { color: colors.textMuted }]}>{label}</Text>
+    {helpText ? <Tooltip label={helpLabel || label} text={helpText} palette={colors} /> : null}
+  </View>;
+}
+
+function GuidedSelect({ id, label, helpLabel, helpText, value, options, disabled, colors, onChange }) {
+  return <>
+    <GuidanceLabel label={label} helpLabel={helpLabel} helpText={helpText} colors={colors} />
+    <SelectField id={id} name={id} label={label} labelHidden value={value} options={options}
+      disabled={disabled} palette={colors} onChange={event => onChange(event.target.value)} />
+  </>;
 }
 
 /**
@@ -140,14 +158,14 @@ export function ImportPreferencesCard({
 
   const editable = model.editable !== false;
   const clz = model.profile === 'clz';
-  const history = !clz && ['new', 'overwrite'].includes(values.mode);
+  const history = clz || ['new', 'overwrite'].includes(values.mode);
   const fixed = model.fixed;
   const tone = fixed || !editable ? 'warning' : 'info';
   const badge = fixed || !editable ? labels.readOnly : labels.editable;
-  const modeHelp = clz ? labels.clzModeHelp : labels.modeText;
+  const cards = { ...colors, background: colors.surfaceStrong };
 
   return <SettingsCard title={model.title || labels.preferences} badge={badge}
-    palette={statusPalette(colors, tone)}>
+    palette={statusPalette(cards, tone)}>
     {fixed ? <View style={styles.fields}>
       <View><Text style={[styles.caption, { color: colors.textMuted }]}>{labels.mode}</Text>
         <Text style={[styles.value, { color: colors.text }]}>{fixed.mode}</Text></View>
@@ -155,20 +173,15 @@ export function ImportPreferencesCard({
         <Text style={[styles.value, { color: colors.text }]}>{fixed.frequency}</Text></View>
       <Text style={[styles.copy, { color: colors.textMuted }]}>{fixed.explanation}</Text>
     </View> : <View style={styles.fields}>
-      <View style={styles.helpHeading}>
-        <Text style={[styles.caption, { color: colors.textMuted }]}>{labels.mode}</Text>
-        <Tooltip label={labels.modeTitle} text={modeHelp} palette={colors} />
-      </View>
-      <Select id="import-mode" label={labels.mode} value={clz ? 'collection_wishlist' : history ? 'history' : values.mode}
-        options={clz ? [{ value: 'collection_wishlist', label: labels.collectionWishlist }] : (model.modeOptions || modeOptions)}
-        disabled={!editable || clz} colors={colors}
-        onChange={mode => save({ ...values, mode: mode === 'history' ? 'new' : mode })} />
-      {history ? <>
-        <Select id="import-override" label={labels.override} value={values.mode}
-          options={model.overrideOptions || overrideOptions} disabled={!editable} colors={colors}
-          onChange={mode => save({ ...values, mode })} />
-        <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.modeHelp}</Text>
-      </> : null}
+      {clz ? <GuidedSelect id="import-mode" label={labels.mode} helpLabel={labels.modeTitle} helpText={labels.clzModeHelp}
+        value="collection_wishlist" options={[{ value: 'collection_wishlist', label: labels.collectionWishlist }]}
+        disabled colors={colors} onChange={() => {}} />
+        : <Select id="import-mode" label={labels.mode} value={history ? 'history' : values.mode}
+          options={model.modeOptions || modeOptions} disabled={!editable} colors={colors}
+          onChange={mode => save({ ...values, mode: mode === 'history' ? 'new' : mode })} />}
+      {history ? <GuidedSelect id="import-override" label={labels.override} helpLabel={labels.overrideTitle} helpText={labels.modeHelp}
+        value={values.mode} options={model.overrideOptions || overrideOptions} disabled={!editable} colors={colors}
+        onChange={mode => save({ ...values, mode })} /> : null}
       {clz ? <>
         <Select id="clz-wishlist-status" label={labels.wishlistItems} value={values.clzWishlistStatus}
           options={model.statuses || []} disabled={!editable} colors={colors}
@@ -187,12 +200,10 @@ export function ImportPreferencesCard({
           options={model.tags || []} disabled={!editable} colors={colors}
           onChange={watchlistTag => save({ ...values, watchlistTag })} />
       </> : null}
-      {model.fixedFrequency ? <View>
-        <Text style={[styles.caption, { color: colors.textMuted }]}>{labels.frequency}</Text>
-        <Select id="import-frequency" label={labels.frequency} value="once"
-          options={[{ value: 'once', label: labels.oneTime }]} disabled colors={colors} onChange={() => {}} />
-        <Text style={[styles.copy, { color: colors.textMuted }]}>{model.fixedFrequencyHelp}</Text>
-      </View> : <>
+      {model.fixedFrequency ? <GuidedSelect id="import-frequency" label={labels.frequency}
+        helpLabel={labels.frequencyTitle} helpText={model.fixedFrequencyHelp}
+        value="once" options={[{ value: 'once', label: labels.oneTime }]}
+        disabled colors={colors} onChange={() => {}} /> : <>
         <Select id="import-frequency" label={labels.frequency} value={values.frequency}
           options={model.frequencyOptions || frequencyOptions} disabled={!editable} colors={colors}
           onChange={frequency => save({ ...values, frequency })} />
@@ -256,7 +267,7 @@ export function ImportSettings({
       palette={palette}
       buttonPalette={buttonPalette}
     /></View>
-    <View style={styles.cardColumn}><SettingsCard title={model.title || labels.options} palette={colors} headerAction={
+    <View style={styles.cardColumn}><SettingsCard title={model.title || labels.options} palette={{ ...colors, background: colors.surfaceStrong }} headerAction={
       <ToggleChip value={privateImport} onChange={next => { setPrivateImport(next); setNotice(''); setError(''); }}
         offLabel={labels.publicLabel} onLabel={labels.privateLabel} palette={colors} />
     }>

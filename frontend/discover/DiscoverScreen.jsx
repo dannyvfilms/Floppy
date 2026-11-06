@@ -159,9 +159,6 @@ export function DiscoverState({
   </View>;
 }
 
-const gridCardClassName = 'search-result-card media-card-hover-outline transition-all media-card-title-ellipsis media-card-title-bleed';
-const gridSquareCardClassName = 'search-result-card-square media-card-hover-outline transition-all media-card-title-ellipsis media-card-title-bleed';
-
 function DiscoverCard({
   model,
   labels,
@@ -177,7 +174,7 @@ function DiscoverCard({
   readOnly,
 }) {
   return <MediaCard model={model} width={width} labels={labels} palette={palette}
-    className={square ? gridSquareCardClassName : gridCardClassName}
+    variant={square ? 'grid-square' : 'grid'}
     readOnly={readOnly}
     onOpen={() => onOpenCard?.(model.href, model)}
     onOpenLink={href => onOpenLink?.(href)}
@@ -220,8 +217,9 @@ export function DiscoverRow({
   renderRating,
   renderActionIcon,
   readOnly = false,
+  initialGridWidth = 0,
 }) {
-  const [gridWidth, setGridWidth] = useState(0);
+  const [gridWidth, setGridWidth] = useState(initialGridWidth || 0);
   const onGridLayout = useCallback(event => {
     const width = event?.nativeEvent?.layout?.width || 0;
     setGridWidth(current => (Math.abs(current - width) < 0.5 ? current : width));
@@ -290,8 +288,9 @@ export function DiscoverHidden({
   onRate,
   renderRating,
   renderActionIcon,
+  initialGridWidth = 0,
 }) {
-  const [gridWidth, setGridWidth] = useState(0);
+  const [gridWidth, setGridWidth] = useState(initialGridWidth || 0);
   const onGridLayout = useCallback(event => {
     const width = event?.nativeEvent?.layout?.width || 0;
     setGridWidth(current => (Math.abs(current - width) < 0.5 ? current : width));
@@ -456,7 +455,7 @@ const styles = StyleSheet.create({
   rowGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: gridGap },
   rowGridItem: { minWidth: 0 },
   rowEmpty: { borderWidth: 1, borderStyle: 'dashed', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 20 },
-  rowEmptyText: { fontSize: 14, lineHeight: 19 },
+  rowEmptyText: { fontSize: 14, lineHeight: 20 },
   rowKey: { display: 'none' },
   hidden: { gap: 12 },
   hiddenHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
@@ -469,5 +468,5 @@ const styles = StyleSheet.create({
   state: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 20, alignItems: 'center', gap: 4 },
   stateTitle: { fontSize: 16, fontWeight: '600', lineHeight: 21, textAlign: 'center' },
   stateBody: { fontSize: 13, lineHeight: 18, textAlign: 'center' },
-  srOnly: { height: 0, opacity: 0 },
+  srOnly: { position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0 },
 });

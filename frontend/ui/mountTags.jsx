@@ -133,6 +133,7 @@ function TagIndexAdapter({ props }) {
     sort={sort}
     query={query}
     palette={palette}
+    showControls={false}
     emptyText={props.emptyText}
     onQueryChange={setQuery}
     onSortChange={changeSort}
@@ -282,7 +283,6 @@ function TagPreviewAdapter({ host, props }) {
 export function mountTagIndex(host, props) {
   return mountRoot(host, <TagIndexAdapter props={props} />);
 }
-
 export function mountTagAssignment(host, props) {
   return mountRoot(host, <TagAssignmentAdapter host={host} props={props} />);
 }

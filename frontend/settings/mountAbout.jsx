@@ -110,12 +110,14 @@ function InstallAdapter({ props }) {
   const [state, setState] = useState(getInstallState);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const [attempted, setAttempted] = useState(false);
 
   useEffect(() => subscribeInstallState(setState), []);
 
   async function install() {
     setBusy(true);
     setStatus('');
+    setAttempted(true);
     try {
       const result = await requestInstall();
       setStatus(labels[{
@@ -131,7 +133,7 @@ function InstallAdapter({ props }) {
     }
   }
 
-  return <InstallCard installAvailable={state.canInstall} installBusy={busy}
+  return <InstallCard installAvailable={state.canInstall && !attempted} installBusy={busy}
     installStatus={status} platform={state.platform}
     guideUrl={props.guideUrl} onInstall={install}
     onOpenUrl={openInstallGuide} labels={labels}

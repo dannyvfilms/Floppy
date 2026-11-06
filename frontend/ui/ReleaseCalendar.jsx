@@ -509,7 +509,6 @@ export function ReleaseCalendar({
                 year === today.year,
               );
               const images = dayReleases.slice(0, 4);
-              const tileSize = images.length === 1 ? 'single' : images.length === 2 ? 'double' : 'grid';
               return <Pressable
                 key={`${weekIndex}-${dayIndex}`}
                 accessibilityRole="button"
@@ -522,9 +521,10 @@ export function ReleaseCalendar({
                   isToday && styles.dayCellToday,
                   pressed && styles.pressed,
                 ]}>
-                {titleArtwork(images, tileSize, styles)}
-                <View style={[styles.dayNumber, isToday && styles.dayNumberToday]}>
-                  <Text style={styles.dayNumberText}>{day}</Text>
+                {titleArtwork(images, styles, compact)}
+                <View style={[styles.dayNumber, isToday && styles.dayNumberToday,
+                  compact && styles.dayNumberCompact, compact && isToday && styles.dayNumberToday]}>
+                  <Text style={[styles.dayNumberText, compact && styles.dayNumberTextCompact]}>{day}</Text>
                 </View>
                 {dayReleases.length > 4 ? <View style={styles.moreBadge}>
                   <Text style={styles.moreText}>+{dayReleases.length - 4}</Text>
@@ -717,32 +717,39 @@ export function ReleaseCalendar({
   </View>;
 }
 
-function titleArtwork(images, tileSize, styles) {
+function Artwork({ release, style, styles, compact = false }) {
+  if (!release) {
+    return <View style={[style, styles.artworkPlaceholder]} />;
+  }
+  if (!release.image) {
+    return <View style={[style, styles.artworkPlaceholder]}>
+      <Text numberOfLines={compact ? 1 : 2} style={styles.artworkPlaceholderText}>{release.title}</Text>
+    </View>;
+  }
+  return <View style={style}>
+    <Image source={{ uri: release.image }} resizeMode="cover" accessible={false}
+      style={styles.artworkImage} />
+  </View>;
+}
+
+function titleArtwork(images, styles, compact) {
   if (!images.length) {
     return null;
   }
-  return <View style={styles.artworkGrid}>
-    {images.map((release, index) => {
-      const dimensions = tileSize === 'single'
-        ? { width: '100%', height: '100%' }
-        : tileSize === 'double'
-          ? { width: '50%', height: '100%' }
-          : { width: '50%', height: '50%' };
-      if (!release.image) {
-        return <View
-          key={`${release.id}-${index}`}
-          style={[dimensions, styles.artworkPlaceholder]}>
-          <Text numberOfLines={2} style={styles.artworkPlaceholderText}>{release.title}</Text>
-        </View>;
-      }
-      return <View key={`${release.id}-${index}`} style={dimensions}>
-        <Image
-          source={{ uri: release.image }}
-          resizeMode="cover"
-          accessible={false}
-          style={styles.artworkImage} />
-      </View>;
-    })}
+  if (compact) {
+    return <Artwork release={images[0]} styles={styles} compact
+      style={styles.artworkCompact} />;
+  }
+  const [featured, ...rest] = images;
+  const bottom = rest.slice(0, 3);
+  return <View style={styles.artworkStack}>
+    <Artwork release={featured} styles={styles} style={styles.artworkFeatured} />
+    <View style={styles.artworkBottom}>
+      {[0, 1, 2].map(index => bottom[index]
+        ? <Artwork key={`${bottom[index].id}-${index}`} release={bottom[index]} styles={styles}
+            style={styles.artworkBottomCell} />
+        : <View key={`empty-${index}`} style={[styles.artworkBottomCell, styles.artworkEmpty]} />)}
+    </View>
   </View>;
 }
 
@@ -830,7 +837,7 @@ function ReleaseRow({
 
 function createStyles(colors, compact) {
   return StyleSheet.create({
-    root: { gap: 12 },
+    root: { gap: 16 },
     toolbar: {
       flexDirection: 'row',
       flexWrap: 'wrap',
@@ -847,8 +854,8 @@ function createStyles(colors, compact) {
       padding: 4,
     },
     navButton: {
-      minWidth: 32,
-      minHeight: 32,
+      minWidth: compact ? 28 : 32,
+      minHeight: compact ? 28 : 36,
       alignItems: 'center',
       justifyContent: 'center',
       borderRadius: 6,
@@ -856,11 +863,12 @@ function createStyles(colors, compact) {
     navText: { color: colors.textSecondary, fontSize: 22, lineHeight: 24 },
     monthTitle: {
       color: colors.text,
-      fontSize: compact ? 14 : 17,
-      fontWeight: '700',
+      fontSize: compact ? 14 : 18,
+      lineHeight: compact ? 20 : 24,
+      fontWeight: '600',
       textAlign: 'center',
-      minWidth: compact ? 120 : 160,
-      paddingHorizontal: 6,
+      minWidth: compact ? 0 : 160,
+      paddingHorizontal: compact ? 4 : 16,
     },
     toolbarActions: {
       flexDirection: 'row',
@@ -924,7 +932,7 @@ function createStyles(colors, compact) {
     viewTabSelected: { backgroundColor: colors.accentStrong },
     viewTabText: { color: colors.textSecondary, fontSize: 13, fontWeight: '600' },
     viewTabTextSelected: { color: colors.accentText },
-    layout: { gap: 12 },
+    layout: { gap: compact ? 16 : 12 },
     layoutWithAgenda: { flexDirection: 'row', alignItems: 'flex-start' },
     monthCard: {
       flex: 1,
@@ -940,6 +948,7 @@ function createStyles(colors, compact) {
       textAlign: 'center',
       color: colors.textMuted,
       fontSize: compact ? 12 : 14,
+      lineHeight: compact ? 16 : 20,
       fontWeight: '500',
       paddingVertical: compact ? 4 : 8,
     },
@@ -958,11 +967,12 @@ function createStyles(colors, compact) {
     blankDay: { backgroundColor: colors.surfaceMutedSoft, opacity: 0.6 },
     dayCellSelected: { borderColor: colors.accent },
     dayCellToday: { borderColor: colors.accentStrong },
-    artworkGrid: {
-      flex: 1,
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-    },
+    artworkCompact: { width: '100%', height: '100%' },
+    artworkStack: { flex: 1, flexDirection: 'column', minWidth: 0 },
+    artworkFeatured: { width: '100%', aspectRatio: 1, minWidth: 0 },
+    artworkBottom: { width: '100%', aspectRatio: 3, flexDirection: 'row', minWidth: 0 },
+    artworkBottomCell: { flex: 1, height: '100%', minWidth: 0 },
+    artworkEmpty: { backgroundColor: 'transparent' },
     artworkImage: { width: '100%', height: '100%' },
     artworkPlaceholder: {
       backgroundColor: colors.surfaceStrong,
@@ -986,8 +996,21 @@ function createStyles(colors, compact) {
       backgroundColor: 'rgba(0, 0, 0, 0.72)',
       alignItems: 'center',
     },
+    dayNumberCompact: {
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      minWidth: 0,
+      paddingHorizontal: 0,
+      paddingVertical: 0,
+      borderRadius: 8,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+    },
     dayNumberToday: { backgroundColor: colors.accentStrong },
     dayNumberText: { color: '#ffffff', fontSize: 11, fontWeight: '700' },
+    dayNumberTextCompact: { fontSize: 16, fontWeight: '600' },
     moreBadge: {
       position: 'absolute',
       bottom: 4,
@@ -999,7 +1022,7 @@ function createStyles(colors, compact) {
     },
     moreText: { color: colors.textMuted, fontSize: 10, fontWeight: '700' },
     agendaCard: {
-      width: compact ? '100%' : 340,
+      width: compact ? '100%' : 336,
       backgroundColor: colors.surface,
       borderRadius: 10,
       overflow: 'hidden',
@@ -1010,12 +1033,12 @@ function createStyles(colors, compact) {
       justifyContent: 'space-between',
       gap: 12,
       paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingVertical: 13,
       backgroundColor: colors.surfaceMutedSoft,
     },
     agendaHeading: { flexShrink: 1, gap: 2 },
-    agendaTitle: { color: colors.text, fontSize: 16, fontWeight: '500' },
-    agendaCount: { color: colors.textMuted, fontSize: 12 },
+    agendaTitle: { color: colors.text, fontSize: 16, lineHeight: 20, fontWeight: '500' },
+    agendaCount: { color: colors.textMuted, fontSize: 12, lineHeight: 16 },
     agendaClose: {
       width: 32,
       height: 32,
@@ -1049,7 +1072,7 @@ function createStyles(colors, compact) {
     },
     filterChipText: { color: colors.textSecondary, fontSize: 14, fontWeight: '500', lineHeight: 20 },
     filterChipTextSelected: { color: colors.accentText },
-    agendaBody: { padding: 10, gap: 8 },
+    agendaBody: { padding: 12, gap: 8 },
     agendaSection: { gap: 4 },
     agendaSectionDivider: {
       borderTopWidth: 1,
@@ -1068,7 +1091,7 @@ function createStyles(colors, compact) {
       borderRadius: 8,
       backgroundColor: colors.surface,
     },
-    emptyText: { color: colors.textMuted, fontSize: 13 },
+    emptyText: { color: colors.textMuted, fontSize: 14, lineHeight: 20 },
     releaseRow: {
       flexDirection: 'row',
       alignItems: 'center',

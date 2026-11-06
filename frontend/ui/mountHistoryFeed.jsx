@@ -100,18 +100,51 @@ function replaceDay(days, key, update) {
   return days.map(day => (day.key === key ? update(day) : day));
 }
 
+// The server renders the release card for every day before React mounts, and
+// each card keeps its JSON model in a script tag. Reuse that model so the
+// browser feed shows the same status chip, play-count line and hover actions
+// without a second request. Later day pages (load more, lazy days) arrive as
+// JSON and fall back to the fields the day endpoint sends.
+function legacyCardModels(host) {
+  const models = [];
+  host.querySelectorAll('.history-day script[id^="media-card-"][type="application/json"]').forEach(script => {
+    try {
+      const payload = JSON.parse(script.textContent);
+      if (payload?.model?.title) models.push(payload.model);
+    } catch (error) {
+      // A malformed island only costs that card its extra metadata.
+    }
+  });
+  return models;
+}
+
+function withLegacyCards(model, cards) {
+  const days = model.days || [];
+  if (!cards.length || days.some(day => (day.entries || []).some(entry => entry.card))) {
+    return model;
+  }
+  const byKey = new Map();
+  cards.forEach(card => {
+    const key = `${card.href || ''}|${card.title || ''}`;
+    if (!byKey.has(key)) byKey.set(key, card);
+  });
+  return {
+    ...model,
+    days: days.map(day => ({
+      ...day,
+      entries: (day.entries || []).map(entry => (entry.card ? entry : {
+        ...entry,
+        card: byKey.get(`${entry.href || ''}|${entry.title || ''}`) || null,
+      })),
+    })),
+  };
+}
+
 function Adapter({ host, props }) {
   const [palette, setPalette] = useState(readPalette);
   const [model, setModel] = useState(() => props.model || { days: [] });
   const [activityEntry, setActivityEntry] = useState(null);
   const [optionsLoaded, setOptionsLoaded] = useState(false);
-
-  useEffect(() => {
-    const nodes = Array.from(document.querySelectorAll('[data-history-legacy-chrome]'));
-    const previous = nodes.map(node => node.style.display);
-    nodes.forEach(node => { node.style.display = 'none'; });
-    return () => nodes.forEach((node, index) => { node.style.display = previous[index]; });
-  }, []);
 
   useEffect(() => {
     const update = () => setPalette(readPalette());
@@ -297,7 +330,7 @@ function Adapter({ host, props }) {
       model={model}
       labels={props.labels}
       palette={palette}
-      chrome={props.chrome !== false}
+      chrome={false}
       onNavigate={navigate}
       onLoadMore={loadMore}
       onLoadDay={loadDay}
@@ -324,5 +357,6 @@ function Adapter({ host, props }) {
 }
 
 export function mountHistoryFeed(host, props) {
-  return mountRoot(host, <Adapter host={host} props={props} />);
+  const model = withLegacyCards(props.model || { days: [] }, legacyCardModels(host));
+  return mountRoot(host, <Adapter host={host} props={{ ...props, model }} />);
 }

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Spinner } from './Spinner';
 
 const defaultPalette = {
@@ -48,11 +48,12 @@ export function Rail({
   accessibilityLabel,
   palette: paletteOverrides,
   scrollRef,
-  renderArrow,
-  renderSortIcon,
   testID,
 }) {
   const palette = { ...defaultPalette, ...paletteOverrides };
+  const viewport = useWindowDimensions();
+  // Release drops shelf headings to the base size on phones.
+  const compact = viewport.width < 640;
   const localScrollRef = useRef(null);
   const resolvedScrollRef = scrollRef || localScrollRef;
   const metricsRef = useRef({ x: 0, width: 0, content: 0 });
@@ -139,10 +140,10 @@ export function Rail({
   const canScrollPrev = !atStart;
   const canScrollNext = canLoadMore || (metrics.content > metrics.width + 1 && !atEnd);
   const titleContent = <>
-    <Text role="heading" aria-level={3} style={[styles.title, { color: palette.text }]}>{title}</Text>
+    <Text role="heading" aria-level={3} style={[styles.title, compact && styles.titleCompact, { color: palette.text }]}>{title}</Text>
     {titleDetail ? <>
-      <Text aria-hidden style={[styles.detail, { color: palette.text }]}>•</Text>
-      <Text role="heading" aria-level={3} style={[styles.detail, { color: palette.text }]}>{titleDetail}</Text>
+      <Text aria-hidden style={[styles.detail, compact && styles.titleCompact, { color: palette.text }]}>•</Text>
+      <Text role="heading" aria-level={3} style={[styles.detail, compact && styles.titleCompact, { color: palette.text }]}>{titleDetail}</Text>
     </> : null}
   </>;
 
@@ -156,9 +157,7 @@ export function Rail({
             ? <Pressable accessibilityRole="button" accessibilityLabel={sortLabel || summaryInline}
               onPress={onSort} style={styles.sortButton}>
               <Text style={[styles.summaryInline, { color: palette.textMuted }]}>{summaryInline}</Text>
-              {renderSortIcon
-                ? renderSortIcon(direction, palette.textMuted)
-                : <Text aria-hidden style={[styles.sortIcon, { color: palette.textMuted }]}>{direction === 'asc' ? '▲' : '▼'}</Text>}
+              <Text aria-hidden style={[styles.sortIcon, { color: palette.textMuted }]}>{direction === 'asc' ? '▲' : '▼'}</Text>
             </Pressable>
             : <Text style={[styles.summaryInline, { color: palette.textMuted }]}>{summaryInline}</Text>) : null}
           {viewAll ? <Pressable accessibilityRole="link" accessibilityLabel={viewAll.accessibilityLabel || viewAll.label}
@@ -172,16 +171,12 @@ export function Rail({
         <Pressable accessibilityRole="button" accessibilityLabel={scrollLeftLabel}
           accessibilityState={{ disabled: !canScrollPrev }} disabled={!canScrollPrev}
           onPress={() => scrollByPage(-1)} style={[styles.iconButton, !canScrollPrev && styles.hiddenControl]}>
-          {renderArrow
-            ? renderArrow('prev', palette.arrow)
-            : <Text aria-hidden style={[styles.arrow, { color: palette.arrow }]}>‹</Text>}
+          <Text aria-hidden style={[styles.arrow, { color: palette.arrow }]}>‹</Text>
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel={scrollRightLabel}
           accessibilityState={{ disabled: !canScrollNext }} disabled={!canScrollNext}
           onPress={() => scrollByPage(1)} style={[styles.iconButton, !canScrollNext && styles.hiddenControl]}>
-          {renderArrow
-            ? renderArrow('next', palette.arrow)
-            : <Text aria-hidden style={[styles.arrow, { color: palette.arrow }]}>›</Text>}
+          <Text aria-hidden style={[styles.arrow, { color: palette.arrow }]}>›</Text>
         </Pressable>
         {collapsible ? <Pressable accessibilityRole="button" accessibilityLabel={collapseLabel}
           accessibilityState={{ expanded: !isCollapsed }} onPress={toggleCollapsed}
@@ -217,20 +212,21 @@ const styles = StyleSheet.create({
   wrapper: { gap: 8 },
   headingRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
   headingText: { flex: 1, minWidth: 0, gap: 2 },
-  titleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
-  titleLink: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  titleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, rowGap: 4 },
+  titleLink: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, rowGap: 4 },
   title: { fontSize: 18, fontWeight: '600', lineHeight: 18 },
+  titleCompact: { fontSize: 16, lineHeight: 21.6 },
   detail: { fontSize: 18, fontWeight: '600', lineHeight: 18 },
   summary: { fontSize: 13, lineHeight: 18 },
   summaryInline: { fontSize: 14, fontWeight: '500', lineHeight: 14 },
-  sortButton: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2, marginLeft: 6 },
-  sortIcon: { fontSize: 11, lineHeight: 14 },
+  sortButton: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 6 },
+  sortIcon: { fontSize: 16, lineHeight: 16 },
   controls: { flexDirection: 'row', alignItems: 'center', gap: 2, flexShrink: 0 },
   iconButton: { padding: 4, borderRadius: 4 },
   toggleButton: { marginLeft: 4 },
   disabled: { opacity: 0.4 },
   hiddenControl: { opacity: 0 },
-  arrow: { fontSize: 24, lineHeight: 24 },
+  arrow: { fontSize: 20, lineHeight: 20 },
   chevron: { fontSize: 16, lineHeight: 16 },
   scroller: { paddingBottom: 12, paddingRight: 8, alignItems: 'flex-start' },
   item: { flexShrink: 0 },

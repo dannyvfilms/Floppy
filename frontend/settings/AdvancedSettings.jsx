@@ -204,10 +204,10 @@ function StatusLine({ busy, error, success, colors, working = 'Working…' }) {
     style={[styles.status, { color }]}>{error || success || (typeof busy === 'string' ? busy : working)}</Text>;
 }
 
-function Stat({ label, value, help, colors, compact = false }) {
+function Stat({ label, value, help, colors, compact = false, large = false }) {
   return <View style={[styles.stat, compact && styles.statCompact, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: colors.radius }]}>
     <Text style={[styles.statLabel, { color: colors.textMuted }]}>{label}</Text>
-    <Text style={[styles.statValue, compact && styles.statValueCompact, { color: colors.text }]}>{value}</Text>
+    <Text style={[styles.statValue, compact && styles.statValueCompact, large && styles.statValueLarge, { color: colors.text }]}>{value}</Text>
     {help ? <Text style={[styles.statHelp, { color: colors.textMuted }]}>{help}</Text> : null}
   </View>;
 }
@@ -469,16 +469,16 @@ export function ServerPortCard({
       : copy.introReadOnly}</Text>
     <View style={[styles.statGrid, statColumns === 1 ? styles.statGridOne : styles.statGridTwo, styles.portStatGrid]}>
       <Stat label={copy.runningListener} value={runtimePort ? String(runtimePort) : copy.notReported}
-        help={copy.runningHelp} colors={colors} />
+        help={copy.runningHelp} colors={colors} large />
       <Stat label={copy.configuredPort} value={configuredPort ? String(configuredPort) : copy.unavailable}
         help={configuredPort ? format(copy.configuredHelp, { source: configuredSource || 'default' }) : copy.configuredUnavailable}
-        colors={colors} />
+        colors={colors} large />
       {canManage ? <Stat label={copy.savedFallback} value={savedLabel}
         help={savedFallbackUnreadable ? copy.unreadableHelp
           : configErrorSource === 'environment' ? copy.notEvaluatedHelp
             : savedPort ? copy.storedHelp
               : format(copy.defaultHelp, { port: defaultPort })}
-        colors={colors} /> : null}
+        colors={colors} large /> : null}
     </View>
     {environmentOverride ? <View style={[styles.notice, { backgroundColor: colors.surfaceStrong, borderColor: colors.border, borderRadius: colors.radius }]}>
       <Text style={[styles.noticeTitle, { color: colors.warning }]}>{copy.environmentTitle}</Text>
@@ -561,6 +561,7 @@ const styles = StyleSheet.create({
   stat: { flex: 1, minWidth: 0, padding: 16, gap: 0 },
   statCompact: { paddingVertical: 12, paddingHorizontal: 16 },
   statValueCompact: { marginTop: 0 },
+  statValueLarge: { fontSize: 18, lineHeight: 28, fontWeight: '600' },
   statLabel: { fontSize: 12, lineHeight: 16, letterSpacing: 0.4, textTransform: 'uppercase' },
   statValue: { fontSize: 14, lineHeight: 20, fontWeight: '500', marginTop: 4 },
   statHelp: { fontSize: 12, lineHeight: 16, marginTop: 4 },
@@ -580,7 +581,7 @@ const styles = StyleSheet.create({
   rowCopy: { fontSize: 12, lineHeight: 16 },
   rowIcon: { width: 16, height: 16, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
   divider: { borderTopWidth: 1, paddingTop: 16, marginTop: 16, alignItems: 'flex-start' },
-  portCard: { padding: 24, minWidth: 0 },
+  portCard: { padding: 24, minWidth: 0, marginTop: 24 },
   portHeading: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
   portIcon: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
   portTitle: { fontSize: 20, lineHeight: 28, fontWeight: '600' },
@@ -594,7 +595,7 @@ const styles = StyleSheet.create({
   field: { gap: 8, maxWidth: 576 },
   fieldLabel: { fontSize: 14, lineHeight: 20, fontWeight: '500' },
   input: { borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, lineHeight: 20 },
-  fieldHelp: { fontSize: 12, lineHeight: 16 },
+  fieldHelp: { fontSize: 12, lineHeight: 16, marginTop: 8 },
   portButton: { alignSelf: 'flex-start', paddingHorizontal: 16, paddingVertical: 8, marginTop: 16 },
   portButtonText: { fontSize: 14, lineHeight: 20 },
   reset: { marginTop: 12, alignSelf: 'flex-start' },

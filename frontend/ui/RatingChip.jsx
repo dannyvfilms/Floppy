@@ -130,11 +130,13 @@ export function RatingChip({
   if (layout === 'card') {
     return <View style={styles.root}>
       <View style={[styles.card, {
-        height: colors.cardHeight || undefined,
+        height: colors.cardHeight || 93.75,
         borderColor: colors.cardBorder,
         backgroundColor: colors.cardBackground,
         borderRadius: colors.popupRadius + 4,
-        padding: colors.popupPadding,
+        paddingTop: colors.popupPadding + 2,
+        paddingBottom: colors.popupPadding - 2,
+        paddingHorizontal: colors.popupPadding,
       }]}>
         {rated
           ? <Pressable accessibilityRole="button" accessibilityLabel={`${text.yourScore}: ${cardShown}`}
@@ -157,7 +159,8 @@ export function RatingChip({
               {hasDerived ? `${text.derived} ${derived.score} · ${derived.coverage}` : text.prompt}
             </Text>
             <RatingStars scaleMax={scaleMax} value={value} label={text.rate}
-              renderStar={renderStar} onSelect={score => onSelect?.(score)}
+              renderStar={lit => renderStar?.(lit, 16)}
+              onSelect={score => onSelect?.(score)}
               palette={{ ...colors, unlit: colors.cardUnlit || colors.unlit }}
               showLabels={false} />
           </>}

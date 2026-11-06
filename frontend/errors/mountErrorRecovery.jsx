@@ -1,4 +1,5 @@
 import React from 'react';
+import { View } from 'react-native';
 import { mountRoot } from '../settings/root';
 import { ErrorRecovery } from './ErrorRecovery';
 import { Icon } from '../ui/Icon';
@@ -57,9 +58,9 @@ const iconShapes = {
 };
 
 function glyph(name, color, size = 20) {
-  return <span style={{ display: 'inline-flex', flex: 'none', width: size, height: size, fontSize: size, color }}>
+  return <View style={{ display: 'inline-flex', flex: 'none', width: size, height: size, fontSize: size, color }}>
     <Icon spec={{ viewBox: '0 0 24 24', root: iconRoot, children: iconShapes[name] }} />
-  </span>;
+  </View>;
 }
 
 const icons = {
@@ -97,6 +98,7 @@ function ErrorRecoveryAdapter({ props }) {
     labels={props.labels}
     icons={icons}
     statusSize={128}
+    headingLevel={1}
     palette={palette}
     onCopyReport={copyText}
     onReportIssue={actions.reportIssueHref ? () => openExternal(actions.reportIssueHref) : undefined}

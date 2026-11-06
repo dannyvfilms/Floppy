@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   Image,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -257,18 +256,16 @@ export function StudioHero({
   </View>;
 }
 
-export function PersonCard({ person = {}, labels, palette, onOpen }) {
+export function PersonCard({ person = {}, labels, palette, onOpen, web = false }) {
   const copy = mergeLabels(labels);
   const colors = mergePalette(palette);
   const name = person.name || 'Unknown Person';
   const subtitle = person.subtitle || person.role;
-  const web = Platform.OS === 'web';
   const [hovered, setHovered] = useState(false);
-  const overlay = web
-    ? {
-      backgroundImage: `linear-gradient(to bottom, transparent 0%, rgba(17, 24, 39, 0.5) 40%, rgba(17, 24, 39, 0.85) 70%, rgba(17, 24, 39, 0.98) 100%)`,
-    }
-    : { backgroundColor: 'rgba(0, 0, 0, 0.58)' };
+  const overlay = web ? null : { backgroundColor: 'rgba(0, 0, 0, 0.58)' };
+  const shade = web ? {
+    backgroundImage: 'linear-gradient(to bottom, transparent 0%, rgba(17, 24, 39, 0.5) 40%, rgba(17, 24, 39, 0.85) 70%, rgba(17, 24, 39, 0.98) 100%)',
+  } : null;
   const metaVisible = !web || hovered;
   const body = <>
     <Artwork uri={person.imageUrl} fallback={person.imageFallback} title={name} palette={colors}>
@@ -278,6 +275,7 @@ export function PersonCard({ person = {}, labels, palette, onOpen }) {
         </Text>
       </View> : null}
     </Artwork>
+    {shade ? <View style={[styles.cardShade, shade]} /> : null}
     <View style={[styles.cardBody, styles.cardBodyOverlay, overlay]}>
       <View style={styles.cardTitleRow}>
         <Text numberOfLines={1} style={[styles.cardTitle, { color: colors.text }]}>{name}</Text>
@@ -563,6 +561,7 @@ const styles = StyleSheet.create({
   cardShell: { borderRadius: 10, overflow: 'hidden', width: '100%', position: 'relative' },
   cardBody: { padding: 12 },
   cardBodyOverlay: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 10 },
+  cardShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 92, zIndex: 9 },
   cardTitleRow: { minWidth: 0 },
   cardTitle: { fontSize: 14, fontWeight: '600', lineHeight: 20 },
   cardCopy: { fontSize: 12, lineHeight: 16 },

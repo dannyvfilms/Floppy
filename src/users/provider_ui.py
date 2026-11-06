@@ -166,6 +166,7 @@ def directory_page(context, request):
         "url": reverse("providers"), "setupUrl": reverse("onboarding_restart"),
         "pinUrl": reverse("pin_settings_provider"), "csrf": get_token(request), "canPin": not request.user.is_demo,
         "icon": file_icon("database"), "searchIcon": file_icon("magnifying-glass"),
+        "filterIcon": file_icon("funnel"),
         "filters": {"q": context["query"], "capability": context["capability"], "media": context["media"]},
         "capabilities": [{"value": row["key"], "label": _(row["label"])} for row in context["capability_options"]],
         "media": [{"value": row["key"], "label": _(row["label"])} for row in context["media_options"]],

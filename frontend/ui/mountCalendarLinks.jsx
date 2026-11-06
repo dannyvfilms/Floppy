@@ -38,6 +38,7 @@ function Adapter({ props }) {
 
   return <CalendarLinks
     {...props}
+    embedded
     palette={palette}
     onCopyLink={copyLink}
     onDownload={download} />;

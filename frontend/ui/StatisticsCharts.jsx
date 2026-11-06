@@ -412,6 +412,7 @@ function BarChart({
   const ticks = [];
   for (let index = 0; index <= tickCount; index += 1) ticks.push(index * step);
   const labelHeight = rotateLabels ? 44 : 24;
+  const labelStep = rotateLabels && labels.length > 12 ? 2 : 1;
   const chartHeight = height - labelHeight;
   const barWidth = Math.max(8, Math.min(20, Math.round(340 / labels.length)));
   return <View accessible accessibilityRole="image" accessibilityLabel={accessibilityLabel}>
@@ -446,10 +447,11 @@ function BarChart({
     <View style={[styles.barLabels, { height: labelHeight }]}>
       <View style={styles.barLabelSpacer} />
       {labels.map((label, index) => <View key={`${label}-label-${index}`} style={styles.barLabelSlot}>
-        <Text numberOfLines={1} style={[styles.barLabel, {
+        {index % labelStep === 0 ? <Text numberOfLines={rotateLabels ? undefined : 1} style={[styles.barLabel, {
           color: MAX_TICK_COLOR,
+          width: rotateLabels ? 64 : undefined,
           transform: rotateLabels ? [{ rotate: '-45deg' }] : undefined,
-        }]}>{label}</Text>
+        }]}>{label}</Text> : null}
       </View>)}
     </View>
   </View>;
@@ -723,12 +725,16 @@ export function StatisticsCharts({
       palette={colors} />;
   }
   const visible = new Set(groups || []);
+  const { width } = useWindowDimensions();
+  const wide = width >= 1024;
+  const halfStyle = [styles.cardHalf, !wide && styles.cardFull];
+  const thirdStyle = [styles.cardThird, !wide && styles.cardFull];
   return <View style={styles.root}>
     {visible.has('overview') ? <View style={styles.row}>
-      <View style={styles.cardHalf}>
+      <View style={halfStyle}>
         <StatisticsRhythmChart chart={model.rhythm} labels={copy} palette={colors} />
       </View>
-      <View style={styles.cardHalf}>
+      <View style={halfStyle}>
         <StatisticsHoursByMediaTypeChart chart={model.mediaTypeHours} labels={copy} palette={colors} />
       </View>
     </View> : null}
@@ -736,32 +742,32 @@ export function StatisticsCharts({
       ? <StatisticsHeatmapChart chart={model.heatmap} labels={copy} palette={colors} />
       : null}
     {visible.has('hours') ? <View style={styles.row}>
-      <View style={styles.cardThird}>
+      <View style={thirdStyle}>
         <StatisticsHoursChart chart={model.hoursByMonth} labels={copy} palette={colors}
           title={copy.hoursMonthTitle} />
       </View>
-      <View style={styles.cardThird}>
+      <View style={thirdStyle}>
         <StatisticsHoursChart chart={model.hoursByWeekday} labels={copy} palette={colors}
           title={copy.hoursWeekdayTitle} />
       </View>
-      <View style={styles.cardThird}>
+      <View style={thirdStyle}>
         <StatisticsHoursChart chart={model.hoursByTimeOfDay} labels={copy} palette={colors}
           title={copy.hoursTimeTitle} />
       </View>
     </View> : null}
     {visible.has('status') ? <View style={styles.row}>
-      <View style={styles.cardHalf}>
+      <View style={halfStyle}>
         <StatisticsStatusCompositionChart chart={model.statusComposition} labels={copy} palette={colors} />
       </View>
-      <View style={styles.cardHalf}>
+      <View style={halfStyle}>
         <StatisticsRatingDistributionChart chart={model.ratingDistribution} labels={copy} palette={colors} />
       </View>
     </View> : null}
     {visible.has('breakdown') ? <View style={styles.row}>
-      <View style={styles.cardWide}>
+      <View style={[styles.cardWide, !wide && styles.cardFull]}>
         <StatisticsStatusBreakdownChart chart={model.statusBreakdown} labels={copy} palette={colors} />
       </View>
-      <View style={styles.cardThird}>
+      <View style={thirdStyle}>
         <StatisticsCompletionChart chart={model.completion} labels={copy} palette={colors} />
       </View>
     </View> : null}
@@ -778,6 +784,7 @@ const styles = StyleSheet.create({
   cardHalf: { flexGrow: 1, flexBasis: 320, minWidth: 0 },
   cardThird: { flexGrow: 1, flexBasis: 220, minWidth: 0 },
   cardWide: { flexGrow: 2, flexBasis: 460, minWidth: 0 },
+  cardFull: { flexGrow: 0, flexBasis: '100%' },
   card: { width: '100%' },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
   cardHeaderCopy: { flexShrink: 1, minWidth: 0, gap: 2 },

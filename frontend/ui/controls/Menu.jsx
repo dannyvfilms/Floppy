@@ -175,7 +175,7 @@ export function ActionMenu({
  * receives the same `{ target: { name, value } }` change shape as SelectField.
  */
 export function FilterDropdown(props) {
-  return <SelectField {...props} labelHidden />;
+  return <SelectField {...props} labelHidden filter />;
 }
 
 const styles = StyleSheet.create({

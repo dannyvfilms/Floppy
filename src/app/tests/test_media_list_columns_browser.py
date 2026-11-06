@@ -42,8 +42,11 @@ class MediaListColumnsBrowserTests(SerialStaticLiveServerTestCase):
             expect(page.get_by_text("Finished", exact=True)).to_be_visible()
             page.get_by_role("button", name="View settings").first.click()
             page.get_by_role("link", name="Table View").first.click()
-            expect(page.locator(".media-table")).to_contain_text("Finished")
-            expect(page.locator(".media-table")).to_contain_text("Playing")
+            table = page.get_by_role("table")
+            expect(table).to_contain_text("Finished")
+            expect(table).to_contain_text("Playing")
+            expect(page.locator("[data-media-table-root][data-react-mounted]")).to_have_count(0)
+            expect(page.locator('[data-testid="media-table"]')).to_have_count(0)
             self.assertIn("status=all", page.url)
 
     def test_toggle_notes_preserves_filtered_table(self):
@@ -75,20 +78,21 @@ class MediaListColumnsBrowserTests(SerialStaticLiveServerTestCase):
             page.goto(
                 f"{self.live_server_url}/medialist/game?layout=table&status=Paused"
             )
-            table = page.locator(".media-table")
+            table = page.get_by_role("table")
             expect(table.get_by_role("row")).to_have_count(3)
+            expect(page.locator("[data-media-table-root][data-react-mounted]")).to_have_count(0)
+            expect(page.locator('[data-testid="media-table"]')).to_have_count(0)
             expect(
                 table.get_by_role("columnheader", name="Notes", exact=True)
             ).to_have_count(1)
             expect(table).not_to_contain_text("Donkey Kong")
 
+            page.get_by_role("button", name="Configure Table Columns").click()
+            menu = page.get_by_role("button", name="Configure Table Columns").locator("xpath=..")
             for action, notes_count in (("Hide column", 0), ("Show column", 1)):
-                page.get_by_role("button", name="Configure Table Columns").click()
-                with page.expect_navigation():
-                    with page.expect_response(
-                        lambda response: response.url.endswith("/columns")
-                    ):
-                        page.get_by_role("button", name=f"{action}: Notes").click()
+                notes_row = menu.get_by_text("Notes", exact=True).locator("xpath=..")
+                notes_row.locator(f'button[title="{action}"]').click()
+                page.wait_for_load_state("networkidle")
                 expect(table.get_by_role("row")).to_have_count(3)
                 expect(
                     table.get_by_role("columnheader", name="Notes", exact=True)

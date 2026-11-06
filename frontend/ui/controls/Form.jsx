@@ -180,6 +180,7 @@ export function FormProvider({
         action: form.action,
         csrf: form.csrf,
         returnTo: form.returnTo,
+        encType: form.encType,
         values: submittedValues,
         event,
       });

@@ -904,7 +904,7 @@
             <path d="M3 10h18"></path>
           </svg>
           <div class="stats-button-copy">
-            <span class="stats-button-title" x-text="rangeTriggerLabel()"></span>
+            <span class="stats-button-title" x-text="rangeTriggerLabel()">{{ selected_range_name }}</span>
           </div>
           <svg xmlns="http://www.w3.org/2000/svg"
                width="24"
@@ -1030,7 +1030,7 @@
           </svg>
           <span class="stats-button-title"
                 :title="mediaTypeTriggerLabel()"
-                x-text="mediaTypeTriggerLabel()"></span>
+                x-text="mediaTypeTriggerLabel()">{% if selected_media_types %}{{ selected_media_types }}{% else %}{% translate "All media" %}{% endif %}</span>
           <svg xmlns="http://www.w3.org/2000/svg"
                width="24"
                height="24"
@@ -1077,13 +1077,17 @@
         </div>
       </div>
 
-      <div class="stats-compare-wrapper relative min-w-0" x-show="hasFiniteRange()" x-cloak>
+      {% comment %}
+        Rendered visible so the trigger reserves its width before Alpine fills
+        the label; x-show hides it for infinite ranges once Alpine starts.
+      {% endcomment %}
+      <div class="stats-compare-wrapper relative min-w-0" x-show="hasFiniteRange()">
         <button @click="toggleCompareDropdown()"
                 class="stats-compare-button flex items-center gap-2 w-full px-4 py-2.5 bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)] rounded-lg transition-all duration-200 border border-gray-700 shadow-sm cursor-pointer">
           <div class="stats-compare-copy">
             <span class="stats-compare-prefix">{% translate "Compare to:" %}</span>
             <span class="stats-compare-value"
-                  x-text="comparisonTriggerLabel()"></span>
+                  x-text="comparisonTriggerLabel()">{% if selected_compare_mode == 'last_year' %}{% translate "Last year" %}{% elif selected_compare_mode == 'none' %}{% translate "No comparison" %}{% else %}{% translate "Previous period" %}{% endif %}</span>
           </div>
           <svg xmlns="http://www.w3.org/2000/svg"
                width="24"
@@ -1171,10 +1175,10 @@
       <div class="stats-hero-row grid grid-cols-1 gap-x-3 sm:gap-x-4 items-start">
         <div class="flex flex-col justify-center stats-hero-text">
           <p class="stats-hero-title font-bold text-[var(--color-text)] leading-snug">
-            {% translate "You've spent" %} <span class="text-[var(--color-link)] tabular-nums" x-text="(currentTypeSummary.total_hours || 0).toLocaleString()"></span> {% translate "hours" %}
+            {% translate "You've spent" %} <span class="text-[var(--color-link)] tabular-nums" x-text="(currentTypeSummary.total_hours || 0).toLocaleString()">{% widthratio summary_stats_by_type.all.total_minutes 60 1 %}</span> {% translate "hours" %}
           </p>
           <p class="stats-hero-title font-bold text-[var(--color-text)] leading-snug">
-            {% translate "with" %} <span class="text-[var(--color-link)] tabular-nums" x-text="(currentTypeSummary.total || 0).toLocaleString()"></span> <span x-text="currentTypeLabel + '.'"></span>
+            {% translate "with" %} <span class="text-[var(--color-link)] tabular-nums" x-text="(currentTypeSummary.total || 0).toLocaleString()">{{ summary_stats_by_type.all.total|default:0 }}</span> <span x-text="currentTypeLabel + '.'">{% translate "titles" %}.</span>
           </p>
           <div class="flex items-center gap-2 mt-4 pb-3 text-sm text-[var(--color-text-muted)]">
             <div class="w-7 h-7 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-[var(--color-link)] shrink-0">
@@ -1184,7 +1188,7 @@
           </div>
         </div>
         <div class="min-w-0 stats-hero-cards">
-          <div x-show="isHighlightSetVisible('all')" x-cloak>
+          <div x-show="isHighlightSetVisible('all')">
             {% with highlights=history_highlights %}
               {% include "app/components/statistics/highlight_set.html" %}
             {% endwith %}
@@ -2506,5 +2510,3 @@
   <script src="{% static 'js/cache-updater.js' %}"></script>
   {% include "app/components/_scrollable_row_js.html" %}
 {% endblock js %}
-
-<!-- parity-probe -->

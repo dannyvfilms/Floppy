@@ -140,7 +140,7 @@ function AdvancedAdapter({ props }) {
     }
   }
 
-  return <View style={{ gap: 24 }}>
+  return <View style={{ gap: 24, paddingBottom: 24 }}>
     <LogsCard isSuperuser={props.isSuperuser}
       logsSince={props.logsSince}
       lastUncleanExit={props.lastUncleanExit}

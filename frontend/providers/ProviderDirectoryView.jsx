@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Button } from '../ui/Button';
+import { Icon } from '../ui/Icon';
 import { CatalogCard, CatalogGrid } from '../ui/controls/Catalog';
 import { FilterDropdown } from '../ui/controls/Menu';
 
@@ -102,6 +103,7 @@ export function ProviderDirectoryView({
   debounceMs = 300,
   onFetch,
   onFiltersChange,
+  subscribeHistory,
   onPin,
   onNavigate,
   onOpenProvider,
@@ -166,6 +168,12 @@ export function ProviderDirectoryView({
     };
   }, [filters.q, filters.capability, filters.media, retry, debounceMs]);
 
+  useEffect(() => subscribeHistory?.(next => {
+    const resolved = { ...DEFAULT_FILTERS, ...next };
+    if (controlledFilters === undefined) setLocalFilters(resolved);
+    onFiltersChange?.(resolved, 'history');
+  }), [subscribeHistory]);
+
   function update(key, value) {
     const next = { ...filters, [key]: value };
     if (controlledFilters === undefined) setLocalFilters(next);
@@ -207,7 +215,10 @@ export function ProviderDirectoryView({
     <View style={styles.header}>
       <View style={styles.titleRow}>
         <View style={styles.titleGroup}>
-          <Text accessible={false} style={[styles.titleIcon, { fontSize: 22, lineHeight: 24, color: colors.link || colors.accent }]}>⛁</Text>
+          <View style={[styles.titleIcon, { fontSize: 24, color: colors.link || colors.accent }]}>
+            {model.icon ? <Icon spec={model.icon} />
+              : <Text accessible={false} style={[styles.titleGlyph, { color: colors.link || colors.accent }]}>⛁</Text>}
+          </View>
           <Text role="heading" aria-level={2} style={[styles.title, { color: colors.text }]}>{copy.providers}</Text>
         </View>
         {model.setupUrl && typeof onNavigate === 'function' ? <Pressable accessibilityRole="link"
@@ -224,7 +235,10 @@ export function ProviderDirectoryView({
           backgroundColor: colors.surfaceStrong, borderColor: colors.border,
           borderRadius: colors.radius,
         }]}>
-          <Text accessible={false} style={[styles.searchIcon, { color: colors.textMuted }]}>⌕</Text>
+          <View style={[styles.searchIcon, { fontSize: 20, color: colors.textMuted }]}>
+            {model.searchIcon ? <Icon spec={model.searchIcon} />
+              : <Text accessible={false} style={[styles.searchGlyph, { color: colors.textMuted }]}>⌕</Text>}
+          </View>
           <TextInput id="provider-search" accessibilityLabel={copy.searchLabel}
             name="q" autoCapitalize="none" autoComplete="off" autoCorrect={false}
             placeholder={copy.searchPlaceholder} placeholderTextColor={colors.textMuted}
@@ -236,13 +250,15 @@ export function ProviderDirectoryView({
       <View style={[styles.filterField, narrow && styles.filterFieldNarrow]}>
         <FilterDropdown label={copy.capabilityLabel} id="provider-capability" name="capability"
           options={normalizeOptions(model.capabilities)} value={filters.capability || ''}
-          palette={{ ...colors, surface: colors.surfaceStrong }}
+          palette={colors}
+          leadingIcon={model.filterIcon ? <View style={{ fontSize: 16, color: colors.textMuted }}><Icon spec={model.filterIcon} /></View> : undefined}
           onChange={event => update('capability', event.target.value)} />
       </View>
       <View style={[styles.filterField, narrow && styles.filterFieldNarrow]}>
         <FilterDropdown label={copy.mediaLabel} id="provider-media" name="media"
           options={normalizeOptions(model.media)} value={filters.media || ''}
-          palette={{ ...colors, surface: colors.surfaceStrong }}
+          palette={colors}
+          leadingIcon={model.filterIcon ? <View style={{ fontSize: 16, color: colors.textMuted }}><Icon spec={model.filterIcon} /></View> : undefined}
           onChange={event => update('media', event.target.value)} />
       </View>
       </View>
@@ -280,7 +296,8 @@ export function ProviderDirectoryView({
 const styles = StyleSheet.create({
   container: { gap: 24, padding: 24, minWidth: 0 },
   titleGroup: { flexDirection: 'row', alignItems: 'center', gap: 12, minWidth: 0, flexShrink: 1 },
-  titleIcon: { width: 24, height: 24, textAlign: 'center' },
+  titleIcon: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
+  titleGlyph: { fontSize: 24, lineHeight: 24 },
   setupLink: { fontSize: 12, lineHeight: 18, textDecorationLine: 'underline' },
   header: { gap: 16 },
   titleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
@@ -292,9 +309,10 @@ const styles = StyleSheet.create({
   filterGroupNarrow: { gap: 8 },
   filterFieldNarrow: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 },
   searchField: { flexGrow: 1, flexShrink: 1, minWidth: 0 },
-  searchInput: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, minHeight: 38, paddingLeft: 40 },
-  searchIcon: { position: 'absolute', left: 12, fontSize: 20, lineHeight: 20 },
-  searchText: { flex: 1, minWidth: 0, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, lineHeight: 20 },
+  searchInput: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, height: 38 },
+  searchIcon: { position: 'absolute', left: 12, width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
+  searchGlyph: { fontSize: 20, lineHeight: 20 },
+  searchText: { flex: 1, minWidth: 0, paddingLeft: 40, paddingRight: 12, paddingVertical: 8, fontSize: 14, lineHeight: 20 },
   filterField: { flexGrow: 0, flexShrink: 0 },
   alert: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, padding: 12 },
   copyText: { fontSize: 12, lineHeight: 17 },

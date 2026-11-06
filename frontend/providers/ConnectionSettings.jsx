@@ -63,7 +63,7 @@ function statusPalette(colors, tone) {
   if (tone === 'success') return { ...colors, badgeBorder: colors.success, badgeBackground: 'rgba(16, 185, 129, 0.15)', badgeText: '#a7f3d0' };
   if (tone === 'warning') return { ...colors, badgeBorder: colors.warning, badgeBackground: 'rgba(245, 158, 11, 0.15)', badgeText: '#fde68a' };
   if (tone === 'info') return { ...colors, badgeBorder: colors.accent, badgeBackground: 'rgba(99, 102, 241, 0.15)', badgeText: '#c7d2fe' };
-  return colors;
+  return { ...colors, badgeBackground: colors.surface };
 }
 
 function fieldHelp(field, labels) {
@@ -116,6 +116,7 @@ export function ConnectionSettings({
   onSave,
   onClear,
   onOpenLink,
+  onSetDefault,
   showKeyLink = true,
   palette = {},
   buttonPalette = {},
@@ -136,7 +137,8 @@ export function ConnectionSettings({
   const [error, setError] = useState(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const editable = model.editable !== false;
-  const badge = statusPalette(colors, model.statusTone || (model.publicAccess ? 'success' : editable ? 'info' : 'warning'));
+  const cards = { ...colors, background: colors.surfaceStrong };
+  const badge = statusPalette(cards, model.statusTone || (model.publicAccess ? 'success' : editable ? 'info' : 'warning'));
   const tone = model.statusTone || (model.publicAccess ? 'success' : editable ? 'info' : 'warning');
   const status = model.statusLabel || (model.publicAccess ? labels.publicApi : editable ? labels.editable : labels.readOnly);
 
@@ -211,10 +213,13 @@ export function ConnectionSettings({
       {notice?.kind === 'instance' ? <Text accessibilityLiveRegion="polite" style={[styles.copy, { color: colors.success }]}>{notice.text}</Text> : null}
       {error?.kind === 'instance' ? <Text accessibilityRole="alert" style={[styles.copy, { color: colors.danger }]}>{error.text}</Text> : null}
     </SettingsCard></View>
-    {model.personalFields?.length ? <View style={styles.cardColumn}><SettingsCard title={model.personalTitle || 'Personal credentials'} palette={colors}>
+    {model.personalFields?.length ? <View style={styles.cardColumn}><SettingsCard title={model.personalTitle || 'Personal credentials'} palette={cards}>
       <Text style={[styles.copy, { color: colors.textSecondary }]}>{labels.personalHelp}</Text>
       <View style={styles.fields}>
-        {model.personalFields.map(field => <FieldControl key={field.name} field={{ ...field, label: `${labels.your || 'Your'} ${field.label}` }}
+        {model.personalFields.map(field => <FieldControl key={field.name}
+          field={{ ...field, label: `${labels.your || 'Your'} ${field.label}`, disabled: false,
+            environment: false, usingDefault: false, fallback: false, help: undefined,
+            placeholder: field.placeholder === labels.fallback ? undefined : field.placeholder }}
           value={personalValues[field.name]} disabled={false}
           onChange={value => setField(setPersonalValues, field.name, value)}
           colors={colors} labels={labels} />)}
@@ -228,6 +233,13 @@ export function ConnectionSettings({
       {error?.kind === 'personal' ? <Text accessibilityRole="alert" style={[styles.copy, { color: colors.danger }]}>{error.text}</Text> : null}
     </SettingsCard></View> : null}
     </View>
+    {model.defaults?.length ? <View style={styles.defaults}>
+      <Text style={[styles.copy, { color: colors.textSecondary }]}>{labels.defaultsTitle}</Text>
+      <View style={styles.defaultActions}>
+        {model.defaults.map(item => <Button key={item.mediaType} label={item.label} tone="surface"
+          onPress={() => onSetDefault?.(item)} palette={buttons} />)}
+      </View>
+    </View> : null}
     <Modal transparent visible={helpOpen} animationType="fade" accessibilityViewIsModal
       onRequestClose={() => setHelpOpen(false)}>
       <View style={styles.backdrop}>
@@ -244,6 +256,8 @@ export function ConnectionSettings({
 const styles = StyleSheet.create({
   cardGrid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 12 },
   cardColumn: { flexGrow: 1, flexBasis: 260, minWidth: 0 },
+  defaults: { gap: 8 },
+  defaultActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   copy: { fontSize: 12, lineHeight: 17 },
   linkRow: { alignSelf: 'flex-start' },
   link: { fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },

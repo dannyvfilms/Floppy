@@ -69,7 +69,7 @@ PY
 - `frontend/ui/Shell.jsx` (`Shell`, `TopBar`, `MobileNav`), `frontend/ui/mountShell.jsx`, the `shell_topbar_react` tag and `src/templates/base.html` / `base_public.html` (signed-in and public top bars plus the mobile navigation overlay; both templates keep their server fallback)
 - `frontend/ui/Sidebar.jsx` (`Sidebar`) shared React Native presentation, `frontend/ui/mountSidebar.jsx` browser adapter (theme tokens, `floppy:sidebar-pins`/`floppy:sidebar-lists`/`floppy:saved-views-open` storage, HTMX-boosted anchors, Sortable reorder, delete/logout forms, onboarding node slot and mobile aside state), `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html`; shared saved-view rows keep `aria-current` on the active view; the Alpine markup inside the host remains the no-React fallback; nav padding, link width, label size, hover and theme-radius rows match the server sidebar; pointer focus is suppressed after click; the Explore slot and server fallback reserve their height so pin/list hydration does not move the footer)
 - `frontend/ui/Reveal.jsx`, `frontend/ui/Reveal.web.jsx`, `frontend/ui/Reveal.native.jsx` (sidebar Explore reveal: native mount contract plus the browser's release-height animation)
-- `frontend/ui/Icon.web.jsx`, `frontend/ui/Icon.native.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
+- `frontend/ui/Icon.jsx` (universal renderer contract), `frontend/ui/IconRenderer.web.jsx`, `frontend/ui/IconRenderer.native.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
 - `frontend/ui/ModalHost.web.jsx`, `frontend/ui/ModalHost.native.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted from `base.html`; the card hover buttons and the Add-to-lists buttons open it through `floppy-open-modal`; the Add-to-lists body is shared presentation in `frontend/ui/ListsFormView.jsx` through the `frontend/ui/ListsForm.web.jsx` adapter with `modal-forms.css`; the Track body opens the shared `TrackDialog` for every available tab, with Metadata/Collection/Episode plays still server-owned inside it, see POPUP-HOST in the register)
 - `src/app/card_events.py` (the floppyCardUpdate event sent by `media_save` and the score views so React cards refresh their status chip and rating)
 - `ScrollRow` and the shared `FilterChips`/`Tabs` helpers; Discover's live media-type tabs are mapped under DISCOVER
@@ -141,6 +141,8 @@ build artifacts. The Python composition tag is documented in the register.
 
 - `frontend/ui/RefreshNotice.jsx` (universal loading, stale, error and complete refresh notice)
 - `frontend/ui/HistoryFeed.jsx` (shared History consumer on web and native)
+- `frontend/ui/HistoryFeed.web.jsx` (browser day-card grid over the shared model)
+- `frontend/ui/HistoryFeed.native.jsx` (native placement for the shared feed)
 - `frontend/discover/DiscoverScreen.jsx` (shared Discover feedback consumer on web and native)
 - `src/static/js/cache-updater.js` (browser poller adapter: bounded retries/timeouts, offline/online recovery and exit cleanup)
 - `src/static/js/cache-updater.selfcheck.mjs`
@@ -346,7 +348,7 @@ These are the universal provider controls. `frontend/ui/controls.jsx` remains th
 
 - `frontend/ui/MediaTable.jsx` (universal table shell, header sorting, bounded row rendering, horizontal scrolling, selection and cell presentation)
 - `frontend/ui/ColumnMenu.jsx` (universal column order/visibility/reset menu with accessible move and toggle actions)
-- `frontend/ui/mountMediaTable.jsx` (browser table and column-menu adapter over the server projection; posts to the existing column preference endpoint and reads the existing `?table_json=1` page rows)
+- `frontend/ui/mountMediaTable.jsx` (web no-op: keeps the release server table and Alpine column controls; the shared RN table is native-only until the page composition can replace it without a fallback→mounted reflow)
 - `frontend/ui/ListResults.jsx` (native list grid/table, bulk bar and empty states; its table now renders `MediaTable` and `MediaColumnMenu`)
 - `native-proof/app/surfaces/TableSlot.jsx` (native Library table placement with realistic library rows)
 - `src/app/table_browser.py` (server row/cell projection and column-menu props shared by media, list and smart-list tables)
@@ -521,7 +523,11 @@ Server-owned detail composition retained behind the fallback:
 
 Shared React Native presentation, native placement and browser adapter:
 
-- `frontend/ui/DetailRelated.jsx` (related sections, media cards, show-more, Steam DLC links and empty/loading states)
+- `frontend/ui/DetailRelated.jsx`
+- `frontend/ui/DetailRelatedTheme.web.jsx`
+- `frontend/ui/DetailRelatedTheme.native.jsx`
+- `frontend/ui/DetailCompositionTheme.web.jsx`
+- `frontend/ui/DetailCompositionTheme.native.jsx` (related sections, media cards, show-more, Steam DLC links and empty/loading states)
 - `frontend/ui/DetailRelatedTheme.web.jsx` (theme tokens, card actions, rating writes and external store navigation only)
 - `frontend/ui/mountDetailRelated.jsx`
 - `native-proof/app/surfaces/DetailRelatedSlot.jsx` (native related media on the Detail screen)
@@ -800,6 +806,12 @@ The native read transport maps the bounded `/api/v1/history/` route.
 
 - `frontend/ui/HistoryFeed.jsx`
 - `frontend/ui/mountHistoryFeed.jsx`
+- `frontend/ui/SearchResultCard.jsx`
+- `frontend/ui/SearchResultCard.web.jsx`
+- `frontend/ui/SearchResultCard.native.jsx`
+- `frontend/errors/ErrorReportPanel.jsx`
+- `frontend/errors/ErrorReportPanel.web.jsx`
+- `frontend/errors/ErrorReportPanel.native.jsx`
 - `native-proof/app/screens/HistoryScreen.jsx`
 - `native-proof/app/data/historyTransport.js`
 - `native-proof/app/data/historyTransportCore.js`

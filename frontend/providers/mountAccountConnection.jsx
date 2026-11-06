@@ -40,5 +40,7 @@ export function mountAccountConnection(host, model) {
       returnTo: model.next,
       values: instanceId ? { instance_id: instanceId } : {},
     })}
+    onOpenLink={url => { if (url) window.location.assign(url); }}
+    onFollowUp={url => { if (url) window.location.assign(url); }}
   />);
 }

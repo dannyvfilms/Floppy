@@ -36,6 +36,7 @@ const usersPalette = {
   badgeText: 'var(--color-text-secondary)',
   badgeHover: 'var(--color-surface-hover)',
   fontFamily: 'inherit',
+  radius: 'var(--theme-radius, 18px)',
   focusStyle: {},
 };
 

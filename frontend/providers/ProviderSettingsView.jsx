@@ -42,20 +42,22 @@ function optionalLabel(field, labels) {
   return optional ? `${field.label} ${optional}` : field.label;
 }
 
-function credentialField(field, labels) {
+function credentialField(field, labels, personal = false) {
   return {
     name: field.name,
-    label: optionalLabel(field, labels),
+    label: personal ? field.label : optionalLabel(field, labels),
     type: field.type || (field.secret ? 'password' : 'text'),
     secret: field.secret,
     required: field.required,
-    placeholder: field.disabled ? undefined : field.fallback
-      ? translated(labels, 'Leave a field blank to keep the current fallback.')
-      : field.placeholder,
-    help: field.help
+    placeholder: personal
+      ? field.placeholder
+      : field.disabled ? undefined : field.fallback
+        ? translated(labels, 'Leave a field blank to keep the current fallback.')
+        : field.placeholder,
+    help: personal ? field.help : (field.help
       || (field.environment ? `${translated(labels, 'Environment', 'Environment')}: ${field.setting}` : undefined)
       || (field.usingDefault ? translated(labels, 'Bundled default', 'Bundled default') : undefined)
-      || (field.disabled ? translated(labels, 'Stored', 'Stored') : undefined),
+      || (field.disabled ? translated(labels, 'Stored', 'Stored') : undefined)),
     disabled: field.disabled,
     environment: field.environment,
     setting: field.setting,
@@ -94,8 +96,11 @@ export function connectionSettingsModel(credentials, pageLabels = {}) {
       || translated(labels, 'Read-only: explain instance credential access'),
     fields: (credentials.fields || []).map(field => credentialField(field, labels)),
     personalFields: credentials.personalFields?.length
-      ? credentials.personalFields.map(field => credentialField(field, labels))
+      ? credentials.personalFields.map(field => credentialField(field, labels, true))
       : undefined,
+    defaults: credentials.defaults || [],
+    setupHint: credentials.setupHint,
+    slug: credentials.slug,
     labels: compactLabels({
       save: translated(labels, 'Save'),
       saving: translated(labels, 'Saving…'),
@@ -120,6 +125,7 @@ export function connectionSettingsModel(credentials, pageLabels = {}) {
       your: translated(labels, 'Your'),
       environment: translated(labels, 'Environment'),
       bundled: translated(labels, 'Bundled default'),
+      defaultsTitle: translated(labels, 'Make this the default provider for'),
     }),
   };
 }
@@ -148,6 +154,7 @@ export function importSettingsModel(imports, pageLabels = {}) {
   const labels = combinedLabels(imports, pageLabels);
   const options = importOptionLabels(labels);
   return {
+    profile: imports.profile,
     title: imports.title || translated(labels, 'Import options'),
     description: imports.description || translated(labels, 'Import anime and manga from your AniList profile.'),
     configured: Boolean(imports.configured),
@@ -237,6 +244,8 @@ export function accountSettingsModel(account, pageLabels = {}) {
     statusLabel: account.statusLabel || translated(labels, statusKey),
     statusTone: account.statusTone || (connected ? 'success' : attention ? 'warning' : 'neutral'),
     submitLabel: account.submitLabel,
+    canConnect: Boolean(account.connectUrl),
+    followUp: account.followUp,
     message: account.message,
     messages: account.messages,
     badges: account.badges,
@@ -310,6 +319,8 @@ export function ProviderSettingsView({
   onSave,
   onClear,
   onOpenLink,
+  onSetDefault,
+  onFollowUp,
   onImport,
   onSavePreferences,
   onConfigure,
@@ -360,7 +371,7 @@ export function ProviderSettingsView({
               : null}
         </View>
         <ConnectionSettings model={card} onSave={onSave} onClear={onClear} showKeyLink={false}
-          onOpenLink={onOpenLink} palette={palette} buttonPalette={buttonPalette} />
+          onOpenLink={onOpenLink} onSetDefault={onSetDefault} palette={palette} buttonPalette={buttonPalette} />
       </React.Fragment>);
     }
     if (section === 'imports' && imports) {
@@ -378,7 +389,7 @@ export function ProviderSettingsView({
       rendered.push(<React.Fragment key="account">
         {heading ? <SectionHeading palette={colors}>{heading}</SectionHeading> : null}
         <AccountSettings model={card} onConnect={onConnect} onDisconnect={onDisconnect}
-          palette={palette} buttonPalette={buttonPalette} />
+          onFollowUp={followUp => (onFollowUp || onOpenLink)?.(followUp?.url)} palette={palette} buttonPalette={buttonPalette} />
       </React.Fragment>);
     }
     if (section === 'guides') {
@@ -401,6 +412,6 @@ export function ProviderSettingsView({
 
 const styles = StyleSheet.create({
   stack: { gap: 12 },
-  headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  heading: { fontSize: 18, fontWeight: '600', lineHeight: 26 },
+  headingRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  heading: { fontSize: 18, fontWeight: '600', lineHeight: 26, flexShrink: 1, minWidth: 0 },
 });

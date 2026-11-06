@@ -188,7 +188,7 @@ function DataTable({ columns, rows, widths, mobileWidths, mobileWidth, colors, t
 
   const table = <View role="table" testID={testID} style={[styles.table, {
     borderColor: colors.border, borderRadius: colors.radius,
-  }, narrow && { width: mobileWidth }]}>
+  }, narrow && { width: mobileWidth, flexShrink: 0 }]}>
     {header}
     {body}
   </View>;
@@ -521,7 +521,7 @@ const styles = StyleSheet.create({
   bannerText: { flexGrow: 1, flexShrink: 1, fontSize: 14, lineHeight: 20 },
   dismissText: { fontSize: 18, fontWeight: '600', paddingHorizontal: 4 },
   pressed: { opacity: 0.75 },
-  whatsNewBody: { gap: 24 },
+  whatsNewBody: { gap: 24, paddingBottom: 16 },
   release: { gap: 8 },
   releaseSummary: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   releaseChevron: { fontSize: 12, lineHeight: 16 },
@@ -533,7 +533,7 @@ const styles = StyleSheet.create({
   bulletDot: { fontSize: 14, lineHeight: 21 },
   bulletText: { fontSize: 14, lineHeight: 21, flexShrink: 1 },
   bulletTitle: { fontWeight: '500' },
-  installBody: { gap: 16 },
+  installBody: { gap: 16, paddingBottom: 20 },
   stepGrid: { gap: 16 },
   stepGridTwo: { flexDirection: 'row', alignItems: 'stretch' },
   stepCard: { flex: 1, gap: 8, borderWidth: 1, borderRadius: 6, padding: 16, minWidth: 0 },

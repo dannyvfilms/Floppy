@@ -96,12 +96,14 @@ function cardProps(props) {
 export function mountDiscoverRow(host, props) {
   const CardProps = cardProps(props);
   return mountRoot(host, <DiscoverRow row={props.row} palette={palette}
+    initialGridWidth={host?.clientWidth || 0}
     labels={props.labels} {...CardProps} />);
 }
 
 export function mountDiscoverHidden(host, props) {
   const CardProps = cardProps(props);
   return mountRoot(host, <DiscoverHidden entries={props.entries}
+    initialGridWidth={host?.clientWidth || 0}
     count={props.count} palette={palette} labels={props.labels} {...CardProps} />);
 }
 

@@ -5,6 +5,7 @@ const DEFAULT_PALETTE = {
   card: '#27272a',
   cardHovered: '#3f3f46',
   cardPressed: '#3f3f46',
+  radius: 8,
   border: '#3f3f46',
   text: '#fafafa',
   textMuted: '#a1a1aa',
@@ -123,9 +124,9 @@ export function CatalogCard({
       style={({ pressed, hovered, focused }) => [
         styles.card,
         {
-          backgroundColor: pressed ? colors.cardPressed : hovered ? colors.cardHovered : colors.card,
-          borderColor: focused ? colors.focus : colors.border,
           paddingRight: hasPin ? 44 : 16,
+          borderRadius: colors.radius,
+          backgroundColor: focused ? colors.border : (pressed ? colors.border : hovered ? colors.border : colors.surfaceStrong),
         },
       ]}
     >
@@ -174,8 +175,6 @@ const styles = StyleSheet.create({
     gap: 8,
     minWidth: 0,
     padding: 16,
-    borderWidth: 1,
-    borderRadius: 8,
   },
   heading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
   headingMain: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 },

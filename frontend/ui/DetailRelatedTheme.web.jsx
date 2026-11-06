@@ -67,6 +67,20 @@ const RELATED_CSS = `
     margin-top: 0.25rem;
     opacity: 1;
   }
+  [data-detail-related-root] .media-card .media-card-visual {
+    aspect-ratio: 2 / 3;
+  }
+  [data-detail-related-root] .media-card .media-card-poster {
+    height: auto !important;
+    aspect-ratio: auto !important;
+  }
+  [data-detail-related-root] .media-card .media-card-body {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+  }
   [data-detail-related-root] .media-card-title {
     display: block;
     overflow: hidden;
@@ -76,7 +90,7 @@ const RELATED_CSS = `
     line-clamp: unset;
   }
   #detail-secondary-content [data-detail-section="recommendations"] ul {
-    margin-top: -4px;
+    margin-top: 0;
     margin-bottom: 0;
   }
   #detail-secondary-content [data-detail-section="recommendations"] h3 {
@@ -134,6 +148,7 @@ function Adapter({ props }) {
       model={props.model}
       labels={props.labels}
       palette={palette}
+      web
       onOpen={model => { if (model?.href) window.location.assign(model.href); }}
       onOpenLink={href => { if (href) window.location.assign(href); }}
       onOpenExternal={url => { if (url) window.open(url, '_blank', 'noopener,noreferrer'); }}

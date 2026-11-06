@@ -5,7 +5,16 @@ import '../ui/media-card.css';
 import '../ui/global-search.css';
 import '../ui/sidebar.css';
 import '../ui/modal-forms.css';
+import '../ui/statistics-fallback.css';
+import '../ui/people-parity.css';
 import '../providers/provider-page.css';
+import React from 'react';
+import { setIconRenderer } from '../ui/Icon';
+import { Icon as WebIcon } from '../ui/IconRenderer.web.jsx';
+
+// Shared components render icons through this adapter, so universal files do
+// not import a browser-only SVG implementation.
+setIconRenderer(spec => React.createElement(WebIcon, { spec }));
 
 // One small loader on every page; React/RNW are fetched only when a card appears.
 const roots = new Map();

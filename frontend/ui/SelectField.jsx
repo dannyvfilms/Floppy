@@ -41,6 +41,8 @@ export function SelectField({
   placeholder = defaultLabels.placeholder,
   accessibilityLabel,
   palette = {},
+  filter = false,
+  leadingIcon,
   testID,
 }) {
   const [open, setOpen] = useState(false);
@@ -67,15 +69,17 @@ export function SelectField({
       onPress={() => setOpen(true)}
       style={({ pressed }) => [
         styles.trigger,
+        filter && styles.filterTrigger,
         {
-          backgroundColor: colors.surface,
+          backgroundColor: filter ? colors.surfaceStrong : colors.surface,
           borderColor: error ? colors.danger : colors.border,
           opacity: disabled ? 0.5 : 1,
         },
-        pressed && !disabled && { backgroundColor: colors.surfaceStrong },
+        pressed && !disabled && { backgroundColor: filter ? colors.surfaceMuted : colors.surfaceStrong },
       ]}>
-      <Text numberOfLines={1} style={[styles.triggerText, { color: colors.textSecondary }]}>{selected?.label ?? placeholder}</Text>
-      <Text style={[styles.chevron, { color: colors.textMuted }]}>▾</Text>
+      {filter && leadingIcon ? <View style={styles.filterIcon}>{leadingIcon}</View> : null}
+      <Text numberOfLines={1} style={[styles.triggerText, { color: filter ? colors.text : colors.textSecondary }]}>{selected?.label ?? placeholder}</Text>
+      <Text style={[styles.chevron, filter && styles.filterChevron, { color: colors.textMuted }]}>▾</Text>
     </Pressable>
     {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}
     <Modal transparent visible={open} animationType="fade" onRequestClose={() => setOpen(false)}>
@@ -130,6 +134,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
+  filterTrigger: { minHeight: 40, paddingLeft: 16, paddingRight: 40, borderRadius: 6 },
+  filterIcon: { width: 16, height: 16, alignItems: 'center', justifyContent: 'center' },
+  filterChevron: { position: 'absolute', right: 12 },
   triggerText: { flexShrink: 1, fontSize: 14 },
   chevron: { fontSize: 14 },
   error: { fontSize: 12, lineHeight: 17 },

@@ -60,7 +60,7 @@ function statusPalette(colors, tone) {
   if (tone === 'success') return { ...colors, badgeBorder: colors.success, badgeBackground: 'rgba(16, 185, 129, 0.15)', badgeText: '#a7f3d0' };
   if (tone === 'warning') return { ...colors, badgeBorder: colors.warning, badgeBackground: 'rgba(245, 158, 11, 0.15)', badgeText: '#fde68a' };
   if (tone === 'info') return { ...colors, badgeBorder: colors.accent, badgeBackground: 'rgba(99, 102, 241, 0.15)', badgeText: '#c7d2fe' };
-  return colors;
+  return { ...colors, badgeBackground: colors.surface };
 }
 
 function FieldControl({ field, value, onChange, colors }) {
@@ -90,6 +90,7 @@ export function AccountSettings({
   model,
   onConnect,
   onDisconnect,
+  onFollowUp,
   palette = {},
   buttonPalette = {},
 }) {
@@ -108,7 +109,8 @@ export function AccountSettings({
   const status = model.statusLabel || (connected ? labels.connected : attention ? labels.attention : labels.disconnectedStatus);
   const message = model.message || model.messages?.[connected ? 'connected' : attention ? 'attention' : 'disconnected']
     || (connected ? labels.connectedMessage : attention ? labels.attentionMessage : labels.disconnectedMessage);
-  const showForm = hasInstances || !connected || attention || editing;
+  const canConnect = model.canConnect !== false;
+  const showForm = canConnect && (hasInstances || !connected || attention || editing);
 
   function change(name, value) {
     setValues(current => ({ ...current, [name]: value }));
@@ -148,8 +150,9 @@ export function AccountSettings({
     }
   }
 
-  return <SettingsCard title={model.title || 'Account connection'} badge={status}
-    palette={statusPalette(colors, tone)}>
+  const cards = { ...colors, background: colors.surfaceStrong };
+  return <><SettingsCard title={model.title || 'Account connection'} badge={status}
+    palette={statusPalette(cards, tone)}>
     {model.description ? <Text style={[styles.copy, { color: colors.textSecondary }]}>{model.description}</Text> : null}
     {model.badges?.length ? <View style={styles.badges}>{model.badges.map(badge =>
       <Chip key={badge.label} label={badge.label} palette={statusPalette(colors, badge.tone)} />)}</View> : null}
@@ -181,7 +184,7 @@ export function AccountSettings({
       {editing ? <Button label={labels.cancel} tone="surface" width="full" disabled={Boolean(pending)}
         onPress={() => setEditing(false)} palette={buttons} /> : null}
     </View> : null}
-    {!showForm && !hasInstances && model.editable ? <View style={styles.actions}>
+    {!showForm && !hasInstances && model.editable && canConnect ? <View style={styles.actions}>
       <Button label={labels.edit} tone="surface" width="full" onPress={() => setEditing(true)} palette={buttons} />
     </View> : null}
     {model.saved && !hasInstances ? <View style={styles.actions}>
@@ -191,7 +194,13 @@ export function AccountSettings({
     </View> : null}
     {notice ? <Text accessibilityLiveRegion="polite" style={[styles.copy, { color: colors.success }]}>{notice}</Text> : null}
     {error ? <Text accessibilityRole="alert" style={[styles.copy, { color: colors.danger }]}>{error}</Text> : null}
-  </SettingsCard>;
+  </SettingsCard>
+  {model.followUp ? <SettingsCard title={model.followUp.title} palette={colors}>
+    <Text style={[styles.copy, { color: colors.textSecondary }]}>{model.followUp.description}</Text>
+    <Button label={model.followUp.label} width="full" onPress={() => onFollowUp?.(model.followUp)}
+      palette={buttons} />
+  </SettingsCard> : null}
+  </>;
 }
 
 const styles = StyleSheet.create({

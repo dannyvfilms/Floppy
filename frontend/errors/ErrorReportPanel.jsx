@@ -1,4 +1,5 @@
 import React from 'react';
+import { View } from 'react-native';
 import { SettingsCard } from '../settings/SettingsCard';
 import { CopyBlock } from '../ui/CopyBlock';
 
@@ -34,10 +35,10 @@ export function ErrorReportPanel({
   palette,
   testID,
 }) {
-  return <SettingsCard title={title} badge="Diagnostic" palette={cardPalette(palette)}>
-    <CopyBlock text={report} note={note} copyLabel={copyLabel} copiedLabel={copiedLabel}
-      onCopy={onCopy} palette={palette} testID={testID} />
-  </SettingsCard>;
+  return <View>
+    <SettingsCard title={title} badge="Diagnostic" palette={cardPalette(palette)}>
+      <CopyBlock text={report} note={note} copyLabel={copyLabel} copiedLabel={copiedLabel}
+        onCopy={onCopy} palette={palette} testID={testID} />
+    </SettingsCard>
+  </View>;
 }
-
-export const errorReportLabels = defaultLabels;

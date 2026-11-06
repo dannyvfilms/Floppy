@@ -215,7 +215,9 @@ function SummaryCard({
   icon, color, iconBackground, label, value, valueSuffix, caption, valueColor, info, palette, layout,
 }) {
   const [infoOpen, setInfoOpen] = useState(false);
-  return <View style={[styles.summaryCard, layout.card, {
+  return <View style={[styles.summaryCard, layout.card, layout.minHeight && {
+    minHeight: layout.minHeight,
+  }, {
     backgroundColor: palette.surface,
   }]}>
     <View style={[styles.summaryIcon, {
@@ -417,6 +419,7 @@ export function StatisticsSummaryCards({ model, labels, palette }) {
     valueSize: compact ? 16 : 20,
     suffixSize: width < 640 ? 14 : 18,
     captionSize: width < 640 ? 12 : 14,
+    minHeight: width >= 1024 ? 121 : undefined,
   };
 
   const hasTotal = numberValue(summary.total) > 0;

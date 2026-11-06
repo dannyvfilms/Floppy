@@ -41,17 +41,39 @@ function mergeLabels(labels) {
   return { ...FALLBACK_LABELS, ...(labels || {}) };
 }
 
+// Header labels must fit their column. A single long word cannot wrap, so a
+// column narrower than its widest word spills into the next one (the release
+// table sizes columns from their content and never does this).
+function labelWidth(label) {
+  const widest = String(label || '').split(/\s+/).reduce((longest, word) => (
+    Math.max(longest, [...word].reduce((sum, char) => (
+      sum + (/[\u2e80-\u9fff\uac00-\ud7af]/.test(char) ? 14 : 8)
+    ), 0))
+  ), 0);
+  return widest ? widest + 16 : 0;
+}
+
 function columnWidth(column) {
-  if (column.width) {
-    return column.width;
-  }
+  let width;
   if (column.key === 'image') {
-    return 56;
+    width = 56;
+  } else if (column.width) {
+    width = column.width;
+  } else if (column.key === 'title' || column.primary) {
+    width = 260;
+  } else {
+    width = 128;
   }
-  if (column.key === 'title' || column.primary) {
-    return 260;
-  }
-  return 128;
+  return Math.max(width, labelWidth(column.label));
+}
+
+// A fitted table gives a few content-heavy columns a larger share so their
+// values stay readable; everything else keeps its descriptor width.
+function fitWeight(column) {
+  if (column.key === 'genres') return 144;
+  if (column.key === 'status') return 96;
+  if (column.key === 'synopsis') return 104;
+  return columnWidth(column);
 }
 
 function cellText(cell) {
@@ -63,6 +85,15 @@ function cellText(cell) {
   }
   return '—';
 }
+
+// Only the date-shaped columns wrap in the server table; notes, synopsis and
+// authors truncate on one line.
+const WRAP_COLUMNS = new Set([
+  'release_date', 'next_episode_air_date', 'date_added', 'start_date',
+  'end_date', 'last_watched', 'album_release_date', 'album_date_added',
+  'artist_release_date', 'artist_date_added', 'artist_start_date',
+  'artist_end_date',
+]);
 
 function isSelected(selectedIds, id) {
   if (!selectedIds) {
@@ -86,6 +117,8 @@ export function MediaTableCell({
   palette,
   labels,
   onOpenLink,
+  wrap = false,
+  fit = false,
 }) {
   const colors = mergePalette(palette);
   const copy = mergeLabels(labels);
@@ -165,7 +198,7 @@ export function MediaTableCell({
 
   if (type === 'status') {
     return <View style={styles.centerCell}>
-      <Text style={[styles.statusText, { color: cell?.muted ? colors.textMuted : colors.textSecondary }]}>
+      <Text numberOfLines={fit ? 1 : 2} style={[styles.statusText, { color: cell?.muted ? colors.textMuted : colors.textSecondary }]}>
         {cellText(cell)}
       </Text>
       <Note text={note} color={noteColor} />
@@ -174,7 +207,7 @@ export function MediaTableCell({
 
   if (type === 'progress') {
     return <View style={styles.centerCell}>
-      <Text style={[styles.progressText, { color: colors.text }]}>
+      <Text numberOfLines={fit ? 1 : 2} style={[styles.progressText, { color: colors.text }]}>
         {cellText(cell)}{cell?.maxText ? <Text style={{ color: colors.textMuted }}>{cell.maxText}</Text> : null}
       </Text>
       <Note text={note} color={noteColor} />
@@ -182,7 +215,7 @@ export function MediaTableCell({
   }
 
   return <View style={[styles.cell, column.align === 'center' && styles.centerCell]}>
-    <Text numberOfLines={column.limitLines || 1}
+    <Text numberOfLines={wrap ? column.limitLines : (column.limitLines || 1)}
       style={[styles.cellText, { color: cell?.muted ? colors.textMuted : colors.textSecondary }]}>
       {cellText(cell)}
     </Text>
@@ -208,6 +241,7 @@ export function MediaTable({
   loadingMore = false,
   onLoadMore,
   caption,
+  fit = false,
 }) {
   const colors = mergePalette(palette);
   const copy = mergeLabels(labels);
@@ -217,76 +251,95 @@ export function MediaTable({
   }, [rowLimit]);
   const shown = useMemo(() => rows.slice(0, Math.max(limit, 1)), [rows, limit]);
   const bounded = shown.length < rows.length;
-  const totalWidth = selectMode ? 28 : 0;
-  const tableWidth = columns.reduce((sum, column) => sum + columnWidth(column), totalWidth);
+  const totalWidth = (selectMode ? 28 : 0)
+    + columns.reduce((sum, column) => sum + (fit ? fitWeight(column) : columnWidth(column)), 0);
+  // Fit mode mirrors the server table's auto layout: every visible column
+  // shares the container width in proportion to its content width. Labels and
+  // dates wrap and genre cells grow the row, so the table needs no horizontal
+  // scrolling at desktop. Narrow and native viewports keep the fixed table.
+  const sizing = (column) => {
+    if (!fit) return { width: columnWidth(column) };
+    const share = (fitWeight(column) / totalWidth) * 100;
+    return {
+      width: `${share}%`,
+      flexGrow: 0,
+      flexShrink: 0,
+      minWidth: 0,
+      overflow: 'hidden',
+      paddingHorizontal: 2,
+    };
+  };
+  const tableWidth = totalWidth;
+  const checkSize = fit ? { width: `${(28 / totalWidth) * 100}%`, flexGrow: 0, flexShrink: 0 } : null;
+
+  const wraps = (column) => fit && WRAP_COLUMNS.has(column.key);
 
   if (!rows.length) {
-    return <View style={[styles.empty, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    return <View style={[styles.empty, { backgroundColor: colors.surface }]}>
       <Text style={[styles.emptyText, { color: colors.textMuted }]}>{copy.empty}</Text>
     </View>;
   }
 
+  const table = <View accessibilityRole="table" accessibilityLabel={caption || copy.columns}
+    style={[styles.table, fit && styles.tableFit, { backgroundColor: colors.surface }]}>
+    <View accessibilityRole="row" style={[styles.row, styles.headerRow]}>
+      {selectMode ? <View style={[styles.checkColumn, checkSize]} /> : null}
+      {columns.map(column => {
+        const label = column.label || '';
+        return <View key={column.key} accessibilityRole="columnheader"
+          accessibilityLabel={label}
+          style={[styles.cell, styles.headerCell, sizing(column), {
+            alignItems: column.align === 'center' ? 'center' : 'flex-start',
+          }]}>
+          {onSort && column.sortable !== false && label
+            ? <Pressable accessibilityRole="button" accessibilityLabel={label}
+                accessibilityState={{ selected: sort === column.key }}
+                onPress={() => onSort(column.key)}
+                style={styles.sortPress}>
+                <Text numberOfLines={2} style={[styles.headerText, fit && styles.headerTextFit, { color: colors.textMuted }]}>{label}</Text>
+              </Pressable>
+            : <Text numberOfLines={2} style={[styles.headerText, fit && styles.headerTextFit, { color: colors.textMuted }]}>{label}</Text>}
+        </View>;
+      })}
+    </View>
+    {shown.map((row, rowIndex) => {
+      const rowId = row.id ?? rowIndex;
+      const rowContent = <>
+        {selectMode ? <Pressable accessibilityRole="checkbox"
+          accessibilityLabel={`${copy.selectItem} ${row.title || ''}`}
+          accessibilityState={{ checked: isSelected(selectedIds, rowId) }}
+          onPress={event => {
+            event?.stopPropagation?.();
+            onToggleItem?.(rowId);
+          }}
+          style={[styles.checkColumn, checkSize]}>
+          <Text style={[styles.checkText, { color: isSelected(selectedIds, rowId) ? colors.accent : colors.textMuted }]}>
+            {isSelected(selectedIds, rowId) ? '✓' : '○'}
+          </Text>
+        </Pressable> : null}
+        {columns.map(column => <View key={column.key} style={[styles.cell, sizing(column)]}>
+          <MediaTableCell cell={row.cells?.[column.key]} column={column} wrap={wraps(column)} fit={fit}
+            palette={colors} labels={copy} onOpenLink={onOpenLink} />
+        </View>)}
+      </>;
+      if (!onOpen) {
+        return <View key={rowId} accessibilityRole="row"
+          style={styles.row}>{rowContent}</View>;
+      }
+      return <Pressable key={rowId} accessibilityRole="button"
+        accessibilityLabel={row.title || ''}
+        onPress={() => onOpen(row)}
+        style={({ pressed }) => [styles.row, {
+          backgroundColor: pressed ? colors.surfaceStrong : 'transparent',
+        }]}>{rowContent}</Pressable>;
+    })}
+  </View>;
+
   return <View style={styles.tableRoot}>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}
+    {fit ? table : <ScrollView horizontal showsHorizontalScrollIndicator={false}
       contentContainerStyle={{ minWidth: tableWidth }}>
-      <View accessibilityRole="table" accessibilityLabel={caption || copy.columns}
-        style={[styles.table, { backgroundColor: colors.surface }]}>
-        <View accessibilityRole="row" style={[styles.row, styles.headerRow]}>
-          {selectMode ? <View style={styles.checkColumn} /> : null}
-          {columns.map(column => {
-            const label = column.label || '';
-            return <View key={column.key} accessibilityRole="columnheader"
-              accessibilityLabel={label}
-              style={[styles.cell, styles.headerCell, {
-                width: columnWidth(column),
-                alignItems: column.align === 'center' ? 'center' : 'flex-start',
-              }]}>
-              {onSort && column.sortable !== false && label
-                ? <Pressable accessibilityRole="button" accessibilityLabel={label}
-                    accessibilityState={{ selected: sort === column.key }}
-                    onPress={() => onSort(column.key)}
-                    style={styles.sortPress}>
-                    <Text numberOfLines={2} style={[styles.headerText, { color: colors.textMuted }]}>{label}</Text>
-                  </Pressable>
-                : <Text numberOfLines={2} style={[styles.headerText, { color: colors.textMuted }]}>{label}</Text>}
-            </View>;
-          })}
-        </View>
-        {shown.map((row, rowIndex) => {
-          const rowId = row.id ?? rowIndex;
-          const rowContent = <>
-            {selectMode ? <Pressable accessibilityRole="checkbox"
-              accessibilityLabel={`${copy.selectItem} ${row.title || ''}`}
-              accessibilityState={{ checked: isSelected(selectedIds, rowId) }}
-              onPress={event => {
-                event?.stopPropagation?.();
-                onToggleItem?.(rowId);
-              }}
-              style={styles.checkColumn}>
-              <Text style={[styles.checkText, { color: isSelected(selectedIds, rowId) ? colors.accent : colors.textMuted }]}>
-                {isSelected(selectedIds, rowId) ? '✓' : '○'}
-              </Text>
-            </Pressable> : null}
-            {columns.map(column => <View key={column.key} style={[styles.cell, {
-              width: columnWidth(column),
-            }]}>
-              <MediaTableCell cell={row.cells?.[column.key]} column={column}
-                palette={colors} labels={copy} onOpenLink={onOpenLink} />
-            </View>)}
-          </>;
-          if (!onOpen) {
-            return <View key={rowId} accessibilityRole="row"
-              style={styles.row}>{rowContent}</View>;
-          }
-          return <Pressable key={rowId} accessibilityRole="button"
-            accessibilityLabel={row.title || ''}
-            onPress={() => onOpen(row)}
-            style={({ pressed }) => [styles.row, {
-              backgroundColor: pressed ? colors.surfaceStrong : 'transparent',
-            }]}>{rowContent}</Pressable>;
-        })}
-      </View>
-    </ScrollView>
+      {table}
+    </ScrollView>}
     {bounded ? <Pressable accessibilityRole="button" accessibilityLabel={copy.showMore}
       onPress={() => setLimit(current => current + rowLimit)}
       style={[styles.showMore, { backgroundColor: colors.surfaceStrong }]}>
@@ -311,10 +364,12 @@ export function MediaTable({
 const styles = StyleSheet.create({
   tableRoot: { gap: 8 },
   table: { borderRadius: 8, overflow: 'hidden' },
+  tableFit: { width: '100%' },
   row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, minHeight: 88 },
   headerRow: { minHeight: 56 },
   headerCell: { justifyContent: 'center' },
-  headerText: { fontSize: 14, fontWeight: '600' },
+  headerText: { fontSize: 14, fontWeight: '600', overflowWrap: 'break-word' },
+  headerTextFit: { fontSize: 12 },
   sortPress: { paddingVertical: 4 },
   cell: { paddingHorizontal: 8, paddingVertical: 6, justifyContent: 'center' },
   centerCell: { alignItems: 'center', justifyContent: 'center' },
@@ -339,7 +394,7 @@ const styles = StyleSheet.create({
   repeatText: { fontSize: 10, fontWeight: '600' },
   checkColumn: { width: 28, alignItems: 'center', justifyContent: 'center' },
   checkText: { fontSize: 16, fontWeight: '700' },
-  empty: { borderWidth: 1, borderRadius: 8, padding: 32, alignItems: 'center' },
+  empty: { borderRadius: 8, padding: 32, alignItems: 'center' },
   emptyText: { fontSize: 13 },
   showMore: { alignSelf: 'center', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
   showMoreText: { fontSize: 12, fontWeight: '600' },

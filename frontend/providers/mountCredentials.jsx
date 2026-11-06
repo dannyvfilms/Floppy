@@ -50,6 +50,12 @@ export function mountCredentials(host, credentials) {
       returnTo: credentials.next,
       values: {},
     })}
+    onSetDefault={item => submitNativeForm({
+      action: item?.action,
+      csrf: credentials.csrf,
+      returnTo: credentials.next,
+      values: { source: credentials.slug },
+    })}
     onOpenLink={url => { if (url) window.open(url, '_blank', 'noopener'); }}
   />);
 }

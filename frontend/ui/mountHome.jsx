@@ -65,9 +65,9 @@ function assign(url) {
 const PHONE_RAIL = window.matchMedia('(max-width: 600px)');
 
 function useShelfCardWidth() {
-  const [width, setWidth] = useState(() => (PHONE_RAIL.matches ? 108 : 176));
+  const [width, setWidth] = useState(() => (PHONE_RAIL.matches ? 106 : 176));
   useEffect(() => {
-    const update = () => setWidth(PHONE_RAIL.matches ? 108 : 176);
+    const update = () => setWidth(PHONE_RAIL.matches ? 106 : 176);
     PHONE_RAIL.addEventListener('change', update);
     return () => PHONE_RAIL.removeEventListener('change', update);
   }, []);
@@ -148,7 +148,8 @@ function Adapter({ host, props }) {
   }
 
   function renderCard(item) {
-    return <MediaCard model={item.card} labels={props.labels} host={host} standalone variant="grid" />;
+    return <MediaCard model={item.card} labels={props.labels} host={host} standalone
+      variant={item.card?.shape === 'square' ? 'grid-square' : 'grid'} />;
   }
 
   function renderProgress(progress) {

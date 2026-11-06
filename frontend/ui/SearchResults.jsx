@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { MediaCard } from './MediaCard';
 import { ParentPicker } from './ParentPicker';
+import { SearchResultCard } from './SearchResultCard';
 import { Spinner } from './Spinner';
 
 const defaultPalette = {
@@ -70,16 +71,29 @@ function ResultCard({
   renderActionIcon,
 }) {
   const model = layout === 'row' ? { ...item, layout: 'row' } : item;
-  return <MediaCard
+  if (layout === 'row') {
+    return <MediaCard
+      model={model}
+      width={width}
+      labels={labels}
+      palette={palette}
+      onOpen={() => onOpenResult?.(item.href)}
+      onOpenLink={href => onOpenLink?.(href)}
+      onAction={onAction}
+      onReorder={onReorder}
+      onRate={score => onRate?.(item, score)}
+      renderRating={renderRating}
+      renderActionIcon={renderActionIcon}
+    />;
+  }
+  return <SearchResultCard
     model={model}
     width={width}
     labels={labels}
     palette={palette}
-    onOpen={() => onOpenResult?.(item.href)}
-    onOpenLink={href => onOpenLink?.(href)}
     onAction={onAction}
     onReorder={onReorder}
-    onRate={score => onRate?.(item, score)}
+    onRate={onRate}
     renderRating={renderRating}
     renderActionIcon={renderActionIcon}
   />;
@@ -99,12 +113,13 @@ function ResultGroup({
   renderActionIcon,
 }) {
   const { width } = useWindowDimensions();
+  const [gridWidth, setGridWidth] = useState(0);
   if (!items.length) return null;
   if (layout === 'list') {
     return <View style={styles.list}>
       {items.map((item, index) => <View
         key={item.cardKey || item.key || `${item.title}-${index}`}
-        style={[styles.listRow, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+        style={[styles.listRow, { backgroundColor: palette.surface }]}>
         <ResultCard
           item={item}
           layout="row"
@@ -122,9 +137,16 @@ function ResultGroup({
       </View>)}
     </View>;
   }
-  const columns = width >= 920 ? 5 : width >= 720 ? 4 : width >= 520 ? 3 : 2;
-  const cardWidth = Math.min(190, Math.max(128, (width - 40 - (columns - 1) * 12) / columns));
-  return <View style={styles.grid}>
+  // The release page lists cards in `repeat(auto-fill, minmax(150px, 1fr))`.
+  // Measuring the wrapper keeps the same column count at every sidebar width.
+  const available = gridWidth || Math.max(width - 40, 240);
+  const gap = 16;
+  const columns = Math.max(1, Math.floor((available + gap) / (150 + gap)));
+  const cardWidth = (available - gap * (columns - 1)) / columns;
+  return <View style={styles.grid} onLayout={event => {
+    const next = Math.round(event?.nativeEvent?.layout?.width || 0);
+    if (next && Math.abs(next - gridWidth) > 1) setGridWidth(next);
+  }}>
     {items.map((item, index) => <View key={item.cardKey || item.key || `${item.title}-${index}`}
       style={{ width: cardWidth }}>
       <ResultCard
@@ -149,21 +171,21 @@ function SectionHeading({ section, palette, labels, onSearchOnline }) {
   const hasMeta = section.totalLabel || section.shownLabel;
   return <View style={styles.sectionHeading}>
     <View style={styles.sectionHeadingText}>
-      <View style={styles.sectionTitleRow}>
-        <Text role="heading" aria-level={3} style={[styles.sectionTitle, { color: palette.textSecondary }]}>{section.title}</Text>
-        {hasMeta ? <Text style={[styles.meta, { color: palette.textMuted }]}>
-          {section.totalLabel || ''}{section.shownLabel ? ` ${section.shownLabel}` : ''}
-        </Text> : null}
-      </View>
+      <Text role="heading" aria-level={3} style={[styles.sectionTitle, { color: palette.textSecondary }]}>{section.title}</Text>
       {section.tip?.text ? <Text style={[styles.tip, { color: palette.textMuted }]}>{section.tip.text}</Text> : null}
     </View>
-    {section.searchOnline ? <Pressable
-      accessibilityRole="link"
-      accessibilityLabel={section.searchOnline.label || labels.searchOnline}
-      onPress={() => onSearchOnline?.(section.searchOnline)}
-      style={styles.linkButton}>
-      <Text style={[styles.link, { color: palette.link }]}>{section.searchOnline.label || labels.searchOnline}</Text>
-    </Pressable> : null}
+    <View style={styles.sectionMeta}>
+      {hasMeta ? <Text style={[styles.meta, { color: palette.textMuted }]}>
+        {section.totalLabel || ''}{section.shownLabel ? ` ${section.shownLabel}` : ''}
+      </Text> : null}
+      {section.searchOnline ? <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={section.searchOnline.label || labels.searchOnline}
+        onPress={() => onSearchOnline?.(section.searchOnline)}
+        style={styles.linkButton}>
+        <Text style={[styles.link, { color: palette.link }]}>{section.searchOnline.label || labels.searchOnline}</Text>
+      </Pressable> : null}
+    </View>
   </View>;
 }
 
@@ -346,8 +368,10 @@ export function SearchResults({
 }) {
   const palette = { ...defaultPalette, ...paletteOverrides };
   const copy = { ...defaultLabels, ...labels };
+  const { width } = useWindowDimensions();
+  const compact = width < 640;
   return <View style={styles.wrapper} testID={testID}>
-    <View style={styles.header}>
+    <View style={[styles.header, compact && styles.headerStack]}>
       <Text role="heading" aria-level={1} style={[styles.title, { color: palette.text }]}>{title || copy.title}</Text>
       <View style={styles.controls}>
         <ScrollPills scope={scope} palette={palette} onSelectScope={onSelectScope} />
@@ -397,47 +421,61 @@ export function SearchResults({
 }
 
 const styles = StyleSheet.create({
-  wrapper: { gap: 16 },
-  header: { gap: 12 },
-  title: { fontSize: 24, fontWeight: '700', lineHeight: 30 },
-  controls: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  wrapper: { gap: 0 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 32,
+  },
+  headerStack: { flexDirection: 'column', alignItems: 'flex-start', gap: 16 },
+  title: { fontSize: 24, fontWeight: '700', lineHeight: 32 },
+  controls: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 16 },
   scope: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, flexShrink: 1, minWidth: 0 },
-  scopeLabel: { fontSize: 13 },
+  scopeLabel: { fontSize: 14 },
   pills: { flexDirection: 'row', gap: 8, paddingRight: 4 },
   pill: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 },
   pillText: { fontSize: 13, fontWeight: '600' },
   layoutToggle: { flexDirection: 'row', overflow: 'hidden', borderWidth: 1, borderRadius: 6 },
   layoutButton: { width: 36, height: 34, alignItems: 'center', justifyContent: 'center' },
   layoutGlyph: { fontSize: 16, lineHeight: 18 },
-  note: { fontSize: 13, lineHeight: 18 },
-  sections: { gap: 28 },
-  section: { gap: 12 },
-  sectionHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
-  sectionHeadingText: { flex: 1, minWidth: 0, gap: 3 },
-  sectionTitleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 8 },
-  sectionTitle: { fontSize: 17, fontWeight: '600', lineHeight: 22 },
-  meta: { fontSize: 13, lineHeight: 18 },
-  tip: { fontSize: 13, lineHeight: 18 },
+  note: { fontSize: 14, lineHeight: 20, marginBottom: 24 },
+  sections: { gap: 32, paddingBottom: 32 },
+  section: { gap: 16 },
+  sectionHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 },
+  sectionHeadingText: { flex: 1, minWidth: 0, gap: 4 },
+  sectionMeta: { flexDirection: 'row', alignItems: 'center', gap: 16, flexShrink: 0 },
+  sectionTitle: { fontSize: 18, fontWeight: '600', lineHeight: 28 },
+  meta: { fontSize: 14, lineHeight: 20 },
+  tip: { fontSize: 14, lineHeight: 20 },
   linkButton: { paddingVertical: 2 },
-  link: { fontSize: 13, fontWeight: '600' },
-  subsection: { gap: 10 },
-  subsectionHeading: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
-  subsectionTitle: { fontSize: 15, fontWeight: '600', lineHeight: 20 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  list: { gap: 12 },
-  listRow: { borderWidth: 1, borderRadius: 10, overflow: 'hidden' },
+  link: { fontSize: 14, fontWeight: '400' },
+  subsection: { gap: 16 },
+  subsectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  subsectionTitle: { fontSize: 16, fontWeight: '600', lineHeight: 22 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  list: { gap: 16 },
+  listRow: { borderRadius: 8, overflow: 'hidden' },
   state: { alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 56, paddingHorizontal: 16 },
-  stateTitle: { fontSize: 19, fontWeight: '600' },
-  stateText: { fontSize: 13, textAlign: 'center' },
+  stateTitle: { fontSize: 20, fontWeight: '600' },
+  stateText: { fontSize: 14, textAlign: 'center' },
   retry: { borderRadius: 6, paddingHorizontal: 14, paddingVertical: 8, marginTop: 4 },
   retryText: { fontSize: 13, fontWeight: '600' },
-  empty: { alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 56, paddingHorizontal: 16, borderRadius: 10 },
-  emptyIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
-  emptyGlyph: { width: 30, height: 30 },
-  emptyGlyphRing: { width: 21, height: 21, borderRadius: 11, borderWidth: 2 },
-  emptyGlyphHandle: { position: 'absolute', right: 2, bottom: 3, width: 11, height: 2, transform: [{ rotate: '45deg' }] },
-  emptyTitle: { fontSize: 19, fontWeight: '600' },
-  emptyBody: { fontSize: 13, lineHeight: 19, textAlign: 'center', maxWidth: 440 },
+  empty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 0,
+    paddingVertical: 128,
+    paddingHorizontal: 16,
+    borderRadius: 18,
+  },
+  emptyIcon: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  emptyGlyph: { width: 32, height: 32 },
+  emptyGlyphRing: { width: 24, height: 24, borderRadius: 12, borderWidth: 2 },
+  emptyGlyphHandle: { position: 'absolute', right: 2, bottom: 3, width: 12, height: 2, transform: [{ rotate: '45deg' }] },
+  emptyTitle: { fontSize: 20, fontWeight: '600', lineHeight: 28, marginBottom: 8 },
+  emptyBody: { fontSize: 16, lineHeight: 24, textAlign: 'center', maxWidth: 448, marginBottom: 32 },
   pager: { alignItems: 'center', gap: 6, marginTop: 8 },
   pagerRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 6 },
   pageButton: { minWidth: 36, height: 36, borderRadius: 6, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },

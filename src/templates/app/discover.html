@@ -17,7 +17,7 @@
         <h1 class="text-3xl font-bold text-[var(--color-text)]">{% translate "Discover" %}</h1>
         <p class="mt-1 text-sm text-[var(--color-text-muted)]">{% translate "[UNDER CONSTRUCTION] Recommendations powered by global trends and your local activity." %}</p>
       </div>
-      <div x-cloak x-show="!isHiddenView()" class="flex items-center gap-2">
+      <div x-show="!isHiddenView()" class="flex items-center gap-2">
         {% translate "Show Fewer Rows" as media_i18n_37 %}{% translate "Show More Rows" as media_i18n_38 %}<button type="button"
                 @click="toggleShowMore()"
                 class="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 cursor-pointer"
@@ -38,14 +38,15 @@
     </div>
 
     {% translate "Media type" as media_type_label %}{% filter_chips_react discover_media_options media_type_label as discover_chips %}{{ discover_chips.props|json_script:discover_chips.id }}
-    <div data-filter-chips-root data-props-id="{{ discover_chips.id }}" class="flex flex-wrap gap-2">
+    <div data-filter-chips-root data-props-id="{{ discover_chips.id }}"
+         class="ui-scroll-row ui-filter-chips"
+         role="group"
+         aria-label="{{ media_type_label }}">
       {% for option in discover_media_options %}
         <button type="button"
                 @click="switchMedia('{{ option.value }}')"
-                class="rounded-full border px-3 py-1.5 text-sm transition-colors cursor-pointer"
-                :class="selectedMedia === '{{ option.value }}'
-                  ? 'border-indigo-500 bg-indigo-600 text-white'
-                  : 'border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]'">
+                class="ui-filter-chip"
+                :aria-pressed="selectedMedia === '{{ option.value }}'">
           {% translate option.label %}
         </button>
       {% endfor %}

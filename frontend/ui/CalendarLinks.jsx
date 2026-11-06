@@ -3,6 +3,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -124,6 +125,7 @@ export function CalendarLinks({
   historyBaseUrl = '',
   labels,
   palette,
+  embedded = false,
   onFeedChange,
   onSelectionChange,
   onCopyLink,
@@ -132,7 +134,7 @@ export function CalendarLinks({
   const { width } = useWindowDimensions();
   const colors = mergePalette(palette);
   const copy = mergeLabels(labels);
-  const styles = useMemo(() => createStyles(colors, width >= 768), [colors, width]);
+  const styles = useMemo(() => createStyles(colors, width >= 768, embedded), [colors, width, embedded]);
   const releaseTypeValues = useMemo(() => valuesFor(releaseMediaTypes), [releaseMediaTypes]);
   const historyTypeValues = useMemo(() => valuesFor(historyMediaTypes), [historyMediaTypes]);
   const statusValues = useMemo(() => valuesFor(statuses), [statuses]);
@@ -253,7 +255,7 @@ export function CalendarLinks({
 
     {feed === 'history' ? <View style={styles.section}>
       <Text style={styles.sectionTitle}>{copy.mediaTypes}</Text>
-      <Text style={styles.help}>{copy.historyMediaHelp}</Text>
+      <Text style={styles.sectionHelp}>{copy.historyMediaHelp}</Text>
       <View style={styles.options}>
         {historyMediaTypes.map((item) => <OptionSwitch
           key={item.value}
@@ -270,7 +272,7 @@ export function CalendarLinks({
     </View> : <View style={styles.releaseSections}>
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{copy.mediaTypes}</Text>
-        <Text style={styles.help}>{copy.releaseMediaHelp}</Text>
+        <Text style={styles.sectionHelp}>{copy.releaseMediaHelp}</Text>
         <View style={styles.options}>
           {releaseMediaTypes.map((item) => <OptionSwitch
             key={item.value}
@@ -288,7 +290,7 @@ export function CalendarLinks({
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{copy.status}</Text>
-        <Text style={styles.help}>{copy.statusHelp}</Text>
+        <Text style={styles.sectionHelp}>{copy.statusHelp}</Text>
         <View style={styles.options}>
           {statuses.map((item) => <OptionSwitch
             key={item.value}
@@ -304,7 +306,7 @@ export function CalendarLinks({
 
       {releaseTypes.length ? <View style={styles.section}>
         <Text style={styles.sectionTitle}>{copy.releaseDates}</Text>
-        <Text style={styles.help}>{copy.releaseDatesHelp}</Text>
+        <Text style={styles.sectionHelp}>{copy.releaseDatesHelp}</Text>
         <View style={styles.options}>
           {releaseTypes.map((item) => <OptionSwitch
             key={item.value}
@@ -320,13 +322,18 @@ export function CalendarLinks({
     </View>}
 
     <View style={styles.urlBlock}>
-      <View style={styles.urlHeader}>
+      {!embedded ? <View style={styles.urlHeader}>
         <Badge label={copy.ics} tone="outline" palette={badgePalette} />
         <Text style={styles.urlLabel}>{copy.subscription}</Text>
-      </View>
-      {exportUrl ? <Text selectable style={styles.urlText}>{exportUrl}</Text>
-        : <Text style={styles.help}>{copy.unavailable}</Text>}
-      <View style={styles.urlActions}>
+      </View> : null}
+      {exportUrl ? <TextInput
+        editable={false}
+        numberOfLines={1}
+        value={exportUrl}
+        accessibilityLabel={copy.subscription}
+        style={styles.urlText} />
+        : <Text style={styles.sectionHelp}>{copy.unavailable}</Text>}
+      {!embedded ? <View style={styles.urlActions}>
         {onCopyLink && exportUrl ? <Button
           label={copied ? copy.copied : copy.copy}
           tone={copied ? 'surface' : 'primary'}
@@ -335,7 +342,7 @@ export function CalendarLinks({
           label={copy.download}
           tone="surface"
           onPress={() => onDownload(exportUrl)} /> : null}
-      </View>
+      </View> : null}
     </View>
   </View>;
 }
@@ -354,19 +361,22 @@ function OptionSwitch({ label, checked, onPress, styles }) {
   </Pressable>;
 }
 
-function createStyles(colors, wide) {
+function createStyles(colors, wide, embedded) {
   const optionWidth = wide ? '32%' : '100%';
   return StyleSheet.create({
-    card: {
-      gap: 10,
+    card: embedded ? {
+      gap: 12,
+    } : {
+      gap: 12,
       padding: 16,
       borderRadius: 10,
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
     },
-    title: { color: colors.text, fontSize: 16, fontWeight: '600' },
-    help: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
+    title: { color: colors.text, fontSize: 16, fontWeight: '500', lineHeight: 24 },
+    help: { color: colors.textMuted, fontSize: 14, lineHeight: 20 },
+    sectionHelp: { color: colors.textMuted, fontSize: 12, lineHeight: 16 },
     tabs: {
       flexDirection: 'row',
       alignSelf: 'flex-start',
@@ -385,10 +395,10 @@ function createStyles(colors, wide) {
     tabSelected: { backgroundColor: colors.accentStrong },
     tabText: { color: colors.textSecondary, fontSize: 13, fontWeight: '600' },
     tabTextSelected: { color: colors.accentText },
-    releaseSections: { gap: 16 },
-    section: { gap: 6 },
-    sectionTitle: { color: colors.textSecondary, fontSize: 13, fontWeight: '600' },
-    options: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    releaseSections: { gap: 16, marginTop: 4 },
+    section: { gap: 12 },
+    sectionTitle: { color: colors.textSecondary, fontSize: 14, lineHeight: 20, fontWeight: '600' },
+    options: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
     option: {
       width: optionWidth,
       minHeight: 44,
@@ -420,6 +430,8 @@ function createStyles(colors, wide) {
     thumbChecked: { alignSelf: 'flex-end', backgroundColor: colors.accentText },
     urlBlock: {
       gap: 8,
+      marginTop: 4,
+      marginBottom: embedded ? 16 : 0,
       padding: 12,
       borderRadius: 8,
       backgroundColor: colors.surfaceDim,
@@ -428,8 +440,10 @@ function createStyles(colors, wide) {
     urlLabel: { color: colors.textSecondary, fontSize: 12, fontWeight: '600' },
     urlText: {
       color: colors.textSecondary,
-      fontSize: 12,
-      lineHeight: 17,
+      fontSize: 14,
+      lineHeight: 20,
+      paddingVertical: 8,
+      paddingHorizontal: 0,
       fontFamily: 'monospace',
     },
     urlActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

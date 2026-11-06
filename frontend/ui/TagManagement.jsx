@@ -3,9 +3,37 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { Badge } from './Badge';
 import { BulkActionDialog, BulkOptionRow } from './BulkActions';
 import { Button } from './Button';
+import { Icon } from './Icon';
 import { TextField } from './TextField';
 import { Chip } from '../settings/Chip';
 import { ConfirmDialog } from '../settings/ConfirmDialog';
+
+const TAG_ICON = {
+  viewBox: '0 0 24 24',
+  root: {
+    fill: 'none', stroke: 'currentColor', 'stroke-width': '2',
+    'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+  },
+  children: [
+    { tag: 'path', attrs: { d: 'M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z' }, children: [] },
+    { tag: 'circle', attrs: { cx: '7.5', cy: '7.5', r: '.5', fill: 'currentColor' }, children: [] },
+  ],
+};
+
+const TRASH_ICON = {
+  viewBox: '0 0 24 24',
+  root: {
+    fill: 'none', stroke: 'currentColor', 'stroke-width': '2',
+    'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+  },
+  children: [
+    { tag: 'path', attrs: { d: 'M3 6h18' }, children: [] },
+    { tag: 'path', attrs: { d: 'M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6' }, children: [] },
+    { tag: 'path', attrs: { d: 'M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2' }, children: [] },
+    { tag: 'line', attrs: { x1: '10', x2: '10', y1: '11', y2: '17' }, children: [] },
+    { tag: 'line', attrs: { x1: '14', x2: '14', y1: '11', y2: '17' }, children: [] },
+  ],
+};
 
 const FALLBACK_PALETTE = {
   background: '#18181b',
@@ -93,7 +121,15 @@ function TagTypeChips({ tag, palette, onOpenType }) {
     {types.map(type => <Chip
       key={type.key}
       label={`${type.label} (${type.count})`}
-      palette={chipPalette(colors, false)}
+      pill
+      palette={{
+        badgeBorder: 'transparent',
+        badgeBackground: colors.surface,
+        badgeText: colors.textSecondary,
+        badgeHover: colors.surfaceMuted,
+        interactiveStyle: { paddingVertical: 2, borderWidth: 0 },
+        focusStyle: {},
+      }}
       onPress={onOpenType ? () => onOpenType(tag, type) : undefined}
       accessibilityLabel={onOpenType ? `Open ${type.label} filtered by ${tag.name}` : undefined} />)}
   </View>;
@@ -101,17 +137,24 @@ function TagTypeChips({ tag, palette, onOpenType }) {
 
 function TagRow({ tag, palette, onDelete, onOpenType }) {
   const colors = mergePalette(palette);
-  return <View style={[styles.tagRow, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
+  return <View style={[styles.tagRow, { backgroundColor: colors.surfaceStrong }]}>
     <View style={styles.tagBody}>
       <View style={styles.nameRow}>
-        <Text style={[styles.hash, { color: colors.textMuted }]}>#</Text>
+        <Text style={{ color: colors.textMuted, fontSize: 16, lineHeight: 16 }}>
+          <Icon spec={TAG_ICON}>{'#'}</Icon>
+        </Text>
         <Text numberOfLines={1} style={[styles.tagName, { color: colors.text }]}>{tag.name}</Text>
         <Text style={[styles.count, { color: colors.textMuted }]}>{tag.count} {tag.count === 1 ? 'item' : 'items'}</Text>
       </View>
       <TagTypeChips tag={tag} palette={colors} onOpenType={onOpenType} />
     </View>
-    <Button label="Delete tag" tone="ghost-danger" size="sm"
-      accessibilityLabel={`Delete ${tag.name} tag`} onPress={() => onDelete?.(tag)} />
+    <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${tag.name} tag`}
+      onPress={() => onDelete?.(tag)}
+      style={({ hovered }) => [styles.deleteButton, hovered && { backgroundColor: 'rgba(247, 89, 89, 0.12)' }]}>
+      <Text style={{ color: colors.danger, fontSize: 16, lineHeight: 16 }}>
+        <Icon spec={TRASH_ICON}>{'×'}</Icon>
+      </Text>
+    </Pressable>
   </View>;
 }
 
@@ -120,6 +163,7 @@ export function TagIndex({
   sort = 'name',
   query = '',
   palette,
+  showControls = true,
   emptyText = 'No tags yet. Add tags to items from their detail page to see them here.',
   searchPlaceholder = 'Search tags...',
   onQueryChange,
@@ -129,23 +173,25 @@ export function TagIndex({
 }) {
   const colors = mergePalette(palette);
   return <View style={styles.stack}>
-    <TextField
-      label="Search tags"
-      labelHidden
-      value={query}
-      placeholder={searchPlaceholder}
-      accessibilityLabel="Search tags"
-      onChangeText={onQueryChange}
-      palette={colors} />
-    <View style={styles.chipRow}>
-      {SORTS.map(option => <Chip
-        key={option.value}
-        label={option.label}
-        palette={chipPalette(colors, sort === option.value)}
-        pressed={sort === option.value}
-        accessibilityLabel={`Sort tags by ${option.label}`}
-        onPress={() => onSortChange?.(option.value)} />)}
-    </View>
+    {showControls ? <>
+      <TextField
+        label="Search tags"
+        labelHidden
+        value={query}
+        placeholder={searchPlaceholder}
+        accessibilityLabel="Search tags"
+        onChangeText={onQueryChange}
+        palette={colors} />
+      <View style={styles.chipRow}>
+        {SORTS.map(option => <Chip
+          key={option.value}
+          label={option.label}
+          palette={chipPalette(colors, sort === option.value)}
+          pressed={sort === option.value}
+          accessibilityLabel={`Sort tags by ${option.label}`}
+          onPress={() => onSortChange?.(option.value)} />)}
+      </View>
+    </> : null}
     <View style={styles.indexList}>
       {tags.length
         ? tags.map(tag => <TagRow key={tag.id} tag={tag} palette={colors}
@@ -401,12 +447,13 @@ const styles = StyleSheet.create({
   stack: { gap: 12 },
   indexList: { gap: 8 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  tagRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, borderWidth: 1, borderRadius: 8, padding: 12 },
-  tagBody: { flex: 1, gap: 8 },
+  tagRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, borderRadius: 6, padding: 16 },
+  tagBody: { flex: 1, minWidth: 0, gap: 8 },
   nameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   hash: { fontSize: 14, fontWeight: '700' },
-  tagName: { flexShrink: 1, fontSize: 15, fontWeight: '600' },
+  tagName: { flexShrink: 1, fontSize: 16, fontWeight: '500', lineHeight: 24 },
   count: { fontSize: 12 },
+  deleteButton: { width: 32, height: 32, borderRadius: 6, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   muted: { fontSize: 12 },
   empty: { fontSize: 13, lineHeight: 19 },
   filterCard: { borderWidth: 1, borderRadius: 10, padding: 12, gap: 10 },

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { MediaCard } from './MediaCard';
 import { Rail } from './Rail';
 
@@ -152,6 +152,9 @@ export function HomeShelves({
 }) {
   const labels = mergeLabels(suppliedLabels);
   const palette = mergePalette(suppliedPalette);
+  // Release separates media-type groups by 1rem on phones and 2rem from `sm`.
+  const viewport = useWindowDimensions();
+  const sectionGap = viewport.width >= 640 ? 32 : 16;
   const [loadedRows, setLoadedRows] = useState({});
   const [rowPatches, setRowPatches] = useState({});
   const [pendingRows, setPendingRows] = useState({});
@@ -372,7 +375,7 @@ export function HomeShelves({
     </View>;
   }
 
-  return <View style={styles.stack} testID={testID}>
+  return <View style={[styles.stack, { gap: sectionGap }]} testID={testID}>
     {groups.map(group => <View key={group.mediaType} style={styles.group}>
       {sectionHeader(group)}
       {renderBuiltRows(group.rows)}
@@ -401,11 +404,11 @@ const styles = StyleSheet.create({
   groupHeader: { borderBottomWidth: 1, paddingBottom: 10 },
   groupTitle: { fontSize: 24, fontWeight: '600', lineHeight: 30 },
   skeleton: { gap: 8 },
-  skeletonTitle: { width: 160, height: 24, borderRadius: 4 },
+  skeletonTitle: { width: 160, height: 18, borderRadius: 4 },
   skeletonCards: { flexDirection: 'row', gap: 16, overflow: 'hidden' },
   cardStack: { gap: 0 },
   progress: { marginTop: 8, alignItems: 'center', justifyContent: 'center' },
-  skeletonCard: { width: 176, aspectRatio: 41 / 64, borderRadius: 8 },
+  skeletonCard: { width: 176, aspectRatio: 2 / 3, borderRadius: 8 },
   error: { borderWidth: 1, borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   errorText: { flex: 1, fontSize: 13 },
   retry: { borderRadius: 6, paddingHorizontal: 12, paddingVertical: 7 },
