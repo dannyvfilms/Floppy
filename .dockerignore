@@ -22,6 +22,7 @@ TODO.txt
 # Agent worktrees carry a full copy of the repo each, including their own
 # .venv and database dumps -- 700+ MB of build context that can never be part
 # of the image.
+.worktrees/
 .claude
 # Database dumps live beside the repo for local restores, never in the image.
 *.sql.gz
