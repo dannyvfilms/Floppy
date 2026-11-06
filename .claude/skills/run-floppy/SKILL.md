@@ -188,6 +188,29 @@ conclude the button is missing.
 **Look at the screenshots.** A 200 status proves the view didn't raise; it does
 not prove the page rendered. Read the PNGs.
 
+### Checking for fallback → React layout switches
+
+Floppy server-renders a fallback, then mounts a lazy React island after the
+first paint. A page can return 200 and look correct at rest while visibly
+jumping during hydration, so screenshotting only the settled page misses it.
+
+Check both states for any page you touch:
+
+1. Log in normally.
+2. Open a fresh context with `service_workers="block"` and abort `/static/ui/*`
+   to capture the server fallback (`/tmp/fallback.png`).
+3. Load normally and capture the mounted page (`/tmp/mounted.png`).
+4. Measure cold-load CLS with a `PerformanceObserver` on `layout-shift` entries
+   and record the shifting selectors/rects.
+
+If the fallback and mounted states differ, fix the layout (column sizing, row
+heights, card shape, control widths) — hiding the fallback or accepting a small
+CLS is not enough. Known example: the media-list table. The release fallback
+uses an auto-width `<table>` that fits all columns; the mounted universal table
+used fixed widths plus horizontal scrolling, so the whole table visibly
+re-laid-out after hydration. A 0.00x CLS does not guarantee this is fixed
+because the swap can happen inside one already-sized region.
+
 ## Getting a user to log in as
 
 Registration is off by default and the demo account only exists when
