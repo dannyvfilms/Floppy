@@ -1,9 +1,7 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Chip } from '../settings/Chip';
-import { SettingsCard } from '../settings/SettingsCard';
-import { Button } from '../ui/Button';
-import { CopyBlock } from '../ui/CopyBlock';
+import { ErrorReportPanel } from './ErrorReportPanel';
 
 const defaultLabels = {
   copy: 'Copy',
@@ -15,55 +13,19 @@ const defaultLabels = {
   checks: 'Quick checks',
   traceback: 'Traceback',
   reportNote: 'Copy this block when opening a ticket so the traceback and request details are preserved.',
+  bugPrefix: 'If you believe this was a bug, please',
+  bugLink: 'report the issue.',
 };
 
 const statusColors = {
-  400: '#f97316',
-  403: '#f87171',
-  404: '#6366f1',
-  500: '#ef4444',
+  400: '#ff6900',
+  403: '#ff6467',
+  404: '#615fff',
+  500: '#fb2c36',
 };
 
-function cardPalette(palette) {
-  return {
-    text: palette.text,
-    border: palette.border,
-    background: palette.surface,
-    badgeBorder: palette.border,
-    badgeBackground: palette.surfaceStrong,
-    badgeText: palette.textSecondary,
-    badgeHover: palette.surfaceMuted,
-    focusStyle: palette.focusStyle,
-  };
-}
-
-function actionPalette(palette) {
-  return {
-    primary: {
-      background: palette.accentStrong,
-      pressed: palette.accent,
-      hovered: palette.accent,
-      text: '#ffffff',
-      border: 'transparent',
-    },
-    surface: {
-      background: palette.surfaceStrong,
-      pressed: palette.surfaceMuted,
-      hovered: palette.surfaceMuted,
-      text: palette.text,
-      border: palette.border,
-    },
-    'ghost-danger': {
-      background: 'transparent',
-      pressed: 'rgba(220, 38, 38, 0.2)',
-      hovered: 'rgba(220, 38, 38, 0.2)',
-      text: palette.danger,
-      border: 'transparent',
-    },
-    radius: 6,
-    focusStyle: palette.focusStyle,
-  };
-}
+const PRIMARY_BACKGROUND = '#4f39f6';
+const PRIMARY_HOVER = '#432dd7';
 
 export function ErrorStatusSelector({ options, selected, onSelect, palette, accessibilityLabel }) {
   return <View accessibilityRole="group" accessibilityLabel={accessibilityLabel} style={styles.statusRow}>
@@ -83,20 +45,32 @@ export function ErrorStatusSelector({ options, selected, onSelect, palette, acce
   </View>;
 }
 
-export function ErrorReportPanel({
-  report,
-  title = defaultLabels.traceback,
-  note = defaultLabels.reportNote,
-  copyLabel = defaultLabels.copy,
-  copiedLabel = defaultLabels.copied,
-  onCopy,
-  palette,
-  testID,
-}) {
-  return <SettingsCard title={title} badge="Diagnostic" palette={cardPalette(palette)}>
-    <CopyBlock text={report} note={note} copyLabel={copyLabel} copiedLabel={copiedLabel}
-      onCopy={onCopy} palette={palette} testID={testID} />
-  </SettingsCard>;
+function ActionButton({ label, onPress, icon, tone = 'primary', wide, palette }) {
+  const primary = tone === 'primary';
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress}
+    style={({ pressed, hovered, focused }) => [styles.action, {
+      backgroundColor: primary
+        ? (pressed || hovered ? PRIMARY_HOVER : PRIMARY_BACKGROUND)
+        : (pressed || hovered ? palette.surfaceMuted : palette.surfaceStrong),
+      width: wide ? '100%' : undefined,
+    }, focused && palette.focusStyle]}>
+    {icon}
+    <Text style={[styles.actionLabel, { color: primary ? '#ffffff' : palette.text }]}>{label}</Text>
+  </Pressable>;
+}
+
+function SupportNote({ support, icon, palette }) {
+  return <View style={styles.supportCard}>
+    <Text style={styles.supportTitle}>{support.title}</Text>
+    <Text style={styles.supportBody}>{support.body}</Text>
+    {support.linkLabel && support.onOpen
+      ? <Pressable accessibilityRole="link" accessibilityLabel={support.linkLabel}
+        onPress={support.onOpen} style={styles.supportLink}>
+        <Text style={styles.supportLinkLabel}>{support.linkLabel}</Text>
+        {icon}
+      </Pressable>
+      : null}
+  </View>;
 }
 
 export function ErrorRecovery({
@@ -111,6 +85,7 @@ export function ErrorRecovery({
   reportNote = defaultLabels.reportNote,
   labels = {},
   palette,
+  icons = {},
   onCopyReport,
   onReportIssue,
   onRetry,
@@ -119,63 +94,96 @@ export function ErrorRecovery({
   statusSize = 56,
 }) {
   const copy = { ...defaultLabels, ...labels };
-  const buttons = actionPalette(palette);
-  const actions = [onRetry, onLogin, onGoHome].filter(Boolean).length;
+  const { width } = useWindowDimensions();
+  const stacked = width < 640;
 
-  return <View style={styles.stack}>
+  return <View style={styles.root}>
     <View style={styles.hero}>
       <Text style={[styles.status, {
         color: statusColors[status] || palette.accent,
         fontSize: statusSize,
-        lineHeight: statusSize + 4,
+        lineHeight: statusSize,
       }]}>{status}</Text>
       <Text role="heading" aria-level={2} style={[styles.heading, { color: palette.text }]}>{heading}</Text>
       <Text style={[styles.message, { color: palette.textMuted }]}>{message}</Text>
+
+      {checks?.length ? <View style={[styles.sectionCard, { backgroundColor: palette.surface }]}>
+        <Text style={[styles.sectionTitle, { color: palette.textSecondary }]}>{checksTitle}</Text>
+        {checks.map(check => <Text key={check} style={[styles.checkLine, { color: palette.textMuted }]}>• {check}</Text>)}
+      </View> : null}
+
+      {support ? <SupportNote support={support} icon={icons.support} palette={palette} /> : null}
+
+      <ErrorReportPanel report={report} title={reportTitle} note={reportNote}
+        copyLabel={copy.copy} copiedLabel={copy.copied}
+        copyIcon={icons.copy} copiedIcon={icons.copied}
+        onCopy={onCopyReport} palette={palette} testID="error-report" />
+
+      {onReportIssue ? <Text style={[styles.bugLine, { color: palette.textMuted }]}>
+        {copy.bugPrefix}{' '}
+        <Text style={{ color: palette.accent }} accessibilityRole="link" onPress={onReportIssue}>
+          {copy.bugLink}
+        </Text>
+      </Text> : null}
     </View>
 
-    {checks?.length ? <SettingsCard title={checksTitle} badge={String(status)} palette={cardPalette(palette)}>
-      <View style={styles.checkList}>
-        {checks.map(check => <View key={check} style={styles.checkRow}>
-          <View style={[styles.bullet, { backgroundColor: palette.textMuted }]} />
-          <Text style={[styles.checkText, { color: palette.textMuted }]}>{check}</Text>
-        </View>)}
-      </View>
-    </SettingsCard> : null}
-
-    {support ? <SettingsCard title={support.title} badge={support.badge || 'Provider note'} palette={cardPalette(palette)}>
-      <Text style={[styles.supportBody, { color: palette.textSecondary }]}>{support.body}</Text>
-      {support.linkLabel && support.onOpen ? <View style={styles.inlineAction}>
-        <Button label={support.linkLabel} tone="surface" onPress={support.onOpen} palette={buttons} />
-      </View> : null}
-    </SettingsCard> : null}
-
-    <ErrorReportPanel report={report} title={reportTitle} note={reportNote}
-      copyLabel={copy.copy} copiedLabel={copy.copied} onCopy={onCopyReport} palette={palette} />
-
-    {onReportIssue ? <View style={styles.inlineAction}>
-      <Button label={copy.reportIssue} tone="ghost-danger" onPress={onReportIssue} palette={buttons} />
-    </View> : null}
-
-    {actions ? <View style={styles.actionRow}>
-      {onRetry ? <Button label={copy.retry} onPress={onRetry} palette={buttons} /> : null}
-      {onLogin ? <Button label={copy.login} onPress={onLogin} palette={buttons} /> : null}
-      {onGoHome ? <Button label={copy.home} tone={actions > 1 ? 'surface' : 'primary'} onPress={onGoHome} palette={buttons} /> : null}
+    {onRetry || onLogin || onGoHome ? <View style={[styles.actionRow, stacked && styles.actionColumn]}>
+      {onRetry ? <ActionButton label={copy.retry} onPress={onRetry} icon={icons.retry}
+        wide={stacked} palette={palette} /> : null}
+      {onLogin ? <ActionButton label={copy.login} onPress={onLogin} icon={icons.login}
+        wide={stacked} palette={palette} /> : null}
+      {onGoHome ? <ActionButton label={copy.home} onPress={onGoHome}
+        tone={onRetry || onLogin ? 'surface' : 'primary'}
+        icon={(onRetry || onLogin ? icons.homeSurface : icons.homePrimary) || icons.home}
+        wide={stacked} palette={palette} /> : null}
     </View> : null}
   </View>;
 }
 
 const styles = StyleSheet.create({
-  stack: { gap: 16 },
+  root: { width: '100%', minWidth: 0, textAlign: 'center' },
+  hero: { width: '100%', minWidth: 0 },
   statusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  hero: { gap: 8, alignItems: 'center', paddingVertical: 8 },
-  status: { fontSize: 56, fontWeight: '800', lineHeight: 60 },
-  heading: { fontSize: 24, fontWeight: '700', textAlign: 'center' },
-  message: { fontSize: 14, lineHeight: 21, textAlign: 'center' },
-  checkList: { gap: 8 },
-  checkRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  bullet: { width: 5, height: 5, borderRadius: 3, marginTop: 7 },
-  checkText: { flex: 1, fontSize: 13, lineHeight: 19 },
-  supportBody: { fontSize: 13, lineHeight: 20 },
-  inlineAction: { flexDirection: 'row' },
-  actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  status: { fontWeight: '700', textAlign: 'center' },
+  heading: { marginTop: 16, marginBottom: 8, fontSize: 30, lineHeight: 36, fontWeight: '700', textAlign: 'center' },
+  message: { marginBottom: 16, fontSize: 16, lineHeight: 24, textAlign: 'center' },
+  sectionCard: { width: '100%', marginBottom: 16, padding: 16, borderRadius: 12, textAlign: 'left' },
+  sectionTitle: { marginBottom: 8, fontSize: 16, lineHeight: 24, fontWeight: '500' },
+  checkLine: { fontSize: 14, lineHeight: 20 },
+  supportCard: {
+    width: '100%',
+    marginBottom: 16,
+    padding: 16,
+    textAlign: 'left',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(251, 191, 36, 0.3)',
+    backgroundColor: 'rgba(251, 191, 36, 0.1)',
+  },
+  supportTitle: {
+    margin: 0,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+    letterSpacing: 2.16,
+    textTransform: 'uppercase',
+    color: 'rgba(253, 230, 138, 0.8)',
+  },
+  supportBody: { marginTop: 8, fontSize: 14, lineHeight: 24, color: '#fffbeb' },
+  supportLink: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
+  supportLinkLabel: { fontSize: 14, lineHeight: 20, fontWeight: '500', color: '#fde68a' },
+  bugLine: { marginBottom: 24, fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  actionRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 16 },
+  actionColumn: { flexDirection: 'column', alignItems: 'stretch' },
+  action: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    borderWidth: 0,
+  },
+  actionLabel: { fontSize: 16, lineHeight: 24, fontWeight: '400' },
 });

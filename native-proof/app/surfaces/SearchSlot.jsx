@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { GlobalSearch } from '../../../frontend/ui/GlobalSearch';
+import { GlobalSearch } from '../../../frontend/ui/GlobalSearch.jsx';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import { palette, radius } from '../theme';
 

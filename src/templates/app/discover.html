@@ -52,7 +52,7 @@
     </div>
 
     {% discover_feedback_react as discover_feedback %}
-    <div data-discover-feedback-root data-props-id="{{ discover_feedback.id }}">
+    <div data-discover-feedback-root data-props-id="{{ discover_feedback.id }}" class="hidden">
       {{ discover_feedback.props|json_script:discover_feedback.id }}
       <div x-cloak
            x-show="cacheRefreshing"

@@ -19,14 +19,19 @@ function resolveColor(value, fallback) {
   return `rgba(${r}, ${g}, ${b}, ${a / 255})`;
 }
 
-function readPalette() {
+function readPalette(host) {
   const css = getComputedStyle(document.documentElement);
   const token = (name, fallback) => resolveColor(css.getPropertyValue(name).trim(), fallback);
   const rem = Number.parseFloat(css.fontSize) || 16;
   const mobile = window.matchMedia('(max-width: 639.98px)').matches;
+  const cardShell = host?.closest?.('.detail-score-card-shell');
+  const cardHeight = Number.parseFloat(
+    cardShell ? getComputedStyle(cardShell).getPropertyValue('--detail-card-height') : '',
+  ) || undefined;
   return {
     lit: '#facc15',
     unlit: '#4b5563',
+    cardUnlit: token('--color-text-muted', '#a1a1aa'),
     muted: token('--color-text-muted', '#a1a1aa'),
     text: token('--color-text', '#fafafa'),
     textSecondary: token('--color-text-secondary', '#d4d4d8'),
@@ -40,6 +45,7 @@ function readPalette() {
     starBadgeBorder: 'rgba(251, 191, 36, 0.28)',
     cardBackground: 'rgba(251, 191, 36, 0.10)',
     cardBorder: 'rgba(251, 191, 36, 0.26)',
+    cardHeight,
     compactUnratedBorder: 'rgba(156, 163, 175, 0.28)',
     compactUnratedBackground: 'rgba(107, 114, 128, 0.14)',
     compactUnratedHoverBackground: 'rgba(107, 114, 128, 0.20)',
@@ -96,7 +102,7 @@ function Adapter({ host, props }) {
   const [value, setValue] = useState(props.value ?? null);
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState(null);
-  const [palette, setPalette] = useState(readPalette);
+  const [palette, setPalette] = useState(() => readPalette(host));
   const [layout, setLayout] = useState(() => props.layout || readLayout(host));
   const wrapper = host.parentElement;
 
@@ -109,7 +115,7 @@ function Adapter({ host, props }) {
   }, [wrapper]);
 
   useEffect(() => {
-    const update = () => { setPalette(readPalette()); setLayout(props.layout || readLayout(host)); };
+    const update = () => { setPalette(readPalette(host)); setLayout(props.layout || readLayout(host)); };
     update();
     const observer = new MutationObserver(update);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] });

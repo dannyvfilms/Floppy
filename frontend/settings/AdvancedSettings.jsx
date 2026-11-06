@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View,
+} from 'react-native';
 import { Button } from '../ui/Button';
-import { TextField } from '../ui/TextField';
-import { ToggleChip } from '../ui/ToggleChip';
+import { Icon } from '../ui/Icon';
 import { ConfirmDialog } from './ConfirmDialog';
-import { SettingsCard } from './SettingsCard';
 
 const defaultPalette = {
   background: '#18181b',
+  pageBackground: '#18181b',
   surface: '#27272a',
   surfaceStrong: '#3f3f46',
   surfaceMuted: '#52525b',
@@ -17,6 +18,7 @@ const defaultPalette = {
   textMuted: '#a1a1aa',
   accent: '#6366f1',
   accentStrong: '#4f46e5',
+  link: '#818cf8',
   success: '#10b981',
   warning: '#f59e0b',
   danger: '#ef4444',
@@ -69,7 +71,7 @@ const defaultCacheRows = [
   { key: 'search', title: 'Search Cache', description: 'Provider search results — shared instance-wide' },
   { key: 'history', title: 'History Cache', description: 'Your cached History page — just you' },
   { key: 'statistics', title: 'Statistics Cache', description: 'Your cached Statistics page — just you' },
-  { key: 'discover', title: 'Discover Cache', description: 'Your recommendation rows and taste profile — just you' },
+  { key: 'discover', title: 'Discover Cache', description: 'Your recommendation rows & taste profile — just you' },
 ];
 
 const defaultCacheConfirms = Object.fromEntries(
@@ -174,19 +176,51 @@ function mergeLabels(defaults, labels) {
   return { ...defaults, ...(labels || {}) };
 }
 
-function StatusLine({ busy, error, success, palette, working = 'Working…' }) {
+function useColors(palette) {
+  return { ...defaultPalette, ...palette, link: palette?.link || palette?.accent || defaultPalette.link };
+}
+
+function Panel({ colors, headingIcon, title, children, titleSize = 16, style }) {
+  return <View style={[styles.panel, {
+    backgroundColor: colors.surfaceStrong, borderRadius: colors.radius,
+  }, style]}>
+    <View style={[styles.panelHeading, titleSize === 20 && styles.panelHeadingLarge]}>
+      {headingIcon ? <View style={[styles.panelIcon, { fontSize: titleSize === 20 ? 24 : 20, color: colors.link }]}>
+        <Icon spec={headingIcon} />
+      </View> : null}
+      <Text role="heading" aria-level={titleSize === 20 ? 2 : 3}
+        style={[styles.panelTitle, { color: colors.text, fontSize: titleSize, lineHeight: titleSize === 20 ? 28 : 24 }]}>
+        {title}
+      </Text>
+    </View>
+    {children}
+  </View>;
+}
+
+function StatusLine({ busy, error, success, colors, working = 'Working…' }) {
   if (!busy && !error && !success) return null;
-  const color = error ? palette.danger : success ? palette.success : palette.textMuted;
+  const color = error ? colors.danger : success ? colors.success : colors.textMuted;
   return <Text accessibilityRole={error ? 'alert' : undefined} accessibilityLiveRegion="polite"
     style={[styles.status, { color }]}>{error || success || (typeof busy === 'string' ? busy : working)}</Text>;
 }
 
-function Stat({ label, value, help, palette }) {
-  return <View style={[styles.stat, { backgroundColor: palette.surfaceStrong, borderColor: palette.border }]}>
-    <Text style={[styles.statLabel, { color: palette.textMuted }]}>{label}</Text>
-    <Text style={[styles.statValue, { color: palette.text }]}>{value}</Text>
-    {help ? <Text style={[styles.statHelp, { color: palette.textMuted }]}>{help}</Text> : null}
+function Stat({ label, value, help, colors, compact = false }) {
+  return <View style={[styles.stat, compact && styles.statCompact, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: colors.radius }]}>
+    <Text style={[styles.statLabel, { color: colors.textMuted }]}>{label}</Text>
+    <Text style={[styles.statValue, compact && styles.statValueCompact, { color: colors.text }]}>{value}</Text>
+    {help ? <Text style={[styles.statHelp, { color: colors.textMuted }]}>{help}</Text> : null}
   </View>;
+}
+
+function DangerTintButton({ label, onPress, colors, icon }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel={label}
+    onPress={onPress} style={({ pressed }) => [styles.dangerTint, {
+      backgroundColor: 'rgba(220, 38, 38, 0.1)', borderColor: 'rgba(220, 38, 38, 0.4)',
+      borderRadius: colors.radius,
+    }, pressed && { backgroundColor: 'rgba(220, 38, 38, 0.2)' }]}>
+    {icon ? <View style={[styles.tinyIcon, { fontSize: 16, color: colors.danger }]}><Icon spec={icon} /></View> : null}
+    <Text style={[styles.dangerTintText, { color: colors.danger }]}>{label}</Text>
+  </Pressable>;
 }
 
 export function LogsCard({
@@ -202,25 +236,28 @@ export function LogsCard({
   palette = {},
   buttonPalette = {},
   labels = {},
+  icons = {},
 }) {
-  const colors = { ...defaultPalette, ...palette };
+  const colors = useColors(palette);
   const buttons = { ...defaultButtonPalette, ...buttonPalette };
   const copy = mergeLabels(defaultLabels.logs, labels);
-  return <SettingsCard title={copy.title} palette={colors}>
-    <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.intro}</Text>
-    {logsSince || lastUncleanExit ? <Text style={[styles.meta, { color: colors.textMuted }]}>
-      {logsSince ? format(copy.covers, { when: logsSince }) : ''}
-      {lastUncleanExit ? `${logsSince ? ' ' : ''}${format(copy.lastUnclean, { when: lastUncleanExit })}` : ''}
-    </Text> : null}
+  return <Panel colors={colors} headingIcon={icons.logs} title={copy.title}>
+    <Text style={[styles.copy, styles.logsIntro, { color: colors.textMuted }]}>{copy.intro}
+      {logsSince || lastUncleanExit ? <>
+        {'\n'}
+        {logsSince ? format(copy.covers, { when: logsSince }) : ''}
+        {lastUncleanExit ? `${logsSince ? ' ' : ''}${format(copy.lastUnclean, { when: lastUncleanExit })}` : ''}
+      </> : null}
+    </Text>
     <View style={styles.actions}>
       {isSuperuser ? <Button label={copy.download} busy={busy}
-        onPress={onDownloadLogs} palette={buttons} /> : null}
+        onPress={onDownloadLogs} palette={buttons} width="auto" /> : null}
       <Button label={copy.bugReport} tone="surface" disabled={!onOpenUrl}
-        onPress={() => onOpenUrl?.(bugReportUrl)} palette={buttons} />
+        onPress={() => onOpenUrl?.(bugReportUrl)} palette={buttons} width="auto" />
     </View>
-    <StatusLine busy={busy} error={error} success={success} palette={colors}
+    <StatusLine busy={busy} error={error} success={success} colors={colors}
       working={defaultLabels.working} />
-  </SettingsCard>;
+  </Panel>;
 }
 
 export function ImageCacheCard({
@@ -236,13 +273,20 @@ export function ImageCacheCard({
   palette = {},
   buttonPalette = {},
   labels = {},
+  icons = {},
 }) {
-  const colors = { ...defaultPalette, ...palette };
+  const colors = useColors(palette);
   const buttons = { ...defaultButtonPalette, ...buttonPalette };
   const copy = mergeLabels(defaultLabels.imageCache, labels);
+  const { width } = useWindowDimensions();
   const [draft, setDraft] = useState(Boolean(enabled));
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState('');
+  const twoColumns = width >= 640;
+
+  useEffect(() => {
+    setDraft(Boolean(enabled));
+  }, [enabled]);
 
   async function clear() {
     setConfirmError('');
@@ -254,22 +298,27 @@ export function ImageCacheCard({
     }
   }
 
-  return <SettingsCard title={copy.title} palette={colors}>
+  return <Panel colors={colors} headingIcon={icons.image} title={copy.title}>
     <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.intro}</Text>
-    <View style={styles.statGrid}>
-      <Stat label={copy.cachedImages} value={String(count)} palette={colors} />
-      <Stat label={copy.diskUsage} value={size} palette={colors} />
+    <View style={[styles.statGrid, twoColumns ? styles.statGridTwo : styles.statGridOne]}>
+      <Stat label={copy.cachedImages} value={String(count)} colors={colors} compact />
+      <Stat label={copy.diskUsage} value={size} colors={colors} compact />
     </View>
     <Text style={[styles.note, { color: colors.textMuted }]}>{copy.hosts}</Text>
     {isSuperuser ? <>
-      <ToggleChip label={copy.toggleLabel} value={draft}
-        offLabel={copy.disabled} onLabel={copy.enabled} palette={colors}
-        onChange={setDraft} />
       <View style={styles.actions}>
+        <Pressable accessibilityRole="checkbox" accessibilityLabel={copy.toggleLabel}
+          accessibilityState={{ checked: draft }} onPress={() => setDraft(value => !value)}
+          style={({ pressed }) => [styles.checkRow, pressed && styles.pressed]}>
+          <View style={[styles.checkbox, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+            {draft ? <Text style={[styles.checkboxMark, { color: colors.accentStrong }]}>✓</Text> : null}
+          </View>
+          <Text style={[styles.copy, { color: colors.textSecondary }]}>{copy.toggleLabel}</Text>
+        </Pressable>
         <Button label={copy.save} busy={busy} disabled={draft === Boolean(enabled)}
-          onPress={() => onSave?.(draft)} palette={buttons} />
-        <Button label={copy.clear} tone="ghost-danger"
-          onPress={() => { setConfirmError(''); setConfirming(true); }} palette={buttons} />
+          onPress={() => onSave?.(draft)} palette={buttons} width="auto" />
+        <DangerTintButton label={copy.clear} colors={colors}
+          onPress={() => { setConfirmError(''); setConfirming(true); }} />
       </View>
       <ConfirmDialog visible={confirming} title={copy.confirmTitle}
         message={copy.confirmMessage}
@@ -281,22 +330,24 @@ export function ImageCacheCard({
       <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.superuserOnly}</Text>
       <Text style={[styles.copy, { color: colors.text }]}>{copy.status} <Text style={styles.strong}>{enabled ? copy.enabled : copy.disabled}</Text></Text>
     </>}
-    <StatusLine busy={busy} error={error} success={success} palette={colors}
+    <StatusLine busy={busy} error={error} success={success} colors={colors}
       working={defaultLabels.working} />
-  </SettingsCard>;
+  </Panel>;
 }
 
-function CacheRow({ title, description, clearLabel, onPress, palette }) {
+function CacheRow({ title, description, onPress, colors, icon }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={title}
     accessibilityHint={description} onPress={onPress}
     style={({ pressed }) => [styles.cacheRow, {
-      backgroundColor: palette.surfaceStrong, borderColor: palette.border,
-    }, pressed && { opacity: 0.75 }]}>
+      backgroundColor: colors.surface, borderColor: colors.border, borderRadius: colors.radius,
+    }, pressed && { borderColor: colors.accent }]}>
     <View style={styles.cacheCopy}>
-      <Text style={[styles.rowTitle, { color: palette.text }]}>{title}</Text>
-      <Text style={[styles.rowCopy, { color: palette.textMuted }]}>{description}</Text>
+      <Text style={[styles.rowTitle, { color: colors.text }]}>{title}</Text>
+      <Text style={[styles.rowCopy, { color: colors.textMuted }]}>{description}</Text>
     </View>
-    <Text style={[styles.rowAction, { color: palette.textMuted }]}>{clearLabel}</Text>
+    {icon ? <View style={[styles.rowIcon, { fontSize: 16, color: colors.textMuted }]}>
+      <Icon spec={icon} />
+    </View> : null}
   </Pressable>;
 }
 
@@ -308,10 +359,13 @@ export function CacheManagementCard({
   palette = {},
   buttonPalette = {},
   labels = {},
+  icons = {},
 }) {
-  const colors = { ...defaultPalette, ...palette };
+  const colors = useColors(palette);
   const buttons = { ...defaultButtonPalette, ...buttonPalette };
   const copy = mergeLabels(defaultLabels.cache, labels);
+  const { width } = useWindowDimensions();
+  const twoColumns = width >= 640;
   const [pending, setPending] = useState('');
   const [confirmError, setConfirmError] = useState('');
   const confirmCopy = (copy.confirms || defaultLabels.cache.confirms)[pending]
@@ -327,24 +381,27 @@ export function CacheManagementCard({
     }
   }
 
-  return <SettingsCard title={copy.title} palette={colors}>
+  return <Panel colors={colors} headingIcon={icons.trash} title={copy.title}>
     <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.intro}</Text>
-    <View style={styles.column}>
-      {(copy.rows || defaultLabels.cache.rows).map(row => <CacheRow key={row.key}
-        title={row.title} description={row.description} clearLabel={copy.clear}
-        onPress={() => { setConfirmError(''); setPending(row.key); }} palette={colors} />)}
+    <View style={[styles.cacheGrid, twoColumns && styles.cacheGridTwo]}>
+      {(copy.rows || defaultLabels.cache.rows).map(row => <View key={row.key}
+        style={twoColumns ? styles.cacheCell : null}>
+        <CacheRow title={row.title} description={row.description}
+          icon={icons.trash}
+          onPress={() => { setConfirmError(''); setPending(row.key); }} colors={colors} />
+      </View>)}
     </View>
     <View style={[styles.divider, { borderColor: colors.border }]}>
-      <Button label={copy.clearAll} tone="danger-solid"
-        onPress={() => { setConfirmError(''); setPending('all'); }} palette={buttons} />
+      <DangerTintButton label={copy.clearAll} colors={colors} icon={icons.warning}
+        onPress={() => { setConfirmError(''); setPending('all'); }} />
     </View>
     <StatusLine busy={busyKind ? format(copy.clearing, { kind: busyKind }) : ''}
-      error={error} success={success} palette={colors} working={defaultLabels.working} />
+      error={error} success={success} colors={colors} working={defaultLabels.working} />
     <ConfirmDialog visible={Boolean(pending)} title={confirmCopy.title} message={confirmCopy.message}
       warning={confirmCopy.warning} confirmLabel={confirmCopy.confirmLabel}
       busy={Boolean(busyKind)} error={confirmError} palette={colors} buttonPalette={buttons}
       onCancel={() => setPending('')} onConfirm={confirm} />
-  </SettingsCard>;
+  </Panel>;
 }
 
 export function ServerPortCard({
@@ -369,13 +426,15 @@ export function ServerPortCard({
   palette = {},
   buttonPalette = {},
   labels = {},
+  icons = {},
 }) {
-  const colors = { ...defaultPalette, ...palette };
+  const colors = useColors(palette);
   const buttons = { ...defaultButtonPalette, ...buttonPalette };
   const copy = mergeLabels(defaultLabels.serverPort, labels);
-  const initial = savedPort ?? configuredPort ?? defaultPort;
-  const [port, setPort] = useState(String(initial));
+  const { width } = useWindowDimensions();
+  const [port, setPort] = useState(String(savedPort ?? configuredPort ?? defaultPort));
   const [formError, setFormError] = useState('');
+  const statColumns = width >= 640 ? (canManage ? 3 : 2) : 1;
 
   useEffect(() => {
     setPort(String(savedPort ?? configuredPort ?? defaultPort));
@@ -396,28 +455,38 @@ export function ServerPortCard({
     : configErrorSource === 'environment' ? copy.notEvaluated
       : savedPort ? String(savedPort) : String(defaultPort);
 
-  return <SettingsCard title={copy.title} palette={colors}>
-    <Text style={[styles.copy, { color: colors.textMuted }]}>{canManage
+  return <View style={[styles.portCard, {
+    backgroundColor: colors.surface, borderRadius: colors.radius,
+  }]}>
+    <View style={styles.portHeading}>
+      {icons.server ? <View style={[styles.portIcon, { fontSize: 24, color: colors.link }]}>
+        <Icon spec={icons.server} />
+      </View> : null}
+      <Text role="heading" aria-level={2} style={[styles.portTitle, { color: colors.text }]}>{copy.title}</Text>
+    </View>
+    <Text style={[styles.portIntro, { color: colors.textMuted }]}>{canManage
       ? copy.introManage
       : copy.introReadOnly}</Text>
-    <View style={styles.statGrid}>
+    <View style={[styles.statGrid, statColumns === 1 ? styles.statGridOne : styles.statGridTwo, styles.portStatGrid]}>
       <Stat label={copy.runningListener} value={runtimePort ? String(runtimePort) : copy.notReported}
-        help={copy.runningHelp} palette={colors} />
+        help={copy.runningHelp} colors={colors} />
       <Stat label={copy.configuredPort} value={configuredPort ? String(configuredPort) : copy.unavailable}
         help={configuredPort ? format(copy.configuredHelp, { source: configuredSource || 'default' }) : copy.configuredUnavailable}
-        palette={colors} />
+        colors={colors} />
       {canManage ? <Stat label={copy.savedFallback} value={savedLabel}
         help={savedFallbackUnreadable ? copy.unreadableHelp
           : configErrorSource === 'environment' ? copy.notEvaluatedHelp
             : savedPort ? copy.storedHelp
               : format(copy.defaultHelp, { port: defaultPort })}
-        palette={colors} /> : null}
+        colors={colors} /> : null}
     </View>
-    {environmentOverride ? <View style={[styles.notice, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
+    {environmentOverride ? <View style={[styles.notice, { backgroundColor: colors.surfaceStrong, borderColor: colors.border, borderRadius: colors.radius }]}>
       <Text style={[styles.noticeTitle, { color: colors.warning }]}>{copy.environmentTitle}</Text>
-      <Text style={[styles.copy, { color: colors.textMuted }]}><Text style={styles.mono}>{environmentName}</Text> {copy.environmentBody}</Text>
+      <Text style={[styles.copy, { color: colors.textMuted }]}>
+        <Text style={styles.mono}>{environmentName}</Text> {copy.environmentBody}
+      </Text>
     </View> : null}
-    {configError || configErrorPresent ? <View accessibilityRole="alert" style={[styles.notice, { backgroundColor: colors.surfaceStrong, borderColor: colors.danger }]}>
+    {configError || configErrorPresent ? <View accessibilityRole="alert" style={[styles.notice, { backgroundColor: colors.surfaceStrong, borderColor: colors.border, borderRadius: colors.radius }]}>
       <Text style={[styles.noticeTitle, { color: colors.danger }]}>{canManage
         ? configErrorSource === 'environment' ? copy.configEnvironmentTitle : copy.configSavedTitle
         : copy.configAdminTitle}</Text>
@@ -428,55 +497,109 @@ export function ServerPortCard({
         ? format(copy.configEnvironmentHelp, { name: environmentName })
         : copy.configSavedHelp}</Text> : null}
     </View> : null}
-    {canManage ? <View style={[styles.form, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
-      <Text style={[styles.rowTitle, { color: colors.text }]}>{copy.formTitle}</Text>
-      <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.formHelp}</Text>
-      <TextField label={copy.portLabel} name="port" type="number" value={port}
-        disabled={environmentOverride || busy} error={formError}
-        help={format(copy.portHelp, { name: environmentName, port: defaultPort })}
-        palette={colors} onChangeText={setPort} />
-      <View style={styles.actions}>
-        <Button label={copy.save} busy={busy} disabled={environmentOverride || busy}
-          onPress={save} palette={buttons} />
-        {showReset ? <Button label={copy.reset} tone="surface" disabled={busy}
-          onPress={onReset} palette={buttons} /> : null}
+    {canManage ? <View style={[styles.form, { backgroundColor: colors.surfaceStrong, borderRadius: colors.radius }]}>
+      <Text style={[styles.formTitle, { color: colors.text }]}>{copy.formTitle}</Text>
+      <Text style={[styles.formHelp, { color: colors.textMuted }]}>{copy.formHelp}</Text>
+      <View style={styles.field}>
+        <Text style={[styles.fieldLabel, { color: colors.text }]}>{copy.portLabel}</Text>
+        <TextInput accessibilityLabel={copy.portLabel} aria-describedby="server-port-help server-port-source"
+          keyboardType="number-pad" editable={!environmentOverride && !busy} inputMode="numeric"
+          onChangeText={setPort} value={port}
+          style={[styles.input, {
+            borderColor: formError ? colors.danger : colors.border,
+            backgroundColor: colors.surface, color: colors.text,
+            borderRadius: colors.radius, opacity: environmentOverride ? 0.5 : 1,
+          }]} />
+        <Text nativeID="server-port-source" style={[styles.fieldHelp, { color: colors.textMuted }]}>
+          {format(copy.portHelp, { name: environmentName, port: defaultPort })}
+        </Text>
+        {formError ? <Text accessibilityRole="alert" style={[styles.fieldHelp, { color: colors.danger }]}>{formError}</Text> : null}
       </View>
-    </View> : <View style={[styles.notice, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
+      <Pressable accessibilityRole="button" accessibilityLabel={copy.save}
+        disabled={environmentOverride || busy} onPress={save}
+        style={({ pressed }) => [styles.portButton, {
+          backgroundColor: colors.link, borderRadius: colors.radius,
+          opacity: environmentOverride || busy ? 0.5 : pressed ? 0.9 : 1,
+        }]}>
+        <Text style={[styles.portButtonText, { color: colors.pageBackground }]}>{copy.save}</Text>
+      </Pressable>
+      {showReset ? <View style={styles.reset}>
+        <Button label={copy.reset} tone="surface" disabled={busy} onPress={onReset}
+          palette={buttons} width="auto" />
+      </View> : null}
+    </View> : <View style={[styles.notice, { backgroundColor: colors.surfaceStrong, borderColor: colors.border, borderRadius: colors.radius }]}>
       <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.readOnlyNote}</Text>
     </View>}
-    <StatusLine busy={busy} error={error} success={success} palette={colors}
+    <StatusLine busy={busy} error={error} success={success} colors={colors}
       working={defaultLabels.working} />
     <View style={styles.notes}>
-      <Text style={[styles.rowTitle, { color: colors.text }]}>{copy.notesTitle}</Text>
-      {(copy.notes || defaultLabels.serverPort.notes).map(note => <Text key={note}
-        style={[styles.bullet, { color: colors.textMuted }]}>{note}</Text>)}
+      <Text style={[styles.notesTitle, { color: colors.text }]}>{copy.notesTitle}</Text>
+      <View style={styles.noteList}>
+        {(copy.notes || defaultLabels.serverPort.notes).map(note => <Text key={note}
+          style={[styles.noteItem, { color: colors.textMuted }]}>{note}</Text>)}
+      </View>
     </View>
-  </SettingsCard>;
+  </View>;
 }
 
 const styles = StyleSheet.create({
-  copy: { fontSize: 13, lineHeight: 19 },
-  note: { fontSize: 12, lineHeight: 17 },
-  meta: { fontSize: 12, lineHeight: 17 },
-  status: { fontSize: 12, lineHeight: 17 },
-  strong: { fontWeight: '600' },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  stat: { flexGrow: 1, flexBasis: '45%', borderWidth: 1, borderRadius: 8, padding: 12, gap: 2 },
-  statLabel: { fontSize: 11, letterSpacing: 0.4, textTransform: 'uppercase' },
-  statValue: { fontSize: 18, fontWeight: '600' },
-  statHelp: { fontSize: 11, lineHeight: 16 },
-  column: { gap: 8 },
-  cacheRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, borderWidth: 1, borderRadius: 8, padding: 12 },
-  cacheCopy: { flexShrink: 1, gap: 2 },
-  rowTitle: { fontSize: 14, fontWeight: '600' },
-  rowCopy: { fontSize: 12, lineHeight: 17 },
-  rowAction: { fontSize: 12, fontWeight: '600' },
-  divider: { borderTopWidth: 1, paddingTop: 12 },
-  notice: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 6 },
-  noticeTitle: { fontSize: 13, fontWeight: '700' },
-  mono: { fontFamily: 'Courier' },
-  form: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 10 },
-  notes: { gap: 4 },
-  bullet: { fontSize: 12, lineHeight: 18 },
+  panel: { padding: 20, gap: 0, minWidth: 0 },
+  panelHeading: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  panelHeadingLarge: { marginBottom: 8 },
+  panelIcon: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
+  panelTitle: { fontWeight: '500', flexShrink: 1 },
+  copy: { fontSize: 14, lineHeight: 20 },
+  note: { fontSize: 12, lineHeight: 16, marginBottom: 16 },
+  status: { fontSize: 12, lineHeight: 17, marginTop: 8 },
+  strong: { fontWeight: '500' },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 },
+  logsIntro: { marginBottom: 16 },
+  statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 16, marginBottom: 16 },
+  statGridTwo: { flexDirection: 'row' },
+  statGridOne: { flexDirection: 'column' },
+  portStatGrid: { marginTop: 0, marginBottom: 24 },
+  stat: { flex: 1, minWidth: 0, padding: 16, gap: 0 },
+  statCompact: { paddingVertical: 12, paddingHorizontal: 16 },
+  statValueCompact: { marginTop: 0 },
+  statLabel: { fontSize: 12, lineHeight: 16, letterSpacing: 0.4, textTransform: 'uppercase' },
+  statValue: { fontSize: 14, lineHeight: 20, fontWeight: '500', marginTop: 4 },
+  statHelp: { fontSize: 12, lineHeight: 16, marginTop: 4 },
+  checkbox: { width: 16, height: 16, borderWidth: 1, borderRadius: 4, alignItems: 'center', justifyContent: 'center' },
+  checkboxMark: { fontSize: 12, lineHeight: 14, fontWeight: '700' },
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
+  dangerTint: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8 },
+  dangerTintText: { fontSize: 14, lineHeight: 20 },
+  tinyIcon: { width: 16, height: 16, alignItems: 'center', justifyContent: 'center' },
+  pressed: { opacity: 0.75 },
+  cacheGrid: { gap: 12, marginTop: 16 },
+  cacheGridTwo: { flexDirection: 'row', flexWrap: 'wrap' },
+  cacheCell: { flexBasis: '48.8%', flexGrow: 1, minWidth: 0 },
+  cacheRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 12, minWidth: 0 },
+  cacheCopy: { flexShrink: 1, gap: 2, minWidth: 0 },
+  rowTitle: { fontSize: 14, lineHeight: 20, fontWeight: '500' },
+  rowCopy: { fontSize: 12, lineHeight: 16 },
+  rowIcon: { width: 16, height: 16, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  divider: { borderTopWidth: 1, paddingTop: 16, marginTop: 16, alignItems: 'flex-start' },
+  portCard: { padding: 24, minWidth: 0 },
+  portHeading: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 },
+  portIcon: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
+  portTitle: { fontSize: 20, lineHeight: 28, fontWeight: '600' },
+  portIntro: { fontSize: 14, lineHeight: 20, marginBottom: 24, maxWidth: 896 },
+  notice: { borderWidth: 1, padding: 16, gap: 4, marginBottom: 24 },
+  noticeTitle: { fontSize: 16, lineHeight: 24, fontWeight: '500' },
+  mono: { fontFamily: 'Courier', fontSize: 13 },
+  form: { padding: 20, gap: 0 },
+  formTitle: { fontSize: 16, lineHeight: 24, fontWeight: '500', marginBottom: 4 },
+  formHelp: { fontSize: 14, lineHeight: 20, marginBottom: 16 },
+  field: { gap: 8, maxWidth: 576 },
+  fieldLabel: { fontSize: 14, lineHeight: 20, fontWeight: '500' },
+  input: { borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, lineHeight: 20 },
+  fieldHelp: { fontSize: 12, lineHeight: 16 },
+  portButton: { alignSelf: 'flex-start', paddingHorizontal: 16, paddingVertical: 8, marginTop: 16 },
+  portButtonText: { fontSize: 14, lineHeight: 20 },
+  reset: { marginTop: 12, alignSelf: 'flex-start' },
+  notes: { marginTop: 20, maxWidth: 896 },
+  notesTitle: { fontSize: 16, lineHeight: 24, fontWeight: '500' },
+  noteList: { gap: 8, marginTop: 8 },
+  noteItem: { fontSize: 14, lineHeight: 20 },
 });

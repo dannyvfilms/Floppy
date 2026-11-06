@@ -477,8 +477,6 @@ def _statistics_comparison(badge_data, period_label):
     if not badge_data:
         return {}
     state = badge_data.get("badge_state") or "none"
-    if state == "new":
-        state = "up"
     return {
         "label": badge_data.get("badge_short") or badge_data.get("badge") or "",
         "state": state,

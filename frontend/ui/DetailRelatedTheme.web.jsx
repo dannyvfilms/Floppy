@@ -46,6 +46,44 @@ function readPalette() {
   };
 }
 
+const RELATED_CSS = `
+  [data-detail-related-root] [data-detail-related-active="true"] {
+    border-radius: 10px;
+    outline: 2px solid #4338ca;
+    outline-offset: 0;
+  }
+  [data-detail-related-root] .media-card-year {
+    max-height: 0;
+    margin-top: 0;
+    overflow: hidden;
+    opacity: 0;
+    color: rgba(255, 255, 255, 0.82);
+    font-weight: 400;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+    transition: max-height 0.2s ease, margin-top 0.2s ease, opacity 0.2s ease;
+  }
+  [data-detail-related-root] .media-card:hover .media-card-year {
+    max-height: 2lh;
+    margin-top: 0.25rem;
+    opacity: 1;
+  }
+  [data-detail-related-root] .media-card-title {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+  }
+  #detail-secondary-content [data-detail-section="recommendations"] ul {
+    margin-top: -4px;
+    margin-bottom: 0;
+  }
+  #detail-secondary-content [data-detail-section="recommendations"] h3 {
+    line-height: 28px;
+  }
+`;
+
 function runAction(model, action) {
   if (!action) return;
   if (action.kind === 'link') {
@@ -90,16 +128,19 @@ function Adapter({ props }) {
     };
   }, []);
 
-  return <DetailRelated
-    model={props.model}
-    labels={props.labels}
-    palette={palette}
-    onOpen={model => { if (model?.href) window.location.assign(model.href); }}
-    onOpenLink={href => { if (href) window.location.assign(href); }}
-    onOpenExternal={url => { if (url) window.open(url, '_blank', 'noopener,noreferrer'); }}
-    onAction={runAction}
-    onRate={rate}
-    renderActionIcon={action => <Icon spec={action.icon} />} />;
+  return <>
+    <style>{RELATED_CSS}</style>
+    <DetailRelated
+      model={props.model}
+      labels={props.labels}
+      palette={palette}
+      onOpen={model => { if (model?.href) window.location.assign(model.href); }}
+      onOpenLink={href => { if (href) window.location.assign(href); }}
+      onOpenExternal={url => { if (url) window.open(url, '_blank', 'noopener,noreferrer'); }}
+      onAction={runAction}
+      onRate={rate}
+      renderActionIcon={action => <Icon spec={action.icon} />} />
+  </>;
 }
 
 export function DetailRelatedTheme({ host, props }) {

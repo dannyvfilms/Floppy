@@ -14,6 +14,7 @@ from django_celery_beat.models import PeriodicTask
 from django_celery_results.models import TaskResult
 
 from app import config
+from app.icon_specs import file_icon
 from app.log_safety import redact_secrets
 from app.models import Status
 from app.providers import credentials
@@ -164,6 +165,7 @@ def directory_page(context, request):
     return {
         "url": reverse("providers"), "setupUrl": reverse("onboarding_restart"),
         "pinUrl": reverse("pin_settings_provider"), "csrf": get_token(request), "canPin": not request.user.is_demo,
+        "icon": file_icon("database"), "searchIcon": file_icon("magnifying-glass"),
         "filters": {"q": context["query"], "capability": context["capability"], "media": context["media"]},
         "capabilities": [{"value": row["key"], "label": _(row["label"])} for row in context["capability_options"]],
         "media": [{"value": row["key"], "label": _(row["label"])} for row in context["media_options"]],

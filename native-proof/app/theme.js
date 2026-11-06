@@ -172,11 +172,11 @@ export const statisticsPalette = {
   accent: palette.accent,
   accentStrong: palette.accentStrong,
   accentContrast: '#ffffff',
-  link: '#818cf8',
+  link: '#67e8f9',
   danger: palette.danger,
   warning: palette.warning,
   success: palette.success,
-  radius: radius.md,
+  radius: 18,
   radiusSmall: radius.sm,
 };
 

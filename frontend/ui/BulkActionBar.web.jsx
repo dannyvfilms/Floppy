@@ -1,5 +1,20 @@
 import React from 'react';
-import { ActionMenu, Button } from './controls';
+import { Button } from './Button';
+import { ActionMenu } from './controls/Menu';
+
+// The universal menu takes concrete theme values. These are the same semantic
+// tokens the legacy `.ui-menu` rules read, so it follows the active theme.
+const menuPalette = {
+  surface: 'var(--color-surface)',
+  surfaceStrong: 'var(--color-surface-strong)',
+  surfaceMuted: 'var(--color-surface-muted)',
+  border: 'var(--color-surface-border)',
+  text: 'var(--color-text)',
+  textSecondary: 'var(--color-text-secondary)',
+  textMuted: 'var(--color-text-muted)',
+  accent: 'var(--color-accent)',
+  overlay: 'rgba(0, 0, 0, 0.55)',
+};
 
 const Glyph = ({ children }) => <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor"
   strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
@@ -27,7 +42,7 @@ export function BulkActionBar({ count, actions = [], disabled = false, deselectD
     <div className="ui-bulk-buttons">
       {actions.map(action => action.items
         ? <ActionMenu key={action.key} icon={glyphs[action.icon]} label={action.label} disabled={disabled}
-          align={action.align} items={action.items} empty={action.empty} />
+          align={action.align} items={action.items} empty={action.empty} palette={menuPalette} />
         : <Button key={action.key} type="button" secondary disabled={disabled}
           aria-label={action.label} title={action.label} onClick={action.onSelect}>{glyphs[action.icon]}</Button>)}
     </div>

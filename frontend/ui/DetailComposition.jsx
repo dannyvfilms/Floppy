@@ -91,7 +91,7 @@ export function DetailHeader({ model, labels, palette, showArtwork = false, onPr
   </View>;
 }
 
-export function DetailSynopsis({ model, labels, palette }) {
+export function DetailSynopsis({ model, labels, palette, hideWhenEmpty = false }) {
   const text = resolveLabels(labels);
   const colors = resolvePalette(palette);
   const synopsis = model?.synopsis || {};
@@ -99,7 +99,7 @@ export function DetailSynopsis({ model, labels, palette }) {
   const previewLines = synopsis.previewLines ?? 3;
   const [expanded, setExpanded] = useState(false);
   const [clamped, setClamped] = useState(Boolean(synopsis.clamped));
-  if (!body) return <Text style={[styles.emptySynopsis, { color: colors.textMuted }]}>{text.noSynopsis}</Text>;
+  if (!body) return hideWhenEmpty ? null : <Text style={[styles.emptySynopsis, { color: colors.textMuted }]}>{text.noSynopsis}</Text>;
   const showToggle = synopsis.clamped === undefined ? clamped : Boolean(synopsis.clamped);
   return <View style={styles.synopsis}>
     {synopsis.clamped === undefined ? <Text style={[styles.synopsisText, styles.measure, { color: colors.textSecondary }]}
@@ -193,12 +193,12 @@ const styles = StyleSheet.create({
   fact: { gap: 2 },
   factLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase' },
   factValue: { fontSize: 13, fontWeight: '500' },
-  synopsis: { gap: 6, width: '100%' },
-  synopsisText: { fontSize: 14, lineHeight: 21 },
+  synopsis: { gap: 8, width: '100%' },
+  synopsisText: { fontSize: 16, lineHeight: 24 },
   measure: { position: 'absolute', left: 0, right: 0, opacity: 0 },
-  emptySynopsis: { fontSize: 14, lineHeight: 21 },
+  emptySynopsis: { fontSize: 16, lineHeight: 24 },
   synopsisToggle: { alignSelf: 'flex-start', paddingVertical: 2 },
-  synopsisToggleText: { fontSize: 13, fontWeight: '600' },
+  synopsisToggleText: { fontSize: 14, fontWeight: '500', lineHeight: 20 },
   actions: { gap: 8, width: '100%' },
   section: { gap: 8, width: '100%' },
   sectionTitle: { fontSize: 17, fontWeight: '600' },

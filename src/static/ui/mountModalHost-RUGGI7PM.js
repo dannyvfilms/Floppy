@@ -1,0 +1,1 @@
+import{b as r}from"./chunk-HYEJCWI3.js";import"./chunk-HKO55GKG.js";import"./chunk-XUXROEXT.js";import"./chunk-2ZLIOLKR.js";import"./chunk-BELLEGZ5.js";import"./chunk-A24G6LQI.js";import{a as p,c as t,d as m}from"./chunk-4MNZL56D.js";import{b as o}from"./chunk-SQE76S5B.js";var i=o(p());var f=o(m());function l(n){return t(n,(0,f.jsx)(r,{}))}export{l as mountModalHost};

@@ -3,6 +3,19 @@ import { Rail as SharedRail } from './Rail.jsx';
 
 const interactiveSelector = "button, input, select, textarea, [role='button']";
 
+function Chevron({ direction }) {
+  return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d={direction === 'prev' ? 'm15 18-6-6 6-6' : 'm9 18 6-6-6-6'} />
+  </svg>;
+}
+
+function SortTriangle({ direction }) {
+  return <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+    <path d={direction === 'asc' ? 'M10 5 L16 15 H4 Z' : 'M10 15 L4 5 H16 Z'} />
+  </svg>;
+}
+
 function scrollNode(ref) {
   const value = ref.current;
   if (!value) return null;
@@ -134,5 +147,7 @@ function useRailWebBehavior(ref) {
 export function Rail(props) {
   const scrollRef = useRef(null);
   useRailWebBehavior(scrollRef);
-  return <SharedRail {...props} scrollRef={scrollRef} />;
+  return <SharedRail {...props} scrollRef={scrollRef}
+    renderArrow={(direction) => <Chevron direction={direction} />}
+    renderSortIcon={(direction) => <SortTriangle direction={direction} />} />;
 }

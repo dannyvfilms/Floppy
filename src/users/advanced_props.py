@@ -11,6 +11,7 @@ from django.urls import reverse
 from django.utils import formats
 from django.utils.translation import gettext as _
 
+from app.icon_specs import file_icon
 from users import release_notes
 from users.server_port_views import server_port_context
 
@@ -108,7 +109,7 @@ def _advanced_labels() -> dict[str, object]:
                     "key": "discover",
                     "title": _("Discover Cache"),
                     "description": _(
-                        "Your recommendation rows and taste profile — just you"
+                        "Your recommendation rows & taste profile — just you"
                     ),
                 },
             ],
@@ -300,6 +301,12 @@ def advanced_props(request, context: dict[str, object]) -> dict[str, object]:
         "imageCount": (context.get("image_cache_stats") or {}).get("count", 0),
         "imageSize": context.get("image_cache_size") or "0 B",
         "labels": _advanced_labels(),
+        "icons": {
+            "logs": file_icon("vertical-sliders"),
+            "image": file_icon("image"),
+            "trash": file_icon("trashcan"),
+            "warning": file_icon("warning"),
+        },
         "urls": _advanced_urls(request.user.is_superuser),
     }
 
@@ -356,6 +363,7 @@ def server_port_props(request) -> dict[str, object]:
         "configErrorSource": config_source if can_manage else "",
         "showReset": status["show_reset"],
         "labels": labels,
+        "icons": {"server": file_icon("server")},
         "urls": (
             {"update": reverse("update_server_port")} if can_manage else {}
         ),
@@ -517,6 +525,7 @@ def about_props(request) -> dict[str, object]:
         "overview": {
             "kind": "overview",
             "labels": labels["overview"],
+            "icons": {"info": file_icon("info")},
             "sponsorUrl": (
                 "https://github.com/sponsors/dannyvfilms"
                 "?metadata_source=app-about-description"
@@ -525,6 +534,7 @@ def about_props(request) -> dict[str, object]:
         "whatsNew": {
             "kind": "whatsNew",
             "labels": labels["whatsNew"],
+            "icons": {"info": file_icon("info")},
             "releases": releases,
             "releasesLoaded": cached is not None,
             "releasesUrl": release_notes.RELEASES_PAGE_URL,
@@ -533,6 +543,7 @@ def about_props(request) -> dict[str, object]:
         "install": {
             "kind": "install",
             "labels": labels["install"],
+            "icons": {"download": file_icon("download")},
             "guideUrl": INSTALL_GUIDE_URL,
         },
         "cache": {
@@ -542,6 +553,15 @@ def about_props(request) -> dict[str, object]:
         "resources": {
             "kind": "resources",
             "labels": labels["resources"],
+            "icons": {
+                "externalLink": file_icon("external-link"),
+                "globe": file_icon("globe"),
+                "github": file_icon("github"),
+                "bookOpen": file_icon("book-open"),
+                "bug": file_icon("bug"),
+                "persons": file_icon("persons"),
+                "heart": file_icon("heart"),
+            },
             "items": [
                 {
                     "label": _("Project Website"),
@@ -600,6 +620,11 @@ def about_props(request) -> dict[str, object]:
         "specs": {
             "kind": "specs",
             "labels": labels["specs"],
+            "icons": {
+                "page": file_icon("page"),
+                "bookOpen": file_icon("book-open"),
+                "download": file_icon("download"),
+            },
             "items": [
                 {
                     "label": _("API Reference"),
@@ -669,6 +694,7 @@ def about_props(request) -> dict[str, object]:
         "attributions": {
             "kind": "attributions",
             "labels": labels["attributions"],
+            "icons": {"page": file_icon("page")},
             "items": [
                 {
                     "provider": _("The Movie Database (TMDB)"),
@@ -720,6 +746,7 @@ def about_props(request) -> dict[str, object]:
         "licenses": {
             "kind": "licenses",
             "labels": labels["licenses"],
+            "icons": {"page": file_icon("page")},
             "items": [
                 {
                     "subject": _("Floppy Application"),

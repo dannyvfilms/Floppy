@@ -16,6 +16,7 @@ const DEFAULT_PALETTE = {
   surface: '#27272a',
   surfaceStrong: '#3f3f46',
   surfaceMuted: '#52525b',
+  surfaceMutedSoft: 'rgba(82, 82, 91, 0.4)',
   surfaceHover: '#3f3f46',
   border: '#3f3f46',
   text: '#fafafa',
@@ -129,7 +130,6 @@ export function ReleaseCalendar({
   dayLabels = {},
   today,
   selectedDay,
-  view: initialView = 'grid',
   releases = {},
   mediaTypes = [],
   releaseTypes = [],
@@ -144,7 +144,6 @@ export function ReleaseCalendar({
   palette,
   onNavigate,
   onOpenRelease,
-  onViewChange,
   onFiltersChange,
   onMenuAction,
 }) {
@@ -206,7 +205,7 @@ export function ReleaseCalendar({
     const value = Number(selectedDay);
     return daysInMonth.includes(value) ? value : daysInMonth[0] || 1;
   });
-  const [view, setView] = useState(initialView === 'list' ? 'list' : 'grid');
+  const [view] = useState('grid');
   const [agendaOpen, setAgendaOpen] = useState(true);
   const [filterOpen, setFilterOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -361,19 +360,7 @@ export function ReleaseCalendar({
     }
     if (today) {
       setActiveDay(today.day);
-      setView('grid');
     }
-  }
-
-  function changeView(nextView) {
-    if (nextView === view) {
-      return;
-    }
-    if (onViewChange) {
-      onViewChange(nextView);
-      return;
-    }
-    setView(nextView);
   }
 
   function openRelease(release) {
@@ -454,14 +441,13 @@ export function ReleaseCalendar({
       );
   }
 
-  const listDays = Object.keys(visibleByDay)
-    .map(Number)
-    .filter((day) => (visibleByDay[String(day)] || []).length > 0)
-    .sort((left, right) => left - right);
-
-  const tagTypes = mediaTypes.filter(
-    (item) => item.value !== 'season' && (tagCounts[item.value] || 0) > 0,
-  );
+  const tagTypes = mediaTypes
+    .filter((item) => item.value !== 'season')
+    .map((item) => ({ ...item, group: groupFor(item.value) }))
+    .sort((left, right) => compareText(
+      left.shortLabel || left.label,
+      right.shortLabel || right.label,
+    ));
 
   return <View style={styles.root}>
     <View style={styles.toolbar}>
@@ -490,13 +476,7 @@ export function ReleaseCalendar({
           onPress={() => setFilterOpen(true)}
           style={({ pressed }) => [styles.toolbarButton, pressed && styles.pressed]}>
           <Text numberOfLines={1} style={styles.toolbarButtonText}>{filterSummary()}</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={menuCopy.today}
-          onPress={goToToday}
-          style={({ pressed }) => [styles.toolbarButton, pressed && styles.pressed]}>
-          <Text style={styles.toolbarButtonText}>{menuCopy.today}</Text>
+          <Text aria-hidden style={styles.toolbarChevron}>▾</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -509,69 +489,7 @@ export function ReleaseCalendar({
       </View>
     </View>
 
-    {regionUnset && regionNotice ? <View style={styles.regionNotice}>
-      <Text style={styles.regionNoticeText}>{regionNotice}</Text>
-      {preferencesUrl ? <Pressable
-        accessibilityRole="link"
-        accessibilityLabel={copy.preferences}
-        onPress={() => navigate(preferencesUrl)}
-        style={({ pressed }) => [styles.regionNoticeLink, pressed && styles.pressed]}>
-        <Text style={styles.regionNoticeLinkText}>{copy.preferences}</Text>
-      </Pressable> : null}
-    </View> : null}
-
-    <View style={styles.viewSwitch} accessibilityRole="tablist">
-      {['grid', 'list'].map((item) => <Pressable
-        key={item}
-        accessibilityRole="tab"
-        accessibilityState={{ selected: view === item }}
-        accessibilityLabel={item === 'grid' ? copy.viewMonth : copy.viewList}
-        onPress={() => changeView(item)}
-        style={({ pressed }) => [
-          styles.viewTab,
-          view === item && styles.viewTabSelected,
-          pressed && styles.pressed,
-        ]}>
-        <Text style={[
-          styles.viewTabText,
-          view === item && styles.viewTabTextSelected,
-        ]}>{item === 'grid' ? copy.viewMonth : copy.viewList}</Text>
-      </Pressable>)}
-    </View>
-
-    {view === 'list' ? <View style={styles.listStack}>
-      {listDays.map((day) => {
-        const dayReleases = [...(visibleByDay[String(day)] || [])].sort(compareReleases);
-        const isToday = Boolean(
-          today &&
-          day === today.day &&
-          month === today.month &&
-          year === today.year,
-        );
-        return <View key={day} style={styles.listDayCard}>
-          <View style={[styles.listDayHeader, isToday && styles.listDayHeaderToday]}>
-            <Text style={styles.listDayTitle}>
-              {dayLabels[String(day)]}, {monthName} {day}
-            </Text>
-            {isToday ? <Badge label={copy.today} size="sm" tone="indigo" palette={badgePalette} /> : null}
-          </View>
-          <View style={styles.listDayBody}>
-            {dayReleases.map((release) => <ReleaseRow
-              key={release.id}
-              release={release}
-              copy={copy}
-              colors={colors}
-              styles={styles}
-              badgePalette={badgePalette}
-              showMedia
-              onPress={() => openRelease(release)} />)}
-          </View>
-        </View>;
-      })}
-      {listDays.length === 0 ? <View style={styles.emptyCard}>
-        <Text style={styles.emptyText}>{copy.noFilteredReleases}</Text>
-      </View> : null}
-    </View> : <View style={[styles.layout, !compact && agendaOpen && styles.layoutWithAgenda]}>
+    <View style={[styles.layout, !compact && agendaOpen && styles.layoutWithAgenda]}>
       <View style={styles.monthCard}>
         <View style={styles.weekHeaderRow}>
           {weekdayHeaders.map((header) => <Text key={header} style={styles.weekHeader}>{header}</Text>)}
@@ -647,10 +565,10 @@ export function ReleaseCalendar({
             onPress={() => selectGroup('all')}
             styles={styles} />
           {tagTypes.map((item) => <FilterChip
-            key={item.value}
-            label={`${item.shortLabel || item.label} ${tagCounts[item.value] || 0}`}
-            selected={isGroupSelected(item.value)}
-            onPress={() => selectGroup(item.value)}
+            key={item.group}
+            label={`${item.shortLabel || item.label} ${tagCounts[item.group] || 0}`}
+            selected={isGroupSelected(item.group)}
+            onPress={() => selectGroup(item.group)}
             styles={styles} />)}
         </ScrollView>
 
@@ -672,7 +590,7 @@ export function ReleaseCalendar({
           </View>)}
         </View>
       </View> : null}
-    </View>}
+    </View>
 
     <Modal
       visible={filterOpen}
@@ -948,28 +866,28 @@ function createStyles(colors, compact) {
       flexDirection: 'row',
       flexWrap: 'wrap',
       alignItems: 'center',
-      gap: 6,
+      gap: 8,
     },
     toolbarButton: {
-      minHeight: 36,
+      minHeight: 40,
+      minWidth: 70,
       maxWidth: compact ? 190 : 240,
       paddingHorizontal: 12,
+      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
+      gap: 6,
       borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.border,
       backgroundColor: colors.surfaceStrong,
     },
-    toolbarButtonText: { color: colors.textSecondary, fontSize: 13, fontWeight: '600' },
+    toolbarButtonText: { color: colors.textSecondary, fontSize: 14, fontWeight: '500' },
+    toolbarChevron: { color: colors.textMuted, fontSize: 12, lineHeight: 14 },
     menuButton: {
-      width: 36,
-      height: 36,
+      width: 40,
+      height: 40,
       alignItems: 'center',
       justifyContent: 'center',
       borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.border,
       backgroundColor: colors.surfaceStrong,
     },
     menuGlyph: { color: colors.textSecondary, fontSize: 16 },
@@ -1013,31 +931,31 @@ function createStyles(colors, compact) {
       minWidth: 0,
       backgroundColor: colors.surface,
       borderRadius: 10,
-      padding: compact ? 8 : 16,
+      padding: compact ? 8 : 24,
       gap: 8,
     },
-    weekHeaderRow: { flexDirection: 'row', gap: 4 },
+    weekHeaderRow: { flexDirection: 'row', gap: 6 },
     weekHeader: {
       flex: 1,
       textAlign: 'center',
       color: colors.textMuted,
-      fontSize: compact ? 10 : 12,
-      fontWeight: '600',
-      paddingVertical: 2,
+      fontSize: compact ? 12 : 14,
+      fontWeight: '500',
+      paddingVertical: compact ? 4 : 8,
     },
-    weeks: { gap: 4 },
-    weekRow: { flexDirection: 'row', gap: 4 },
+    weeks: { gap: 6 },
+    weekRow: { flexDirection: 'row', gap: 6 },
     dayCell: {
       flex: 1,
       minWidth: 0,
       aspectRatio: compact ? 1 : 0.75,
       borderRadius: 8,
       overflow: 'hidden',
-      backgroundColor: colors.surfaceMuted,
+      backgroundColor: colors.surfaceMutedSoft,
       borderWidth: 1,
       borderColor: 'transparent',
     },
-    blankDay: { backgroundColor: colors.surfaceStrong, opacity: 0.35 },
+    blankDay: { backgroundColor: colors.surfaceMutedSoft, opacity: 0.6 },
     dayCellSelected: { borderColor: colors.accent },
     dayCellToday: { borderColor: colors.accentStrong },
     artworkGrid: {
@@ -1090,13 +1008,13 @@ function createStyles(colors, compact) {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      gap: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      backgroundColor: colors.surfaceStrong,
+      gap: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      backgroundColor: colors.surfaceMutedSoft,
     },
     agendaHeading: { flexShrink: 1, gap: 2 },
-    agendaTitle: { color: colors.text, fontSize: 15, fontWeight: '600' },
+    agendaTitle: { color: colors.text, fontSize: 16, fontWeight: '500' },
     agendaCount: { color: colors.textMuted, fontSize: 12 },
     agendaClose: {
       width: 32,
@@ -1111,15 +1029,16 @@ function createStyles(colors, compact) {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
-      paddingHorizontal: 12,
+      paddingHorizontal: 16,
       paddingVertical: 8,
     },
     filterChip: {
-      minHeight: 30,
+      minHeight: 34,
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 10,
-      borderRadius: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 9999,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
@@ -1128,7 +1047,7 @@ function createStyles(colors, compact) {
       borderColor: colors.accent,
       backgroundColor: colors.accentStrong,
     },
-    filterChipText: { color: colors.textSecondary, fontSize: 12, fontWeight: '600' },
+    filterChipText: { color: colors.textSecondary, fontSize: 14, fontWeight: '500', lineHeight: 20 },
     filterChipTextSelected: { color: colors.accentText },
     agendaBody: { padding: 10, gap: 8 },
     agendaSection: { gap: 4 },

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 const DEFAULT_PALETTE = {
@@ -57,15 +57,24 @@ function StatusMark({ status, attention, palette }) {
  * otherwise the legacy 1/2/3/4-column breakpoints apply. `className` and other
  * browser props are accepted only for call-site compatibility and are ignored.
  */
-export function CatalogGrid({ children, auto = false, alignStart = false, ...legacyProps }) {
+export function CatalogGrid({ children, auto = false, alignStart = false, testID = 'card-grid', ...legacyProps }) {
   const [width, setWidth] = useState(0);
+  const frameRef = useRef(null);
+  // Measure before paint so the first rendered frame already uses the final
+  // column count. `onLayout`/ResizeObserver later keep it correct on resize.
+  useLayoutEffect(() => {
+    const node = frameRef.current;
+    const measured = node?.offsetWidth || node?.getBoundingClientRect?.().width || 0;
+    if (measured > 0) setWidth(current => Math.abs(current - measured) > 0.5 ? measured : current);
+  }, []);
   const columns = columnCount(width, auto);
   const itemWidth = width > 0 ? (width - GRID_GAP * (columns - 1)) / columns : null;
   // `legacyProps` carries web-only props such as className; native presentation has no class names.
   void legacyProps;
 
-  return <View style={styles.gridFrame}>
+  return <View style={styles.gridFrame} testID={testID}>
     <View
+      ref={frameRef}
       onLayout={event => {
         const next = event?.nativeEvent?.layout?.width || 0;
         if (Math.abs(next - width) > 0.5) setWidth(next);

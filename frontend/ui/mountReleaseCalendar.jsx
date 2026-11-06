@@ -10,14 +10,24 @@ function post(url, csrf, fields) {
   });
 }
 
+function withAlpha(value, alpha) {
+  const hex = String(value || '').trim();
+  const match = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!match) return value;
+  const [red, green, blue] = match[1].match(/.{2}/g).map((part) => parseInt(part, 16));
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
 function readPalette() {
   const css = getComputedStyle(document.documentElement);
   const token = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
+  const surfaceMuted = token('--color-surface-muted', '#52525b');
   return {
     background: token('--color-background', '#18181b'),
     surface: token('--color-surface', '#27272a'),
     surfaceStrong: token('--color-surface-strong', '#3f3f46'),
-    surfaceMuted: token('--color-surface-muted', '#52525b'),
+    surfaceMuted,
+    surfaceMutedSoft: withAlpha(surfaceMuted, 0.4),
     surfaceHover: token('--color-surface-hover', '#3f3f46'),
     border: token('--color-border', '#3f3f46'),
     text: token('--color-text', '#fafafa'),

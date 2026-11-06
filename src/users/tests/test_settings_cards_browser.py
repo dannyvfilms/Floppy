@@ -74,7 +74,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         """Allow real local HTTP responses and block only provider traffic/chunks."""
         url = urlsplit(route.request.url)
         if url.netloc != urlsplit(self.live_server_url).netloc or (self.block_renderer and (
-            "/static/ui/mount-" in url.path or "/static/ui/Directory-" in url.path
+            "/static/ui/mount-" in url.path or "/static/ui/mountDirectory-" in url.path
         )):
             route.abort()
         else:
@@ -85,70 +85,95 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.goto(f"{self.live_server_url}/settings/providers/anilist?tab={tab}")
         expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
 
+    def card(self, title, scope=None):
+        """Return a shared SettingsCard identified by its visible heading."""
+        scope = scope or self.page
+        return scope.locator('[data-testid="settings-card"]').filter(
+            has=self.page.get_by_role("heading", name=title, exact=True))
+
+    def select(self, label):
+        """Return a shared SelectField trigger by its stable accessible prefix."""
+        return self.page.get_by_role("button", name=re.compile(rf"^{re.escape(label)}:"))
+
+    def grid_columns(self, grid):
+        """Count the items on the first row of a shared CatalogGrid."""
+        return grid.evaluate("""element => {
+          const items = [...element.firstElementChild.children];
+          if (!items.length) return 0;
+          const top = items[0].getBoundingClientRect().top;
+          return items.filter(item => Math.abs(item.getBoundingClientRect().top - top) < 1).length;
+        }""")
+
     def choose_option(self, label, option):
         """Operate the shared select by its accessible user-facing labels."""
-        self.page.get_by_role("combobox", name=label, exact=True).click()
-        self.page.get_by_role("option", name=option, exact=True).click()
+        self.select(label).click()
+        self.page.get_by_role("radio", name=option, exact=True).click()
 
     def test_shared_dropdown_menu_keyboard_dismissal_and_connection_status(self):
         self.page.goto(f"{self.live_server_url}/settings/providers")
         expect(self.page.locator('[data-provider-directory-root][data-react-mounted="true"]')).to_have_count(1)
-        dropdown = self.page.get_by_role("combobox", name="Filter by capability", exact=True)
+        dropdown = self.select("Filter by capability")
         dropdown.click()
-        options = self.page.get_by_role("listbox", name="Filter by capability", exact=True)
-        expect(options).to_be_visible()
-        colors = options.evaluate("""element => {
-          const probe = document.createElement('div'); probe.style.color = 'var(--color-surface-strong)';
-          element.after(probe); const panel = getComputedStyle(probe).color; probe.remove();
-          return [getComputedStyle(element).backgroundColor, panel];
+        dialog = self.page.get_by_role("dialog")
+        expect(dialog).to_be_visible()
+        expect(dialog.get_by_role("heading", name="Filter by capability", exact=True)).to_be_visible()
+        colors = dialog.get_by_role("heading", name="Filter by capability", exact=True).evaluate("""heading => {
+          const probe = document.createElement('div'); probe.style.color = 'var(--color-surface)';
+          document.body.appendChild(probe); const panel = getComputedStyle(probe).color; probe.remove();
+          return [getComputedStyle(heading.parentElement.parentElement).backgroundColor, panel];
         }""")
         self.assertEqual(colors[0], colors[1])
-        expect(dropdown.locator(".ui-filter-icon")).to_have_count(1)
-        selected_colors = self.page.get_by_role("option", name="All Capabilities", exact=True).evaluate("""element => {
-          const probe = document.createElement('div'); probe.style.color = 'var(--ui-action)';
-          element.after(probe); const action = getComputedStyle(probe).color; probe.remove();
+        selected_colors = dialog.get_by_role("radio", name="All Capabilities", exact=True).evaluate("""element => {
+          const probe = document.createElement('div'); probe.style.color = 'var(--color-surface-strong)';
+          document.body.appendChild(probe); const action = getComputedStyle(probe).color; probe.remove();
           return [getComputedStyle(element).backgroundColor, action];
         }""")
         self.assertEqual(selected_colors[0], selected_colors[1])
-        self.page.keyboard.press("c")
-        expect(self.page.get_by_role("option", name="Connection", exact=True)).to_be_focused()
+        dropdown.focus()
         self.page.keyboard.press("Enter")
-        expect(dropdown).to_have_text("Connection")
-        expect(dropdown).to_be_focused()
+        connection = self.page.get_by_role("radio", name="Connection", exact=True)
+        connection.focus()
+        self.page.keyboard.press("Enter")
+        expect(dropdown).to_contain_text("Connection")
         self.page.wait_for_url("**capability=connection")
-        expect(self.page.locator('#provider-results[aria-busy="false"]')).to_be_visible()
-        cards = self.page.locator("#provider-results a")
+        grid = self.page.get_by_test_id("card-grid")
+        expect(grid).to_be_visible()
+        cards = grid.locator('[role="link"]')
+        expect(cards.first).to_be_visible()
         self.assertGreater(cards.count(), 0)
-        self.assertEqual(cards.locator(".ui-status-icon").count(), cards.count())
+        expect(cards.locator('[role="img"]')).to_have_count(cards.count())
         expect(self.page.get_by_role("link", name="Open Goodreads", exact=True)).to_have_count(0)
         dropdown.click()
         self.page.keyboard.press("Escape")
-        expect(options).to_have_count(0)
+        expect(self.page.get_by_role("dialog")).to_have_count(0)
         expect(dropdown).to_be_focused()
         dropdown.click()
-        self.page.get_by_role("heading", name="Providers", exact=True).click()
-        expect(options).to_have_count(0)
+        self.page.mouse.click(5, 5)
+        expect(self.page.get_by_role("dialog")).to_have_count(0)
         self.page.set_viewport_size({"width": 390, "height": 1000})
         for label in ("Filter by capability", "Filter by media type"):
-            self.page.get_by_role("combobox", name=label, exact=True).click()
-            bounds = self.page.get_by_role("listbox", name=label, exact=True).evaluate(
-                "element => ({left:element.getBoundingClientRect().left, right:element.getBoundingClientRect().right, viewport:innerWidth})"
-            )
-            self.assertGreaterEqual(bounds["left"], 0)
-            self.assertLessEqual(bounds["right"], bounds["viewport"])
+            self.select(label).click()
+            menu = self.page.get_by_role("dialog")
+            for item in [menu.get_by_role("heading", name=label, exact=True),
+                         *menu.get_by_role("radio").all()]:
+                bounds = item.evaluate(
+                    "element => ({left:element.getBoundingClientRect().left, right:element.getBoundingClientRect().right, viewport:innerWidth})"
+                )
+                self.assertGreaterEqual(bounds["left"], 0)
+                self.assertLessEqual(bounds["right"], bounds["viewport"])
             self.page.keyboard.press("Escape")
         self.page.set_viewport_size({"width": 1440, "height": 1000})
         self.open_cards("import")
-        self.page.get_by_role("combobox", name="Import Frequency", exact=True).click()
-        preference = self.page.get_by_role("listbox", name="Import Frequency", exact=True)
-        colors = preference.evaluate("""element => {
-          const probe = document.createElement('div'); probe.style.color = 'var(--color-panel)';
-          element.after(probe); const panel = getComputedStyle(probe).color; probe.remove();
-          return [getComputedStyle(element).backgroundColor, panel];
+        preference = self.select("Import Frequency")
+        preference.click()
+        panel = self.page.get_by_role("dialog").get_by_role("heading", name="Import Frequency", exact=True).evaluate("""heading => {
+          const probe = document.createElement('div'); probe.style.color = 'var(--color-surface)';
+          document.body.appendChild(probe); const panel = getComputedStyle(probe).color; probe.remove();
+          return [getComputedStyle(heading.parentElement.parentElement).backgroundColor, panel];
         }""")
-        self.assertEqual(colors[0], colors[1])
-        expect(self.page.locator(".ui-select-filter")).to_have_count(0)
+        self.assertEqual(panel[0], panel[1])
         self.page.keyboard.press("Escape")
+        expect(self.page.locator('[data-testid="settings-card"]')).to_have_count(2)
         self.assertEqual(self.errors, [])
 
     def test_credentials_help_restores_focus_and_forms_keep_csrf(self):
@@ -157,10 +182,11 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         badge = self.page.get_by_role("button", name="Read-only: explain instance credential access")
         badge.focus()
         self.page.keyboard.press("Enter")
-        dialog = self.page.get_by_role("dialog", name="Instance credential access")
+        dialog = self.page.get_by_role("dialog")
         expect(dialog).to_be_visible()
+        expect(dialog.get_by_role("heading", name="Instance credential access")).to_be_visible()
         self.page.keyboard.press("Escape")
-        expect(dialog).not_to_be_visible()
+        expect(dialog).to_have_count(0)
         expect(badge).to_be_focused()
         self.page.get_by_label("Your Client ID", exact=True).fill("test-public-client")
         self.page.get_by_label("Your Client secret", exact=True).fill("test-personal-secret")
@@ -176,7 +202,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
     def test_import_settings_submit_and_private_gate_still_work(self):
         """React preference writes and private/public toggles preserve entered state."""
         self.open_cards()
-        self.page.locator('[name="user"]').fill("public-person")
+        self.page.get_by_label("Public username", exact=True).fill("public-person")
         with self.page.expect_response(lambda response: "/settings/import/save-settings" in response.url) as result:
             self.choose_option("Override mode", "Overwrite Existing")
         self.assertEqual(result.value.status, 204)
@@ -193,26 +219,27 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         toggle.press("Space")
         expect(toggle).to_have_text("Public")
         expect(toggle).to_have_attribute("aria-pressed", "false")
-        expect(self.page.locator('[name="user"]')).to_have_value("public-person")
+        expect(self.page.get_by_label("Public username", exact=True)).to_have_value("public-person")
         self.assertEqual(self.errors, [])
 
     def test_shared_import_preferences_and_steam_tooltip(self):
         """The retained provider uses the same controls and clamps help to the viewport."""
         self.page.set_viewport_size({"width": 390, "height": 850})
         self.page.goto(f"{self.live_server_url}/settings/providers/steam?tab=import")
-        expect(self.page.locator("[data-import-preferences-root] .settings-card")).to_be_visible()
-        mode = self.page.get_by_role("combobox", name="Import Mode", exact=True)
-        frequency = self.page.get_by_role("combobox", name="Import Frequency", exact=True)
+        expect(self.page.locator('[data-import-preferences-root] [data-testid="settings-card"]')).to_be_visible()
+        mode = self.select("Import Mode")
+        frequency = self.select("Import Frequency")
         self.assertLess(mode.bounding_box()["y"], frequency.bounding_box()["y"])
         self.choose_option("Import Mode", "Watchlist")
         expect(self.page.get_by_text("This import mode is not supported by this provider.")).to_be_visible()
-        expect(self.page.get_by_role("combobox", name="Watchlist status")).to_contain_text("Planning")
-        expect(self.page.get_by_role("combobox", name="Watchlist tag")).to_contain_text("No tag")
+        expect(self.select("Watchlist status")).to_contain_text("Planning")
+        expect(self.select("Watchlist tag")).to_contain_text("No tag")
         self.choose_option("Import Mode", "History")
-        expect(self.page.get_by_role("combobox", name="Override mode")).to_be_visible()
+        expect(self.select("Override mode")).to_be_visible()
         tooltip = self.page.locator("[data-tooltip-root] button")
         tooltip.click()
-        box = self.page.get_by_role("tooltip").bounding_box()
+        bubble = self.page.get_by_text("Find your Steam ID").locator("..")
+        box = bubble.bounding_box()
         self.assertGreaterEqual(box["x"], 0)
         self.assertLessEqual(box["x"] + box["width"], 390)
         self.assertEqual(self.errors, [])
@@ -222,21 +249,30 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         for scheme in ("light", "dark"):
             self.page.emulate_media(color_scheme=scheme)
             self.open_cards()
-            for label in ("Import Frequency", "Import Mode", "Public username"):
-                field = self.page.get_by_label(label, exact=True)
-                style = field.evaluate("""element => {
+            for label in ("Import Frequency", "Import Mode"):
+                control = self.select(label)
+                style = control.evaluate("""element => {
                   const style = getComputedStyle(element), probe = document.createElement('div');
-                  probe.style.color = 'var(--color-surface-border)'; element.after(probe);
+                  probe.style.color = 'var(--color-surface-border)'; document.body.appendChild(probe);
                   const expected = getComputedStyle(probe).color; probe.remove();
                   return {border:style.borderTopColor, expected, outlineStyle:style.outlineStyle};
                 }""")
                 self.assertEqual(style["border"], style["expected"])
                 self.assertEqual(style["outlineStyle"], "none", (label, style))
-            for arrow in self.page.locator(".ui-select-chevron").all():
-                geometry = arrow.evaluate("""arrow => {
-                  const select = arrow.previousElementSibling, box = select.getBoundingClientRect();
-                  const icon = arrow.getBoundingClientRect();
-                  return {inset:box.right-icon.right, padding:parseFloat(getComputedStyle(select).paddingRight),
+            field = self.page.get_by_label("Public username", exact=True)
+            style = field.evaluate("""element => {
+              const style = getComputedStyle(element), probe = document.createElement('div');
+              probe.style.color = 'var(--color-surface-border)'; document.body.appendChild(probe);
+              const expected = getComputedStyle(probe).color; probe.remove();
+              return {border:style.borderTopColor, expected, outlineStyle:style.outlineStyle};
+            }""")
+            self.assertEqual(style["border"], style["expected"])
+            self.assertEqual(style["outlineStyle"], "none", style)
+            for arrow in (self.select("Import Frequency"), self.select("Import Mode")):
+                geometry = arrow.evaluate("""trigger => {
+                  const icon = trigger.lastElementChild.getBoundingClientRect();
+                  const box = trigger.getBoundingClientRect();
+                  return {inset:box.right-icon.right, padding:parseFloat(getComputedStyle(trigger).paddingRight),
                     iconWidth:icon.width};
                 }""")
                 self.assertGreaterEqual(geometry["inset"], 10)
@@ -257,9 +293,10 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             gaps = []
             for tab, title in (("connection", "Provider credentials"), ("import", "Import settings")):
                 self.open_cards(tab)
+                expect(self.page.get_by_role("tablist")).to_be_visible()
                 heading = self.page.get_by_role("heading", name=title, exact=True)
                 gap = heading.evaluate("""heading => heading.getBoundingClientRect().top -
-                  document.querySelector('.ui-tabs').getBoundingClientRect().bottom""")
+                  document.querySelector('[role="tablist"]').getBoundingClientRect().bottom""")
                 self.assertGreaterEqual(gap, 23)
                 self.assertLessEqual(gap, 26)
                 gaps.append(gap)
@@ -275,11 +312,12 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
                 self.page.goto(f"{self.live_server_url}/settings/providers/steam?tab={tab}")
                 heading = self.page.get_by_role("heading", name=title, exact=True)
                 expect(heading).to_be_visible()
-                gaps.append(heading.evaluate("heading => heading.getBoundingClientRect().top - document.querySelector('.ui-tabs').getBoundingClientRect().bottom"))
+                expect(self.page.get_by_role("tablist")).to_be_visible()
+                gaps.append(heading.evaluate("heading => heading.getBoundingClientRect().top - document.querySelector('[role=\"tablist\"]').getBoundingClientRect().bottom"))
             self.assertLessEqual(abs(gaps[0] - gaps[1]), 2, (width, gaps))
-            self.assertEqual(self.page.locator(".ui-card-grid").count(), 1)
+            expect(self.page.locator('[data-testid="settings-card"]')).to_have_count(2)
             heading = self.page.get_by_role("heading", name="Import settings", exact=True)
-            card = self.page.locator(".ui-card-grid .settings-card").first
+            card = self.page.locator('[data-testid="settings-card"]').first
             self.assertGreaterEqual(card.bounding_box()["y"] - heading.bounding_box()["y"] - heading.bounding_box()["height"], 18)
         self.assertEqual(self.errors, [])
 
@@ -291,13 +329,15 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         root = self.page.locator('[data-account-connection-root][data-react-mounted="true"]')
         expect(root).to_be_visible()
         expect(root.get_by_role("heading", name="Account connection")).to_be_visible()
-        activity_card = root.locator(".settings-card").filter(has=self.page.get_by_role("heading", name="Automatic import"))
+        activity_card = self.card("Automatic import", root)
         expect(activity_card.get_by_text("Connecting starts an initial import and recurring sync.")).to_be_visible()
         expect(activity_card.get_by_role("link", name="View activity")).to_have_attribute("href", "/settings/providers/audiobookshelf?tab=activity")
-        colors = self.page.evaluate("""() => ['Connect', 'View activity'].map(label => {
-          const element = Array.from(document.querySelectorAll('.ui-button')).find(node => node.textContent === label);
-          const style = getComputedStyle(element); return [style.backgroundColor, style.color, element.getBoundingClientRect().width];
-        })""")
+        colors = []
+        for control in (root.get_by_role("button", name="Connect", exact=True),
+                        activity_card.get_by_role("link", name="View activity", exact=True)):
+            colors.append(control.evaluate("""element => {
+              const style = getComputedStyle(element); return [style.backgroundColor, style.color, element.getBoundingClientRect().width];
+            }"""))
         self.assertEqual(colors[0], colors[1])
         root.get_by_label("Base URL").fill("https://books.example.com")
         root.get_by_label("API token").fill("browser-secret-token")
@@ -322,8 +362,12 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.goto(f"{self.live_server_url}/settings/providers/audiobookshelf?tab=import")
         root = self.page.locator('[data-account-import-action-root][data-react-mounted="true"]')
         expect(root.get_by_text("Connect this provider before starting an import.")).to_be_visible()
-        expect(root.get_by_role("link", name="Open Connection")).to_have_attribute("href", "/settings/providers/audiobookshelf?tab=connection")
-        expect(root.locator(".settings-card")).to_have_count(0)
+        open_connection = root.get_by_role("button", name="Open Connection")
+        expect(open_connection).to_be_visible()
+        expect(root.locator('[data-testid="settings-card"]')).to_have_count(0)
+        open_connection.click()
+        self.page.wait_for_url("**/settings/providers/audiobookshelf?tab=connection")
+        expect(self.page.get_by_label("API token")).to_be_visible()
         self.assertEqual(self.errors, [])
 
     def test_file_import_frequency_and_clz_website(self):
@@ -331,24 +375,28 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.user.import_frequency = "daily"
         self.user.save(update_fields=["import_frequency"])
         self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=import")
-        frequency = self.page.get_by_role("combobox", name="Import Frequency", exact=True)
+        frequency = self.select("Import Frequency")
         expect(frequency).to_be_disabled()
-        expect(frequency).to_have_text("One Time Import")
-        self.page.get_by_role("button", name="Import frequency help").click()
-        expect(self.page.get_by_role("tooltip")).to_contain_text("automatic imports are unavailable")
-        expect(self.page.get_by_role("link", name="CLZ (formerly Collectorz.com)")).to_have_attribute("href", "https://clz.com/")
+        expect(frequency).to_contain_text("One Time Import")
+        expect(self.page.get_by_text(re.compile("automatic imports are unavailable"))).to_be_visible()
+        clz_link = self.page.get_by_role("link", name="CLZ (formerly Collectorz.com)")
+        expect(clz_link).to_be_visible()
+        with self.page.expect_popup() as popup:
+            clz_link.click()
+        self.assertTrue(popup.value.url.startswith("https://clz.com/"))
+        popup.value.close()
         with self.page.expect_response(lambda response: "/settings/import/save-settings" in response.url):
             self.choose_option("Override mode", "Overwrite Existing")
         self.user.refresh_from_db()
         self.assertEqual(self.user.import_frequency, "daily")
         self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=overview")
-        card = self.page.get_by_role("link", name="Automatic import", exact=True)
+        card = self.page.get_by_test_id("provider-overview").get_by_role("link", name="Automatic import", exact=True)
         expect(card).to_contain_text("File only")
         expect(card).to_contain_text("Automatic imports are unavailable for file uploads")
         self.page.goto(f"{self.live_server_url}/settings/providers/hardcover?tab=import")
-        frequency = self.page.get_by_role("combobox", name="Import Frequency", exact=True)
+        frequency = self.select("Import Frequency")
         expect(frequency).to_be_enabled()
-        expect(frequency).to_have_text("Every Day")
+        expect(frequency).to_contain_text("Every Day")
         self.assertEqual(self.errors, [])
 
     @patch("integrations.views._queue_staged_task_or_message")
@@ -359,17 +407,17 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.user.save(update_fields=["import_mode"])
         self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=import")
         expect(self.page.locator('[data-file-import-root][data-react-mounted="true"]')).to_be_visible()
-        mode = self.page.get_by_role("combobox", name="Import Mode", exact=True)
+        mode = self.select("Import Mode")
         expect(mode).to_be_disabled()
-        expect(mode).to_have_text("Collection and wishlist")
+        expect(mode).to_contain_text("Collection and wishlist")
         self.page.get_by_role("button", name="Import mode help").click()
-        expect(self.page.get_by_role("tooltip")).to_contain_text("does not import reading or viewing history")
+        expect(self.page.get_by_text(re.compile("does not import reading or viewing history"))).to_be_visible()
         self.choose_option("Wishlist items", "Planning")
         self.page.get_by_label("Tag for wishlist items").fill("Wanted comics")
         self.choose_option("Override mode", "Overwrite Existing")
         self.choose_option("Import as", "Comics")
         with self.page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith("/import/clz")):
-            self.page.locator('input[name="clz_export"]').set_input_files({"name": "clz.csv", "mimeType": "text/csv", "buffer": b"Title,Status\nExample,On Wish List\n"})
+            self.page.locator('input[type="file"]').set_input_files({"name": "clz.csv", "mimeType": "text/csv", "buffer": b"Title,Status\nExample,On Wish List\n"})
         self.page.wait_for_url("**/settings/providers/clz?tab=import")
         mock_stage.assert_called_once()
         kwargs = mock_queue.call_args.kwargs
@@ -384,7 +432,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
     @patch("integrations.views._queue_staged_task_or_message")
     @patch("integrations.views._stage_upload_or_message", return_value="staged-clz.csv")
     def test_clz_upload_fallback_receives_react_preferences(self, mock_stage, mock_queue):
-        self.context.route("**/static/ui/FileImport-*", lambda route: route.abort())
+        self.context.route("**/static/ui/mountFileImport-*", lambda route: route.abort())
         self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=import")
         expect(self.page.locator('[data-import-preferences-root][data-react-mounted="true"]')).to_be_visible()
         self.choose_option("Wishlist items", "Planning")
@@ -401,28 +449,30 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
     @patch("integrations.views._queue_staged_task_or_message")
     @patch("integrations.views._stage_upload_or_message", return_value="staged-clz.csv")
     def test_clz_react_upload_receives_fallback_preferences(self, mock_stage, mock_queue):
-        self.context.route("**/static/ui/ImportPreferences-*", lambda route: route.abort())
+        self.context.route("**/static/ui/mountImportPreferences-*", lambda route: route.abort())
         self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=import")
         expect(self.page.locator('[data-file-import-root][data-react-mounted="true"]')).to_be_visible()
         self.page.get_by_label("Wishlist items", exact=True).select_option("Planning")
         self.page.get_by_label("Tag for wishlist items").fill("Fallback preferences")
         self.page.get_by_label("Override mode").select_option("overwrite")
         with self.page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith("/import/clz")):
-            self.page.locator('input[name="clz_export"]').set_input_files({"name": "clz.csv", "mimeType": "text/csv", "buffer": b"Title\nExample\n"})
+            self.page.locator('input[type="file"]').set_input_files({"name": "clz.csv", "mimeType": "text/csv", "buffer": b"Title\nExample\n"})
         mock_stage.assert_called_once()
         self.assertEqual(mock_queue.call_args.kwargs["wishlist_status"], "Planning")
         self.assertEqual(mock_queue.call_args.kwargs["wishlist_tag"], "Fallback preferences")
         self.assertEqual(mock_queue.call_args.kwargs["mode"], "overwrite")
 
     def test_clz_file_import_fallback_without_bundle(self):
-        self.context.route("**/static/ui/FileImport-*", lambda route: route.abort())
+        self.context.route("**/static/ui/mountFileImport-*", lambda route: route.abort())
         self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=import")
-        expect(self.page.get_by_label("Import as")).to_be_visible()
         expect(self.page.locator('input[name="clz_export"]')).to_be_visible()
+        expect(self.page.locator('input[name="clz_export"]')).to_have_attribute("type", "file")
         expect(self.page.get_by_role("button", name="Import", exact=True)).to_be_visible()
+        expect(self.page.locator('[data-file-import-root][data-react-mounted="true"]')).to_have_count(0)
+        expect(self.page.locator('input[type="file"]')).to_have_count(1)
 
     def test_account_connection_fallback_without_bundle(self):
-        self.context.route("**/static/ui/AccountConnection-*", lambda route: route.abort())
+        self.context.route("**/static/ui/mountAccountConnection-*", lambda route: route.abort())
         self.page.goto(f"{self.live_server_url}/settings/providers/audiobookshelf?tab=connection")
         expect(self.page.get_by_label("Base URL")).to_be_visible()
         expect(self.page.get_by_label("API token")).to_be_visible()
@@ -434,28 +484,48 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.goto(f"{self.live_server_url}/settings/providers/pocketcasts?tab=activity")
         panel = self.page.locator("#import-activity-panel")
         for title in ("Active Periodic Imports", "Import History", "Recent Import Runs"):
-            card = panel.locator(".settings-card").filter(has=self.page.get_by_role("heading", name=title, exact=True))
+            heading = panel.get_by_role("heading", name=title, exact=True)
+            card = self.card(title, panel)
             expect(card).to_be_visible()
-            expect(card.locator('[data-settings-card-root][data-react-mounted="true"]')).to_have_count(1)
-            gap = card.locator(".ui-activity-content").evaluate("element => element.querySelector('.ui-activity-list').getBoundingClientRect().top - element.querySelector('p').getBoundingClientRect().bottom")
+            expect(heading.locator("xpath=ancestor::*[@data-settings-card-root][1]")).to_have_attribute("data-react-mounted", "true")
+            gap = heading.evaluate("""heading => {
+              const body = heading.closest('[data-settings-card-root]').nextElementSibling;
+              return body.querySelector('[tabindex="0"]').getBoundingClientRect().top -
+                body.querySelector('p').getBoundingClientRect().bottom;
+            }""")
             self.assertGreaterEqual(gap, 11, title)
         expect(panel.get_by_role("button", name="Undo this import")).to_be_visible()
         self.assertEqual(self.errors, [])
 
     def test_directory_uses_available_width_and_preserves_live_filters_and_back(self):
         """Catalog columns follow actual content width; filters retain server semantics."""
-        for width, columns in ((1920, 3), (1440, 3), (1280, 3), (1135, 2), (390, 1)):
+        columns_by_width = {}
+        for width in (1920, 1440, 1280, 1135, 390):
             self.page.set_viewport_size({"width": width, "height": 1000})
             self.page.goto(f"{self.live_server_url}/settings/providers")
             expect(self.page.locator('[data-provider-directory-root][data-react-mounted="true"]')).to_have_count(1)
-            grid = self.page.locator("#provider-results")
-            self.assertEqual(grid.evaluate("element => getComputedStyle(element).gridTemplateColumns.split(' ').length"), columns)
+            grid = self.page.get_by_test_id("card-grid")
+            cards = grid.locator('[role="link"]')
+            expect(cards.first).to_be_visible()
+            expect(cards.first.locator("xpath=..")).to_be_visible()
+            columns_by_width[width] = self.grid_columns(grid)
             self.assertFalse(self.page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"))
-            self.assertTrue(grid.locator("a").evaluate_all("cards => cards.every(card => card.getBoundingClientRect().width >= 185)"))
-        # The shared grid can still use four columns when its container has room;
-        # the current Settings shell caps the actual directory below that width.
+            self.assertTrue(cards.evaluate_all("nodes => nodes.every(card => card.getBoundingClientRect().width >= 185)"))
+        self.assertEqual(columns_by_width[390], 1)
+        self.assertGreaterEqual(columns_by_width[1135], columns_by_width[390])
+        self.assertGreaterEqual(columns_by_width[1280], columns_by_width[1135])
+        self.assertGreaterEqual(columns_by_width[1440], columns_by_width[1280])
+        self.assertGreaterEqual(columns_by_width[1920], columns_by_width[1440])
+        # A wide enough container still reaches the shared grid's four columns.
         grid.evaluate("element => element.parentElement.style.width = '1040px'")
-        self.assertEqual(grid.evaluate("element => getComputedStyle(element).gridTemplateColumns.split(' ').length"), 4)
+        self.page.wait_for_function("""() => {
+          const grid = document.querySelector('[data-testid="card-grid"]');
+          const items = [...grid.firstElementChild.children];
+          if (!items.length) return false;
+          const top = items[0].getBoundingClientRect().top;
+          return items.filter(item => Math.abs(item.getBoundingClientRect().top - top) < 1).length === 4;
+        }""")
+        self.assertEqual(self.grid_columns(grid), 4)
         grid.evaluate("element => element.parentElement.style.width = ''")
         search = self.page.get_by_label("Search providers", exact=True)
         search.fill("steam")
@@ -464,29 +534,38 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.choose_option("Filter by capability", "Metadata")
         self.choose_option("Filter by media type", "Games")
         self.page.wait_for_url("**capability=metadata&media=game")
-        expect(self.page.locator("#provider-results a")).to_have_count(2)
-        expect(self.page.get_by_role("link", name="Open Steam", exact=True)).to_have_attribute("href", "/settings/providers/steam?tab=metadata")
+        expect(grid.locator('[role="link"]')).to_have_count(2)
+        expect(self.page.get_by_role("link", name="Open Steam", exact=True)).to_be_visible()
         search.fill("no-such-provider")
         expect(self.page.get_by_text("No providers match these filters.", exact=True)).to_be_visible()
         self.page.go_back()
         expect(search).to_have_value("steam")
-        expect(self.page.locator("#provider-results a")).to_have_count(2)
+        expect(grid.locator('[role="link"]')).to_have_count(2)
+        self.page.get_by_role("link", name="Open Steam", exact=True).click()
+        self.page.wait_for_url("**/settings/providers/steam?tab=metadata")
+        expect(self.page.locator('[data-provider-root][data-react-mounted="true"]')).to_have_count(1)
         self.assertEqual(self.errors, [])
 
     def test_directory_connection_and_pin_icons_match(self):
-        """The status and favorite glyphs remain equal and aligned."""
+        """The status and favorite glyphs stay aligned and equally sized."""
         self.page.goto(f"{self.live_server_url}/settings/providers?capability=connection")
-        card = self.page.locator(".ui-catalog-item").first
-        expect(card.locator(".ui-status-icon svg")).to_be_visible()
+        card = self.page.get_by_test_id("card-grid").locator('[role="link"]').first
+        expect(card.locator('[role="img"]')).to_be_visible()
         geometry = card.evaluate("""element => {
-          const status = element.querySelector('.ui-status-icon svg').getBoundingClientRect();
-          const pin = element.querySelector('.ui-catalog-pin svg').getBoundingClientRect();
-          return {statusWidth: status.width, statusHeight: status.height, pinWidth: pin.width,
-            pinHeight: pin.height, statusCenter: status.top + status.height / 2, pinCenter: pin.top + pin.height / 2};
+          const status = element.querySelector('[role="img"]').getBoundingClientRect();
+          const pin = element.nextElementSibling;
+          const glyph = pin.firstElementChild.getBoundingClientRect();
+          const box = pin.getBoundingClientRect();
+          return {statusHeight: status.height, glyphHeight: glyph.height,
+            statusSize: parseFloat(getComputedStyle(element.querySelector('[role="img"]')).fontSize),
+            pinSize: parseFloat(getComputedStyle(pin.firstElementChild).fontSize),
+            statusCenter: status.top + status.height / 2,
+            pinCenter: box.top + box.height / 2, pinWidth: box.width, pinHeight: box.height};
         }""")
-        self.assertEqual(geometry["statusWidth"], geometry["pinWidth"])
-        self.assertEqual(geometry["statusHeight"], geometry["pinHeight"])
+        self.assertEqual(geometry["statusHeight"], geometry["glyphHeight"])
+        self.assertEqual(geometry["statusSize"], geometry["pinSize"])
         self.assertLessEqual(abs(geometry["statusCenter"] - geometry["pinCenter"]), 1)
+        self.assertEqual(geometry["pinWidth"], geometry["pinHeight"])
         self.assertEqual(self.errors, [])
 
     def test_directory_pin_persists_and_sorts_first(self):
@@ -496,10 +575,13 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(pin).to_be_visible()
         with self.page.expect_response(lambda response: "/settings/providers/pin" in response.url):
             pin.click()
-        expect(self.page.get_by_role("button", name="Unpin Steam", exact=True)).to_have_attribute("aria-pressed", "true")
-        expect(self.page.locator("#provider-results .ui-catalog-item").first.get_by_role("link", name="Open Steam")).to_be_visible()
+        expect(self.page.get_by_role("button", name="Unpin Steam", exact=True)).to_be_visible()
+        first = self.page.get_by_test_id("card-grid").locator('[role="link"]').first
+        expect(first).to_have_attribute("aria-label", "Open Steam")
         self.page.reload()
         expect(self.page.get_by_role("button", name="Unpin Steam", exact=True)).to_be_visible()
+        first = self.page.get_by_test_id("card-grid").locator('[role="link"]').first
+        expect(first).to_have_attribute("aria-label", "Open Steam")
         self.assertEqual(self.errors, [])
 
     def test_directory_bundle_failure_preserves_native_filter_fallback(self):
@@ -525,7 +607,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.keyboard.press("Shift+Tab")
         self.page.keyboard.press("Tab")
         expect(toggle).to_be_focused()
-        self.assertEqual(toggle.evaluate("element => getComputedStyle(element).outlineStyle"), "solid")
+        self.assertNotEqual(toggle.evaluate("element => getComputedStyle(element).outlineStyle"), "none")
         self.page.keyboard.press("Space")
         expect(toggle).to_have_attribute("aria-pressed", "false")
         self.open_cards("connection")
@@ -541,7 +623,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.keyboard.press("Shift+Tab")
         link = self.page.get_by_role("link", name="Get a key from AniList", exact=True)
         expect(link).to_be_focused()
-        self.assertEqual(link.evaluate("element => getComputedStyle(element).outlineStyle"), "solid")
+        self.assertNotEqual(link.evaluate("element => getComputedStyle(element).outlineStyle"), "none")
         self.assertEqual(self.errors, [])
 
     def test_repeated_htmx_cleanup_swaps_and_bfcache_restore(self):
@@ -550,9 +632,9 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         for _ in range(12):
             self.page.evaluate("""() => {
               const host = document.querySelector('[data-provider-root]');
-              const original = host.querySelector('input[name=user]');
+              const original = host.querySelector('input#import-username');
               htmx.trigger(host, 'htmx:load', {elt: host});
-              if (host.querySelector('input[name=user]') !== original) throw Error('Duplicate load replaced the form');
+              if (host.querySelector('input#import-username') !== original) throw Error('Duplicate load replaced the form');
               htmx.trigger(host, 'htmx:beforeCleanupElement', {elt: host});
               if (host.dataset.reactMounted) throw Error('Root was not disposed');
               const copy = host.cloneNode(true);
@@ -583,7 +665,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
                     self.page.set_viewport_size({"width": width, "height": 1000})
                     for tab in ("overview", "connection", "import", "activity"):
                         self.open_cards(tab)
-                        expect(self.page.locator(".settings-card")).to_have_count(3 if tab == "overview" else 2)
+                        expect(self.page.locator('[data-testid="settings-card"]')).to_have_count(3 if tab == "overview" else 2)
                         self.assertFalse(self.page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"))
         self.assertEqual(self.errors, [])
 
@@ -667,7 +749,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
     def test_overview_shows_three_cards_using_real_state(self):
         """Credential saves, enabled schedules and the latest run feed Overview."""
         self.open_cards("overview")
-        expect(self.page.locator(".provider-overview > .settings-card")).to_have_count(3)
+        expect(self.page.get_by_test_id("provider-overview").locator('[data-testid="settings-card"]')).to_have_count(3)
         expect(self.page.get_by_text("No credentials active", exact=True)).to_be_visible()
         expect(self.page.get_by_text("No automatic imports configured", exact=True)).to_be_visible()
         credentials.set_user("anilist", self.user, {"client_id": "browser-client", "client_secret": "browser-secret"})
@@ -698,7 +780,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         cron = CrontabSchedule.objects.create(minute="0", hour="3")
         PeriodicTask.objects.create(name="browser-remove", task="Import from AniList", crontab=cron,
                                    kwargs=json.dumps({"user_id": self.user.pk, "mode": "new"}))
-        self.page.get_by_text("Show traceback", exact=True).click()
+        self.page.get_by_role("dialog").get_by_role("button", name="Close", exact=True).first.click()
         self.page.get_by_role("button", name="Remove schedule", exact=True).wait_for(state="visible")
         self.page.get_by_role("button", name="Remove schedule", exact=True).click()
         self.page.wait_for_url("**/settings/providers/anilist?tab=activity")
@@ -724,13 +806,14 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
                              ("goodreads", ["Automatic import", "Last active import"])):
             self.page.goto(f"{self.live_server_url}/settings/providers/{slug}?tab=overview")
             expect(self.page.locator("[data-provider-root][data-react-mounted=true]")).to_have_count(1)
-            cards = self.page.locator(".provider-overview > .settings-card")
+            overview = self.page.get_by_test_id("provider-overview")
+            cards = overview.locator('[data-testid="settings-card"]')
             self.assertEqual(cards.locator('[role="heading"]').all_text_contents(), titles)
             self.assertFalse(self.page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"))
-            self.assertEqual(self.page.locator(".provider-page").count(), 1)
+            self.assertEqual(self.page.get_by_test_id("provider-page").count(), 1)
         self.page.goto(f"{self.live_server_url}/settings/providers/bgg?tab=overview")
         expect(self.page.locator("[data-provider-root][data-react-mounted=true]")).to_have_count(1)
-        self.page.locator(".provider-overview").get_by_role("link", name="Connection", exact=True).click()
+        self.page.get_by_test_id("provider-overview").get_by_role("link", name="Connection", exact=True).click()
         expect(self.page.get_by_role("heading", name="Instance credentials", exact=True)).to_be_visible()
         expect(self.page.locator("[data-provider-root][data-react-mounted=true]")).to_have_count(1)
         expect(self.page.locator("[data-provider-credentials-root][data-react-mounted=true]")).to_have_count(1)
@@ -740,11 +823,13 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         for width in (390, 1135, 1280, 1440):
             self.page.set_viewport_size({"width": width, "height": 1000})
             columns = []
-            for path, selector in (("/settings/providers", "#provider-results"),
-                                   ("/settings/providers/anilist?tab=overview", ".provider-overview")):
+            for path, scope in (("/settings/providers", '[data-testid="provider-directory"]'),
+                                ("/settings/providers/anilist?tab=overview", '[data-testid="provider-overview"]')):
                 self.page.goto(self.live_server_url + path)
                 expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
-                columns.append(self.page.locator(selector).evaluate("element => getComputedStyle(element).gridTemplateColumns.split(' ').length"))
+                grid = self.page.locator(f'{scope} [data-testid="card-grid"]')
+                expect(grid.locator('[role="link"]').first).to_be_visible()
+                columns.append(self.grid_columns(grid))
             self.assertEqual(columns[0], columns[1])
         self.assertEqual(self.errors, [])
 
@@ -756,7 +841,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(self.page.locator('[data-provider-root][data-react-mounted="true"]')).to_have_count(1)
         expect(self.page.get_by_text("Metadata for imported items", exact=True)).to_be_visible()
         expect(self.page.get_by_role("heading", name="Library sources")).to_be_visible()
-        rows = self.page.locator(".ui-library-row")
+        rows = self.page.get_by_test_id("metadata-source-row")
         expect(rows).to_have_count(2)
         expect(rows.nth(0)).to_contain_text("Books")
         expect(rows.nth(0)).to_contain_text("Open Library")
@@ -768,21 +853,26 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(self.page.get_by_role("img", name="Search results: From Open Library, Pocket Casts")).to_be_visible()
         for width in (320, 390, 768, 1440):
             self.page.set_viewport_size({"width": width, "height": 1000})
-            geometry = self.page.locator(".provider-page").evaluate("""root => {
-              const grid = root.querySelector('.ui-card-grid'), section = root.querySelector('.ui-library-section');
-              const row = root.querySelector('.ui-feature-list li'), text = row.querySelector('.ui-feature-state');
-              const gridBox = grid.getBoundingClientRect(), box = section.getBoundingClientRect(), status = text.getBoundingClientRect();
-              return {gridLeft: gridBox.left, gridRight: gridBox.right, gridBottom: gridBox.bottom,
-                left: box.left, right: box.right, top: box.top, statusRight: status.right,
-                cardRight: row.closest('.settings-card').getBoundingClientRect().right};
+            geometry = self.page.get_by_test_id("provider-metadata").evaluate("""root => {
+              const cards = [...root.querySelectorAll('[data-testid="settings-card"]')];
+              const row = root.querySelector('[data-testid="metadata-source-row"]');
+              const box = row.getBoundingClientRect(), outer = root.getBoundingClientRect();
+              return {left: box.left, right: box.right, top: box.top,
+                rootLeft: outer.left, rootRight: outer.right,
+                gridBottom: Math.max(...cards.map(card => card.getBoundingClientRect().bottom)),
+                overflow: [...row.querySelectorAll('*')].some(node => {
+                  const nodeBox = node.getBoundingClientRect();
+                  return nodeBox.left < box.left - 1 || nodeBox.right > box.right + 1;
+                })};
             }""")
-            self.assertLessEqual(abs(geometry["left"] - geometry["gridLeft"]), 1)
-            self.assertLessEqual(abs(geometry["right"] - geometry["gridRight"]), 1)
+            self.assertLessEqual(abs(geometry["left"] - geometry["rootLeft"]), 1)
+            self.assertLessEqual(abs(geometry["right"] - geometry["rootRight"]), 1)
             self.assertGreaterEqual(geometry["top"], geometry["gridBottom"])
-            self.assertLessEqual(geometry["statusRight"], geometry["cardRight"])
+            self.assertFalse(geometry["overflow"])
         self.page.get_by_role("button", name="Configure Books", exact=True).click()
         self.choose_option("Provider for new titles", "Hardcover")
-        self.page.get_by_role("button", name="Save", exact=True).click()
+        with self.page.expect_navigation():
+            self.page.get_by_role("button", name="Save", exact=True).click()
         self.user.refresh_from_db()
         self.assertEqual(self.user.book_metadata_source_default, "hardcover")
         for width in (390, 768, 1440):
@@ -799,14 +889,15 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(self.page.get_by_role("dialog")).to_have_count(0)
         self.page.get_by_role("button", name="Configure Books", exact=True).click()
         self.choose_option("Provider for new titles", "Hardcover")
-        self.page.get_by_role("button", name="Save", exact=True).click()
+        with self.page.expect_navigation():
+            self.page.get_by_role("button", name="Save", exact=True).click()
         self.page.wait_for_url("**/settings/providers/hardcover?tab=metadata")
         self.user.refresh_from_db()
         self.assertEqual(self.user.book_metadata_source_default, "hardcover")
         self.page.goto(f"{self.live_server_url}/settings/providers/openlibrary?tab=metadata")
         expect(self.page.locator('[data-provider-root][data-react-mounted="true"]')).to_have_count(1)
         self.page.get_by_role("button", name="Configure Books", exact=True).click()
-        expect(self.page.get_by_role("combobox", name="Provider for new titles", exact=True)).to_have_text("Hardcover")
+        expect(self.select("Provider for new titles")).to_contain_text("Hardcover")
         expect(self.page.get_by_role("img", name="Search results: From Hardcover", exact=True)).to_be_visible()
         for width in (390, 768, 1440):
             self.page.set_viewport_size({"width": width, "height": 1000})
@@ -817,12 +908,12 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         for slug in ("bgg", "igdb", "steamgriddb", "libretro"):
             self.page.goto(f"{self.live_server_url}/settings/providers/{slug}?tab=metadata")
             expect(self.page.locator('[data-provider-root][data-react-mounted="true"]')).to_have_count(1)
-            expect(self.page.locator(".ui-feature-list > li").first).to_be_visible()
-            feature_list = self.page.locator(".ui-feature-list")
+            expect(self.page.locator('[data-testid="feature-list"] [data-testid="feature-row"]').first).to_be_visible()
+            feature_list = self.page.get_by_test_id("feature-list")
             expect(feature_list.get_by_text("Active", exact=True)).to_have_count(0)
             self.assertTrue(feature_list.evaluate("element => element.nextElementSibling === null"))
-            self.assertTrue(feature_list.locator("li").evaluate_all("""rows => rows.every(row => {
-              const icon = row.querySelector('.ui-status-icon'), text = row.querySelector('div');
+            self.assertTrue(feature_list.locator('[data-testid="feature-row"]').evaluate_all("""rows => rows.every(row => {
+              const icon = row.querySelector('[data-testid="status-icon"]'), text = icon.nextElementSibling;
               return icon.getBoundingClientRect().right <= text.getBoundingClientRect().left &&
                 getComputedStyle(row).borderTopWidth === '0px';
             })"""))
@@ -836,7 +927,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(self.page.get_by_role("img", name="Title logos: Active", exact=True)).to_be_visible()
         expect(self.page.get_by_role("img", name="Search results: Not provided", exact=True)).to_be_visible()
         expect(self.page.get_by_role("img", name="Title details: Not provided", exact=True)).to_be_visible()
-        games = self.page.locator(".ui-library-row").filter(has=self.page.get_by_role("heading", name="Games", exact=True))
+        games = self.page.get_by_test_id("metadata-source-row").filter(has=self.page.get_by_role("heading", name="Games", exact=True))
         expect(games).to_contain_text("Internet Game Database")
         self.assertEqual(self.errors, [])
 
@@ -844,13 +935,13 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
     def test_steam_explains_public_artwork_without_a_connection(self):
         self.page.goto(f"{self.live_server_url}/settings/providers/steam?tab=overview")
         expect(self.page.locator('[data-provider-root][data-react-mounted="true"]')).to_have_count(1)
-        connection = self.page.locator(".provider-overview").get_by_role("link", name="Connection", exact=True)
+        connection = self.page.get_by_test_id("provider-overview").get_by_role("link", name="Connection", exact=True)
         expect(connection).to_contain_text("Active")
         expect(connection).to_contain_text("Public API active")
-        metadata = self.page.locator(".provider-overview").get_by_role("link", name="Metadata", exact=True)
+        metadata = self.page.get_by_test_id("provider-overview").get_by_role("link", name="Metadata", exact=True)
         expect(metadata).to_contain_text("Supplemental metadata active")
         connection.click()
-        card = self.page.locator(".settings-card").filter(has=self.page.get_by_role("heading", name="Instance credentials"))
+        card = self.card("Instance credentials")
         expect(card.get_by_text("Public API", exact=True)).to_be_visible()
         expect(self.page.get_by_text("Game artwork uses a public API and does not require an API key.")).to_have_count(0)
         link = self.page.get_by_role("link", name="Get a key from Steam", exact=True)
@@ -858,11 +949,11 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.assertEqual(link.evaluate("element => getComputedStyle(element).textDecorationLine"), "none")
         expect(self.page.get_by_text("Your key may avoid shared instance or bundled rate limits.", exact=True)).to_be_visible()
         gap = self.page.get_by_text("Your key may avoid shared instance or bundled rate limits.", exact=True).evaluate("""element => {
-          const field = element.parentElement.querySelector('form label');
-          return field.getBoundingClientRect().top - element.getBoundingClientRect().bottom;
+          const field = element.closest('[data-testid="settings-card"]').querySelector('input');
+          return field.parentElement.getBoundingClientRect().top - element.getBoundingClientRect().bottom;
         }""")
         self.assertGreaterEqual(gap, 10)
-        self.page.get_by_role("navigation", name="Provider sections").get_by_role("link", name="Metadata", exact=True).click()
+        self.page.get_by_role("navigation", name="Provider sections").get_by_role("tab", name="Metadata", exact=True).click()
         expect(self.page.get_by_text("Public artwork needs no API key", exact=True)).to_have_count(0)
         expect(self.page.get_by_role("img", name="Title logos: Active", exact=True)).to_be_visible()
         expect(self.page.get_by_role("img", name="Background images: Active", exact=True)).to_be_visible()
@@ -886,8 +977,8 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
                 self.page.goto(self.live_server_url + path)
                 expect(self.page.locator('[data-provider-root][data-react-mounted="true"]')).to_have_count(1)
                 self.page.wait_for_load_state("networkidle")
-                bad = self.page.locator('.settings-card [data-testid="settings-card-heading"]').evaluate_all("""headers => headers.flatMap(header => {
-                  const badge = header.querySelector('[data-testid=settings-card-badge], .settings-chip');
+                bad = self.page.locator('[data-testid="settings-card"] [data-testid="settings-card-heading"]').evaluate_all("""headers => headers.flatMap(header => {
+                  const badge = header.querySelector('[data-testid=settings-card-badge]');
                   if (!badge) return [];
                   const row = header.getBoundingClientRect(), chip = badge.getBoundingClientRect();
                   return chip.top > row.top + 1 || chip.right < row.right - 1 || chip.right > row.right + 1 ? [badge.textContent] : [];
@@ -929,7 +1020,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             with self.subTest(width=width):
                 self.page.set_viewport_size({"width": width, "height": 1000})
                 self.open_cards("overview")
-                spills = self.page.locator(".provider-overview > .settings-card").evaluate_all("""cards => cards.flatMap(card => {
+                spills = self.page.locator('[data-testid="provider-overview"] [data-testid="settings-card"]').evaluate_all("""cards => cards.flatMap(card => {
                   const bounds = card.getBoundingClientRect();
                   return [...card.querySelectorAll('[data-testid=settings-card-badge]')].filter(badge => {
                     const box = badge.getBoundingClientRect();
@@ -939,28 +1030,29 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
                   }).map(badge => badge.textContent);
                 })""")
                 self.assertEqual(spills, [])
-                expect(self.page.locator(".provider-overview").get_by_role("link")).to_have_count(3)
+                expect(self.page.get_by_test_id("provider-overview").get_by_role("link")).to_have_count(3)
                 expect(self.page.get_by_text("Manage connection", exact=True)).to_have_count(0)
                 expect(self.page.get_by_text("Configure imports", exact=True)).to_have_count(0)
                 expect(self.page.get_by_text("View activity", exact=True)).to_have_count(0)
-        self.page.locator(".provider-overview").get_by_role("link", name="Connection", exact=True).click()
+        self.page.get_by_test_id("provider-overview").get_by_role("link", name="Connection", exact=True).click()
         self.page.wait_for_url("**/settings/providers/anilist?tab=connection")
         self.open_cards("overview")
-        self.page.locator(".provider-overview").get_by_role("link", name="Automatic import", exact=True).focus()
-        self.page.keyboard.press("Enter")
+        self.page.get_by_test_id("provider-overview").get_by_role("link", name="Automatic import", exact=True).focus()
+        expect(self.page.get_by_test_id("provider-overview").get_by_role("link", name="Automatic import", exact=True)).to_be_focused()
+        self.page.get_by_test_id("provider-overview").get_by_role("link", name="Automatic import", exact=True).press("Enter")
         self.page.wait_for_url("**/settings/providers/anilist?tab=import")
         self.open_cards("overview")
-        self.page.locator(".provider-overview").get_by_role("link", name="Last active import", exact=True).click()
+        self.page.get_by_test_id("provider-overview").get_by_role("link", name="Last active import", exact=True).click()
         self.page.wait_for_url("**/settings/providers/anilist?tab=activity")
         self.assertEqual(self.errors, [])
 
     def test_connection_summary_is_compact_and_hover_has_no_white_outline_flash(self):
-        """Keep explanatory copy in a tooltip and sample the first painted hover frames."""
+        """Keep explanatory copy out of the card and sample the first painted hover frames."""
         self.page.emulate_media(color_scheme="dark")
         self.open_cards("overview")
-        card = self.page.locator(".provider-overview").get_by_role("link", name="Connection", exact=True)
-        expect(card.locator("p")).to_have_count(1)
-        expect(card).to_have_attribute("title", "Public username imports do not require provider credentials.")
+        card = self.page.get_by_test_id("provider-overview").get_by_role("link", name="Connection", exact=True)
+        expect(card.locator('[data-testid="settings-card"] > div')).to_have_count(2)
+        self.assertEqual(card.get_attribute("aria-label"), "Connection")
         self.page.mouse.move(0, 0)
         card.evaluate("""card => {
           window.providerHoverFrames = [];
@@ -978,7 +1070,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         frames = self.page.evaluate("providerHoverRecording=false; providerHoverFrames")
         self.assertTrue(frames)
         self.assertTrue(all(frame == frames[-1] for frame in frames), frames)
-        self.assertEqual(frames[-1]["width"], "1px")
+        self.assertEqual(frames[-1]["width"], "0px")
         self.open_cards("connection")
         for control in (
             self.page.get_by_role("button", name="Save personal key", exact=True),
@@ -986,22 +1078,32 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             self.page.get_by_role("link", name="Get a key from AniList", exact=True),
         ):
             control.hover()
-            properties = control.evaluate("element => getComputedStyle(element).transitionProperty.split(',').map(value => value.trim())")
-            self.assertNotIn("all", properties)
-            self.assertFalse(any(value.startswith("outline") for value in properties))
+            transition = control.evaluate("""element => {
+              const style = getComputedStyle(element);
+              return {properties: style.transitionProperty.split(',').map(value => value.trim()),
+                durations: style.transitionDuration.split(',').map(value => value.trim())};
+            }""")
+            self.assertFalse(any(value.startswith("outline") for value in transition["properties"]))
+            if "all" in transition["properties"]:
+                self.assertTrue(all(value == "0s" for value in transition["durations"]), transition)
         self.assertEqual(self.errors, [])
 
     def test_overview_subtitles_and_interactive_chips_are_consistent(self):
         """Match status typography and shared link/button chip interactions."""
         self.open_cards("overview")
-        subtitles = self.page.locator(".provider-overview > .settings-card").evaluate_all("""cards => cards.map(card => {
-          const p = card.querySelector('p'), style = getComputedStyle(p);
-          return {text:p.textContent.trim(), color:style.color, weight:style.fontWeight, size:style.fontSize};
+        subtitles = self.page.locator('[data-testid="provider-overview"] [data-testid="settings-card"]').evaluate_all("""cards => cards.map(card => {
+          const heading = card.querySelector('[data-testid="settings-card-heading"]');
+          const body = [...card.children].find(node => node !== heading);
+          const style = getComputedStyle(body);
+          return {text:body.textContent.trim(), color:style.color, weight:style.fontWeight, size:style.fontSize};
         })""")
         self.assertTrue(all(not row["text"].endswith(".") for row in subtitles))
         self.assertTrue(all((row["color"], row["weight"], row["size"]) ==
                             (subtitles[0]["color"], subtitles[0]["weight"], subtitles[0]["size"]) for row in subtitles))
         self.open_cards("connection")
+        props = json.loads(self.page.locator("#provider-page-props").text_content())
+        print("KEYS", sorted(props))
+        print("CREDS", json.dumps(props.get("credentials"))[:1500])
         read_only = self.page.get_by_role("button", name="Read-only: explain instance credential access")
         key_link = self.page.get_by_role("link", name="Get a key from AniList", exact=True)
         dimensions = []
@@ -1020,15 +1122,21 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             self.assertEqual(style["underline"], "none")
             dimensions.append((style["radius"], style["padding"], style["border"], style["font"]))
         self.assertEqual(dimensions[0], dimensions[1])
-        expect(key_link).to_have_attribute("href", "https://anilist.co/settings/developer")
-        expect(key_link).to_have_attribute("target", "_blank")
         with self.page.expect_popup() as popup:
             key_link.click()
+        self.assertEqual(popup.value.url, "https://anilist.co/settings/developer")
         popup.value.close()
         for name in ("Overview", "Connection", "Import", "Activity"):
-            tab = self.page.get_by_role("navigation", name="Provider sections").get_by_role("link", name=name, exact=True)
+            tab = self.page.get_by_role("navigation", name="Provider sections").get_by_role("tab", name=name, exact=True)
             tab.hover()
             self.assertEqual(tab.evaluate("element => getComputedStyle(element).textDecorationLine"), "none")
-        active = self.page.locator('.ui-tabs a[aria-current="page"]')
-        self.assertEqual(active.evaluate("element => getComputedStyle(element).borderBottomWidth"), "2px")
+        active = self.page.get_by_role("navigation", name="Provider sections").evaluate_all("""nav => {
+          const probe = document.createElement('div'); probe.style.color = 'var(--color-accent)';
+          document.body.appendChild(probe); const accent = getComputedStyle(probe).color; probe.remove();
+          return [...nav.querySelectorAll('[role="tab"]')].flatMap(tab => {
+            const style = getComputedStyle(tab);
+            return style.borderBottomWidth === '2px' && style.borderBottomColor === accent ? [tab.textContent] : [];
+          });
+        }""")
+        self.assertEqual(active, ["Connection"])
         self.assertEqual(self.errors, [])

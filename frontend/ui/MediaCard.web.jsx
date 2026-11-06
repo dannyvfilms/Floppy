@@ -122,11 +122,11 @@ function AltTitle({ text, label, inline }) {
   </span>;
 }
 
-function Line({ line, overlay = false }) {
+function Line({ line }) {
   if (line.variant === 'provenance') {
-    return <p className={`text-xs mt-0.5 line-clamp-1 ${overlay ? 'text-white/70' : 'text-[var(--color-text-muted)]'}`}>{line.parts[0].text}</p>;
+    return <p className="text-xs text-[var(--color-text-muted)] mt-0.5 line-clamp-1">{line.parts[0].text}</p>;
   }
-  const className = `media-card-year text-xs mt-1 ${overlay ? 'text-white/75' : 'text-[var(--color-text-muted)]'}${line.clamp ? ' line-clamp-1' : ''}${line.dormant ? ' media-card-line-dormant' : ''}`;
+  const className = `media-card-year text-xs text-[var(--color-text-muted)] mt-1${line.clamp ? ' line-clamp-1' : ''}${line.dormant ? ' media-card-line-dormant' : ''}`;
   if (line.placeholderItemId) {
     return <p className={`${className} release-year-placeholder`} data-item-id={line.placeholderItemId}
       data-progress-text={line.progressText || undefined} />;
@@ -422,9 +422,11 @@ export function MediaCard({
   host,
   actions,
   standalone = true,
+  variant,
   readOnly = false,
   onAction,
   onRate,
+  className = '',
 }) {
   const copy = {
     altTitle: 'Show alternative title',
@@ -435,6 +437,10 @@ export function MediaCard({
     ...labels,
   };
   const shownActions = readOnly ? null : (actions === undefined ? model.actions : actions);
+  // `grid` is the release's `.search-result-card`: the poster fills the card,
+  // the body sits over its lower edge, and the subtitle stays hidden until
+  // hover. Surfaces that render their own shell leave it off.
+  const grid = variant === 'grid';
   const cardRef = useRef(null);
   const revealed = useTapToReveal(cardRef, host, !!shownActions, !!selection?.active);
   const live = useLiveCard(model);
@@ -473,18 +479,17 @@ export function MediaCard({
       {shownActions && !selection?.active && <CardOverlay actions={shownActions} host={host} revealed={revealed}
         labels={copy} onAction={onAction} />}
     </div>
-    <div className="media-card-body p-3 bg-card-body"
-      style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
+    <div className="media-card-body p-3 bg-card-body">
       <div className="media-card-title-row flex items-center gap-2 min-w-0">
         {model.titleLinks?.length ? <div className="min-w-0 flex-1">
           {model.titleLinks.map((part, index) => <a key={part.url} href={part.url} title={part.label}
             className={index === 0
-              ? 'media-card-title block text-sm font-semibold text-white hover:text-[var(--color-link)] transition duration-300 line-clamp-1'
-              : 'mt-0.5 block text-xs text-white/70 hover:text-[var(--color-link)] line-clamp-1'}>{part.label}</a>)}
+              ? 'media-card-title block text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-1'
+              : 'mt-0.5 block text-xs text-[var(--color-text-muted)] hover:text-[var(--color-link)] line-clamp-1'}>{part.label}</a>)}
         </div> : model.recommend ? <h3 title={model.title}
-          className="media-card-title font-medium text-white line-clamp-1 text-sm leading-tight min-w-0">{model.title}</h3>
+          className="media-card-title font-medium text-[var(--color-text)] line-clamp-1 text-sm leading-tight min-w-0">{model.title}</h3>
           : <a href={model.href} title={model.title} {...(model.boost ? { 'hx-boost': 'true' } : {})}
-          className={`media-card-title text-sm font-semibold text-white ${model.publicView ? '' : 'hover:text-[var(--color-link)] '}transition duration-300 line-clamp-1 min-w-0`}>{model.title}</a>}
+          className={`media-card-title text-sm font-semibold text-[var(--color-text)] ${model.publicView ? '' : 'hover:text-[var(--color-link)] '}transition duration-300 line-clamp-1 min-w-0`}>{model.title}</a>}
         {model.altTitle && <AltTitle text={model.altTitle} label={copy.altTitle} />}
         {model.scoreText != null && <span className="flex items-center gap-1 text-xs text-yellow-300 shrink-0">
           <svg className="w-3 h-3 text-yellow-400 fill-current" viewBox="0 0 24 24" aria-hidden="true">
@@ -497,11 +502,17 @@ export function MediaCard({
             editable={!readOnly && model.ratingEditable} onRate={onRate} />;
         })()}</span>}
       </div>
-      {(model.lines || []).map((line, index) => <Line key={index} line={line} overlay />)}
+      {(model.lines || []).map((line, index) => <Line key={index} line={line} />)}
     </div>
   </>;
   if (!standalone) return card;
-  return <div ref={cardRef} className="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative group">
+  const rootClass = [
+    'media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative group',
+    grid ? 'media-card-hover-outline transition-all search-result-card media-card-title-ellipsis media-card-title-bleed' : '',
+    className,
+  ].filter(Boolean).join(' ');
+  return <div ref={cardRef} className={rootClass}
+    style={grid ? { '--card-title-rest-lines': '1', '--card-title-hover-lines': '3' } : undefined}>
     {card}
   </div>;
 }

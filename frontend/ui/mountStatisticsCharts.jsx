@@ -4,12 +4,29 @@ import { StatisticsCharts } from './StatisticsCharts';
 
 const LEVEL_THRESHOLDS = [0, 3, 6, 9];
 
+function themeRadius(css) {
+  const value = parseFloat(css.getPropertyValue('--theme-radius'));
+  return Number.isFinite(value) && value > 0 ? value : 18;
+}
+
+function surfaceColor(css, token) {
+  const base = token('--color-surface', '#27272a');
+  const opacity = parseFloat(css.getPropertyValue('--theme-surface-opacity'));
+  const percent = Number.isFinite(opacity) ? opacity : 100;
+  const hex = base.replace('#', '');
+  if (percent >= 100 || !/^[0-9a-fA-F]{6}$/.test(hex)) return base;
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${percent / 100})`;
+}
+
 function readPalette() {
   const css = getComputedStyle(document.documentElement);
   const token = (name, fallback) => css.getPropertyValue(name).trim() || fallback;
   return {
     background: token('--color-page-bg', '#18181b'),
-    surface: token('--color-surface', '#27272a'),
+    surface: surfaceColor(css, token),
     surfaceStrong: token('--color-surface-strong', '#3f3f46'),
     surfaceMuted: token('--color-surface-muted', '#52525b'),
     border: token('--color-surface-border', token('--color-border', '#3f3f46')),
@@ -23,7 +40,7 @@ function readPalette() {
     danger: token('--color-danger', '#ef4444'),
     warning: token('--color-warning', '#f59e0b'),
     success: token('--color-success', '#10b981'),
-    radius: 10,
+    radius: themeRadius(css),
     radiusSmall: 6,
   };
 }
@@ -201,5 +218,8 @@ function Adapter({ props }) {
 }
 
 export function mountStatisticsCharts(host, props) {
+  // Release spaces these stacked cards 1rem apart; the island host would
+  // otherwise inherit the page's larger section gap.
+  if (props.group && props.group !== 'overview') host.style.marginBottom = '16px';
   return mountRoot(host, <Adapter props={props} />);
 }

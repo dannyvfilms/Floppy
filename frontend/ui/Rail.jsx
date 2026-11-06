@@ -48,6 +48,8 @@ export function Rail({
   accessibilityLabel,
   palette: paletteOverrides,
   scrollRef,
+  renderArrow,
+  renderSortIcon,
   testID,
 }) {
   const palette = { ...defaultPalette, ...paletteOverrides };
@@ -154,7 +156,9 @@ export function Rail({
             ? <Pressable accessibilityRole="button" accessibilityLabel={sortLabel || summaryInline}
               onPress={onSort} style={styles.sortButton}>
               <Text style={[styles.summaryInline, { color: palette.textMuted }]}>{summaryInline}</Text>
-              <Text aria-hidden style={[styles.sortIcon, { color: palette.textMuted }]}>{direction === 'asc' ? '▲' : '▼'}</Text>
+              {renderSortIcon
+                ? renderSortIcon(direction, palette.textMuted)
+                : <Text aria-hidden style={[styles.sortIcon, { color: palette.textMuted }]}>{direction === 'asc' ? '▲' : '▼'}</Text>}
             </Pressable>
             : <Text style={[styles.summaryInline, { color: palette.textMuted }]}>{summaryInline}</Text>) : null}
           {viewAll ? <Pressable accessibilityRole="link" accessibilityLabel={viewAll.accessibilityLabel || viewAll.label}
@@ -167,13 +171,17 @@ export function Rail({
       <View style={styles.controls}>
         <Pressable accessibilityRole="button" accessibilityLabel={scrollLeftLabel}
           accessibilityState={{ disabled: !canScrollPrev }} disabled={!canScrollPrev}
-          onPress={() => scrollByPage(-1)} style={[styles.iconButton, !canScrollPrev && styles.disabled]}>
-          <Text aria-hidden style={[styles.arrow, { color: canScrollPrev ? palette.arrow : palette.arrowDisabled }]}>‹</Text>
+          onPress={() => scrollByPage(-1)} style={[styles.iconButton, !canScrollPrev && styles.hiddenControl]}>
+          {renderArrow
+            ? renderArrow('prev', palette.arrow)
+            : <Text aria-hidden style={[styles.arrow, { color: palette.arrow }]}>‹</Text>}
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel={scrollRightLabel}
           accessibilityState={{ disabled: !canScrollNext }} disabled={!canScrollNext}
-          onPress={() => scrollByPage(1)} style={[styles.iconButton, !canScrollNext && styles.disabled]}>
-          <Text aria-hidden style={[styles.arrow, { color: canScrollNext ? palette.arrow : palette.arrowDisabled }]}>›</Text>
+          onPress={() => scrollByPage(1)} style={[styles.iconButton, !canScrollNext && styles.hiddenControl]}>
+          {renderArrow
+            ? renderArrow('next', palette.arrow)
+            : <Text aria-hidden style={[styles.arrow, { color: palette.arrow }]}>›</Text>}
         </Pressable>
         {collapsible ? <Pressable accessibilityRole="button" accessibilityLabel={collapseLabel}
           accessibilityState={{ expanded: !isCollapsed }} onPress={toggleCollapsed}
@@ -209,18 +217,19 @@ const styles = StyleSheet.create({
   wrapper: { gap: 8 },
   headingRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
   headingText: { flex: 1, minWidth: 0, gap: 2 },
-  titleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
-  titleLink: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
-  title: { fontSize: 18, fontWeight: '600', lineHeight: 22 },
-  detail: { fontSize: 18, fontWeight: '600', lineHeight: 22 },
+  titleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  titleLink: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  title: { fontSize: 18, fontWeight: '600', lineHeight: 18 },
+  detail: { fontSize: 18, fontWeight: '600', lineHeight: 18 },
   summary: { fontSize: 13, lineHeight: 18 },
-  summaryInline: { fontSize: 13, fontWeight: '500', lineHeight: 18 },
-  sortButton: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 2 },
-  sortIcon: { fontSize: 10, lineHeight: 14 },
+  summaryInline: { fontSize: 14, fontWeight: '500', lineHeight: 14 },
+  sortButton: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2, marginLeft: 6 },
+  sortIcon: { fontSize: 11, lineHeight: 14 },
   controls: { flexDirection: 'row', alignItems: 'center', gap: 2, flexShrink: 0 },
   iconButton: { padding: 4, borderRadius: 4 },
   toggleButton: { marginLeft: 4 },
   disabled: { opacity: 0.4 },
+  hiddenControl: { opacity: 0 },
   arrow: { fontSize: 24, lineHeight: 24 },
   chevron: { fontSize: 16, lineHeight: 16 },
   scroller: { paddingBottom: 12, paddingRight: 8, alignItems: 'flex-start' },

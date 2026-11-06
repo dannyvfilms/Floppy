@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { mountRoot } from '../settings/root';
-import { Button, Dialog, Field, SelectField } from './controls';
+import { Button } from './Button';
+import { Dialog } from './controls/Dialog';
+import { SelectField } from './SelectField';
+import { TextField } from './TextField';
 import { BulkActionDialog, BulkActionRow, BulkFieldRow, BulkJobCard, BulkJobMessage, BulkJobProblems, BulkJobProgress, BulkJobSummary, BulkNote } from './BulkActions';
 import { BulkJobDock } from './BulkJobDock';
 import { TagBulkDialog } from './TagManagement';
@@ -44,7 +47,10 @@ function readPalette() {
     surface: token('--color-surface', '#27272a'),
     surfaceStrong: token('--color-surface-strong', '#3f3f46'),
     surfaceMuted: token('--color-surface-muted', '#52525b'),
+    surfaceBorder: token('--color-surface-border', '#3f3f46'),
+    surfaceHover: token('--color-surface-hover', '#52525b'),
     border: token('--color-surface-border', '#3f3f46'),
+    link: token('--color-link', '#818cf8'),
     text: token('--color-text', '#fafafa'),
     textSecondary: token('--color-text-secondary', '#d4d4d8'),
     textMuted: token('--color-text-muted', '#a1a1aa'),
@@ -188,25 +194,25 @@ function StatusDialog({ request, close, start, palette }) {
     onConfirm={start} onClose={close} />;
 }
 
-function PlaysDialog({ request, close, start }) {
+function PlaysDialog({ request, close, start, palette }) {
   const [form, setForm] = useState({ scope: 'aired', season_from: '1', season_to: '1', existing: 'skip',
     date_mode: 'air_date', date: '', start_date: '', end_date: '' });
   const today = new Date().toISOString().slice(0, 10);
   const set = event => setForm(prev => ({ ...prev, [event.target.name]: event.target.value }));
-  return <Dialog open title="Add Plays to History" closeLabel="Close" onClose={close}>
+  return <Dialog open title="Add Plays to History" closeLabel="Close" onClose={close} palette={palette}>
     <BulkNote>Adds viewing records for {plural(request.itemIds.length, 'selected item')}. They show in History and count in activity, Statistics and streaks.</BulkNote>
-    <SelectField id="bulk-plays-scope" name="scope" label="Which episodes" value={form.scope} options={SCOPES} onChange={set} />
+    <SelectField id="bulk-plays-scope" name="scope" label="Which episodes" value={form.scope} options={SCOPES} onChange={set} palette={palette} />
     <BulkNote>{SCOPE_HELP[form.scope]}</BulkNote>
     {form.scope === 'seasons' && <BulkFieldRow>
-      <Field id="bulk-plays-from" name="season_from" type="number" min="0" label="First season" value={form.season_from} onChange={set} />
-      <Field id="bulk-plays-to" name="season_to" type="number" min="0" label="Last season" value={form.season_to} onChange={set} /></BulkFieldRow>}
-    <SelectField id="bulk-plays-existing" name="existing" label="Episodes already played" value={form.existing} options={EXISTING} onChange={set} />
-    <SelectField id="bulk-plays-dates" name="date_mode" label="Play dates" value={form.date_mode} options={DATES} onChange={set} />
+      <TextField id="bulk-plays-from" name="season_from" type="number" min="0" label="First season" value={form.season_from} onChange={set} palette={palette} />
+      <TextField id="bulk-plays-to" name="season_to" type="number" min="0" label="Last season" value={form.season_to} onChange={set} palette={palette} /></BulkFieldRow>}
+    <SelectField id="bulk-plays-existing" name="existing" label="Episodes already played" value={form.existing} options={EXISTING} onChange={set} palette={palette} />
+    <SelectField id="bulk-plays-dates" name="date_mode" label="Play dates" value={form.date_mode} options={DATES} onChange={set} palette={palette} />
     <BulkNote>{DATE_HELP[form.date_mode]}</BulkNote>
-    {form.date_mode === 'one_date' && <Field id="bulk-plays-date" name="date" type="date" max={today} label="Date" value={form.date} onChange={set} />}
+    {form.date_mode === 'one_date' && <TextField id="bulk-plays-date" name="date" type="date" max={today} label="Date" value={form.date} onChange={set} palette={palette} />}
     {form.date_mode === 'range' && <BulkFieldRow>
-      <Field id="bulk-plays-start" name="start_date" type="date" max={today} label="From" value={form.start_date} onChange={set} />
-      <Field id="bulk-plays-end" name="end_date" type="date" max={today} label="To" value={form.end_date} onChange={set} /></BulkFieldRow>}
+      <TextField id="bulk-plays-start" name="start_date" type="date" max={today} label="From" value={form.start_date} onChange={set} palette={palette} />
+      <TextField id="bulk-plays-end" name="end_date" type="date" max={today} label="To" value={form.end_date} onChange={set} palette={palette} /></BulkFieldRow>}
     <BulkNote>Review checks every show in the background and shows the counts. Nothing is added until you confirm, and you can keep browsing meanwhile.</BulkNote>
     <BulkActionRow><Button type="button" onClick={() => start(form)}>Review</Button>
       <Button type="button" secondary onClick={close}>Cancel</Button></BulkActionRow>
@@ -282,7 +288,7 @@ function Adapter({ config }) {
       start={() => runStatus(config, newJob({ kind: 'status', phase: 'working', status: request.status, statusLabel: request.statusLabel }))} />}
     {request?.kind === 'tag' && <TagDialog request={request} palette={palette}
       close={() => setRequest(null)} />}
-    {request?.kind === 'plays' && <PlaysDialog request={request} close={() => setRequest(null)}
+    {request?.kind === 'plays' && <PlaysDialog request={request} close={() => setRequest(null)} palette={palette}
       start={form => startPlays(config, newJob({ kind: 'plays', phase: 'starting', form }), true)} />}
     {all.length > 0 && <BulkJobDock label="Bulk jobs">{all.map(job => <JobCard key={job.id} config={config} job={job} palette={palette} />)}</BulkJobDock>}
   </>;

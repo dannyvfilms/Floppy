@@ -41,7 +41,7 @@ function readPalette() {
     danger: color('--color-danger', '#ef4444'),
     warning: '#f59e0b',
     success: '#10b981',
-    arrow: color('--color-text-secondary', '#d4d4d8'),
+    arrow: color('--color-text-muted', '#a1a1aa'),
     arrowDisabled: color('--color-surface-muted', '#52525b'),
     loading: color('--color-accent', '#6366f1'),
     focus: color('--color-accent', '#6366f1'),
@@ -60,6 +60,20 @@ function assign(url) {
   if (url) window.location.assign(url);
 }
 
+// Release shelf cards are 11rem wide, dropping to the phone card size
+// (--card-cap: 6.75rem) below 600px so a rail shows three cards, not two.
+const PHONE_RAIL = window.matchMedia('(max-width: 600px)');
+
+function useShelfCardWidth() {
+  const [width, setWidth] = useState(() => (PHONE_RAIL.matches ? 108 : 176));
+  useEffect(() => {
+    const update = () => setWidth(PHONE_RAIL.matches ? 108 : 176);
+    PHONE_RAIL.addEventListener('change', update);
+    return () => PHONE_RAIL.removeEventListener('change', update);
+  }, []);
+  return width;
+}
+
 function mergeRowPage(row, page) {
   if (!page) return row;
   return {
@@ -75,6 +89,7 @@ function mergeRowPage(row, page) {
 
 function Adapter({ host, props }) {
   const [palette, setPalette] = useState(readPalette);
+  const itemWidth = useShelfCardWidth();
 
   useEffect(() => {
     const update = () => setPalette(readPalette());
@@ -133,7 +148,7 @@ function Adapter({ host, props }) {
   }
 
   function renderCard(item) {
-    return <MediaCard model={item.card} labels={props.labels} host={host} standalone />;
+    return <MediaCard model={item.card} labels={props.labels} host={host} standalone variant="grid" />;
   }
 
   function renderProgress(progress) {
@@ -147,7 +162,7 @@ function Adapter({ host, props }) {
     labels={props.labels}
     palette={palette}
     readOnly={!!props.readOnly}
-    itemWidth={176}
+    itemWidth={itemWidth}
     renderCard={renderCard}
     renderProgress={renderProgress}
     onOpenCard={item => assign(item.card.href)}

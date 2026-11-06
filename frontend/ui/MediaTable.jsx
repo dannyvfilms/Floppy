@@ -230,11 +230,10 @@ export function MediaTable({
     <ScrollView horizontal showsHorizontalScrollIndicator={false}
       contentContainerStyle={{ minWidth: tableWidth }}>
       <View accessibilityRole="table" accessibilityLabel={caption || copy.columns}
-        style={[styles.table, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-        <View accessibilityRole="row" style={[styles.row, styles.headerRow, { borderColor: colors.border }]}>
+        style={[styles.table, { backgroundColor: colors.surface }]}>
+        <View accessibilityRole="row" style={[styles.row, styles.headerRow]}>
           {selectMode ? <View style={styles.checkColumn} /> : null}
           {columns.map(column => {
-            const active = sort === column.key;
             const label = column.label || '';
             return <View key={column.key} accessibilityRole="columnheader"
               accessibilityLabel={label}
@@ -244,14 +243,12 @@ export function MediaTable({
               }]}>
               {onSort && column.sortable !== false && label
                 ? <Pressable accessibilityRole="button" accessibilityLabel={label}
-                    accessibilityState={{ selected: active }}
+                    accessibilityState={{ selected: sort === column.key }}
                     onPress={() => onSort(column.key)}
                     style={styles.sortPress}>
-                    <Text style={[styles.headerText, { color: active ? colors.accent : colors.textMuted }]}>
-                      {label}{active ? (sortDirection === 'asc' ? ' ▲' : ' ▼') : ''}
-                    </Text>
+                    <Text numberOfLines={2} style={[styles.headerText, { color: colors.textMuted }]}>{label}</Text>
                   </Pressable>
-                : <Text style={[styles.headerText, { color: colors.textMuted }]}>{label}</Text>}
+                : <Text numberOfLines={2} style={[styles.headerText, { color: colors.textMuted }]}>{label}</Text>}
             </View>;
           })}
         </View>
@@ -279,13 +276,12 @@ export function MediaTable({
           </>;
           if (!onOpen) {
             return <View key={rowId} accessibilityRole="row"
-              style={[styles.row, { borderColor: colors.border }]}>{rowContent}</View>;
+              style={styles.row}>{rowContent}</View>;
           }
           return <Pressable key={rowId} accessibilityRole="button"
             accessibilityLabel={row.title || ''}
             onPress={() => onOpen(row)}
             style={({ pressed }) => [styles.row, {
-              borderColor: colors.border,
               backgroundColor: pressed ? colors.surfaceStrong : 'transparent',
             }]}>{rowContent}</Pressable>;
         })}
@@ -314,9 +310,9 @@ export function MediaTable({
 
 const styles = StyleSheet.create({
   tableRoot: { gap: 8 },
-  table: { borderWidth: 1, borderRadius: 10, overflow: 'hidden' },
-  row: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, paddingHorizontal: 4, minHeight: 88 },
-  headerRow: { borderTopWidth: 0, minHeight: 56 },
+  table: { borderRadius: 8, overflow: 'hidden' },
+  row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, minHeight: 88 },
+  headerRow: { minHeight: 56 },
   headerCell: { justifyContent: 'center' },
   headerText: { fontSize: 14, fontWeight: '600' },
   sortPress: { paddingVertical: 4 },
@@ -343,7 +339,7 @@ const styles = StyleSheet.create({
   repeatText: { fontSize: 10, fontWeight: '600' },
   checkColumn: { width: 28, alignItems: 'center', justifyContent: 'center' },
   checkText: { fontSize: 16, fontWeight: '700' },
-  empty: { borderWidth: 1, borderRadius: 10, padding: 32, alignItems: 'center' },
+  empty: { borderWidth: 1, borderRadius: 8, padding: 32, alignItems: 'center' },
   emptyText: { fontSize: 13 },
   showMore: { alignSelf: 'center', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
   showMoreText: { fontSize: 12, fontWeight: '600' },

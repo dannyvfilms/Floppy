@@ -291,6 +291,7 @@
       min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
+      text-align: left;
     }
     .stats-mediatype-wrapper .stats-dropdown-panel {
       width: 100%;
@@ -1372,10 +1373,6 @@
         </div>
       </div>
       </div>
-      {{ statistics_react_props.sections.comparison|json_script:"statistics-comparison-props" }}
-      <div data-statistics-sections-root data-section="comparison"
-           data-props-id="statistics-comparison-props"
-           data-update-url="{% url 'update_statistics_compare_mode' %}"></div>
       <!-- Activity Rhythm + Time Across Your Worlds -->
       {{ statistics_react_props.charts.overview|json_script:"statistics-charts-overview" }}
       <div data-statistics-charts-root data-props-id="statistics-charts-overview">
@@ -2509,3 +2506,5 @@
   <script src="{% static 'js/cache-updater.js' %}"></script>
   {% include "app/components/_scrollable_row_js.html" %}
 {% endblock js %}
+
+<!-- parity-probe -->

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { View } from 'react-native';
 import { mountRoot } from './root';
 import {
   CacheManagementCard,
@@ -18,6 +19,8 @@ export const systemPalette = {
   textSecondary: 'var(--color-text-secondary)',
   textMuted: 'var(--color-text-muted)',
   accent: 'var(--color-link)',
+  link: 'var(--color-link)',
+  pageBackground: 'var(--color-page-bg)',
   accentStrong: 'var(--color-accent)',
   success: 'var(--color-status-clean)',
   warning: 'var(--color-warning-text)',
@@ -137,7 +140,7 @@ function AdvancedAdapter({ props }) {
     }
   }
 
-  return <>
+  return <View style={{ gap: 24 }}>
     <LogsCard isSuperuser={props.isSuperuser}
       logsSince={props.logsSince}
       lastUncleanExit={props.lastUncleanExit}
@@ -146,7 +149,7 @@ function AdvancedAdapter({ props }) {
       onDownloadLogs={downloadLogs}
       onOpenUrl={openUrl}
       palette={systemPalette}
-      labels={labels.logs} />
+      labels={labels.logs} icons={props.icons} />
     <ImageCacheCard isSuperuser={props.isSuperuser}
       enabled={image.enabled}
       count={image.count}
@@ -155,13 +158,13 @@ function AdvancedAdapter({ props }) {
       onSave={saveImage}
       onClear={clearImageCache}
       palette={systemPalette}
-      labels={labels.imageCache} />
+      labels={labels.imageCache} icons={props.icons} />
     <CacheManagementCard
       busyKind={cache.busyKind} success={cache.success}
       onClear={clearCache}
       palette={systemPalette}
-      labels={labels.cache} />
-  </>;
+      labels={labels.cache} icons={props.icons} />
+  </View>;
 }
 
 function ServerPortAdapter({ props }) {

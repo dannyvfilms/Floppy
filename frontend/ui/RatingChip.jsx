@@ -5,6 +5,7 @@ import { RatingStars } from './RatingStars';
 const fallbackPalette = {
   lit: '#facc15',
   unlit: '#4b5563',
+  cardUnlit: '#a1a1aa',
   muted: '#a1a1aa',
   text: '#fafafa',
   textSecondary: '#d4d4d8',
@@ -129,6 +130,7 @@ export function RatingChip({
   if (layout === 'card') {
     return <View style={styles.root}>
       <View style={[styles.card, {
+        height: colors.cardHeight || undefined,
         borderColor: colors.cardBorder,
         backgroundColor: colors.cardBackground,
         borderRadius: colors.popupRadius + 4,
@@ -155,7 +157,9 @@ export function RatingChip({
               {hasDerived ? `${text.derived} ${derived.score} · ${derived.coverage}` : text.prompt}
             </Text>
             <RatingStars scaleMax={scaleMax} value={value} label={text.rate}
-              renderStar={renderStar} onSelect={score => onSelect?.(score)} palette={colors} />
+              renderStar={renderStar} onSelect={score => onSelect?.(score)}
+              palette={{ ...colors, unlit: colors.cardUnlit || colors.unlit }}
+              showLabels={false} />
           </>}
       </View>
       {popup}
@@ -237,7 +241,7 @@ const styles = StyleSheet.create({
   coverage: { fontWeight: '500' },
   action: { fontWeight: '500' },
   card: { width: '100%', justifyContent: 'center', gap: 6.4, borderWidth: 1 },
-  cardPrompt: { fontWeight: '500' },
+  cardPrompt: { fontWeight: '500', lineHeight: 21 },
   cardButton: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cardButtonActive: {},
   cardValue: { fontWeight: '600' },

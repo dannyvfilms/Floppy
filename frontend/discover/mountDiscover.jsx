@@ -156,6 +156,12 @@ function Feedback({ host, props }) {
     const runner = Alpine.effect(() => setState(feedbackState(Alpine.$data(host))));
     return () => Alpine.release(runner);
   }, [host]);
+  useEffect(() => {
+    if (!host) return;
+    const visible = state.refreshing || state.cacheRefreshing
+      || state.refreshStatus.visible || state.toast.visible;
+    host.style.display = visible ? '' : 'none';
+  }, [host, state]);
   const data = window.Alpine?.$data(host);
   return <DiscoverFeedback {...state} labels={props.labels} palette={palette}
     toastStyle={{ position: 'fixed', top: 96, left: 0, right: 0, zIndex: 50, marginHorizontal: 16 }}

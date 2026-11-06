@@ -113,6 +113,7 @@ function StatusMark({ label, tone, palette }) {
     accessible
     accessibilityRole="image"
     accessibilityLabel={label}
+    testID="status-icon"
     style={[styles.statusMark, { color: toneColor(resolvedTone, palette) }]}>
     {STATUS_GLYPHS[resolvedTone]}
   </Text>;
@@ -124,7 +125,7 @@ export function FeatureList({
   onSelect,
   emptyLabel,
   style,
-  testID,
+  testID = 'feature-list',
 }) {
   const palette = resolvePalette(paletteOverrides);
   const rows = (items || []).map(normalizeItem);
@@ -150,14 +151,14 @@ export function FeatureList({
           {item.description ? <Text style={[styles.description, { color: palette.textMuted }]}>
             {item.description}
           </Text> : null}
-          {status && tone !== 'success' ? <Text style={[styles.state, { color: toneColor(tone, palette) }]}>
+          {status && tone !== 'success' ? <Text testID="feature-state" style={[styles.state, { color: toneColor(tone, palette) }]}>
             {status}
           </Text> : null}
         </View>
       </>;
 
       if (!interactive) {
-        return <View key={item.key ?? index} accessibilityRole="listitem" style={styles.row}>
+        return <View key={item.key ?? index} accessibilityRole="listitem" testID="feature-row" style={styles.row}>
           {body}
         </View>;
       }
@@ -191,7 +192,7 @@ export function MediaIcon({
   renderIcon,
   palette: paletteOverrides,
   style,
-  testID,
+  testID = 'feature-list',
 }) {
   const palette = resolvePalette(paletteOverrides);
   const resolvedType = String(type || '');

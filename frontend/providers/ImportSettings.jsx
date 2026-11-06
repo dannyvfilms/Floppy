@@ -1,6 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Button } from '../ui/Button';
+import { ComboField } from '../ui/controls/ComboField';
+import { Tooltip } from '../ui/controls/Tooltip';
 import { SelectField } from '../ui/SelectField';
 import { SettingsCard } from '../settings/SettingsCard';
 import { TextField } from '../ui/TextField';
@@ -41,6 +43,14 @@ const defaultLabels = {
   mode: 'Import Mode',
   override: 'Override mode',
   modeHelp: 'New items leaves existing entries unchanged. Overwrite replaces matching imported entries.',
+  modeTitle: 'Import mode help',
+  modeText: 'Choose whether the import adds history, a watchlist, or updates your collection.',
+  clzModeHelp: 'CLZ imports owned copies and wishlist entries. It does not import reading or viewing history.',
+  collectionWishlist: 'Collection and wishlist',
+  wishlistItems: 'Wishlist items',
+  wishlistTag: 'Tag for wishlist items',
+  wishlistTagPlaceholder: 'Optional tag name',
+  createTag: name => `Create tag "${name}"`,
   frequency: 'Import Frequency',
   time: 'Import Time',
   watchlistStatus: 'Watchlist status',
@@ -129,10 +139,12 @@ export function ImportPreferencesCard({
   }
 
   const editable = model.editable !== false;
-  const history = ['history', 'overwrite'].includes(values.mode);
+  const clz = model.profile === 'clz';
+  const history = !clz && ['new', 'overwrite'].includes(values.mode);
   const fixed = model.fixed;
   const tone = fixed || !editable ? 'warning' : 'info';
   const badge = fixed || !editable ? labels.readOnly : labels.editable;
+  const modeHelp = clz ? labels.clzModeHelp : labels.modeText;
 
   return <SettingsCard title={model.title || labels.preferences} badge={badge}
     palette={statusPalette(colors, tone)}>
@@ -143,14 +155,29 @@ export function ImportPreferencesCard({
         <Text style={[styles.value, { color: colors.text }]}>{fixed.frequency}</Text></View>
       <Text style={[styles.copy, { color: colors.textMuted }]}>{fixed.explanation}</Text>
     </View> : <View style={styles.fields}>
-      <Select id="import-mode" label={labels.mode} value={history ? 'history' : values.mode}
-        options={model.modeOptions || modeOptions} disabled={!editable} colors={colors}
+      <View style={styles.helpHeading}>
+        <Text style={[styles.caption, { color: colors.textMuted }]}>{labels.mode}</Text>
+        <Tooltip label={labels.modeTitle} text={modeHelp} palette={colors} />
+      </View>
+      <Select id="import-mode" label={labels.mode} value={clz ? 'collection_wishlist' : history ? 'history' : values.mode}
+        options={clz ? [{ value: 'collection_wishlist', label: labels.collectionWishlist }] : (model.modeOptions || modeOptions)}
+        disabled={!editable || clz} colors={colors}
         onChange={mode => save({ ...values, mode: mode === 'history' ? 'new' : mode })} />
       {history ? <>
         <Select id="import-override" label={labels.override} value={values.mode}
           options={model.overrideOptions || overrideOptions} disabled={!editable} colors={colors}
           onChange={mode => save({ ...values, mode })} />
         <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.modeHelp}</Text>
+      </> : null}
+      {clz ? <>
+        <Select id="clz-wishlist-status" label={labels.wishlistItems} value={values.clzWishlistStatus}
+          options={model.statuses || []} disabled={!editable} colors={colors}
+          onChange={clzWishlistStatus => save({ ...values, clzWishlistStatus })} />
+        <ComboField id="clz-wishlist-tag" label={labels.wishlistTag} value={values.clzWishlistTag || ''}
+          options={model.tagNames || []} placeholder={labels.wishlistTagPlaceholder} maxLength={50}
+          disabled={!editable} palette={colors} createLabel={labels.createTag}
+          onChange={clzWishlistTag => update({ ...values, clzWishlistTag })}
+          onCommit={clzWishlistTag => save({ ...values, clzWishlistTag })} />
       </> : null}
       {values.mode === 'watchlist' ? <>
         <Select id="watchlist-status" label={labels.watchlistStatus} value={values.watchlistStatus}
@@ -221,15 +248,15 @@ export function ImportSettings({
     }
   }
 
-  return <View style={styles.stack}>
-    <ImportPreferencesCard
+  return <View style={styles.cardGrid}>
+    <View style={styles.cardColumn}><ImportPreferencesCard
       model={{ ...model.preferences, values: preferences }}
       onValuesChange={next => setPreferences(next)}
       onSave={onSavePreferences}
       palette={palette}
       buttonPalette={buttonPalette}
-    />
-    <SettingsCard title={model.title || labels.options} palette={colors} headerAction={
+    /></View>
+    <View style={styles.cardColumn}><SettingsCard title={model.title || labels.options} palette={colors} headerAction={
       <ToggleChip value={privateImport} onChange={next => { setPrivateImport(next); setNotice(''); setError(''); }}
         offLabel={labels.publicLabel} onLabel={labels.privateLabel} palette={colors} />
     }>
@@ -242,20 +269,23 @@ export function ImportSettings({
           value={username} required placeholder={labels.usernamePlaceholder} palette={colors}
           onChangeText={next => { setUsername(next); setNotice(''); setError(''); }} /> : null}
         <View style={styles.actions}>
-          <Button label={pending ? labels.importing : labels.import} busy={pending}
+          <Button label={pending ? labels.importing : labels.import} busy={pending} width="full"
             disabled={pending || blocked} onPress={submit} palette={buttons} />
         </View>
       </>}
       {blocked ? <Text style={[styles.copy, { color: colors.textMuted }]}>{model.modeUnsupported || labels.modeUnsupported}</Text> : null}
       {notice ? <Text accessibilityLiveRegion="polite" style={[styles.copy, { color: colors.success }]}>{notice}</Text> : null}
       {error ? <Text accessibilityRole="alert" style={[styles.copy, { color: colors.danger }]}>{error}</Text> : null}
-    </SettingsCard>
+    </SettingsCard></View>
   </View>;
 }
 
 const styles = StyleSheet.create({
   stack: { gap: 12 },
+  cardGrid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 12 },
+  cardColumn: { flexGrow: 1, flexBasis: 260, minWidth: 0 },
   fields: { gap: 12 },
+  helpHeading: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   caption: { fontSize: 12 },
   value: { fontSize: 14 },
   copy: { fontSize: 12, lineHeight: 17 },

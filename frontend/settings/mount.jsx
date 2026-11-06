@@ -3,7 +3,16 @@ import { SettingsCard } from './SettingsCard';
 import { webPalette } from './webPalette';
 import { mountRoot } from './root';
 import { UsersManagement } from '../users/UsersManagement';
-import { Chip, Tooltip } from '../ui/controls';
+import { Chip as SharedChip } from './Chip';
+import { Tooltip } from '../ui/controls/Tooltip';
+
+const tooltipPalette = {
+  triggerText: 'var(--color-text-muted)',
+  bubbleBackground: 'var(--color-surface-strong)',
+  bubbleBorder: 'var(--color-surface-border)',
+  bubbleText: 'var(--color-text)',
+  closeText: 'var(--color-text-muted)',
+};
 
 const usersPalette = {
   ...webPalette,
@@ -52,11 +61,11 @@ function managedUserUrl(template, id) {
 }
 
 export function mountLinkChip(host, props) {
-  return mountRoot(host, <Chip {...props} />);
+  return mountRoot(host, <SharedChip {...props} palette={webPalette} />);
 }
 
 export function mountTooltip(host, props) {
-  return mountRoot(host, <Tooltip {...props} />);
+  return mountRoot(host, <Tooltip {...props} palette={tooltipPalette} />);
 }
 
 export function mountCard(host, props) {

@@ -7,11 +7,11 @@ import {
   DeveloperSpecsCard,
   LicenseCard,
   ProjectResourcesCard,
+  InstallCard,
   ReleaseUpdateBanner,
   WhatsNewCard,
 } from './AboutSettings';
 import { systemPalette } from './mountAdvanced';
-import { InstallPromptCard } from '../ui/InstallPromptCard';
 import { getInstallState, openInstallGuide, requestInstall, subscribeInstallState } from '../ui/installPrompt';
 
 const systemButtonPalette = {
@@ -77,9 +77,9 @@ function BannerAdapter({ props }) {
 }
 
 function OverviewAdapter({ props }) {
-  return <AboutOverviewCard description={props.labels.description}
+  return <AboutOverviewCard description={props.description || props.labels.description}
     sponsorUrl={props.sponsorUrl} onOpenUrl={openUrl}
-    palette={systemPalette} labels={props.labels} />;
+    palette={systemPalette} labels={props.labels} icons={props.icons} />;
 }
 
 function WhatsNewAdapter({ props }) {
@@ -102,38 +102,41 @@ function WhatsNewAdapter({ props }) {
   }, [props.releasesLoaded, props.url]);
   return <WhatsNewCard releases={releases} loading={loading}
     releasesUrl={props.releasesUrl} onOpenUrl={openUrl}
-    palette={systemPalette} labels={props.labels} />;
+    palette={systemPalette} labels={props.labels} icons={props.icons} />;
 }
 
 function InstallAdapter({ props }) {
   const labels = props.labels || {};
   const [state, setState] = useState(getInstallState);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('');
 
   useEffect(() => subscribeInstallState(setState), []);
 
-  const copy = {
-    title: labels.title,
-    description: labels.intro,
-    installLabel: labels.install,
-    guideLabel: labels.guideLabel,
-    accepted: labels.installedStatus,
-    dismissed: labels.dismissedStatus,
-    failed: labels.failedStatus,
-    noControl: labels.noControl,
-    steps: {
-      ios: { title: labels.iosTitle, items: labels.iosSteps },
-      android: { title: labels.androidTitle, items: labels.androidSteps },
-    },
-    guideNote: {
-      prefix: labels.guidePrefix,
-      linkLabel: labels.guideLink,
-      suffix: labels.guideSuffix,
-    },
-  };
+  async function install() {
+    setBusy(true);
+    setStatus('');
+    try {
+      const result = await requestInstall();
+      setStatus(labels[{
+        accepted: 'installedStatus',
+        dismissed: 'dismissedStatus',
+        failed: 'failedStatus',
+        unavailable: 'unavailableStatus',
+      }[result?.outcome]] || '');
+    } catch (error) {
+      setStatus(labels.failedStatus || '');
+    } finally {
+      setBusy(false);
+    }
+  }
 
-  return <InstallPromptCard state={state} onInstall={requestInstall}
-    onOpenGuide={openInstallGuide} copy={copy}
-    palette={systemPalette} buttonPalette={systemButtonPalette} />;
+  return <InstallCard installAvailable={state.canInstall} installBusy={busy}
+    installStatus={status} platform={state.platform}
+    guideUrl={props.guideUrl} onInstall={install}
+    onOpenUrl={openInstallGuide} labels={labels}
+    palette={systemPalette} buttonPalette={systemButtonPalette}
+    icons={props.icons} />;
 }
 
 function SpecsAdapter({ props }) {
@@ -158,22 +161,22 @@ function SpecsAdapter({ props }) {
   }
   return <DeveloperSpecsCard specs={props.items}
     onOpenUrl={openUrl} onPreview={preview} onDownload={download}
-    palette={systemPalette} labels={props.labels} />;
+    palette={systemPalette} labels={props.labels} icons={props.icons} />;
 }
 
 function ResourcesAdapter({ props }) {
   return <ProjectResourcesCard resources={props.items}
-    onOpenUrl={openUrl} palette={systemPalette} labels={props.labels} />;
+    onOpenUrl={openUrl} palette={systemPalette} labels={props.labels} icons={props.icons} />;
 }
 
 function AttributionsAdapter({ props }) {
   return <AttributionsCard attributions={props.items}
-    onOpenUrl={openUrl} palette={systemPalette} labels={props.labels} />;
+    onOpenUrl={openUrl} palette={systemPalette} labels={props.labels} icons={props.icons} />;
 }
 
 function LicensesAdapter({ props }) {
   return <LicenseCard licenses={props.items}
-    onOpenUrl={openUrl} palette={systemPalette} labels={props.labels} />;
+    onOpenUrl={openUrl} palette={systemPalette} labels={props.labels} icons={props.icons} />;
 }
 
 function VersionAdapter({ props }) {

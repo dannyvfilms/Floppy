@@ -69,10 +69,10 @@ PY
 - `frontend/ui/Shell.jsx` (`Shell`, `TopBar`, `MobileNav`), `frontend/ui/mountShell.jsx`, the `shell_topbar_react` tag and `src/templates/base.html` / `base_public.html` (signed-in and public top bars plus the mobile navigation overlay; both templates keep their server fallback)
 - `frontend/ui/Sidebar.jsx` (`Sidebar`) shared React Native presentation, `frontend/ui/mountSidebar.jsx` browser adapter (theme tokens, `floppy:sidebar-pins`/`floppy:sidebar-lists`/`floppy:saved-views-open` storage, HTMX-boosted anchors, Sortable reorder, delete/logout forms, onboarding node slot and mobile aside state), `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html`; shared saved-view rows keep `aria-current` on the active view; the Alpine markup inside the host remains the no-React fallback; nav padding, link width, label size, hover and theme-radius rows match the server sidebar; pointer focus is suppressed after click; the Explore slot and server fallback reserve their height so pin/list hydration does not move the footer)
 - `frontend/ui/Reveal.jsx`, `frontend/ui/Reveal.web.jsx`, `frontend/ui/Reveal.native.jsx` (sidebar Explore reveal: native mount contract plus the browser's release-height animation)
-- `frontend/ui/Icon.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
-- `frontend/ui/ModalHost.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted from `base.html`; the card hover buttons and the legacy Add-to-lists buttons open it through `floppy-open-modal`; the Add-to-lists body is shared presentation in `frontend/ui/ListsFormView.jsx` through the `frontend/ui/ListsForm.web.jsx` adapter with `modal-forms.css`; the Track body opens the shared `TrackDialog` for every available tab, with Metadata/Collection/Episode plays still server-owned inside it, see POPUP-HOST in the register)
+- `frontend/ui/Icon.web.jsx`, `frontend/ui/Icon.native.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
+- `frontend/ui/ModalHost.web.jsx`, `frontend/ui/ModalHost.native.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted from `base.html`; the card hover buttons and the Add-to-lists buttons open it through `floppy-open-modal`; the Add-to-lists body is shared presentation in `frontend/ui/ListsFormView.jsx` through the `frontend/ui/ListsForm.web.jsx` adapter with `modal-forms.css`; the Track body opens the shared `TrackDialog` for every available tab, with Metadata/Collection/Episode plays still server-owned inside it, see POPUP-HOST in the register)
 - `src/app/card_events.py` (the floppyCardUpdate event sent by `media_save` and the score views so React cards refresh their status chip and rating)
-- `ScrollRow` and the frozen `FilterChips`/`Tabs` web helpers in `frontend/ui/controls.jsx`; Discover's live media-type tabs are mapped under DISCOVER
+- `ScrollRow` and the shared `FilterChips`/`Tabs` helpers; Discover's live media-type tabs are mapped under DISCOVER
 - `src/templates/base_public.html`
 
 - `native-proof/app/surfaces/ShellSlot.jsx` (native top bar and mobile navigation overlay on the app shell; the shared `Sidebar` fills the drawer with demo media types, saved-view groups, pins and bottom actions)
@@ -234,6 +234,7 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 - `frontend/ui/MediaCardFormControls.jsx` (`FormHeader`, `FormField`, `FormTextField`, `FormSelect`, `FormStatus` and `FormError` for the shared action forms; presentation only)
 - `frontend/ui/ListsFormView.jsx` (universal `ListsForm`: tag filter, count, Add/Remove rows, loading/error/empty states and accessible header; presentation only)
 - `frontend/ui/ListsForm.web.jsx` (browser transport adapter: JSON list model, CSRF toggle, `floppy-list-toggled` event and errors for the shared `ListsForm`)
+- `frontend/ui/ListsForm.native.jsx` (native placement that renders the shared `ListsFormView`)
 - `frontend/ui/TrackForm.jsx` (universal `TrackForm`: General tab fields, date-time fields, notes, validation, tab host, repeat actions and save/delete states; presentation only)
 - `frontend/ui/mountTrackForm.jsx` (browser adapter for the shared Track dialog: reads the serialized model and tab list, renders General through `TrackForm`, Tags through `TagAssignmentDialog`, Status history and Discover through `TrackTabs`, moves the server-owned Metadata/Collection/Episode plays sections into the shared tabs, keeps the legacy shell hidden as the no-JavaScript fallback, and submits/delete/rewatch through htmx so OOB fragments, HX-Trigger events, CSRF and permissions stay server-owned)
 - `frontend/ui/TrackFormTabs.jsx` (universal `TrackTabs`: General, Tags, Metadata, Collection, Plays/Episode plays, Status history and Discover tab strip and bodies with loading, error, retry, empty and pending states, plus a caller-supplied `content` body for server-owned tabs; supplied labels drive the tabs and add/remove actions; presentation only)
@@ -242,14 +243,14 @@ Universal `Button` lives in `frontend/ui/Button.jsx`; the browser platform imple
 - `native-proof/app/surfaces/mediaCardEvents.js` (native-only card-change event bus used by the card, Track, Discover and bulk selection; not presentation)
 - `src/templates/app/components/card_lines.html`
 - `src/templates/app/components/media_card.html` (shell: the `.media-card` wrapper is the React host, keeping the wrapper classes and poster/body first-child CSS; the props script, first-paint poster and title sit outside the host's rendered children)
-- `frontend/ui/MediaCard.jsx`, `frontend/ui/MediaCard.web.jsx`, `frontend/ui/MediaCard.native.jsx`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/ModalHost.jsx`, `frontend/ui/media-card.css`, `src/app/media_card_model.py`, `src/app/card_surfaces.py` (the whole card is one React component on every surface: the browser implementation everywhere on web and the React Native implementation on native; body, status chip, rating, hover buttons, popups host, touch reveal and bulk-select checkbox)
+- `frontend/ui/MediaCard.jsx`, `frontend/ui/MediaCard.web.jsx`, `frontend/ui/MediaCard.native.jsx`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/ModalHost.web.jsx`, `frontend/ui/ModalHost.native.jsx`, `frontend/ui/media-card.css`, `src/app/media_card_model.py`, `src/app/card_surfaces.py` (the whole card is one React component on every surface: the browser implementation everywhere on web and the React Native implementation on native; body, status chip, rating, hover buttons, popups host, touch reveal and bulk-select checkbox)
 - `src/templates/app/components/media_card_list.html`
 - `src/templates/app/components/media_card_status_chip.html` (out-of-band save fragment only; no card renders it)
 
 `MediaCard.web.jsx` is the browser implementation on every web surface;
 `MediaCard.native.jsx` selects the universal React Native card on native.
-`mountMediaCard.jsx` mounts the DOM card on browser surfaces and `ModalHost.jsx` is
-the popup host. `MediaCardActions` supplies the action overlay on native and the
+`mountMediaCard.jsx` mounts the DOM card on browser surfaces and `ModalHost.web.jsx` is
+the popup host; `ModalHost.native.jsx` hosts the native media-card actions. `MediaCardActions` supplies the action overlay on native and the
 shared React Native surfaces. `ListsFormView` is used on web through `ListsForm.web.jsx`
 and on native through the media-card slot. `TrackForm` and `TrackTabs` render in the native action
 host; the native shell's `native-proof/app/surfaces/mediaCardTransport.js` owns the `/api/v1`
@@ -301,7 +302,7 @@ in the register.
 
 ## ALPHABET
 
-- `frontend/ui/AlphabetBar.jsx`
+- `frontend/ui/AlphabetBar.jsx` (`AlphabetBar`, `AlphabetEmpty`)
 - `frontend/ui/mountAlphabet.jsx`
 - `frontend/ui/alphabet.css`
 - `src/templates/app/components/alphabet_filter.html`
@@ -986,20 +987,17 @@ server-owned.
 
 ## SET-PROVIDERS
 
-- `frontend/providers/AccountConnection.jsx`
 - `frontend/providers/AccountSettings.jsx`
-- `frontend/providers/Activity.jsx`
-- `frontend/providers/Connection.jsx`
 - `frontend/providers/ConnectionSettings.jsx`
-- `frontend/providers/Directory.jsx`
-- `frontend/providers/Import.jsx`
-- `frontend/providers/ImportPreferences.jsx`
 - `frontend/providers/ImportSettings.jsx`
-- `frontend/providers/Metadata.jsx`
-- `frontend/providers/ProviderPage.jsx`
+- `frontend/providers/ProviderContext.jsx`
+- `frontend/providers/ProviderPageView.jsx`
+- `frontend/providers/ProviderSettingsView.jsx`
+- `frontend/providers/ProviderDirectoryView.jsx`
 - `frontend/providers/mount.jsx`
+- `frontend/providers/mountDirectory.jsx`
+- `frontend/providers/transport.web.js`
 - `frontend/providers/provider-page.css`
-- `frontend/providers/web.jsx`
 - `frontend/ui/SetupGuide.jsx`
 - `frontend/ui/TextField.jsx`
 - `native-proof/app/surfaces/ProviderSettingsSlot.jsx`
@@ -1024,6 +1022,8 @@ Provider setup-hint copy is owned by `src/app/providers/credentials.py`
 (`ProviderCredentialSpec.setup_hint`) and rendered by the connection setup
 dialog, the credential modal and `frontend/providers/Credentials.jsx`.
 
+- `frontend/providers/ProviderMetadataView.jsx`
+- `frontend/providers/mountCredentials.jsx`
 - `src/templates/users/components/media_type_provider_modal.html`
 - `src/templates/users/components/metadata_admin_notice.html`
 - `src/templates/users/components/metadata_library_repair.html`
@@ -1040,10 +1040,14 @@ dialog, the credential modal and `frontend/providers/Credentials.jsx`.
 
 ## SET-IMPORT
 
-- `frontend/providers/FileImport.jsx`
-- `frontend/providers/Credentials.jsx`
-- `frontend/providers/SetupGuide.jsx`
-- `frontend/providers/SettingsForm.jsx`
+- `frontend/providers/ProviderFileImportView.jsx`
+- `frontend/providers/ProviderSettingsFormView.jsx`
+- `frontend/providers/mountFileImport.jsx`
+- `frontend/providers/mountSettingsForm.jsx`
+- `frontend/providers/mountImportPreferences.jsx`
+- `frontend/providers/mountSetupGuide.jsx`
+- `frontend/providers/mountAccountConnection.jsx`
+- `frontend/providers/mountAccountImportAction.jsx`
 - `src/users/provider_guides.py`
 - `src/users/provider_forms.py`
 - `src/templates/users/providers/setup_guide.html`
@@ -1061,6 +1065,7 @@ dialog, the credential modal and `frontend/providers/Credentials.jsx`.
 
 ## SET-ACTIVITY
 
+- `frontend/providers/ProviderActivityView.jsx`
 - `src/templates/users/components/import_activity.html`
 - `src/templates/users/components/import_activity_loader.html`
 - `src/templates/users/components/import_source_cleanup.html`
@@ -1096,8 +1101,11 @@ dialog, the credential modal and `frontend/providers/Credentials.jsx`.
 
 ## SET-DATA
 
+- `frontend/settings/BackupStatus.jsx`
 - `frontend/settings/ConfirmDialog.jsx`
 - `frontend/settings/DataSettings.jsx`
+- `frontend/settings/mountBackupStatus.jsx`
+- `frontend/settings/root.web.js`
 - `native-proof/app/surfaces/DataAccessNotificationsSlot.jsx`
 - `src/templates/users/components/export_controls.html` (backup status region mounts `frontend/settings/BackupStatus.jsx`; fallback kept)
 - `src/templates/users/components/library_danger_zone.html`

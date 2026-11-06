@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { DetailHeader, DetailSynopsis } from './DetailComposition';
+import React, { useEffect, useRef, useState } from 'react';
+import { DetailHeader } from './DetailComposition';
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;
@@ -38,20 +38,121 @@ function readPalette() {
   };
 }
 
+const DETAIL_CSS = `
+  #detail-secondary-content .detail-sidebar-genres a {
+    display: inline-flex;
+    align-items: flex-start;
+    line-height: 0;
+  }
+`;
+
+const SYNOPSIS_SUFFIX = ' Read more';
+
+function collapsed(value) {
+  return (value || '').replace(/\s+/g, ' ').trim();
+}
+
+// Browser synopsis keeps the release typography and the inline phone
+// "Read more" preview: measure the full text at the rendered width so the
+// visible excerpt ends where the link fits.
+function WebSynopsis({ text, previewLines = 3, labels, mobile }) {
+  const body = text || '';
+  const [expanded, setExpanded] = useState(false);
+  const [measured, setMeasured] = useState({ clamped: false, preview: collapsed(body) });
+  const rootRef = useRef(null);
+  const measureRef = useRef(null);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    const measure = measureRef.current;
+    if (!root || !measure || !body) return undefined;
+    let frame = 0;
+
+    const compute = () => {
+      const full = mobile ? collapsed(body) : body;
+      measure.style.whiteSpace = mobile ? 'normal' : 'pre-line';
+      measure.textContent = full;
+      const lineHeight = Number.parseFloat(window.getComputedStyle(measure).lineHeight) || 24;
+      const maxHeight = Math.ceil(lineHeight * previewLines);
+      const clamped = measure.scrollHeight > maxHeight + 1;
+      let preview = full;
+      if (clamped && mobile) {
+        const source = collapsed(body);
+        let low = 0;
+        let high = source.length;
+        let best = '';
+        while (low <= high) {
+          const mid = Math.floor((low + high) / 2);
+          let candidate = source.slice(0, mid).trimEnd();
+          const lastSpace = candidate.lastIndexOf(' ');
+          if (lastSpace > 0) candidate = candidate.slice(0, lastSpace).trimEnd();
+          measure.textContent = candidate ? `${candidate}...${SYNOPSIS_SUFFIX}` : source;
+          if (measure.scrollHeight <= maxHeight) {
+            best = candidate;
+            low = mid + 1;
+          } else {
+            high = mid - 1;
+          }
+        }
+        preview = best ? best.replace(/[\s.,;:!?-]+$/u, '') : source;
+        measure.textContent = full;
+      }
+      setMeasured(current => (
+        current.clamped === clamped && current.preview === preview
+          ? current
+          : { clamped, preview }
+      ));
+    };
+
+    frame = window.requestAnimationFrame(compute);
+    const observer = new ResizeObserver(compute);
+    observer.observe(root);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [body, mobile, previewLines]);
+
+  if (!body) return null;
+
+  const toggleClass = 'text-[13px] font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors cursor-pointer';
+  return <div ref={rootRef} className="mb-6">
+    <div ref={measureRef} aria-hidden="true"
+      className="pointer-events-none invisible absolute inset-x-0 top-0"
+      style={{ fontSize: 16, lineHeight: '24px', textWrap: 'pretty' }} />
+    {mobile ? <>
+      <p className="text-[var(--color-text-secondary)] text-pretty"
+        style={{ fontSize: 16, lineHeight: '24px' }}>
+        {expanded ? collapsed(body) : measured.preview}
+        {!expanded && measured.clamped
+          ? <>... <button type="button" onClick={() => setExpanded(true)}
+            className={`inline whitespace-nowrap align-baseline ml-1 ${toggleClass}`}>
+            {labels.readMore || 'Read more'}
+          </button></>
+          : null}
+      </p>
+      {expanded && measured.clamped ? <button type="button" onClick={() => setExpanded(false)}
+        className={`mt-2 inline-flex ${toggleClass}`}>
+        {labels.showLess || 'Show less'}
+      </button> : null}
+    </> : <>
+      <p className={`text-[var(--color-text-secondary)] text-pretty${measured.clamped && !expanded ? ' line-clamp-3' : ''}`}
+        style={{ fontSize: 16, lineHeight: '24px', whiteSpace: 'pre-line' }}>{body}</p>
+      {measured.clamped ? <button type="button" onClick={() => setExpanded(value => !value)}
+        className="mt-2 inline-flex text-sm font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors cursor-pointer">
+        {expanded ? labels.showLess || 'Show less' : labels.readMore || 'Read more'}
+      </button> : null}
+    </>}
+  </div>;
+}
+
 function scopeFor(host) {
   return host.closest('.detail-flat-top, .detail-carousel-grid') || host.parentElement;
 }
 
-function readClamped(host) {
-  const scope = scopeFor(host);
-  const legacy = scope?.querySelector('[data-detail-composition-legacy="synopsis"]');
-  const paragraphs = legacy ? [...legacy.querySelectorAll('p')].filter(paragraph => paragraph.textContent.trim()) : [];
-  return paragraphs.some(paragraph => paragraph.scrollHeight > paragraph.clientHeight + 2);
-}
-
 function Adapter({ host, props }) {
   const [palette, setPalette] = useState(readPalette);
-  const [clamped, setClamped] = useState(() => readClamped(host));
+  const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 639.98px)').matches);
 
   useEffect(() => {
     const part = props.part === 'header' ? 'header' : 'synopsis';
@@ -63,30 +164,33 @@ function Adapter({ host, props }) {
   }, [host, props.part]);
 
   useEffect(() => {
-    setClamped(readClamped(host));
-  }, [host, props.synopsis?.text]);
-
-  useEffect(() => {
     const update = () => setPalette(readPalette());
     update();
     const observer = new MutationObserver(update);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] });
     const scheme = window.matchMedia('(prefers-color-scheme: dark)');
+    const narrow = window.matchMedia('(max-width: 639.98px)');
+    const updateWidth = () => setMobile(narrow.matches);
     scheme.addEventListener('change', update);
+    narrow.addEventListener('change', updateWidth);
     return () => {
       observer.disconnect();
       scheme.removeEventListener('change', update);
+      narrow.removeEventListener('change', updateWidth);
     };
   }, []);
 
   if (props.part === 'header') {
     return <DetailHeader model={props} labels={props.labels} palette={palette} showArtwork={false} />;
   }
-  const textLength = (props.synopsis?.text || '').length;
-  return <DetailSynopsis
-    model={{ ...props, synopsis: { ...(props.synopsis || {}), clamped: clamped || textLength > 240 } }}
-    labels={props.labels}
-    palette={palette} />;
+  return <>
+    <style>{DETAIL_CSS}</style>
+    <WebSynopsis
+      text={props.synopsis?.text}
+      previewLines={props.synopsis?.previewLines}
+      labels={props.labels}
+      mobile={mobile} />
+  </>;
 }
 
 export function DetailCompositionTheme({ host, props }) {

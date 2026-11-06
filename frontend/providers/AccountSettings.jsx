@@ -167,7 +167,7 @@ export function AccountSettings({
         <Text style={[styles.copy, { color: colors.textMuted }]}>{instance.url}</Text>
         {instance.error ? <Text style={[styles.copy, { color: colors.danger }]}>{instance.error}</Text> : null}
         <Button label={pending === `disconnect-${instance.id}` ? labels.disconnecting : labels.disconnect}
-          tone="danger-solid" busy={pending === `disconnect-${instance.id}`} disabled={Boolean(pending)}
+          tone="danger-solid" width="full" busy={pending === `disconnect-${instance.id}`} disabled={Boolean(pending)}
           onPress={() => disconnect(instance.id)} palette={buttons} />
       </View>)}
     </View> : <Text style={[styles.copy, { color: colors.textSecondary }]}>{message}</Text>}
@@ -177,16 +177,16 @@ export function AccountSettings({
     </View> : null}
     {showForm ? <View style={styles.actions}>
       <Button label={pending === 'connect' ? labels.saving : (model.submitLabel || (editing || model.saved ? labels.reconnect : labels.connect))}
-        busy={pending === 'connect'} disabled={Boolean(pending)} onPress={submit} palette={buttons} />
-      {editing ? <Button label={labels.cancel} tone="surface" disabled={Boolean(pending)}
+        busy={pending === 'connect'} width="full" disabled={Boolean(pending)} onPress={submit} palette={buttons} />
+      {editing ? <Button label={labels.cancel} tone="surface" width="full" disabled={Boolean(pending)}
         onPress={() => setEditing(false)} palette={buttons} /> : null}
     </View> : null}
     {!showForm && !hasInstances && model.editable ? <View style={styles.actions}>
-      <Button label={labels.edit} tone="surface" onPress={() => setEditing(true)} palette={buttons} />
+      <Button label={labels.edit} tone="surface" width="full" onPress={() => setEditing(true)} palette={buttons} />
     </View> : null}
     {model.saved && !hasInstances ? <View style={styles.actions}>
       <Button label={pending === 'disconnect' ? labels.disconnecting : labels.disconnect} tone="danger-solid"
-        busy={pending === 'disconnect'} disabled={Boolean(pending)}
+        busy={pending === 'disconnect'} width="full" disabled={Boolean(pending)}
         onPress={() => disconnect()} palette={buttons} />
     </View> : null}
     {notice ? <Text accessibilityLiveRegion="polite" style={[styles.copy, { color: colors.success }]}>{notice}</Text> : null}

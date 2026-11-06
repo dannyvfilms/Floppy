@@ -820,6 +820,8 @@ def _people_island(context, root, props, body):
 
 def _people_cast_props(context, row, source, collapse_key):
     """Shape one cast or crew row for the shared person card rail."""
+    from django.conf import settings
+
     from app.templatetags.app_tags import image_url
     from app.templatetags.app_tags import slug as slug_value
 
@@ -844,7 +846,8 @@ def _people_cast_props(context, row, source, collapse_key):
             "name": name,
             "subtitle": role,
             "lines": [department] if department and department != role else [],
-            "imageUrl": image_url(person.get("image") or ""),
+            "imageUrl": image_url(person.get("image") or settings.IMG_NONE),
+            "imageFallback": image_url(settings.IMG_NONE),
             "personId": str(person_id) if person_id else "",
             "source": source or "",
             "slug": slug_value(name),

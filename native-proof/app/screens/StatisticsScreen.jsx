@@ -6,7 +6,7 @@ import {
   StatisticsMediaTypeOverviews,
   StatisticsTalentSection,
 } from '../../../frontend/ui/StatisticsSections';
-import { Screen, Section } from '../components/Screen';
+import { Screen } from '../components/Screen';
 import { statisticsPalette } from '../theme';
 import {
   createStatisticsTransport,
@@ -1647,28 +1647,20 @@ export default function StatisticsScreen({ navigate, onBack }) {
       onSelectHighlight={item => navigate('Detail', { item })}
       onRetry={retry} />
     {!loading && !error ? <React.Fragment>
-      <Section title="Range comparison">
-        <StatisticsComparison model={comparisonModel} palette={statisticsPalette}
-          onCompareMode={changeCompareMode} onRetry={retry} />
-      </Section>
-      <Section title="Charts and featured repeats">
-        <StatisticsCharts model={chartModel} palette={statisticsPalette}
-          onSelectPerson={openPerson} />
-      </Section>
-      <Section title="Talent and taste">
-        {talentState === 'ready'
-          ? <StatisticsTalentSection model={talentModel} palette={statisticsPalette}
-            onRoleSortChange={changeRoleSort}
-            onStudioSortChange={changeStudioSort}
-            onTasteSortChange={changeTasteSort}
-            onSelectPerson={selectPerson} />
-          : <StatisticsState kind={talentState === 'error' ? 'error' : 'loading'}
-            palette={statisticsPalette} onRetry={retry} />}
-      </Section>
-      <Section title="Per-media activity overviews">
-        <StatisticsMediaTypeOverviews model={mediaOverviewModel} palette={statisticsPalette}
-          onSelectItem={item => navigate('Detail', { item })} />
-      </Section>
+      <StatisticsComparison model={comparisonModel} palette={statisticsPalette}
+        onCompareMode={changeCompareMode} onRetry={retry} />
+      <StatisticsCharts model={chartModel} palette={statisticsPalette}
+        onSelectPerson={openPerson} />
+      {talentState === 'ready'
+        ? <StatisticsTalentSection model={talentModel} palette={statisticsPalette}
+          onRoleSortChange={changeRoleSort}
+          onStudioSortChange={changeStudioSort}
+          onTasteSortChange={changeTasteSort}
+          onSelectPerson={selectPerson} />
+        : <StatisticsState kind={talentState === 'error' ? 'error' : 'loading'}
+          palette={statisticsPalette} onRetry={retry} />}
+      <StatisticsMediaTypeOverviews model={mediaOverviewModel} palette={statisticsPalette}
+        onSelectItem={item => navigate('Detail', { item })} />
     </React.Fragment> : null}
   </Screen>;
 }

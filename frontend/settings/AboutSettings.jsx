@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
-import { SettingsCard } from './SettingsCard';
+import { Icon } from '../ui/Icon';
 
 const defaultPalette = {
   background: '#18181b',
@@ -15,6 +15,7 @@ const defaultPalette = {
   textMuted: '#a1a1aa',
   accent: '#6366f1',
   accentStrong: '#4f46e5',
+  link: '#818cf8',
   success: '#10b981',
   warning: '#f59e0b',
   danger: '#ef4444',
@@ -83,21 +84,35 @@ const defaultLabels = {
     installedStatus: 'Installing Floppy. Look for it alongside your other apps.',
     dismissedStatus: 'Installation dismissed. You can still add Floppy using the steps below.',
     failedStatus: 'Your browser could not open the install prompt. Use the steps below instead.',
+    unavailableStatus: 'The install prompt is not available right now. Use the steps below instead.',
+    installedBadge: 'Installed',
+    webBadge: 'Web install',
   },
   links: { open: 'Open' },
-  resources: { title: 'Project Resources' },
+  resources: {
+    title: 'Project Resources',
+    columns: ['Resource', 'Purpose', 'Destination'],
+  },
   specs: {
     title: 'Developer & API Specifications',
-    description: 'Reviewed contracts and live schemas served by this instance.',
-    formatSeparator: ' · ',
+    columns: ['Specification', 'Format / Standard', 'Actions'],
     open: 'Open',
+    openDocs: 'Open Docs',
     preview: 'Preview',
     download: 'Download',
     previewLabel: 'Preview {label}',
     downloadLabel: 'Download {label}',
   },
-  attributions: { title: 'Metadata & Attributions' },
-  licenses: { title: 'License & Legal' },
+  attributions: {
+    title: 'Metadata & Attributions',
+    columns: ['Provider / Service', 'Supported Media', 'Attribution Link'],
+    open: 'Open',
+  },
+  licenses: {
+    title: 'License & Legal',
+    columns: ['Subject', 'License / Terms', 'Details'],
+    open: 'Open',
+  },
   version: {
     version: 'Version:',
     commit: 'Commit:',
@@ -114,42 +129,84 @@ function mergeLabels(defaults, labels) {
   return { ...defaults, ...(labels || {}) };
 }
 
-function badgesFor(colors) {
-  return {
-    outline: { color: colors.textSecondary, borderColor: colors.surfaceMuted, borderWidth: 1 },
-    indigo: { color: '#ffffff', backgroundColor: colors.accentStrong },
-  };
+function useColors(palette) {
+  return { ...defaultPalette, ...palette, link: palette?.link || palette?.accent || defaultPalette.link };
 }
 
-function LinkRow({ label, description, url, onOpenUrl, palette, badge, openLabel = 'Open' }) {
-  const open = onOpenUrl ? () => onOpenUrl(url) : undefined;
-  return <Pressable accessibilityRole="link" accessibilityLabel={label}
-    accessibilityHint={url} accessibilityState={{ disabled: !onOpenUrl }}
-    disabled={!onOpenUrl} onPress={open}
-    style={({ pressed }) => [styles.linkRow, {
-      backgroundColor: palette.surfaceStrong, borderColor: palette.border,
-    }, pressed && onOpenUrl && { opacity: 0.75 }]}>
-    <View style={styles.linkBody}>
-      <View style={styles.linkHeading}>
-        <Text style={[styles.linkLabel, { color: palette.accent }]}>{label}</Text>
-        {badge ? <Badge label={badge} size="xs" tone="outline" palette={badgesFor(palette)} /> : null}
-      </View>
-      {description ? <Text style={[styles.linkCopy, { color: palette.textMuted }]}>{description}</Text> : null}
-      <Text style={[styles.linkUrl, { color: palette.textMuted }]} numberOfLines={1}>{url}</Text>
-    </View>
-    <Text style={[styles.linkAction, { color: palette.textSecondary }]}>{openLabel}</Text>
+function SectionHeading({ icon, title, colors, level = 3 }) {
+  return <View style={styles.heading}>
+    {icon ? <View style={[styles.headingIcon, { fontSize: 20, color: colors.link }]}>
+      <Icon spec={icon} />
+    </View> : null}
+    <Text role="heading" aria-level={level}
+      style={[styles.headingText, { color: colors.textSecondary }]}>{title}</Text>
+  </View>;
+}
+
+function Section({ icon, title, colors, children, bodyStyle, nativeID, testID }) {
+  return <View style={styles.section} nativeID={nativeID} testID={testID}>
+    <SectionHeading icon={icon} title={title} colors={colors} />
+    <View style={[styles.sectionBody, bodyStyle]}>{children}</View>
+  </View>;
+}
+
+function InlineLink({ label, onPress, accessibilityLabel, colors, style }) {
+  return <Text accessibilityRole="link" accessibilityLabel={accessibilityLabel || label}
+    onPress={onPress} style={[styles.inlineLink, { color: colors.link }, style]}>{label}</Text>;
+}
+
+function TableCell({ children, width, style, colors, right = false }) {
+  return <View role="cell" style={[styles.cell, width != null && { width },
+    right && styles.cellRight, style]}>
+    {children}
+  </View>;
+}
+
+function DataTable({ columns, rows, widths, mobileWidths, mobileWidth, colors, testID }) {
+  const { width } = useWindowDimensions();
+  const narrow = width < 768;
+  const header = <View role="row" style={[styles.tableHead, {
+    backgroundColor: colors.surfaceStrong, borderColor: colors.border,
+  }]}>
+    {columns.map((column, index) => <View role="columnheader" key={`${column}-${index}`}
+      style={[styles.headCell, narrow ? { width: mobileWidths[index] } : { flexBasis: `${widths[index] * 100}%` },
+        index === columns.length - 1 && styles.cellRight]}>
+      <Text style={[styles.headText, { color: colors.textMuted }]}>{column}</Text>
+    </View>)}
+  </View>;
+
+  const body = rows.map((row, rowIndex) => <View role="row" key={row.key || rowIndex}
+    style={[styles.tableRow, { backgroundColor: colors.surface, borderColor: colors.border },
+      rowIndex > 0 && { borderTopWidth: 1 }]}>
+    {row.cells.map((cell, cellIndex) => <TableCell key={cellIndex}
+      width={narrow ? mobileWidths[cellIndex] : undefined}
+      style={!narrow ? { flexBasis: `${widths[cellIndex] * 100}%` } : undefined}
+      right={cellIndex === row.cells.length - 1} colors={colors}>
+      {cell}
+    </TableCell>)}
+  </View>);
+
+  const table = <View role="table" testID={testID} style={[styles.table, {
+    borderColor: colors.border, borderRadius: colors.radius,
+  }, narrow && { width: mobileWidth }]}>
+    {header}
+    {body}
+  </View>;
+
+  return narrow
+    ? <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tableScroll}>{table}</ScrollView>
+    : <View style={styles.tableScroll}>{table}</View>;
+}
+
+function TableLink({ label, url, onOpenUrl, colors, accessibilityLabel, icons }) {
+  return <Pressable accessibilityRole="link" accessibilityLabel={accessibilityLabel || label}
+    accessibilityHint={url} onPress={() => onOpenUrl?.(url)}
+    style={({ pressed }) => [styles.tableLink, pressed && styles.pressed]}>
+    <Text style={[styles.tableLinkText, { color: colors.link }]}>{label}</Text>
+    {icons.externalLink ? <View style={[styles.tinyIcon, { fontSize: 12, color: colors.link }]}>
+      <Icon spec={icons.externalLink} />
+    </View> : null}
   </Pressable>;
-}
-
-function LinkListCard({ title, description, items = [], onOpenUrl, palette, openLabel = 'Open' }) {
-  return <SettingsCard title={title} palette={palette}>
-    {description ? <Text style={[styles.copy, { color: palette.textMuted }]}>{description}</Text> : null}
-    <View style={styles.column}>
-      {items.map(item => <LinkRow key={item.label} label={item.label} description={item.description}
-        url={item.url} badge={item.badge} onOpenUrl={onOpenUrl} palette={palette}
-        openLabel={openLabel} />)}
-    </View>
-  </SettingsCard>;
 }
 
 export function ReleaseUpdateBanner({
@@ -159,19 +216,16 @@ export function ReleaseUpdateBanner({
   palette = {},
   labels = {},
 }) {
-  const colors = { ...defaultPalette, ...palette };
+  const colors = useColors(palette);
   const copy = mergeLabels(defaultLabels.banner, labels);
   if (!releaseTag) return null;
   return <View accessibilityLiveRegion="polite" style={[styles.banner, {
-    backgroundColor: colors.surfaceStrong, borderColor: colors.accent,
+    backgroundColor: 'rgba(99, 102, 241, 0.1)', borderColor: 'rgba(99, 102, 241, 0.3)',
   }]}>
     <Text style={[styles.bannerText, { color: colors.textSecondary }]}>{format(copy.updated, { tag: releaseTag })}</Text>
-    <Pressable accessibilityRole="link" accessibilityLabel={copy.whatsNew}
-      onPress={onViewWhatsNew} style={({ pressed }) => [styles.bannerLink, pressed && { opacity: 0.7 }]}>
-      <Text style={[styles.bannerLinkText, { color: colors.accent }]}>{copy.whatsNew}</Text>
-    </Pressable>
+    <InlineLink label={copy.whatsNew} onPress={onViewWhatsNew} colors={colors} />
     <Pressable accessibilityRole="button" accessibilityLabel={copy.dismiss}
-      onPress={onDismiss} style={({ pressed }) => [styles.dismiss, pressed && { opacity: 0.7 }]}>
+      onPress={onDismiss} style={({ pressed }) => pressed && styles.pressed}>
       <Text style={[styles.dismissText, { color: colors.textMuted }]}>×</Text>
     </Pressable>
   </View>;
@@ -179,68 +233,81 @@ export function ReleaseUpdateBanner({
 
 export function AboutOverviewCard({
   description,
-  sponsorUrl = 'https://github.com/sponsors/dannyvfilms?metadata_source=app-about-description',
+  sponsorUrl = 'https://github.com/dannyvfilms?metadata_source=app-about-description',
   onOpenUrl,
   palette = {},
   labels = {},
+  icons: suppliedIcons = {},
 }) {
-  const colors = { ...defaultPalette, ...palette };
+  const colors = useColors(palette);
   const copy = mergeLabels(defaultLabels.overview, labels);
-  return <SettingsCard title={copy.title} palette={colors}>
-    <Text style={[styles.copy, { color: colors.textSecondary }]}>{description || copy.description}</Text>
-    <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.support} <Text
-      accessibilityRole="link" onPress={() => onOpenUrl?.(sponsorUrl)}
-      style={[styles.inlineLink, { color: colors.accent }]}>{copy.supportLink}</Text>.</Text>
-  </SettingsCard>;
+  return <Section icon={suppliedIcons.info} title={copy.title} colors={colors}>
+    <Text style={[styles.bodyCopy, { color: colors.textSecondary }]}>{description || copy.description}</Text>
+    <Text style={[styles.metaCopy, { color: colors.textMuted }]}>{copy.support}{' '}
+      <InlineLink label={copy.supportLink} onPress={() => onOpenUrl?.(sponsorUrl)}
+        accessibilityLabel={`${copy.supportLink} (opens in a new tab)`} colors={colors} />.
+    </Text>
+  </Section>;
 }
 
-export function WhatsNewCard({ releases = [], releasesUrl, onOpenUrl, loading = false, palette = {}, labels = {} }) {
-  const colors = { ...defaultPalette, ...palette };
+export function WhatsNewCard({ releases = [], releasesUrl, onOpenUrl, loading = false,
+  palette = {}, labels = {}, icons: suppliedIcons = {} }) {
+  const colors = useColors(palette);
   const copy = mergeLabels(defaultLabels.whatsNew, labels);
   const [openTag, setOpenTag] = useState(releases[0]?.tag || '');
   useEffect(() => {
     setOpenTag(current => current || releases[0]?.tag || '');
   }, [releases]);
-  return <SettingsCard title={copy.title} palette={colors}>
-    {releases.length ? releases.map(release => {
-      const open = openTag === release.tag;
-      return <View key={release.tag} style={[styles.release, {
-        backgroundColor: colors.surfaceStrong, borderColor: colors.border,
-      }]}>
-        <Pressable accessibilityRole="button" accessibilityLabel={format(copy.releaseNotes, { tag: release.tag })}
-          accessibilityState={{ expanded: open }}
-          onPress={() => setOpenTag(open ? '' : release.tag)}
-          style={({ pressed }) => [styles.releaseHeading, pressed && { opacity: 0.75 }]}>
-          <Text style={[styles.releaseChevron, { color: colors.textMuted }]}>{open ? '▾' : '▸'}</Text>
-          <Text style={[styles.releaseTag, { color: colors.text }]}>{release.tag}</Text>
-          {release.published ? <Text style={[styles.releaseDate, { color: colors.textMuted }]}>{release.published}</Text> : null}
-          {release.installed ? <Badge label={copy.installed} size="sm" tone="indigo" palette={badgesFor(colors)} /> : null}
-          {release.newer ? <Badge label={copy.newer} size="sm" tone="outline" palette={badgesFor(colors)} /> : null}
-        </Pressable>
-        {open ? <View style={styles.releaseBody}>
-          {release.highlights?.length ? release.highlights.map((item, index) => <Text key={index}
-            style={[styles.bullet, { color: colors.textSecondary }]}>• {item.title ? `${item.title} — ` : ''}{item.text}</Text>)
-            : <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.noHighlights}</Text>}
-          <Pressable accessibilityRole="link" accessibilityLabel={format(copy.releasePageLabel, { tag: release.tag })}
-            onPress={() => onOpenUrl?.(release.url)}
-            style={({ pressed }) => [styles.inlineAction, pressed && { opacity: 0.7 }]}>
-            <Text style={[styles.linkLabel, { color: colors.accent }]}>{copy.releasePage}</Text>
+  return <Section icon={suppliedIcons.info} title={copy.title} colors={colors}
+    bodyStyle={styles.whatsNewBody} nativeID="whats-new">
+    {releases.length ? <>
+      {releases.map(release => {
+        const open = openTag === release.tag;
+        return <View key={release.tag} style={styles.release}>
+          <Pressable accessibilityRole="button" accessibilityLabel={format(copy.releaseNotes, { tag: release.tag })}
+            accessibilityState={{ expanded: open }}
+            onPress={() => setOpenTag(open ? '' : release.tag)}
+            style={({ pressed }) => [styles.releaseSummary, pressed && styles.pressed]}>
+            <Text aria-hidden="true" style={[styles.releaseChevron, { color: colors.textMuted },
+              open && { transform: [{ rotate: '90deg' }] }]}>▸</Text>
+            <Text style={[styles.releaseTag, { color: colors.text }]}>{release.tag}</Text>
+            {release.published ? <Text style={[styles.releaseDate, { color: colors.textMuted }]}>{release.published}</Text> : null}
+            {release.installed ? <Badge label={copy.installed} size="sm" tone="green-soft" nowrap /> : null}
+            {release.newer ? <Badge label={copy.newer} size="sm" tone="indigo-soft" nowrap /> : null}
           </Pressable>
-        </View> : null}
-      </View>;
-    }) : <Text style={[styles.copy, { color: colors.textMuted }]}>{loading ? copy.loading : copy.empty}</Text>}
-    <Pressable accessibilityRole="link" accessibilityLabel={copy.allReleases}
-      onPress={() => onOpenUrl?.(releasesUrl)}
-      style={({ pressed }) => [styles.inlineAction, pressed && { opacity: 0.7 }]}>
-      <Text style={[styles.linkLabel, { color: colors.accent }]}>{copy.allReleases}</Text>
-    </Pressable>
-  </SettingsCard>;
+          {open ? <View style={styles.releaseBody}>
+            {release.highlights?.length ? <View style={styles.bulletList}>
+              {release.highlights.map((item, index) => <View key={index} style={styles.bulletRow}>
+                <Text style={[styles.bulletDot, { color: colors.textSecondary }]}>•</Text>
+                <Text style={[styles.bulletText, { color: colors.textSecondary }]}>
+                  {item.title ? <Text style={styles.bulletTitle}>{item.title}</Text> : null}
+                  {item.title && item.text ? '—' : ''}
+                  {item.text}
+                </Text>
+              </View>)}
+            </View> : <Text style={[styles.metaCopy, { color: colors.textMuted }]}>{copy.noHighlights}</Text>}
+            <InlineLink label={copy.releasePage} accessibilityLabel={format(copy.releasePageLabel, { tag: release.tag })}
+              onPress={() => onOpenUrl?.(release.url)} colors={colors} style={styles.metaCopy} />
+          </View> : null}
+        </View>;
+      })}
+      <InlineLink label={copy.allReleases} onPress={() => onOpenUrl?.(releasesUrl)} colors={colors}
+        style={styles.metaCopy} />
+    </> : <Text style={[styles.metaCopy, { color: colors.textMuted }]}>
+      {loading ? copy.loading : copy.empty}
+    </Text>}
+  </Section>;
 }
 
-function InstallSteps({ title, steps, palette }) {
-  return <View style={[styles.stepCard, { backgroundColor: palette.surfaceStrong, borderColor: palette.border }]}>
-    <Text role="heading" aria-level={4} style={[styles.stepTitle, { color: palette.text }]}>{title}</Text>
-    {steps.map((step, index) => <Text key={step} style={[styles.bullet, { color: palette.textMuted }]}>{index + 1}. {step}</Text>)}
+function InstallSteps({ title, steps, colors }) {
+  return <View style={[styles.stepCard, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
+    <Text role="heading" aria-level={4} style={[styles.stepTitle, { color: colors.text }]}>{title}</Text>
+    <View style={styles.stepList}>
+      {steps.map((step, index) => <View key={step} style={styles.stepRow}>
+        <Text style={[styles.stepText, { color: colors.textMuted }]}>{index + 1}.</Text>
+        <Text style={[styles.stepText, { color: colors.textMuted }]}>{step}</Text>
+      </View>)}
+    </View>
   </View>;
 }
 
@@ -255,158 +322,251 @@ export function InstallCard({
   palette = {},
   buttonPalette = {},
   labels = {},
+  icons: suppliedIcons = {},
 }) {
-  const colors = { ...defaultPalette, ...palette };
+  const colors = useColors(palette);
   const buttons = { ...defaultButtonPalette, ...buttonPalette };
   const copy = mergeLabels(defaultLabels.install, labels);
+  const { width } = useWindowDimensions();
   const showIos = platform === 'all' || platform === 'ios';
   const showAndroid = platform === 'all' || platform === 'android';
-  return <SettingsCard title={copy.title} palette={colors}>
-    <Text style={[styles.copy, { color: colors.textSecondary }]}>{copy.intro}</Text>
-    {installAvailable ? <Button label={copy.install} busy={installBusy}
-      onPress={onInstall} palette={buttons} /> : null}
-    {installStatus ? <Text accessibilityLiveRegion="polite" style={[styles.copy, { color: colors.textMuted }]}>{installStatus}</Text> : null}
-    {showIos || showAndroid ? <View style={styles.column}>
-      {showIos ? <InstallSteps title={copy.iosTitle} palette={colors} steps={copy.iosSteps} /> : null}
-      {showAndroid ? <InstallSteps title={copy.androidTitle} palette={colors} steps={copy.androidSteps} /> : null}
+  const showGuideNote = platform === 'all' || platform === 'desktop';
+  const twoColumns = showIos && showAndroid && width >= 640;
+  return <Section icon={suppliedIcons.download} title={copy.title} colors={colors}
+    bodyStyle={styles.installBody}>
+    <Text style={[styles.bodyCopy, { color: colors.textSecondary }]}>{copy.intro}</Text>
+    {installAvailable ? <View style={styles.action}>
+      <Button label={copy.install} busy={installBusy} onPress={onInstall} palette={buttons} width="auto" />
     </View> : null}
-    {platform === 'all' || platform === 'desktop' ? <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.guidePrefix} <Text
-      accessibilityRole="link" onPress={() => onOpenUrl?.(guideUrl)}
-      style={[styles.inlineLink, { color: colors.accent }]}>{copy.guideLink}</Text> {copy.guideSuffix}</Text> : null}
-    <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.noControl}</Text>
-    <Pressable accessibilityRole="link" accessibilityLabel={copy.guideLabel}
-      onPress={() => onOpenUrl?.(guideUrl)}
-      style={({ pressed }) => [styles.inlineAction, pressed && { opacity: 0.7 }]}>
-      <Text style={[styles.linkLabel, { color: colors.accent }]}>{copy.guideLabel}</Text>
-    </Pressable>
-  </SettingsCard>;
+    {installStatus ? <Text accessibilityLiveRegion="polite"
+      style={[styles.metaCopy, { color: colors.textMuted }]}>{installStatus}</Text> : null}
+    {showIos || showAndroid ? <View style={[styles.stepGrid, twoColumns && styles.stepGridTwo]}>
+      {showIos ? <InstallSteps title={copy.iosTitle} steps={copy.iosSteps} colors={colors} /> : null}
+      {showAndroid ? <InstallSteps title={copy.androidTitle} steps={copy.androidSteps} colors={colors} /> : null}
+    </View> : null}
+    {showGuideNote ? <Text style={[styles.metaCopy, { color: colors.textMuted }]}>
+      {copy.guidePrefix}{' '}
+      <InlineLink label={copy.guideLink} onPress={() => onOpenUrl?.(guideUrl)}
+        accessibilityLabel={`${copy.guideLink} (opens in a new tab)`} colors={colors} />{' '}
+      {copy.guideSuffix}
+    </Text> : null}
+    <Text style={[styles.metaCopy, { color: colors.textMuted }]}>{copy.noControl}{' '}
+      <InlineLink label={copy.guideLabel} onPress={() => onOpenUrl?.(guideUrl)}
+        accessibilityLabel={`${copy.guideLabel} (opens in a new tab)`} colors={colors} />
+    </Text>
+  </Section>;
 }
 
-export function ProjectResourcesCard({ resources = [], onOpenUrl, palette = {}, labels = {} }) {
-  const colors = { ...defaultPalette, ...palette };
-  const copy = mergeLabels({ ...defaultLabels.resources, open: defaultLabels.links.open }, labels);
-  return <LinkListCard title={copy.title} items={resources} openLabel={copy.open}
-    onOpenUrl={onOpenUrl} palette={colors} />;
+export function ProjectResourcesCard({ resources = [], onOpenUrl, palette = {}, labels = {},
+  icons: suppliedIcons = {} }) {
+  const colors = useColors(palette);
+  const copy = mergeLabels(defaultLabels.resources, labels);
+  const iconKeys = ['globe', 'github', 'bookOpen', 'bug', 'persons', 'heart'];
+  const rows = resources.map((item, index) => ({
+    key: item.label,
+    cells: [
+      <View style={styles.resourceName}>
+        {suppliedIcons[iconKeys[index]] ? <View style={[styles.rowIcon, { fontSize: 16, color: colors.link }]}>
+          <Icon spec={suppliedIcons[iconKeys[index]]} />
+        </View> : null}
+        <Text style={[styles.rowName, { color: colors.text }]}>{item.label}</Text>
+      </View>,
+      <Text style={[styles.rowMeta, { color: colors.textMuted }]}>{item.description}</Text>,
+      <TableLink label={item.action || defaultLabels.links.open} url={item.url}
+        onOpenUrl={onOpenUrl} colors={colors} icons={suppliedIcons}
+        accessibilityLabel={`${item.action || defaultLabels.links.open} (opens in a new tab)`} />,
+    ],
+  }));
+  return <Section icon={suppliedIcons.externalLink} title={copy.title} colors={colors}>
+    <DataTable columns={copy.columns} rows={rows} widths={[0.227, 0.613, 0.16]}
+      mobileWidths={[157, 122.1, 120.9]} mobileWidth={400} colors={colors}
+      testID="about-resources-table" />
+  </Section>;
 }
 
-function SpecRow({ spec, copy, onOpenUrl, onPreview, onDownload, palette }) {
-  const open = onOpenUrl ? () => onOpenUrl(spec) : undefined;
-  const preview = onPreview && spec.downloadName ? () => onPreview(spec) : undefined;
-  const download = onDownload && spec.downloadName ? () => onDownload(spec) : undefined;
-  return <View style={[styles.specRow, { backgroundColor: palette.surfaceStrong, borderColor: palette.border }]}>
-    <View style={styles.specBody}>
-      <View style={styles.linkHeading}>
-        <Pressable accessibilityRole="link" accessibilityLabel={spec.label}
-          accessibilityHint={spec.url} accessibilityState={{ disabled: !open }}
-          disabled={!open} onPress={open}
-          style={({ pressed }) => pressed && open && { opacity: 0.75 }}>
-          <Text style={[styles.linkLabel, { color: palette.accent }]}>{spec.label}</Text>
-        </Pressable>
-        {spec.format ? <Badge label={spec.format} size="xs" tone="outline" palette={badgesFor(palette)} /> : null}
-      </View>
-      {spec.description ? <Text style={[styles.linkCopy, { color: palette.textMuted }]}>{spec.description}</Text> : null}
-      {spec.url ? <Text style={[styles.linkUrl, { color: palette.textMuted }]} numberOfLines={1}>{spec.url}</Text> : null}
-      <View style={styles.specActions}>
-        {preview ? <Pressable accessibilityRole="button" accessibilityLabel={format(copy.previewLabel, { label: spec.label })}
-          onPress={preview} style={({ pressed }) => pressed && { opacity: 0.7 }}>
-          <Text style={[styles.linkAction, { color: palette.textSecondary }]}>{copy.preview}</Text>
-        </Pressable> : null}
-        {download ? <Pressable accessibilityRole="link" accessibilityLabel={format(copy.downloadLabel, { label: spec.label })}
-          onPress={download} style={({ pressed }) => pressed && { opacity: 0.7 }}>
-          <Text style={[styles.linkAction, { color: palette.textSecondary }]}>{copy.download}</Text>
-        </Pressable> : null}
-        {open ? <Pressable accessibilityRole="link" accessibilityLabel={`${copy.open} ${spec.label}`}
-          onPress={open} style={({ pressed }) => pressed && { opacity: 0.7 }}>
-          <Text style={[styles.linkAction, { color: palette.textSecondary }]}>{copy.open}</Text>
-        </Pressable> : null}
-      </View>
-    </View>
+function FormatBadge({ label, colors }) {
+  return <View style={[styles.formatBadge, {
+    backgroundColor: colors.surfaceMuted, borderColor: colors.border,
+  }]}>
+    <Text style={[styles.formatBadgeText, { color: colors.textMuted }]}>{label}</Text>
   </View>;
 }
 
-export function DeveloperSpecsCard({
-  specs = [],
-  onOpenUrl,
-  onPreview,
-  onDownload,
-  palette = {},
-  labels = {},
-}) {
-  const colors = { ...defaultPalette, ...palette };
-  const copy = mergeLabels({ ...defaultLabels.specs, open: defaultLabels.links.open }, labels);
-  const openSpec = onOpenUrl ? spec => onOpenUrl(spec.url) : undefined;
-  return <SettingsCard title={copy.title} palette={colors}>
-    <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.description}</Text>
-    <View style={styles.column}>
-      {specs.map(spec => <SpecRow key={spec.label} spec={spec} copy={copy}
-        onOpenUrl={openSpec} onPreview={onPreview} onDownload={onDownload}
-        palette={colors} />)}
-    </View>
-  </SettingsCard>;
+function SpecActions({ spec, copy, colors, onOpenUrl, onPreview, onDownload, icons }) {
+  const open = onOpenUrl ? () => onOpenUrl(spec.url) : undefined;
+  const preview = onPreview && spec.downloadName ? () => onPreview(spec) : undefined;
+  const download = onDownload && spec.downloadName ? () => onDownload(spec) : undefined;
+  if (!preview && !download) {
+    return <Pressable accessibilityRole="link" accessibilityLabel={spec.actionLabel || copy.openDocs || copy.open}
+      onPress={open} style={({ pressed }) => [styles.actionButton, {
+        backgroundColor: colors.surfaceStrong, borderColor: colors.border,
+      }, pressed && styles.pressed]}>
+      <Text style={[styles.actionButtonText, { color: colors.text }]}>{spec.actionLabel || copy.openDocs || copy.open}</Text>
+    </Pressable>;
+  }
+  return <View style={styles.specActions}>
+    {preview ? <Pressable accessibilityRole="button" accessibilityLabel={format(copy.previewLabel, { label: spec.label })}
+      onPress={preview} style={({ pressed }) => [styles.actionButton, {
+        backgroundColor: colors.surfaceStrong, borderColor: colors.border,
+      }, pressed && styles.pressed]}>
+      <Text style={[styles.actionButtonText, { color: colors.text }]}>{copy.preview}</Text>
+    </Pressable> : null}
+    {download ? <Pressable accessibilityRole="link" accessibilityLabel={format(copy.downloadLabel, { label: spec.label })}
+      onPress={download} style={({ pressed }) => [styles.actionButton, {
+        backgroundColor: colors.surfaceStrong, borderColor: colors.border,
+      }, pressed && styles.pressed]}>
+      {icons.download ? <View style={[styles.actionIcon, { fontSize: 14, color: colors.text }]}>
+        <Icon spec={icons.download} />
+      </View> : null}
+      <Text style={[styles.actionButtonText, { color: colors.text }]}>{copy.download}</Text>
+    </Pressable> : null}
+  </View>;
 }
 
-export function AttributionsCard({ attributions = [], onOpenUrl, palette = {}, labels = {} }) {
-  const colors = { ...defaultPalette, ...palette };
-  const copy = mergeLabels({ ...defaultLabels.attributions, open: defaultLabels.links.open }, labels);
-  const items = attributions.map(item => ({
-    label: item.provider,
-    description: item.media,
-    url: item.url,
+export function DeveloperSpecsCard({ specs = [], onOpenUrl, onPreview, onDownload,
+  palette = {}, labels = {}, icons: suppliedIcons = {} }) {
+  const colors = useColors(palette);
+  const copy = mergeLabels(defaultLabels.specs, labels);
+  const rows = specs.map((spec, index) => ({
+    key: spec.label,
+    cells: [
+      <View style={styles.specNameBlock}>
+        <Pressable accessibilityRole="link" accessibilityLabel={spec.label}
+          accessibilityHint={spec.url} onPress={() => onOpenUrl?.(spec.url)}
+          style={({ pressed }) => [styles.specLink, pressed && styles.pressed]}>
+          {suppliedIcons[index === 0 ? 'bookOpen' : 'page'] ? <View style={[styles.rowIcon, { fontSize: 16, color: colors.link }]}>
+            <Icon spec={suppliedIcons[index === 0 ? 'bookOpen' : 'page']} />
+          </View> : null}
+          <Text style={[styles.specLinkText, { color: colors.link }]}>{spec.label}</Text>
+        </Pressable>
+        {spec.description ? <Text style={[styles.specDescription, { color: colors.textMuted }]}>{spec.description}</Text> : null}
+      </View>,
+      <FormatBadge label={spec.format} colors={colors} />,
+      <SpecActions spec={spec} copy={copy} colors={colors}
+        onOpenUrl={onOpenUrl} onPreview={onPreview} onDownload={onDownload} icons={suppliedIcons} />,
+    ],
   }));
-  return <LinkListCard title={copy.title} items={items} openLabel={copy.open}
-    onOpenUrl={onOpenUrl} palette={colors} />;
+  return <Section icon={suppliedIcons.page} title={copy.title} colors={colors}>
+    <DataTable columns={copy.columns} rows={rows} widths={[0.524, 0.233, 0.243]}
+      mobileWidths={[150.2, 103.4, 129.2]} mobileWidth={382.8} colors={colors}
+      testID="about-specs-table" />
+  </Section>;
 }
 
-export function LicenseCard({ licenses = [], onOpenUrl, palette = {}, labels = {} }) {
-  const colors = { ...defaultPalette, ...palette };
-  const copy = mergeLabels({ ...defaultLabels.licenses, open: defaultLabels.links.open }, labels);
-  const items = licenses.map(item => ({
-    label: item.subject,
-    description: item.terms,
-    url: item.url,
+export function AttributionsCard({ attributions = [], onOpenUrl, palette = {}, labels = {},
+  icons: suppliedIcons = {} }) {
+  const colors = useColors(palette);
+  const copy = mergeLabels(defaultLabels.attributions, labels);
+  const rows = attributions.map(item => ({
+    key: item.provider,
+    cells: [
+      <Text style={[styles.rowName, { color: colors.text }]}>{item.provider}</Text>,
+      <Text style={[styles.rowMeta, { color: colors.textMuted }]}>{item.media}</Text>,
+      <TableLink label={item.action || copy.open} url={item.url} onOpenUrl={onOpenUrl}
+        colors={colors} icons={suppliedIcons}
+        accessibilityLabel={`${item.action || copy.open} (opens in a new tab)`} />,
+    ],
   }));
-  return <LinkListCard title={copy.title} items={items} openLabel={copy.open}
-    onOpenUrl={onOpenUrl} palette={colors} />;
+  return <Section icon={suppliedIcons.page} title={copy.title} colors={colors}>
+    <DataTable columns={copy.columns} rows={rows} widths={[0.298, 0.493, 0.209]}
+      mobileWidths={[126.1, 122.9, 139.1]} mobileWidth={388.1} colors={colors}
+      testID="about-attributions-table" />
+  </Section>;
+}
+
+export function LicenseCard({ licenses = [], onOpenUrl, palette = {}, labels = {},
+  icons: suppliedIcons = {} }) {
+  const colors = useColors(palette);
+  const copy = mergeLabels(defaultLabels.licenses, labels);
+  const rows = licenses.map(item => ({
+    key: item.subject,
+    cells: [
+      <Text style={[styles.rowName, { color: colors.text }]}>{item.subject}</Text>,
+      <Text style={[styles.rowMeta, { color: colors.textMuted }]}>{item.terms}</Text>,
+      <TableLink label={item.action || copy.open} url={item.url} onOpenUrl={onOpenUrl}
+        colors={colors} icons={suppliedIcons}
+        accessibilityLabel={`${item.action || copy.open} (opens in a new tab)`} />,
+    ],
+  }));
+  return <Section icon={suppliedIcons.page} title={copy.title} colors={colors}>
+    <DataTable columns={copy.columns} rows={rows} widths={[0.245, 0.567, 0.189]}
+      mobileWidths={[106.5, 94.8, 88.4]} mobileWidth={289.7} colors={colors}
+      testID="about-licenses-table" />
+  </Section>;
 }
 
 export function AboutVersionFooter({ version, commit, palette = {}, labels = {} }) {
-  const colors = { ...defaultPalette, ...palette };
+  const colors = useColors(palette);
   const copy = mergeLabels(defaultLabels.version, labels);
   return <View style={[styles.version, { borderColor: colors.border }]}>
-    <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.version} <Text style={styles.mono}>{version || copy.unavailable}</Text>{commit ? <> <Text style={{ color: colors.textMuted }}>|</Text> {copy.commit} <Text style={styles.mono}>{commit}</Text></> : null}</Text>
+    <Text style={[styles.metaCopy, { color: colors.textMuted }]}>{copy.version}{' '}
+      <Text style={styles.mono}>{version || copy.unavailable}</Text>{commit ? <>
+        {' '}<Text style={{ color: colors.textMuted }}>|</Text> {copy.commit}{' '}
+        <Text style={styles.mono}>{commit}</Text>
+      </> : null}
+    </Text>
   </View>;
 }
 
 const styles = StyleSheet.create({
-  copy: { fontSize: 13, lineHeight: 19 },
-  column: { gap: 8 },
-  banner: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
-  bannerText: { flexGrow: 1, flexShrink: 1, fontSize: 13 },
-  bannerLink: { paddingVertical: 2 },
-  bannerLinkText: { fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
-  dismiss: { paddingHorizontal: 4 },
-  dismissText: { fontSize: 18, fontWeight: '600' },
-  inlineLink: { textDecorationLine: 'underline' },
-  inlineAction: { alignSelf: 'flex-start', paddingVertical: 2 },
-  linkRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, borderWidth: 1, borderRadius: 8, padding: 12 },
-  specRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderWidth: 1, borderRadius: 8, padding: 12 },
-  specBody: { flexShrink: 1, gap: 4 },
-  specActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingTop: 2 },
-  linkBody: { flexShrink: 1, gap: 2 },
-  linkHeading: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
-  linkLabel: { fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
-  linkCopy: { fontSize: 12, lineHeight: 17 },
-  linkUrl: { fontSize: 11, lineHeight: 15 },
-  linkAction: { fontSize: 12, fontWeight: '600' },
-  release: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 8 },
-  releaseHeading: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
-  releaseChevron: { fontSize: 13 },
-  releaseTag: { fontSize: 13, fontWeight: '600', fontFamily: 'Courier' },
-  releaseDate: { fontSize: 12 },
-  releaseBody: { gap: 6 },
-  bullet: { fontSize: 12, lineHeight: 18 },
-  stepCard: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 4 },
-  stepTitle: { fontSize: 13, fontWeight: '600' },
-  version: { borderTopWidth: 1, paddingTop: 10 },
+  section: { gap: 12, minWidth: 0 },
+  heading: { flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0 },
+  headingIcon: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
+  headingText: { fontSize: 18, lineHeight: 28, fontWeight: '500', flexShrink: 1 },
+  sectionBody: { marginLeft: 28, gap: 12, minWidth: 0 },
+  bodyCopy: { fontSize: 16, lineHeight: 26 },
+  metaCopy: { fontSize: 14, lineHeight: 21 },
+  inlineLink: { fontSize: 14, lineHeight: 21, textDecorationLine: 'underline' },
+  banner: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 6, paddingHorizontal: 12, paddingVertical: 8 },
+  bannerText: { flexGrow: 1, flexShrink: 1, fontSize: 14, lineHeight: 20 },
+  dismissText: { fontSize: 18, fontWeight: '600', paddingHorizontal: 4 },
+  pressed: { opacity: 0.75 },
+  whatsNewBody: { gap: 24 },
+  release: { gap: 8 },
+  releaseSummary: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  releaseChevron: { fontSize: 12, lineHeight: 16 },
+  releaseTag: { fontFamily: 'Courier', fontSize: 16, lineHeight: 24 },
+  releaseDate: { fontSize: 12, lineHeight: 16 },
+  releaseBody: { gap: 8, paddingTop: 8 },
+  bulletList: { gap: 4, paddingLeft: 20 },
+  bulletRow: { flexDirection: 'row', gap: 6, minWidth: 0 },
+  bulletDot: { fontSize: 14, lineHeight: 21 },
+  bulletText: { fontSize: 14, lineHeight: 21, flexShrink: 1 },
+  bulletTitle: { fontWeight: '500' },
+  installBody: { gap: 16 },
+  stepGrid: { gap: 16 },
+  stepGridTwo: { flexDirection: 'row', alignItems: 'stretch' },
+  stepCard: { flex: 1, gap: 8, borderWidth: 1, borderRadius: 6, padding: 16, minWidth: 0 },
+  stepTitle: { fontSize: 14, lineHeight: 20, fontWeight: '600' },
+  stepList: { gap: 4, paddingLeft: 16 },
+  stepRow: { flexDirection: 'row', gap: 6 },
+  stepText: { fontSize: 14, lineHeight: 21, flexShrink: 1 },
+  action: { alignSelf: 'flex-start' },
+  tableScroll: { minWidth: 0 },
+  table: { borderWidth: 1, overflow: 'hidden', width: '100%' },
+  tableHead: { flexDirection: 'row', borderBottomWidth: 1 },
+  tableRow: { flexDirection: 'row' },
+  headCell: { paddingHorizontal: 16, paddingVertical: 12, minWidth: 0 },
+  headText: { fontSize: 12, lineHeight: 16, fontWeight: '600', letterSpacing: 0.6, textTransform: 'uppercase' },
+  cell: { paddingHorizontal: 16, paddingVertical: 12, minWidth: 0, justifyContent: 'center' },
+  cellRight: { alignItems: 'flex-end' },
+  rowName: { fontSize: 14, lineHeight: 20, fontWeight: '500' },
+  rowMeta: { fontSize: 12, lineHeight: 16 },
+  resourceName: { flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0 },
+  rowIcon: { width: 16, height: 16, alignItems: 'center', justifyContent: 'center' },
+  tableLink: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  tableLinkText: { fontSize: 12, lineHeight: 16, fontWeight: '500' },
+  tinyIcon: { width: 12, height: 12, alignItems: 'center', justifyContent: 'center' },
+  specNameBlock: { gap: 2, minWidth: 0 },
+  specLink: { flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0 },
+  specLinkText: { fontSize: 14, lineHeight: 20, fontWeight: '500', flexShrink: 1 },
+  specDescription: { fontSize: 12, lineHeight: 16 },
+  formatBadge: { alignSelf: 'flex-start', borderWidth: 1, borderRadius: 4, paddingHorizontal: 8, paddingVertical: 2 },
+  formatBadgeText: { fontSize: 12, lineHeight: 16, fontFamily: 'Courier' },
+  specActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' },
+  actionButton: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 4, paddingHorizontal: 10, paddingVertical: 4 },
+  actionButtonText: { fontSize: 12, lineHeight: 16, fontWeight: '500' },
+  actionIcon: { width: 14, height: 14, alignItems: 'center', justifyContent: 'center' },
+  version: { borderTopWidth: 1, paddingTop: 16 },
   mono: { fontFamily: 'Courier' },
 });

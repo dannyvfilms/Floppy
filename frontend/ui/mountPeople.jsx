@@ -73,6 +73,45 @@ function readCollapsed(key) {
   }
 }
 
+const CAST_RAIL_CSS = `
+  #detail-secondary-content [data-detail-section="cast"] ul,
+  #detail-secondary-content [data-detail-section="crew"] ul {
+    margin-top: -4px;
+    margin-bottom: 0;
+  }
+  #detail-secondary-content [data-detail-section="cast"] h3,
+  #detail-secondary-content [data-detail-section="crew"] h3,
+  #detail-secondary-content [data-detail-section="recommendations"] h3 {
+    line-height: 28px;
+  }
+  @media (max-width: 600px) {
+    #detail-secondary-content [data-detail-section="recommendations"] .home-row-card {
+      width: 100% !important;
+    }
+  }
+  #detail-secondary-content [data-detail-section="cast"] .media-card-title,
+  #detail-secondary-content [data-detail-section="crew"] .media-card-title {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+  }
+  #detail-secondary-content [data-detail-section="recommendations"] .media-card-title {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+  }
+  #detail-secondary-content [data-detail-section="recommendations"] ul {
+    margin-top: -4px;
+    margin-bottom: 0;
+  }
+`;
+
 function CastRail({ props, palette }) {
   const [collapsed, setCollapsed] = useState(() => readCollapsed(props.collapseKey));
   useEffect(() => {
@@ -85,19 +124,22 @@ function CastRail({ props, palette }) {
     label: props.viewAll.label,
     onPress: () => openInternal(props.viewAll.href),
   } : undefined;
-  return <Rail items={props.items} title={props.title}
-    palette={{
-      ...palette,
-      surfaceHover: palette.surfaceStrong,
-      arrow: palette.textSecondary,
-      arrowDisabled: palette.surfaceMuted,
-      loading: palette.accent,
-    }}
-    renderItem={person => <PersonCard person={person} labels={props.labels}
-      palette={palette} onOpen={entry => openInternal(entry.href)} />}
-    itemWidth={132} viewAll={viewAll}
-    collapsible={Boolean(props.collapseKey)} collapsed={props.collapseKey ? collapsed : undefined}
-    onCollapsedChange={props.collapseKey ? setCollapsed : undefined} />;
+  return <>
+    <style>{CAST_RAIL_CSS}</style>
+    <Rail items={props.items} title={props.title}
+      palette={{
+        ...palette,
+        surfaceHover: palette.surfaceStrong,
+        arrow: palette.textSecondary,
+        arrowDisabled: palette.surfaceMuted,
+        loading: palette.accent,
+      }}
+      renderItem={person => <PersonCard person={person} labels={props.labels}
+        palette={palette} onOpen={entry => openInternal(entry.href)} />}
+      itemWidth={128} viewAll={viewAll}
+      collapsible={Boolean(props.collapseKey)} collapsed={props.collapseKey ? collapsed : undefined}
+      onCollapsedChange={props.collapseKey ? setCollapsed : undefined} />
+  </>;
 }
 
 function Adapter({ props }) {

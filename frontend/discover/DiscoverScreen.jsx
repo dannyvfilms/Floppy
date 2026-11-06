@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Badge } from '../ui/Badge';
 import { MediaCard } from '../ui/MediaCard';
@@ -63,11 +63,7 @@ function countLabel(copy, count) {
   return `${count} ${count === 1 ? copy.hiddenItem : copy.hiddenItems}`;
 }
 
-function activeAppearance(palette, active) {
-  return active
-    ? { color: palette.accentText, backgroundColor: palette.accent, borderColor: palette.accent, borderWidth: 0 }
-    : { color: palette.textSecondary, backgroundColor: palette.surface, borderColor: palette.border, borderWidth: 1 };
-}
+
 
 export function DiscoverTabs({
   items = [],
@@ -82,10 +78,18 @@ export function DiscoverTabs({
   return <View style={styles.tabs}>
     <ScrollView horizontal showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.tabRow}>
-      {items.map(item => <Badge key={item.value} label={item.label} size="sm"
-        accessibilityLabel={item.label}
-        appearance={activeAppearance(palette, selected === item.value)}
-        onPress={() => onSelect?.(item.value)} />)}
+      {items.map(item => {
+        const active = selected === item.value;
+        return <Pressable key={item.value} accessibilityRole="link"
+          accessibilityLabel={item.label} accessibilityState={{ selected: active }}
+          onPress={() => onSelect?.(item.value)}
+          style={[styles.tab, {
+            backgroundColor: active ? palette.accent : palette.surface,
+            borderColor: active ? palette.accent : palette.border,
+          }]}>
+          <Text style={[styles.tabText, { color: active ? palette.accentText : palette.textSecondary }]}>{item.label}</Text>
+        </Pressable>;
+      })}
     </ScrollView>
     <Text style={styles.srOnly} accessibilityLiveRegion="polite">
       {selected ? `${copy.mediaType}: ${(items.find(item => item.value === selected) || {}).label || selected}` : ''}
@@ -155,11 +159,15 @@ export function DiscoverState({
   </View>;
 }
 
+const gridCardClassName = 'search-result-card media-card-hover-outline transition-all media-card-title-ellipsis media-card-title-bleed';
+const gridSquareCardClassName = 'search-result-card-square media-card-hover-outline transition-all media-card-title-ellipsis media-card-title-bleed';
+
 function DiscoverCard({
   model,
   labels,
   palette,
   width,
+  square = false,
   onOpenCard,
   onOpenLink,
   onAction,
@@ -169,6 +177,7 @@ function DiscoverCard({
   readOnly,
 }) {
   return <MediaCard model={model} width={width} labels={labels} palette={palette}
+    className={square ? gridSquareCardClassName : gridCardClassName}
     readOnly={readOnly}
     onOpen={() => onOpenCard?.(model.href, model)}
     onOpenLink={href => onOpenLink?.(href)}
@@ -176,6 +185,28 @@ function DiscoverCard({
     onRate={onRate ? score => onRate(model, score) : undefined}
     renderRating={renderRating}
     renderActionIcon={renderActionIcon} />;
+}
+
+const gridGap = 16;
+const mobileGridGap = 12;
+const mobileCardCap = 108;
+const gridMinCardWidth = 180;
+const compactColumns = 3;
+
+export function mediaGridMetrics(width) {
+  if (!width) return { columns: compactColumns, gap: gridGap, cardWidth: undefined };
+  const gap = width <= 768 ? mobileGridGap : gridGap;
+  if (width <= 600) {
+    return {
+      columns: compactColumns,
+      gap,
+      cardWidth: Math.min((width - gap * (compactColumns - 1)) / compactColumns, mobileCardCap),
+    };
+  }
+  const columns = width >= 480
+    ? Math.max(1, Math.floor((width + gap) / (gridMinCardWidth + gap)))
+    : compactColumns;
+  return { columns, gap, cardWidth: (width - gap * (columns - 1)) / columns };
 }
 
 export function DiscoverRow({
@@ -190,22 +221,45 @@ export function DiscoverRow({
   renderActionIcon,
   readOnly = false,
 }) {
+  const [gridWidth, setGridWidth] = useState(0);
+  const onGridLayout = useCallback(event => {
+    const width = event?.nativeEvent?.layout?.width || 0;
+    setGridWidth(current => (Math.abs(current - width) < 0.5 ? current : width));
+  }, []);
   if (!row) return null;
   const palette = resolvePalette(paletteOverrides);
   const copy = copyFor(labels);
-  const summary = [row.why, row.matchSignal].filter(Boolean).join(' • ');
   const emptyLabel = row.emptyLabel || (row.continueRow ? copy.rowEmptyContinue : copy.rowEmptyDefault);
+  const items = row.items || [];
+  const squareRow = items[0]?.mediaType === 'podcast' || items[0]?.mediaType === 'music';
+  const { cardWidth, gap } = mediaGridMetrics(gridWidth);
   return <View nativeID={`discover-row-${row.key}`} style={styles.row}>
-    <Rail title={row.title} summary={summary} summaryInline={row.isStale ? copy.refreshing : undefined}
-      items={row.items || []} itemWidth={168}
-      accessibilityLabel={`${row.title}${summary ? ` • ${summary}` : ''}`}
-      emptyLabel={emptyLabel}
-      scrollLeftLabel={copy.previous || 'Scroll left'}
-      scrollRightLabel={copy.next || 'Scroll right'}
-      palette={palette}
-      renderItem={item => <DiscoverCard model={item} width={168} labels={copy} palette={palette}
-        onOpenCard={onOpenCard} onOpenLink={onOpenLink} onAction={onAction} onRate={onRate}
-        renderRating={renderRating} renderActionIcon={renderActionIcon} readOnly={readOnly} />} />
+    <View style={styles.rowHeading}>
+      <View style={styles.rowHeadingText}>
+        <Text role="heading" aria-level={2} style={[styles.rowTitle, { color: palette.text }]}>{row.title}</Text>
+        <View style={styles.rowMeta}>
+          <Text style={[styles.rowWhy, { color: palette.textMuted }]}>{row.why}</Text>
+          {row.matchSignal ? <Text style={[styles.rowSignal, { color: palette.textMuted }]}>{row.matchSignal}</Text> : null}
+        </View>
+      </View>
+      {row.isStale ? <Text style={[styles.rowStale, { color: palette.warning }]}>{copy.refreshing}</Text> : null}
+    </View>
+    {items.length
+      ? <View accessibilityRole="list"
+        accessibilityLabel={`${row.title}${row.why ? ` • ${row.why}` : ''}`}
+        onLayout={onGridLayout}
+        style={[styles.rowGrid, { gap }]}>
+        {items.map((item, index) => <View key={item?.cardKey || item?.id || index}
+          style={[styles.rowGridItem, cardWidth ? { width: cardWidth } : null]}>
+          <DiscoverCard model={squareRow ? { ...item, shape: 'square' } : item} width={cardWidth}
+            square={squareRow} labels={copy} palette={palette}
+            onOpenCard={onOpenCard} onOpenLink={onOpenLink} onAction={onAction} onRate={onRate}
+            renderRating={renderRating} renderActionIcon={renderActionIcon} readOnly={readOnly} />
+        </View>)}
+      </View>
+      : <View style={[styles.rowEmpty, { backgroundColor: palette.surfaceStrong, borderColor: palette.border }]}>
+        <Text style={[styles.rowEmptyText, { color: palette.textMuted }]}>{emptyLabel}</Text>
+      </View>}
     <Text style={styles.rowKey} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">{row.key}</Text>
   </View>;
 }
@@ -237,10 +291,16 @@ export function DiscoverHidden({
   renderRating,
   renderActionIcon,
 }) {
+  const [gridWidth, setGridWidth] = useState(0);
+  const onGridLayout = useCallback(event => {
+    const width = event?.nativeEvent?.layout?.width || 0;
+    setGridWidth(current => (Math.abs(current - width) < 0.5 ? current : width));
+  }, []);
   const palette = resolvePalette(paletteOverrides);
   const copy = copyFor(labels);
   const total = count == null ? entries.length : count;
   const totalLabel = countLabelOverride || countLabel(copy, total);
+  const { cardWidth, gap } = mediaGridMetrics(gridWidth);
   if (!entries.length) {
     return <View style={styles.hidden}>
       <View style={styles.hiddenHeading}>
@@ -248,10 +308,7 @@ export function DiscoverHidden({
           <Text role="heading" aria-level={2} style={[styles.hiddenTitle, { color: palette.text }]}>{copy.hiddenTitle}</Text>
           <Text style={[styles.hiddenBody, { color: palette.textMuted }]}>{copy.hiddenBody}</Text>
         </View>
-        <Badge label={totalLabel} size="sm" appearance={{
-          color: palette.textSecondary, backgroundColor: palette.surface,
-          borderColor: palette.border, borderWidth: 1,
-        }} />
+        <Text style={[styles.hiddenCount, { color: palette.textMuted }]}>{totalLabel}</Text>
       </View>
       <DiscoverState kind="hidden-empty" labels={labels} palette={palette} />
     </View>;
@@ -262,14 +319,14 @@ export function DiscoverHidden({
         <Text role="heading" aria-level={2} style={[styles.hiddenTitle, { color: palette.text }]}>{copy.hiddenTitle}</Text>
         <Text style={[styles.hiddenBody, { color: palette.textMuted }]}>{copy.hiddenBody}</Text>
       </View>
-      <Badge label={totalLabel} size="sm" appearance={{
-        color: palette.textSecondary, backgroundColor: palette.surface,
-        borderColor: palette.border, borderWidth: 1,
-      }} />
+      <Text style={[styles.hiddenCount, { color: palette.textMuted }]}>{totalLabel}</Text>
     </View>
-    <View style={styles.hiddenGrid}>
-      {entries.map((entry, index) => <View key={entry.cardKey || entry.key || index} style={styles.hiddenCard}>
-        <DiscoverCard model={entry} width={160} labels={copy} palette={palette}
+    <View style={[styles.hiddenGrid, { gap }]} onLayout={onGridLayout}>
+      {entries.map((entry, index) => <View key={entry.cardKey || entry.key || index}
+        style={[styles.hiddenCard, cardWidth ? { width: cardWidth } : null]}>
+        <DiscoverCard model={entry} width={cardWidth}
+          square={entry.mediaType === 'music' || entry.mediaType === 'podcast'}
+          labels={copy} palette={palette}
           onOpenCard={onOpenCard} onOpenLink={onOpenLink} onAction={onAction} onRate={onRate}
           renderRating={renderRating} renderActionIcon={renderActionIcon} />
       </View>)}
@@ -374,7 +431,9 @@ export function DiscoverScreen({
 const styles = StyleSheet.create({
   screen: { gap: 16 },
   tabs: { gap: 4 },
-  tabRow: { gap: 8, paddingVertical: 2, paddingRight: 8 },
+  tabRow: { gap: 8, paddingVertical: 0, paddingRight: 8 },
+  tab: { borderRadius: 9999, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 6 },
+  tabText: { fontSize: 14, lineHeight: 20, fontWeight: '500' },
   toolbar: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   toolbarButton: { minHeight: 36, borderRadius: 6, borderWidth: 1, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
   toolbarText: { fontSize: 13, fontWeight: '600' },
@@ -385,16 +444,28 @@ const styles = StyleSheet.create({
   toast: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10,
     flexDirection: 'row', alignItems: 'center', gap: 8 },
   toastText: { flex: 1, fontSize: 13, lineHeight: 18 },
-  rows: { gap: 24 },
-  row: { gap: 8 },
-  rowKey: { height: 0, opacity: 0 },
+  rows: { gap: 32 },
+  row: { gap: 12 },
+  rowHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 },
+  rowHeadingText: { flex: 1, minWidth: 0, gap: 4 },
+  rowTitle: { fontSize: 20, fontWeight: '600', lineHeight: 28 },
+  rowMeta: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 16 },
+  rowWhy: { fontSize: 14, lineHeight: 20, flexShrink: 1 },
+  rowSignal: { fontSize: 12, lineHeight: 16, flexShrink: 0 },
+  rowStale: { fontSize: 12, lineHeight: 16, flexShrink: 0 },
+  rowGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: gridGap },
+  rowGridItem: { minWidth: 0 },
+  rowEmpty: { borderWidth: 1, borderStyle: 'dashed', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 20 },
+  rowEmptyText: { fontSize: 14, lineHeight: 19 },
+  rowKey: { display: 'none' },
   hidden: { gap: 12 },
   hiddenHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
   hiddenHeadingText: { flex: 1, gap: 2 },
-  hiddenTitle: { fontSize: 20, fontWeight: '700', lineHeight: 25 },
-  hiddenBody: { fontSize: 13, lineHeight: 18 },
-  hiddenGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  hiddenCard: { width: 160 },
+  hiddenTitle: { fontSize: 24, fontWeight: '600', lineHeight: 30 },
+  hiddenBody: { fontSize: 14, lineHeight: 19 },
+  hiddenCount: { fontSize: 14, lineHeight: 19, flexShrink: 0 },
+  hiddenGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: gridGap },
+  hiddenCard: { minWidth: 0 },
   state: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 16, paddingVertical: 20, alignItems: 'center', gap: 4 },
   stateTitle: { fontSize: 16, fontWeight: '600', lineHeight: 21, textAlign: 'center' },
   stateBody: { fontSize: 13, lineHeight: 18, textAlign: 'center' },

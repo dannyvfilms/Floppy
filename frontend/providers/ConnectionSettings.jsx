@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../ui/Button';
-import { Chip } from '../settings/Chip';
 import { SelectField } from '../ui/SelectField';
 import { SettingsCard } from '../settings/SettingsCard';
 import { TextField } from '../ui/TextField';
@@ -117,14 +116,21 @@ export function ConnectionSettings({
   onSave,
   onClear,
   onOpenLink,
+  showKeyLink = true,
   palette = {},
   buttonPalette = {},
 }) {
   const colors = { ...defaultPalette, ...palette };
   const buttons = { ...defaultButtonPalette, ...buttonPalette };
   const labels = { ...defaultLabels, ...(model.labels || {}) };
-  const [instanceValues, setInstanceValues] = useState({});
-  const [personalValues, setPersonalValues] = useState({});
+  const [instanceValues, setInstanceValues] = useState(() => Object.fromEntries(
+    (model.fields || []).filter(field => field.value !== undefined && field.value !== null)
+      .map(field => [field.name, field.value]),
+  ));
+  const [personalValues, setPersonalValues] = useState(() => Object.fromEntries(
+    (model.personalFields || []).filter(field => field.value !== undefined && field.value !== null)
+      .map(field => [field.name, field.value]),
+  ));
   const [pending, setPending] = useState('');
   const [notice, setNotice] = useState(null);
   const [error, setError] = useState(null);
@@ -172,19 +178,17 @@ export function ConnectionSettings({
   }
 
   return <>
-    <SettingsCard
+    <View style={styles.cardGrid}>
+    <View style={styles.cardColumn}><SettingsCard
       title={model.title || 'Provider credentials'}
       badge={status}
       palette={badge}
       info_label={!editable ? labels.readOnlyHelp : undefined}
       info_title={labels.readOnlyHelp}
       onInfo={!editable ? () => setHelpOpen(true) : undefined}>
-      <View style={styles.statusRow}>
-        <Text style={[styles.copy, { color: colors.textSecondary }]}>{labels.instanceHelp}</Text>
-        <Chip label={status} palette={statusPalette(colors, tone)} />
-      </View>
+      <Text style={[styles.copy, { color: colors.textSecondary }]}>{labels.instanceHelp}</Text>
       {model.description ? <Text style={[styles.copy, { color: colors.textMuted }]}>{model.description}</Text> : null}
-      {model.getKeyUrl || model.getKeyLabel ? <Pressable accessibilityRole="link"
+      {showKeyLink && (model.getKeyUrl || model.getKeyLabel) ? <Pressable accessibilityRole="link"
         accessibilityLabel={(model.getKeyLabel || labels.getKey).replace('{name}', model.providerLabel || 'the provider')}
         onPress={() => onOpenLink?.(model.getKeyUrl)} style={styles.linkRow}>
         <Text style={[styles.link, { color: colors.accent }]}>
@@ -198,16 +202,16 @@ export function ConnectionSettings({
           colors={colors} labels={labels} />)}
       </View>
       {editable ? <View style={styles.actions}>
-        <Button label={pending === 'instance' ? labels.saving : labels.save} busy={pending === 'instance'}
+        <Button label={pending === 'instance' ? labels.saving : labels.save} busy={pending === 'instance'} width="full"
           disabled={Boolean(pending)} onPress={() => submit('instance')} palette={buttons} />
-        {model.canClear ? <Button label={labels.remove} tone="danger-solid"
+        {model.canClear ? <Button label={labels.remove} tone="danger-solid" width="full"
           disabled={Boolean(pending)} onPress={clear} palette={buttons} /> : null}
       </View> : <Text style={[styles.copy, { color: colors.textMuted }]}>{model.readOnlyReason || labels.fallback}</Text>}
       {editable ? <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.fallback}</Text> : null}
       {notice?.kind === 'instance' ? <Text accessibilityLiveRegion="polite" style={[styles.copy, { color: colors.success }]}>{notice.text}</Text> : null}
       {error?.kind === 'instance' ? <Text accessibilityRole="alert" style={[styles.copy, { color: colors.danger }]}>{error.text}</Text> : null}
-    </SettingsCard>
-    {model.personalFields?.length ? <SettingsCard title={model.personalTitle || 'Personal credentials'} palette={colors}>
+    </SettingsCard></View>
+    {model.personalFields?.length ? <View style={styles.cardColumn}><SettingsCard title={model.personalTitle || 'Personal credentials'} palette={colors}>
       <Text style={[styles.copy, { color: colors.textSecondary }]}>{labels.personalHelp}</Text>
       <View style={styles.fields}>
         {model.personalFields.map(field => <FieldControl key={field.name} field={{ ...field, label: `${labels.your || 'Your'} ${field.label}` }}
@@ -216,13 +220,14 @@ export function ConnectionSettings({
           colors={colors} labels={labels} />)}
       </View>
       <View style={styles.actions}>
-        <Button label={pending === 'personal' ? labels.personalSaving : labels.personalSave}
+        <Button label={pending === 'personal' ? labels.personalSaving : labels.personalSave} width="full"
           busy={pending === 'personal'} disabled={Boolean(pending)} onPress={() => submit('personal')}
           palette={buttons} />
       </View>
       {notice?.kind === 'personal' ? <Text accessibilityLiveRegion="polite" style={[styles.copy, { color: colors.success }]}>{notice.text}</Text> : null}
       {error?.kind === 'personal' ? <Text accessibilityRole="alert" style={[styles.copy, { color: colors.danger }]}>{error.text}</Text> : null}
-    </SettingsCard> : null}
+    </SettingsCard></View> : null}
+    </View>
     <Modal transparent visible={helpOpen} animationType="fade" accessibilityViewIsModal
       onRequestClose={() => setHelpOpen(false)}>
       <View style={styles.backdrop}>
@@ -237,12 +242,13 @@ export function ConnectionSettings({
 }
 
 const styles = StyleSheet.create({
-  statusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  cardGrid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 12 },
+  cardColumn: { flexGrow: 1, flexBasis: 260, minWidth: 0 },
   copy: { fontSize: 12, lineHeight: 17 },
   linkRow: { alignSelf: 'flex-start' },
   link: { fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
   fields: { gap: 12 },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  actions: { flexDirection: 'column', alignItems: 'stretch', gap: 8 },
   backdrop: { flex: 1, justifyContent: 'center', padding: 16, backgroundColor: 'rgba(0, 0, 0, 0.55)' },
   dialog: { gap: 12, borderWidth: 1, borderRadius: 10, padding: 16 },
   dialogTitle: { fontSize: 16, fontWeight: '600' },

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   Image,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,6 +10,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { ArtworkImage } from './ArtworkImage';
 import { Badge } from './Badge';
 import { Button } from './Button';
 
@@ -109,14 +111,13 @@ function plural(count, one, many) {
   return Number(count) === 1 ? one : many;
 }
 
-function Artwork({ uri, title, ratio = 2 / 3, palette, rounded = true, children }) {
-  return <View style={[styles.artwork, rounded && styles.artworkRounded,
-    { aspectRatio: ratio, backgroundColor: palette.placeholder }]}>
-    {uri ? <Image source={{ uri }} style={StyleSheet.absoluteFill} resizeMode="cover" accessible={false}
-      accessibilityElementsHidden importantForAccessibility="no-hide-descendants" /> : null}
-    {!uri ? <Text numberOfLines={3} style={[styles.artworkPlaceholder, { color: palette.textMuted }]}>{title}</Text> : null}
+function Artwork({ uri, fallback, title, ratio = 2 / 3, palette, rounded = true, children }) {
+  return <ArtworkImage src={uri} fallback={fallback} title={title}
+    style={[styles.artwork, rounded && styles.artworkRounded, { aspectRatio: ratio }]}
+    palette={{ placeholder: palette.placeholder, textMuted: palette.textMuted }}
+    labels={{ loading: title || '', unavailable: title || '' }}>
     {children}
-  </View>;
+  </ArtworkImage>;
 }
 
 function Fact({ label, value, palette, onPress }) {
@@ -261,24 +262,38 @@ export function PersonCard({ person = {}, labels, palette, onOpen }) {
   const colors = mergePalette(palette);
   const name = person.name || 'Unknown Person';
   const subtitle = person.subtitle || person.role;
+  const web = Platform.OS === 'web';
+  const [hovered, setHovered] = useState(false);
+  const overlay = web
+    ? {
+      backgroundImage: `linear-gradient(to bottom, transparent 0%, rgba(17, 24, 39, 0.5) 40%, rgba(17, 24, 39, 0.85) 70%, rgba(17, 24, 39, 0.98) 100%)`,
+    }
+    : { backgroundColor: 'rgba(0, 0, 0, 0.58)' };
+  const metaVisible = !web || hovered;
   const body = <>
-    <Artwork uri={person.imageUrl} title={name} palette={colors}>
+    <Artwork uri={person.imageUrl} fallback={person.imageFallback} title={name} palette={colors}>
       {person.episodeCount ? <View style={[styles.cornerChip, { backgroundColor: colors.chipBackground }]}>
         <Text style={[styles.cornerChipText, { color: colors.chipText }]}>
           {person.episodeCount} {plural(person.episodeCount, 'ep', 'eps')}
         </Text>
       </View> : null}
     </Artwork>
-    <View style={[styles.cardBody, { backgroundColor: colors.surface }]}>
-      <Text numberOfLines={1} style={[styles.cardTitle, { color: colors.text }]}>{name}</Text>
-      {subtitle ? <Text numberOfLines={2} style={[styles.cardCopy, { color: colors.textMuted }]}>{subtitle}</Text> : null}
-      {person.lines?.map((line, index) => <Text key={index} numberOfLines={2}
-        style={[styles.cardCopy, { color: colors.textMuted }]}>{line}</Text>)}
+    <View style={[styles.cardBody, styles.cardBodyOverlay, overlay]}>
+      <View style={styles.cardTitleRow}>
+        <Text numberOfLines={1} style={[styles.cardTitle, { color: colors.text }]}>{name}</Text>
+      </View>
+      {subtitle || person.lines?.length ? <View style={[styles.cardMetaWrap, metaVisible ? styles.cardMetaVisible : styles.cardMetaHidden]}>
+        {subtitle ? <Text numberOfLines={2} style={[styles.cardCopy, { color: colors.textMuted }]}>{subtitle}</Text> : null}
+        {person.lines?.map((line, index) => <Text key={index} numberOfLines={2}
+          style={[styles.cardCopy, { color: colors.textMuted }]}>{line}</Text>)}
+      </View> : null}
     </View>
   </>;
-  if (!onOpen) return <View style={[styles.cardShell, { backgroundColor: colors.surface }]}>{body}</View>;
+  if (!onOpen) return <View style={[styles.cardShell, { backgroundColor: colors.surface }]}
+    onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)}>{body}</View>;
   return <Pressable accessibilityRole="link" accessibilityLabel={subtitle ? `${name}, ${subtitle}` : name}
-    onPress={() => onOpen(person)} style={({ pressed }) => [styles.cardShell,
+    onPress={() => onOpen(person)} onHoverIn={() => setHovered(true)} onHoverOut={() => setHovered(false)}
+    style={({ pressed }) => [styles.cardShell,
       { backgroundColor: colors.surface, opacity: pressed ? 0.85 : 1 }]}>{body}</Pressable>;
 }
 
@@ -287,7 +302,7 @@ export function CreditCard({ entry = {}, labels, palette, onOpen }) {
   const roleLine = entry.role || entry.roleLine;
   const meta = [entry.year, entry.mediaTypeLabel].filter(Boolean).join(' · ');
   const body = <>
-    <Artwork uri={entry.imageUrl} title={entry.title} palette={colors}>
+    <Artwork uri={entry.imageUrl} fallback={entry.imageFallback} title={entry.title} palette={colors}>
       {entry.watchedRuntimeLabel ? <View style={[styles.cornerChip, { backgroundColor: colors.chipBackground }]}>
         <Text style={[styles.cornerChipText, { color: colors.chipText }]}>{entry.watchedRuntimeLabel}</Text>
       </View> : entry.voteAverage ? <View style={[styles.cornerChip, { backgroundColor: colors.chipBackground }]}>
@@ -545,11 +560,16 @@ const styles = StyleSheet.create({
   artwork: { width: '100%', overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
   artworkRounded: { borderRadius: 10 },
   artworkPlaceholder: { fontSize: 12, textAlign: 'center', paddingHorizontal: 12 },
-  cardShell: { borderRadius: 10, overflow: 'hidden', width: '100%' },
-  cardBody: { padding: 10, gap: 3 },
-  cardTitle: { fontSize: 14, fontWeight: '600', lineHeight: 18 },
+  cardShell: { borderRadius: 10, overflow: 'hidden', width: '100%', position: 'relative' },
+  cardBody: { padding: 12 },
+  cardBodyOverlay: { position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 10 },
+  cardTitleRow: { minWidth: 0 },
+  cardTitle: { fontSize: 14, fontWeight: '600', lineHeight: 20 },
   cardCopy: { fontSize: 12, lineHeight: 16 },
   cardMeta: { fontSize: 11, lineHeight: 15 },
+  cardMetaWrap: { overflow: 'hidden' },
+  cardMetaVisible: { maxHeight: 40, marginTop: 4, opacity: 1 },
+  cardMetaHidden: { maxHeight: 0, marginTop: 0, opacity: 0 },
   cornerChip: { position: 'absolute', top: 8, right: 8, zIndex: 2, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   cornerChipText: { fontSize: 11, fontWeight: '600' },
   gallery: { gap: 10 },
