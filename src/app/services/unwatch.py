@@ -43,12 +43,18 @@ class RetractionResult:
 
 
 def _revert_status(row):
-    """Move a completed tracking row back to in-progress without deleting it."""
-    if row.status != Status.COMPLETED.value:
+    """Move a tracking row back to in-progress without deleting it.
+
+    Clearing ``start_date`` as well as ``end_date`` matters: history treats a
+    movie with either date as placed on a day, so leaving the start behind kept
+    an unwatched title visible as an in-progress history entry.
+    """
+    if row.status != Status.COMPLETED.value and row.start_date is None:
         return False
     row.status = Status.IN_PROGRESS.value
+    row.start_date = None
     row.end_date = None
-    row.save(update_fields=["status", "end_date"])
+    row.save(update_fields=["status", "start_date", "end_date"])
     return True
 
 
