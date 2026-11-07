@@ -283,9 +283,9 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(root.get_by_role("heading", name="Account connection")).to_be_visible()
         activity_card = root.locator('[data-testid="settings-card"]').filter(has=self.page.get_by_role("heading", name="Automatic import"))
         expect(activity_card.get_by_text("Connecting starts an initial import and recurring sync.")).to_be_visible()
-        expect(activity_card.get_by_role("link", name="View activity")).to_have_attribute("href", "/settings/providers/audiobookshelf?tab=activity")
+        expect(activity_card.get_by_role("button", name="View activity")).to_be_visible()
         colors = self.page.evaluate("""() => ['Connect', 'View activity'].map(label => {
-          const element = Array.from(document.querySelectorAll('.ui-button')).find(node => node.textContent === label);
+          const element = Array.from(document.querySelectorAll('[role="button"]')).find(node => node.getAttribute('aria-label') === label);
           const style = getComputedStyle(element); return [style.backgroundColor, style.color, element.getBoundingClientRect().width];
         })""")
         self.assertEqual(colors[0], colors[1])
@@ -312,8 +312,9 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.goto(f"{self.live_server_url}/settings/providers/audiobookshelf?tab=import")
         root = self.page.locator('[data-account-import-action-root][data-react-mounted="true"]')
         expect(root.get_by_text("Connect this provider before starting an import.")).to_be_visible()
-        expect(root.get_by_role("link", name="Open Connection")).to_have_attribute("href", "/settings/providers/audiobookshelf?tab=connection")
         expect(root.locator(".settings-card")).to_have_count(0)
+        root.get_by_role("button", name="Open Connection").click()
+        self.page.wait_for_url("**/settings/providers/audiobookshelf?tab=connection")
         self.assertEqual(self.errors, [])
 
     def test_file_import_frequency_and_clz_website(self):
@@ -486,7 +487,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(pin).to_be_visible()
         with self.page.expect_response(lambda response: "/settings/providers/pin" in response.url):
             pin.click()
-        expect(self.page.get_by_role("button", name="Unpin Steam", exact=True)).to_have_attribute("aria-pressed", "true")
+        expect(self.page.get_by_role("button", name="Unpin Steam", exact=True)).to_have_attribute("aria-selected", "true")
         expect(self.page.locator("#provider-results .ui-catalog-item").first.get_by_role("link", name="Open Steam")).to_be_visible()
         self.page.reload()
         expect(self.page.get_by_role("button", name="Unpin Steam", exact=True)).to_be_visible()
@@ -728,7 +729,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(self.page.locator('[data-provider-root][data-react-mounted="true"]')).to_have_count(1)
         expect(self.page.get_by_text("Metadata for imported items", exact=True)).to_be_visible()
         expect(self.page.get_by_role("heading", name="Library sources")).to_be_visible()
-        rows = self.page.locator(".ui-library-row")
+        rows = self.page.locator('[data-testid="metadata-source-row"]')
         expect(rows).to_have_count(2)
         expect(rows.nth(0)).to_contain_text("Books")
         expect(rows.nth(0)).to_contain_text("Open Library")
@@ -789,12 +790,12 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         for slug in ("bgg", "igdb", "steamgriddb", "libretro"):
             self.page.goto(f"{self.live_server_url}/settings/providers/{slug}?tab=metadata")
             expect(self.page.locator('[data-provider-root][data-react-mounted="true"]')).to_have_count(1)
-            expect(self.page.locator(".ui-feature-list > li").first).to_be_visible()
-            feature_list = self.page.locator(".ui-feature-list")
+            expect(self.page.locator('[data-testid="feature-list"] [data-testid="feature-row"]').first).to_be_visible()
+            feature_list = self.page.locator('[data-testid="feature-list"]')
             expect(feature_list.get_by_text("Active", exact=True)).to_have_count(0)
             self.assertTrue(feature_list.evaluate("element => element.nextElementSibling === null"))
-            self.assertTrue(feature_list.locator("li").evaluate_all("""rows => rows.every(row => {
-              const icon = row.querySelector('.ui-status-icon'), text = row.querySelector('div');
+            self.assertTrue(feature_list.locator('[data-testid="feature-row"]').evaluate_all("""rows => rows.every(row => {
+              const icon = row.querySelector('[data-testid="status-icon"]'), text = row.querySelector('div');
               return icon.getBoundingClientRect().right <= text.getBoundingClientRect().left &&
                 getComputedStyle(row).borderTopWidth === '0px';
             })"""))
@@ -808,7 +809,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(self.page.get_by_role("img", name="Title logos: Active", exact=True)).to_be_visible()
         expect(self.page.get_by_role("img", name="Search results: Not provided", exact=True)).to_be_visible()
         expect(self.page.get_by_role("img", name="Title details: Not provided", exact=True)).to_be_visible()
-        games = self.page.locator(".ui-library-row").filter(has=self.page.get_by_role("heading", name="Games", exact=True))
+        games = self.page.locator('[data-testid="metadata-source-row"]').filter(has=self.page.get_by_role("heading", name="Games", exact=True))
         expect(games).to_contain_text("Internet Game Database")
         self.assertEqual(self.errors, [])
 
@@ -822,7 +823,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         metadata = self.page.locator('[data-testid="provider-overview"]').get_by_role("link", name="Metadata", exact=True)
         expect(metadata).to_contain_text("Supplemental metadata active")
         connection.click()
-        card = self.page.locator(".settings-card").filter(has=self.page.get_by_role("heading", name="Instance credentials"))
+        card = self.page.locator('[data-testid="settings-card"]').filter(has=self.page.get_by_role("heading", name="Instance credentials"))
         expect(card.get_by_text("Public API", exact=True)).to_be_visible()
         expect(self.page.get_by_text("Game artwork uses a public API and does not require an API key.")).to_have_count(0)
         link = self.page.get_by_role("link", name="Get a key from Steam", exact=True)
@@ -858,7 +859,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
                 self.page.goto(self.live_server_url + path)
                 expect(self.page.locator('[data-provider-root][data-react-mounted="true"]')).to_have_count(1)
                 self.page.wait_for_load_state("networkidle")
-                bad = self.page.locator('.settings-card [data-testid="settings-card-heading"]').evaluate_all("""headers => headers.flatMap(header => {
+                bad = self.page.locator('[data-testid="settings-card"] [data-testid="settings-card-heading"]').evaluate_all("""headers => headers.flatMap(header => {
                   const badge = header.querySelector('[data-testid=settings-card-badge], .settings-chip');
                   if (!badge) return [];
                   const row = header.getBoundingClientRect(), chip = badge.getBoundingClientRect();
