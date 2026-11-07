@@ -62,7 +62,7 @@ if (!window.__floppySavedViewsBound) {
       pinned: [],
       pinnedLists: [],
       listsOpen: false,
-      keys: ["calendar", "collection", "custom", "history", "lists", "statistics", "tags"],
+      keys: ["calendar", "collection", "custom", "history", "lists", "rapid_rating", "statistics", "tags"],
 
       init() {
         this.loadPinnedLists();
