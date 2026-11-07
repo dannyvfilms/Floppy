@@ -65,6 +65,15 @@
             {% if custom_list.completion_percent is not None %}{% blocktranslate trimmed with value_1=custom_list.completion_percent %}· {{ value_1 }}% completed{% endblocktranslate %}{% endif %}
           {% endif %}
         </p>
+        {% if not profile_username and custom_list.role == "Viewer" %}
+          <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">
+            {% translate "Shared with you · view only" %}
+          </p>
+        {% elif not profile_username and custom_list.role == "Collaborator" %}
+          <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">
+            {% translate "Shared with you · can edit" %}
+          </p>
+        {% endif %}
       </div>
 
       {% if not profile_username and custom_list.can_edit %}

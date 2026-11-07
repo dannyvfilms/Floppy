@@ -2,7 +2,9 @@
 {% load i18n %}
 {% load app_tags %}
 
-<div id="rss-preview-row">
+{% discover_preview_react row selected_media_type as discover_preview %}
+<div id="rss-preview-row" data-discover-preview-root data-props-id="{{ discover_preview.id }}">
+  {{ discover_preview.props|json_script:discover_preview.id }}
   {% if row and row.items %}
     <div class="flex flex-nowrap gap-4 overflow-x-auto pb-3 home-row-scrollbar-hidden">
       {% for candidate in row.items %}

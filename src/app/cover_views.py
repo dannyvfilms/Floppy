@@ -7,12 +7,12 @@ from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required, login_required
-from django.http import FileResponse, Http404, HttpResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils.translation import gettext
 from django.views.decorators.http import require_GET, require_POST
 
-from app import helpers, local_covers
+from app import helpers, image_cache, local_covers
 from app.log_safety import exception_summary
 from app.models import CollectionEntry, CollectionField, Item, MediaTypes
 from app.providers import services
@@ -171,8 +171,19 @@ def item_cover_candidates(request, item_id):
     item = get_object_or_404(Item, id=item_id)
     if not user_has_item(request.user, item):
         raise Http404
+    candidates = _candidates(request.user, item)
+    if request.GET.get("format") == "json":
+        return JsonResponse({
+            "candidates": [
+                {
+                    "title": candidate["title"],
+                    "image": image_cache.rewrite_image_url(candidate["image"]),
+                }
+                for candidate in candidates
+            ],
+        })
     return render(
         request,
         "app/components/image_picker_tiles.html",
-        {"candidates": _candidates(request.user, item)},
+        {"candidates": candidates},
     )

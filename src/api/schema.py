@@ -55,8 +55,9 @@ class LiveSchemaView(SpectacularAPIView):
         """Serve dynamic OpenAPI schema with text/yaml content-type and inline disposition."""
         response = super().get(request, *args, **kwargs)
         is_json = request.accepted_renderer.format == "json"
+        disposition = "attachment" if request.query_params.get("download") == "1" else "inline"
         response["Content-Disposition"] = (
-            f'inline; filename="openapi-live.{"json" if is_json else "yaml"}"'
+            f'{disposition}; filename="openapi-live.{"json" if is_json else "yaml"}"'
         )
         return response
 

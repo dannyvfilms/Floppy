@@ -57,10 +57,12 @@ class CooldownIsolationMixin:
         self.addCleanup(cache.clear)
 
 
-def rate_limited_response(retry_after="1"):
-    """Return a 429 response that raise_for_status() will raise on."""
+def rate_limited_response(retry_after="1", status_code=None):
+    """Return a rate-limit response that raise_for_status() will raise on."""
     response = Mock()
-    response.status_code = requests.codes.too_many_requests
+    response.status_code = (
+        requests.codes.too_many_requests if status_code is None else status_code
+    )
     response.headers = {} if retry_after is None else {"Retry-After": retry_after}
     error = requests.exceptions.HTTPError(response=response)
     response.raise_for_status.side_effect = error
@@ -120,6 +122,19 @@ class RateLimitRetryTests(CooldownIsolationMixin, SimpleTestCase):
             api_request("mal", "GET", "https://example.test/x")
 
         # One initial attempt plus RATE_LIMIT_MAX_RETRIES retries.
+        self.assertEqual(get.call_count, RATE_LIMIT_MAX_RETRIES + 1)
+        self.assertEqual(sleep.call_count, RATE_LIMIT_MAX_RETRIES)
+
+    def test_comicvine_420_uses_the_rate_limit_retry_path(self):
+        """Comic Vine answers quota failures with 420, not 429."""
+        get = Mock(return_value=rate_limited_response(status_code=420))
+        with (
+            patch.object(services.session, "get", get),
+            own_thread_sleep() as sleep,
+            self.assertRaises(requests.exceptions.HTTPError),
+        ):
+            api_request("comicvine", "GET", "https://example.test/x")
+
         self.assertEqual(get.call_count, RATE_LIMIT_MAX_RETRIES + 1)
         self.assertEqual(sleep.call_count, RATE_LIMIT_MAX_RETRIES)
 

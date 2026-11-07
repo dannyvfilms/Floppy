@@ -64,3 +64,17 @@ class ImageCacheSettingsTests(TestCase):
             "They will be downloaded again if caching remains enabled.'));",
         )
 
+    def test_superuser_json_write_returns_the_new_state(self):
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            reverse("update_image_cache"),
+            {"image_caching_enabled": "1"},
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["imageEnabled"])
+        self.assertIn("enabled", response.json()["message"])
+        self.assertTrue(ApplicationSettings.objects.get(pk=1).image_caching_enabled)
+

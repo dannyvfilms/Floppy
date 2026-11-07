@@ -26,6 +26,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+
       - name: Set up uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
@@ -48,6 +53,27 @@ jobs:
 
       - name: Verify committed UI bundles
         run: npm run check:ui
+
+      - name: Verify UI architecture and validator regressions
+        env:
+          UI_ARCH_BASE: ${{ github.event.pull_request.base.sha || github.sha }}
+        run: |
+          npm run check:ui-architecture
+          npm run test:ui-architecture
+
+      - name: Install isolated Expo proof dependencies
+        working-directory: native-proof
+        run: npm ci --ignore-scripts
+
+      - name: Export Expo platform bundles
+        working-directory: native-proof
+        env:
+          CI: "1"
+        run: npm run export -- --platform all
+
+      - name: Audit Expo proof dependencies
+        working-directory: native-proof
+        run: npm audit --ignore-scripts --audit-level=high
 
       - name: Audit frontend build dependencies
         run: npm audit --ignore-scripts

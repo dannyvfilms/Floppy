@@ -42,6 +42,10 @@ if (!window.__floppyBulkSelectionBound) {
         this.selectedItemIds = [];
       },
 
+      selectAll(ids) {
+        this.selectedItemIds = (ids || []).map(String);
+      },
+
       refresh() {
         const refreshButton = document.getElementById(refreshId);
         if (refreshButton && window.htmx) {

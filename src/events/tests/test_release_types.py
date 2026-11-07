@@ -1,3 +1,5 @@
+import json
+import re
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -7,7 +9,6 @@ from django.template.loader import render_to_string
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.html import escapejs
 
 from app.models import Item, MediaTypes, Movie, Sources, Status
 from app.providers import tmdb
@@ -378,10 +379,20 @@ class TrackModalReleaseDatesTests(ReleaseTypeEventsMixin, TestCase):
             },
         )
 
-        self.assertIn(f"applySuggestion('{escapejs('2027-01-20')}')", html)
-        self.assertIn(f"applySuggestion('{escapejs('2027-02-14')}')", html)
-        self.assertIn("Digital release", html)
-        self.assertIn("Physical release", html)
+        props = json.loads(
+            re.search(
+                r'type="application/json">(.*?)</script>',
+                html,
+                re.DOTALL,
+            ).group(1),
+        )
+        self.assertEqual(
+            [(extra["date"], extra["label"]) for extra in props["suggestionExtras"]],
+            [
+                ("2027-01-20", "Digital release"),
+                ("2027-02-14", "Physical release"),
+            ],
+        )
 
     def test_other_media_and_unset_region_have_none(self):
         """Nothing to show outside movies or without a region."""

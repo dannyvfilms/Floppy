@@ -12,7 +12,6 @@
   <form method="post" action="{% url 'music_track_notes' track.id %}">
     {% csrf_token %}
     <input type="hidden" name="return_url" value="{{ return_url }}">
-    {{ form.notes.errors }}
     {% include "app/components/markdown_notes.html" with notes_field=form.notes only %}
     <div class="flex justify-end">
       {% button _("Save notes") "primary" "base" submit=True %}

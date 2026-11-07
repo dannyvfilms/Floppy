@@ -1,8 +1,12 @@
 
 {% load i18n %}
 {% load app_tags %}
+{% playback_card_react active_playback_card as playback_card %}
+{{ playback_card.props|json_script:playback_card.id }}
 
 <div data-active-playback-card
+     data-playback-card-root
+     data-props-id="{{ playback_card.id }}"
      data-playback-status="{{ active_playback_card.status }}"
      data-playback-image-source="{{ active_playback_card.image_source|default:'primary' }}"
      data-playback-offset="{{ active_playback_card.offset_seconds }}"

@@ -1,6 +1,7 @@
 """The watched-episodes breakdown opened from a show or season progress card."""
 
 import json
+from uuid import uuid4
 
 from django.db import transaction
 from django.http import HttpResponseBadRequest
@@ -14,8 +15,122 @@ from app.services.progress_breakdown import build_progress_breakdown
 from app.services.rewatch_progress import cancel_run, resolve_rewatch
 
 
+def _rewatch_label(breakdown):
+    """Return the scoped label for the summary bar's current pass."""
+    if breakdown.rewatch_percent is None:
+        return ""
+    if breakdown.rewatch_season is not None:
+        return breakdown.rewatch_label
+    return _("Rewatching · %(watched)s of %(total)s episodes · %(percent)s%%") % {
+        "watched": breakdown.rewatch_watched,
+        "total": breakdown.rewatch_total,
+        "percent": breakdown.rewatch_percent,
+    }
+
+
+def _presentation(breakdown):
+    """Serialize the breakdown for the shared React presentation."""
+    opened = breakdown.first_open_season
+    rewatch = None
+    if breakdown.rewatch_percent is not None:
+        rewatch = {
+            "percent": breakdown.rewatch_percent,
+            "offset": breakdown.rewatch_offset,
+            "width": breakdown.rewatch_width,
+            "label": _rewatch_label(breakdown),
+            "season": breakdown.rewatch_season,
+            "watched": breakdown.rewatch_watched,
+            "total": breakdown.rewatch_total,
+        }
+    left_text = _("%(left)s left") % {"left": breakdown.left}
+    if breakdown.minutes_left_label:
+        left_text = f"{left_text} ({breakdown.minutes_left_label})"
+    labels = {
+        "yourProgress": _("Your Progress"),
+        "caughtUp": _("Caught Up"),
+        "aboutProgress": _("About your progress"),
+        "progressTip": _("Your progress is how much of the show you have watched at least once. While you rewatch, a glowing line shows how far along the rewatch is."),
+        "openBreakdown": _("Open the season and episode breakdown"),
+        "watched": _("Watched"),
+        "of": _("of"),
+        "episodes": _("episodes"),
+        "left": _("left"),
+        "expandAll": _("Expand all"),
+        "collapseAll": _("Collapse all"),
+        "toggleSeason": _("Toggle"),
+        "dropped": _("Dropped"),
+        "notAired": _("Not aired yet"),
+        "episodeWatched": _("episode watched"),
+        "episodesWatched": _("episodes watched"),
+        "rewatched": _("Rewatched"),
+        "rewatching": _("Rewatching"),
+        "watchedAgain": _("Watched again"),
+        "watchedLabel": _("Watched"),
+        "notWatched": _("Not watched"),
+        "notAiredYet": _("Not aired yet"),
+        "noEpisodes": _("No episodes to show yet."),
+        "catalogueUnavailable": _("The episode list could not be loaded, so only the episodes you have watched are shown."),
+        "cancelRewatch": _("Cancel rewatch"),
+        "cancelling": _("Cancelling…"),
+        "loading": _("Loading…"),
+        "loadError": _("Your progress could not be loaded. Close this and try again."),
+    }
+    seasons = [
+        {
+            "number": season.number,
+            "title": season.title,
+            "url": season.url,
+            "dropped": season.dropped,
+            "rewatching": season.rewatching,
+            "catalogueMissing": season.catalogue_missing,
+            "watched": season.watched,
+            "total": season.total,
+            "percent": season.percent,
+            "rewatchPercent": season.rewatch_percent,
+            "rewatchWatched": season.rewatch_watched,
+            "episodes": [
+                {
+                    "number": episode["number"],
+                    "title": episode["title"],
+                    "url": episode["url"],
+                    "airDate": episode["air_date"].isoformat() if episode["air_date"] else None,
+                    "state": episode["state"],
+                    "rewatched": episode["rewatched"],
+                }
+                for episode in season.episodes
+            ],
+        }
+        for season in breakdown.seasons
+    ]
+    model = {
+        "catalogueUnavailable": breakdown.catalogue_unavailable,
+        "runKey": breakdown.run_key,
+        "open": {
+            str(season.number): breakdown.single_season or season.number == opened
+            for season in breakdown.seasons
+        },
+        "summary": {
+            "watched": breakdown.watched,
+            "total": breakdown.total,
+            "left": breakdown.left,
+            "percent": breakdown.percent,
+            "leftText": left_text,
+            "minutesLeftLabel": breakdown.minutes_left_label,
+            "caughtUp": breakdown.caught_up,
+            "rewatch": rewatch,
+        },
+        "seasons": seasons,
+        "labels": labels,
+    }
+    return {"model": model}
+
+
 def _response(request, breakdown, instance_id, media_type):
-    response = render(request, "app/components/progress_breakdown.html", {"breakdown": breakdown})
+    response = render(request, "app/components/progress_breakdown.html", {
+        "breakdown": breakdown,
+        "props": _presentation(breakdown),
+        "props_id": f"progress-breakdown-{uuid4().hex}",
+    })
     response["HX-Trigger-After-Swap"] = json.dumps({
         "rewatch-progress-resolved": breakdown.display_payload(instance_id, media_type),
     })

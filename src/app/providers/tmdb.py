@@ -59,6 +59,11 @@ CAROUSEL_CACHE_TTL_SUCCESS = 60 * 60 * 24 * 7
 CAROUSEL_CACHE_TTL_ABSENT = 60 * 60 * 24
 
 
+def enabled(user=None):
+    """Return whether TMDB is configured."""
+    return credentials.is_configured("tmdb", user)
+
+
 def base_params(language=None):
     """Return the base TMDB request params for the given (or default) language."""
     return {

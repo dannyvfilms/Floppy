@@ -3,7 +3,14 @@
 {% load widget_tweaks %}
 {% load user_tags %}
 
-<form method="post"
+{% if episode_plays_presentation %}
+  {{ episode_plays_presentation|json_script:episode_plays_presentation_id }}
+  <div data-bulk-episode-form-root data-props-id="{{ episode_plays_presentation_id }}"></div>
+{% endif %}
+
+<form id="{% if episode_plays_presentation %}{{ episode_plays_presentation.formId }}{% endif %}"
+      data-track-form-legacy
+      method="post"
       action="{{ episode_plays_formaction|default:'' }}?next={{ return_url }}"
       hx-post="{{ episode_plays_formaction|default:'' }}?next={{ return_url }}"
       hx-target="closest [data-track-modal-root]"

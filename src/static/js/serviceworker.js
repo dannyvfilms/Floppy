@@ -1,4 +1,4 @@
-const CACHE_NAME = "floppy-v2";
+const CACHE_NAME = "floppy-v3";
 const urlsToCache = [
   "/static/css/main.css",
   "/static/favicon/android-chrome-192x192.png",
@@ -62,10 +62,11 @@ self.addEventListener("fetch", (event) => {
           // modification time (main.css?1786502224). An exact match fails
           // after each rebuild, because the time changes. Give the previous
           // version instead. A previous version is better than a page that
-          // cannot load.
-          const previousVersion = await caches.match(request, {
-            ignoreSearch: true,
-          });
+          // cannot load, except for the UI bundles: an old loader can keep
+          // mounting retired components, so let that request fail.
+          const previousVersion = url.pathname.startsWith("/static/ui/")
+            ? null
+            : await caches.match(request, { ignoreSearch: true });
           if (previousVersion) {
             return previousVersion;
           }

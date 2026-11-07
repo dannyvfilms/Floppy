@@ -55,6 +55,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -209,6 +210,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -255,6 +257,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -292,6 +295,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '202':
           content:
@@ -326,6 +330,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -368,9 +373,12 @@ paths:
                       - image
                       - owner
                       - collaborators
+                      - viewers
                       - items_count
                       - latest_update
+                      - visibility
                       - is_public
+                      - is_unlisted
                       - public_slug
                       - allow_recommendations
                       properties:
@@ -391,13 +399,26 @@ paths:
                           items:
                             type: object
                             additionalProperties: true
+                        viewers:
+                          type: array
+                          items:
+                            type: object
+                            additionalProperties: true
                         items_count:
                           type: integer
                         latest_update:
                           type: string
                           format: date-time
                           nullable: true
+                        visibility:
+                          type: string
+                          enum:
+                          - public
+                          - unlisted
+                          - private
                         is_public:
+                          type: boolean
+                        is_unlisted:
                           type: boolean
                         public_slug:
                           type: string
@@ -456,6 +477,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '201':
           content:
@@ -469,9 +491,12 @@ paths:
                 - image
                 - owner
                 - collaborators
+                - viewers
                 - items_count
                 - latest_update
+                - visibility
                 - is_public
+                - is_unlisted
                 - public_slug
                 - allow_recommendations
                 properties:
@@ -492,13 +517,26 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+                  viewers:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
                   items_count:
                     type: integer
                   latest_update:
                     type: string
                     format: date-time
                     nullable: true
+                  visibility:
+                    type: string
+                    enum:
+                    - public
+                    - unlisted
+                    - private
                   is_public:
+                    type: boolean
+                  is_unlisted:
                     type: boolean
                   public_slug:
                     type: string
@@ -565,6 +603,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -578,9 +617,12 @@ paths:
                 - image
                 - owner
                 - collaborators
+                - viewers
                 - items_count
                 - latest_update
+                - visibility
                 - is_public
+                - is_unlisted
                 - public_slug
                 - allow_recommendations
                 properties:
@@ -601,13 +643,26 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+                  viewers:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
                   items_count:
                     type: integer
                   latest_update:
                     type: string
                     format: date-time
                     nullable: true
+                  visibility:
+                    type: string
+                    enum:
+                    - public
+                    - unlisted
+                    - private
                   is_public:
+                    type: boolean
+                  is_unlisted:
                     type: boolean
                   public_slug:
                     type: string
@@ -667,6 +722,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '204':
           description: No response body
@@ -686,6 +742,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -997,6 +1054,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -1305,6 +1363,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -1385,6 +1444,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '201':
           content:
@@ -1471,6 +1531,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -1565,6 +1626,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -1644,6 +1706,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '204':
           description: No response body
@@ -1701,6 +1764,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -1786,6 +1850,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '204':
           description: No response body
@@ -1849,6 +1914,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -1940,6 +2006,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '204':
           description: No response body
@@ -1991,6 +2058,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '400':
           content:
@@ -2064,6 +2132,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '201':
           content:
@@ -2117,6 +2186,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -2160,6 +2230,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '400':
           content:
@@ -2245,6 +2316,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -2337,6 +2409,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -2402,6 +2475,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '204':
           description: No response body
@@ -2439,6 +2513,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -2488,6 +2563,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '400':
           content:
@@ -2550,6 +2626,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -2625,6 +2702,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -2668,6 +2746,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '201':
           content:
@@ -2694,6 +2773,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -2751,13 +2831,15 @@ paths:
         name: source
         schema:
           type: string
-        description: Provider to search (e.g. `tmdb`, `igdb`). Defaults to the media
-          type's default provider when omitted.
+        description: Provider to search (e.g. `tmdb`, `igdb`). Defaults to the viewer's
+          preferred provider for the media type (Settings > Metadata), falling back
+          to the media type's default provider when that one is not configured.
       tags:
       - api
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -2816,6 +2898,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -2842,6 +2925,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -2937,6 +3021,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -3100,6 +3185,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -3265,6 +3351,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -3394,6 +3481,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -3436,6 +3524,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '201':
           content:
@@ -3479,6 +3568,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -3515,6 +3605,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '204':
           description: No response body
@@ -3534,6 +3625,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -3572,6 +3664,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -3608,6 +3701,7 @@ paths:
       security:
       - bearerAuth: []
       - ApiKeyAuth: []
+      - cookieAuth: []
       responses:
         '200':
           content:
@@ -5374,6 +5468,10 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
     listenBrainzToken:
       type: apiKey
       in: header

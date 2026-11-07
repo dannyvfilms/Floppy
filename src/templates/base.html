@@ -116,8 +116,8 @@
       })();
     </script>
     <script defer src="{% static 'js/libraries/marked-12.0.2.min.js' %}"></script>
-    <script defer
-            src="{% static 'js/markdown-editor.js' %}{% get_static_file_mtime 'js/markdown-editor.js' %}"></script>
+    <script type="module"
+            src="{% static 'ui/markdown-islands.js' %}{% get_static_file_mtime 'ui/markdown-islands.js' %}"></script>
     <script defer src="{% static 'js/libraries/alpinejs-3.14.9.min.js' %}"></script>
     <script src="{% static 'js/libraries/lazysizes-5.3.2.min.js' %}" async></script>
     <script defer
@@ -215,19 +215,17 @@
     {% block body %}
       {# Main container for the layout #}
       <div class="app-shell flex min-h-screen bg-[var(--color-page-bg)] text-[var(--color-text)]"
-           x-data="{ isMobileMenuOpen: false }">
+           x-data="{ isMobileMenuOpen: false }"
+           @floppy:mobile-menu.window="isMobileMenuOpen = $event.detail.open">
 
-        {# Mobile menu overlay #}
-        <div x-show="isMobileMenuOpen"
-             class="app-menu-overlay fixed inset-0 bg-black/50 z-[42] lg:hidden"
-             @click="isMobileMenuOpen = false"></div>
 
         {# Sidebar #}
         {% if not public_view|default:False %}
           <aside class="fixed top-0 left-0 z-[43] h-dvh w-64 pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)] bg-[var(--color-sidebar)] transform transition-[transform,translate,visibility] duration-300 ease-in-out border-r border-[var(--color-border)] -translate-x-full lg:translate-x-0 lg:sticky flex flex-col"
+                 x-data="sidebarNavigation('{{ user.pk|escapejs }}')"
                  :class="isMobileMenuOpen ? 'translate-x-0' : 'max-lg:invisible'"
                  >
-            {% sidebar_react media_type as sidebar %}{% if sidebar.props %}{{ sidebar.props|json_script:sidebar.id }}{% endif %}<div data-sidebar-root data-props-id="{{ sidebar.id }}" x-ignore>
+            {% sidebar_react media_type as sidebar %}{% if sidebar.props %}{{ sidebar.props|json_script:sidebar.id }}{% endif %}<div data-sidebar-root data-props-id="{{ sidebar.id }}">
             <div class="h-16 border-b border-[var(--color-border)] flex items-center px-6">
               <h1 class="flex items-center">
                 {% if user.is_authenticated and user.logo_style == 'monochrome' %}
@@ -304,7 +302,7 @@
             <nav class="border-t border-[var(--color-border)] px-4 py-4"
                  hx-boost="true"
                  x-cloak
-                 x-show="navOpen || pinned.length"
+                 x-show="navOpen || pinned.length || pinnedLists.length"
                  x-transition:enter="transition duration-200"
                  x-transition:leave="transition duration-200">
                 <div x-ref="navigationItems" class="overflow-y-auto max-h-[40dvh]"
@@ -328,8 +326,9 @@
 
             <div class="p-4 border-t border-[var(--color-border)] mt-auto">
               <div class="space-y-2">
-                <div x-cloak x-show="hasUnpinned()">
-                    <button type="button"
+                <div style="min-height: 2.25rem">
+                    <button type="button" x-cloak x-show="hasUnpinned()"
+                            style="min-height: 2.25rem"
                             class="flex w-full items-center gap-3 px-4 py-2 rounded-md text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)] cursor-pointer"
                             :aria-expanded="navOpen.toString()"
                             @click="navOpen = !navOpen; if (navOpen) $nextTick(() => { $refs.navigationItems.scrollTop = $refs.navigationItems.scrollHeight })">
@@ -389,6 +388,13 @@
           {# Top bar #}
           <div class="app-topbar sticky top-0 z-50 pt-[var(--header-safe-top)] bg-[var(--color-sidebar)] border-b border-[var(--color-border)] shadow-md">
             <div class="app-topbar__inner container mx-auto max-lg:max-w-none pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]">
+              {# Define search type from current media type (if it exists) or last search type #}
+              {% if media_type == MediaTypes.SEASON.value %}
+                {% firstof MediaTypes.TV.value as search_type %}
+              {% else %}
+                {% firstof media_type user.last_search_type as search_type %}
+              {% endif %}
+              {% shell_topbar_react as shell_topbar %}{% if shell_topbar.props %}{{ shell_topbar.props|json_script:shell_topbar.id }}{% endif %}<div data-shell-root data-props-id="{{ shell_topbar.id }}">
               <div class="flex items-center justify-between lg:justify-center gap-2 h-16 min-w-0">
                 {# Mobile: sidebar toggle button #}
                 {% if not public_view|default:False %}
@@ -402,17 +408,11 @@
                   </button>
                 {% endif %}
 
-                {# Define search type from current media type (if it exists) or last search type #}
-                {% if media_type == MediaTypes.SEASON.value %}
-                  {% firstof MediaTypes.TV.value as search_type %}
-                {% else %}
-                  {% firstof media_type user.last_search_type as search_type %}
-                {% endif %}
-
                 {# Search bar #}
                 {% if not public_view|default:False %}
                   <div class="relative grow min-w-0 max-w-2xl max-lg:max-w-none">
-                    {% global_search_react search_type as global_search %}{{ global_search.props|json_script:global_search.id }}<div data-global-search-root data-props-id="{{ global_search.id }}" x-ignore>
+                    {% global_search_react search_type as global_search %}<div data-global-search-root data-props-id="{{ global_search.id }}" x-ignore>
+                    {{ global_search.props|json_script:global_search.id }}
                     <form method="get"
                           action="{% url 'search' %}"
                           x-data="{ isOpen: false, selectedType: { display: '{{ search_type|media_type_readable_plural }}', value: '{{ search_type }}' }, mediaTypes: {% get_search_media_types user as search_types %}{{ search_types }}, getPlaceholder() { if (this.selectedType.value === 'all') { return gettext('Search your whole library...'); } if (window.matchMedia('(max-width: 639px)').matches) { return interpolate(gettext('Search %(media)s...'), {media: this.selectedType.display}, true); } return interpolate(gettext('Search %(media)s in your library or online...'), {media: this.selectedType.display}, true) }, barcodeScanning: false, barcodeError: null, barcodePreview: null, explicitSubmitTriggered: false, async handleBarcodeImage(event) { if (!event || !event.target) { console.error('[BARCODE] Invalid event or event.target'); return; } if (event.target.tagName !== 'INPUT' || event.target.type !== 'file') { console.error('[BARCODE] Event not from file input. TagName:', event.target.tagName, 'Type:', event.target.type); return; } if (event.target !== this.$refs.barcodeInput) { console.error('[BARCODE] Event not from barcode input ref'); return; } console.log('handleBarcodeImage called', event); const file = event.target.files?.[0]; if (!file) { console.log('No file selected'); return; } console.log('File selected:', file.name, file.type); this.barcodeScanning = true; this.barcodeError = null; this.barcodePreview = URL.createObjectURL(file); try { console.log('Checking for barcodeScannerUtils:', typeof window.barcodeScannerUtils); if (!window.barcodeScannerUtils) { throw new Error(gettext('Barcode scanner utilities not loaded. Please refresh the page.')); } console.log('Starting barcode decode...'); const isbn = await window.barcodeScannerUtils.decodeBarcodeFromFile(file); console.log('Decode result:', isbn); if (isbn) { const barcodeInput = event.target; let form = this.$root; if (!form || form.tagName !== 'FORM' || !form.contains(barcodeInput)) { form = barcodeInput.closest('form'); } if (!form || form.tagName !== 'FORM') { console.error('[FORM] Could not find valid form element'); return; } const searchInput = form.querySelector('input[name=q]'); const formContainsBarcodeInput = form.contains(barcodeInput); if (!searchInput || !formContainsBarcodeInput) { console.error('[FORM] Form validation failed - missing search input or barcode input not in form. Search input:', searchInput, 'Form contains barcode input:', formContainsBarcodeInput); return; } console.log('[FORM] ISBN received, form element:', form, 'tagName:', form.tagName); console.log('[FORM] Search input found:', searchInput); searchInput.value = isbn; console.log('[FORM] Set input value to:', isbn, 'Current value:', searchInput.value); this.explicitSubmitTriggered = true; console.log('[FORM] Submitting form...'); form.submit(); console.log('[FORM] Form submit called'); } else { this.barcodeError = gettext('Could not read barcode from image. Please try again or enter ISBN manually.'); } } catch (error) { console.error('Barcode scan error:', error); this.barcodeError = gettext('Error scanning barcode: ') + (error.message || gettext('Please try again.')); } finally { this.barcodeScanning = false; } }, clearBarcodeError() { this.barcodeError = null; this.barcodePreview = null; if (this.$refs.barcodeInput) { this.$refs.barcodeInput.value = ''; } }, selectType(type) { this.selectedType = type; this.isOpen = false; const input = this.$refs.searchInput; if (input && input.value.trim()) { this.$nextTick(() => this.$root.submit()); } }, handleFormSubmit(event) { if (event.currentTarget !== this.$el) { return true; } if (event.submitter && !this.$el.contains(event.submitter)) { console.log('[FORM] Submitter not in search form, allowing'); return true; } if (event.submitter && !this.$el.contains(event.submitter)) { console.log('[FORM] Submitter not in search form, allowing'); return true; } if (this.explicitSubmitTriggered) { this.explicitSubmitTriggered = false; return true; } if (event.submitter && event.submitter === this.$refs.searchButton) { return true; } if (!event.submitter) { const searchInput = this.$el.querySelector('input[name=q]'); if (searchInput && document.activeElement === searchInput) { return true; } } console.log('[FORM] Form submission prevented - not from search button or Enter key in search input'); event.preventDefault(); event.stopPropagation(); return false; }, init() { console.log('Search form Alpine.js initialized'); this.explicitSubmitTriggered = false; } }"
@@ -521,21 +521,24 @@
                   </div>
                 {% endif %}
 
+              {% if user.is_authenticated and user.theme|is_basic_theme %}
+                <button type="button"
+                        onclick="floppyToggleTheme()"
+                        class="hidden lg:block absolute right-4 top-1/2 -translate-y-1/2 shrink-0 p-2 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)] transition-colors duration-200 cursor-pointer"
+                        title="{% translate "Toggle theme" %}"
+                        aria-label="{% translate "Toggle theme" %}">
+                  {% include "app/icons/sun.svg" with classes="w-5 h-5 theme-toggle-icon-sun" %}
+                  {% include "app/icons/moon.svg" with classes="w-5 h-5 theme-toggle-icon-moon" %}
+                </button>
+              {% endif %}
+            </div>
+              {# Mobile menu overlay fallback; the React shell portals its own overlay. #}
+              <div x-show="isMobileMenuOpen"
+                   class="app-menu-overlay fixed inset-0 bg-black/50 z-[42] lg:hidden"
+                   @click="isMobileMenuOpen = false"></div>
               </div>
             </div>
-
-            {% if user.is_authenticated and user.theme|is_basic_theme %}
-              <button type="button"
-                      onclick="floppyToggleTheme()"
-                      class="hidden lg:block absolute right-4 top-1/2 -translate-y-1/2 shrink-0 p-2 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)] transition-colors duration-200 cursor-pointer"
-                      title="{% translate "Toggle theme" %}"
-                      aria-label="{% translate "Toggle theme" %}">
-                {% include "app/icons/sun.svg" with classes="w-5 h-5 theme-toggle-icon-sun" %}
-                {% include "app/icons/moon.svg" with classes="w-5 h-5 theme-toggle-icon-moon" %}
-              </button>
-            {% endif %}
           </div>
-
           <main class="flex-1 relative bg-[var(--color-page-bg)]">
             <div class="container mx-auto max-lg:max-w-none pt-6 pb-[max(1.5rem,var(--safe-bottom))] sm:pb-[max(3rem,var(--safe-bottom))] pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))] sm:pl-[max(2rem,var(--safe-left))] sm:pr-[max(2rem,var(--safe-right))]">
               {% if request.user.is_superuser and RELEASE_TAG %}

@@ -37,6 +37,8 @@ class CreateEntryViewTests(TestCase):
         self.assertIn("media_types", response.context)
 
         self.assertEqual(response.context["media_types"], MediaTypes.values)
+        self.assertContains(response, "data-parent-picker-root", count=2)
+        self.assertNotContains(response, "onclick=\"document.getElementById('parent-tv-input')")
 
     def test_create_entry_post_movie(self):
         """Test creating a movie entry."""

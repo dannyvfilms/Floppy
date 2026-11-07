@@ -109,6 +109,7 @@ class GenericScrobbleProcessor(BaseWebhookProcessor):
             episode_ids=episode_ids,
             user=user,
             raise_transient=raise_transient,
+            show_ids_only=not episode_ids,
         )
 
     def _is_supported_event(self, event_type):

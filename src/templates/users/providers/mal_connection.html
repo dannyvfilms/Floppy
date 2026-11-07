@@ -1,4 +1,4 @@
-{% load i18n %}
+{% load i18n ui_tags %}
 <section class="space-y-3">
   <h2 class="text-lg font-semibold">{% translate "MyAnimeList account" %}</h2>
   {% if mal_account %}
@@ -15,7 +15,7 @@
     <form method="post" action="{% url 'mal_disconnect' %}">
       {% csrf_token %}
       <input type="hidden" name="next" value="{{ request.path }}?tab=connection">
-      <button type="submit" class="px-4 py-2 text-sm rounded-md bg-red-600 text-white hover:bg-red-700 cursor-pointer">{% translate "Disconnect" %}</button>
+      {% button _("Disconnect") "danger-solid" "sm" submit=True %}
     </form>
   {% endif %}
   {% if not mal_account or not mal_account.is_connected %}
@@ -24,7 +24,7 @@
     <form method="post" action="{% url 'mal_oauth' %}">
       {% csrf_token %}
       <input type="hidden" name="next" value="{{ request.path }}?tab=connection">
-      <button type="submit" class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer">{% translate "Authorize and enable MyAnimeList sync" %}</button>
+      {% button _("Authorize and enable MyAnimeList sync") submit=True %}
     </form>
   {% else %}
     <p class="text-sm text-[var(--color-text-muted)]">{% translate "Add a MyAnimeList Client ID and Client secret to enable account authorization." %}</p>

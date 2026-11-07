@@ -65,8 +65,10 @@ function dateRangePicker(options = {}) {
     initialEndDate = "",
     initialCompareMode = "previous_period",
     initialMediaTypeOptions = [],
+    initialSelectedMediaTypes = "",
     refreshUrl = "",
     compareModeUpdateUrl = "",
+    mediaTypesUpdateUrl = "",
     csrfToken = "",
     ratingScaleMax = 10,
   } = options;
@@ -276,9 +278,13 @@ function dateRangePicker(options = {}) {
       this.detectRangeFromDates(initialRangeName);
       this.compareMode = this.normalizeCompareMode(compareParam || initialCompareMode);
 
+      const mediaTypesSource = mediaTypeParam !== null
+        ? mediaTypeParam
+        : initialSelectedMediaTypes;
       this.selectedMediaTypes = this.normalizeMediaTypes(
-        StatsMediaMerge.parseMediaTypeParam(mediaTypeParam, this.mediaTypeValues()),
+        StatsMediaMerge.parseMediaTypeParam(mediaTypesSource, this.mediaTypeValues()),
       );
+      this.mediaTypesSavePromise = Promise.resolve();
 
       const summaryEl = document.getElementById("summary_stats_by_type");
       if (summaryEl) {
@@ -396,6 +402,7 @@ function dateRangePicker(options = {}) {
         url.searchParams.delete("media-type");
       }
       window.history.replaceState({}, "", url.toString());
+      this.saveMediaTypesPreference(this.selectedMediaTypes);
       this.$nextTick(() => {
         this.updateFilteredCharts();
         window.dispatchEvent(new CustomEvent("stats-media-type-changed"));
@@ -673,6 +680,38 @@ function dateRangePicker(options = {}) {
       if (!response.ok || !data.success) {
         throw new Error(data.error || gettext("Failed to save compare mode"));
       }
+    },
+
+    saveMediaTypesPreference(types) {
+      if (!mediaTypesUpdateUrl) {
+        return;
+      }
+
+      const body = new URLSearchParams();
+      body.set("media_types", StatsMediaMerge.formatMediaTypeParam(types));
+
+      const save = () => fetch(mediaTypesUpdateUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-CSRFToken": csrfToken,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: body.toString(),
+      }).then(async (response) => {
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || gettext("Failed to save media types"));
+        }
+      });
+
+      // Rapid ticks must reach the server in the order they happened.
+      this.mediaTypesSavePromise = this.mediaTypesSavePromise
+        .catch(() => {})
+        .then(save);
+      this.mediaTypesSavePromise.catch((error) => {
+        console.error("Failed to save statistics media types:", error);
+      });
     },
 
     formatDisplayDate(dateString) {

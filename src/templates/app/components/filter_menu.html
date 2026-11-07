@@ -13,7 +13,7 @@
    filter_release_types adds the Release Dates pane (releaseTypes state).
 {% endcomment %}
     {% firstof filter_data_id "media-filter-data" as resolved_filter_data_id %}
-    {% if filter_data %}{{ filter_data|json_script:resolved_filter_data_id }}{% endif %}
+    {% if filter_data and not filter_suppress_data_script %}{{ filter_data|json_script:resolved_filter_data_id }}{% endif %}
 
     <!-- Filter Menu -->
     <div class="relative filter-control"

@@ -1,6 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
-import { FilterChips } from './controls';
+import { DiscoverTabs } from '../discover/DiscoverScreen';
+
+const palette = {
+  textSecondary: 'var(--color-text-secondary)',
+  surface: 'var(--color-surface)',
+  border: 'var(--color-surface-border)',
+  accent: 'var(--color-accent)',
+  accentText: '#ffffff',
+};
 
 // The page's Alpine scope owns the selection (selectedMedia) and the switch
 // (switchMedia); mirror it instead of keeping a second copy.
@@ -12,8 +20,8 @@ function Chips({ host, props }) {
     const runner = Alpine.effect(() => setSelected(Alpine.$data(host).selectedMedia));
     return () => Alpine.release(runner);
   }, [host]);
-  return <FilterChips items={props.items} label={props.label} selected={selected}
-    onSelect={(value) => window.Alpine?.$data(host).switchMedia(value)} />;
+  return <DiscoverTabs items={props.items} label={props.label} selected={selected}
+    palette={palette} onSelect={(value) => window.Alpine?.$data(host).switchMedia(value)} />;
 }
 
 export function mountFilterChips(host, props) {
