@@ -456,18 +456,19 @@ export function MediaCard({
   }
   const art = model.image;
   const imgClass = `media-card-poster w-full ${aspect[model.shape]} bg-[var(--color-surface-alt)] object-cover`;
+  const aspectStyle = model.aspectRatio ? { aspectRatio: Number(model.aspectRatio) } : undefined;
   const bar = model.progressBar;
   const card = <>
     <div className="media-card-visual relative">
       {model.recommend ? <div className="cursor-pointer"><img decoding="sync" loading="lazy" alt={model.title}
-        className={imgClass} src={art.src} data-image-source={art.source} /></div> : <a href={model.href} {...(model.boost ? { 'hx-boost': 'true' } : {})} onClick={(event) => {
+        className={imgClass} style={aspectStyle} src={art.src} data-image-source={art.source} /></div> : <a href={model.href} {...(model.boost ? { 'hx-boost': 'true' } : {})} onClick={(event) => {
         if (selection?.active) { event.preventDefault(); selection.toggle(); }
       }}>
         {selection?.active && <div className="absolute top-2 left-2 z-10" onClick={(event) => event.stopPropagation()}>
           <input type="checkbox" className="cursor-pointer w-5 h-5" checked={selection.selected}
             aria-label={model.title} onChange={selection.toggle} />
         </div>}
-        <img decoding="sync" loading="lazy" alt={model.title} className={imgClass} src={art.src}
+        <img decoding="sync" loading="lazy" alt={model.title} className={imgClass} style={aspectStyle} src={art.src}
           data-image-source={art.source}
           {...(model.video ? { 'data-image-fallback': art.fallback, 'data-image-fallback-on-small': 'true' } : {})} />
       </a>}

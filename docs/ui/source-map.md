@@ -178,7 +178,7 @@ Status: `Web Migrated`
 
 - `src/templates/app/components/card_lines.html`
 - `src/templates/app/components/media_card.html` (shell: wrapper classes, props script and first-paint poster and title; React replaces it on mount)
-- `frontend/ui/MediaCard.jsx`, `frontend/ui/MediaCard.web.jsx`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/media-card.css`, `src/app/media_card_model.py`, `src/app/card_surfaces.py` (React Native primitives on native surfaces; the browser adapter retains DOM links, htmx integration and web-only slots; compact Up Next cards use the localized short label)
+- `frontend/ui/MediaCard.jsx`, `frontend/ui/MediaCard.web.jsx`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/media-card.css`, `frontend/ui/CardScrim.jsx`, `frontend/ui/CardScrim.native.jsx`, `frontend/ui/CardScrim.web.jsx`, `src/app/media_card_model.py`, `src/app/card_surfaces.py` (React Native primitives on native surfaces; native scrim uses an SVG gradient; the browser adapter retains DOM links, htmx integration and web-only slots; compact Up Next cards use the localized short label)
 - `src/templates/app/components/media_card_list.html`
 - `src/templates/app/components/media_card_status_chip.html` (out-of-band save fragment only; no card renders it)
 
@@ -333,7 +333,6 @@ Status: `Legacy`
 - `src/static/js/horizontal-scroll.js`
 - `src/static/js/horizontal-scroll.selfcheck.mjs`
 - `src/templates/app/components/_scrollable_row.html`
-- `src/templates/app/components/_scrollable_row_js.html`
 
 ## HOME
 
@@ -347,8 +346,12 @@ Status: `Legacy`
 
 ## PLAYBACK
 
-Status: `Legacy`
+Status: `Partial / coexisting`
 
+- `frontend/ui/PlaybackCard.jsx`, `frontend/ui/PlaybackTheme.web.jsx`, `frontend/ui/mountPlaybackCard.jsx` (shared presentation, browser adapter and server-fragment fallback; Now Playing renders a 16:9 MediaCard with its section heading and controls above it)
+- `native-proof/app/surfaces/PlaybackSlot.jsx`, `native-proof/app/data/playbackTransport.js`, `native-proof/app/data/settingsTransport.js`, `frontend/ui/mediaCardSizing.js` (native Now Playing spans up to three 110 pt cards plus two 16 pt gaps on compact mobile, two 168 pt cards plus a 12 pt gap on comfortable mobile, and two on desktop; narrow layouts shrink to fit)
+- `src/api/fork_views_playback.py` (`/api/v1/playback/home-cards/`, session-only cards and server-resolved Pause/Stop or Stop/Cancel actions)
+- `src/templates/app/components/_scrollable_row_js.html` (browser playback width measures an ordinary Home media-grid card and spans three on compact mobile, two on comfortable mobile, or two on desktop)
 - `src/templates/app/components/active_playback_card.html`
 - `src/templates/app/components/detail_checkin_state.html`
 - `src/templates/app/components/active_playback_cards.html`
@@ -1015,7 +1018,6 @@ Status: `Partial / coexisting`
 - `frontend/ui/Button.web.jsx`
 - `frontend/ui/CacheStatusCard.jsx`
 - `frontend/ui/CalendarLinks.jsx`
-- `frontend/ui/CardScrim.jsx`
 - `frontend/ui/CollectionBrowser.jsx`
 - `frontend/ui/CollectionCopies.jsx`
 - `frontend/ui/CollectionCustomFields.jsx`
@@ -1038,7 +1040,7 @@ Status: `Partial / coexisting`
 - `frontend/ui/HistoryFeed.jsx`
 - `frontend/ui/HistoryFeed.native.jsx`
 - `frontend/ui/HistoryFeed.web.jsx`
-- `frontend/ui/HomeShelves.jsx`
+- `frontend/ui/HomeShelves.jsx` (shared browser and native Home shelf rows; compact phone cards are 110 pt wide)
 - `frontend/ui/IconRenderer.native.jsx`
 - `frontend/ui/IconRenderer.web.jsx`
 - `frontend/ui/InstallPromptCard.jsx`
@@ -1056,7 +1058,6 @@ Status: `Partial / coexisting`
 - `frontend/ui/MarkdownPreview.native.jsx`
 - `frontend/ui/MarkdownPreview.web.jsx`
 - `frontend/ui/MediaCard.native.jsx`
-- `frontend/ui/MediaCard.web.jsx`
 - `frontend/ui/MediaCardActionHost.jsx`
 - `frontend/ui/MediaCardActions.jsx`
 - `frontend/ui/MediaCardFormControls.jsx`
@@ -1069,8 +1070,6 @@ Status: `Partial / coexisting`
 - `frontend/ui/ParentPicker.jsx`
 - `frontend/ui/ParentPicker.web.jsx`
 - `frontend/ui/People.jsx`
-- `frontend/ui/PlaybackCard.jsx`
-- `frontend/ui/PlaybackTheme.web.jsx`
 - `frontend/ui/PreferencesForm.jsx`
 - `frontend/ui/ProgressBar.jsx`
 - `frontend/ui/ProgressBreakdown.jsx`
@@ -1162,7 +1161,6 @@ Status: `Partial / coexisting`
 - `frontend/ui/mountMusicRelations.jsx`
 - `frontend/ui/mountParentPicker.jsx`
 - `frontend/ui/mountPeople.jsx`
-- `frontend/ui/mountPlaybackCard.jsx`
 - `frontend/ui/mountProgressBreakdown.jsx`
 - `frontend/ui/mountProgressChanger.jsx`
 - `frontend/ui/mountProgressDetail.jsx`

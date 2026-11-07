@@ -426,6 +426,11 @@ urlpatterns = [
         name="api_playback_now_playing",
     ),
     re_path(
+        r"^playback/home-cards/?$",
+        fork_views_playback.HomePlaybackCardsView.as_view(),
+        name="api_playback_home_cards",
+    ),
+    re_path(
         r"^scrobble/?$",
         fork_views_scrobble.ScrobbleView.as_view(),
         name="api_scrobble",

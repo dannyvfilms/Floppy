@@ -67,7 +67,8 @@ function Star({ size = 12, color }) {
 
 function Artwork({ model, palette, selection, onPress }) {
   const image = model.image || {};
-  const frame = <View style={[styles.artworkFrame, { aspectRatio: ASPECT[model.shape] || ASPECT.poster }]}
+  const aspectRatio = Number(model.aspectRatio) || ASPECT[model.shape] || ASPECT.poster;
+  const frame = <View style={[styles.artworkFrame, { aspectRatio }]}
     accessible={!onPress} accessibilityLabel={onPress ? undefined : model.title}>
     <ArtworkImage src={image.src} fallback={image.fallback} title={model.title}
       source={image.source} variant="media-card" loading="lazy" decoding="sync"

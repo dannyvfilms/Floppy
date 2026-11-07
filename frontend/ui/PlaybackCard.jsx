@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Button } from './Button';
+import { MediaCard } from './MediaCard';
 
 const defaultLabels = {
   nowPlaying: 'Now Playing',
   playing: 'Playing',
   paused: 'Paused',
   stale: 'Last updated',
-  stopCheckIn: 'Stop check-in',
+  pauseCheckIn: 'Pause',
+  stopCheckIn: 'Stop',
   cancelCheckIn: 'Cancel check-in',
   openDetails: 'Open details',
   checkIn: 'Check-in',
@@ -63,47 +65,15 @@ function clampPercent(value) {
   return Math.max(0, Math.min(100, Number(value) || 0));
 }
 
-function artworkUri(image) {
-  if (!image) return '';
-  if (typeof image === 'string') return image;
-  return image.src || '';
-}
-
-function Artwork({ model, palette, onOpenDetails }) {
-  const [failed, setFailed] = useState(false);
-  const uri = artworkUri(model.image);
-  useEffect(() => {
-    setFailed(false);
-  }, [uri]);
-  const title = model.title || '';
-  const frame = <View style={[styles.artwork, { backgroundColor: palette.placeholder }]}>
-    {uri && !failed ? <Image source={{ uri }} resizeMode="cover" style={StyleSheet.absoluteFill}
-      accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
-      onError={() => setFailed(true)} /> : <Text numberOfLines={2} style={[styles.artworkLetter, { color: palette.textMuted }]}>
-      {title || '—'}
-    </Text>}
-    <View style={[styles.progressTrack, { backgroundColor: palette.progressTrack }]}>
-      <View style={[styles.progressFill, {
-        width: `${clampPercent(model.progressPercent)}%`,
-        backgroundColor: model.status === 'playing' ? palette.progressFill : palette.pausedFill,
-      }]} />
-    </View>
-  </View>;
-  if (!onOpenDetails || !model.href) {
-    return <View accessible accessibilityLabel={model.image?.alt || title}>{frame}</View>;
-  }
-  return <Pressable accessibilityRole="link" accessibilityLabel={model.image?.alt || title}
-    onPress={() => onOpenDetails(model.href)}>{frame}</Pressable>;
-}
-
 /**
  * The Home Now Playing card.
  *
- * Presentation only: the caller owns the status, offset, artwork and the
- * stop/cancel intents. The card ticks its own clock while playing and treats
- * a state older than `staleAfterSeconds` as stale rather than still playing.
+ * Presentation adapter: the caller owns the status, offset, artwork and the
+ * pause/stop intents. It renders the section heading above the shared MediaCard
+ * and ticks its own clock while playing.
  */
-export function PlaybackCard({ model, labels, palette, onOpenDetails, onStop, onCancel, busyAction }) {
+export function PlaybackCard({ model, labels, palette, onOpenDetails, onPause, onStop, onCancel, busyAction, width = '100%' }) {
+  const { width: viewportWidth } = useWindowDimensions();
   const colors = { ...fallbackPalette, ...(palette || {}) };
   const text = { ...defaultLabels, ...(labels || {}) };
   const status = model?.status || 'playing';
@@ -132,56 +102,71 @@ export function PlaybackCard({ model, labels, palette, onOpenDetails, onStop, on
   const display = duration > 0
     ? `${formatClock(current)} / ${formatClock(duration)}`
     : formatClock(current);
-  const statusLabel = stale ? text.stale : playing ? text.playing : text.paused;
-  const hasControl = Boolean(model?.checkin && (onStop || onCancel));
+  const subtitle = [model?.episodeTitle, display].filter(Boolean).join(' · ');
+  const hasControl = Boolean(model?.checkin && (onPause || onStop || onCancel));
+  const cardModel = {
+    shape: 'landscape',
+    aspectRatio: 16 / 9,
+    href: model?.href || '',
+    title: model?.title || '',
+    image: typeof model?.image === 'string'
+      ? { src: model.image, alt: model?.title || '' }
+      : model?.image || { src: '', alt: model?.title || '' },
+    progressBar: { percent, paused: !playing || stale },
+    lines: subtitle ? [{ join: 'plain', clamp: true, parts: [{ text: subtitle }] }] : [],
+  };
+  const cardPalette = {
+    card: colors.surface,
+    text: colors.text,
+    textSecondary: colors.textSecondary,
+    textMuted: colors.textMuted,
+    border: colors.border,
+    link: colors.link,
+    placeholder: colors.placeholder,
+    progressTrack: colors.progressTrack,
+    progressFill: colors.progressFill,
+    progressPaused: colors.pausedFill,
+  };
+  const header = <View style={styles.headingRow}>
+    <Text role="heading" aria-level={3}
+      style={[styles.heading, viewportWidth < 640 && styles.headingCompact, { color: colors.text }]}>
+      {text.nowPlaying}
+    </Text>
+    {hasControl ? <View style={styles.controls}>
+      {onPause ? <Pressable accessibilityRole="button"
+        accessibilityLabel={text.pauseCheckIn} accessibilityState={{ busy: busyAction === 'pause' }}
+        disabled={Boolean(busyAction)} onPress={onPause}
+        style={({ pressed, focused }) => [styles.controlButton, {
+          backgroundColor: pressed ? colors.surfaceHover : colors.surfaceStrong,
+          opacity: busyAction && busyAction !== 'pause' ? 0.5 : 1,
+        }, focused && colors.focusStyle]}>
+        <Text style={[styles.controlGlyph, { color: colors.text }]}>{busyAction === 'pause' ? '…' : 'Ⅱ'}</Text>
+      </Pressable> : null}
+      {onStop ? <Pressable accessibilityRole="button"
+        accessibilityLabel={text.stopCheckIn} accessibilityState={{ busy: busyAction === 'stop' }}
+        disabled={Boolean(busyAction)} onPress={onStop}
+        style={({ pressed, focused }) => [styles.controlButton, {
+          backgroundColor: pressed ? colors.surfaceHover : colors.surfaceStrong,
+          opacity: busyAction && busyAction !== 'stop' ? 0.5 : 1,
+        }, focused && colors.focusStyle]}>
+        <Text style={[styles.controlGlyph, { color: colors.text }]}>{busyAction === 'stop' ? '…' : '■'}</Text>
+      </Pressable> : null}
+      {onCancel ? <Pressable accessibilityRole="button"
+        accessibilityLabel={text.cancelCheckIn} accessibilityState={{ busy: busyAction === 'cancel' }}
+        disabled={Boolean(busyAction)} onPress={onCancel}
+        style={({ pressed, focused }) => [styles.controlButton, {
+          backgroundColor: pressed ? colors.surfaceHover : colors.surfaceStrong,
+          opacity: busyAction && busyAction !== 'cancel' ? 0.5 : 1,
+        }, focused && colors.focusStyle]}>
+        <Text style={[styles.controlGlyph, { color: colors.danger }]}>{busyAction === 'cancel' ? '…' : '×'}</Text>
+      </Pressable> : null}
+    </View> : null}
+  </View>;
 
-  return <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-    <View style={styles.header}>
-      <Text style={[styles.heading, { color: colors.text }]}>{text.nowPlaying}</Text>
-      {hasControl ? <View style={styles.controls}>
-        {onStop ? <Pressable accessibilityRole="button"
-          accessibilityLabel={text.stopCheckIn} accessibilityState={{ busy: busyAction === 'stop' }}
-          disabled={Boolean(busyAction)}
-          onPress={onStop}
-          style={({ pressed, focused }) => [styles.controlButton, {
-            backgroundColor: pressed ? colors.surfaceHover : colors.surfaceStrong,
-            opacity: busyAction && busyAction !== 'stop' ? 0.5 : 1,
-          }, focused && colors.focusStyle]}>
-          <Text style={[styles.controlGlyph, { color: colors.text }]}>{busyAction === 'stop' ? '…' : '■'}</Text>
-        </Pressable> : null}
-        {onCancel ? <Pressable accessibilityRole="button"
-          accessibilityLabel={text.cancelCheckIn} accessibilityState={{ busy: busyAction === 'cancel' }}
-          disabled={Boolean(busyAction)}
-          onPress={onCancel}
-          style={({ pressed, focused }) => [styles.controlButton, {
-            backgroundColor: pressed ? colors.surfaceHover : colors.surfaceStrong,
-            opacity: busyAction && busyAction !== 'cancel' ? 0.5 : 1,
-          }, focused && colors.focusStyle]}>
-          <Text style={[styles.controlGlyph, { color: colors.text }]}>{busyAction === 'cancel' ? '…' : '×'}</Text>
-        </Pressable> : null}
-      </View> : null}
-    </View>
-    <Artwork model={{ ...model, progressPercent: percent }} palette={colors} onOpenDetails={onOpenDetails} />
-    <View style={styles.body}>
-      <Pressable accessibilityRole={model?.href && onOpenDetails ? 'link' : undefined}
-        accessibilityLabel={model?.title} disabled={!model?.href || !onOpenDetails}
-        onPress={() => onOpenDetails?.(model.href)}>
-        <Text numberOfLines={1} style={[styles.title, { color: colors.text }]}>
-          {model?.episodeCode ? <Text style={{ color: colors.link }}>{model.episodeCode} </Text> : null}
-          {model?.episodeTitle || model?.title || ''}
-        </Text>
-      </Pressable>
-      {model?.subtitleLine ? <Text numberOfLines={1} style={[styles.subtitle, { color: colors.textMuted }]}>
-        {model.subtitleLine}
-      </Text> : null}
-      <View style={styles.statusRow} accessible
-        accessibilityLabel={`${statusLabel}, ${display}`}>
-        <Text style={[styles.statusGlyph, {
-          color: playing && !stale ? colors.link : colors.warning,
-        }]}>{playing && !stale ? '▶' : '◷'}</Text>
-        <Text style={[styles.time, { color: colors.textMuted }]}>{display}</Text>
-      </View>
-    </View>
+  return <View style={[styles.root, { width }]}>
+    {header}
+    <MediaCard model={cardModel} palette={cardPalette} width={width}
+      readOnly onOpen={onOpenDetails ? () => onOpenDetails(model?.href) : undefined} />
   </View>;
 }
 
@@ -248,22 +233,13 @@ export function CheckInState({ model, actions = [], labels, palette, onAction, b
 }
 
 const styles = StyleSheet.create({
-  card: { width: '100%', borderWidth: 1, borderRadius: 12, overflow: 'hidden' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 4, paddingTop: 4, paddingBottom: 8 },
-  heading: { fontSize: 17, fontWeight: '600' },
+  root: { gap: 8 },
+  headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  heading: { fontSize: 18, fontWeight: '600', lineHeight: 18 },
+  headingCompact: { fontSize: 16, lineHeight: 21.6 },
   controls: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   controlButton: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   controlGlyph: { fontSize: 14, fontWeight: '700' },
-  artwork: { position: 'relative', width: '100%', aspectRatio: 3 / 2, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  artworkLetter: { fontSize: 20, fontWeight: '600', paddingHorizontal: 16, textAlign: 'center' },
-  progressTrack: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 4 },
-  progressFill: { height: '100%' },
-  body: { gap: 4, paddingHorizontal: 12, paddingVertical: 10 },
-  title: { fontSize: 14, fontWeight: '600' },
-  subtitle: { fontSize: 12 },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  statusGlyph: { fontSize: 11 },
-  time: { fontSize: 12 },
   checkinCard: { borderWidth: 1, borderRadius: 10, padding: 12, gap: 6 },
   checkinHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   checkinTitle: { fontSize: 14, fontWeight: '600' },

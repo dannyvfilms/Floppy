@@ -9,9 +9,10 @@ from unittest.mock import patch
 import requests
 from django.test import override_settings
 from django.utils import timezone
+from rest_framework.test import APIClient
 
 from api.fork_views_playback import upsert_playback_progress
-from app import live_playback
+from app import checkin, live_playback
 from app.models import (
     Item,
     MediaTypes,
@@ -1194,3 +1195,153 @@ class NowPlayingTests(FloppyApiTestCase):
             response.status_code,
             (HTTP.UNAUTHORIZED, HTTP.FORBIDDEN),
         )
+
+
+class HomePlaybackCardsTests(FloppyApiTestCase):
+    """The native Home card API is session-only and resolves controls server-side."""
+
+    def test_session_returns_all_cards_without_checkin_tokens(self):
+        self.client.force_login(self.user1)
+        states = [
+            {"source": "plex", "media_type": "movie", "media_id": "701"},
+            {"source": "plex", "media_type": "episode", "media_id": "702"},
+        ]
+        card = {
+            "checkin_control": {"token": "private-checkin-token", "action": "pause"},
+            "title": "The Quiet Orbit",
+            "subtitle": None,
+            "episode_code": None,
+            "episode_title": None,
+            "image": "https://example.test/poster.jpg",
+            "status": "playing",
+            "details_url": "/floppy/details/movie/plex/701/",
+            "progress_percent": 42.0,
+            "offset_seconds": 120,
+            "duration_seconds": 1800,
+            "updated_at_ts": 1_794_050_000,
+        }
+        with (
+            patch.object(live_playback, "active_slots", return_value=["one", "two"]),
+            patch.object(live_playback, "get_user_playback_state", side_effect=states),
+            patch.object(live_playback, "build_home_playback_card", side_effect=[card, card]),
+        ):
+            response = self.client.get("/api/v1/playback/home-cards/")
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        body = response.json()
+        self.assertEqual(len(body["cards"]), 2)
+        self.assertEqual(body["cards"][1]["media_type"], "episode")
+        self.assertEqual(body["cards"][0]["actions"], ["pause", "finish"])
+        self.assertNotIn("private-checkin-token", response.content.decode())
+        self.assertNotIn("checkin_control", body["cards"][0])
+
+    def test_api_key_cannot_access_native_home_cards(self):
+        response = self.client.get(
+            "/api/v1/playback/home-cards/",
+            HTTP_X_API_KEY=self.user1.token,
+        )
+        self.assertEqual(response.status_code, HTTP.FORBIDDEN)
+
+        response = self.client.post(
+            "/api/v1/playback/home-cards/",
+            data=json.dumps({
+                "source": "plex",
+                "media_type": "movie",
+                "media_id": "701",
+                "action": "finish",
+            }),
+            content_type="application/json",
+            HTTP_X_API_KEY=self.user1.token,
+        )
+        self.assertEqual(response.status_code, HTTP.FORBIDDEN)
+
+    def test_action_resolves_identity_and_runs_current_stop(self):
+        self.client.force_login(self.user1)
+        state = {"source": "plex", "media_type": "movie", "media_id": "701"}
+        payload = {
+            "source": "plex",
+            "media_type": "movie",
+            "media_id": "701",
+            "action": "pause",
+        }
+        with (
+            patch.object(live_playback, "active_slots", return_value=["one"]),
+            patch.object(live_playback, "get_user_playback_state", return_value=state),
+            patch.object(checkin, "card_control", return_value={"action": "pause"}),
+            patch.object(checkin, "pause") as pause,
+        ):
+            response = self.client.post(
+                "/api/v1/playback/home-cards/",
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, HTTP.NO_CONTENT)
+        pause.assert_called_once_with(self.user1, "movie", "701")
+
+    def test_stop_resolves_a_manual_session_control(self):
+        self.client.force_login(self.user1)
+        state = {"source": "plex", "media_type": "book", "media_id": "701"}
+        payload = {**state, "action": "stop"}
+        with (
+            patch.object(live_playback, "active_slots", return_value=["one"]),
+            patch.object(live_playback, "get_user_playback_state", return_value=state),
+            patch.object(checkin, "card_control", return_value={"action": "stop"}),
+            patch("api.fork_views_playback.checkin_session.stop") as stop,
+        ):
+            response = self.client.post(
+                "/api/v1/playback/home-cards/",
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, HTTP.NO_CONTENT)
+        stop.assert_called_once_with(self.user1, "plex", "book", "701")
+
+    def test_cancel_resolves_a_manual_session_control(self):
+        self.client.force_login(self.user1)
+        state = {"source": "plex", "media_type": "book", "media_id": "701"}
+        payload = {**state, "action": "cancel"}
+        with (
+            patch.object(live_playback, "active_slots", return_value=["one"]),
+            patch.object(live_playback, "get_user_playback_state", return_value=state),
+            patch.object(checkin, "card_control", return_value={"action": "stop"}),
+            patch("api.fork_views_playback.checkin_session.cancel") as cancel,
+        ):
+            response = self.client.post(
+                "/api/v1/playback/home-cards/",
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, HTTP.NO_CONTENT)
+        cancel.assert_called_once_with(self.user1, "plex", "book", "701")
+
+    def test_action_rejects_stale_identity_and_enforces_csrf(self):
+        self.client.force_login(self.user1)
+        payload = {
+            "source": "plex",
+            "media_type": "movie",
+            "media_id": "701",
+            "action": "stop",
+        }
+        with (
+            patch.object(live_playback, "active_slots", return_value=["one"]),
+            patch.object(live_playback, "get_user_playback_state", return_value={
+                "source": "plex", "media_type": "movie", "media_id": "701",
+            }),
+            patch.object(checkin, "card_control", return_value=None),
+        ):
+            stale = self.client.post(
+                "/api/v1/playback/home-cards/",
+                data=json.dumps(payload),
+                content_type="application/json",
+            )
+        self.assertEqual(stale.status_code, HTTP.BAD_REQUEST)
+
+        csrf_client = APIClient(enforce_csrf_checks=True)
+        csrf_client.force_login(self.user1)
+        rejected = csrf_client.post(
+            "/api/v1/playback/home-cards/",
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        self.assertEqual(rejected.status_code, HTTP.FORBIDDEN)

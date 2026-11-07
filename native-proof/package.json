@@ -7,7 +7,7 @@
     "start": "expo start",
     "export": "expo export",
     "export:django": "expo export --platform web --output-dir ../src/static/native-proof",
-    "test:transport": "node --no-warnings --test app/data/authTransportCore.test.mjs app/data/authAccountCore.test.mjs app/data/transportRoutes.test.mjs app/data/serverDiscoveryCore.test.mjs"
+    "test:transport": "node --no-warnings --test app/data/authTransportCore.test.mjs app/data/authAccountCore.test.mjs app/data/transportRoutes.test.mjs app/data/serverDiscoveryCore.test.mjs app/data/playbackTransport.test.mjs app/surfaces/mediaCardSizing.test.mjs"
   },
   "dependencies": {
     "@expo/ui": "~58.0.27",

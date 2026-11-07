@@ -449,7 +449,16 @@ export default function HomeScreen({ navigate }) {
         <Button label="Connect server" tone="surface" palette={palette}
           onPress={() => navigate?.('Auth')} />
       </View>}
-      playback={<PlaybackSlot onOpenDetail={() => navigate?.('Detail')} />}
+      playback={<PlaybackSlot onOpenDetail={card => navigate?.('Detail', { item: {
+        identity: {
+          mediaType: card.mediaType,
+          source: card.source,
+          mediaId: card.mediaId,
+        },
+        title: card.episodeTitle || card.title,
+        image: card.image,
+        href: card.href,
+      } })} />}
       groups={model.groups}
       deferredGroups={model.deferredGroups}
       showMediaTypeHeaders={model.showMediaTypeHeaders}

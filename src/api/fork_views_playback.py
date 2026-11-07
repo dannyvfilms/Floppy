@@ -14,10 +14,11 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
 from rest_framework.authentication import SessionAuthentication
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 import app.providers.tmdb
-from app import live_playback
+from app import checkin, checkin_session, live_playback
 from app.helpers import build_provider_ids
 from app.models import (
     Item,
@@ -973,3 +974,130 @@ class NowPlayingView(drf_views.APIView):
         if payload is None:
             return Response({"active": False}, status=HTTP.OK)
         return Response(payload, status=HTTP.OK)
+
+
+class HomePlaybackCardsView(drf_views.APIView):
+    """Session-only Home playback cards and their native check-in controls."""
+
+    # Playback controls are user actions, not a capability for integration
+    # tokens. SessionAuthentication also enforces CSRF on the action request.
+    authentication_classes = (SessionAuthentication,)
+    permission_classes = (IsAuthenticated,)
+
+    @extend_schema(
+        description="Return the signed-in user's active Home playback cards.",
+        responses={200: {"type": "object", "properties": {
+            "cards": {"type": "array", "items": {"type": "object"}},
+        }}},
+    )
+    def get(self, request):
+        """Project all active slots without returning check-in tokens."""
+        cards = []
+        for slot in live_playback.active_slots(request.user.id):
+            state = live_playback.get_user_playback_state(request.user.id, slot=slot)
+            card = live_playback.build_home_playback_card(request.user, slot=slot)
+            if not state or not card:
+                continue
+            source = state.get("source") or Sources.TMDB.value
+            media_type = state.get("media_type")
+            media_id = state.get("media_id")
+            identity = {
+                "source": source,
+                "media_type": media_type,
+                "media_id": str(media_id),
+            }
+            cards.append({
+                "id": f"{source}-{media_type}-{media_id}",
+                **identity,
+                "title": card["title"],
+                "subtitle": card["subtitle"],
+                "episode_code": card["episode_code"],
+                "episode_title": card["episode_title"],
+                "image": card["image"],
+                "status": card["status"],
+                "stale_after_seconds": (
+                    live_playback.PLAYBACK_PAUSE_STALE_SECONDS
+                    if card["status"] in (
+                        live_playback.PLAYBACK_STATUS_PAUSED,
+                        live_playback.PLAYBACK_STATUS_STOPPED,
+                    )
+                    else live_playback.PLAYBACK_HARD_STALE_SECONDS
+                ),
+                "url": card["details_url"],
+                "progress_percent": card["progress_percent"],
+                "offset_seconds": card["offset_seconds"],
+                "duration_seconds": card["duration_seconds"],
+                "updated_at": datetime.fromtimestamp(
+                    card["updated_at_ts"], tz=UTC,
+                ).isoformat(),
+                "actions": (
+                    ["pause", "finish"]
+                    if card["checkin_control"]
+                    and card["checkin_control"]["action"] == "pause"
+                    else ["stop", "cancel"]
+                    if card["checkin_control"]
+                    and card["checkin_control"]["action"] == "stop"
+                    else []
+                ),
+            })
+        return Response({"cards": cards}, status=HTTP.OK)
+
+    @extend_schema(
+        description=(
+            "Stop or cancel a current Home check-in. The server resolves the "
+            "check-in from the supplied card identity; no check-in token is exposed."
+        ),
+        request={
+            "type": "object",
+            "required": ["source", "media_type", "media_id", "action"],
+            "properties": {
+                "source": {"type": "string"},
+                "media_type": {"type": "string"},
+                "media_id": {"type": "string"},
+                "action": {"type": "string", "enum": ["pause", "finish", "stop", "cancel"]},
+            },
+        },
+        responses={204: None, 400: None},
+    )
+    def post(self, request):
+        """Run a current card action after resolving its server-owned control."""
+        source = request.data.get("source")
+        media_type = request.data.get("media_type")
+        media_id = str(request.data.get("media_id", ""))
+        action = request.data.get("action")
+        if not all((source, media_type, media_id)) or action not in (
+            "pause", "finish", "stop", "cancel",
+        ):
+            return Response({"detail": "Invalid playback action."}, status=HTTP.BAD_REQUEST)
+
+        control = None
+        for slot in live_playback.active_slots(request.user.id):
+            state = live_playback.get_user_playback_state(request.user.id, slot=slot)
+            if not state or (
+                (state.get("source") or Sources.TMDB.value) != source
+                or state.get("media_type") != media_type
+                or str(state.get("media_id")) != media_id
+            ):
+                continue
+            control = checkin.card_control(request.user.id, state)
+            break
+        if control is None:
+            return Response({"detail": "This check-in is no longer active."}, status=HTTP.BAD_REQUEST)
+
+        try:
+            if action == "stop" and control["action"] == "stop":
+                checkin_session.stop(request.user, source, media_type, media_id)
+            elif action == "cancel" and control["action"] == "stop":
+                checkin_session.cancel(request.user, source, media_type, media_id)
+            elif action == "pause" and control["action"] == "pause":
+                checkin.pause(request.user, media_type, media_id)
+            elif action == "finish" and control["action"] == "pause":
+                checkin.finish(request.user, media_type, media_id)
+            else:
+                return Response({"detail": "Unsupported check-in action."}, status=HTTP.BAD_REQUEST)
+        except checkin.CheckInError as error:
+            return Response({"detail": error.message}, status=HTTP.BAD_REQUEST)
+        except Exception:
+            logger.exception("Native playback action failed")
+            return Response({"detail": "Playback action failed."}, status=HTTP.BAD_GATEWAY)
+        return Response(status=HTTP.NO_CONTENT)

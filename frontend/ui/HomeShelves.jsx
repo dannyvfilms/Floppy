@@ -6,7 +6,7 @@ import { Rail } from './Rail';
 // Web and native shelves must pick the same card width. Web computes it from
 // the phone breakpoint in mountHome; native passes the same value from here.
 export const SHELF_BREAKPOINTS = { phone: 640 };
-export const SHELF_CARD_WIDTHS = { phone: 106, default: 176 };
+export const SHELF_CARD_WIDTHS = { phone: 110, default: 176 };
 export function shelfCardWidth(viewportWidth) {
   return viewportWidth < SHELF_BREAKPOINTS.phone
     ? SHELF_CARD_WIDTHS.phone

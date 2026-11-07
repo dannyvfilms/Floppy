@@ -1835,15 +1835,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compiled into the web bundle through mountPlaybackCard and mountCheckInState; the Home card and detail check-in state were not exercised in a browser in this change. The server fallback remains the progressive-enhancement path."
+          "evidence": "UI architecture and generated browser bundle checks pass; no browser runtime pass was performed for this revision."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared card and detail check-in state into the native shell; no iOS simulator run or interaction pass was performed."
+          "status": "verified",
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) shows the Now Playing heading above the 16:9 shared MediaCard; compact mobile width fits the content with its right edge visible. Pause/Stop and Stop/Cancel actions were not exercised."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared card and detail check-in state into the native shell; no Android emulator run or interaction pass was performed."
+          "evidence": "Expo export --platform all compiled the shared PlaybackCard; no Android runtime pass was performed for this revision."
         }
       }
     },
@@ -1923,15 +1923,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compiled into the web bundle through mountHome over the server-rendered Home shelves; no browser interaction pass was performed in this change."
+          "evidence": "Compact Home shelf cards now use a shared 110 pt width on phone layouts; browser runtime verification after the sizing change remains pending."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Home screen; no simulator run was performed in this change."
+          "status": "verified",
+          "evidence": "Hot-reloaded on the iPhone Duo in Device Hub (iOS 27.2); the 110 pt poster cards now fill the row with three cards, and remaining cards are reached by horizontal scrolling."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Home screen; no emulator run was performed in this change."
+          "evidence": "Compact Home shelf cards now use a shared 110 pt width on phone layouts; Android runtime verification after the sizing change remains pending."
         }
       }
     },
@@ -2191,7 +2191,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The status badge and next-episode control use a shared explicit 24px height; the compact label remains Next and wider cards retain Next ep. CSS output is generated, but browser runtime confirmation for this sizing adjustment remains pending."
+          "evidence": "The status badge and next-episode control now use a shared explicit 24px height; the compact label remains Next and wider cards retain Next ep. CSS/build output can be checked, but browser runtime confirmation for this sizing adjustment remains pending."
         },
         "ios": {
           "status": "unverified",
@@ -2231,15 +2231,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Rendered through the Expo web export at 440px; the Django web card keeps the equivalent .bg-card-body CSS gradient. No side-by-side browser capture of the two adapters yet."
+          "evidence": "UI architecture and generated browser bundle checks pass; no browser runtime pass was performed for this revision."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Rendered by the MediaCard on the iPhone Duo simulator; no pixel comparison against the web gradient yet."
+          "evidence": "The Now Playing media card was visible in Device Hub on iPhone Duo (iOS 27.2); gradient appearance was not separately inspected at full detail."
         },
         "android": {
           "status": "unverified",
-          "evidence": "No Android emulator pass was run."
+          "evidence": "Expo export --platform all compiled MediaCard; no Android runtime pass was performed for this revision."
         }
       }
     },
@@ -3397,9 +3397,74 @@
           "evidence": "Static page inventory; not imported by the native runtime."
         }
       }
+    },
+    "frontend/ui/mediaCardSizing.js": {
+      "components": [
+        "mediaCardGridWidth",
+        "playbackCardWidth"
+      ],
+      "register": "PLAYBACK",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Shared responsive grid sizing is used by Lists; native playback sizing uses three 110 pt cards plus gaps on compact phone layouts. Browser runtime verification remains pending."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) hot-reloaded the shared 110 pt Home shelf and compact Now Playing sizing; both right edges align at 110 pt × 3 plus the Home rail's 16 pt × 2 gaps. Comfortable and desktop variants were not exercised on iOS."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Native playback sizing uses three 110 pt cards plus gaps on compact phone layouts; Android runtime verification remains pending."
+        }
+      }
     }
   },
   "platform": {
+    "frontend/ui/CardScrim.native.jsx": {
+      "kind": "presentation",
+      "register": "MEDIA-CARD",
+      "components": [
+        "CardScrim"
+      ],
+      "purpose": "Render the media-card artwork scrim as a continuous native SVG gradient.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Platform-specific native adapter; browser appearance is owned by CardScrim.web.jsx."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) displayed the native Now Playing MediaCard with its gradient scrim; no pixel comparison was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Implemented with react-native-svg; no Android runtime pass for this revision."
+        }
+      }
+    },
+    "frontend/ui/CardScrim.web.jsx": {
+      "kind": "presentation",
+      "register": "MEDIA-CARD",
+      "components": [
+        "CardScrim"
+      ],
+      "purpose": "Render the media-card artwork scrim with the browser CSS gradient adapter.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Built for browser surfaces; no browser runtime pass for this revision."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to this web implementation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to this web implementation."
+        }
+      }
+    },
     "frontend/ui/barcodeEntry.web.js": {
       "kind": "adapter",
       "register": "SEARCH",
@@ -3896,19 +3961,19 @@
       "components": [
         "MediaCard"
       ],
-      "purpose": "Render the shared media card on every browser surface with the established DOM classes, hover/touch actions, rating popup, status and corner chips, faded in-card metadata overlay and theme rules. Home, library/search/discover/history/detail/list and collection surfaces all resolve this implementation through the same MediaCard import.",
+      "purpose": "Browser MediaCard implementation shared by list item cards and Now Playing; it preserves the existing grid/poster artwork and gradient behavior and accepts an optional header slot.",
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The browser adapter uses the shared 24px status and next-episode chip height; compact cards select Next and wider cards retain Next ep. Generated CSS is checked, but browser runtime confirmation for this sizing adjustment remains pending."
+          "evidence": "The browser adapter places status and next-episode chips in opposing corners, so narrow cards can collide. Compact CSS selects Next and wider cards retain Next ep; generated CSS is checked, but compact-breakpoint browser runtime verification remains pending."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Not applicable to this browser implementation."
+          "evidence": "Not applicable to the browser implementation."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Not applicable to this browser implementation."
+          "evidence": "Not applicable to the browser implementation."
         }
       }
     },
@@ -3922,7 +3987,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not applicable to this native counterpart."
+          "evidence": "Shared Now Playing presentation now composes MediaCard with a header slot; code and bundle checks are pending, and no browser runtime pass has been performed."
         },
         "ios": {
           "status": "unverified",
@@ -3930,7 +3995,7 @@
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the universal MediaCard; no emulator pass in this change."
+          "evidence": "Shared Now Playing presentation now composes MediaCard with a header slot; code and Expo checks are pending, and no Android runtime pass has been performed."
         }
       }
     },
