@@ -9,7 +9,7 @@ import { RatingStars } from './RatingStars';
 // list row still places server DOM (its `meta` and fallback `actions` slots).
 
 const aspect = { square: 'aspect-[1/1]', poster: 'aspect-[2/3] aspect-2/3', landscape: 'aspect-[2/3] aspect-2/3' };
-const chipBase = 'absolute z-20 bg-gray-900/90 text-white text-[11px] font-medium px-2 py-1 rounded-md shadow-md';
+const chipBase = 'absolute z-20 h-6 inline-flex items-center bg-gray-900/90 text-white text-[11px] leading-4 font-medium px-2 py-1 rounded-md shadow-md';
 const gridVariantClass = 'search-result-card media-card-hover-outline transition-all media-card-title-ellipsis media-card-title-bleed';
 const gridSquareVariantClass = 'search-result-card-square media-card-hover-outline transition-all media-card-title-ellipsis media-card-title-bleed';
 
@@ -38,7 +38,7 @@ function MediaTypeChip({ chip }) {
 }
 
 function StatusChip({ chip }) {
-  return <div className="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md">
+  return <div className="media-status-chip absolute top-2 left-2 h-6 bg-gray-900/90 text-white text-xs leading-4 px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md">
     <span className="sr-only">{chip.label}</span>
     <div className={`w-4 h-4 ${chip.colorClass}`} aria-hidden="true">
       <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -66,7 +66,10 @@ function CornerChip({ chip, labels }) {
     return <div className="absolute bottom-2 right-2 rounded-md border border-amber-500/30 bg-amber-500/15 px-2 py-1 text-[11px] font-medium text-amber-100 shadow-md" title={chip.title}>{chip.text}</div>;
   }
   const inner = chip.kind === 'next-episode'
-    ? <><ChevronRight /><span>{chip.text}</span></>
+    ? <><ChevronRight />{chip.compactText
+      ? <><span className="media-card-next-episode-full">{chip.text}</span>
+        <span className="media-card-next-episode-compact">{chip.compactText}</span></>
+      : <span>{chip.text}</span>}</>
     : <><span>{chip.text}</span><ChevronRight /></>;
   if (!chip.href) {
     return <span className={`${chipBase} top-2 right-2`} data-episode-queue="true">{chip.text}</span>;
@@ -74,7 +77,8 @@ function CornerChip({ chip, labels }) {
   return <a href={chip.href} {...{ 'hx-disable': '' }}
     className={`${chipBase} top-2 right-2 hover:bg-indigo-600 flex items-center gap-0.5 transition-colors`}
     data-episode-queue={chip.kind === 'queue' ? 'true' : undefined}
-    title={labels.nextEpisode}>{inner}</a>;
+    title={labels.nextEpisode}
+    aria-label={chip.kind === 'next-episode' ? labels.nextEpisode : undefined}>{inner}</a>;
 }
 
 function AltTitle({ text, label, inline }) {

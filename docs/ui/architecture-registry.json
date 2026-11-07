@@ -2190,16 +2190,16 @@
       "register": "MEDIA-CARD",
       "verification": {
         "web": {
-          "status": "verified",
-          "evidence": "Compiled for native presentation. Browser surfaces resolve the MediaCard.web.jsx implementation through the same MediaCard import; native and the shared React Native surfaces keep this implementation."
+          "status": "unverified",
+          "evidence": "The status badge and next-episode control use a shared explicit 24px height; the compact label remains Next and wider cards retain Next ep. CSS output is generated, but browser runtime confirmation for this sizing adjustment remains pending."
         },
         "ios": {
-          "status": "verified",
-          "evidence": "iOS 17.2 simulator: rendered the shared card on Home. The link routing, read-only/selection states, drag announcements and bulk refresh were not exercised; no action overlay, rating popup or accessibility pass."
+          "status": "unverified",
+          "evidence": "On iPhone Duo (Device Hub, iOS 27.2), compact Home Up Next cards were checked after hot reload; the play/status badge and Next chip render at matching heights. Link activation and full native consumer parity were not checked."
         },
         "android": {
-          "status": "verified",
-          "evidence": "Android 15 Pixel 7 AVD: rendered the shared card on Home and Library; demo images did not load. The link routing, read-only/selection states, drag announcements and bulk refresh were not exercised; no action overlay, rating popup or accessibility pass."
+          "status": "unverified",
+          "evidence": "The shared 24px chip sizing adjustment has not been checked at Android runtime; full native consumer parity remains unverified."
         }
       }
     },
@@ -3899,8 +3899,8 @@
       "purpose": "Render the shared media card on every browser surface with the established DOM classes, hover/touch actions, rating popup, status and corner chips, faded in-card metadata overlay and theme rules. Home, library/search/discover/history/detail/list and collection surfaces all resolve this implementation through the same MediaCard import.",
       "verification": {
         "web": {
-          "status": "verified",
-          "evidence": "Headless Chromium rendered Home, Collection, Discover, History and library surfaces through the shared browser card; poster metadata overlays the artwork bottom with the faded gradient, and hover action buttons appeared."
+          "status": "unverified",
+          "evidence": "The browser adapter uses the shared 24px status and next-episode chip height; compact cards select Next and wider cards retain Next ep. Generated CSS is checked, but browser runtime confirmation for this sizing adjustment remains pending."
         },
         "ios": {
           "status": "unverified",
@@ -3926,7 +3926,7 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the universal MediaCard; no simulator pass in this change."
+          "evidence": "On iPhone Duo (Device Hub, iOS 27.2), compact Home Up Next cards were checked after hot reload; the play/status badge and Next chip render at matching heights. Link activation and full native consumer parity were not checked."
         },
         "android": {
           "status": "unverified",

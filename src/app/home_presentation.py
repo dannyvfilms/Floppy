@@ -130,6 +130,7 @@ def home_labels():
     return {
         "altTitle": str(_("Show alternative title")),
         "nextEpisode": str(_("Jump to next episode")),
+        "nextEpisodeCompact": str(_("Next")),
         "noStatus": str(_("No Status")),
         "scrollLeft": str(_("Scroll left")),
         "scrollRight": str(_("Scroll right")),

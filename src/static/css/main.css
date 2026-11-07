@@ -9157,6 +9157,17 @@ html.light .theme-toggle-icon-moon {
     display: none;
   }
 }
+.media-card-next-episode-compact {
+  display: none;
+}
+@media (max-width: 600px), (orientation: landscape) and (pointer: coarse) and (max-width: 1000px) and (max-height: 720px), (orientation: landscape) and (hover: none) and (max-width: 1000px) and (max-height: 720px) {
+  body[data-mobile-grid="compact"] .media-card-next-episode-full {
+    display: none;
+  }
+  body[data-mobile-grid="compact"] .media-card-next-episode-compact {
+    display: inline;
+  }
+}
 .media-card .media-status-chip {
   z-index: 6;
 }

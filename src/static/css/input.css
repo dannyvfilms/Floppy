@@ -3327,6 +3327,20 @@ html.light .theme-toggle-icon-moon {
   z-index: 6;
 }
 
+.media-card-next-episode-compact {
+  display: none;
+}
+
+@media (max-width: 600px), (orientation: landscape) and (pointer: coarse) and (max-width: 1000px) and (max-height: 720px), (orientation: landscape) and (hover: none) and (max-width: 1000px) and (max-height: 720px) {
+  body[data-mobile-grid="compact"] .media-card-next-episode-full {
+    display: none;
+  }
+
+  body[data-mobile-grid="compact"] .media-card-next-episode-compact {
+    display: inline;
+  }
+}
+
 [data-quick-season-mobile="false"] .media-card-progress {
   display: none !important;
 }
