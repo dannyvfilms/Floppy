@@ -431,7 +431,7 @@
         },
         "ios": {
           "status": "verified",
-          "evidence": "iOS 17.2 simulator: rendered the shared search on Home; no suggestion, type-menu or barcode interaction and no VoiceOver pass."
+          "evidence": "On a physical iOS 27.2 Duo in Expo Go, the Home search field, type menu and empty-result suggestion were exercised; the field was also observed beside the open sidebar. Barcode and VoiceOver remain unverified."
         },
         "android": {
           "status": "verified",
@@ -1949,7 +1949,7 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Shared top bar and mobile navigation render in the Expo shell; no iOS runtime was exercised."
+          "evidence": "Expo Go on a physical iOS 27.2 Duo exercised the folded rail toggle, authenticated sidebar, search type picker and partial/full-open layouts. An isolated native-build simulator proof also exercised an open-menu pose transition. Accessibility remains unverified."
         },
         "android": {
           "status": "unverified",
@@ -2373,11 +2373,11 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compiled into the web bundle through mountSidebar; the shared sidebar was not exercised in a browser in this change."
+          "evidence": "The shared sidebar rendered on the local Home page in the in-app browser; Explore expanded and collapsed. No responsive or screen-reader pass was performed."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native shell drawer; no iOS simulator run was performed."
+          "evidence": "The authenticated sidebar opened and closed on a physical iOS 27.2 Duo in Expo Go with larger row tokens; partial and full-open layouts were observed. Saved-view interactions and VoiceOver remain unverified."
         },
         "android": {
           "status": "unverified",
@@ -3210,6 +3210,26 @@
         "android": {
           "status": "unverified",
           "evidence": "Settings nav row added for the shared settings navigation; browser anchors are supplied by the web adapter and iOS/Android runtime was not exercised."
+        }
+      }
+    },
+    "frontend/ui/PodcastEpisodeManager.jsx": {
+      "components": [
+        "PodcastEpisodeManager"
+      ],
+      "register": "PODCAST-EPISODES",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Headless Chromium against a local manual podcast show: opened the manager, added an episode, edited it, deleted it, and opened the episode track modal; the web bundle was served from the committed build."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Universal file uses React Native primitives and theme props; it is not placed in the native app shell and no simulator pass was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Universal file uses React Native primitives and theme props; it is not placed in the native app shell and no emulator pass was performed."
         }
       }
     }
@@ -4329,6 +4349,52 @@
           "evidence": "Expo export --platform all compiled the native wrapper; no emulator run was performed."
         }
       }
+    },
+    "frontend/ui/AlphabetBar.web.jsx": {
+      "kind": "presentation",
+      "register": "ALPHABET",
+      "components": [
+        "AlphabetBar",
+        "AlphabetEmpty"
+      ],
+      "purpose": "Browser alphabet anchors and empty-state link; real hrefs and server rail CSS.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Browser alphabet tests exercise anchors, glyph centring and the empty state."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export; no runtime pass recorded."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not run."
+        }
+      }
+    },
+    "frontend/ui/AlphabetBar.native.jsx": {
+      "kind": "presentation",
+      "register": "ALPHABET",
+      "components": [
+        "AlphabetBar",
+        "AlphabetEmpty"
+      ],
+      "purpose": "Native alphabet presentation delegating to the shared React Native component.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Browser alphabet tests exercise anchors, glyph centring and the empty state."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled by the Expo export; no runtime pass recorded."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not run."
+        }
+      }
     }
   },
   "web_adapters": {
@@ -4345,22 +4411,22 @@
       "purpose": "Django/browser integration for the registered surface."
     },
     "frontend/ui/PageSlot.web.jsx": {
-    "register": "PAGE",
-    "purpose": "Browser slot host for the shared page compositions: adopt a server-owned region's nodes into the shared view's section order only after React renders, keep the server node as the no-JavaScript fallback and return every node on unmount, without generating HTML or moving Alpine/htmx behaviour into presentation props."
-  },
-  "frontend/ui/mountLibraryPage.jsx": {
-    "register": "LIBRARY",
-    "purpose": "Wire the release library page into LibraryPageView: the server heading, Alpine filter form/toolbar, bulk selection, group banner, htmx table/grid and loading indicator are adopted as slots so the shared view owns section order while the release table and column menu keep their server implementation."
-  },
-  "frontend/ui/mountListsPage.jsx": {
-    "register": "LISTS",
-    "purpose": "Wire the release Lists hub into ListsPageView: the server heading/actions, Alpine search and sort/type toolbar, htmx card grid or empty state, create/import modals and loading indicator are adopted as slots so sorting, creation and links keep their release behaviour."
-  },
-  "frontend/ui/mountListDetailPage.jsx": {
-    "register": "LISTS",
-    "purpose": "Wire the release list detail page into ListDetailPageView: the server header, Alpine filter/search toolbar, htmx table/grid/tier results, create/edit modal and loading indicator are adopted as slots so permissions, htmx swaps and server forms stay server-owned."
-  },
-  "frontend/ui/mountMediaCard.jsx": {
+      "register": "PAGE",
+      "purpose": "Browser slot host for the shared page compositions: adopt a server-owned region's nodes into the shared view's section order only after React renders, keep the server node as the no-JavaScript fallback and return every node on unmount, without generating HTML or moving Alpine/htmx behaviour into presentation props."
+    },
+    "frontend/ui/mountLibraryPage.jsx": {
+      "register": "LIBRARY",
+      "purpose": "Wire the release library page into LibraryPageView: the server heading, Alpine filter form/toolbar, bulk selection, group banner, htmx table/grid and loading indicator are adopted as slots so the shared view owns section order while the release table and column menu keep their server implementation."
+    },
+    "frontend/ui/mountListsPage.jsx": {
+      "register": "LISTS",
+      "purpose": "Wire the release Lists hub into ListsPageView: the server heading/actions, Alpine search and sort/type toolbar, htmx card grid or empty state, create/import modals and loading indicator are adopted as slots so sorting, creation and links keep their release behaviour."
+    },
+    "frontend/ui/mountListDetailPage.jsx": {
+      "register": "LISTS",
+      "purpose": "Wire the release list detail page into ListDetailPageView: the server header, Alpine filter/search toolbar, htmx table/grid/tier results, create/edit modal and loading indicator are adopted as slots so permissions, htmx swaps and server forms stay server-owned."
+    },
+    "frontend/ui/mountMediaCard.jsx": {
       "register": "MEDIA-CARD",
       "purpose": "Django/browser integration for the registered surface."
     },
@@ -4691,6 +4757,10 @@
     "frontend/settings/mountSettingsView.jsx": {
       "register": "SET-NAV",
       "purpose": "Mount the shared settings page composition from the server navigation/page model: render the shared nav and page wrapper, keep the existing server-owned forms by re-parenting the page content into the composition slot, and process the new boosted anchors with HTMX."
+    },
+    "frontend/ui/mountPodcastEpisodeManager.jsx": {
+      "register": "PODCAST-EPISODES",
+      "purpose": "Browser adapter for the shared manual podcast episode manager: mount the island, read the current theme palette, load the show's manual episodes as JSON, and POST create/edit/delete through the existing Django forms and CSRF contract."
     }
   }
 }

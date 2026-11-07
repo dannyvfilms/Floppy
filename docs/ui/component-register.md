@@ -113,7 +113,8 @@ can inform a focused completion pass.
 - Data: request/user/context, template tags and navigation preferences in `src/users/views.py`.
 - Reuse/blockers: share navigation values/tokens; document layout, history and Safari rail need platform adapters. Do not merge distinct public/auth semantics.
 - Status: `Partial / coexisting`. The signed-in sidebar (logo, media-type links with saved-view groups, the Explore section with pinning and pinned lists, Appearance, Settings, Logout) is React-owned through `frontend/ui/Sidebar.jsx` and `mountSidebar.jsx`, fed by `src/app/sidebar_model.py` and the `sidebar_react` tag. Icons travel as parsed shapes through one shared `Icon`. Pins, pinned lists and group open states keep their existing localStorage keys, so the list pin buttons on pages still work. The mobile open and close state, the top bar and the public shell stay Alpine and Django. The onboarding banner stays server-rendered and is placed into the sidebar. The Alpine sidebar markup stays inside the host as the fallback.
-- Native readiness: `DOM`. Its presentation (`Sidebar.jsx`, 342 lines) is React DOM with CSS classes and has 35 browser-API references; a rewrite to `react-native` primitives is owed before native.
+- Expo iOS uses `NativeShell` as the platform adapter around shared `Sidebar` and search: the native rail toggles an animated, non-modal sidebar, with larger sidebar rows on a supported foldable or vertical rail. Native reserved regions or Expo Go's system arrangement provide the partially folded layout. Expo Android and browser retain the existing `Shell`/`MobileNav` path. On a physical iOS 27.2 Duo in Expo Go, the folded rail toggle, authenticated sidebar, search type picker and partial/full-open layouts were exercised. On the browser Home page, Explore expanded and collapsed. Accessibility, responsive browser states and Android runtime remain unverified for this change. Retirement of the web fallback remains dependent on its existing parity and accessibility checks.
+- Native readiness: `Primitives`. The shared `Sidebar` and `TopBar` use React Native presentation; platform adapters provide navigation behavior. The Expo iOS toolbar and adaptive layout remain subject to the runtime checks above.
 - Verification: `app.tests.test_sidebar_model` (props, active page, all 95 icons parse). Chromium (built-in browser, macOS): the sidebar mounts, Movies is active, Explore opens, pinning Calendar moves it and persists, a pinned list shows under Lists, saved-view reorder mode shows handles, and finishing it saved the new order on the server. A native drag, the delete confirm dialog and a phone-width open and close were not exercised. iOS and Android not tested.
 - Validation targets: `src/app/tests/views/test_boosted_navigation.py`; menu/focus parity needs browser observation.
 
@@ -333,6 +334,7 @@ can inform a focused completion pass.
   the page's existing query scope is reused, including provider deduplication.
   Query-budget pins explicitly account for that fixed lookup and pass.
 - Related work: none recorded. Deferrals: none for the browser component.
+- Components: `AlphabetBar`, `AlphabetEmpty`.
 
 ### FILTERS — Filter state, menus and saved views
 
@@ -374,7 +376,8 @@ can inform a focused completion pass.
 - Data: `src/app/search_views.py`, provider services, manual artist/album routes; API search parity unverified.
 - Reuse/blockers: result/selection values shared; browser keyboard/file/blob and ZXing decoding need native camera equivalents.
 - Status: `Partial / coexisting`. The header search form (input, media-type menu, barcode button and its error toast) is React-owned through `frontend/ui/GlobalSearch.jsx` and `mountGlobalSearch.jsx`, fed by the `global_search_react` tag in `app_tags.py`. It appears on every signed-in page. The suggestions list is still a server fragment that htmx swaps into `#search-suggestions`, and `searchAutocomplete.js` and `searchShortcut.js` still drive its keyboard handling through the same element ids. The Alpine form stays inside the host as the fallback. Search results pages are unchanged.
-- Native readiness: `DOM`. Its presentation (`GlobalSearch.jsx`, 140 lines) is React DOM with CSS classes and has 14 browser-API references; a rewrite to `react-native` primitives is owed before native.
+- Native readiness: `Primitives`. `GlobalSearch` uses shared React Native presentation, with `SearchSlot` supplying native transport and scanner behavior. The iOS shell places it across the content width and removes the blue outline on focus.
+- This change: the iOS 27.2 Duo in Expo Go displayed the search type picker and an empty-result suggestion on the fully open screen. The search field was also observed beside the open sidebar. VoiceOver, barcode, Android runtime and browser interactions specific to this change were not tested.
 - Verification: `app.tests.test_global_search_props`. Chromium (built-in browser, macOS) on `/discover`: form mounts with the right placeholder, typing shows suggestions, the type menu opens with 12 options, picking Books submits `/search?q=matrix&media_type=book`. The barcode scan flow (camera, decode, error toast) was ported but not exercised, and nothing was checked on a phone or in other themes. iOS and Android not tested.
 - Validation targets: `src/app/tests/test_search_suggestions.py`, `src/app/tests/views/test_media_search.py`, barcode selfcheck.
 
@@ -449,7 +452,7 @@ can inform a focused completion pass.
 
 - Purpose/usage: dialogs and manual creation.
 - Status: `Deferred (blocker)`. The Track popup and manual-entry forms are server forms with htmx out-of-band responses. The blocker, port order and reopening condition are recorded under POPUP-HOST (Track form). A few includes use `Button`, `Spinner` and `Badge`.
-- Implementation: `src/templates/app/create_entry.html`, fill-track/music/podcast modals, metadata panel; `src/static/js/mediaStatusDateHandler.js`, `episodeBulkTrackForm.js`.
+- Implementation: `src/templates/app/create_entry.html`, fill-track/music/podcast modals, metadata panel; `src/static/js/mediaStatusDateHandler.js`, `episodeBulkTrackForm.js`. Create Custom Entry now also offers an optional RSS Feed URL for custom podcasts; it is stored on `PodcastShow` and queues the existing RSS import. The React track-form island mirrors the legacy `[data-track-modal-root]` Alpine open state (`frontend/ui/mountTrackForm.jsx`), so its portal dialog stays hidden until the user opens the legacy popup instead of covering the page from first paint.
 - Contract: medium fields/repeat identity, date/status/progress coupling, notes/errors/delete/events; bulk range/add modes/date distribution remain supported.
 - Data: `src/app/track_modal_views.py`, `save_views.py`, Django forms and music/podcast handlers.
 - Backend normalization: season modals use the tracked item's coordinate; missing
@@ -521,11 +524,24 @@ can inform a focused completion pass.
 
 - Purpose/usage: artist relations/discography, album tracks, show/episode detail.
 - Status: `Legacy`. Artist, album and podcast pages are server templates and Alpine; they use shared React `Badge` (type, year, genre pills), the rating picker and the Add-to-lists form.
-- Implementation: `src/templates/app/music_album_detail.html`, `podcast_show_detail.html`, music/artist/album/podcast components in map.
+- Implementation: `src/templates/app/music_album_detail.html`, `podcast_show_detail.html`, music/artist/album/podcast components in map. Podcast episode rows now render an optional description and an empty state; the manual-show episode header mounts the separate `PODCAST-EPISODES` manager.
 - Contract: hierarchy/deferred art, per-track actions/history/notes/scores, episode filter/pagination, repeats and show tracking.
 - Data: `src/app/music_views.py`, `music_album_views.py`, `podcast_views.py`; web episode JSON/HTML is not proven native API parity.
 - Reuse/blockers: consume shared cards/rows/tracking; preserve hierarchy/feed behavior and explicit playback boundaries.
 - Validation targets: `src/app/tests/views/test_music_release_views.py`, `test_podcast_show_detail.py`, `test_podcast_detail_rss_refresh.py`.
+
+### PODCAST-EPISODES — Manual podcast episode management
+
+- Purpose/usage: add, edit and delete episodes on a podcast show created through Create Custom Entry.
+- Status: `Partial / coexisting`. React owns the manager trigger, dialog, episode list, form and inline delete confirmation through `PodcastEpisodeManager.jsx`; the episode rows, detail header and no-JavaScript management page remain server-rendered.
+- Native readiness: `Primitives`. The dialog and form use React Native primitives, shared `Button`, `FormTextField`, `FormError`, `FormStatus` and `Dialog`; it is not mounted in the native shell.
+- Implementation: `frontend/ui/PodcastEpisodeManager.jsx`, `frontend/ui/mountPodcastEpisodeManager.jsx`, `src/templates/app/podcast_episodes_manage.html`. The manager trigger is mounted from `src/templates/app/components/detail_secondary_content.html` and `src/templates/app/podcast_show_detail.html`.
+- Contract: manual shows only (the viewer must track the show); create/edit submit the existing Django form and return field errors as JSON; delete asks for confirmation; duration accepts minutes, mm:ss or h:mm:ss; manual episodes reuse the normal PodcastEpisode catalog so episode tracking, playback progress, history and statistics keep working. Provider-backed shows keep their feed-owned catalog.
+- Data: `src/app/podcast_views.py` (`podcast_episodes_manage`, `podcast_episode_add`, `podcast_episode_edit`, `podcast_episode_delete`), `src/app/forms.py` (`PodcastEpisodeForm`), `src/app/models/podcast.py` (`description`, `image`), migration `0223_podcastepisode_description_podcastepisode_image`. Create Custom Entry can also store an optional RSS feed and queue the existing RSS import.
+- Reuse/blockers: remaining legacy consumers are the episode list rows, the standalone show page and the no-JavaScript fallback page. They move when the MUSIC episode-row family is ported; the manager no longer depends on them.
+- Verification: Django tests (`app.tests.views.test_manual_podcast_episodes`, `test_entry`, `test_podcast_show_detail`, `test_podcast_rss_refresh`, `test_music_genres`), `npm run check:ui`, `npm run check:ui-architecture` and `python3 scripts/check_ui_docs.py` pass. Headless Chromium against a local manual show verified the trigger, add, edit, delete and the normal episode track modal. iOS and Android were not run.
+- Related work: #1719.
+- Deferrals: none.
 
 ### PEOPLE — People/studios, credits and medium extras
 
@@ -754,12 +770,14 @@ templates are compatibility/composition sources, not equally active parallel pag
   setups (official, unofficial) as two side-by-side cards below it (one fold each, stacked on phones), and every folded `SetupGuide.jsx` guide
   (Plex, Jellyfin, Emby, Seerr) now renders as two cards, status and copy field first, steps second, with a 1rem gap
   (`.ui-guide-stack`, and a margin between separate guide roots). Emby's and Seerr's guides are folded with a primary copy field (the Jellyfin official
-  guide shows a "Needs update" badge when the template is outdated; no last-received badge because Floppy stores no
-  Jellyfin webhook timestamp, so adding one needs a user-model migration), above the shared
+  guide shows a "Needs update" badge when the template is outdated and warns KefinTweaks users that its watchlist
+  rating of 1 is not a real rating, so they should remove the Rating field from the template; no last-received
+  badge because Floppy stores no Jellyfin webhook timestamp, so adding one needs a user-model migration), above the shared
   `AccountConnection.jsx` card (`provider_views`, new `editable` flag: connected accounts get an "Edit connection"
   toggle that re-submits server URL, API key and username, prefilled from non-secret fields; the API key is never
   serialized). Status: React-owned on browser (Connection tab), verified in the browser only; iOS and Android not
-  verified. Remaining legacy, with blockers: Jellyfin Import/Sync/Tracking cards and the Emby/Kodi Sync push forms
+  verified. The KefinTweaks copy addition is covered by the server-render guide test; it changes no layout or styling.
+  Remaining legacy, with blockers: Jellyfin Import/Sync/Tracking cards and the Emby/Kodi Sync push forms
   (per-tab conditional flags share one POST that must preserve the other tab's flags, covered by
   `test_provider_integration_sections`; reopen when those flags move to `provider_forms`); Kodi, Navidrome and Nuvio
   guides stay expanded (their URL sits mid-step, not a plain "set the URL" step; reopen when the step copy is split). Remaining legacy, each with a

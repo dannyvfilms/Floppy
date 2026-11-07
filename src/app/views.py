@@ -292,7 +292,11 @@ from app.music_views import (
 )
 from app.people_views import person_detail, studio_detail
 from app.podcast_views import (
+    podcast_episode_add,
+    podcast_episode_delete,
+    podcast_episode_edit,
     podcast_episodes_api,
+    podcast_episodes_manage,
     podcast_mark_all_played,
     podcast_save,
     podcast_show_delete,
@@ -1301,12 +1305,21 @@ def _create_manual_podcast_show(request, form):
         title=item.title,
         image=item.image or "",
         description=item.synopsis or "",
+        rss_feed_url=form.cleaned_data.get("rss_feed_url") or "",
     )
 
     tracker = tracker_form.save(commit=False)
     tracker.user = request.user
     tracker.show = show
     tracker.save()
+
+    if show.rss_feed_url:
+        try:
+            from app.tasks_podcast import refresh_podcast_show_from_rss_task
+
+            refresh_podcast_show_from_rss_task.delay(show.id)
+        except Exception:
+            logger.exception("Could not queue the RSS import for %s", show.title)
 
     msg = gettext("%(value_1)s added successfully.") % {"value_1": item}
     messages.success(request, msg)
@@ -2378,7 +2391,11 @@ __all__ = [
     "openlibrary",
     "parse_date",
     "person_detail",
+    "podcast_episode_add",
+    "podcast_episode_delete",
+    "podcast_episode_edit",
     "podcast_episodes_api",
+    "podcast_episodes_manage",
     "podcast_mark_all_played",
     "podcast_save",
     "podcast_show_delete",
