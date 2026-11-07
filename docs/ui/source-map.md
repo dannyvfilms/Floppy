@@ -726,7 +726,7 @@ Status: `Partial / coexisting`
 - `frontend/providers/mountCredentials.jsx`
 - `frontend/providers/mountSetupGuide.jsx`
 - `frontend/providers/ProviderSettingsFormView.jsx`
-- `src/users/provider_guides.py`
+- `src/users/provider_guides.py` (includes the Jellyfin KefinTweaks rating-flag warning)
 - `src/users/provider_forms.py`
 - `src/templates/users/providers/setup_guide.html`
 - `src/templates/users/providers/setup_guide_parts.html`
