@@ -5,6 +5,8 @@ import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.core.cache import cache
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
@@ -413,6 +415,46 @@ class PodcastMarkAllPlayedView(drf_views.APIView):
             show,
         )
         return Response({"marked_played": created_count}, status=HTTP.OK)
+
+
+# /api/v1/podcasts/episodes/[episode_id]/notes/
+class PodcastEpisodeNotesView(drf_views.APIView):
+    """Edit private episode notes without recording a play."""
+
+    @extend_schema(request=OpenApiTypes.OBJECT, responses={200: OpenApiTypes.OBJECT})
+    def patch(self, request, episode_id):
+        """Save notes on the caller's Podcast tracker for the episode."""
+        episode = (
+            PodcastEpisode.objects.select_related("show")
+            .filter(id=episode_id)
+            .first()
+        )
+        if episode is None:
+            return Response({"detail": "Episode not found."}, status=HTTP.NOT_FOUND)
+        if "notes" not in request.data:
+            return Response(
+                {"detail": "'notes' is required."},
+                status=HTTP.BAD_REQUEST,
+            )
+        notes = request.data.get("notes")
+        if notes is not None and not isinstance(notes, str):
+            return Response(
+                {"detail": "'notes' must be a string or null."},
+                status=HTTP.BAD_REQUEST,
+            )
+        podcast = fork_services_podcast.set_episode_notes(
+            request.user,
+            episode.show,
+            episode,
+            notes or "",
+        )
+        return Response(
+            {
+                "episode_id": episode.id,
+                "notes": podcast.notes if podcast is not None else "",
+            },
+            status=HTTP.OK,
+        )
 
 
 # /api/v1/podcasts/episodes/plays/

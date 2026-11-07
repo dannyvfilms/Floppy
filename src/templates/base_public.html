@@ -69,29 +69,31 @@
         {# Simple header for public pages #}
         <header class="bg-[var(--color-sidebar)] border-b border-[var(--color-border)] shadow-md">
           <div class="container mx-auto px-4">
-            <div class="h-16 flex items-center justify-between">
-              <h1 class="flex items-center">
-                {% if user.is_authenticated and user.logo_style == 'monochrome' %}
-                  <img src="{% static 'img/floppy-logo-white.png' %}"
+            {% shell_topbar_react public=True as shell_topbar %}{% if shell_topbar.props %}{{ shell_topbar.props|json_script:shell_topbar.id }}{% endif %}<div data-shell-root data-props-id="{{ shell_topbar.id }}">
+              <div class="h-16 flex items-center justify-between">
+                <h1 class="flex items-center">
+                  {% if user.is_authenticated and user.logo_style == 'monochrome' %}
+                    <img src="{% static 'img/floppy-logo-white.png' %}"
+                         alt="Floppy"
+                         width="158"
+                         height="48"
+                         class="h-9 w-[158px] object-cover object-center">
+                  {% else %}
+                  <img src="{% static 'img/floppy-logo.png' %}"
+                       srcset="{% static 'img/floppy-logo.png' %} 1x, {% static 'img/floppy-logo@2x.png' %} 2x"
                        alt="Floppy"
                        width="158"
                        height="48"
-                       class="h-9 w-[158px] object-cover object-center">
-                {% else %}
-                <img src="{% static 'img/floppy-logo.png' %}"
-                     srcset="{% static 'img/floppy-logo.png' %} 1x, {% static 'img/floppy-logo@2x.png' %} 2x"
-                     alt="Floppy"
-                     width="158"
-                     height="48"
-                     class="h-9 w-auto">
+                       class="h-9 w-auto">
+                  {% endif %}
+                </h1>
+                {% if REGISTRATION %}
+                  <a href="{% url 'account_login' %}"
+                     class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors text-sm">
+                    {% translate "Sign In" %}
+                  </a>
                 {% endif %}
-              </h1>
-              {% if REGISTRATION %}
-                <a href="{% url 'account_login' %}"
-                   class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors text-sm">
-                  {% translate "Sign In" %}
-                </a>
-              {% endif %}
+              </div>
             </div>
           </div>
         </header>

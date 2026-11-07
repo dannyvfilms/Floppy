@@ -1,4 +1,5 @@
 from django import forms
+from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
@@ -35,9 +36,17 @@ def validate_public_slug(raw_slug, *, exclude_pk=None):
 
 
 class CollaboratorsWidget(s2forms.ModelSelect2MultipleWidget):
-    """Custom widget for selecting multiple users."""
+    """Custom widget for selecting multiple shareable users."""
 
     search_fields = ["username__icontains"]
+
+    def get_queryset(self):
+        """Only search accounts a list can actually be shared with."""
+        return get_user_model().objects.filter(
+            is_active=True,
+            is_demo=False,
+            is_test_account=False,
+        )
 
 
 class TagsField(forms.MultipleChoiceField):
@@ -56,10 +65,16 @@ class CustomListForm(forms.ModelForm):
         label=_("Public (read-only access)"),
         help_text=_("Anyone with the link can view this list"),
     )
+    visibility = forms.ChoiceField(
+        required=False,
+        choices=CustomList.VISIBILITY_CHOICES,
+        label=_("Visibility"),
+        help_text=_("Choose who can find and open this list."),
+    )
     include_notes = forms.BooleanField(
         required=False,
         label=_("Include Notes"),
-        help_text=_("Show the owner's notes on public list pages"),
+        help_text=_("Show the owner's notes on shared list pages"),
     )
     is_smart = forms.BooleanField(
         required=False,
@@ -89,15 +104,20 @@ class CustomListForm(forms.ModelForm):
         """Bind form to model."""
 
         model = CustomList
-        labels = {"collaborators": _("Collaborators")}
+        labels = {
+            "collaborators": _("Collaborators"),
+            "viewers": _("Shared with (view only)"),
+        }
         fields = [
             "name",
             "description",
             "tags",
             "collaborators",
+            "viewers",
             "allow_recommendations",
             "is_smart",
             "is_public",
+            "visibility",
             "include_notes",
             "public_slug",
         ]
@@ -106,6 +126,13 @@ class CustomListForm(forms.ModelForm):
                 attrs={
                     "data-minimum-input-length": 1,
                     "data-placeholder": _("Search users to add..."),
+                    "data-allow-clear": "false",
+                },
+            ),
+            "viewers": CollaboratorsWidget(
+                attrs={
+                    "data-minimum-input-length": 1,
+                    "data-placeholder": _("Search users to share view access..."),
                     "data-allow-clear": "false",
                 },
             ),
@@ -118,6 +145,7 @@ class CustomListForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if self.instance and self.instance.pk:
             self.initial["is_public"] = self.instance.visibility == "public"
+            self.initial["visibility"] = self.instance.visibility
             self.initial["include_notes"] = self.instance.include_notes
             self.initial["tags"] = self._normalize_tags(self.instance.tags)
             self.initial["is_smart"] = self.instance.is_smart
@@ -127,7 +155,9 @@ class CustomListForm(forms.ModelForm):
             existing_tags.extend(list(available_tags))
         elif self.user:
             for custom_list in CustomList.objects.filter(
-                Q(owner=self.user) | Q(collaborators=self.user),
+                Q(owner=self.user)
+                | Q(collaborators=self.user)
+                | Q(viewers=self.user),
             ).only("tags"):
                 existing_tags.extend(custom_list.tags or [])
 
@@ -151,13 +181,17 @@ class CustomListForm(forms.ModelForm):
         ]
 
     def save(self, commit=True):
-        """Save the list with visibility mapped from the public toggle."""
+        """Save the list with visibility mapped from the submitted controls."""
         instance = super().save(commit=False)
-        is_public = bool(self.cleaned_data.get("is_public"))
-        instance.visibility = "public" if is_public else "private"
-        if not is_public:
+        visibility = self.cleaned_data.get("visibility")
+        if not visibility:
+            visibility = "public" if self.cleaned_data.get("is_public") else "private"
+        instance.visibility = visibility
+        if visibility not in ("public", "unlisted"):
             instance.allow_recommendations = False
             instance.include_notes = False
+        if visibility != "public":
+            instance.allow_recommendations = False
 
         is_smart = bool(self.cleaned_data.get("is_smart"))
         was_smart = bool(

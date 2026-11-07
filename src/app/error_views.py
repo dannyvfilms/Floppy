@@ -1,4 +1,5 @@
 import traceback
+from http import HTTPStatus
 from urllib.parse import urlparse
 
 from django.contrib import messages
@@ -9,6 +10,7 @@ from django.shortcuts import redirect, render
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.translation import gettext as _
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
@@ -124,6 +126,9 @@ def render_error_page(
     error_report_id: str | None = None,
     extra_lines: list[str] | None = None,
     extra_context: dict[str, object] | None = None,
+    checks: list[str] | None = None,
+    support: dict[str, str] | None = None,
+    actions: dict[str, str] | None = None,
 ) -> HttpResponse:
     """Render a custom error page with a copyable traceback panel."""
     context = {
@@ -150,6 +155,50 @@ def render_error_page(
 
     if extra_context:
         context.update(extra_context)
+
+    if support is None and context.get("error_support_text"):
+        support = {
+            "title": context.get("error_support_title", "Provider note"),
+            "body": context["error_support_text"],
+            "linkLabel": context.get("error_support_link_label", "Open documentation"),
+            "href": context.get("error_support_url", ""),
+        }
+
+    if actions is None:
+        actions = {"homeHref": reverse("home")}
+        if status_code == HTTPStatus.FORBIDDEN:
+            actions["loginHref"] = reverse("account_login")
+        if status_code in (
+            HTTPStatus.INTERNAL_SERVER_ERROR,
+            HTTPStatus.SERVICE_UNAVAILABLE,
+        ):
+            actions["retryHref"] = request.get_full_path()
+    actions.setdefault(
+        "reportIssueHref",
+        "https://github.com/dannyvfilms/Floppy/issues",
+    )
+
+    context["error_recovery_props"] = {
+        "status": status_code,
+        "heading": heading,
+        "message": error_message,
+        "checks": checks or [],
+        "support": support,
+        "report": context["error_report"],
+        "reportTitle": context["error_report_title"],
+        "reportNote": context["error_report_note"],
+        "labels": {
+            "copy": _("Copy"),
+            "copied": _("Copied"),
+            "reportIssue": _("Report the issue"),
+            "home": _("Back to Home"),
+            "login": _("Log In"),
+            "retry": _("Try Again"),
+            "checks": _("Quick checks"),
+            "traceback": _("Traceback"),
+        },
+        "actions": actions,
+    }
 
     return render(request, template_name, context, status=status_code)
 
@@ -183,6 +232,14 @@ def permission_denied(request: HttpRequest, exception: BaseException) -> HttpRes
             "contact an administrator."
         ),
         exception=exception,
+        checks=[
+            _("Confirm you're logged in and your session hasn't expired."),
+            _("Reload the page and try again."),
+            _(
+                "If you're using a PWA, open the site in Safari once to refresh "
+                "cookies."
+            ),
+        ],
     )
 
 
@@ -317,4 +374,30 @@ def csrf_failure(
             ),
         ],
         extra_context={"reason": reason},
+        checks=[
+            *([_("CSRF reason: %(reason)s") % {"reason": reason}] if reason else []),
+            _("Reload the page and try again."),
+            _(
+                "If you're using the iOS PWA, open the site in Safari once to "
+                "refresh cookies."
+            ),
+            _(
+                "Confirm cookies are allowed and you're not switching between "
+                "http/https or domains."
+            ),
+            _(
+                "Admins: verify CSRF_TRUSTED_ORIGINS and URLS match the domain "
+                "you're using."
+            ),
+        ],
+        support={
+            "title": _("Using a Reverse Proxy?"),
+            "body": _(
+                "If you're accessing Floppy through a reverse proxy, you need to "
+                "set the URLS environment variable to your application URL. For "
+                "example, https://floppy.mydomain.com."
+            ),
+            "linkLabel": "",
+            "href": "",
+        },
     )

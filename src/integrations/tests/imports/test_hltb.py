@@ -24,6 +24,9 @@ class ImportHowLongToBeat(TestCase):
 
     def setUp(self):
         """Create user for the tests."""
+        enabled = patch("app.providers.igdb.enabled", return_value=True)
+        enabled.start()
+        self.addCleanup(enabled.stop)
         self.search_patcher = patch("app.providers.services.search")
         self.mock_search = self.search_patcher.start()
         self.addCleanup(self.search_patcher.stop)
@@ -44,6 +47,16 @@ class ImportHowLongToBeat(TestCase):
     def test_import_counts(self):
         """Test basic counts of imported games."""
         self.assertEqual(Game.objects.filter(user=self.user).count(), 1)
+
+    def test_missing_igdb_fails_with_a_clear_error(self):
+        """An unconfigured resolver must not surface as an unexpected failure."""
+        with patch("app.providers.igdb.enabled", return_value=False):
+            with self.assertRaisesRegex(
+                hltb.MediaImportError,
+                "IGDB is not configured",
+            ):
+                with Path(mock_path / "import_hltb_game.csv").open("rb") as file:
+                    hltb.importer(file, self.user, "new")
 
     def test_historical_records(self):
         """Test historical records creation during import."""

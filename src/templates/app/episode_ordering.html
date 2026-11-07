@@ -13,7 +13,9 @@
   {% translate "Chosen" as label_chosen %}
   {% translate "Archived" as label_archived %}
   {% translate "Combined" as label_combined %}
+  {{ episode_ordering_props|json_script:"episode-ordering-props" }}
   <div class="mx-auto max-w-5xl space-y-6">
+    <div data-episode-ordering-root data-props-id="episode-ordering-props">
     <header>
       <a href="{{ tv.item|media_url }}"
          class="inline-flex items-center gap-1 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors mb-3">
@@ -281,5 +283,6 @@
         </form>
       </section>
     {% endif %}
+    </div>
   </div>
 {% endblock content %}

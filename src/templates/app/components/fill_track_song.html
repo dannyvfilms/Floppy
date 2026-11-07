@@ -3,6 +3,7 @@
 {% load app_tags %}
 {% load user_tags %}
 {% load ui_tags %}
+{% load track_tags %}
 
 
 {# Track Song Modal - mirrors fill_track_episode.html #}
@@ -178,7 +179,17 @@
           {% endif %}
         {% endif %}
 
-        <form method="post"
+        {% song_track_form album track music as song_form %}
+        {% if song_form %}
+          {% with song_form.formId|add:"-props" as song_form_props_id %}
+            {{ song_form|json_script:song_form_props_id }}
+            <div data-track-form-root data-props-id="{{ song_form_props_id }}"></div>
+          {% endwith %}
+        {% endif %}
+
+        <form id="{% if song_form %}{{ song_form.formId }}{% endif %}"
+              data-track-form-legacy
+              method="post"
               action="{% if music and music.item and music.item.media_type == 'podcast' %}{% url 'podcast_save' %}{% else %}{% url 'song_save' %}{% endif %}?next={{ request.path }}"
               @submit="closeTrackModal($el)"
               {% if music and music.item and music.item.media_type == 'podcast' %}

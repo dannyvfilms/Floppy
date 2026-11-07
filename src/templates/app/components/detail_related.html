@@ -1,0 +1,38 @@
+{% load i18n %}
+{% if props %}{{ props|json_script:props_id }}{% endif %}
+<div data-detail-related-root data-props-id="{{ props_id }}">
+  <div data-detail-related-fallback>
+    {% for section in sections %}
+      <section class="mb-8">
+        <h2 class="text-xl font-bold mb-4">{{ section.label }}</h2>
+        <div class="detail-media-grid">
+          {% for item in section.items %}
+            <a href="{{ item.model.href }}" class="block">
+              {% if item.model.image.src %}
+                <img src="{{ item.model.image.src }}" alt="{{ item.model.title }}" loading="lazy"
+                     class="w-full rounded-lg aspect-[2/3] object-cover bg-[var(--color-surface-alt)]">
+              {% endif %}
+              <p class="mt-2 text-sm font-medium">{{ item.model.title }}</p>
+            </a>
+          {% endfor %}
+        </div>
+      </section>
+    {% endfor %}
+    {% if steam_dlcs %}
+      <section class="mb-8">
+        <h2 class="text-xl font-bold mb-4">{% translate "DLCs" %}</h2>
+        <div class="detail-media-grid">
+          {% for dlc in steam_dlcs %}
+            <a href="{{ dlc.url }}" target="_blank" rel="noopener noreferrer" class="block">
+              {% if dlc.image %}
+                <img src="{{ dlc.image }}" alt="" loading="lazy"
+                     class="w-full rounded-lg aspect-[460/215] object-cover">
+              {% endif %}
+              <p class="mt-2 text-sm font-medium">{{ dlc.title }}</p>
+            </a>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+  </div>
+</div>

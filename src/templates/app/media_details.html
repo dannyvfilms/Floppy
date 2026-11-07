@@ -3,6 +3,7 @@
 
 {% load app_tags %}
 {% load user_tags %}
+{% load ui_tags %}
 {% load humanize %}
 {% load static %}
 
@@ -58,7 +59,8 @@
               <div id="video-synopsis-content">{% include "app/components/detail_synopsis.html" %}</div>
               {% if media.source == 'youtube' %}<div hx-get="{{ request.path }}?fragment=video-metadata" hx-trigger="load" hx-swap="none"></div>{% endif %}
             {% else %}
-              {% include "app/components/detail_synopsis.html" %}
+              <div data-detail-composition-legacy="synopsis">{% include "app/components/detail_synopsis.html" %}</div>
+              {% detail_composition "synopsis" %}
             {% endif %}
           </div>
         </div>
@@ -74,7 +76,8 @@
           <div class="detail-flat-top__info md:w-3/4">
             <div class="detail-flat-top__title">{% include "app/components/detail_title_block.html" %}{% include "app/components/detail_mobile_meta.html" %}</div>
             {% include "app/components/detail_score_and_actions.html" %}
-            {% include "app/components/detail_synopsis.html" %}
+            <div data-detail-composition-legacy="synopsis">{% include "app/components/detail_synopsis.html" %}</div>
+            {% detail_composition "synopsis" %}
           </div>
         </div>
       {% endif %}
@@ -84,16 +87,16 @@
              class="detail-secondary-content"
              hx-get="{{ detail_secondary_fragment_url }}"
              hx-trigger="load delay:150ms"
-             hx-swap="outerHTML">
+             hx-swap="outerHTML"
+             aria-busy="true">
           <div class="detail-secondary-layout flex flex-col md:flex-row gap-6 md:gap-10">
-            <div class="w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0">
-              <div class="h-64 rounded-lg bg-[var(--color-surface)] animate-pulse"></div>
-              <div class="mt-6 h-56 rounded-lg bg-[var(--color-surface)] animate-pulse"></div>
-            </div>
-            <div class="w-full md:w-3/4 space-y-6">
-              <div class="h-64 rounded-lg bg-[var(--color-surface)] animate-pulse"></div>
-              <div class="h-80 rounded-lg bg-[var(--color-surface)] animate-pulse"></div>
-            </div>
+            {# Reserve the fragment's measured height so the swap does not move the page. #}
+            <div class="hidden w-full rounded-lg bg-[var(--color-surface)] animate-pulse md:block"
+                 style="height: {% if detail_secondary_skeleton_desktop %}{{ detail_secondary_skeleton_desktop }}{% elif media_type == "book" or media_type == "comic" or media_type == "manga" %}484{% elif media_type == "music" %}224{% elif media_type == "tv" or media_type == "anime" %}1495{% else %}1246{% endif %}px"
+                 aria-hidden="true"></div>
+            <div class="w-full rounded-lg bg-[var(--color-surface)] animate-pulse md:hidden"
+                 style="height: {% if detail_secondary_skeleton_mobile %}{{ detail_secondary_skeleton_mobile }}{% elif media_type == "book" or media_type == "comic" or media_type == "manga" %}460{% elif media_type == "music" %}272{% elif media_type == "tv" or media_type == "anime" %}2288{% else %}2251{% endif %}px"
+                 aria-hidden="true"></div>
           </div>
         </div>
       {% else %}

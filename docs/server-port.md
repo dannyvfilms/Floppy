@@ -164,11 +164,11 @@ A malformed saved file fails closed when it is the active source. If a valid `FL
 The packaged container resolves the listener once at startup. It then:
 
 1. renders the IPv4 and IPv6 Nginx listener configuration from the checked-in template;
-2. writes the validated running port to `/run/floppy/server-port`;
+2. writes the validated running port to `/tmp/floppy-runtime/server-port`;
 3. passes that same validated port to the normal Floppy entrypoint;
 4. starts the normal Floppy services when startup checks pass.
 
-The container health check reads `/run/floppy/server-port`. It does not import Django or parse persistent configuration on every health probe.
+The container health check reads `/tmp/floppy-runtime/server-port`. It does not import Django or parse persistent configuration on every health probe.
 
 `EXPOSE 8000` remains in the image as default image metadata. It is not the runtime source of truth and it cannot represent a dynamic port.
 
@@ -192,7 +192,7 @@ An explicit `FLOPPY_URL` remains authoritative for the MCP server.
 
 A standalone MCP installation still requires `FLOPPY_URL` because it does not know where the Floppy instance is hosted.
 
-The MCP server bundled in the Floppy container has one additional fallback. If `FLOPPY_URL` is not set, it can read `/run/floppy/server-port` and connect to the local packaged instance. This keeps `docker exec` workflows aligned with a non-default listener without adding another port setting.
+The MCP server bundled in the Floppy container has one additional fallback. If `FLOPPY_URL` is not set, it can read `/tmp/floppy-runtime/server-port` and connect to the local packaged instance. This keeps `docker exec` workflows aligned with a non-default listener without adding another port setting.
 
 ## Performance
 

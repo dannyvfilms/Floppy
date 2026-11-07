@@ -1,4 +1,4 @@
-{% load static %}<!DOCTYPE html>
+{% load static app_tags %}<!DOCTYPE html>
 <html lang="en"
       class="{% if user.is_authenticated and user.theme == 'light' %}light{% elif user.is_authenticated and user.theme == 'dark' %}dark{% endif %}">
 <head>
@@ -6,7 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Configure Floppy for Stremio</title>
   <link rel="icon" href="{% static 'favicon/favicon-32x32.png' %}">
-  <link rel="stylesheet" href="{% static 'css/main.css' %}">
+  <link rel="stylesheet" href="{% static 'css/main.css' %}{% get_static_file_mtime 'css/main.css' %}">
+  <link rel="stylesheet" href="{% static 'ui/settings-islands.css' %}{% get_static_file_mtime 'ui/settings-islands.css' %}">
+  <script type="module" src="{% static 'ui/settings-islands.js' %}{% get_static_file_mtime 'ui/settings-islands.js' %}"></script>
   <style>
     body {
       margin: 0; padding: 2rem 1rem;
@@ -87,24 +89,29 @@
   <h1>Configure Floppy for Stremio</h1>
   <p class="lede">Choose which catalogs this addon publishes and the order they appear in. Reinstall the addon in Stremio for changes to take effect.</p>
 
-  <fieldset>
-    <legend>Catalogs</legend>
-    <ul id="catalog-list"></ul>
-  </fieldset>
+  {{ catalog_options|json_script:"catalog-options" }}
+  {{ selected_ids|json_script:"selected-ids" }}
+  {{ stremio_config_props|json_script:"stremio-config-props" }}
+  <div data-stremio-config-root data-props-id="stremio-config-props">
+    <div data-stremio-config-fallback>
+      <fieldset>
+        <legend>Catalogs</legend>
+        <ul id="catalog-list"></ul>
+      </fieldset>
 
-  <p class="hint">Use the URL below &mdash; not the address of this page. It works in Stremio directly, or in an addon manager such as AIOStreams or AIOMetadata.</p>
+      <p class="hint">Use the URL below &mdash; not the address of this page. It works in Stremio directly, or in an addon manager such as AIOStreams or AIOMetadata.</p>
 
-  <textarea class="url" id="install-url" rows="3" readonly></textarea>
+      <textarea class="url" id="install-url" rows="3" readonly></textarea>
 
-  <div class="actions">
-    <a class="btn" id="install" href="#">Install in Stremio</a>
-    <button class="btn secondary" id="copy" type="button">Copy URL</button>
+      <div class="actions">
+        <a class="btn" id="install" href="#">Install in Stremio</a>
+        <button class="btn secondary" id="copy" type="button">Copy URL</button>
+      </div>
+      <p class="warn" id="warn"></p>
+    </div>
   </div>
-  <p class="warn" id="warn"></p>
 </main>
 
-{{ catalog_options|json_script:"catalog-options" }}
-{{ selected_ids|json_script:"selected-ids" }}
 <script>
   (function () {
     var options = JSON.parse(document.getElementById("catalog-options").textContent);

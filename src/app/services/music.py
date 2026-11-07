@@ -1691,6 +1691,128 @@ def populate_album_tracks(album: Album) -> int:
         return 0
 
 
+def sync_album_metadata(album: Album, *, get_release=None, ensure_release_id=None) -> dict:
+    """Force re-sync of an album's metadata and tracks from MusicBrainz.
+
+    Returns a result dict consumed by both the web action and the REST API:
+    ``merged_into`` names a canonical duplicate the album was merged into,
+    ``synced_tracks`` is the rebuilt tracklist size, ``missing_release`` is
+    true when no MusicBrainz release could be resolved, and ``error`` carries
+    a user-safe failure message. The album instance is updated in place unless
+    it was merged.
+    """
+    from django.core.cache import cache as django_cache
+
+    from app.providers import musicbrainz
+
+    get_release = get_release or musicbrainz.get_release
+    ensure_release_id = ensure_release_id or ensure_album_has_release_id
+
+    if album.musicbrainz_release_group_id:
+        # Force re-derivation of the release: a previous sync may have
+        # locked in the wrong pressing (e.g. a partial reissue instead of
+        # the full release), so drop the cached group->release pick and
+        # the release_id itself before re-resolving.
+        django_cache.delete(
+            f"musicbrainz_release_for_group_{album.musicbrainz_release_group_id}",
+        )
+        album.musicbrainz_release_id = ""
+
+    ensure_release_id(album)
+
+    if not album.musicbrainz_release_id:
+        return {
+            "album": album,
+            "merged_into": None,
+            "synced_tracks": 0,
+            "missing_release": True,
+            "error": None,
+        }
+
+    try:
+        django_cache.delete(f"musicbrainz_release_{album.musicbrainz_release_id}")
+        release_data = get_release(album.musicbrainz_release_id)
+
+        # If this album is missing its release-group ID (e.g. created via
+        # search before the fix), check whether a canonical album already
+        # exists for that release-group and merge into it.
+        fetched_release_group_id = release_data.get("release_group_id")
+        if fetched_release_group_id and album.artist_id:
+            needs_group_id = not album.musicbrainz_release_group_id
+            canonical = (
+                Album.objects.filter(
+                    artist_id=album.artist_id,
+                    musicbrainz_release_group_id=fetched_release_group_id,
+                )
+                .exclude(pk=album.pk)
+                .first()
+            )
+            if canonical:
+                Music.objects.filter(album=album).update(album=canonical)
+                if not canonical.musicbrainz_release_id:
+                    canonical.musicbrainz_release_id = album.musicbrainz_release_id
+                    canonical.save(update_fields=["musicbrainz_release_id"])
+                album.delete()
+                return {
+                    "album": canonical,
+                    "merged_into": canonical,
+                    "synced_tracks": 0,
+                    "missing_release": False,
+                    "error": None,
+                }
+            if needs_group_id:
+                album.musicbrainz_release_group_id = fetched_release_group_id
+                album.release_type = release_data.get("release_type", "")
+                album.save(
+                    update_fields=["musicbrainz_release_group_id", "release_type"],
+                )
+
+        new_image = release_data.get("image", "")
+        if new_image and new_image != settings.IMG_NONE:
+            album.image = new_image
+
+        if release_data.get("genres"):
+            album.genres = release_data.get("genres")
+
+        tracks_data = release_data.get("tracks", [])
+        # Clear any tracks left over from a previous, differently-shaped
+        # release (e.g. fewer discs/tracks) before rebuilding.
+        Track.objects.filter(album=album).delete()
+        for track_data in tracks_data:
+            Track.objects.update_or_create(
+                album=album,
+                disc_number=track_data.get("disc_number", 1),
+                track_number=track_data.get("track_number"),
+                defaults={
+                    "title": track_data.get("title", "Unknown Track"),
+                    "musicbrainz_recording_id": track_data.get("recording_id"),
+                    "duration_ms": track_data.get("duration_ms"),
+                    "genres": track_data.get("genres", [])
+                    or release_data.get("genres", []),
+                },
+            )
+
+        album.tracks_populated = True
+        album.save(update_fields=["tracks_populated", "image", "genres"])
+    except Exception as e:
+        logger.warning("Failed to sync album %s: %s", album.title, e)
+        return {
+            "album": album,
+            "merged_into": None,
+            "synced_tracks": 0,
+            "missing_release": False,
+            "error": str(e),
+        }
+    else:
+        return {
+            "album": album,
+            "merged_into": None,
+            "synced_tracks": len(tracks_data),
+            "missing_release": False,
+            "error": None,
+        }
+
+
 def sync_album_release_tracks(album: Album, release_id: str) -> int:
     """Replace an album's tracklist with a specific MusicBrainz release's tracks.
 

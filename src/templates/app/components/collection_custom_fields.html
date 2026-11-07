@@ -1,6 +1,9 @@
 
 {% load i18n %}
 {% load app_tags %}
+{% with props_id="collection-fields-props-"|add:item.id|stringformat:"s" %}
+{{ collection_fields_props|json_script:props_id }}
+<div data-collection-fields-root data-props-id="{{ props_id }}">
   <div id="custom-fields-{{ item.id }}"
        x-data="collectionCustomFields({
          schema: JSON.parse('{{ custom_field_schema_json|escapejs }}'),
@@ -184,3 +187,5 @@
       </div>
     </div>
   </div>
+</div>
+{% endwith %}

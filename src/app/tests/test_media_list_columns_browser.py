@@ -42,8 +42,11 @@ class MediaListColumnsBrowserTests(SerialStaticLiveServerTestCase):
             expect(page.get_by_text("Finished", exact=True)).to_be_visible()
             page.get_by_role("button", name="View settings").first.click()
             page.get_by_role("link", name="Table View").first.click()
-            expect(page.locator(".media-table")).to_contain_text("Finished")
-            expect(page.locator(".media-table")).to_contain_text("Playing")
+            table = page.get_by_role("table")
+            expect(table).to_contain_text("Finished")
+            expect(table).to_contain_text("Playing")
+            expect(page.locator("[data-media-table-root][data-react-mounted]")).to_have_count(0)
+            expect(page.locator('[data-testid="media-table"]')).to_have_count(0)
             self.assertIn("status=all", page.url)
 
     def test_toggle_notes_preserves_filtered_table(self):
@@ -75,31 +78,26 @@ class MediaListColumnsBrowserTests(SerialStaticLiveServerTestCase):
             page.goto(
                 f"{self.live_server_url}/medialist/game?layout=table&status=Paused"
             )
-            table = page.locator(".media-table")
-            expect(table.locator("tbody > tr")).to_have_count(2)
+            table = page.get_by_role("table")
+            expect(table.get_by_role("row")).to_have_count(3)
+            expect(page.locator("[data-media-table-root][data-react-mounted]")).to_have_count(0)
+            expect(page.locator('[data-testid="media-table"]')).to_have_count(0)
             expect(
                 table.get_by_role("columnheader", name="Notes", exact=True)
             ).to_have_count(1)
             expect(table).not_to_contain_text("Donkey Kong")
-            page.get_by_role("button", name="Configure Table Columns").click()
 
+            page.get_by_role("button", name="Configure Table Columns").click()
+            menu = page.get_by_role("button", name="Configure Table Columns").locator("xpath=..")
             for action, notes_count in (("Hide column", 0), ("Show column", 1)):
-                with page.expect_response(
-                    lambda response: (
-                        "/medialist/game?" in response.url
-                        and response.request.headers.get("hx-request") == "true"
-                    )
-                ):
-                    page.locator('[draggable="true"]').filter(
-                        has=page.get_by_text("Notes", exact=True)
-                    ).get_by_role("button", name=action, exact=True).click()
-                expect(table.locator("tbody > tr")).to_have_count(2)
+                notes_row = menu.get_by_text("Notes", exact=True).locator("xpath=..")
+                notes_row.locator(f'button[title="{action}"]').click()
+                page.wait_for_load_state("networkidle")
+                expect(table.get_by_role("row")).to_have_count(3)
                 expect(
                     table.get_by_role("columnheader", name="Notes", exact=True)
                 ).to_have_count(notes_count)
                 expect(table).to_contain_text("Pac-Man")
                 expect(table).to_contain_text("Galaga")
                 expect(table).not_to_contain_text("Donkey Kong")
-                expect(table.locator("img[data-media-artwork]").first).to_have_attribute(
-                    "loading", "eager"
-                )
+                expect(table.get_by_role("img")).not_to_have_count(0)

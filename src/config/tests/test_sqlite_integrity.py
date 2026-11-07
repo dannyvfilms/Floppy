@@ -1033,6 +1033,7 @@ class SqliteIntegrityTests(SimpleTestCase):
 
             env = {
                 **os.environ,
+                "BACKUP_DIR": str(tmp_path / "backups"),
                 "DB_HOST": "",
                 "PARKING_PID_FILE": str(tmp_path / "parking.pid"),
                 "FLOPPY_DATA_DIR": tmp_dir,
@@ -1128,6 +1129,7 @@ class SqliteIntegrityTests(SimpleTestCase):
             timeout_wrapper.chmod(0o755)
             env = {
                 **os.environ,
+                "BACKUP_DIR": str(tmp_path / "backups"),
                 "DB_HOST": "",
                 "CHECKER_PID_FILE": str(tmp_path / "checker.pid"),
                 "FLOPPY_DATA_DIR": tmp_dir,
