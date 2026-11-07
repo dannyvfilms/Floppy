@@ -1,6 +1,7 @@
 
 {% load i18n %}
 {% load app_tags %}
+{% load ui_tags %}
 
 <div id="history-day-{{ day.day_key|default:'unknown' }}"
      class="history-day space-y-4"
@@ -67,14 +68,9 @@
 
   {% if day.has_more and not day.lazy %}
     <div class="flex justify-center pt-2">
-      <button type="button"
-              class="px-4 py-2 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer text-sm"
-              hx-get="{% url 'history_day_fragment' day_key=day.day_key %}?{{ day.next_entry_query }}"
-              hx-target="closest .history-day"
-              hx-swap="outerHTML">
-        {% translate "Load more" %}
-        {% if day.remaining_entry_count %}{% blocktranslate trimmed with value_1=day.remaining_entry_count %}({{ value_1 }} remaining){% endblocktranslate %}{% endif %}
-      </button>
+      {% url 'history_day_fragment' day_key=day.day_key as day_url %}
+      {% translate "Load more" as load_more_label %}
+      {% if day.remaining_entry_count %}{% blocktranslate trimmed asvar remaining_label with value_1=day.remaining_entry_count %}({{ value_1 }} remaining){% endblocktranslate %}{% button load_more_label|add:" "|add:remaining_label "surface" "sm" hx_get=day_url|add:"?"|add:day.next_entry_query hx_target="closest .history-day" hx_swap="outerHTML" %}{% else %}{% button load_more_label "surface" "sm" hx_get=day_url|add:"?"|add:day.next_entry_query hx_target="closest .history-day" hx_swap="outerHTML" %}{% endif %}
     </div>
   {% endif %}
 </div>

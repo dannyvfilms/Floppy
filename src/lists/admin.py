@@ -23,8 +23,8 @@ class CustomListAdmin(admin.ModelAdmin):
     ]
     list_filter = ["owner", "visibility", "allow_recommendations"]
     raw_id_fields = ["owner"]
-    autocomplete_fields = ["collaborators"]
-    filter_horizontal = ["collaborators"]
+    autocomplete_fields = ["collaborators", "viewers"]
+    filter_horizontal = ["collaborators", "viewers"]
 
     @admin.display(description="Number of items")
     def item_count(self, obj):

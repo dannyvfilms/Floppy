@@ -83,6 +83,22 @@ class MovieRetractionTests(TestCase):
         self.assertEqual(movie.status, Status.IN_PROGRESS.value)
         self.assertIsNone(movie.end_date)
 
+    def test_a_started_movie_loses_its_start_date_too(self):
+        """History places a movie by either date, so the start must go as well."""
+        movie = Movie.objects.create(
+            item=self.item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            start_date=_dt(1),
+        )
+
+        result = retract_watch(self.user, self.item)
+
+        movie.refresh_from_db()
+        self.assertEqual(result.rows_reverted, 1)
+        self.assertIsNone(movie.start_date)
+        self.assertIsNone(movie.end_date)
+
     def test_an_attributable_play_is_removed_precisely(self):
         movie = Movie.objects.create(
             item=self.item,

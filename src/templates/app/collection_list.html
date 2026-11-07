@@ -2,6 +2,7 @@
 {% load i18n %}
 
 {% load app_tags %}
+{% load ui_tags %}
 
 {% block title %}
   {% translate "Collection - Floppy" %}
@@ -578,7 +579,7 @@
     </div>
 
     <div id="collection-loading-indicator" class="htmx-indicator flex justify-center py-4">
-      <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-500"></div>
+      {% spinner 24 %}
     </div>
   </div>
 {% endblock content %}

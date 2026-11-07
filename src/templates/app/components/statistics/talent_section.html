@@ -32,10 +32,24 @@
 
         <div class="grid grid-cols-1 lg:grid-cols-5 gap-3 sm:gap-4 items-start">
           <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 lg:col-span-2 overflow-hidden">
-            {% include "app/components/studio_footprint.html" %}
+            <div data-statistics-sections-root data-section="studioFootprint" data-props-id="statistics-talent-studio-props"
+                 data-update-url="{% url 'update_studio_sort' %}"
+                 data-range-name="{{ selected_range_name|default_if_none:'' }}"
+                 data-start-date="{{ start_date_str }}"
+                 data-end-date="{{ end_date_str }}">
+              {{ statistics_talent_props.studioFootprint|json_script:"statistics-talent-studio-props" }}
+              {% include "app/components/studio_footprint.html" %}
+            </div>
           </div>
           <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 lg:col-span-3 overflow-hidden">
-            {% include "app/components/taste_signals.html" %}
+            <div data-statistics-sections-root data-section="tasteSignals" data-props-id="statistics-talent-taste-props"
+                 data-update-url="{% url 'update_genre_sort' %}"
+                 data-range-name="{{ selected_range_name|default_if_none:'' }}"
+                 data-start-date="{{ start_date_str }}"
+                 data-end-date="{{ end_date_str }}">
+              {{ statistics_talent_props.tasteSignals|json_script:"statistics-talent-taste-props" }}
+              {% include "app/components/taste_signals.html" %}
+            </div>
           </div>
         </div>
       </div>

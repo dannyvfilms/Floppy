@@ -39,6 +39,7 @@ from app.history_entry_builders import (
     _serialize_album,
     _serialize_item,
     _serialize_show,
+    build_book_page_entries,
     build_listening_session_entry,
     flat_anime_episode_entries,
     flat_anime_episode_watches,
@@ -474,16 +475,44 @@ def build_history_day(
         requested_media_types is None
         or MediaTypes.BOOK.value in requested_media_types
     ):
-        sessions = (
-            BookListeningSession.objects.filter(
-                book__user=user,
-                started_at__gte=day_start,
-                started_at__lt=day_end,
+        if prefetch and day_date:
+            sessions = prefetch.listening_sessions(day_date)
+        else:
+            sessions = (
+                BookListeningSession.objects.filter(
+                    book__user=user,
+                    started_at__gte=day_start,
+                    started_at__lt=day_end,
+                )
+                .select_related("book__item")
+                .defer(*history_deferred_item_fields("book__item"))
             )
-            .select_related("book__item")
-            .defer(*history_deferred_item_fields("book__item"))
-        )
         entries.extend(build_listening_session_entry(session) for session in sessions)
+
+    # Page-based books: the days their progress rose, dated by the change log.
+    if (
+        requested_media_types is None
+        or MediaTypes.BOOK.value in requested_media_types
+    ):
+        if prefetch and day_date:
+            books, history_rows = prefetch.book_pages(day_date)
+            entries.extend(
+                build_book_page_entries(books, day_start, day_end, history_rows),
+            )
+        else:
+            HistoricalBook = apps.get_model("app", "HistoricalBook")
+            changed_ids = HistoricalBook.objects.filter(
+                id__in=Book.objects.filter(user=user).values("id"),
+                history_type="~",
+                history_date__gte=day_start,
+                history_date__lt=day_end,
+            ).values("id")
+            books = (
+                Book.objects.filter(user=user, id__in=changed_ids)
+                .select_related("item")
+                .defer(*history_deferred_item_fields("item"))
+            )
+            entries.extend(build_book_page_entries(books, day_start, day_end))
 
     # Music (HistoricalMusic for the day)
     music_history = []

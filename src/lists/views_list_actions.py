@@ -20,6 +20,7 @@ from django.core.cache import cache
 from django.db import OperationalError, transaction
 from django.db.models import Q
 from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.translation import gettext
@@ -276,6 +277,8 @@ def edit(request):
             logger.error(form.errors.as_json())
             helpers.form_error_messages(form, request)
     else:
+        if custom_list.user_can_view(request.user):
+            return HttpResponse(status=403)
         messages.error(
             request, gettext("You do not have permission to edit this list.")
         )
@@ -297,7 +300,9 @@ def edit_form(request, list_id):
     available_tags = CustomListForm._normalize_tags(
         tag
         for other_list in CustomList.objects.filter(
-            Q(owner=request.user) | Q(collaborators=request.user),
+            Q(owner=request.user)
+            | Q(collaborators=request.user)
+            | Q(viewers=request.user),
         ).only("tags")
         for tag in (other_list.tags or [])
     )
@@ -451,7 +456,10 @@ def lists_modal(
 
     custom_lists = CustomList.objects.get_user_lists_with_item(request.user, item)
     if hasattr(custom_lists, "filter"):
-        custom_lists = custom_lists.filter(is_smart=False)
+        custom_lists = custom_lists.filter(
+            Q(owner=request.user) | Q(collaborators=request.user),
+            is_smart=False,
+        )
     else:
         custom_lists = [
             custom_list
@@ -463,6 +471,7 @@ def lists_modal(
         1 for custom_list in custom_lists if getattr(custom_list, "has_item", False)
     )
 
+    all_lists = custom_lists
     selected_tag = (request.GET.get("tag") or "").strip()
 
     unique_tags = sorted(
@@ -486,6 +495,31 @@ def lists_modal(
             )
         ]
 
+    if request.GET.get("format") == "json":
+        return JsonResponse(
+            {
+                "itemId": item.id,
+                "title": item.title or "",
+                "lists": [
+                    {
+                        "id": custom_list.id,
+                        "name": custom_list.name,
+                        "hasItem": bool(getattr(custom_list, "has_item", False)),
+                        "tags": [
+                            tag.strip()
+                            for tag in (custom_list.tags or [])
+                            if isinstance(tag, str) and tag.strip()
+                        ],
+                    }
+                    for custom_list in all_lists
+                ],
+                "tags": unique_tags,
+                "selectedTag": selected_tag,
+                "toggleUrl": reverse("list_item_toggle"),
+                "csrfToken": get_token(request),
+            },
+        )
+
     return render(
         request,
         "lists/components/fill_lists.html",
@@ -499,7 +533,7 @@ def lists_modal(
     )
 
 
-def _list_item_toggle_error_response(*, busy=False):
+def _list_item_toggle_error_response(*, busy=False, as_json=False):
     """Return an empty HTMX response that only triggers an error toast.
 
     htmx doesn't swap the response body for 4xx/5xx status codes by
@@ -517,6 +551,8 @@ def _list_item_toggle_error_response(*, busy=False):
             "keeps happening, file a bug report from "
             "Settings > Advanced."
         )
+    if as_json:
+        return JsonResponse({"success": False, "error": message}, status=status)
     response = HttpResponse(status=status)
     response["HX-Trigger"] = json.dumps(
         {"showToast": {"message": message, "type": "error"}},
@@ -568,20 +604,31 @@ def list_item_toggle(request):
     """Add or remove an item from a custom list."""
     item_id = request.POST["item_id"]
     custom_list_id = request.POST["custom_list_id"]
+    as_json = request.POST.get("format") == "json"
 
     item = get_object_or_404(Item, id=item_id)
     discover_tab_cache.mark_active_from_request(
         request,
         fallback_media_type=item.media_type,
     )
-    custom_list = get_object_or_404(
-        CustomList.objects.filter(
-            Q(owner=request.user) | Q(collaborators=request.user),
-            id=custom_list_id,
-        ).distinct(),  # To prevent duplicates, when user is owner and collaborator
-    )
+    custom_list = get_object_or_404(CustomList, id=custom_list_id)
+    if not custom_list.user_can_view(request.user):
+        msg = "List not found"
+        raise Http404(msg)
+    if not custom_list.user_can_edit(request.user):
+        if as_json:
+            return JsonResponse(
+                {"success": False, "error": "This list is read-only."},
+                status=403,
+            )
+        return HttpResponse(status=403)
 
     if custom_list.is_smart:
+        if as_json:
+            return JsonResponse(
+                {"success": False, "error": "Smart lists cannot be edited directly."},
+                status=403,
+            )
         return HttpResponse(status=403)
 
     started = time.monotonic()
@@ -626,8 +673,10 @@ def list_item_toggle(request):
             int((time.monotonic() - started) * 1000),
             os.getpid(),
         )
-        return _list_item_toggle_error_response(busy=contention)
+        return _list_item_toggle_error_response(busy=contention, as_json=as_json)
 
+    if as_json:
+        return JsonResponse({"success": True, "hasItem": has_item})
     return render(
         request,
         "lists/components/list_item_button.html",
@@ -649,11 +698,17 @@ def bulk_list_add(request):
         )
 
     custom_list = get_object_or_404(
-        CustomList.objects.filter(
-            Q(owner=request.user) | Q(collaborators=request.user),
-            id=request.POST.get("custom_list_id"),
-        ).distinct(),
+        CustomList,
+        id=request.POST.get("custom_list_id"),
     )
+    if not custom_list.user_can_view(request.user):
+        msg = "List not found"
+        raise Http404(msg)
+    if not custom_list.user_can_edit(request.user):
+        return JsonResponse(
+            {"success": False, "error": "This list is read-only."},
+            status=403,
+        )
     if custom_list.is_smart:
         return JsonResponse(
             {"success": False, "error": "Smart lists cannot be edited directly."},

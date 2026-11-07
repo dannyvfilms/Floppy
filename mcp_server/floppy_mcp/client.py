@@ -18,7 +18,7 @@ import httpx
 
 DEFAULT_TIMEOUT = 30.0
 MAX_PORT = 65535
-CONTAINER_RUNTIME_PORT_FILE = Path("/run/floppy/server-port")
+CONTAINER_RUNTIME_PORT_FILE = Path("/tmp/floppy-runtime/server-port")  # noqa: S108 - container-private runtime directory
 
 
 class FloppyConfigError(RuntimeError):

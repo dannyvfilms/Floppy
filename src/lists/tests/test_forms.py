@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from lists.forms import CustomListForm
+from lists.forms import CollaboratorsWidget, CustomListForm
 from lists.models import CustomList
 
 
@@ -177,3 +177,75 @@ class CustomListFormTest(TestCase):
         self.assertEqual(saved_list.smart_media_types, [])
         self.assertEqual(saved_list.smart_excluded_media_types, [])
         self.assertEqual(saved_list.smart_filters, {})
+
+    def test_custom_list_form_unlisted_visibility_and_viewers(self):
+        """Unlisted lists keep a link, a slug and read-only viewers."""
+        viewer = get_user_model().objects.create_user(
+            username="viewer",
+            password="12345",
+        )
+        form = CustomListForm(
+            data={
+                "name": "Shared Planning",
+                "visibility": "unlisted",
+                "public_slug": "Shared Planning",
+                "viewers": [viewer.id],
+            },
+            user=self.user,
+        )
+
+        self.assertTrue(form.is_valid())
+        custom_list = form.save(commit=False)
+        custom_list.owner = self.user
+        custom_list.save()
+        form.save_m2m()
+        self.assertEqual(custom_list.visibility, "unlisted")
+        self.assertTrue(custom_list.is_viewable_by_link)
+        self.assertFalse(custom_list.is_public)
+        self.assertEqual(custom_list.public_reference, "shared-planning")
+        self.assertIn(viewer, custom_list.viewers.all())
+        self.assertFalse(custom_list.user_can_edit(viewer))
+        self.assertTrue(custom_list.user_can_view(viewer))
+
+    def test_custom_list_form_unlisted_disables_recommendations(self):
+        """Recommendations stay a public-list feature."""
+        form = CustomListForm(
+            data={
+                "name": "Link only",
+                "visibility": "unlisted",
+                "allow_recommendations": "on",
+            },
+            user=self.user,
+        )
+
+        self.assertTrue(form.is_valid())
+        custom_list = form.save(commit=False)
+        custom_list.owner = self.user
+        custom_list.save()
+        form.save_m2m()
+        self.assertFalse(custom_list.allow_recommendations)
+
+    def test_share_user_search_excludes_demo_and_test_accounts(self):
+        """List sharing only offers real, active accounts."""
+        demo = get_user_model().objects.create_user(
+            username="demo-share",
+            password="12345",
+            is_demo=True,
+        )
+        test_account = get_user_model().objects.create_user(
+            username="test-share",
+            password="12345",
+            is_test_account=True,
+        )
+        inactive = get_user_model().objects.create_user(
+            username="inactive-share",
+            password="12345",
+            is_active=False,
+        )
+
+        queryset = CollaboratorsWidget().get_queryset()
+
+        self.assertIn(self.user, queryset)
+        self.assertNotIn(demo, queryset)
+        self.assertNotIn(test_account, queryset)
+        self.assertNotIn(inactive, queryset)

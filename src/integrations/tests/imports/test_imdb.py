@@ -13,6 +13,7 @@ from app.models import (
     MoviePlay,
     Status,
 )
+from app.providers.services import ProviderAPIError
 from integrations.imports import (
     imdb,
 )
@@ -145,6 +146,9 @@ class IMDBStreamingTests(TestCase):
     def setUp(self):
         """Create a user and resolve test identifiers deterministically."""
         self.user = get_user_model().objects.create_user(username="stream-imdb")
+        enabled = patch("app.providers.tmdb.enabled", return_value=True)
+        enabled.start()
+        self.addCleanup(enabled.stop)
         patcher = patch.object(
             imdb.IMDBImporter,
             "_lookup_in_tmdb",
@@ -161,6 +165,33 @@ class IMDBStreamingTests(TestCase):
     def upload(self, rows):
         """Build a valid CSV with a multiline title."""
         return BytesIO(("Const,Title,Title Type,Created,Your Rating\n" + rows).encode())
+
+    def test_missing_tmdb_fails_instead_of_completing_empty(self):
+        """An unconfigured resolver must not read as a successful import."""
+        with patch("app.providers.tmdb.enabled", return_value=False):
+            with self.assertRaisesRegex(
+                imdb.MediaImportError,
+                "TMDB is not configured",
+            ):
+                imdb.importer(
+                    self.upload("tt1,Film,Movie,2025-01-01,8\n"),
+                    self.user,
+                    "new",
+                )
+
+    def test_provider_failure_is_not_reported_as_an_empty_import(self):
+        """A resolver outage must fail the import rather than skip every row."""
+        with patch.object(
+            imdb.IMDBImporter,
+            "_lookup_in_tmdb",
+            side_effect=ProviderAPIError("tmdb", Exception("boom")),
+        ):
+            with self.assertRaises(imdb.MediaImportError):
+                imdb.importer(
+                    self.upload("tt1,Film,Movie,2025-01-01,8\n"),
+                    self.user,
+                    "new",
+                )
 
     def test_rating_does_not_create_a_watch_or_episode_progress(self):
         """IMDb ratings are not evidence of watched films or series."""

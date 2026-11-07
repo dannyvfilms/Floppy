@@ -1,11 +1,25 @@
 import json
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase, tag
 from django.urls import reverse
+from django.utils import timezone
 
-from app.models import TV, Anime, Episode, Item, MediaTypes, Movie, Season, Status
+from app import live_playback
+from app.models import (
+    TV,
+    Anime,
+    Episode,
+    Item,
+    MediaTypes,
+    Movie,
+    PlaybackProgress,
+    Season,
+    Status,
+)
+from integrations import tasks
 from integrations.webhooks.emby import EmbyWebhookProcessor
 
 
@@ -18,6 +32,76 @@ class EmbyWebhookTests(TestCase):
         self.credentials = {"username": "testuser", "token": "test-token"}
         self.user = get_user_model().objects.create_superuser(**self.credentials)
         self.url = reverse("emby_webhook", kwargs={"token": "test-token"})
+
+    def tearDown(self):
+        """Clear cached playback state created by webhook tests."""
+        live_playback.clear_user_playback_state(self.user.id)
+
+    @patch("app.providers.tmdb.movie")
+    def test_late_partial_stop_from_the_same_second_does_not_undo_completion(
+        self,
+        mock_movie,
+    ):
+        """A stop's receipt time reaches the durable row, not just the card.
+
+        Emby sends only start and stop, and start writes no durable progress,
+        so an earlier partial stop is the late event that can reset completion.
+        """
+        mock_movie.return_value = {
+            "title": "Zombie",
+            "image": "",
+            "max_progress": 1,
+            "provider_external_ids": {},
+        }
+        item = {
+            "Id": "emby-order",
+            "Name": "Zombie",
+            "Type": "Movie",
+            "RunTimeTicks": 54000000000,
+            "ProviderIds": {"Tmdb": "7219"},
+        }
+        second = timezone.now().replace(microsecond=0) - timedelta(seconds=5)
+        stop_received = second + timedelta(milliseconds=900)
+
+        def send(event, playback_info, received, event_id):
+            tasks.process_webhook(
+                "emby",
+                {"Event": event, "Item": item, "PlaybackInfo": playback_info},
+                self.user.id,
+                received_at=received.isoformat(),
+                event_id=event_id,
+            )
+
+        send(
+            "playback.start",
+            {"PositionTicks": 0},
+            second - timedelta(seconds=60),
+            "emby-start",
+        )
+        send(
+            "playback.stop",
+            {"PlayedToCompletion": True, "PositionTicks": 53000000000},
+            stop_received,
+            "emby-stop",
+        )
+        movie = Movie.objects.get(item__media_id="7219", user=self.user)
+        self.assertEqual(movie.status, Status.COMPLETED.value)
+
+        # Received before the completed stop, processed after it.
+        send(
+            "playback.stop",
+            {"PlayedToCompletion": False, "PositionTicks": 16200000000},
+            second + timedelta(milliseconds=100),
+            "emby-stop-late",
+        )
+
+        progress = PlaybackProgress.objects.get(user=self.user, item=movie.item)
+        self.assertTrue(progress.completed)
+        self.assertEqual(progress.position_seconds, 5300)
+        self.assertEqual(progress.last_event_at, stop_received)
+        state = live_playback.get_user_playback_state(self.user.id)
+        self.assertEqual(state["status"], live_playback.PLAYBACK_STATUS_STOPPED)
+        self.assertEqual(state["event_ts"], stop_received.timestamp())
 
     def test_invalid_token(self):
         """Test webhook with invalid token returns 401."""

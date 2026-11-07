@@ -67,6 +67,17 @@ class PublicEndpointsTests(FloppyApiTestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response["Content-Type"], expected_content_type)
 
+    def test_contracts_support_explicit_download(self):
+        for name, expected in (
+            ("openapi-contract", 'attachment; filename="openapi.yaml"'),
+            ("jsonld-context", 'attachment; filename="context.jsonld"'),
+            ("asyncapi-contract", 'attachment; filename="asyncapi.json"'),
+        ):
+            with self.subTest(name=name):
+                response = self.client.get(reverse(name), {"download": "1"})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response["Content-Disposition"], expected)
+
     def test_openapi_contract_supports_public_cache_validation(self):
         artifact = (
             settings.BASE_DIR / "api" / "contracts" / "openapi.yaml"

@@ -1,4 +1,5 @@
 {% extends "users/base.html" %}
+{% load ui_tags %}
 {% load i18n %}
 
 {% load socialaccount %}
@@ -246,10 +247,7 @@
                      autocomplete="current-password"
                      required
                      class="w-full p-2 mb-2 bg-[var(--color-surface-strong)] rounded-md">
-              <button type="submit"
-                      class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
-                {% translate "Add New Authenticator App" %}
-              </button>
+              {% button _("Add New Authenticator App") submit=True %}
             </form>
             <form method="post" class="inline">
               {% csrf_token %}
@@ -261,10 +259,7 @@
                      autocomplete="current-password"
                      required
                      class="w-full p-2 mb-2 bg-[var(--color-surface-strong)] rounded-md">
-              <button type="submit"
-                      class="px-4 py-2 bg-red-700 text-white rounded-md hover:bg-red-800 transition-colors text-sm cursor-pointer">
-                {% translate "Deactivate Authenticator" %}
-              </button>
+              {% button _("Deactivate Authenticator") "danger-deep" "sm" submit=True %}
             </form>
           </div>
         {% endif %}
@@ -293,10 +288,7 @@
               <p class="mt-1 text-sm text-red-400">{{ authenticator_form.code.errors.0 }}</p>
             {% endif %}
           </div>
-          <button type="submit"
-                  class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
-            {% translate "Verify Authenticator" %}
-          </button>
+          {% button _("Verify Authenticator") submit=True %}
         </form>
       {% endif %}
 
@@ -328,10 +320,7 @@
               <p class="mt-1 text-sm text-red-400">{{ recovery_codes_form.current_password.errors.0 }}</p>
             {% endif %}
           </div>
-          <button type="submit"
-                  class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
-            {% translate "Regenerate Recovery Codes" %}
-          </button>
+          {% button _("Regenerate Recovery Codes") submit=True %}
         </form>
       </div>
     </div>
@@ -396,10 +385,7 @@
               <input type="checkbox" name="confirm_delete" required>
               {% translate "I understand this cannot be undone" %}
             </label>
-            <button type="submit"
-                    class="px-4 py-2 bg-red-700 text-white rounded-md hover:bg-red-800 transition-colors text-sm cursor-pointer">
-              {% translate "Delete My Account" %}
-            </button>
+            {% button _("Delete My Account") "danger-deep" "sm" submit=True %}
           </form>
         {% endif %}
       </div>

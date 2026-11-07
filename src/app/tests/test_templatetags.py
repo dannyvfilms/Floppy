@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -24,6 +25,7 @@ from app.models import (
     Track,
 )
 from app.templatetags import app_tags
+from app.tests.card_props import card_model, card_text, render_card_template
 from users.models import DateFormatChoices, TimeFormatChoices
 
 
@@ -518,8 +520,7 @@ class AppTagsTests(TestCase):
         request = self.request_factory.get("/library")
         request.user = self.user
 
-        content = render_to_string(
-            "app/components/media_card.html",
+        content = render_card_template(
             {
                 "item": item,
                 "media": SimpleNamespace(
@@ -546,7 +547,7 @@ class AppTagsTests(TestCase):
                     "album_slug": "card-album",
                 },
             ),
-            content,
+            card_model(content)["href"],
         )
 
     def _render_book_card(self, *, status, progress, percentage=False, audiobook=False):
@@ -572,8 +573,7 @@ class AppTagsTests(TestCase):
 
         request = self.request_factory.get("/library")
         request.user = self.user
-        return render_to_string(
-            "app/components/media_card.html",
+        return render_card_template(
             {
                 "item": item,
                 "media": media,
@@ -589,13 +589,13 @@ class AppTagsTests(TestCase):
         """A dropped book keeps showing how far the reader got."""
         content = self._render_book_card(status=Status.DROPPED.value, progress=120)
 
-        self.assertIn("120/350 pages", content)
+        self.assertIn("120/350 pages", card_text(content))
 
     def test_media_card_shows_book_progress_when_paused(self):
         """A paused book keeps showing how far the reader got."""
         content = self._render_book_card(status=Status.PAUSED.value, progress=120)
 
-        self.assertIn("120/350 pages", content)
+        self.assertIn("120/350 pages", card_text(content))
 
     def test_media_card_shows_percentage_without_raw_total(self):
         """Percentage mode renders a bare percentage, never '34% / 350'."""
@@ -603,9 +603,10 @@ class AppTagsTests(TestCase):
             status=Status.DROPPED.value, progress=120, percentage=True
         )
 
-        self.assertIn("34%", content)
-        self.assertNotIn("% /", content)
-        self.assertNotIn("350", content)
+        self.assertIn("34%", card_text(content))
+        lines = json.dumps(card_model(content)["lines"])
+        self.assertNotIn("% /", lines)
+        self.assertNotIn("350", lines)
 
     def test_media_card_shows_audiobook_progress_as_listening_time(self):
         """Audiobooks read as h/min on both sides of the slash, never as pages."""
@@ -613,8 +614,8 @@ class AppTagsTests(TestCase):
             status=Status.IN_PROGRESS.value, progress=150, audiobook=True
         )
 
-        self.assertIn("2h 30min/10h 00min", content)
-        self.assertNotIn("pages", content)
+        self.assertIn("2h 30min/10h 00min", card_text(content))
+        self.assertNotIn("pages", json.dumps(card_model(content)["lines"]))
 
     def test_media_card_shows_audiobook_percentage(self):
         """The percentage preference applies to audiobooks too."""
@@ -625,7 +626,7 @@ class AppTagsTests(TestCase):
             audiobook=True,
         )
 
-        self.assertIn("25%", content)
+        self.assertIn("25%", card_text(content))
 
     def test_genres_cell_falls_back_to_plain_text_for_blank_media_type(self):
         """Genres cell shouldn't crash reversing 'medialist' for a blank media_type."""
@@ -694,8 +695,7 @@ class AppTagsTests(TestCase):
         request = self.request_factory.get("/search")
         request.user = self.user
 
-        content = render_to_string(
-            "app/components/media_card.html",
+        content = render_card_template(
             {
                 "item": item,
                 "media": SimpleNamespace(
@@ -714,9 +714,7 @@ class AppTagsTests(TestCase):
         )
 
         self.assertIn("media-card-visual", content)
-        self.assertIn('aria-label="Show alternative title"', content)
-        self.assertIn('x-teleport="body"', content)
-        self.assertIn('x-ref="panel"', content)
+        self.assertTrue(card_model(content)["altTitle"])
 
     def test_history_card_uses_canonical_music_album_url(self):
         """Music history cards should link to the shared nested album route."""
@@ -809,8 +807,7 @@ class AppTagsTests(TestCase):
         self.user.clickable_media_cards = True
         request = self.request_factory.get("/media")
         request.user = self.user
-        content = render_to_string(
-            "app/components/media_card.html",
+        content = render_card_template(
             {
                 "item": self.tv_item,
                 "media": SimpleNamespace(
@@ -831,9 +828,9 @@ class AppTagsTests(TestCase):
         )
 
         self.assertIn("media-card-hide-overlay", content)
-        self.assertIn("this.selectMode", content)
-        self.assertIn("flex-wrap", content)
-        self.assertIn("gap-2.5", content)
+        model = card_model(content)
+        self.assertEqual(model["bulkItemId"], self.tv_item.id)
+        self.assertTrue(model["actions"]["items"])
 
     def test_history_card_episode_shows_watched_status_and_uses_track_modal(self):
         """Episode history cards show watched status and open the track modal."""
@@ -2281,3 +2278,151 @@ class DetailActionRowTests(SimpleTestCase):
                         "overflow"
                     ]
                     self.assertTrue(set(overflow) <= {"history", "seerr", "sync"})
+
+
+class MusicRelationsReactPropsTests(SimpleTestCase):
+    """The shared artist relation grid receives plain, linkable rows."""
+
+    def test_relation_rows_carry_status_score_and_href(self):
+        member = SimpleNamespace(
+            id=7,
+            name="Elva Run",
+            image="https://example.com/elva.jpg",
+        )
+        tracker = SimpleNamespace(status=Status.IN_PROGRESS.value, score=8.5)
+        result = app_tags.music_relations_react(
+            {},
+            [
+                {
+                    "artist": member,
+                    "role": "Vocals",
+                    "is_current": False,
+                    "tracker": tracker,
+                },
+                {"artist": None, "role": "Skipped", "is_current": True, "tracker": None},
+            ],
+        )
+
+        self.assertEqual(result["props"]["labels"]["former"], "Former")
+        self.assertEqual(
+            result["props"]["relations"],
+            [
+                {
+                    "id": 7,
+                    "name": "Elva Run",
+                    "image": "https://example.com/elva.jpg",
+                    "href": reverse(
+                        "music_artist_details",
+                        kwargs={"artist_id": 7, "artist_slug": "elva-run"},
+                    ),
+                    "role": "Vocals",
+                    "current": False,
+                    "status": Status.IN_PROGRESS.value,
+                    "score": 8.5,
+                },
+            ],
+        )
+
+
+class MusicRelationGridTemplateTests(SimpleTestCase):
+    """The relation grid keeps its server fallback and mounts shared cards."""
+
+    def test_grid_mounts_with_server_fallback(self):
+        member = SimpleNamespace(id=7, name="Grid Member", image="")
+        html = render_to_string(
+            "app/components/artist_relation_grid.html",
+            {
+                "relations": [
+                    {
+                        "artist": member,
+                        "role": "Drums",
+                        "is_current": True,
+                        "tracker": None,
+                    },
+                ],
+            },
+        )
+
+        self.assertIn("data-music-relations-root", html)
+        self.assertIn("Grid Member", html)
+        self.assertIn("Drums", html)
+        self.assertIn("Former", html)
+
+
+class MusicAlbumsReactPropsTests(SimpleTestCase):
+    """The shared discography grid receives plain, linkable album rows."""
+
+    def test_album_rows_carry_release_year_plays_and_score(self):
+        artist = SimpleNamespace(id=3, name="Mira Vale")
+        album = SimpleNamespace(
+            id=11,
+            title="Glass Meridian",
+            image="https://example.com/glass.jpg",
+            artist=artist,
+            release_type="Album",
+            release_date=date(2025, 3, 14),
+            play_count=64,
+            score=9,
+        )
+        result = app_tags.music_albums_react({}, [album])
+
+        self.assertEqual(
+            result["props"]["albums"],
+            [
+                {
+                    "id": 11,
+                    "title": "Glass Meridian",
+                    "image": "https://example.com/glass.jpg",
+                    "href": reverse(
+                        "music_album_details",
+                        kwargs={
+                            "artist_id": 3,
+                            "artist_slug": "mira-vale",
+                            "album_id": 11,
+                            "album_slug": "glass-meridian",
+                        },
+                    ),
+                    "releaseType": "Album",
+                    "year": 2025,
+                    "plays": 64,
+                    "score": 9.0,
+                    "lines": [
+                        {
+                            "clamp": True,
+                            "dormant": False,
+                            "parts": [{"text": "Mira Vale"}],
+                        },
+                        {
+                            "clamp": True,
+                            "dormant": False,
+                            "parts": [{"text": "2025"}],
+                        },
+                    ],
+                },
+            ],
+        )
+
+
+class MusicAlbumGridTemplateTests(SimpleTestCase):
+    """The discography grid keeps its server fallback and mounts shared cards."""
+
+    def test_grid_mounts_with_server_fallback(self):
+        artist = SimpleNamespace(id=3, name="Mira Vale")
+        album = SimpleNamespace(
+            id=11,
+            title="Grid Album",
+            image="",
+            artist=artist,
+            release_type="Album",
+            release_date=None,
+            play_count=0,
+            score=None,
+        )
+        html = render_to_string(
+            "app/components/album_grid.html",
+            {"all_albums": [album]},
+        )
+
+        self.assertIn("data-music-albums-root", html)
+        self.assertIn("Grid Album", html)
+        self.assertIn('data-media-type="music"', html)

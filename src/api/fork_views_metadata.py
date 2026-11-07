@@ -4,6 +4,7 @@ import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.apps import apps
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
 from rest_framework.response import Response
@@ -56,6 +57,28 @@ def _get_owned_tracked_item(user, item_id):
     if not _owned_media_queryset(user, item).exists():
         return None
     return item
+
+
+# /api/v1/media/[type]/[source]/[id]/metadata/
+class MediaMetadataView(drf_views.APIView):
+    """Return stored metadata for one tracked item by its provider identity."""
+
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
+    def get(self, request, media_type, source, media_id):
+        """Project the item's stored metadata for the native detail page."""
+        item = Item.objects.filter(
+            media_type=media_type,
+            source=source,
+            media_id=media_id,
+        ).first()
+        if item is None or not _owned_media_queryset(request.user, item).exists():
+            return Response(
+                {"detail": "Item not found in your library."},
+                status=HTTP.NOT_FOUND,
+            )
+        payload = project_item_metadata(item)
+        payload["item_id"] = item.id
+        return Response(payload, status=HTTP.OK)
 
 
 # /api/v1/metadata/items/[item_id]/image/

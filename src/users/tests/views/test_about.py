@@ -43,6 +43,26 @@ class AboutViewTests(TestCase):
                 self.assertEqual(icon.get("aria-hidden"), "true")
                 self.assertEqual(icon.get("focusable"), "false")
 
+    def test_about_props_expose_api_specs_and_download_names(self):
+        response = self.client.get(reverse("about"))
+
+        specs = response.context["about_props"]["specs"]["items"]
+        self.assertEqual(
+            [spec["label"] for spec in specs],
+            [
+                "API Reference",
+                "Verified API Schema",
+                "Domain Context (JSON-LD)",
+                "Full Diagnostic API Schema",
+                "Asynchronous Channels (AsyncAPI)",
+            ],
+        )
+        self.assertEqual(specs[1]["downloadName"], "openapi.yaml")
+        self.assertEqual(specs[2]["downloadName"], "context.jsonld")
+        self.assertEqual(specs[3]["downloadName"], "openapi-live.yaml")
+        self.assertEqual(specs[4]["downloadName"], "asyncapi.json")
+        self.assertNotIn("downloadName", specs[0])
+
     def test_sponsor_link_is_attributed_and_leaves_no_paywall_doubt(self):
         response = self.client.get(reverse("about"))
 

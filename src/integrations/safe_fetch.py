@@ -29,9 +29,11 @@ validation and connect. Cancellation is subject to OS thread scheduling.
 
 import ipaddress
 import logging
+import math
 import socket
 import threading
 import time
+import weakref
 from contextlib import suppress
 from urllib.parse import urlparse, urlunsplit
 
@@ -42,6 +44,10 @@ logger = logging.getLogger(__name__)
 
 MAX_REDIRECTS = 3
 MAX_BYTES = 1024 * 1024
+# Larger self-hosted library pages require a separate bounded budget.
+SELF_HOSTED_MAX_BYTES = 32 * 1024 * 1024
+SELF_HOSTED_TOTAL_TIMEOUT = 60
+TIMEOUT_PAIR_LENGTH = 2
 CONNECT_TIMEOUT = 5
 READ_TIMEOUT = 10
 # Shared elapsed-time budget. Socket inactivity timeouts alone cannot stop
@@ -471,6 +477,7 @@ SELF_HOSTED_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 METADATA_ADDRESSES = frozenset(
     {
         ipaddress.ip_address("100.100.100.200"),  # Alibaba Cloud, inside CGNAT
+        ipaddress.ip_address("168.63.129.16"),  # Azure platform address
         ipaddress.ip_address("fd00:ec2::254"),  # AWS IPv6, inside ULA
     },
 )
@@ -494,6 +501,7 @@ def _self_hosted_address_is_forbidden(address):
         address = mapped
     return bool(
         address.is_link_local
+        or address.is_unspecified
         or address.is_multicast
         # ::1 sits inside the reserved ::/8 block; loopback must stay usable.
         or (address.is_reserved and not address.is_loopback)
@@ -568,3 +576,416 @@ def send_to_self_hosted(send, url, **kwargs):
 
     msg = "The server redirected too many times."
     raise SelfHostedUrlError(REASON_TOO_MANY_REDIRECTS, msg)
+
+
+# --- Pinned self-hosted transport (legacy send_to_self_hosted remains intact) ---
+
+REASON_HTTPS_DOWNGRADE = "https_downgrade"
+REASON_CROSS_PORT_REDIRECT = "cross_port_redirect"
+HTTP_DEFAULT_PORT = 80
+HTTPS_DEFAULT_PORT = 443
+SELF_HOSTED_SEE_OTHER = 303
+SELF_HOSTED_POST_TO_GET = frozenset({301, 302})
+
+
+def _validated_self_hosted_target(url, *, require_resolution=False):
+    """Validate a self-hosted target and retain the resolved addresses.
+
+    Outbound transport callers must require successful DNS resolution.
+    The address selected for connection must come from this result.
+    """
+    try:
+        parsed = urlparse(str(url or "").strip())
+        hostname = (parsed.hostname or "").rstrip(".")
+        credentials_in_url = parsed.username is not None or parsed.password is not None
+        port = parsed.port
+    except ValueError as error:
+        msg = "This server address could not be read."
+        raise SelfHostedUrlError(REASON_UNPARSABLE_URL, msg) from error
+
+    if parsed.scheme.lower() not in ALLOWED_SCHEMES:
+        msg = "Only http and https server addresses are supported."
+        raise SelfHostedUrlError(REASON_FORBIDDEN_SCHEME, msg)
+
+    if credentials_in_url:
+        msg = "Credentials must not be embedded in a server URL."
+        raise SelfHostedUrlError(REASON_CREDENTIALS_IN_URL, msg)
+
+    if not hostname:
+        msg = "This server address has no host."
+        raise SelfHostedUrlError(REASON_MISSING_HOST, msg)
+
+    if port == 0:
+        msg = "This server address has an invalid port."
+        raise SelfHostedUrlError(REASON_UNPARSABLE_URL, msg)
+
+    # Use the same IDNA-normalized host for DNS, HTTP Host and TLS.
+    try:
+        prepared = requests.PreparedRequest()
+        prepared.prepare_url(parsed.geturl(), None)
+        parsed = urlparse(prepared.url)
+        hostname = (parsed.hostname or "").lower().rstrip(".")
+    except (requests.RequestException, ValueError, UnicodeError) as error:
+        msg = "This server address could not be read."
+        raise SelfHostedUrlError(REASON_UNPARSABLE_URL, msg) from error
+
+    try:
+        infos = socket.getaddrinfo(
+            hostname,
+            None,
+            proto=socket.IPPROTO_TCP,
+        )
+    except (socket.gaierror, UnicodeError) as error:
+        if require_resolution:
+            msg = "This server hostname could not be resolved."
+            raise SelfHostedUrlError(REASON_UNRESOLVABLE_HOST, msg) from error
+        return parsed, []
+
+    addresses = []
+
+    for info in infos:
+        try:
+            address = ipaddress.ip_address(info[4][0].split("%", 1)[0])
+        except ValueError:
+            continue
+
+        if _self_hosted_address_is_forbidden(address):
+            msg = "This server address is not one Floppy will contact."
+            raise SelfHostedUrlError(REASON_FORBIDDEN_ADDRESS, msg)
+
+        if address not in addresses:
+            addresses.append(address)
+
+    if require_resolution and not addresses:
+        msg = "This server hostname could not be resolved."
+        raise SelfHostedUrlError(REASON_UNRESOLVABLE_HOST, msg)
+
+    return parsed, addresses
+
+
+class _SelfHostedBoundedRaw:
+    """Limit raw and decoded streaming reads without buffering the whole body."""
+
+    def __init__(self, raw, max_bytes, deadline, close_on_error):
+        self._raw = raw
+        self._max_bytes = max_bytes
+        self._read_bytes = 0
+        self._deadline = deadline
+        self._close_on_error = close_on_error
+
+    def _fail(self):
+        try:
+            self._raw.close()
+        finally:
+            self._close_on_error()
+
+    def _account(self, chunk):
+        self._read_bytes += len(chunk)
+        if self._read_bytes > self._max_bytes:
+            raise SelfHostedUrlError(
+                REASON_RESPONSE_TOO_LARGE, "This server response is too large."
+            )
+        if time.monotonic() >= self._deadline:
+            raise SelfHostedUrlError(
+                REASON_DEADLINE_EXCEEDED, "This server took too long to respond."
+            )
+        return chunk
+
+    def read(self, amt=None, *args, **kwargs):
+        # A raw.read() without an amount must never buffer an unlimited body.
+        remaining = self._max_bytes - self._read_bytes
+        limit = max(1, remaining + 1)
+        amt = limit if amt is None or amt < 0 else min(amt, limit)
+        try:
+            return self._account(self._raw.read(amt, *args, **kwargs))
+        except Exception:
+            self._fail()
+            raise
+
+    def stream(self, amt=CHUNK_SIZE, *args, **kwargs):
+        # urllib3's stream returns decoded bytes when decode_content=True.
+        # These are the bytes Requests' iter_content() and .content consume.
+        if not isinstance(amt, int) or amt <= 0:
+            amt = CHUNK_SIZE
+        try:
+            for chunk in self._raw.stream(min(amt, CHUNK_SIZE), *args, **kwargs):
+                yield self._account(chunk)
+        except Exception:
+            self._fail()
+            raise
+
+    def __getattr__(self, name):
+        return getattr(self._raw, name)
+
+
+def _self_hosted_timeouts(requested, deadline):
+    """Clamp caller timeouts to the common elapsed-time budget."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise SelfHostedUrlError(
+            REASON_DEADLINE_EXCEEDED, "This server took too long to respond."
+        )
+    if requested is None:
+        requested = (CONNECT_TIMEOUT, READ_TIMEOUT)
+    if isinstance(requested, tuple) and len(requested) == TIMEOUT_PAIR_LENGTH:
+        connect, read = requested
+    else:
+        connect = read = requested
+
+    def clamp(value, fallback):
+        if value is None:
+            value = fallback
+        try:
+            value = float(value)
+        except (TypeError, ValueError, OverflowError) as error:
+            msg = "Invalid self-hosted timeout."
+            raise ValueError(msg) from error
+        if not math.isfinite(value) or value <= 0:
+            msg = "Invalid self-hosted timeout."
+            raise ValueError(msg)
+        return min(value, remaining)
+
+    return clamp(connect, CONNECT_TIMEOUT), clamp(read, READ_TIMEOUT)
+
+
+def _require_self_hosted_time_remaining(deadline):
+    """Reject an expired request budget outside the session's exception handler."""
+    if time.monotonic() >= deadline:
+        raise SelfHostedUrlError(
+            REASON_DEADLINE_EXCEEDED, "This server took too long to respond."
+        )
+
+
+def _check_self_hosted_declared_length(response, max_bytes):
+    """Reject a declared oversized body before consuming its bytes."""
+    declared = response.headers.get("Content-Length", "")
+    if declared.isdigit() and int(declared) > max_bytes:
+        raise SelfHostedUrlError(
+            REASON_RESPONSE_TOO_LARGE, "This server response is too large."
+        )
+
+
+def _send_pinned_self_hosted(method, parsed, address, *, deadline, max_bytes, **kwargs):
+    """Send using the validated IP while retaining the origin's HTTP/TLS name."""
+    request_kwargs = dict(kwargs)
+    if request_kwargs.pop("proxies", None):
+        raise SelfHostedUrlError(
+            REASON_FORBIDDEN_ADDRESS, "Proxies are not supported for this request."
+        )
+    requested_timeout = request_kwargs.pop("timeout", None)
+    streaming = bool(request_kwargs.pop("stream", False))
+    request_kwargs["allow_redirects"] = False
+
+    hostname = (parsed.hostname or "").lower().rstrip(".")
+    headers = dict(request_kwargs.pop("headers", None) or {})
+    headers = {key: value for key, value in headers.items() if key.lower() != "host"}
+    headers["Host"] = _host_header_value(hostname)
+    if parsed.port is not None:
+        headers["Host"] += f":{parsed.port}"
+
+    session = _pinned_session(
+        address, hostname, parsed.scheme.lower(), deadline=deadline
+    )
+    response = None
+    try:
+        response = session.request(
+            method.upper(),
+            _pinned_url(parsed, address),
+            headers=headers,
+            timeout=_self_hosted_timeouts(requested_timeout, deadline),
+            stream=True,
+            **request_kwargs,
+        )
+
+        _require_self_hosted_time_remaining(deadline)
+
+        # Avoid an unlimited body read, including gzip decompression.
+        if response.status_code not in SELF_HOSTED_REDIRECT_STATUSES:
+            _check_self_hosted_declared_length(response, max_bytes)
+            response.raw = _SelfHostedBoundedRaw(
+                response.raw, max_bytes, deadline, session.close
+            )
+
+        if response.status_code in SELF_HOSTED_REDIRECT_STATUSES or streaming:
+            # Redirects only need headers. Streams retain the session until
+            # their caller closes the response; GC also releases abandoned ones.
+            finalizer = weakref.finalize(response, session.close)
+            original_close = response.close
+
+            def close_owned_response():
+                try:
+                    original_close()
+                finally:
+                    finalizer()
+
+            response.close = close_owned_response
+            return response
+
+        try:
+            body = _read_bounded(response, deadline=deadline, max_bytes=max_bytes)
+        except UnsafeUrlError as error:
+            raise SelfHostedUrlError(error.reason_code, str(error)) from error
+        response._content = body
+        response._content_consumed = True
+        response.close()
+        session.close()
+    except Exception as error:
+        if response is not None:
+            response.close()
+        session.close()
+        if (
+            isinstance(error, requests.RequestException)
+            and time.monotonic() >= deadline
+        ):
+            raise SelfHostedUrlError(
+                REASON_DEADLINE_EXCEEDED, "This server took too long to respond."
+            ) from error
+        raise
+    else:
+        return response
+
+
+def _checked_self_hosted_redirect(current_url, location):
+    """Validate a redirect without allowing its origin or port to pivot."""
+    if not isinstance(location, str) or not location.strip():
+        msg = "The server returned a redirect without a destination."
+        raise SelfHostedUrlError(REASON_INVALID_REDIRECT, msg)
+
+    try:
+        target_url = requests.compat.urljoin(current_url, location)
+        prepared = requests.PreparedRequest()
+        prepared.prepare_url(target_url, None)
+        target_url = prepared.url
+
+        previous = urlparse(current_url)
+        target = urlparse(target_url)
+
+        previous_port = previous.port
+        target_port = target.port
+    except (ValueError, requests.RequestException) as error:
+        msg = "The server returned an invalid redirect."
+        raise SelfHostedUrlError(REASON_INVALID_REDIRECT, msg) from error
+
+    if target.scheme.lower() not in ALLOWED_SCHEMES:
+        msg = "The redirect uses an unsupported protocol."
+        raise SelfHostedUrlError(REASON_FORBIDDEN_SCHEME, msg)
+
+    if target.username is not None or target.password is not None:
+        msg = "Redirect destinations may not embed credentials."
+        raise SelfHostedUrlError(REASON_CREDENTIALS_IN_URL, msg)
+
+    previous_host = (previous.hostname or "").lower().rstrip(".")
+    target_host = (target.hostname or "").lower().rstrip(".")
+
+    if not target_host or previous_host != target_host:
+        msg = "An integration redirect may not change hostname."
+        raise SelfHostedUrlError(REASON_CROSS_HOST_REDIRECT, msg)
+
+    if previous.scheme.lower() == "https" and target.scheme.lower() == "http":
+        msg = "An integration redirect may not downgrade HTTPS."
+        raise SelfHostedUrlError(REASON_HTTPS_DOWNGRADE, msg)
+
+    if previous_port is None:
+        previous_port = (
+            HTTPS_DEFAULT_PORT
+            if previous.scheme.lower() == "https"
+            else HTTP_DEFAULT_PORT
+        )
+
+    if target_port is None:
+        target_port = (
+            HTTPS_DEFAULT_PORT
+            if target.scheme.lower() == "https"
+            else HTTP_DEFAULT_PORT
+        )
+
+    normal_https_upgrade = (
+        previous.scheme.lower() == "http"
+        and target.scheme.lower() == "https"
+        and previous_port == HTTP_DEFAULT_PORT
+        and target_port == HTTPS_DEFAULT_PORT
+    )
+
+    if previous_port != target_port and not normal_https_upgrade:
+        msg = "An integration redirect may not change to another service port."
+        raise SelfHostedUrlError(REASON_CROSS_PORT_REDIRECT, msg)
+
+    return target_url
+
+
+def send_to_self_hosted_pinned(
+    method,
+    url,
+    *,
+    total_timeout=SELF_HOSTED_TOTAL_TIMEOUT,
+    max_bytes=SELF_HOSTED_MAX_BYTES,
+    **kwargs,
+):
+    """Use one validated IP through a same-host redirect chain.
+
+    The elapsed-time budget includes all hops and buffered body reads,
+    with socket cancellation after DNS resolution. OS DNS resolver calls
+    remain subject to OS timeouts. Requests' iter_content()/content
+    enforce a decoded-byte budget. Direct raw.read() counts returned bytes,
+    which may still be compressed; other raw readers are not guaranteed
+    to enforce this budget. Callers should use the Requests body APIs for
+    untrusted payloads, and close any streaming responses.
+    """
+    if (
+        not isinstance(total_timeout, (int, float))
+        or not math.isfinite(total_timeout)
+        or total_timeout <= 0
+    ):
+        msg = "total_timeout must be a positive finite number"
+        raise ValueError(msg)
+    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes <= 0:
+        msg = "max_bytes must be a positive integer"
+        raise ValueError(msg)
+
+    deadline = time.monotonic() + total_timeout
+    parsed, addresses = _validated_self_hosted_target(url, require_resolution=True)
+    if time.monotonic() >= deadline:
+        raise SelfHostedUrlError(
+            REASON_DEADLINE_EXCEEDED, "This server took too long to respond."
+        )
+
+    pinned_address = addresses[0]
+    current_url = parsed.geturl()
+    current_method = method.upper()
+    request_kwargs = dict(kwargs)
+    request_kwargs["allow_redirects"] = False
+
+    for _hop in range(MAX_REDIRECTS + 1):
+        response = _send_pinned_self_hosted(
+            current_method,
+            parsed,
+            pinned_address,
+            deadline=deadline,
+            max_bytes=max_bytes,
+            **request_kwargs,
+        )
+        if response.status_code not in SELF_HOSTED_REDIRECT_STATUSES:
+            return response
+
+        try:
+            next_url = _checked_self_hosted_redirect(
+                current_url, response.headers.get("Location")
+            )
+        finally:
+            response.close()
+
+        if (
+            response.status_code == SELF_HOSTED_SEE_OTHER and current_method != "HEAD"
+        ) or (
+            response.status_code in SELF_HOSTED_POST_TO_GET and current_method == "POST"
+        ):
+            current_method = "GET"
+            for key in ("data", "json", "files"):
+                request_kwargs.pop(key, None)
+        request_kwargs.pop("params", None)
+        current_url = next_url
+        parsed = urlparse(current_url)
+
+    raise SelfHostedUrlError(
+        REASON_TOO_MANY_REDIRECTS, "The self-hosted server redirected too many times."
+    )

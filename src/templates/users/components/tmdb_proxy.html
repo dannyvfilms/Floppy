@@ -1,3 +1,4 @@
+{% load ui_tags %}
 {% load i18n %}
       <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg">
         <div class="flex items-center justify-between mb-3">
@@ -25,9 +26,6 @@
                  name="tmdb_proxy_url"
                  class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                  placeholder="{% translate "socks5://user:pass@host:port" %}">
-          <button type="submit"
-                  class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-            {% translate "Save" %}
-          </button>
+          {% button _("Save") submit=True %}
         </form>
       </div>

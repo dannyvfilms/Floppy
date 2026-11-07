@@ -655,6 +655,27 @@ class KavitaImporterTests(TestCase):
         self.assertEqual(ComicIssue.objects.get(user=self.user).item_id, existing.id)
 
     @patch("integrations.imports.kavita.settings.TESTING", False)
+    @patch("integrations.imports.kavita.comicvine.search")
+    def test_comic_vine_420_skips_series_instead_of_aborting_import(
+        self,
+        mock_search,
+    ):
+        """Comic Vine's 420 is a rate limit, not a fatal provider error."""
+        response = requests.Response()
+        response.status_code = 420
+        mock_search.side_effect = ProviderAPIError(
+            "comicvine",
+            requests.HTTPError(response=response),
+        )
+        series = _series(2, name="Saga")
+        chapters = [_chapter(21, pages_read=20, number=1)]
+
+        counts, warnings = self._sync([series], {2: _detail(COMIC, chapters)})
+
+        self.assertIn("Comic Vine unavailable; skipped Kavita series Saga", warnings)
+        self.assertGreaterEqual(counts.get("skipped", 0), 1)
+
+    @patch("integrations.imports.kavita.settings.TESTING", False)
     @patch("integrations.imports.kavita._volume_issue_id")
     def test_comic_vine_rate_limit_skips_issue_instead_of_aborting_import(
         self,
@@ -955,7 +976,7 @@ class ComicVineProviderErrorTests(SimpleTestCase):
         return ProviderAPIError("comicvine", requests.HTTPError(response=response))
 
     def test_transient_failures_count_as_unavailable(self):
-        for status_code in (408, 429, 500, 503):
+        for status_code in (408, 420, 429, 500, 503):
             with self.subTest(status_code=status_code):
                 self.assertTrue(kavita._provider_unavailable(self._error(status_code)))
         self.assertTrue(

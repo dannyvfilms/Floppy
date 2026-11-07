@@ -305,6 +305,11 @@ urlpatterns = [
         name="update_statistics_compare_mode",
     ),
     path(
+        "statistics/media-types",
+        views.update_statistics_media_types,
+        name="update_statistics_media_types",
+    ),
+    path(
         "statistics/select-featured-person",
         views.select_featured_person,
         name="select_featured_person",
@@ -591,6 +596,16 @@ urlpatterns = [
         "bulk/status",
         views.bulk_status_update,
         name="bulk_status_update",
+    ),
+    path(
+        "bulk/plays",
+        views.bulk_show_plays_start,
+        name="bulk_show_plays_start",
+    ),
+    path(
+        "bulk/plays/<str:operation_id>",
+        views.bulk_show_plays_status,
+        name="bulk_show_plays_status",
     ),
     path(
         "bulk/collection",

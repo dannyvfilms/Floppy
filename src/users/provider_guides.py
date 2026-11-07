@@ -67,7 +67,7 @@ def _primary(guide, label, key="webhook", sentence=None):
 def _guide(title, description, steps, copy, warning=None, notes=()):
     return {
         "title": title, "description": description, "steps": steps, "warning": warning, "notes": list(notes),
-        "heading": _("Setup Instructions"), "copyLabel": _("Copy"), "copiedLabel": _("Copied"),
+        "heading": _("Setup Instructions"), "stepsLabel": _("Show steps"), "copyLabel": _("Copy"), "copiedLabel": _("Copied"),
     }, copy
 
 
@@ -77,7 +77,7 @@ def setup_guide(request, slug):
     tokens = reverse("access_tokens") + "#app-tokens"
     if slug == "emby":
         url = absolute(reverse("emby_webhook", args=[request.user.token]))
-        return _guide(_("Emby Integration"), _("Connect Emby to automatically track your watching progress."), [
+        guide, copy = _guide(_("Emby Integration"), _("Connect Emby to automatically track your watching progress."), [
             [_t("In Emby, go to"), _b("Settings > Notifications"), _t(".")],
             [_t("Click"), _b("Add Notification"), _t(".")],
             {"parts": [_t("Configure the notification with the following settings:")], "items": [
@@ -88,6 +88,8 @@ def setup_guide(request, slug):
             ]},
             [_t("Set the webhook URL to:"), _copy("webhook")],
         ], {"webhook": url})
+        _primary(guide, "Webhook URL")["collapsed"] = True
+        return guide, copy
     if slug == "kodi":
         url = absolute(reverse("kodi_webhook", args=[request.user.token]))
         return _guide(_("Kodi Integration"), _("Connect Kodi to automatically track your watching progress."), [
@@ -153,7 +155,7 @@ def setup_guides(request, slug, context):
             if context.get("jellyfin_template_outdated") else None
         official, _copy_values = _guide(
             _("Jellyfin Integration (Official Repo)"),
-            _("Connect Jellyfin to automatically track your watching progress. Use this method if your server has access to the official Jellyfin plugin repository."), [
+            _("Use this if your server can reach the official Jellyfin plugin repository."), [
                 [_t("You will need to have TMDB and TVDB as metadata providers in Jellyfin.")],
                 [_t("Install the Webhook plugin from the Jellyfin Stable repo via your server's Plugin Catalog.")],
                 [_t("Restart your server, then open the Webhook plugin and click"), _b("Add Generic Destination"), _t(".")],
@@ -168,22 +170,29 @@ def setup_guides(request, slug, context):
             ], {"webhook": url}, warning=warning)
         unofficial, _copy_values = _guide(
             _("Jellyfin Integration (Unofficial Repo)"),
-            _("An alternative setup using an unofficial webhook plugin from a community repository. Use this method if the official Jellyfin plugin repository is not accessible from your server."), [
+            _("Use this if your server cannot reach the official Jellyfin plugin repository."), [
                 [_t("You will need to have TMDB and TVDB as metadata providers in Jellyfin.")],
-                [_t("In Jellyfin, go to"), _b("Dashboard > Plugins > Repositories"), _t("and add the following repository URL:"),
-                 _a("https://raw.githubusercontent.com/shemanaev/jellyfin-plugin-repo/master/manifest.json",
-                    "https://raw.githubusercontent.com/shemanaev/jellyfin-plugin-repo/master/manifest.json")],
+                [_t("In Jellyfin, go to"), _b("Dashboard > Plugins > Repositories"), _t("and add the community repository:"),
+                 _a("Plugin repository manifest", "https://raw.githubusercontent.com/shemanaev/jellyfin-plugin-repo/master/manifest.json")],
                 [_t("From the Plugin Catalog, install the"), _a("Unofficial Webhooks plugin", "https://github.com/shemanaev/jellyfin-plugin-webhooks"), _t(".")],
                 {"parts": [_t("Restart your server, then open the Unofficial Webhooks plugin and configure it:")], "items": [
                     [_t("Payload format:"), _b("Default")],
-                    [_t("Listen to events only for: your Jellyfin user")],
                     [_t("Events:"), _b("Play"), _b("Stop"), _b("MarkPlayed"), _b("MarkUnplayed"), _b("ItemAdded"), _t(", and"), _b("ItemRemoved")],
+                    [_t("User Filter: your Jellyfin user")],
                 ]},
                 [_t("Set the webhook URL to:"), _copy("webhook")],
             ], {"webhook": url})
         _primary(official, "Webhook URL")
         _primary(unofficial, "Webhook URL")
-        return [official, unofficial], {"webhook": url}
+        official["collapsed"] = True
+        if warning:
+            official["badge"] = {"label": _("Needs update"), "tone": "warning", "summary": _("Webhook template needs updating."),
+                                 "tooltip": warning["text"]}
+        merged = {**official, "title": _("Jellyfin webhook"), "steps": [],
+                  "description": _("Jellyfin sends what you watch to this URL. Choose the setup that matches your plugin repository."),
+                  "methods": [{"title": _("Official plugin repository"), "description": official["description"], "steps": official["steps"]},
+                              {"title": _("Unofficial plugin repository"), "description": unofficial["description"], "steps": unofficial["steps"]}]}
+        return [merged], {"webhook": url}
     if slug == "seerr":
         url = app_helpers.build_absolute_app_url(request, reverse("jellyseerr_webhook", args=[request.user.token]))
         copy = {"webhook": url}
@@ -198,6 +207,7 @@ def setup_guides(request, slug, context):
                 [_t("Select the notification types you want (commonly request/approval events).")],
             ], copy)[0]]
         _primary(guides[0], "Webhook URL")
+        guides[0]["collapsed"] = True
         if context.get("seerr_global_webhook_enabled"):
             copy["global"] = app_helpers.build_absolute_app_url(request, reverse("seerr_global_webhook"))
             guides.append(_guide(
@@ -211,6 +221,7 @@ def setup_guides(request, slug, context):
                      _pre(SEERR_TEMPLATE.replace('"{{requestedBy_username}}"', '"{{requestedBy_username}}",\n  "secret": "REPLACE_WITH_SHARED_SECRET"'))],
                 ], copy)[0])
             _primary(guides[1], "Global webhook URL", "global")
+            guides[1]["collapsed"] = True
         return guides, copy
     if slug == "plex":
         user = request.user

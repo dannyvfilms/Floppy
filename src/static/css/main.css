@@ -7158,6 +7158,11 @@ html:is(.glass, .custom) [class*="bg-[var(--color-panel)]"] {
   backdrop-filter: blur(var(--theme-blur)) saturate(145%);
   -webkit-backdrop-filter: blur(var(--theme-blur)) saturate(145%);
 }
+html:is(.glass, .custom) [class*="bg-[var(--color-surface)]"][class~="z-50"], html:is(.glass, .custom) [class*="bg-[var(--color-panel)]"][class~="z-50"] {
+  background-color: var(--color-surface);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
 html.glass [class*="bg-[var(--color-sidebar)]"] {
   background-color: rgb(12 16 32 / 76%);
   backdrop-filter: blur(22px) saturate(150%);
@@ -10149,7 +10154,12 @@ button.tier-label:hover .tier-label-edit, button.tier-label:focus-visible .tier-
 .tier-tile .search-result-card .media-card-title-row, .tier-tile .search-result-card:hover .media-card-title-row {
   flex-wrap: wrap;
   gap: 0 0.25rem;
-  max-height: none;
+}
+.tier-tile .search-result-card .media-card-title-row {
+  max-height: calc(var(--card-title-rest-lines, 1) * 1.2 * 0.6875rem);
+}
+.tier-tile .search-result-card:hover .media-card-title-row {
+  max-height: calc(var(--card-title-hover-lines, 3) * 1.2 * 0.6875rem);
 }
 .tier-tile .media-card-title {
   width: 100%;

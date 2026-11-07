@@ -14,6 +14,7 @@ from app.models import (
     Status,
     Studio,
 )
+from app.tests.card_props import card_models, card_text
 
 
 class StudioDetailViewTests(TestCase):
@@ -206,7 +207,7 @@ class StudioDetailViewTests(TestCase):
         self.assertContains(response, "We make role-playing games.")
         self.assertContains(response, "Cyberpunk 2077")
         self.assertContains(response, "The Witcher 3: Wild Hunt")
-        self.assertContains(response, "Developer, Publisher")
+        self.assertIn("Developer, Publisher", card_text(response.content))
         self.assertContains(response, "2 games")
         self.assertEqual(response.context["studio"], studio)
         self.assertEqual(
@@ -264,13 +265,58 @@ class StudioDetailViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         # Both cards, tracked or not, get the hover actions.
-        self.assertContains(response, 'class="media-card-overlay', count=2)
+        models = card_models(response.content)
+        self.assertEqual(sum(1 for m in models if m["actions"]), 2)
         # Only the tracked one has a status chip and a rating to change.
-        self.assertContains(response, 'class="media-status-chip', count=1)
-        self.assertContains(
-            response,
+        self.assertEqual(sum(1 for m in models if m["statusChip"]), 1)
+        self.assertIn(
             reverse(
                 "update_media_score",
                 args=[MediaTypes.MOVIE.value, movie.id],
             ),
+            [m["rating"]["rateUrl"] for m in models if m["rating"]],
         )
+
+    @patch("app.providers.igdb.company_profile", return_value=None)
+    def test_studio_detail_json_contract_shapes_the_native_profile(
+        self,
+        _mock_company_profile,
+    ):
+        studio = Studio.objects.create(
+            source=Sources.IGDB.value,
+            source_studio_id="1",
+            name="CD Projekt Red",
+            logo="https://images.igdb.com/igdb/image/upload/t_logo_med/logo123.png",
+        )
+        item = Item.objects.create(
+            media_id="1942",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="The Witcher 3: Wild Hunt",
+            image="http://example.com/witcher3.jpg",
+            release_datetime=timezone.now(),
+        )
+        ItemStudioCredit.objects.create(item=item, studio=studio)
+
+        response = self.client.get(
+            reverse(
+                "studio_detail",
+                kwargs={
+                    "source": Sources.IGDB.value,
+                    "studio_id": "1",
+                    "name": "cd-projekt-red",
+                },
+            )
+            + "?format=json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["kind"], "studio")
+        self.assertEqual(payload["studio"]["name"], "CD Projekt Red")
+        self.assertEqual(payload["studioId"], "1")
+        self.assertEqual(len(payload["titles"]), 1)
+        credit = payload["titles"][0]
+        self.assertEqual(credit["title"], "The Witcher 3: Wild Hunt")
+        self.assertEqual(credit["mediaTypeLabel"], "Game")
+        self.assertIn("/details/igdb/game/1942/", credit["href"])
