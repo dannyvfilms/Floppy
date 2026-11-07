@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("lists", "0017_customlistitem_rank"),
+        ("lists", "0018_customlist_viewers_alter_customlist_visibility"),
     ]
 
     operations = [
