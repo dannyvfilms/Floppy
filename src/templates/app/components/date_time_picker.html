@@ -1,6 +1,8 @@
 {% load i18n ui_tags %}
-{% if suggestion_date_expr or runtime_minutes_expr %}
+{% if legacy_picker or suggestion_date_expr or runtime_minutes_expr %}
   {% include "app/components/date_time_picker_legacy.html" %}
+  {% date_time_picker_props %}
+  {% if legacy_picker %}<!-- data-date-time-picker-root -->{% endif %}
 {% else %}
   {% date_time_picker %}
 {% endif %}

@@ -753,6 +753,7 @@ def media_details(
 
                     def __init__(self, episode):
                         self.title = episode.title
+                        self.description = episode.description or ""
                         self.track_number = episode.episode_number
                         self.duration_formatted = (
                             self._format_duration(episode.duration)
@@ -901,11 +902,14 @@ def media_details(
                 episode_list.append(
                     {
                         "title": episode_obj.title,
+                        "description": episode_obj.description or "",
                         "episode_number": episode_obj.episode_number or 0,
-                        "image": show.image or settings.IMG_NONE,  # Use show image
+                        "image": episode_obj.image
+                        or show.image
+                        or settings.IMG_NONE,
                         "air_date": episode_obj.published,
                         "runtime": duration_str,
-                        "overview": "",  # Podcast episodes don't have descriptions from API
+                        "overview": episode_obj.description or "",
                         "website_url": episode_obj.website_url,
                         "history": episode_history,
                         "media": episode_media,
@@ -995,6 +999,11 @@ def media_details(
                 "user_medias": user_podcasts,  # Episodes user has listened to
                 "podcast_show": show,
                 "podcast_tracker": tracker,
+                "episode_manager_props": (
+                    None
+                    if public_view
+                    else podcast_views.episode_manager_props(request, show)
+                ),
                 "episodes": episode_list,  # Use episode_list with adapter objects
                 "paginated_episodes": episode_list,  # For fragment compatibility
                 "total_episodes": total_episodes_count,
