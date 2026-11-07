@@ -249,7 +249,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
                 self.open_cards(tab)
                 heading = self.page.get_by_role("heading", name=title, exact=True)
                 gap = heading.evaluate("""heading => heading.getBoundingClientRect().top -
-                  document.querySelector('[role="tablist"]').getBoundingClientRect().bottom""")
+                  document.querySelector('[role=tablist]').getBoundingClientRect().bottom""")
                 self.assertGreaterEqual(gap, 23)
                 self.assertLessEqual(gap, 26)
                 gaps.append(gap)
@@ -265,7 +265,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
                 self.page.goto(f"{self.live_server_url}/settings/providers/steam?tab={tab}")
                 heading = self.page.get_by_role("heading", name=title, exact=True)
                 expect(heading).to_be_visible()
-                gaps.append(heading.evaluate("heading => heading.getBoundingClientRect().top - document.querySelector('[role="tablist"]').getBoundingClientRect().bottom"))
+                gaps.append(heading.evaluate("heading => heading.getBoundingClientRect().top - document.querySelector('[role=tablist]').getBoundingClientRect().bottom"))
             self.assertLessEqual(abs(gaps[0] - gaps[1]), 2, (width, gaps))
             self.assertEqual(self.page.locator(".ui-card-grid").count(), 1)
             heading = self.page.get_by_role("heading", name="Import settings", exact=True)
