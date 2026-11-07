@@ -487,7 +487,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(pin).to_be_visible()
         with self.page.expect_response(lambda response: "/settings/providers/pin" in response.url):
             pin.click()
-        expect(self.page.get_by_role("button", name="Unpin Steam", exact=True)).to_have_attribute("aria-selected", "true")
+        expect(self.page.get_by_role("button", name="Unpin Steam", exact=True)).to_have_attribute("aria-pressed", "true")
         expect(self.page.locator("#provider-results .ui-catalog-item").first.get_by_role("link", name="Open Steam")).to_be_visible()
         self.page.reload()
         expect(self.page.get_by_role("button", name="Unpin Steam", exact=True)).to_be_visible()
