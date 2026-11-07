@@ -1,5 +1,12 @@
 {% load i18n %}
 {% load app_tags %}
+{% if cf_form_id %}
+{% collection_field_input_props custom_field_groups entry_custom_field_values cf_form_id as cf_input_props %}
+{% with props_id="collection-field-inputs-"|add:cf_form_id|stringformat:"s" %}
+{{ cf_input_props|json_script:props_id }}
+<div data-collection-field-inputs-root data-props-id="{{ props_id }}" data-form-id="{{ cf_form_id }}">
+{% endwith %}
+{% endif %}
 {% for group in custom_field_groups %}
   <div class="mb-5">
     <h4 class="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2">
@@ -71,3 +78,6 @@
     </div>
   </div>
 {% endfor %}
+{% if cf_form_id %}
+</div>
+{% endif %}

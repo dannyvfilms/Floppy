@@ -14,6 +14,8 @@ from app.models import (
     TV,
     Album,
     Artist,
+    Book,
+    BookListeningSession,
     Episode,
     Item,
     MediaTypes,
@@ -802,3 +804,197 @@ class HistoryEpisodeTitleBucketCollisionTests(TestCase):
         ]
         self.assertEqual(len(episode_entries), 1)
         self.assertEqual(episode_entries[0]["display_title"], "The Real Episode Title")
+
+
+class BookListeningSessionHistoryTests(TestCase):
+    """An audiobook's listening sessions are dated entries in activity history."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="listener", password="x",
+        )
+        item = Item.objects.create(
+            media_id="abs-h1",
+            source=Sources.AUDIOBOOKSHELF.value,
+            media_type=MediaTypes.BOOK.value,
+            title="Piranesi",
+            format="audiobook",
+        )
+        self.book = Book.objects.create(
+            item=item, user=self.user, status=Status.IN_PROGRESS.value, progress=30,
+        )
+        self.first = timezone.now().replace(hour=12, minute=0, second=0, microsecond=0)
+        self.second = self.first - timedelta(days=3)
+        for number, (started, minutes) in enumerate(
+            [(self.first, 84), (self.first, 20), (self.second, 47)],
+        ):
+            BookListeningSession.objects.create(
+                book=self.book,
+                session_id=f"s{number}",
+                started_at=started,
+                minutes=minutes,
+                position_minutes=302 if minutes == 84 else None,
+            )
+        item.runtime_minutes = 970
+        item.save()
+
+    def tearDown(self):
+        cache.clear()
+
+    def test_each_session_is_an_entry_on_its_own_day(self):
+        day = history_cache.build_history_day(
+            self.user, history_cache.history_day_key(self.first),
+        )
+
+        entries = [e for e in day["entries"] if e["media_type"] == "book"]
+        self.assertEqual(
+            sorted(e["runtime_minutes"] for e in entries), [20, 84],
+        )
+        self.assertEqual(
+            {e["entry_key"] for e in entries}, {f"book-session-{s.id}" for s in
+             BookListeningSession.objects.filter(started_at=self.first)},
+        )
+        self.assertEqual(day["total_runtime_display"], "1h 44min")
+        by_minutes = {e["runtime_minutes"]: e for e in entries}
+        self.assertEqual(by_minutes[84]["position_display"], "5h 02min")
+        self.assertEqual(by_minutes[84]["position_total_display"], "16h 10min")
+        self.assertNotIn("position_display", by_minutes[20])
+
+    def test_listening_only_days_are_indexed(self):
+        self.assertIn(
+            history_cache.history_day_key(self.second),
+            history_cache.build_history_index(self.user, "repeats"),
+        )
+
+    def test_item_filtered_history_lists_the_sessions_for_the_modal(self):
+        days = history_cache.build_history_days(
+            self.user,
+            filters={
+                "media_type": "book",
+                "media_id": "abs-h1",
+                "source": Sources.AUDIOBOOKSHELF.value,
+            },
+        )
+
+        minutes = sorted(
+            entry["runtime_minutes"]
+            for day in days
+            for entry in day["entries"]
+            if entry["entry_key"].startswith("book-session-")
+        )
+        self.assertEqual(minutes, [20, 47, 84])
+
+
+class BookPageHistoryTests(TestCase):
+    """Page-based books get dated entries from their change log, never from a
+    current page alone.
+    """
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="pager", password="x",
+        )
+        self.item = Item.objects.create(
+            media_id="OL-pages",
+            source=Sources.OPENLIBRARY.value,
+            media_type=MediaTypes.BOOK.value,
+            title="Dune",
+            format="ebook",
+            number_of_pages=480,
+        )
+        cache.clear()
+
+    def tearDown(self):
+        cache.clear()
+
+    def _book(self, item=None):
+        return Book.objects.create(
+            item=item or self.item, user=self.user, status=Status.IN_PROGRESS.value,
+            progress=0,
+        )
+
+    def _entries(self):
+        day_key = history_cache.history_day_key(timezone.now())
+        day = history_cache.build_history_day(self.user, day_key)
+        return [
+            e for e in (day["entries"] if day else [])
+            if e["entry_key"].startswith("book-pages-")
+        ]
+
+    def test_rise_in_progress_is_a_dated_page_entry(self):
+        book = self._book()
+        book.progress = 37
+        book.save()
+        book.progress = 212
+        book.save()
+
+        entries = self._entries()
+
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["runtime_minutes"], 0)
+        self.assertEqual(entries[0]["runtime_display"], "212 pages")
+        self.assertEqual(entries[0]["position_display"], "212")
+        self.assertEqual(entries[0]["position_total_display"], "480")
+        self.assertEqual(entries[0]["position_unit"], "page")
+
+    def test_a_book_created_at_a_page_has_no_history_to_manufacture(self):
+        Book.objects.create(
+            item=self.item, user=self.user, status=Status.IN_PROGRESS.value,
+            progress=212,
+        )
+
+        self.assertEqual(self._entries(), [])
+
+    def test_lowered_progress_adds_nothing(self):
+        book = Book.objects.create(
+            item=self.item, user=self.user, status=Status.IN_PROGRESS.value,
+            progress=300,
+        )
+        book.progress = 250
+        book.save()
+
+        self.assertEqual(self._entries(), [])
+
+    def test_audiobook_progress_is_never_a_page_entry(self):
+        audio = Item.objects.create(
+            media_id="abs-pp",
+            source=Sources.AUDIOBOOKSHELF.value,
+            media_type=MediaTypes.BOOK.value,
+            title="Dune",
+            format="audiobook",
+        )
+        book = self._book(audio)
+        book.progress = 120
+        book.save()
+
+        self.assertEqual(self._entries(), [])
+
+    def test_item_filtered_modal_lists_page_entries(self):
+        book = self._book()
+        book.progress = 90
+        book.save()
+
+        days = history_cache.build_history_days(
+            self.user,
+            filters={
+                "media_type": "book",
+                "media_id": "OL-pages",
+                "source": Sources.OPENLIBRARY.value,
+            },
+        )
+
+        keys = [
+            e["entry_key"] for day in days for e in day["entries"]
+            if e["entry_key"].startswith("book-pages-")
+        ]
+        self.assertEqual(len(keys), 1)
+
+    def test_progress_day_is_indexed(self):
+        book = self._book()
+        book.progress = 10
+        book.save()
+
+        self.assertIn(
+            history_cache.history_day_key(timezone.now()),
+            history_cache.build_history_index(self.user, "repeats"),
+        )

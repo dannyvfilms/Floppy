@@ -6,6 +6,10 @@ stored is treated as new (no banner), and a different tag shows the banner
 until it is dismissed or followed. Storage can be unavailable (private
 windows), so every access is guarded and the banner simply stays hidden.
 {% endcomment %}
+{% if UPDATE_BANNER_PROPS %}
+{{ UPDATE_BANNER_PROPS|json_script:"update-banner-props" }}
+<div data-about-card-root data-props-id="update-banner-props" x-ignore>
+{% endif %}
 <div x-data="{ tag: '{{ RELEASE_TAG|escapejs }}', show: false, init() { try { const seen = localStorage.getItem('floppy_seen_release'); if (seen === null) { localStorage.setItem('floppy_seen_release', this.tag); } else { this.show = seen !== this.tag; } } catch (e) { this.show = false; } }, dismiss() { this.show = false; try { localStorage.setItem('floppy_seen_release', this.tag); } catch (e) {} } }"
      x-show="show"
      x-cloak
@@ -20,3 +24,6 @@ windows), so every access is guarded and the banner simply stays hidden.
           class="px-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
           aria-label="{% translate 'Dismiss' %}">&times;</button>
 </div>
+{% if UPDATE_BANNER_PROPS %}
+</div>
+{% endif %}

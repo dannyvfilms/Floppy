@@ -16,48 +16,25 @@ Update a file's owner here when adding, moving or removing it, and update its af
 contract. Shared includes are owned once; record consumers in the register. Add an ID
 only for an independently meaningful behavioral contract.
 
-## Lightweight consistency check
+## Consistency check
 
-Run from the repository root after inventory/path changes. This checks missing/stale
-paths, duplicate ownership and unknown IDs; it cannot validate behavior or decide
-whether a new component needs its own entry. No new CI/build tooling is needed.
+Run from the repository root after any inventory, path or status change:
 
 ```bash
-rtk proxy python - <<'PY'
-from collections import Counter
-from pathlib import Path
-import re
-
-register = Path("docs/ui/component-register.md").read_text()
-source_map = Path("docs/ui/source-map.md").read_text()
-ids = set(re.findall(r"^### ([A-Z][A-Z-]+) —", register, re.M))
-patterns = re.findall(r"^- `((?:src|frontend|scripts)/[^`]+)`$", source_map, re.M)
-paths = []
-for pattern in patterns:
-    if "*" in pattern:
-        paths.extend([str(p) for p in Path(".").glob(pattern)] or [pattern])
-    else:
-        paths.append(pattern)
-expected = set()
-for root, suffixes in [("src/templates", {".html", ".txt"}),
-                       ("src/static/js", {".js", ".mjs"}),
-                       ("src/static/css", {".css"}),
-                       ("src/static/ui", {".js", ".css"}),
-                       ("frontend", {".js", ".jsx", ".css"})]:
-    expected.update(str(p) for p in Path(root).rglob("*")
-                    if p.is_file() and p.suffix in suffixes)
-expected.add("scripts/build_ui.mjs")
-missing = sorted(expected - set(paths))
-stale = sorted(set(paths) - expected)
-duplicates = sorted(p for p, count in Counter(paths).items() if count > 1)
-headings = re.findall(r"^## ([A-Z][A-Z-]+)$", source_map, re.M)
-unknown = sorted(set(headings) - ids)
-assert not (missing or stale or duplicates or unknown), (missing, stale, duplicates, unknown)
-print(f"Covered {len(expected)} source files; {len(ids)} component families; no path/ID drift.")
-PY
+python3 scripts/check_ui_docs.py
 ```
 
+It checks that every register entry has one status from the register's vocabulary, that
+every backticked path in the register exists, that this map has one section per register
+entry with the same `Status:` line, that every template, script, stylesheet and frontend
+source file is mapped exactly once, and that no mapped path is missing. It cannot judge
+whether a status is true; the register header says how to check that, and
+`python3 scripts/ui_migration_metrics.py` measures the migration.
+`config.tests.test_ui_docs` runs the same check in the test suite.
+
 ## SHELL
+
+Status: `Partial / coexisting`
 
 - `src/static/js/libraries/alpinejs-3.14.9.min.js`
 - `src/static/js/libraries/htmx-2.0.4.min.js`
@@ -65,16 +42,24 @@ PY
 - `src/templates/app/components/sidebar_navigation_items.html`
 - `src/templates/app/components/sidebar_pin_menu.html`
 - `src/templates/base.html`
+- `frontend/ui/GlobalSearch.jsx`, `frontend/ui/mountGlobalSearch.jsx`, `frontend/ui/global-search.css` (header search form inside `base.html`; suggestions stay a server fragment)
+- `frontend/ui/Sidebar.jsx`, `frontend/ui/mountSidebar.jsx`, `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html` and Expo; native adapter supplies larger foldable row tokens; the onboarding banner stays a server slot)
+- `native-proof/app/surfaces/ShellSlot.jsx`, `native-proof/app/surfaces/NativeShell.ios.jsx`, `native-proof/app/surfaces/NativeShell.jsx`, `native-proof/app/surfaces/NativeRoot.ios.jsx`, `native-proof/app/surfaces/NativeRoot.jsx`, `native-proof/app/surfaces/menuGeometry.mjs`, `native-proof/app/routes/_layout.jsx`, `native-proof/app/routes/index.jsx`, `native-proof/App.js` (Expo navigation model, iOS toolbar and adaptive menu; Android and web retain the shared modal path)
+- `frontend/ui/Icon.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
+- `src/app/card_events.py` (the floppyCardUpdate event sent by `media_save` and the score views so React cards refresh their status chip and rating)
+- `frontend/ui/mountFilterChips.jsx`, `ScrollRow` and `FilterChips` in `frontend/ui/controls` (Discover media-type row; `Tabs` shares `ScrollRow`)
 - `src/templates/base_public.html`
 
 ## SETTINGS-CARD
+
+Status: `Web Migrated`
 
 - `frontend/settings/Chip.jsx`
 
 - `frontend/settings/SettingsCard.jsx`
 - `frontend/settings/index.js`
 - `frontend/settings/mount.jsx`
-- `frontend/settings/root.jsx`
+- `frontend/settings/root.web.js`
 - `frontend/settings/webPalette.js`
 - `frontend/settings/settings-card.css`
 - `src/templates/app/components/ui_asset_refresh.html`
@@ -83,7 +68,6 @@ PY
 - `src/static/ui/*.css`
 - `src/templates/users/components/settings_card.html`
 - `src/templates/users/components/settings_link_chip.html`
-- `src/templates/app/components/detail_secondary_content.html` (Book "Other Formats" fact)
 
 The generated UI subtree belongs to this island runtime; globs cover content-hashed
 chunks without renaming ownership records on every build. License notices are
@@ -91,7 +75,9 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## FORM-CONTROLS
 
-- `frontend/ui/controls.jsx`
+Status: `Partial / coexisting`
+
+- `frontend/ui/controls`
 - `frontend/ui/controls.css`
 - `src/static/css/libraries/select2-4.1.0.min.css`
 - `src/static/js/i18n/de.js`
@@ -106,10 +92,14 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## TOKENS
 
+Status: `Existing (no UI work needed)`
+
 - `src/static/css/input.css`
 - `src/static/css/main.css`
 
 ## ARTWORK-LOADING
+
+Status: `Legacy`
 
 - `src/static/js/artwork-loading.js`
 - `src/static/js/image-fallback.js`
@@ -117,15 +107,55 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## ASYNC-STATE
 
+Status: `Legacy`
+
 - `src/static/js/cache-updater.js`
 - `src/static/js/cache-updater.selfcheck.mjs`
 
+## SPINNER
+
+Status: `Web Migrated`
+
+Shared `Spinner` lives in `frontend/ui/controls` and `controls.css` (FORM-CONTROLS); its consumer templates are mapped under their own families.
+
+- `frontend/ui/mountSpinner.jsx`
+- `src/templates/users/components/spinner.html`
+- Consumers (12 templates, 16 sites): `app/collection_list.html`, `app/media_list.html`, `app/person_detail.html`, `base.html` (barcode fallback), `app/components/library_move_results.html`, `app/components/media_metadata_panel.html`, `lists/add_item.html`, `lists/custom_lists.html`, `lists/list_detail.html`, `lists/recommend_item.html`, `lists/smart_list_detail.html`, `lists/components/smart_rules_builder.html`.
+
+
+## BADGE
+
+Status: `Partial / coexisting`
+
+Shared `Badge` lives in `frontend/ui/controls` and `controls.css` (FORM-CONTROLS); its consumer templates are mapped under their own families.
+
+- `frontend/ui/mountBadge.jsx`
+- `src/templates/users/components/badge.html`
+- `src/users/templatetags/ui_tags.py` (`{% badge %}`)
+- Consumers: `app/podcast_show_detail.html`, `app/episode_details.html`, `app/music_album_detail.html`, `app/components/detail_music_artist.html`, `detail_music_album.html`, `detail_music_track.html`, `detail_secondary_content.html`, `cells/media_genres_cell.html`, `media_metadata_panel.html`, `lists/components/add_item_preview_modal.html`, `recommend_preview_modal.html`, `integrations/library_panel.html`, `integrations/seerr_status.html`, `users/components/whats_new.html`, `users/onboarding/metadata.html`
+
+## BUTTON
+
+Status: `Partial / coexisting`
+
+Shared `Button` lives in `frontend/ui/controls` and `controls.css` (FORM-CONTROLS); its consumer templates are mapped under their own families.
+
+- `frontend/ui/mountButton.jsx`
+- `src/templates/users/components/button.html`
+- `src/users/templatetags/ui_tags.py` (`{% button %}`)
+- Consumers (22 templates, 65 sites): `users/account.html`, `users/cards.html`, `users/_reading_server_modal.html`, `users/components/provider_import.html`, `provider_instance_credentials.html`, `provider_personal_credentials.html`, `tmdb_proxy.html`, `media_type_provider_modal.html`, `users/providers/integrations/jellyfin.html`, `users/providers/mal_sync.html`, `users/onboarding/media_types.html`, `metadata.html`, `import_status.html`, `components/connect_trakt.html`, `lists/custom_lists.html`, `integrations/oauth_device.html`, `integrations/match_fix.html`, `app/components/collection_modal.html`, `collection_entry_summary.html`, `music_track_notes.html`, `history_day.html`, `fill_track_song.html`.
+- Remaining legacy: Alpine-bound, in-place htmx, icon and composed-attribute buttons (see the BUTTON register entry).
+
 ## WEB-UTILITIES
+
+Status: `Legacy`
 
 - `src/static/js/copy-item.js`
 - `src/static/js/serviceworker.js`
 
 ## ERRORS-DOCS
+
+Status: `Legacy`
 
 - `src/templates/400.html`
 - `src/templates/403.html`
@@ -137,13 +167,29 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## MEDIA-CARD
 
+Status: `Web Migrated`
+
 - `src/templates/app/components/card_lines.html`
-- `src/templates/app/components/media_card.html`
+- `src/templates/app/components/media_card.html` (shell: wrapper classes, props script and first-paint poster and title; React replaces it on mount)
+- `frontend/ui/MediaCard.jsx`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/media-card.css`, `src/app/media_card_model.py`, `src/app/card_surfaces.py` (the whole card is React on every surface: body, status chip, rating, hover buttons, popups host, touch reveal and bulk-select checkbox)
 - `src/templates/app/components/media_card_list.html`
-- `src/templates/app/components/media_card_status_chip.html`
+- `src/templates/app/components/media_card_status_chip.html` (out-of-band save fragment only; no card renders it)
+
+## POPUP-HOST
+
+Status: `Partial / coexisting`
+
+- `frontend/ui/ModalHost.web.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted once from `base.html`; the card hover buttons and the Add-to-lists buttons open it through `floppy-open-modal`; the Track body is still the server form, see the register)
+- `frontend/ui/ListsFormView.jsx`
+- `frontend/ui/modal-forms.css`
 
 ## RATING
 
+Status: `Partial / coexisting`
+
+- `frontend/ui/RatingStars.jsx`
+- `frontend/ui/mountRatingStars.jsx`
+- `src/templates/app/components/rating_stars.html`
 - `src/templates/app/components/derived_tv_rating_coverage.html`
 - `src/templates/app/components/derived_tv_rating_detail.html`
 - `src/templates/app/components/detail_episode_rating_chip.html`
@@ -159,6 +205,8 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## LIBRARY
 
+Status: `Legacy`
+
 - `src/templates/app/components/_release_year_fetch_js.html`
 - `src/templates/app/components/game_grouped_items.html`
 - `src/templates/app/components/game_grouped_ungrouped.html`
@@ -169,13 +217,18 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## ALPHABET
 
+Status: `Web Migrated`
+
 - `frontend/ui/AlphabetBar.jsx`
 - `frontend/ui/mountAlphabet.jsx`
 - `frontend/ui/alphabet.css`
 - `src/templates/app/components/alphabet_filter.html`
 - `src/templates/app/components/alphabet_results_empty.html`
-
+- `frontend/ui/AlphabetBar.web.jsx`
+- `frontend/ui/AlphabetBar.native.jsx`
 ## FILTERS
+
+Status: `Legacy`
 
 - `src/static/js/libraryFilterState.js`
 - `src/static/js/savedViews.js`
@@ -187,6 +240,8 @@ build artifacts. The Python composition tag is documented in the register.
 - `src/templates/app/components/sidebar_saved_views.html`
 
 ## TABLES
+
+Status: `Legacy`
 
 - `src/templates/app/components/cells/album_artist_cell.html`
 - `src/templates/app/components/cells/album_date_added_cell.html`
@@ -236,12 +291,20 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## BULK
 
+Status: `Partial / coexisting`
+
 - `src/static/js/bulkSelection.js`
 - `src/templates/app/components/bulk_selection_toolbar.html`
 - `src/templates/lists/components/bulk_select_button.html`
+- `frontend/ui/mountBulkToolbar.jsx`
+- `frontend/ui/mountBulkActions.jsx` (mounted once from `base.html` for signed-in users; the job dock)
+- `src/app/bulk_action_views.py`, `src/app/services/bulk_show_plays.py` (endpoints and the Add Plays job; the shared `ActionMenu` lives in `frontend/ui/controls`)
 
 ## SEARCH
 
+Status: `Partial / coexisting`
+
+- `native-proof/app/surfaces/SearchSlot.jsx` (Expo search transport, scanner and iOS focus presentation; the shared `GlobalSearch` is mapped under SHELL)
 - `src/static/js/barcode-scanner.js`
 - `src/static/js/barcode-scanner.selfcheck.mjs`
 - `src/static/js/libraries/zxing-library-0.21.3.min.js`
@@ -252,8 +315,11 @@ build artifacts. The Python composition tag is documented in the register.
 - `src/templates/app/components/search_parent_tv.html`
 - `src/templates/app/components/search_suggestions.html`
 - `src/templates/app/search.html`
+- `src/templates/app/components/results_heading.html`
 
 ## RAILS
+
+Status: `Legacy`
 
 - `src/static/js/horizontal-scroll.js`
 - `src/static/js/horizontal-scroll.selfcheck.mjs`
@@ -261,6 +327,8 @@ build artifacts. The Python composition tag is documented in the register.
 - `src/templates/app/components/_scrollable_row_js.html`
 
 ## HOME
+
+Status: `Legacy`
 
 - `src/templates/app/components/home_artwork_poller.html`
 - `src/templates/app/components/home_deferred_groups.html`
@@ -270,12 +338,16 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## PLAYBACK
 
+Status: `Legacy`
+
 - `src/templates/app/components/active_playback_card.html`
 - `src/templates/app/components/detail_checkin_state.html`
+- `src/templates/app/components/active_playback_cards.html`
 
 ## DISCOVER
 
-- `src/templates/app/components/discover_card.html`
+Status: `Legacy`
+
 - `src/templates/app/components/discover_row.html`
 - `src/templates/app/components/discover_row_preview.html`
 - `src/templates/app/components/discover_rows.html`
@@ -284,13 +356,14 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## DETAIL
 
+Status: `Legacy`
+
 - `src/templates/app/components/detail_action_buttons.html`
 - `src/templates/app/components/detail_activity_subtitle.html`
 - `src/templates/app/components/detail_activity_subtitle_slot.html`
 - `src/templates/app/components/detail_mobile_meta.html`
 - `src/templates/app/components/detail_notes_section.html`
 - `src/templates/app/components/detail_promoted_content.html`
-- `src/templates/app/components/detail_secondary_content.html`
 - `src/templates/app/components/detail_synopsis.html`
 - `src/templates/app/components/detail_title_block.html`
 - `src/templates/app/components/detail_watch_providers.html`
@@ -300,6 +373,8 @@ build artifacts. The Python composition tag is documented in the register.
 - `src/templates/app/media_details.html`
 
 ## CHILDREN
+
+Status: `Legacy`
 
 - `src/templates/app/comic_issue_details.html`
 - `src/templates/app/components/_episode_scroll_restore.html`
@@ -316,6 +391,8 @@ build artifacts. The Python composition tag is documented in the register.
 - `src/templates/app/episode_details.html`
 
 ## TRACKING
+
+Status: `Deferred (blocker)`
 
 - `src/static/js/episodeBulkTrackForm.js`
 - `src/static/js/mediaStatusDateHandler.js`
@@ -335,15 +412,19 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## DATE-TIME
 
+Status: `Legacy`
+
 - `src/static/js/calendar.js`
 - `src/static/js/dateTimePicker.js`
 - `src/templates/app/components/calendar.html`
 - `src/templates/app/components/date_time_picker.html`
+- `src/templates/app/components/date_time_picker_props.html`
 
 ## NOTES
 
+Status: `Legacy`
+
 - `src/static/js/libraries/marked-12.0.2.min.js`
-- `src/static/js/markdown-editor.js`
 - `src/templates/app/components/detail_notes_block.html`
 - `src/templates/app/components/markdown_notes.html`
 - `src/templates/app/components/music_track_notes.html`
@@ -351,11 +432,15 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## PROGRESS
 
+Status: `Legacy`
+
 - `src/templates/app/components/detail_progress_card_slot.html`
 - `src/templates/app/components/progress_breakdown.html`
 - `src/templates/app/components/progress_changer.html`
 
 ## OWNERSHIP
+
+Status: `Legacy`
 
 - `src/templates/app/collection_list.html`
 - `src/templates/app/components/collection_entry_summary.html`
@@ -369,11 +454,15 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## CUSTOM-FIELDS
 
+Status: `Legacy`
+
 - `src/static/js/collectionCustomFields.js`
 - `src/templates/app/components/collection_custom_field_inputs.html`
 - `src/templates/app/components/collection_custom_fields.html`
 
 ## ARTWORK
+
+Status: `Legacy`
 
 - `src/templates/app/components/cover_change_section.html`
 - `src/templates/app/components/edition_picker_result.html`
@@ -383,6 +472,8 @@ build artifacts. The Python composition tag is documented in the register.
 - `src/templates/app/components/image_picker_tiles.html`
 
 ## MUSIC
+
+Status: `Legacy`
 
 - `src/templates/app/components/album_grid.html`
 - `src/templates/app/components/album_list_grid_items.html`
@@ -398,13 +489,22 @@ build artifacts. The Python composition tag is documented in the register.
 - `src/templates/app/components/detail_music_track_actions.html`
 - `src/templates/app/components/detail_music_track_button.html`
 - `src/templates/app/components/detail_music_track_history_line.html`
-- `src/templates/app/components/podcast_episode_list.html`
+- `src/templates/app/components/podcast_episode_list.html` (optional episode description and empty state)
 - `src/templates/app/music_album_detail.html`
 - `src/templates/app/podcast_show_detail.html`
 
+## PODCAST-EPISODES
+
+Status: `Partial / coexisting`
+
+- `frontend/ui/PodcastEpisodeManager.jsx`
+- `frontend/ui/mountPodcastEpisodeManager.jsx`
+- `src/templates/app/podcast_episodes_manage.html`
+
 ## PEOPLE
 
-- `src/templates/app/components/cast_card.html`
+Status: `Legacy`
+
 - `src/templates/app/components/detail_carousel_fragment.html`
 - `src/templates/app/components/detail_cast_grid.html`
 - `src/templates/app/components/game_lengths_section.html`
@@ -413,13 +513,14 @@ build artifacts. The Python composition tag is documented in the register.
 - `src/templates/app/components/person_filmography_fragment.html`
 - `src/templates/app/components/person_media_strip_card.html`
 - `src/templates/app/components/person_media_strip_row.html`
-- `src/templates/app/components/reading_consumption_section.html`
 - `src/templates/app/components/youtube_player.html`
 - `src/templates/app/components/youtube_watch_section.html`
 - `src/templates/app/person_detail.html`
 - `src/templates/app/studio_detail.html`
 
 ## TAGS
+
+Status: `Legacy`
 
 - `src/templates/app/components/detail_tag_preview.html`
 - `src/templates/app/components/fill_tags.html`
@@ -429,13 +530,23 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## METADATA-REVIEW
 
+Status: `Legacy`
+
 - `src/static/js/episodeOrderReview.js`
 - `src/templates/app/components/library_move_results.html`
 - `src/templates/app/components/remap_search_results.html`
 - `src/templates/app/episode_ordering.html`
 - `src/templates/app/tv_provider_switch.html`
 
+## DETAIL-RELATED
+
+Status: `Legacy`
+
+- `src/templates/app/components/detail_secondary_content.html` (related and DLC sections, the Book "Format" and "Narrator" facts, and the manual podcast manager trigger)
+
 ## HISTORY
+
+Status: `Legacy`
 
 - `src/static/js/sessionHistory.js`
 - `src/templates/app/components/fill_history.html`
@@ -443,10 +554,12 @@ build artifacts. The Python composition tag is documented in the register.
 - `src/templates/app/components/history_day.html`
 - `src/templates/app/components/session_history_day.html`
 - `src/templates/app/components/session_history_modal.html`
-- `src/templates/app/components/session_history_row.html`
+- `src/templates/app/components/session_history_row.html` (also the audiobook "stopped at" and book "at page" fragments)
 - `src/templates/app/history.html`
 
 ## STATISTICS
+
+Status: `Legacy`
 
 - `src/static/js/date-range.js`
 - `src/static/js/libraries/chartjs-4.4.9.min.js`
@@ -474,14 +587,20 @@ build artifacts. The Python composition tag is documented in the register.
 - `src/templates/app/components/taste_signals_decades.html`
 - `src/templates/app/components/taste_signals_genres.html`
 - `src/templates/app/statistics.html`
+- `src/templates/app/components/reading_consumption_section.html` (Books "Listening Time" card)
 
 ## RELEASE-CALENDAR
+
+Status: `Partial / coexisting`
 
 - `src/templates/events/calendar.html`
 - `src/templates/events/components/calendar_grid.html`
 - `src/templates/events/components/calendar_list.html`
+- `frontend/ui/mountCalendarLinks.jsx`
 
 ## LISTS
+
+Status: `Legacy`
 
 - `src/templates/lists/components/fill_lists.html`
 - `src/templates/lists/components/list_cover_image.html`
@@ -503,11 +622,15 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## SMART-RULES
 
+Status: `Legacy`
+
 - `src/templates/lists/components/smart_rules_builder.html`
 - `src/templates/lists/components/smart_rules_summary.html`
 - `src/templates/lists/smart_list_detail.html`
 
 ## LIST-CURATION
+
+Status: `Legacy`
 
 - `src/templates/lists/add_item.html`
 - `src/templates/lists/components/add_item_preview_modal.html`
@@ -519,11 +642,15 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## TIERS
 
+Status: `Legacy`
+
 - `src/static/js/listTiers.js`
 - `src/templates/lists/components/tier_board.html`
 - `src/templates/lists/components/tier_tile.html`
 
 ## SET-NAV
+
+Status: `Legacy`
 
 - `src/templates/users/base.html`
 - `src/templates/users/components/_media_type_order_js.html`
@@ -532,34 +659,44 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## SET-PREFERENCES
 
+Status: `Legacy`
+
 - `src/templates/users/preferences.html`
 
 ## SET-APPEARANCE
 
+Status: `Legacy`
+
 - `src/templates/users/appearance.html`
 
 ## SET-CARDS
+
+Status: `Legacy`
 
 - `src/templates/users/cards.html`
 - `src/templates/users/cards_preview.html`
 
 ## SET-HOME
 
+Status: `Legacy`
+
 - `src/templates/users/home_screen.html`
 
 ## SET-PROVIDERS
 
-- `frontend/providers/AccountConnection.jsx`
-- `frontend/providers/Activity.jsx`
-- `frontend/providers/Connection.jsx`
-- `frontend/providers/Directory.jsx`
-- `frontend/providers/Import.jsx`
-- `frontend/providers/ImportPreferences.jsx`
-- `frontend/providers/Metadata.jsx`
-- `frontend/providers/ProviderPage.jsx`
+Status: `Partial / coexisting`
+
+- `frontend/providers/mountAccountConnection.jsx`
+- `frontend/providers/ProviderActivityView.jsx`
+- `frontend/providers/ConnectionSettings.jsx`
+- `frontend/providers/ProviderDirectoryView.jsx`
+- `frontend/providers/ImportSettings.jsx`
+- `frontend/providers/mountImportPreferences.jsx`
+- `frontend/providers/ProviderMetadataView.jsx`
+- `frontend/providers/ProviderPageView.jsx`
 - `frontend/providers/mount.jsx`
 - `frontend/providers/provider-page.css`
-- `frontend/providers/web.jsx`
+- `frontend/providers/transport.web.js`
 - `src/templates/users/providers/overview_fallback.html`
 - `src/templates/users/providers/header_fallback.html`
 - `src/templates/users/providers/content_legacy.html`
@@ -577,6 +714,8 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## SET-METADATA
 
+Status: `Partial / coexisting`
+
 - `src/templates/users/components/media_type_provider_modal.html`
 - `src/templates/users/components/metadata_admin_notice.html`
 - `src/templates/users/components/metadata_library_repair.html`
@@ -593,11 +732,13 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## SET-IMPORT
 
-- `frontend/providers/FileImport.jsx`
-- `frontend/providers/Credentials.jsx`
-- `frontend/providers/SetupGuide.jsx`
-- `frontend/providers/SettingsForm.jsx`
-- `src/users/provider_guides.py`
+Status: `Partial / coexisting`
+
+- `frontend/providers/ProviderFileImportView.jsx`
+- `frontend/providers/mountCredentials.jsx`
+- `frontend/providers/mountSetupGuide.jsx`
+- `frontend/providers/ProviderSettingsFormView.jsx`
+- `src/users/provider_guides.py` (includes the Jellyfin KefinTweaks rating-flag warning)
 - `src/users/provider_forms.py`
 - `src/templates/users/providers/setup_guide.html`
 - `src/templates/users/providers/setup_guide_parts.html`
@@ -611,8 +752,12 @@ build artifacts. The Python composition tag is documented in the register.
 - `src/templates/users/components/plex_library_selector.html`
 - `src/templates/users/components/provider_import.html`
 - `src/templates/users/import_data.html`
+- `src/templates/users/components/file_import_island.html`
+- `src/templates/users/components/settings_form_island.html`
 
 ## SET-ACTIVITY
+
+Status: `Partial / coexisting`
 
 - `src/templates/users/components/import_activity.html`
 - `src/templates/users/components/import_activity_loader.html`
@@ -622,6 +767,8 @@ build artifacts. The Python composition tag is documented in the register.
 - `src/templates/users/providers/integration_activity.html`
 
 ## SET-SYNC
+
+Status: `Partial / coexisting`
 
 - `src/templates/users/components/media_server_scrobbles.html`
 - `src/templates/users/components/outbound_service_modal.html`
@@ -649,13 +796,18 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## SET-DATA
 
+Status: `Partial / coexisting`
+
 - `src/templates/users/components/export_controls.html` (backup status region mounts `frontend/settings/BackupStatus.jsx`; fallback kept)
 - `src/templates/users/components/library_danger_zone.html`
 - `src/templates/users/data_management.html`
 - `src/templates/users/export_data.html`
 - `src/templates/users/rss.html`
+- `frontend/settings/BackupStatus.jsx`
 
 ## SET-ACCESS
+
+Status: `Legacy`
 
 - `src/templates/integrations/oauth_applications.html`
 - `src/templates/integrations/oauth_device.html`
@@ -665,6 +817,8 @@ build artifacts. The Python composition tag is documented in the register.
 - `src/templates/users/providers/access_tokens.html`
 
 ## AUTH
+
+Status: `Legacy`
 
 - `src/templates/account/login.html`
 - `src/templates/account/messages/logged_in.txt`
@@ -693,11 +847,15 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## SET-NOTIFICATIONS
 
+Status: `Legacy`
+
 - `src/templates/users/components/excluded_items.html`
 - `src/templates/users/components/search_results.html`
 - `src/templates/users/notifications.html`
 
 ## ONBOARDING
+
+Status: `Legacy`
 
 - `src/templates/users/components/onboarding_banner.html`
 - `src/templates/users/onboarding/_layout.html`
@@ -716,6 +874,8 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## SET-SYSTEM
 
+Status: `Legacy`
+
 - `src/templates/users/about.html`
 - `src/templates/users/advanced.html`
 - `src/templates/users/components/server_port.html`
@@ -724,10 +884,14 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## MATCH-REVIEW
 
+Status: `Legacy`
+
 - `src/static/js/matchFixReview.js`
 - `src/templates/integrations/match_fix.html`
 
 ## INTEGRATION-PANELS
+
+Status: `Legacy`
 
 - `src/templates/integrations/library_panel.html`
 - `src/templates/integrations/seerr_request.html`
@@ -735,8 +899,298 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## DEVICE-CONNECT
 
+Status: `Legacy`
+
 - `src/templates/integrations/trakt_device_code.html`
 
 ## STREMIO
 
+Status: `Legacy`
+
 - `src/templates/integrations/stremio_configure.html`
+
+## MIGRATION
+
+Status: `Partial / coexisting`
+
+- `frontend/auth/AccountSecurity.jsx`
+- `frontend/auth/AuthEntrance.jsx`
+- `frontend/discover/DiscoverScreen.jsx`
+- `frontend/discover/mountDiscover.jsx`
+- `frontend/errors/ApiDocs.jsx`
+- `frontend/errors/ErrorRecovery.jsx`
+- `frontend/errors/ErrorReportPanel.jsx`
+- `frontend/errors/ErrorReportPanel.native.jsx`
+- `frontend/errors/ErrorReportPanel.web.jsx`
+- `frontend/errors/mountErrorRecovery.jsx`
+- `frontend/onboarding/OnboardingWizard.jsx`
+- `frontend/pages/AuthView.jsx`
+- `frontend/pages/CalendarView.jsx`
+- `frontend/pages/CollectionView.jsx`
+- `frontend/pages/DetailView.jsx`
+- `frontend/pages/DiscoverView.jsx`
+- `frontend/pages/ErrorsView.jsx`
+- `frontend/pages/HistoryView.jsx`
+- `frontend/pages/HomeView.jsx`
+- `frontend/pages/LibraryPageView.jsx`
+- `frontend/pages/ListDetailPageView.jsx`
+- `frontend/pages/ListsPageView.jsx`
+- `frontend/pages/MusicView.jsx`
+- `frontend/pages/OnboardingView.jsx`
+- `frontend/pages/PageChrome.jsx`
+- `frontend/pages/PeopleView.jsx`
+- `frontend/pages/ProvidersView.jsx`
+- `frontend/pages/SearchPageView.jsx`
+- `frontend/pages/SettingsAboutView.jsx`
+- `frontend/pages/SettingsAccessView.jsx`
+- `frontend/pages/SettingsAccountView.jsx`
+- `frontend/pages/SettingsAdvancedView.jsx`
+- `frontend/pages/SettingsAppearanceView.jsx`
+- `frontend/pages/SettingsCardsView.jsx`
+- `frontend/pages/SettingsDataView.jsx`
+- `frontend/pages/SettingsHomeScreenView.jsx`
+- `frontend/pages/SettingsNavLink.jsx`
+- `frontend/pages/SettingsNavLink.web.jsx`
+- `frontend/pages/SettingsNotificationsView.jsx`
+- `frontend/pages/SettingsPreferencesView.jsx`
+- `frontend/pages/SettingsUsersView.jsx`
+- `frontend/pages/SettingsView.jsx`
+- `frontend/pages/StatisticsView.jsx`
+- `frontend/pages/TagsPageView.jsx`
+- `frontend/pages/UtilitiesView.jsx`
+- `frontend/pages/registry.js`
+- `frontend/providers/AccountSettings.jsx`
+- `frontend/providers/ProviderContext.jsx`
+- `frontend/providers/ProviderSettingsView.jsx`
+- `frontend/providers/mountAccountImportAction.jsx`
+- `frontend/providers/mountDirectory.jsx`
+- `frontend/providers/mountFileImport.jsx`
+- `frontend/providers/mountSettingsForm.jsx`
+- `frontend/settings/AboutSettings.jsx`
+- `frontend/settings/AccessSettings.jsx`
+- `frontend/settings/AdvancedSettings.jsx`
+- `frontend/settings/AppearanceEditor.jsx`
+- `frontend/settings/CardsEditor.jsx`
+- `frontend/settings/Chip.web.jsx`
+- `frontend/settings/ConfirmDialog.jsx`
+- `frontend/settings/DataSettings.jsx`
+- `frontend/settings/HomeScreenEditor.jsx`
+- `frontend/settings/NotificationSettings.jsx`
+- `frontend/settings/island-reveal.css`
+- `frontend/settings/mountAbout.jsx`
+- `frontend/settings/mountAdvanced.jsx`
+- `frontend/settings/mountBackupStatus.jsx`
+- `frontend/settings/mountSettingsView.jsx`
+- `frontend/ui/ArtworkImage.jsx`
+- `frontend/ui/ArtworkImage.native.jsx`
+- `frontend/ui/ArtworkImage.web.jsx`
+- `frontend/ui/ArtworkPicker.jsx`
+- `frontend/ui/ArtworkPicker.web.jsx`
+- `frontend/ui/Badge.jsx`
+- `frontend/ui/BadgeTheme.web.jsx`
+- `frontend/ui/BulkActionBar.native.jsx`
+- `frontend/ui/BulkActionBar.web.jsx`
+- `frontend/ui/BulkActions.jsx`
+- `frontend/ui/BulkEpisodeForm.jsx`
+- `frontend/ui/BulkJobDock.native.jsx`
+- `frontend/ui/BulkJobDock.web.jsx`
+- `frontend/ui/Button.jsx`
+- `frontend/ui/Button.native.jsx`
+- `frontend/ui/Button.web.jsx`
+- `frontend/ui/CacheStatusCard.jsx`
+- `frontend/ui/CalendarLinks.jsx`
+- `frontend/ui/CardScrim.jsx`
+- `frontend/ui/CollectionBrowser.jsx`
+- `frontend/ui/CollectionCopies.jsx`
+- `frontend/ui/CollectionCustomFields.jsx`
+- `frontend/ui/ColumnMenu.jsx`
+- `frontend/ui/CopyBlock.jsx`
+- `frontend/ui/CopyField.jsx`
+- `frontend/ui/DateTimePicker.jsx`
+- `frontend/ui/DetailChildren.jsx`
+- `frontend/ui/DetailChildrenTheme.web.jsx`
+- `frontend/ui/DetailComposition.jsx`
+- `frontend/ui/DetailCompositionTheme.native.jsx`
+- `frontend/ui/DetailCompositionTheme.web.jsx`
+- `frontend/ui/DetailRelated.jsx`
+- `frontend/ui/DetailRelatedTheme.native.jsx`
+- `frontend/ui/DetailRelatedTheme.web.jsx`
+- `frontend/ui/DeviceConnect.jsx`
+- `frontend/ui/FilterBar.jsx`
+- `frontend/ui/FormSaveBar.jsx`
+- `frontend/ui/GlobalSearch.web.jsx`
+- `frontend/ui/HistoryFeed.jsx`
+- `frontend/ui/HistoryFeed.native.jsx`
+- `frontend/ui/HistoryFeed.web.jsx`
+- `frontend/ui/HomeShelves.jsx`
+- `frontend/ui/IconRenderer.native.jsx`
+- `frontend/ui/IconRenderer.web.jsx`
+- `frontend/ui/InstallPromptCard.jsx`
+- `frontend/ui/IntegrationPanels.jsx`
+- `frontend/ui/ListCard.jsx`
+- `frontend/ui/ListFormView.jsx`
+- `frontend/ui/ListHeader.jsx`
+- `frontend/ui/ListMembership.jsx`
+- `frontend/ui/ListRecommendationsView.jsx`
+- `frontend/ui/ListResults.jsx`
+- `frontend/ui/ListSearchView.jsx`
+- `frontend/ui/ListsForm.native.jsx`
+- `frontend/ui/ListsForm.web.jsx`
+- `frontend/ui/MarkdownNotes.jsx`
+- `frontend/ui/MarkdownPreview.native.jsx`
+- `frontend/ui/MarkdownPreview.web.jsx`
+- `frontend/ui/MediaCard.native.jsx`
+- `frontend/ui/MediaCard.web.jsx`
+- `frontend/ui/MediaCardActionHost.jsx`
+- `frontend/ui/MediaCardActions.jsx`
+- `frontend/ui/MediaCardFormControls.jsx`
+- `frontend/ui/MediaTable.jsx`
+- `frontend/ui/MetadataReview.jsx`
+- `frontend/ui/ModalHost.native.jsx`
+- `frontend/ui/MusicAlbumCard.jsx`
+- `frontend/ui/MusicRelationCard.jsx`
+- `frontend/ui/PageSlot.web.jsx`
+- `frontend/ui/ParentPicker.jsx`
+- `frontend/ui/ParentPicker.web.jsx`
+- `frontend/ui/People.jsx`
+- `frontend/ui/PlaybackCard.jsx`
+- `frontend/ui/PlaybackTheme.web.jsx`
+- `frontend/ui/PreferencesForm.jsx`
+- `frontend/ui/ProgressBar.jsx`
+- `frontend/ui/ProgressBreakdown.jsx`
+- `frontend/ui/ProgressBreakdownTheme.web.jsx`
+- `frontend/ui/ProgressCard.jsx`
+- `frontend/ui/ProgressCard.native.jsx`
+- `frontend/ui/ProgressCard.web.jsx`
+- `frontend/ui/ProgressChanger.jsx`
+- `frontend/ui/ProgressChangerTheme.web.jsx`
+- `frontend/ui/ProgressDetailTheme.web.jsx`
+- `frontend/ui/ProgressDialog.jsx`
+- `frontend/ui/Rail.jsx`
+- `frontend/ui/Rail.web.jsx`
+- `frontend/ui/RatingChip.jsx`
+- `frontend/ui/RatingStarIcon.native.jsx`
+- `frontend/ui/RatingStarIcon.web.jsx`
+- `frontend/ui/RefreshNotice.jsx`
+- `frontend/ui/ReleaseCalendar.jsx`
+- `frontend/ui/Reveal.jsx`
+- `frontend/ui/Reveal.native.jsx`
+- `frontend/ui/Reveal.web.jsx`
+- `frontend/ui/SearchResultCard.jsx`
+- `frontend/ui/SearchResultCard.native.jsx`
+- `frontend/ui/SearchResultCard.web.jsx`
+- `frontend/ui/SearchResults.jsx`
+- `frontend/ui/SearchResults.web.jsx`
+- `frontend/ui/SelectField.jsx`
+- `frontend/ui/SetupGuide.jsx`
+- `frontend/ui/Shell.jsx`
+- `frontend/ui/SmartRules.jsx`
+- `frontend/ui/Spinner.jsx`
+- `frontend/ui/SpinnerTheme.web.jsx`
+- `frontend/ui/StatisticsCharts.jsx`
+- `frontend/ui/StatisticsSections.jsx`
+- `frontend/ui/StatisticsSummary.jsx`
+- `frontend/ui/StremioConfigurator.jsx`
+- `frontend/ui/TagManagement.jsx`
+- `frontend/ui/TextField.jsx`
+- `frontend/ui/TierBoard.jsx`
+- `frontend/ui/ToggleChip.jsx`
+- `frontend/ui/TrackDialog.jsx`
+- `frontend/ui/TrackForm.jsx`
+- `frontend/ui/TrackFormTabs.jsx`
+- `frontend/ui/barcodeEntry.native.js`
+- `frontend/ui/barcodeEntry.web.js`
+- `frontend/ui/clipboard.native.js`
+- `frontend/ui/clipboard.web.js`
+- `frontend/ui/controls/ActivityList.jsx`
+- `frontend/ui/controls/Catalog.jsx`
+- `frontend/ui/controls/ComboField.jsx`
+- `frontend/ui/controls/Dialog.jsx`
+- `frontend/ui/controls/FeatureList.jsx`
+- `frontend/ui/controls/FilePicker.jsx`
+- `frontend/ui/controls/FilePicker.native.jsx`
+- `frontend/ui/controls/FilePicker.web.jsx`
+- `frontend/ui/controls/Form.jsx`
+- `frontend/ui/controls/Menu.jsx`
+- `frontend/ui/controls/Navigation.jsx`
+- `frontend/ui/controls/Tooltip.jsx`
+- `frontend/ui/dateTime.js`
+- `frontend/ui/installPrompt.native.js`
+- `frontend/ui/installPrompt.web.js`
+- `frontend/ui/markdown.js`
+- `frontend/ui/mediaCardForms.js`
+- `frontend/ui/mountArtworkPicker.jsx`
+- `frontend/ui/mountBulkEpisodeForm.jsx`
+- `frontend/ui/mountCacheStatus.jsx`
+- `frontend/ui/mountCheckInState.jsx`
+- `frontend/ui/mountCollectionBrowser.jsx`
+- `frontend/ui/mountCollectionCopyFields.jsx`
+- `frontend/ui/mountCollectionFields.jsx`
+- `frontend/ui/mountCopyField.jsx`
+- `frontend/ui/mountDateTimePicker.jsx`
+- `frontend/ui/mountDetailChildren.jsx`
+- `frontend/ui/mountDetailComposition.jsx`
+- `frontend/ui/mountDetailRelated.jsx`
+- `frontend/ui/mountDeviceConnect.jsx`
+- `frontend/ui/mountEditionPicker.jsx`
+- `frontend/ui/mountFilterBar.jsx`
+- `frontend/ui/mountHistoryFeed.jsx`
+- `frontend/ui/mountHome.jsx`
+- `frontend/ui/mountLibraryPage.jsx`
+- `frontend/ui/mountListDetailPage.jsx`
+- `frontend/ui/mountListsPage.jsx`
+- `frontend/ui/mountMarkdownIslands.jsx`
+- `frontend/ui/mountMediaTable.jsx`
+- `frontend/ui/mountMetadataReview.jsx`
+- `frontend/ui/mountMusicAlbums.jsx`
+- `frontend/ui/mountMusicRelations.jsx`
+- `frontend/ui/mountParentPicker.jsx`
+- `frontend/ui/mountPeople.jsx`
+- `frontend/ui/mountPlaybackCard.jsx`
+- `frontend/ui/mountProgressBreakdown.jsx`
+- `frontend/ui/mountProgressChanger.jsx`
+- `frontend/ui/mountProgressDetail.jsx`
+- `frontend/ui/mountRails.jsx`
+- `frontend/ui/mountRatingChip.jsx`
+- `frontend/ui/mountReleaseCalendar.jsx`
+- `frontend/ui/mountSearchResults.jsx`
+- `frontend/ui/mountShell.jsx`
+- `frontend/ui/mountStatisticsCharts.jsx`
+- `frontend/ui/mountStatisticsSections.jsx`
+- `frontend/ui/mountStatisticsSummary.jsx`
+- `frontend/ui/mountStremioConfig.jsx`
+- `frontend/ui/mountTags.jsx`
+- `frontend/ui/mountTrackForm.jsx`
+- `frontend/ui/people-parity.css`
+- `frontend/ui/serviceWorkerStatus.native.js`
+- `frontend/ui/serviceWorkerStatus.web.js`
+- `frontend/ui/statistics-fallback.css`
+- `frontend/users/UsersManagement.jsx`
+- `src/static/js/searchParentFallback.js`
+- `src/templates/app/components/date_time_picker_legacy.html`
+- `src/templates/app/components/date_time_picker_react.html`
+- `src/templates/app/components/detail_composition.html`
+- `src/templates/app/components/detail_related.html`
+- `src/templates/app/components/edition_picker.html`
+- `src/templates/app/components/filter_bar.html`
+- `src/templates/app/components/people_hero.html`
+- `src/templates/app/components/people_island.html`
+- `src/templates/app/components/rating_chip.html`
+- `src/templates/users/components/progress_changer.html`
+- `src/templates/users/manage_users.html`
+
+## PAGE
+
+Status: `Partial / coexisting`
+
+## SET-USERS
+
+Status: `Partial / coexisting`
+
+## BULK_ACTIONS
+
+Status: `Partial / coexisting`
+
+## CONTROL-KIT
+
+Status: `Partial / coexisting`

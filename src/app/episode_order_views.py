@@ -4,6 +4,7 @@ import requests
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_http_methods
@@ -13,6 +14,7 @@ from app.models.episode_order import EpisodeOrder
 from app.providers import credentials, episode_orders, services
 from app.services import episode_ordering, metadata_resolution
 from app.templatetags.app_tags import media_url
+from users.templatetags.user_tags import user_date_format
 
 
 def owned_tv(user, tv_id):
@@ -152,6 +154,144 @@ def _order_groups(orders):
     return [(provider.upper(), choices) for provider, choices in groups.items()]
 
 
+def _episode_ordering_labels():
+    """Server-localized copy for the shared review presentation."""
+    return {
+        "title": _("Episode ordering"),
+        "lead": _("Choose how this series is numbered in your library. Your viewing history is reviewed before anything changes."),
+        "currentOrder": _("Current order:"),
+        "originalNumbering": _("Original numbering"),
+        "matched": _("Matched"),
+        "suggested": _("Suggested"),
+        "needs": _("Needs choice"),
+        "chosen": _("Chosen"),
+        "archived": _("Archived"),
+        "combined": _("Combined"),
+        "current": _("Current"),
+        "reviewChanges": _("Review changes"),
+        "undo": _("Undo ordering change"),
+        "revertHelp": _("The order before the latest change."),
+        "revertBlocked": _("Can't be restored automatically because viewings were added or edited after the change."),
+        "noOrders": _("No episode orders are available. Configure a provider credential and a verified series provider identity in metadata settings."),
+        "allViewings": _("All viewings"),
+        "needsChoice": _("Needs choice"),
+        "acceptAll": _("Accept all suggestions"),
+        "suggestionWarning": _("Some suggestions only share a season and episode number with the old episode. Split or merged episodes shift later numbers, so check them before accepting."),
+        "reviewHelp": _("Pick the episode each viewing belongs to under the new numbering. Matches by identity, air date and title are filled in for you; check anything marked Suggested or Needs choice."),
+        "noDate": _("No date"),
+        "emptyViewings": _("This series has no viewings to move."),
+        "score": _("Score:"),
+        "removeEpisode": _("Remove episode"),
+        "chooseEpisode": _("Choose episode"),
+        "addOrChange": _("Add or change"),
+        "useSuggestion": _("Use suggestion:"),
+        "options": _("Options"),
+        "archiveLabel": _("Archive under the original order, excluding it from active progress"),
+        "combineLabel": _("Combine with another viewing and use its episode, dates, score, notes and status"),
+        "keepSeparate": _("Keep as a separate viewing"),
+        "searchPlaceholder": _("Search by number, title or air date"),
+        "apply": _("Apply episode ordering"),
+        "cancel": _("Cancel"),
+        "needsRemaining": _("viewings still need an episode, or can be archived."),
+        "combinedUses": _("Uses the episode, dates, score and status of"),
+        "archiveNote": _("Kept under the original order and left out of active progress."),
+    }
+
+
+def _episode_ordering_props(request, tv, context):
+    """Describe the chooser or review for the shared React presentation."""
+    labels = _episode_ordering_labels()
+    model = {
+        "mode": "review" if context.get("preview") else "chooser",
+        "itemTitle": tv.item.title,
+        "itemUrl": media_url(tv.item),
+        "currentOrderLabel": (
+            tv.active_episode_order.label if tv.active_episode_order
+            else labels["originalNumbering"]
+        ),
+        "hasActiveOrder": bool(tv.active_episode_order),
+        "canRevert": context.get("can_revert", False),
+        "revertLabel": context.get("revert_label", ""),
+        "providerErrors": context.get("provider_errors", []),
+        "orderGroups": [
+            {"provider": provider, "choices": [
+                {
+                    "provider": choice["provider"],
+                    "key": choice["key"],
+                    "label": choice["label"],
+                    "current": bool(choice.get("current")),
+                }
+                for choice in choices
+            ]}
+            for provider, choices in context.get("order_groups", [])
+        ],
+        "cancelUrl": request.path,
+    }
+    props = {
+        "labels": labels,
+        "model": model,
+        "csrf": get_token(request),
+        "actions": {
+            "review": request.path,
+            "revert": request.path,
+            "apply": request.path,
+        },
+    }
+    if not context.get("preview"):
+        return props
+
+    watches = []
+    seasons = {}
+    for watch in context["watches"]:
+        start = user_date_format(watch["start_date"], request.user)
+        end = user_date_format(watch["end_date"], request.user)
+        if start:
+            date_label = f"{start} \u2013 {end or labels['noDate']}"
+        else:
+            date_label = end or labels["noDate"]
+        watches.append({
+            "id": watch["id"],
+            "label": f"S{watch['season_number']}E{watch['episode_number']} · {watch['title']}",
+            "seasonNumber": watch["season_number"],
+            "episodeNumber": watch["episode_number"],
+            "title": watch["title"],
+            "dateLabel": date_label,
+            "score": watch["score"],
+            "status": watch["status"],
+            "notes": watch["notes"] or "",
+            "selected": list(watch["selected"]),
+            "pending": watch["pending"],
+            "kind": watch["kind"],
+        })
+        season = seasons.setdefault(watch["season_number"], [])
+        season.append(watch["id"])
+    order = context["order"]
+    model["review"] = {
+        "label": _("Moving to %(label)s") % {"label": order.label},
+        "orderId": order.pk,
+        "token": context["preview"]["token"],
+        "watches": watches,
+        "seasons": [
+            {
+                "number": number,
+                "label": _("Season %(number)s") % {"number": number},
+                "watches": watch_ids,
+            }
+            for number, watch_ids in seasons.items()
+        ],
+        "episodes": [
+            {
+                "id": episode["id"],
+                "code": episode["code"],
+                "title": episode["title"],
+                "airDate": episode.get("air_date") or "",
+            }
+            for episode in context["review"]["episodes"]
+        ],
+    }
+    return props
+
+
 @login_required
 @require_http_methods(["GET", "POST"])
 def episode_ordering_settings(request, tv_id):
@@ -204,4 +344,5 @@ def episode_ordering_settings(request, tv_id):
     context["order_groups"] = _order_groups(orders)
     context["can_revert"] = episode_ordering.can_revert(tv)
     context["revert_label"] = _revert_label(tv)
+    context["episode_ordering_props"] = _episode_ordering_props(request, tv, context)
     return render(request, "app/episode_ordering.html", context, status=status)

@@ -20,6 +20,7 @@ from app.models import (
     Video,
 )
 from app.templatetags.app_tags import item_slot_id
+from app.tests.card_props import card_models
 from integrations.models import CollectionSourceState
 
 
@@ -59,6 +60,101 @@ class CollectionListViewTest(TestCase):
                     response.content.decode(),
                     rf'id="collection-view"[^>]*\sclass="{expected}"',
                 )
+
+    def test_grid_embeds_shared_browser_props(self):
+        """The web grid receives the shared browser's card models, not re-derived fields."""
+        Movie.objects.create(
+            item=self.item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=1,
+            score=8.5,
+        )
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=self.item,
+            media_type="Blu-ray",
+            resolution="1080p",
+            purchase_location="Shelf A",
+        )
+        self.client.login(**self.credentials)
+
+        response = self.client.get(reverse("collection_list"))
+
+        self.assertContains(response, "data-collection-browser-root")
+        props = response.context["collection_browser_props"]
+        self.assertEqual(props["resultCount"], 1)
+        self.assertEqual(props["nextUrl"], "")
+        item = props["items"][0]
+        self.assertEqual(item["title"], "Test Movie")
+        self.assertEqual(item["mediaType"], MediaTypes.MOVIE.value)
+        self.assertEqual(item["card"]["statusChip"]["kind"], "status")
+        self.assertEqual(item["card"]["rating"]["label"], "8.5")
+        self.assertIn("actions", item["card"])
+
+    def test_table_layout_uses_the_shared_browser(self):
+        """The shared browser owns the table and its paginated JSON pages."""
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=self.item,
+            media_type="Blu-ray",
+            resolution="1080p",
+        )
+        self.client.login(**self.credentials)
+
+        response = self.client.get(reverse("collection_list"), {"layout": "table"})
+
+        self.assertContains(response, "data-collection-browser-root")
+        props = response.context["collection_browser_props"]
+        self.assertEqual(props["filters"]["view"], "table")
+        self.assertEqual(props["items"][0]["format"], "Blu-ray")
+        self.assertEqual(props["items"][0]["resolution"], "1080p")
+
+    def test_grouped_view_uses_the_shared_browser_rows(self):
+        """Grouped rows carry per-row loading URLs into the shared browser."""
+        CollectionEntry.objects.bulk_create(
+            [CollectionEntry(user=self.user, item=self.item) for _ in range(21)],
+        )
+        self.client.login(**self.credentials)
+
+        response = self.client.get(reverse("collection_list"), {"group": "type"})
+
+        self.assertContains(response, "data-collection-browser-root")
+        props = response.context["collection_browser_props"]
+        self.assertEqual(len(props["groups"]), 1)
+        group = props["groups"][0]
+        self.assertEqual(group["key"], MediaTypes.MOVIE.value)
+        self.assertEqual(group["loadedCount"], 20)
+        self.assertEqual(group["total"], 21)
+        self.assertIn("row_type=", group["nextUrl"])
+        self.assertIn("json=1", group["nextUrl"])
+
+        response = self.client.get(group["nextUrl"])
+
+        payload = response.json()
+        self.assertEqual(len(payload["items"]), 1)
+        self.assertEqual(payload["nextUrl"], "")
+
+    def test_json_page_returns_the_next_browser_url(self):
+        """Browser load-more pages use the JSON contract and stop at the last page."""
+        CollectionEntry.objects.bulk_create(
+            [CollectionEntry(user=self.user, item=self.item) for _ in range(21)],
+        )
+        self.client.login(**self.credentials)
+
+        response = self.client.get(reverse("collection_list"), {"json": "1"})
+
+        payload = response.json()
+        self.assertEqual(len(payload["items"]), 20)
+        self.assertEqual(payload["resultCount"], 21)
+        self.assertIn("page=2", payload["nextUrl"])
+        self.assertIn("json=1", payload["nextUrl"])
+
+        response = self.client.get(payload["nextUrl"])
+
+        payload = response.json()
+        self.assertEqual(len(payload["items"]), 1)
+        self.assertEqual(payload["nextUrl"], "")
 
     def test_collection_list_unauthenticated(self):
         """Test unauthenticated user is redirected to login."""
@@ -175,10 +271,11 @@ class CollectionListViewTest(TestCase):
         response = self.client.get(reverse("collection_list"))
 
         content = response.content.decode()
-        self.assertIn(f'id="{item_slot_id("media-card-rating", movie.item)}"', content)
-        self.assertIn(">8.5</span>", content)
-        self.assertIn(f'id="{item_slot_id("media-status-chip", movie.item)}"', content)
-        self.assertIn('class="media-status-chip ', content)
+        model = card_models(content)[0]
+        self.assertEqual(model["ratingId"], item_slot_id("media-card-rating", movie.item))
+        self.assertEqual(model["rating"]["label"], "8.5")
+        self.assertEqual(model["statusId"], item_slot_id("media-status-chip", movie.item))
+        self.assertEqual(model["statusChip"]["kind"], "status")
 
     def test_collection_card_for_untracked_item_has_no_rating_or_status(self):
         """An owned but untracked item shows no status chip and no rating."""
@@ -888,6 +985,39 @@ class CollectionModalViewTest(TestCase):
             title="Test Movie",
             image="http://example.com/image.jpg",
         )
+
+    def test_modal_embeds_shared_copy_and_custom_field_props(self):
+        """The modal ships plain props for the shared copy and field adapters."""
+        group = CollectionFieldGroup.objects.create(user=self.user, name="Edition")
+        field = CollectionField.objects.create(
+            group=group,
+            label="Volume",
+            field_type="text",
+            media_types=[MediaTypes.MOVIE.value],
+        )
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=self.item,
+            media_type="Blu-ray",
+            custom_field_values={str(field.id): "3"},
+        )
+        self.client.login(**self.credentials)
+
+        response = self.client.get(
+            reverse(
+                "collection_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "1234",
+                },
+            ),
+        )
+
+        self.assertContains(response, "data-collection-copy-fields-root")
+        self.assertContains(response, "data-collection-fields-root")
+        self.assertContains(response, "data-collection-field-inputs-root")
+        self.assertContains(response, "Volume")
 
     def test_collection_modal_new_entry(self):
         """Test modal for new entry (no existing collection)."""

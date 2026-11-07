@@ -96,7 +96,13 @@ def _status_code(status: str | None) -> int | None:
 
 
 @mcp.tool()
-async def search_media(media_type: str, query: str, page: int = 1) -> Any:
+async def search_media(
+    media_type: str,
+    query: str,
+    source: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> Any:
     """Search a provider for media to track.
 
     media_type: one of tv, movie, anime, manga, game, book, comic,
@@ -107,12 +113,17 @@ async def search_media(media_type: str, query: str, page: int = 1) -> Any:
     a remaster) without a follow-up get_media call. If a title is ambiguous
     across platforms, prefer showing the candidates to the user over
     guessing one.
+
+    source is optional: omit it to search the user's preferred provider for
+    that media type (the one their Settings > Metadata choice names), or
+    pass a provider such as "openlibrary", "hardcover", "googlebooks",
+    "tmdb" or "igdb" to search that one. Each result states the source it
+    came from. Paginate with limit/offset (there is no page parameter).
     """
-    return await _call(
-        "get",
-        f"search/{media_type}",
-        params={"search": query, "page": page},
-    )
+    params: dict[str, Any] = {"search": query, "limit": limit, "offset": offset}
+    if source:
+        params["source"] = source
+    return await _call("get", f"search/{media_type}", params=params)
 
 
 def _search_failure(error: dict[str, Any]) -> dict[str, Any]:
@@ -485,6 +496,7 @@ async def track_media(  # noqa: C901, PLR0911, PLR0912
     new_play: bool = False,  # noqa: FBT001, FBT002
     mode: _TrackMode = "auto",
     skip_if_duplicate: bool = False,  # noqa: FBT001, FBT002
+    idempotency_key: str | None = None,
 ) -> Any:
     """Start tracking a media item, or update it if already tracked.
 
@@ -513,6 +525,11 @@ async def track_media(  # noqa: C901, PLR0911, PLR0912
     outcome (created | appended | updated | skipped), identity,
     consumption_id, applied (status/progress/progress_unit/dates as
     returned) and verify (where to read the entry back).
+
+    idempotency_key makes a retried create safe at the server: resending the
+    same key and arguments replays the first success (outcome "skipped", with
+    reason "replayed") instead of appending another play. Use a fresh key per
+    intended play, and reuse it only to retry that same call.
 
     Failures carry error_kind (invalid_input, not_found, conflict, busy,
     unreachable, backend_error, unknown_write_outcome) and write_state
@@ -636,9 +653,22 @@ async def track_media(  # noqa: C901, PLR0911, PLR0912
                     reason="an identical consumption already exists",
                 )
     body["media_id"] = media_id
-    result = await _write("post", f"media/{media_type}", json=body)
+    result = await _write(
+        "post",
+        f"media/{media_type}",
+        json=body,
+        headers={"Idempotency-Key": idempotency_key} if idempotency_key else None,
+    )
     if isinstance(result, dict) and result.get("error"):
         return {**_classify_write_error(result), "verify": _verify_ref(*media, None)}
+    if isinstance(result, dict) and result.get("idempotent_replayed"):
+        return _envelope(
+            result,
+            "skipped",
+            media,
+            None,
+            reason="replayed: this idempotency_key already completed",
+        )
     return _envelope(result, "appended" if tracked else "created", media, None)
 
 

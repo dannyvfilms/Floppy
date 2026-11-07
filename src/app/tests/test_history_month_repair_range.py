@@ -18,6 +18,7 @@ from app.models import (
     Artist,
     BoardGame,
     Book,
+    BookListeningSession,
     Episode,
     Game,
     Item,
@@ -100,10 +101,24 @@ class MonthRepairRangeTests(TestCase):
                 ),
                 related_season=season, end_date=when,
             )
-            Book.objects.create(
+            book = Book.objects.create(
                 item=_item(MediaTypes.BOOK.value, f"b{i}"),
                 user=user, status=done, progress=1, end_date=when,
             )
+            if i % 2 == 0:
+                BookListeningSession.objects.create(
+                    book=book, session_id=f"s{i}", started_at=when, minutes=30,
+                )
+            if i % 3 == 0:
+                # A page-based book whose progress rose that day: the change
+                # log dates it (first row is the baseline).
+                book.progress = 7
+                book.save()
+                changes = Book.history.filter(id=book.id)
+                changes.filter(history_type="+").update(
+                    history_date=when - timedelta(days=1),
+                )
+                changes.filter(history_type="~").update(history_date=when)
             Anime.objects.create(
                 item=_item(MediaTypes.ANIME.value, f"a{i}"),
                 user=user, status=done, progress=3, end_date=when,

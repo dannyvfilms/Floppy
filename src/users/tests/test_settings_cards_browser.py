@@ -16,6 +16,13 @@ from app.providers import credentials
 from app.tests.live_server import SerialStaticLiveServerTestCase
 from integrations.models import AudiobookshelfAccount, ImportRun
 
+# The header search form, the sidebar, the popup host and the bulk-actions dock are React islands
+# on every signed-in page, so the card counts below leave them out.
+MOUNTED_ISLANDS = (
+    '[data-react-mounted="true"]:not([data-shell-root]):not([data-global-search-root])'
+    ":not([data-sidebar-root]):not([data-modal-host-root]):not([data-bulk-actions-root])"
+)
+
 
 @tag("slow", "playwright")
 class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
@@ -78,7 +85,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
     def open_cards(self, tab="import"):
         """Wait for the single owner of the entire AniList provider region."""
         self.page.goto(f"{self.live_server_url}/settings/providers/anilist?tab={tab}")
-        expect(self.page.locator('[data-react-mounted="true"]')).to_have_count(1)
+        expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
 
     def choose_option(self, label, option):
         """Operate the shared select by its accessible user-facing labels."""
@@ -164,7 +171,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.assertEqual(result.value.status, 302)
         self.page.wait_for_load_state("networkidle")
         self.assertIn("tab=connection", self.page.url, (result.value.headers, self.failed_requests))
-        expect(self.page.locator('[data-react-mounted="true"]')).to_have_count(1)
+        expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
         self.assertNotIn("test-personal-secret", "".join(self.page.locator('script[type="application/json"]').all_text_contents()))
         self.assertEqual(self.errors, [])
 
@@ -507,7 +514,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.get_by_role("button", name="Search providers", exact=True).click()
         self.page.wait_for_load_state("networkidle")
         expect(self.page.locator("#provider-results a")).to_have_count(2)
-        expect(self.page.locator('[data-react-mounted="true"]')).to_have_count(0)
+        expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(0)
         self.assertEqual(self.errors, [])
 
     def test_chip_focus_ring_is_for_keyboard_navigation_only(self):
@@ -554,16 +561,16 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
               host.replaceWith(copy);
               htmx.trigger(copy, 'htmx:load', {elt: copy});
             }""")
-            expect(self.page.locator('[data-react-mounted="true"]')).to_have_count(1)
+            expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
         self.page.get_by_label("Public username", exact=True).fill("retained-on-back")
         self.page.evaluate("window.dispatchEvent(new PageTransitionEvent('pagehide', {persisted:true}))")
-        expect(self.page.locator('[data-react-mounted="true"]')).to_have_count(1)
+        expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
         self.page.evaluate("window.dispatchEvent(new PageTransitionEvent('pageshow', {persisted:true}))")
-        expect(self.page.locator('[data-react-mounted="true"]')).to_have_count(1)
+        expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
         expect(self.page.get_by_label("Public username", exact=True)).to_have_value("retained-on-back")
         self.page.evaluate("htmx.ajax('GET', '/settings/providers/anilist?tab=connection', {target:'body', swap:'innerHTML'})")
         expect(self.page.get_by_role("heading", name="Instance credentials")).to_be_visible()
-        expect(self.page.locator('[data-react-mounted="true"]')).to_have_count(1)
+        expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
         self.assertEqual(self.errors, [])
 
     def test_theme_and_responsive_parity(self):
@@ -588,7 +595,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.goto(f"{self.live_server_url}/settings/providers/anilist?tab=import")
         expect(self.page.get_by_role("heading", name="Import preferences")).to_be_visible()
         expect(self.page.get_by_label("Public username", exact=True)).to_be_visible()
-        expect(self.page.locator('[data-react-mounted="true"]')).to_have_count(0)
+        expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(0)
         self.assertEqual(self.errors, [])
 
     def test_navigation_from_a_page_without_cards_lazily_loads_the_runtime(self):
@@ -598,7 +605,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.assertFalse(self.page.evaluate("""performance.getEntriesByType('resource')
           .some(entry => /\\/ui\\/mount-/.test(entry.name))"""))
         self.page.evaluate("htmx.ajax('GET', '/settings/providers/anilist?tab=import', {target:'body', swap:'innerHTML'})")
-        expect(self.page.locator('[data-react-mounted="true"]')).to_have_count(1)
+        expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
         self.assertEqual(self.errors, [])
 
     def test_runtime_cost_layout_shift_and_cleanup_memory(self):
@@ -611,7 +618,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             }
           }).observe({type: 'layout-shift', buffered: true});
           new MutationObserver(() => {
-            if (document.querySelectorAll('[data-react-mounted=true]').length === 1) {
+            if (document.querySelectorAll('[data-react-mounted=true]:not([data-global-search-root]):not([data-sidebar-root]):not([data-modal-host-root]):not([data-modal-host-root])').length === 1) {
               cardProof.mountedAt ||= performance.now();
             }
           }).observe(document, {subtree:true, attributes:true, attributeFilter:['data-react-mounted']});
@@ -632,7 +639,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
               window.dispatchEvent(new PageTransitionEvent('pagehide', {persisted:false}));
               window.dispatchEvent(new PageTransitionEvent('pageshow', {persisted:false}));
             }""")
-            expect(self.page.locator('[data-react-mounted="true"]')).to_have_count(1)
+            expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
         session.send("HeapProfiler.collectGarbage")
         metrics["heapGrowthBytes"] = session.send("Runtime.getHeapUsage")["usedSize"] - before
         self.__class__.proof_metrics = metrics
@@ -720,7 +727,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             for path, selector in (("/settings/providers", "#provider-results"),
                                    ("/settings/providers/anilist?tab=overview", ".provider-overview")):
                 self.page.goto(self.live_server_url + path)
-                expect(self.page.locator('[data-react-mounted="true"]')).to_have_count(1)
+                expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
                 columns.append(self.page.locator(selector).evaluate("element => getComputedStyle(element).gridTemplateColumns.split(' ').length"))
             self.assertEqual(columns[0], columns[1])
         self.assertEqual(self.errors, [])

@@ -13,6 +13,7 @@ from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.response import Response
 
 import app.providers.tmdb
@@ -34,6 +35,7 @@ from app.templatetags.app_tags import media_url
 from integrations.delivery import get_or_record_receipt
 from integrations.models import IntegrationToken
 
+from .authentication import APIKeyAuthentication, BearerAuthentication
 from .helpers import paginate_data, parse_limit_offset, try_parse_datetime_input
 
 logger = logging.getLogger(__name__)
@@ -72,7 +74,7 @@ def resolve_show_tmdb_id(media_type, ids):
     """Resolve an `ids` object to a TMDB movie/show id, or None.
 
     Tries the ids we've already persisted before falling back to a single
-    network `find()` — unlike the live-playback card this feeds a durable
+    network `find()` calls — unlike the live-playback card this feeds a durable
     write, so it must not guess.
     """
     if ids.get("tmdb"):
@@ -92,21 +94,17 @@ def resolve_show_tmdb_id(media_type, ids):
         if known:
             return known.media_id
 
-    ext_id = ids.get("imdb") or ids.get("tvdb")
-    if not ext_id:
-        return None
-    ext_type = "imdb_id" if ids.get("imdb") else "tvdb_id"
-    find_response = app.providers.tmdb.find(ext_id, ext_type)
-
-    if media_type == MediaTypes.MOVIE.value:
-        results = find_response.get("movie_results") or []
-        return str(results[0]["id"]) if results else None
-
-    episode_results = find_response.get("tv_episode_results") or []
-    if episode_results:
-        return str(episode_results[0]["show_id"])
-    tv_results = find_response.get("tv_results") or []
-    return str(tv_results[0]["id"]) if tv_results else None
+    for key in ("imdb", "tvdb"):
+        if not ids.get(key):
+            continue
+        find_response = app.providers.tmdb.find(ids[key], f"{key}_id")
+        result_key = (
+            "movie_results" if media_type == MediaTypes.MOVIE.value else "tv_results"
+        )
+        results = find_response.get(result_key) or []
+        if results:
+            return str(results[0]["id"])
+    return None
 
 
 def _find_existing_item(media_type, tmdb_id, season_number, episode_number):
@@ -167,24 +165,58 @@ def _resolve_podcast(user, ids):
     )
 
 
-def complete_playback_progress(user_id, item_id):
-    """Close the resume point of an item that has just become watched."""
-    open_rows = PlaybackProgress.objects.filter(
-        user_id=user_id,
-        item_id=item_id,
-        completed=False,
-    ).select_related("user", "item")
-    for progress in open_rows:
-        with transaction.atomic():
-            progress.completed = True
-            progress.save(update_fields=["completed", "updated_at"])
-            record_progress_change(
-                progress.user,
-                progress.item,
-                position_seconds=progress.position_seconds,
-                duration_seconds=progress.duration_seconds,
-                completed=True,
+def complete_playback_progress(user_id, item_id, *, event_at=None):
+    """Close the resume point of an item that has just become watched.
+
+    ``event_at`` is the receipt time of the webhook that marked it watched, and
+    orders the closure as ``upsert_playback_progress`` orders a write: one older
+    than ``last_event_at`` is dropped without saving, and an applied one
+    advances the clock, so an older pause processed later cannot reopen it.
+    Without it (UI, API) an open row closes and its clock is left alone.
+    """
+    if event_at is None:
+        open_rows = PlaybackProgress.objects.filter(
+            user_id=user_id,
+            item_id=item_id,
+            completed=False,
+        ).select_related("user", "item")
+        for progress in open_rows:
+            with transaction.atomic():
+                progress.completed = True
+                progress.save(update_fields=["completed", "updated_at"])
+                record_progress_change(
+                    progress.user,
+                    progress.item,
+                    position_seconds=progress.position_seconds,
+                    duration_seconds=progress.duration_seconds,
+                    completed=True,
+                )
+        return
+
+    event_time = datetime.fromtimestamp(event_at, tz=UTC)
+    with state_transaction(user_id):
+        progress = (
+            PlaybackProgress.objects.select_for_update()
+            .filter(user_id=user_id, item_id=item_id)
+            .first()
+        )
+        if progress is None:
+            return
+        if progress.last_event_at and event_time < progress.last_event_at:
+            logger.info(
+                "Dropping out-of-order playback completion: event_at=%s "
+                "last_event_at=%s",
+                event_at,
+                progress.last_event_at,
             )
+            return
+        progress.last_event_at = event_time
+        # An already closed row only moves its clock, which is not a change.
+        update_fields = ["last_event_at"]
+        if not progress.completed:
+            progress.completed = True
+            update_fields += ["completed", "updated_at"]
+        progress.save(update_fields=update_fields)
 
 
 def upsert_playback_progress(
@@ -206,11 +238,20 @@ def upsert_playback_progress(
     intentionally omits one field.  The row lock keeps those field-specific
     updates from becoming a stale read-modify-write race.
 
-    ``event_at`` is when the source event happened. An older event processed
-    after a newer one (a queued play overtaking a scrobble) must not overwrite
-    the newer row, so the stale write is dropped.
+    ``event_at`` is when the source event was received, in epoch seconds with
+    its fraction. An older event processed after a newer one (a queued play
+    overtaking a scrobble) must not overwrite the newer row, so a write older
+    than ``last_event_at`` is dropped without saving; an equal time applies in
+    processing order. A row with no ``last_event_at`` (created before it
+    existed, or only ever written without ``event_at``) has an unknown clock,
+    so the next event applies and starts it. Writes without ``event_at`` (API,
+    UI) always apply and leave the clock alone: they have no receipt time
+    comparable to a webhook's.
     """
     position = 0 if position_seconds is None else position_seconds
+    event_time = (
+        None if event_at is None else datetime.fromtimestamp(event_at, tz=UTC)
+    )
     with state_transaction(user.pk):
         progress, created = PlaybackProgress.objects.select_for_update().get_or_create(
             user=user,
@@ -219,23 +260,24 @@ def upsert_playback_progress(
                 "position_seconds": position,
                 "duration_seconds": duration_seconds,
                 "completed": completed,
+                "last_event_at": event_time,
             },
         )
         if created:
             return progress
 
-        if event_at is not None and progress.updated_at > datetime.fromtimestamp(
-            event_at,
-            tz=UTC,
-        ):
-            logger.info(
-                "Dropping out-of-order playback progress: event_at=%s row_updated_at=%s",
-                event_at,
-                progress.updated_at,
-            )
-            return progress
-
         update_fields = []
+        if event_time is not None:
+            if progress.last_event_at and event_time < progress.last_event_at:
+                logger.info(
+                    "Dropping out-of-order playback progress: event_at=%s "
+                    "last_event_at=%s",
+                    event_at,
+                    progress.last_event_at,
+                )
+                return progress
+            progress.last_event_at = event_time
+
         if not preserve_position:
             progress.position_seconds = position
             update_fields.append("position_seconds")
@@ -253,7 +295,13 @@ def upsert_playback_progress(
             update_fields.append("completed")
 
         if update_fields:
-            progress.save(update_fields=[*update_fields, "updated_at"])
+            update_fields.append("updated_at")
+        if event_time is not None:
+            # A clock-only change is not a progress change, so it leaves
+            # ``updated_at`` alone.
+            update_fields.append("last_event_at")
+        if update_fields:
+            progress.save(update_fields=update_fields)
     return progress
 
 
@@ -763,7 +811,6 @@ class PlaybackProgressView(drf_views.APIView):
 
         return _execute()
 
-
     def _clear(self, request):
         """Delete the stored position for the identified media."""
         data = request.data
@@ -902,6 +949,15 @@ def build_now_playing_payload(user):
 # /api/v1/playback/now-playing/
 class NowPlayingView(drf_views.APIView):
     """Read-only snapshot of the user's active playback (from scrobble/webhook state)."""
+
+    # Home-style endpoint: the Expo app authenticates with the signed-in
+    # browser session, the same way the web Home endpoints do. Without
+    # SessionAuthentication here DRF answers 403 for that session.
+    authentication_classes = (
+        BearerAuthentication,
+        APIKeyAuthentication,
+        SessionAuthentication,
+    )
 
     @extend_schema(
         description=(

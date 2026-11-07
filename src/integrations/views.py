@@ -885,15 +885,44 @@ def trakt_device_verify(request):
         messages.error(request, "The Trakt authorization code expired. Start again.")
         return _integration_redirect(request)
 
+    poll_url = reverse("trakt_device_poll")
+    cancel_url = reverse("import_data")
+    verification_url = state["verification_url"]
+    user_code = state["user_code"]
+    props = {
+        "code": user_code,
+        "openUrl": f"{verification_url.rstrip('/')}/{user_code}",
+        "pollUrl": poll_url,
+        "cancelUrl": cancel_url,
+        "interval": state["interval"],
+        "expiresAt": state["expires_at"],
+        "title": gettext("Connect Trakt"),
+        "description": gettext(
+            "This instance is not served over HTTPS, so Trakt will not accept "
+            "a browser redirect. Enter this code on Trakt instead."
+        ),
+        "labels": {
+            "copy": gettext("Copy code"),
+            "copied": gettext("Copied!"),
+            "open": gettext("Open %(url)s") % {"url": verification_url},
+            "waiting": gettext("Waiting for you to authorize Floppy…"),
+            "cancel": gettext("Cancel"),
+            "expired": gettext(
+                "The Trakt authorization code expired. Start again."
+            ),
+            "retry": gettext("Start again"),
+        },
+    }
     return render(
         request,
         "integrations/trakt_device_code.html",
         {
-            "user_code": state["user_code"],
-            "verification_url": state["verification_url"],
+            "user_code": user_code,
+            "verification_url": verification_url,
             "interval": state["interval"],
-            "poll_url": reverse("trakt_device_poll"),
-            "cancel_url": reverse("import_data"),
+            "poll_url": poll_url,
+            "cancel_url": cancel_url,
+            "device_connect_props": props,
         },
     )
 
@@ -6181,12 +6210,33 @@ def stremio_addon_configure(request, token, config=None):
         logger.warning("Invalid token on Stremio addon configure request")
         return HttpResponse("Invalid token", status=401)
 
+    catalog_options = stremio_catalog.catalog_options(user)
+    selected_ids = list(stremio_catalog.parse_catalog_config(config))
+    props = {
+        "options": catalog_options,
+        "selectedIds": selected_ids,
+        "labels": {
+            "catalogs": gettext("Catalogs"),
+            "hint": gettext(
+                "Use the URL below — not the address of this page. It works "
+                "in Stremio directly, or in an addon manager such as "
+                "AIOStreams or AIOMetadata."
+            ),
+            "copy": gettext("Copy URL"),
+            "copied": gettext("Copied."),
+            "install": gettext("Install in Stremio"),
+            "noneSelected": gettext(
+                "Nothing selected — the default catalogs will be used."
+            ),
+        },
+    }
     return render(
         request,
         "integrations/stremio_configure.html",
         {
-            "catalog_options": stremio_catalog.catalog_options(user),
-            "selected_ids": list(stremio_catalog.parse_catalog_config(config)),
+            "catalog_options": catalog_options,
+            "selected_ids": selected_ids,
+            "stremio_config_props": props,
         },
     )
 

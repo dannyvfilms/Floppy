@@ -6,6 +6,7 @@
 
 {% spaceless %}
 <div class="md:grid md:grid-cols-[minmax(0,1fr)_minmax(15rem,min(30%,22rem))] md:gap-3 md:items-start"
+     data-calendar-view="grid"
      data-mobile-calendar
      data-selected-day="{{ selected_day }}"
      data-month-name="{{ month_name }}"
@@ -60,7 +61,6 @@
           {% include "app/icons/x.svg" with classes="w-4 h-4" %}
         </button>
       </div>
-      {% include "users/components/media_tag_filter.html" with calendar_mode=True tags=filter_media_types %}
     </div>
 
     {% for day in days_in_month %}
@@ -82,7 +82,7 @@
                   {% card_lines release.item.media_type release.item %}
                   {% with event_time=release|user_event_time:user %}
                     <div class="text-xs text-[var(--color-text-muted)]" data-agenda-subtitle>
-                      {% if release.item.media_type == 'season' and release.item.season_number != None and release.content_number != None %}S{{ release.item.season_number|stringformat:'02d' }}E{{ release.content_number|stringformat:'02d' }}{% elif release.readable_content_number %}{{ release.readable_content_number }}{% elif release.release_type %}{{ release.get_release_type_display }} {% translate "release" %}{% endif %}{% if event_time %} {{ event_time }}{% elif not release.readable_content_number and not release.release_type %}{% translate "Time unknown" %}{% endif %}
+                      {% if release.season_episode_label %}{{ release.season_episode_label }}{% elif release.release_type %}{{ release.get_release_type_display }} {% translate "release" %}{% endif %}{% if event_time %} {{ event_time }}{% elif not release.season_episode_label and not release.release_type %}{% translate "Time unknown" %}{% endif %}
                     </div>
                   {% endwith %}
                 </div>

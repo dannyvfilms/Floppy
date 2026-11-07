@@ -34,6 +34,9 @@ class PlaybackProgress(models.Model):
     duration_seconds = models.PositiveIntegerField(null=True, blank=True)
     completed = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
+    # Receipt time of the newest webhook event applied, which orders queued
+    # events; ``updated_at`` is processing time and cannot.
+    last_event_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         """Meta options for PlaybackProgress."""

@@ -1313,6 +1313,7 @@ class BaseWebhookProcessor:
         episode_ids=False,
         user=None,
         raise_transient=False,
+        show_ids_only=False,
     ):
         """Find TV media ID from external IDs, with optional title search fallback.
 
@@ -1334,6 +1335,7 @@ class BaseWebhookProcessor:
                 so a tracking caller retries instead of dropping the event.
                 Live-playback helpers leave this off so a UI lookup cannot
                 block the scrobble itself.
+            show_ids_only: External IDs identify shows, never episodes.
 
         Returns:
             tuple: (media_id, season_number, episode_number)
@@ -1368,14 +1370,14 @@ class BaseWebhookProcessor:
                 )
                 return local_media_id, None, None
 
-        # Prioritize TVDB/IMDB — TMDB find API resolves episode-level IDs to show IDs
+        # Try external IDs in order, respecting whether they identify a show or episode.
         for ext_id, ext_type in [
             (ids["tvdb_id"], "tvdb_id"),
             (ids["imdb_id"], "imdb_id"),
         ]:
             if ext_id:
                 response = app.providers.tmdb.find(ext_id, ext_type)
-                if response.get("tv_episode_results"):
+                if not show_ids_only and response.get("tv_episode_results"):
                     result = response["tv_episode_results"][0]
                     return (
                         result.get("show_id"),
@@ -1392,7 +1394,7 @@ class BaseWebhookProcessor:
         # TMDB's find endpoint does not resolve every TVDB episode, but TVDB
         # can map that ID to its series and the series' TMDB ID directly.
         tvdb_episode_id = ids.get("tvdb_id")
-        if tvdb_episode_id and app.providers.tvdb.enabled():
+        if not show_ids_only and tvdb_episode_id and app.providers.tvdb.enabled():
             try:
                 tvdb_episode = app.providers.tvdb.episode_by_id(tvdb_episode_id)
                 if tvdb_episode:
@@ -1707,6 +1709,7 @@ class BaseWebhookProcessor:
                     now,
                     movie_item,
                 )
+                live_playback.close_resume_point_without_play(user.id, movie_item.id)
             else:
                 app.models.Movie.objects.create(
                     item=movie_item,
@@ -2584,6 +2587,7 @@ class BaseWebhookProcessor:
                     season_number,
                     episode_number,
                 )
+                live_playback.close_resume_point_without_play(user.id, episode_item.id)
 
             if should_create:
                 # A real new play starts a planning show/season and reopens one

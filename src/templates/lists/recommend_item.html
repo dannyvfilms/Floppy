@@ -3,6 +3,7 @@
 
 {% load static %}
 {% load app_tags %}
+{% load ui_tags %}
 
 {% block title %}
   {% blocktranslate trimmed with value_1=custom_list.name %}Recommend Item - {{ value_1 }} - Floppy{% endblocktranslate %}
@@ -49,7 +50,7 @@
                    @keydown.enter.prevent="$nextTick(() => htmx.trigger('#recommend-search-form', 'submit'))">
             {% include "app/icons/magnifying-glass.svg" with classes="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] w-5 h-5" %}
             <div id="search-spinner" class="htmx-indicator absolute left-2 top-1/2 transform -translate-y-1/2">
-              <div class="animate-spin rounded-full h-7 w-7 border-b-2 border-indigo-500"></div>
+              {% spinner 28 %}
             </div>
           </div>
 

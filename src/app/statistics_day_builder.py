@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 
@@ -443,6 +444,7 @@ def _build_prefetch_for_range(user, day_list):
                 "score",
                 "progress",
                 "item__genres",
+                "item__format",
             )
             .iterator(chunk_size=2000),
         )
@@ -1766,6 +1768,7 @@ def build_stats_for_day(
                     "score",
                     "progress",
                     "item__genres",
+                    "item__format",
                 )
                 .iterator(chunk_size=500)
             )
@@ -1787,6 +1790,13 @@ def build_stats_for_day(
                 minutes_by_type[media_type] += 60
                 _add_hour(media_type, play_dt)
 
+            if media_type == MediaTypes.BOOK.value and (
+                row.get("item__format") == "audiobook"
+            ):
+                # An audiobook's progress is minutes, not pages. Its listening
+                # time is counted from dated sessions below, so pages and
+                # minutes never share a total.
+                continue
             total_minutes = row.get("progress") or 0
             if total_minutes <= 0:
                 continue
@@ -1841,7 +1851,21 @@ def build_stats_for_day(
                                 row.get("item_id")
                             )
 
+    listening_minutes = 0
+    if MediaTypes.BOOK.value in active_media_types:
+        BookListeningSession = apps.get_model("app", "BookListeningSession")
+        listening_minutes = (
+            BookListeningSession.objects.filter(
+                book__user=user,
+                started_at__gte=day_start,
+                started_at__lt=day_end,
+            ).aggregate(total=models.Sum("minutes"))["total"]
+            or 0
+        )
+
     activity_count = play_count
+    if listening_minutes > 0:
+        activity_count += 1
     non_play_types = {
         MediaTypes.ANIME.value,
         MediaTypes.GAME.value,
@@ -1867,6 +1891,7 @@ def build_stats_for_day(
         "totals": {
             "minutes_by_type": dict(minutes_by_type),
             "plays_by_type": dict(plays_by_type),
+            "listening_minutes": listening_minutes,
         },
         "hour_counts": {},
         "hour_minutes": {},

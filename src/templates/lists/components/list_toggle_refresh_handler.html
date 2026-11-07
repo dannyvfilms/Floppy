@@ -27,6 +27,17 @@
       window.__floppyListToggleRefreshHandler,
     );
 
+    // The React Add-to-lists form announces each saved change on the window.
+    if (window.__floppyListToggledHandler) {
+      window.removeEventListener('floppy-list-toggled', window.__floppyListToggledHandler);
+    }
+    window.__floppyListToggledHandler = () => {
+      if (itemsView && itemsView.isConnected) {
+        refreshCustomListGrid();
+      }
+    };
+    window.addEventListener('floppy-list-toggled', window.__floppyListToggledHandler);
+
     if (window.__floppyListCountUpdatedHandler) {
       document.body.removeEventListener(
         'listCountUpdated',

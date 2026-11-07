@@ -3,17 +3,27 @@
   {% with index=forloop.counter0|stringformat:"s" %}{% with props_id="setup-guide-props-"|add:index %}
   {{ guide|json_script:props_id }}
   <div data-setup-guide-root data-props-id="{{ props_id }}" x-ignore hx-disable>
+    <div class="{% if guide.collapsed and not guide.bare %}ui-guide-stack{% endif %}">
     <section class="settings-card">
       {% if not guide.bare %}<h4>{{ guide.title }}</h4>
       <p>{{ guide.description }}</p>{% endif %}
+      {% if guide.badge %}<p class="provider-small ui-guide-status"><strong>{{ guide.badge.label }}</strong> {{ guide.badge.summary }}</p>{% endif %}
       {% if guide.warning %}<p role="alert" data-testid="jellyfin-template-outdated"><strong>{{ guide.warning.title }}</strong> {{ guide.warning.text }}</p>{% endif %}
-      <h4>{{ guide.heading }}</h4>
+      {% if guide.primary %}<div class="ui-guide-primary"><span class="ui-guide-primary-label">{{ guide.primary.label }}</span><code>{{ guide_copy|dict_get:guide.primary.key }}</code></div>{% endif %}
+      {% if guide.collapsed and not guide.bare %}</section>
+    {% if guide.methods %}<div class="ui-guide-methods">{% for method in guide.methods %}<section class="settings-card"><h4>{{ method.title }}</h4><p>{{ method.description }}</p><details class="ui-guide-details"><summary>{{ guide.stepsLabel }}</summary>
+      <ol class="ui-guide-steps">{% for step in method.steps %}<li>{% include "users/providers/setup_guide_parts.html" with parts=step.parts|default:step %}
+          {% if step.items %}<ul>{% for item in step.items %}<li>{% include "users/providers/setup_guide_parts.html" with parts=item %}</li>{% endfor %}</ul>{% endif %}</li>{% endfor %}</ol></details></section>{% endfor %}</div>
+    {% else %}<section class="settings-card"><h4>{{ guide.heading }}</h4><details class="ui-guide-details"><summary>{{ guide.stepsLabel }}</summary>
+      <ol class="ui-guide-steps">{% for step in guide.steps %}<li>{% include "users/providers/setup_guide_parts.html" with parts=step.parts|default:step %}
+          {% if step.items %}<ul>{% for item in step.items %}<li>{% include "users/providers/setup_guide_parts.html" with parts=item %}</li>{% endfor %}</ul>{% endif %}</li>{% endfor %}</ol></details></section>{% endif %}
+    </div>
+      {% else %}<h4>{{ guide.heading }}</h4>
       <ol class="ui-guide-steps">
         {% for step in guide.steps %}<li>{% include "users/providers/setup_guide_parts.html" with parts=step.parts|default:step %}
           {% if step.items %}<ul>{% for item in step.items %}<li>{% include "users/providers/setup_guide_parts.html" with parts=item %}</li>{% endfor %}</ul>{% endif %}</li>{% endfor %}
-      </ol>
+      </ol></section></div>{% endif %}
       {% for key, value in guide_copy.items %}<input type="hidden" data-copy-id="{{ key }}" value="{{ value }}" readonly>{% endfor %}
-    </section>
   </div>
   {% endwith %}{% endwith %}
 {% endfor %}

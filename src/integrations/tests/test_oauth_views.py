@@ -14,6 +14,7 @@ from django.utils import timezone
 from django_celery_beat.models import PeriodicTask
 from requests import Response
 
+from app.providers import credentials
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError
 from integrations.models import PlexAccount
@@ -29,6 +30,14 @@ class OAuthStateViewTests(TestCase):
             username="oauth-user",
             password="oauth-password",
         )
+
+        # Django TestCase rolls back database writes, but credential
+        # caches can outlive a test and retain values for reused user IDs.
+        credentials.invalidate_cache()
+        credentials.invalidate_user_cache(self.user)
+        self.addCleanup(credentials.invalidate_cache)
+        self.addCleanup(credentials.invalidate_user_cache, self.user)
+
         self.client.force_login(self.user)
 
     def _start_oauth(self, view_name):
@@ -60,7 +69,11 @@ class OAuthStateViewTests(TestCase):
         response = self.client.get(reverse(view_name), follow=True)
 
         self.assertContains(response, message)
-        expected = reverse("providers") + "?capability=import" if callback_path == reverse("import_data") else callback_path
+        expected = (
+            reverse("providers") + "?capability=import"
+            if callback_path == reverse("import_data")
+            else callback_path
+        )
         self.assertEqual(response.redirect_chain[-1][0], expected)
         self.assertEqual(
             self.client.session.get("_auth_user_id"),
@@ -99,12 +112,22 @@ class OAuthStateViewTests(TestCase):
         # approved on SIMKL and only then hit a 403 at token exchange (#1318).
         response = self.client.post(
             reverse("simkl_oauth"),
-            data={"mode": "new", "frequency": "once", "time": "00:00", "next": reverse("provider_detail", args=["simkl"]) + "?tab=import"},
+            data={
+                "mode": "new",
+                "frequency": "once",
+                "time": "00:00",
+                "next": reverse("provider_detail", args=["simkl"]) + "?tab=import",
+            },
             follow=True,
         )
 
-        self.assertEqual(response.redirect_chain, [(reverse("provider_detail", args=["simkl"]) + "?tab=import", 302)])
-        self.assertContains(response, "SIMKL needs your own Client ID and Client secret.")
+        self.assertEqual(
+            response.redirect_chain,
+            [(reverse("provider_detail", args=["simkl"]) + "?tab=import", 302)],
+        )
+        self.assertContains(
+            response, "SIMKL needs your own Client ID and Client secret."
+        )
         self.assertContains(response, "SIMKL needs your own API app")
 
     def test_simkl_rejected_token_exchange_shows_message_not_500(self):
@@ -352,7 +375,10 @@ class OAuthStateViewTests(TestCase):
                         "username": "trakt-user",
                     },
                 ),
-                patch("integrations.views.helpers.encrypt", side_effect=lambda t: f"enc-{t}"),
+                patch(
+                    "integrations.views.helpers.encrypt",
+                    side_effect=lambda t: f"enc-{t}",
+                ),
             ):
                 self.client.get(self._callback_url("import_trakt_private", state_token))
 
@@ -368,7 +394,10 @@ class OAuthStateViewTests(TestCase):
         with (
             patch(
                 "integrations.views.anilist.get_token",
-                return_value={"access_token": "anilist-access", "username": "anilist-user"},
+                return_value={
+                    "access_token": "anilist-access",
+                    "username": "anilist-user",
+                },
             ) as get_token,
             patch("integrations.views.helpers.encrypt", return_value="encrypted-token"),
             patch("integrations.views.tasks.import_anilist.delay") as import_task,

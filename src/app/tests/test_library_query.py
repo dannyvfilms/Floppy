@@ -271,6 +271,31 @@ class LastWatchedSortTests(LibraryQueryTestCase):
         self.assertEqual(items[0].pk, self.completed.item_id)
 
 
+class DateAddedSortTests(LibraryQueryTestCase):
+    """Date added is when the item was first tracked, not its latest row."""
+
+    def test_rewatch_does_not_make_an_old_item_look_new(self):
+        """A later tracker row must not move an item to the top of Date Added."""
+        old_item, old_row = self.make_movie(0)
+        Movie.objects.filter(pk=old_row.pk).update(
+            created_at=self.now - timedelta(days=30),
+        )
+        rewatch = self.track(old_item, status=Status.COMPLETED.value)
+        Movie.objects.filter(pk=rewatch.pk).update(created_at=self.now)
+        new_item, new_row = self.make_movie(1)
+        Movie.objects.filter(pk=new_row.pk).update(
+            created_at=self.now - timedelta(days=1),
+        )
+
+        ids = [
+            item.pk
+            for item in self.run_query(
+                _query(sort=SortSpec("date_added", "desc")),
+            ).items
+        ]
+        self.assertEqual(ids, [new_item.pk, old_item.pk])
+
+
 class StatusSemanticsTests(LibraryQueryTestCase):
     """``latest`` follows the newest row; ``any`` accepts any row."""
 

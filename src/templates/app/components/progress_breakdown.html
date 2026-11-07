@@ -4,6 +4,9 @@
   Context: breakdown (app.services.progress_breakdown.ProgressBreakdown).
   Self-contained so a library progress page can include it once per show.
 {% endcomment %}
+<div class="progress-breakdown-island">
+{% if props %}{{ props|json_script:props_id }}{% endif %}{% if props %}<div data-progress-breakdown-root data-props-id="{{ props_id }}"></div>{% endif %}
+<div {% if props %}data-progress-breakdown-fallback{% endif %}>
 <div x-data="{ open: {{ breakdown.open_state_json }}, setAll(value) { for (const key in this.open) this.open[key] = value } }"
      class="space-y-3">
   {% if breakdown.catalogue_unavailable %}
@@ -160,4 +163,6 @@
       </p>
     {% endfor %}
   </div>
+</div>
+</div>
 </div>

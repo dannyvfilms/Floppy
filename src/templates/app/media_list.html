@@ -3,6 +3,7 @@
 
 {% load static %}
 {% load app_tags alphabet_tags %}
+{% load ui_tags %}
 
 {% block title %}
   {{ media_type|media_type_readable_plural }} - Floppy
@@ -11,7 +12,7 @@
 {% block alphabet_filter %}{% alphabet_filter "filter-form" %}{% endblock alphabet_filter %}
 
 {% block content %}
-  <div class="alphabet-surface">
+  <div class="alphabet-surface" data-page-slot-scope>
   {% include "app/components/filter_toolbar_scripts.html" %}
 
   {% translate "Name this view" as save_view_prompt %}{% translate "All" as media_i18n_2 %}{% translate "Rated" as media_i18n_3 %}{% translate "Not Rated" as media_i18n_4 %}{% translate "Collected" as media_i18n_5 %}{% translate "Not Collected" as media_i18n_6 %}{% translate "Any" as media_i18n_7 %}{% translate "Not Caught Up" as media_i18n_8 %}{% translate "Caught Up" as media_i18n_9 %}{% translate "Released" as media_i18n_10 %}{% translate "Not Released" as media_i18n_11 %}{% translate "Rated" as media_i18n_3 %}{% translate "Collected" as media_i18n_5 %}{% translate "Any Progress" as media_i18n_93 %}{% translate "Implied: " as media_i18n_82 %}{% translate "Unknown Year" as media_i18n_83 %}{% translate "Completed: " as media_i18n_94 %}{% translate "Released" as media_i18n_10 %}{% translate "All" as media_i18n_2 %}{{ media_list_filter_state|json_script:"media-list-filter-state" }}<div x-data="{ ...libraryFilterState(JSON.parse(document.getElementById('media-list-filter-state').textContent), JSON.parse(document.getElementById('media-filter-data')?.textContent || '{}')), mediaListUrl: '{% url 'medialist' media_type %}', sort: '{{ current_sort|escapejs }}', direction: '{{ current_direction|escapejs }}', layout: '{{ current_layout|escapejs }}', search: '{{ request.GET.search|default:''|escapejs }}', group_by: '{{ current_group_by|escapejs }}', statusLabels: {
@@ -26,48 +27,56 @@
       {% if not forloop.last %},{% endif %}
 
     {% endfor %}
-    }, selectMode: false, selectedItemIds: [], bulkTagLoading: false, toggleSelectMode() { this.selectMode = !this.selectMode; if (!this.selectMode) { this.selectedItemIds = []; } }, isItemSelected(id) { return this.selectedItemIds.includes(String(id)); }, toggleItemSelected(id) { const key = String(id); if (this.selectedItemIds.includes(key)) { this.selectedItemIds = this.selectedItemIds.filter((i) => i !== key); } else { this.selectedItemIds = [...this.selectedItemIds, key]; } }, clearSelection() { this.selectedItemIds = []; }, bulkTagAction(tagName, action) { if (!this.selectedItemIds.length || this.bulkTagLoading) { return; } this.bulkTagLoading = true; const body = new URLSearchParams(); body.append('tag_name', tagName); body.append('action', action); this.selectedItemIds.forEach((id) => body.append('item_ids', id)); fetch('{% url "tag_bulk_toggle" %}', { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' }, body }).then((response) => { if (response.ok) { this.selectMode = false; this.selectedItemIds = []; htmx.trigger(document.getElementById('bulk-tag-refresh'), 'click'); } }).finally(() => { this.bulkTagLoading = false; }); }, defaultDirection(value) { return ['author', 'popularity', 'runtime', 'start_date', 'title', 'time_left', 'time_to_beat', 'platform', 'next_episode_air_date'].includes(value) ? 'asc' : 'desc'; }, toggleSort(value) { this.direction = (this.sort === value) ? (this.direction === 'asc' ? 'desc' : 'asc') : this.defaultDirection(value); this.sort = value; }, toggleRating() { if (this.rating === 'all') { this.rating = 'rated'; } else if (this.rating === 'rated') { this.rating = 'not_rated'; } else { this.rating = 'all'; } }, toggleCollection() { if (this.collection === 'all') { this.collection = 'collected'; } else if (this.collection === 'collected') { this.collection = 'not_collected'; } else { this.collection = 'all'; } }, layoutHref(nextLayout) { return buildMediaListHref(this.mediaListUrl, document.getElementById('filter-form'), { layout: nextLayout }); }, isPlatformSelected(value) { return this.selectedPlatforms.includes(value); }, togglePlatform(value) { if (this.selectedPlatforms.includes(value)) { this.selectedPlatforms = this.selectedPlatforms.filter((p) => p !== value); } else { this.selectedPlatforms = [...this.selectedPlatforms, value]; } }, cyclePlatformMode() { this.platformMode = this.platformMode === 'and' ? 'or' : (this.platformMode === 'or' ? 'not' : 'and'); }, setGroupBy(next) { this.group_by = next; const form = document.getElementById('filter-form'); if (form.elements.group_by) { form.elements.group_by.value = next; } const groupField = form.elements.group; if (groupField) { groupField.remove(); } window.location.href = buildMediaListHref(this.mediaListUrl, form); }, shareView() { /* Open the tab synchronously (within the click handler) so browsers don't treat it as a blocked popup once the fetch resolves later. */ const shareWindow = window.open('', '_blank'); const form = document.getElementById('filter-form'); const params = buildMediaListFilterParams(form); params.set('media_type', '{{ media_type|escapejs }}'); return fetch('{% url "list_share_view" %}', { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' }, body: params, }) .then((response) => response.json()) .then((data) => { if (data.url && shareWindow) { shareWindow.location.href = data.url; } else if (data.url) { window.open(data.url, '_blank'); } else if (shareWindow) { shareWindow.close(); } }) .catch(() => { if (shareWindow) { shareWindow.close(); } }); }, saveView() { const name = window.prompt('{{ save_view_prompt|escapejs }}', this.statuses.join(', ')); if (!name || !name.trim()) { return; } const params = buildMediaListFilterParams(document.getElementById('filter-form')); params.set('media_type', '{{ media_type|escapejs }}'); params.set('name', name.trim()); return fetch('{% url "saved_view_create" %}', { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' }, body: params, }) .then((response) => response.json()) .then((data) => { if (data.url) { window.location.href = data.url; } else if (data.error) { window.alert(data.error); } }); } }">
+    }, selectMode: false, selectedItemIds: [], bulkTagLoading: false, toggleSelectMode() { this.selectMode = !this.selectMode; if (!this.selectMode) { this.selectedItemIds = []; } }, isItemSelected(id) { return this.selectedItemIds.includes(String(id)); }, toggleItemSelected(id) { const key = String(id); if (this.selectedItemIds.includes(key)) { this.selectedItemIds = this.selectedItemIds.filter((i) => i !== key); } else { this.selectedItemIds = [...this.selectedItemIds, key]; } }, clearSelection() { this.selectedItemIds = []; }, bulkTagAction(tagName, action) { if (!this.selectedItemIds.length || this.bulkTagLoading) { return; } this.bulkTagLoading = true; const body = new URLSearchParams(); body.append('tag_name', tagName); body.append('action', action); body.append('item_ids', this.selectedItemIds.join(',')); fetch('{% url "tag_bulk_toggle" %}', { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' }, body }).then((response) => { if (response.ok) { this.selectMode = false; this.selectedItemIds = []; htmx.trigger(document.getElementById('bulk-tag-refresh'), 'click'); } }).finally(() => { this.bulkTagLoading = false; }); }, defaultDirection(value) { return ['author', 'popularity', 'runtime', 'start_date', 'title', 'time_left', 'time_to_beat', 'platform', 'next_episode_air_date'].includes(value) ? 'asc' : 'desc'; }, toggleSort(value) { this.direction = (this.sort === value) ? (this.direction === 'asc' ? 'desc' : 'asc') : this.defaultDirection(value); this.sort = value; }, toggleRating() { if (this.rating === 'all') { this.rating = 'rated'; } else if (this.rating === 'rated') { this.rating = 'not_rated'; } else { this.rating = 'all'; } }, toggleCollection() { if (this.collection === 'all') { this.collection = 'collected'; } else if (this.collection === 'collected') { this.collection = 'not_collected'; } else { this.collection = 'all'; } }, layoutHref(nextLayout) { return buildMediaListHref(this.mediaListUrl, document.getElementById('filter-form'), { layout: nextLayout }); }, isPlatformSelected(value) { return this.selectedPlatforms.includes(value); }, togglePlatform(value) { if (this.selectedPlatforms.includes(value)) { this.selectedPlatforms = this.selectedPlatforms.filter((p) => p !== value); } else { this.selectedPlatforms = [...this.selectedPlatforms, value]; } }, cyclePlatformMode() { this.platformMode = this.platformMode === 'and' ? 'or' : (this.platformMode === 'or' ? 'not' : 'and'); }, setGroupBy(next) { this.group_by = next; const form = document.getElementById('filter-form'); if (form.elements.group_by) { form.elements.group_by.value = next; } const groupField = form.elements.group; if (groupField) { groupField.remove(); } window.location.href = buildMediaListHref(this.mediaListUrl, form); }, shareView() { /* Open the tab synchronously (within the click handler) so browsers don't treat it as a blocked popup once the fetch resolves later. */ const shareWindow = window.open('', '_blank'); const form = document.getElementById('filter-form'); const params = buildMediaListFilterParams(form); params.set('media_type', '{{ media_type|escapejs }}'); return fetch('{% url "list_share_view" %}', { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' }, body: params, }) .then((response) => response.json()) .then((data) => { if (data.url && shareWindow) { shareWindow.location.href = data.url; } else if (data.url) { window.open(data.url, '_blank'); } else if (shareWindow) { shareWindow.close(); } }) .catch(() => { if (shareWindow) { shareWindow.close(); } }); }, saveView() { const name = window.prompt('{{ save_view_prompt|escapejs }}', this.statuses.join(', ')); if (!name || !name.trim()) { return; } const params = buildMediaListFilterParams(document.getElementById('filter-form')); params.set('media_type', '{{ media_type|escapejs }}'); params.set('name', name.trim()); return fetch('{% url "saved_view_create" %}', { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' }, body: params, }) .then((response) => response.json()) .then((data) => { if (data.url) { window.location.href = data.url; } else if (data.error) { window.alert(data.error); } }); } }">
 
     {% if enable_bulk_select %}
       {{ bulk_action_data|json_script:"media-bulk-action-data" }}
       <div x-data="bulkSelection('media-bulk-action-data', 'bulk-tag-refresh')">
     {% endif %}
 
-    <div class="flex items-center gap-3 mb-6">
-      <h1 class="text-3xl font-bold">{{ media_type|media_type_readable_plural }}</h1>
-      <div data-result-count
-           class="result-count-badge result-count-mobile px-4 py-2 bg-[var(--color-surface)] rounded-md text-[var(--color-text-secondary)] text-sm font-semibold">
-        {{ result_count }}
-      </div>
-      {% include "app/components/media_settings_menu.html" with menu_class="ml-auto media-settings-menu-mobile" %}
+    <div data-library-page-root data-props-id="library-page-model">
+      {{ library_page_model|json_script:"library-page-model" }}
     </div>
 
-    {% include "app/components/filter_form.html" with filter_show_completed_date=True filter_platform_multi=True filter_show_ranges=True %}
-
-    {% include "app/components/filter_toolbar.html" with filter_hx_endpoint=media_list_url filter_show_completed_date=True filter_hx_target=filter_hx_target show_layout_toggle=True filter_platform_multi=True filter_show_ranges=True %}
-
-    <button id="bulk-tag-refresh"
-            type="button"
-            class="hidden"
-            hx-get="{{ media_list_url }}"
-            hx-target="{{ filter_hx_target }}"
-            hx-include="#filter-form"
-            hx-indicator="#loading-indicator"></button>
-
-    {% if enable_bulk_select %}
-      {% include "app/components/bulk_selection_toolbar.html" %}
-    {% endif %}
-
-    {% if current_game_group %}
-      <div class="flex flex-wrap items-center gap-3 mb-4">
-        <a href="{{ group_back_href }}"
-           class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors">
-          {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
-          {% blocktranslate with group_label=group_by_label %}All {{ group_label }}{% endblocktranslate %}
-        </a>
-        <span class="text-lg font-semibold">{{ current_game_group_name }}</span>
+    <div data-page-slot="library-heading">
+      <div class="flex items-center gap-3 mb-6">
+        <h1 class="text-3xl font-bold">{{ media_type|media_type_readable_plural }}</h1>
+        <div data-result-count
+             class="result-count-badge result-count-mobile px-4 py-2 bg-[var(--color-surface)] rounded-md text-[var(--color-text-secondary)] text-sm font-semibold">
+          {{ result_count }}
+        </div>
+        {% include "app/components/media_settings_menu.html" with menu_class="ml-auto media-settings-menu-mobile" %}
       </div>
-    {% endif %}
+    </div>
+
+    <div data-page-slot="library-filter-form">
+      {% include "app/components/filter_form.html" with filter_show_completed_date=True filter_platform_multi=True filter_show_ranges=True %}
+    </div>
+
+    <div data-page-slot="library-filters">
+      {% include "app/components/filter_toolbar.html" with filter_hx_endpoint=media_list_url filter_show_completed_date=True filter_hx_target=filter_hx_target show_layout_toggle=True filter_platform_multi=True filter_show_ranges=True %}
+    </div>
+
+    <div data-page-slot="library-selection">
+      {% if enable_bulk_select %}
+        {% include "app/components/bulk_selection_toolbar.html" %}
+      {% endif %}
+    </div>
+
+    <div data-page-slot="library-group-banner">
+      {% if current_game_group %}
+        <div class="flex flex-wrap items-center gap-3 mb-4">
+          <a href="{{ group_back_href }}"
+             class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors">
+            {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
+            {% blocktranslate with group_label=group_by_label %}All {{ group_label }}{% endblocktranslate %}
+          </a>
+          <span class="text-lg font-semibold">{{ current_game_group_name }}</span>
+        </div>
+      {% endif %}
+    </div>
+
+    <div data-page-slot="library-content">
 
     {% if not media_list and request.GET.initial|alphabet_initial %}
       <div id="empty_list">{% alphabet_filter "filter-form" "empty" %}</div>
@@ -99,15 +108,24 @@
         <div class="media-grid{% if media_type == 'video' %} media-grid-video{% endif %}">{% include "app/components/media_grid_items.html" %}</div>
       {% endif %}
     {% else %}
-      <div class="bg-[var(--color-surface)] p-4 rounded-lg overflow-hidden max-w-[calc(100svw-4rem)] overflow-x-scroll">
-        <table class="w-full bg-[var(--color-surface)] media-table">
-          {% include "app/components/table_items.html" %}
-        </table>
+      <div id="media-table-view">
+        {% include "app/components/table_items.html" %}
       </div>
     {% endif %}
-    <div id="loading-indicator" class="htmx-indicator text-center pt-8">
-      <div class="inline-flex justify-center items-center">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+    </div>
+
+    <div data-page-slot="library-footer">
+      <button id="bulk-tag-refresh"
+              type="button"
+              class="hidden"
+              hx-get="{{ media_list_url }}"
+              hx-target="{{ filter_hx_target }}"
+              hx-include="#filter-form"
+              hx-indicator="#loading-indicator"></button>
+      <div id="loading-indicator" class="htmx-indicator text-center pt-8">
+        <div class="inline-flex justify-center items-center">
+          {% spinner 32 %}
+        </div>
       </div>
     </div>
     {% if enable_bulk_select %}

@@ -29,6 +29,7 @@ from app.models import (
     Video,
 )
 from app.templatetags.app_tags import item_slot_id
+from app.tests.card_props import card_models
 from lists import smart_rules
 from lists.feeds import FloppyRssFeed
 from lists.models import CustomList, CustomListItem, ListActivity, ListRecommendation
@@ -2633,7 +2634,12 @@ class ListDetailViewTests(TestCase):
         response = self.client.get(reverse("list_detail", args=[episode_list.id]))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'title="Add to custom lists"')
+        titles = [
+            item["title"]
+            for model in card_models(response.content)
+            for item in (model["actions"] or {}).get("items", [])
+        ]
+        self.assertIn("Add to custom lists", titles)
 
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")
@@ -2715,14 +2721,23 @@ class ListDetailViewTests(TestCase):
                 "season_number": 1,
             },
         )
-        self.assertContains(response, f'hx-get="{expected_url}"')
-        self.assertContains(response, '"is_create": "1"')
-        self.assertContains(
-            response,
-            f'"instance_id": "{watched_episode.id}"',
+        actions = [
+            item
+            for model in card_models(response.content)
+            for item in (model["actions"] or {}).get("items", [])
+        ]
+        track = [a for a in actions if a.get("modal") == "track"]
+        self.assertIn(expected_url, [a["url"] for a in track])
+        self.assertTrue(any(a["vals"].get("is_create") == "1" for a in track))
+        self.assertTrue(
+            any(
+                a["vals"].get("instance_id") == str(watched_episode.id)
+                for a in track
+            )
         )
-        self.assertContains(response, 'title="Mark watched"')
-        self.assertContains(response, 'title="Watched"')
+        titles = [a["title"] for a in actions]
+        self.assertIn("Mark watched", titles)
+        self.assertIn("Watched", titles)
 
         # Regression: Django's {# #} comment syntax is single-line only —
         # spreading one across multiple lines silently stops it being
@@ -2819,8 +2834,11 @@ class ListDetailViewTests(TestCase):
 
         response = self.client.get(reverse("list_detail", args=[episode_list.id]))
 
-        self.assertContains(response, f'id="{item_slot_id("media-card-rating", episode_item)}"')
-        self.assertContains(response, ">7.5</span>")
+        ratings = {
+            m["ratingId"]: m["rating"] for m in card_models(response.content)
+        }
+        rating = ratings[item_slot_id("media-card-rating", episode_item)]
+        self.assertEqual(rating["label"], "7.5")
 
     @patch("lists.views.services.get_media_metadata")
     @patch.object(get_user_model(), "update_preference")
@@ -3377,6 +3395,67 @@ class ListsModalViewTests(TestCase):
             name="Test List 2",
             owner=self.user,
         )
+
+    def test_lists_modal_json_form_model(self):
+        """format=json returns the form model the React Lists form renders."""
+        self.list1.tags = ["Movies", "Night"]
+        self.list1.save()
+        self.list1.items.add(self.item)
+        url = reverse(
+            "lists_modal",
+            args=[Sources.TMDB.value, MediaTypes.MOVIE.value, 10494],
+        )
+        response = self.client.get(url, {"format": "json"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/json")
+        data = response.json()
+        self.assertEqual(data["itemId"], self.item.id)
+        self.assertEqual(data["title"], "Test Movie")
+        self.assertEqual(data["tags"], ["Movies", "Night"])
+        self.assertEqual(data["toggleUrl"], reverse("list_item_toggle"))
+        self.assertTrue(data["csrfToken"])
+        by_name = {entry["name"]: entry for entry in data["lists"]}
+        self.assertTrue(by_name["Test List 1"]["hasItem"])
+        self.assertFalse(by_name["Test List 2"]["hasItem"])
+        self.assertEqual(by_name["Test List 1"]["tags"], ["Movies", "Night"])
+
+    def test_lists_modal_json_omits_smart_lists(self):
+        """Smart lists cannot be edited by hand, so the form never offers them."""
+        CustomList.objects.create(name="Smart", owner=self.user, is_smart=True)
+        response = self.client.get(
+            reverse(
+                "lists_modal",
+                args=[Sources.TMDB.value, MediaTypes.MOVIE.value, 10494],
+            ),
+            {"format": "json"},
+        )
+        names = [entry["name"] for entry in response.json()["lists"]]
+        self.assertNotIn("Smart", names)
+
+    def test_lists_modal_json_does_not_list_other_users_lists(self):
+        """A person only sees the lists they own or collaborate on."""
+        other = get_user_model().objects.create_user(username="other", password="x")
+        CustomList.objects.create(name="Private", owner=other)
+        response = self.client.get(
+            reverse(
+                "lists_modal",
+                args=[Sources.TMDB.value, MediaTypes.MOVIE.value, 10494],
+            ),
+            {"format": "json"},
+        )
+        names = [entry["name"] for entry in response.json()["lists"]]
+        self.assertNotIn("Private", names)
+
+    def test_lists_modal_anonymous_is_redirected(self):
+        """A signed-out request gets the login redirect, not a form model."""
+        response = Client().get(
+            reverse(
+                "lists_modal",
+                args=[Sources.TMDB.value, MediaTypes.MOVIE.value, 10494],
+            ),
+            {"format": "json"},
+        )
+        self.assertEqual(response.status_code, 302)
 
     def test_lists_modal_view(self):
         """Test the basic lists_modal view."""
@@ -4075,6 +4154,66 @@ class ListItemToggleTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn(self.item, self.list.items.all())
+
+    def test_json_toggle_reports_membership(self):
+        """format=json answers with the new membership instead of a button."""
+        self.client.login(**self.credentials)
+        post = {
+            "item_id": self.item.id,
+            "custom_list_id": self.list.id,
+            "format": "json",
+        }
+        response = self.client.post(reverse("list_item_toggle"), post)
+        self.assertEqual(response.json(), {"success": True, "hasItem": True})
+        response = self.client.post(reverse("list_item_toggle"), post)
+        self.assertEqual(response.json(), {"success": True, "hasItem": False})
+        self.assertNotIn(self.item, self.list.items.all())
+
+    def test_json_toggle_rejects_smart_list(self):
+        """Smart lists answer 403 with a message the form can show."""
+        self.client.login(**self.credentials)
+        smart = CustomList.objects.create(
+            name="Smart", owner=self.user, is_smart=True
+        )
+        response = self.client.post(
+            reverse("list_item_toggle"),
+            {"item_id": self.item.id, "custom_list_id": smart.id, "format": "json"},
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(response.json()["success"])
+
+    def test_json_toggle_not_found_for_stranger(self):
+        """A list the person cannot edit is a 404, as for the HTML button."""
+        self.client.login(**self.other_credentials)
+        response = self.client.post(
+            reverse("list_item_toggle"),
+            {
+                "item_id": self.item.id,
+                "custom_list_id": self.list.id,
+                "format": "json",
+            },
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_json_toggle_failure_returns_error_message(self):
+        """A failed write returns JSON the form shows, with the list unchanged."""
+        self.client.login(**self.credentials)
+        with patch(
+            "lists.views_list_actions._toggle_list_membership",
+            side_effect=RuntimeError("boom"),
+        ):
+            response = self.client.post(
+                reverse("list_item_toggle"),
+                {
+                    "item_id": self.item.id,
+                    "custom_list_id": self.list.id,
+                    "format": "json",
+                },
+            )
+        self.assertEqual(response.status_code, 500)
+        self.assertFalse(response.json()["success"])
+        self.assertTrue(response.json()["error"])
+        self.assertNotIn(self.item, self.list.items.all())
 
     def test_list_item_owner_toggle_remove(self):
         """Test removing an item from a list as owner."""
@@ -5196,6 +5335,7 @@ class ListRecommendationsViewTests(TestCase):
 
         content = response.content.decode()
         self.assertIn("Untracked Recommendation", content)
-        self.assertIn(f'id="{item_slot_id("media-card-rating", movie.item)}"', content)
-        self.assertIn(f'id="{item_slot_id("media-status-chip", movie.item)}"', content)
-        self.assertEqual(content.count('class="media-status-chip '), 1)
+        models = {m["ratingId"]: m for m in card_models(content)}
+        tracked = models[item_slot_id("media-card-rating", movie.item)]
+        self.assertEqual(tracked["statusId"], item_slot_id("media-status-chip", movie.item))
+        self.assertEqual(sum(1 for m in models.values() if m["statusChip"]), 1)

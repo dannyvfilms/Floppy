@@ -745,3 +745,36 @@ class PodcastWebPlayDateTests(PodcastApiTestCase):
             any("did not add a second play" in message for message in messages),
             messages,
         )
+
+
+class EpisodeNotesApiTests(PodcastApiTestCase):
+    """Private podcast episode notes write contract."""
+
+    def test_notes_create_without_a_play(self):
+        """Saving notes creates the Podcast row but no history record."""
+        response = self.call_api(
+            "patch",
+            "api_podcast_episode_notes",
+            args=(self.episode1.id,),
+            payload={"notes": "Start here"},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response.json()["notes"], "Start here")
+        podcast = Podcast.objects.get(user=self.user1, episode=self.episode1)
+        self.assertEqual(podcast.notes, "Start here")
+        self.assertFalse(podcast.history.exists())
+
+    def test_blank_note_leaves_untracked_episode_alone(self):
+        """A blank note does not create a tracker row."""
+        response = self.call_api(
+            "patch",
+            "api_podcast_episode_notes",
+            args=(self.episode1.id,),
+            payload={"notes": ""},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertFalse(
+            Podcast.objects.filter(user=self.user1, episode=self.episode1).exists(),
+        )

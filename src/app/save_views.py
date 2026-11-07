@@ -20,6 +20,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from app import cache_utils, fork_services_episode, helpers, history_cache
 from app.activity_builders import _build_detail_activity_state
+from app.card_events import card_update_event
 from app.discover import tab_cache as discover_tab_cache
 from app.forms import EpisodeForm, get_form_class
 from app.history_processor import USER_EDIT_REASON
@@ -541,6 +542,11 @@ def media_save(request):
             }
             if home_row_id and instance_id and old_status != media.status:
                 htmx_trigger["refreshHomeRow"] = {"rowId": int(home_row_id)}
+            htmx_trigger["floppyCardUpdate"] = card_update_event(
+                media.item,
+                media,
+                request.user,
+            )
             response["HX-Trigger"] = json.dumps(
                 htmx_trigger,
             )

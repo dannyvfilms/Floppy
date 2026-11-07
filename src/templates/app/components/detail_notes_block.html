@@ -35,7 +35,8 @@
 
   <div class="relative"
        x-data="{ isExpanded: false, isClamped: false, checkClamp() { const element = this.$refs.notesPreview; this.isClamped = element.scrollHeight > element.clientHeight; } }"
-       x-init="$nextTick(() => checkClamp())">
+       x-init="$nextTick(() => checkClamp())"
+       @markdown-preview-rendered="checkClamp()">
     {% if not public_notes_view|default:False %}
     <div class="absolute top-2 right-2 z-10"
          x-show="!canHover || hovered"

@@ -6,10 +6,11 @@ import { Chip } from './Chip';
  * The Django adapter uses framed=false: its server-owned body is a sibling of this root.
  */
 export function SettingsCard({ title, badge, info_label, info_title, onInfo, palette,
-  children, headerAction, framed = true }) {
+  children, headerAction, framed = true, testID = 'settings-card' }) {
   return (
-    <View style={framed ? [styles.card, {
+    <View testID={testID} style={framed ? [styles.card, {
       borderColor: palette.border, backgroundColor: palette.background,
+      borderRadius: palette.radius ?? 18,
     }] : styles.content}>
       <View style={styles.heading} testID="settings-card-heading">
         <Text role="heading" aria-level={4} style={[styles.title, { color: palette.text, fontFamily: palette.fontFamily }]}>
@@ -26,7 +27,7 @@ export function SettingsCard({ title, badge, info_label, info_title, onInfo, pal
 
 const styles = StyleSheet.create({
   content: { gap: 12, minWidth: 0 },
-  card: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 12 },
+  card: { borderWidth: 1, padding: 16, gap: 12 },
   heading: { flexDirection: 'row', flexWrap: 'nowrap', minWidth: 0, alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
   title: { fontSize: 16, fontWeight: '500', lineHeight: 24, flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 },
 });

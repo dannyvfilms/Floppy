@@ -55,6 +55,9 @@ It is called `source` everywhere in this API, including search; there is no \
 - `media_id`: the provider's id for the item, always a string in paths.
 - Statuses are written as an integer code (0 Planning, 1 In progress, \
 2 Paused, 3 Completed, 4 Dropped) or its case-insensitive label.
+- `start_date` and `end_date` take an ISO 8601 date or date-time. A date \
+alone means midnight, and a value without an offset is read in the server's \
+active timezone, so send an offset (`2026-03-01T20:00:00Z`) to be exact.
 
 ## Golden path: add a play to a game
 
@@ -153,9 +156,12 @@ _LIST_SCHEMA = {
         "image",
         "owner",
         "collaborators",
+        "viewers",
         "items_count",
         "latest_update",
+        "visibility",
         "is_public",
+        "is_unlisted",
         "public_slug",
         "allow_recommendations",
     ],
@@ -166,13 +172,16 @@ _LIST_SCHEMA = {
         "image": {"type": "string", "nullable": True},
         "owner": {"type": "object", "additionalProperties": True},
         "collaborators": _ARRAY_SCHEMA,
+        "viewers": _ARRAY_SCHEMA,
         "items_count": {"type": "integer"},
         "latest_update": {
             "type": "string",
             "format": "date-time",
             "nullable": True,
         },
+        "visibility": {"type": "string", "enum": ["public", "unlisted", "private"]},
         "is_public": {"type": "boolean"},
+        "is_unlisted": {"type": "boolean"},
         "public_slug": {"type": "string", "nullable": True},
         "allow_recommendations": {"type": "boolean"},
         "items": {"oneOf": [_ARRAY_SCHEMA, _PAGINATED_SCHEMA]},
@@ -440,6 +449,9 @@ EXPECTED_SCHEMA_ERRORS: frozenset[SchemaFinding] = frozenset(
         ("api.fork_views_discover.DiscoverHiddenView", "serializer-unresolved"),
         ("api.fork_views_discover.DiscoverRefreshView", "serializer-unresolved"),
         ("api.fork_views_discover.DiscoverRowsView", "serializer-unresolved"),
+        ("api.fork_views_discover.HomeArtworkView", "serializer-unresolved"),
+        ("api.fork_views_discover.HomeRowDirectionView", "serializer-unresolved"),
+        ("api.fork_views_discover.HomeRowView", "serializer-unresolved"),
         ("api.fork_views_discover.HomeView", "serializer-unresolved"),
         ("api.fork_views_integrations.ExportCsvView", "serializer-unresolved"),
         ("api.fork_views_integrations.ExportTemplateView", "serializer-unresolved"),

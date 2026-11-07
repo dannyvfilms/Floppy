@@ -83,7 +83,10 @@ authentication redirects, CSRF injection, modal containers and response events.
 code matters as much as files in `src/static/js/`. `package.json` pins React,
 React DOM, RNW and esbuild alongside Tailwind. `npm run build:ui` emits committed,
 self-hosted assets under `src/static/ui`; `npm run check:ui` checks reproducibility.
-The tiny page loader fetches the shared React runtime only when an island appears.
+The tiny page loader fetches the shared React runtime when an island appears. The
+header search form is an island on every signed-in page, so the runtime (about 97 KB
+gzipped plus 5 KB of CSS) loads on each of them. This is deliberate: the application
+is moving to React page by page, and a runtime that loads everywhere is the end state.
 There is no native application or Expo build pipeline.
 The deployed stylesheet is `src/static/css/main.css`, generated from `input.css`.
 
@@ -203,6 +206,127 @@ Keep implementation status separate from verification. If a gate fails, retain t
 working component, record the blocker and reassess the architecture. Do not set
 `Ready` until the foundation and component-specific assessment pass.
 
+## From React on the web to native apps
+
+Reaching 100% on the component register means Floppy's web interface runs on React.
+It does not produce iOS and Android apps, and it does not even mean the components
+could run on a phone. This section records the path, what the code does today, and
+the rules that keep a native app from forcing a second rewrite of the components
+migrated now. It was written after comparing the plan with an outside review of the
+same question; the comparison is below.
+
+### The path
+
+1. **Web React (phases A to D below).** Every interface is a React component mounted
+   by Django. Outcome: a modernized web application. Not a native app.
+2. **Native-ready presentation and data.** Shared presentation is written with React
+   Native primitives and semantic tokens (rendered by react-native-web in the
+   browser), takes everything it shows as props, and touches no browser API.
+   Browser behavior lives in a thin web adapter. The data a component needs is also
+   available as JSON from the API, not only embedded in a server-rendered page.
+3. **A native client.** An Expo app (not a second product: see the tooling
+   experiment) with a server-address setup step, authentication that does not rely
+   on browser sessions, secure credential storage, native navigation and the device
+   features Floppy needs (barcode scanning, share, deep links). Platform-specific
+   renderers are allowed where the platform differs; sharing logic, tokens and
+   models is the goal, not identical code on every platform.
+4. **Distribution.** Signed builds, device testing on iOS **and** Android (see the
+   verification gate), store or direct distribution.
+
+Steps 1 and 2 overlap on purpose: a component migrated to the web *and* written to
+the step-2 rules never needs migrating again. A component migrated to the web only
+needs its presentation rewritten later, once per component.
+
+### What the code does today
+
+Measured on 3 Nov 2026 with `python3 scripts/ui_migration_metrics.py --native`
+(method in [migration measurement](../ui/migration-measurement.md)):
+
+- Of 27 React presentation files (2,864 lines), **4 files (123 lines, 4%)** import
+  `react-native`: `RatingStars`, `AlphabetBar`, `SettingsCard` and `Chip`.
+- The other **23 files (96%)** write HTML tags with CSS class names, including the
+  shared controls (`controls.jsx`: `Button`, `Badge`, `Spinner`, fields, dialogs),
+  the media card (`MediaCard.jsx`), the sidebar, the search bar, the popup host, the
+  bulk toolbar and the provider pages. They have 216 references to browser-only APIs
+  (`window`, `document`, `htmx`, `fetch`, event listeners) and 352 `className` uses.
+- The shared card's data is already a plain props model built in
+  `app/media_card_model.py`, which is the right shape. But the model reaches React
+  through `json_script` in a server-rendered page, and saves refresh cards through
+  HTMX out-of-band fragments. The API in `src/api` does not serve card models.
+
+So the component register's "React-owned" means *React DOM on the web*. This is the
+conflict with the plan: the plan says shared presentation should use React Native
+primitives and that a native claim needs "the same component source" on both
+platforms, yet phase C lets every browser port proceed with no native gate, and most
+ports have been written as DOM. Left alone, the finished web migration would need its
+presentation rewritten a second time.
+
+### Rules for shared presentation from now on
+
+These replace "prefer React Native primitives" for new and edited shared components.
+
+1. **Presentation is primitives plus tokens.** A shared component draws with
+   `react-native` primitives (`View`, `Text`, `Pressable`, `Image`, `TextInput`) and
+   style objects built from semantic theme tokens, not HTML tags and Tailwind or CSS
+   classes. The build already aliases `react-native` to react-native-web.
+2. **Presentation is props-only.** It receives values and callbacks expressing user
+   intent. No `window`, `document`, `htmx`, `fetch`, `localStorage` or URL building.
+3. **Browser behavior is an adapter.** Mounting, hover, touch reveal, HTMX events,
+   Alpine bridges, portals, camera and drag-and-drop live in a `mount*.jsx` or
+   `*.web.jsx` file next to the presentation, so a `*.native.jsx` can replace it.
+4. **A server-rendered fallback stays on the web.** It is not shared presentation.
+5. **Data has a JSON contract.** A component's props come from a model builder that
+   returns plain JSON (as `media_card_model.py` does). When a component is touched,
+   the same model must be reachable from the API, and its write responses must be
+   JSON the component can apply, not an HTMX fragment. HTMX fragments and polling
+   endpoints are not portable data contracts.
+6. **Web-only is an explicit register state.** Charts, camera and barcode decoding,
+   drag-and-drop, large tables and similar web implementations are recorded as
+   web-only with a reason and what a native screen would use instead. Expo DOM
+   components (a WebView on native) may bridge a web-only screen temporarily. They
+   never count as native and are recorded as an exception, never as a migration.
+7. **Record native readiness per component.** Each React-owned or partial register
+   entry has a `- Native readiness:` line. `Ready` needs primitives, no browser API,
+   a JSON data path, and the verification gate below. Until the gate passes the
+   most it can say is `Primitives`. `DOM` means a presentation rewrite is still owed.
+
+Converting the shared controls first is the highest-leverage step: the card, popups,
+sidebar and provider pages all compose `controls.jsx`, so moving `Spinner`, `Badge`,
+`Chip`, `Button` and the fields to primitives moves every consumer at once. After
+that, split `MediaCard.jsx` into a props-only view and a web adapter for hover,
+touch and HTMX.
+
+### Recommended: one native proof before more DOM ports (needs approval)
+
+The plan keeps native proof out of the way of browser ports. That is the source of
+the rework risk, so this section proposes one narrow proof now; it is not yet
+authorized, and native products remain separately approved (phase E):
+
+1. A disposable Expo test harness (it must not become a second product) renders one
+   shared component from this repository.
+2. The first target is the media card view, fed from a new JSON endpoint that serves
+   the existing `media_card_model` for real library items on a Floppy server.
+3. Run it on an iOS and an Android simulator or device, record platform, version and
+   result per the verification gate, and write down every component convention that
+   the proof forced to change.
+
+Browser migration continues in the meantime under the rules above; the proof shows
+whether the rules are enough before more components are written.
+
+### How this compares with the outside review
+
+| Point in the review | Position in this plan |
+| --- | --- |
+| 100% React on the web does not give native apps | Already stated here. Added the measured gap above. |
+| React components are not React Native components | Already stated. The code did not follow it: 96% of presentation is DOM. Rules 1 to 3 close the gap. |
+| Add a second measure for native readiness | Adopted. `ui_migration_metrics.py --native` and the `Native readiness` register lines. The web percentage must not be read as native progress. |
+| Start a native proof of concept early | Proposed above and awaiting approval. It changes the old "native proof is not a blocker" stance only for this one proof. |
+| Expo DOM components as a bridge | Allowed only as a labelled temporary exception for web-only screens, never counted as native. |
+| API-driven data layer instead of server-rendered HTML | Rule 5. Existing APIs are starting evidence, not parity (see Presentation and data). |
+| Self-hosted server address, authentication and secure storage first | Already listed under Presentation and data. Needed before any native screen does real work. |
+| `apps/` and `packages/` monorepo layout, Expo Router | Not adopted. This plan deliberately avoids a monorepo, Expo Router or a UI kit until the proof selects a bundler. The layout in the review is illustrative. |
+| App store review needs more than a repackaged website | Not verified here. Treat a WebView-only app as an open risk. |
+
 ## Progression and maintenance
 
 - **A — Inventory/preparation:** maintain the register, source ownership and these
@@ -216,7 +340,9 @@ working component, record the blocker and reassess the architecture. Do not set
 - **C — Incremental modernization:** every component creation or edit, including
   copy and spacing, includes the shared React implementation in the same task.
   Reuse the card pilot's web boundary; do not create a parallel app or bundle/runtime
-  per component. Native proof is not a blocker for browser ports. Deferral requires
+  per component. Native proof is not a blocker for browser ports, but new and edited
+  shared presentation follows the native-ready rules in [From React on the web to
+  native apps](#from-react-on-the-web-to-native-apps). Deferral requires
   an evidenced compatibility blocker, a reopening condition in the register and
   explicit reporting to the user; task size is not an exemption.
 - **D — Completion passes:** use register status, affected surfaces and dependencies

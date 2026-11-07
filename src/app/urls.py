@@ -139,6 +139,11 @@ urlpatterns = [
         name="media_details",
     ),
     path(
+        "podcast/show-tracker/<int:tracker_id>/update-score/",
+        views.update_podcast_show_score,
+        name="update_podcast_show_score",
+    ),
+    path(
         "update-score/<media_type:media_type>/<int:instance_id>",
         views.update_media_score,
         name="update_media_score",
@@ -298,6 +303,11 @@ urlpatterns = [
         "statistics/compare-mode",
         views.update_statistics_compare_mode,
         name="update_statistics_compare_mode",
+    ),
+    path(
+        "statistics/media-types",
+        views.update_statistics_media_types,
+        name="update_statistics_media_types",
     ),
     path(
         "statistics/select-featured-person",
@@ -501,6 +511,26 @@ urlpatterns = [
         name="podcast_episodes_api",
     ),
     path(
+        "podcast/show/<int:show_id>/episodes/manage/",
+        views.podcast_episodes_manage,
+        name="podcast_episodes_manage",
+    ),
+    path(
+        "podcast/show/<int:show_id>/episodes/add/",
+        views.podcast_episode_add,
+        name="podcast_episode_add",
+    ),
+    path(
+        "podcast/episode/<int:episode_id>/edit/",
+        views.podcast_episode_edit,
+        name="podcast_episode_edit",
+    ),
+    path(
+        "podcast/episode/<int:episode_id>/delete/",
+        views.podcast_episode_delete,
+        name="podcast_episode_delete",
+    ),
+    path(
         "podcast/show/<int:show_id>/mark-all-played/",
         views.podcast_mark_all_played,
         name="podcast_mark_all_played",
@@ -586,6 +616,16 @@ urlpatterns = [
         "bulk/status",
         views.bulk_status_update,
         name="bulk_status_update",
+    ),
+    path(
+        "bulk/plays",
+        views.bulk_show_plays_start,
+        name="bulk_show_plays_start",
+    ),
+    path(
+        "bulk/plays/<str:operation_id>",
+        views.bulk_show_plays_status,
+        name="bulk_show_plays_status",
     ),
     path(
         "bulk/collection",

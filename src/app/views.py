@@ -23,10 +23,11 @@ from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.paginator import EmptyPage, Paginator
 from django.db import IntegrityError
-from django.db.models import F, Max, Min, Q
+from django.db.models import F, Max, Min
 from django.db.models.functions import ExtractDay, ExtractMonth, TruncDate
 from django.db.utils import OperationalError
 from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.templatetags.static import static
@@ -74,7 +75,12 @@ from app.activity_builders import (
     _queue_game_lengths_refresh,
     _should_queue_game_lengths_refresh,
 )
-from app.bulk_action_views import bulk_collection_quick_add, bulk_status_update
+from app.bulk_action_views import (
+    bulk_collection_quick_add,
+    bulk_show_plays_start,
+    bulk_show_plays_status,
+    bulk_status_update,
+)
 from app.collection_views import (
     _build_collection_episode_audit_entries,
     _build_collection_season_audit_entries,
@@ -165,6 +171,15 @@ from app.history_views import (
     history,
     history_day_fragment,
     history_genres,
+)
+from app.home_artwork import (
+    queue_missing_cover_prefetch,
+    refresh_home_artwork,
+)
+from app.home_presentation import (
+    deferred_groups_presentation,
+    groups_presentation,
+    home_labels,
 )
 from app.log_safety import exception_summary, safe_url
 from app.media_details_views import _get_tv_runtime_display_fallback, media_details
@@ -277,7 +292,11 @@ from app.music_views import (
 )
 from app.people_views import person_detail, studio_detail
 from app.podcast_views import (
+    podcast_episode_add,
+    podcast_episode_delete,
+    podcast_episode_edit,
     podcast_episodes_api,
+    podcast_episodes_manage,
     podcast_mark_all_played,
     podcast_save,
     podcast_show_delete,
@@ -311,6 +330,7 @@ from app.score_views import (
     update_artist_score,
     update_episode_score,
     update_media_score,
+    update_podcast_show_score,
     update_track_score,
 )
 from app.search_views import (
@@ -363,6 +383,7 @@ from app.statistics_views import (
     statistics_talent_fragment,
     update_genre_sort,
     update_statistics_compare_mode,
+    update_statistics_media_types,
     update_statistics_preferences,
     update_studio_sort,
     update_top_talent_sort,
@@ -384,14 +405,18 @@ from app.tag_views import (
 from app.templatetags import app_tags
 from app.track_modal_views import (
     _bulk_episode_form_initial_data,
+    _bulk_episode_presentation,
     _DummyPodcastWrapper,
     _episode_domain_template_payload,
     _render_podcast_show_track_modal,
     _render_standard_track_modal,
+    _track_form_presentation,
     _track_modal_date_suggestion,
     _track_modal_field_groups,
     _track_modal_release_date_shortcut,
     _track_modal_release_runtime_minutes,
+    _track_tab_labels,
+    _track_tabs_presentation,
     track_modal,
 )
 from app.tv_sort import _sort_tv_media_by_time_left
@@ -537,6 +562,22 @@ def home(request):
             "IMG_NONE": settings.IMG_NONE,
             "defer_remaining_groups": bool(deferred_groups),
             "deferred_groups": deferred_groups,
+            "home_props": {
+                "groups": groups_presentation(
+                    home_groups,
+                    request.user,
+                    request,
+                ),
+                "deferredGroups": deferred_groups_presentation(deferred_groups),
+                "showMediaTypeHeaders": bool(
+                    request.user.home_show_media_type_headers
+                ),
+                "readOnly": not request.user.is_authenticated,
+                "itemsLimit": items_limit,
+                "settingsUrl": reverse("home_screen"),
+                "csrfToken": get_token(request),
+                "labels": home_labels(),
+            },
         }
         return render(request, "app/home.html", context)
     except OperationalError:
@@ -552,6 +593,16 @@ def home(request):
             "IMG_NONE": settings.IMG_NONE,
             "defer_remaining_groups": False,
             "deferred_groups": [],
+            "home_props": {
+                "groups": [],
+                "deferredGroups": [],
+                "showMediaTypeHeaders": False,
+                "readOnly": not request.user.is_authenticated,
+                "itemsLimit": 14,
+                "settingsUrl": reverse("home_screen"),
+                "csrfToken": get_token(request),
+                "labels": home_labels(),
+            },
         }
         return render(request, "app/home.html", context)
 
@@ -575,66 +626,9 @@ def home_row_fragment(request, row_id: int):
             "MediaTypes": MediaTypes,
             "IMG_NONE": settings.IMG_NONE,
             "return_url": reverse("home"),
+            "rails_mount": True,
         },
     )
-
-
-def _queue_missing_cover_prefetch(user):
-    """Queue album-cover prefetch tasks for any artists/albums missing art."""
-    from django.db.models import Q
-
-    from app.models import AlbumTracker, ArtistTracker
-    from app.tasks import prefetch_album_covers_batch
-
-    artist_ids: set[int] = set()
-    artist_ids.update(
-        ArtistTracker.objects.filter(user=user)
-        .filter(Q(artist__image="") | Q(artist__image=settings.IMG_NONE))
-        .values_list("artist_id", flat=True)
-        .distinct()
-    )
-    artist_ids.update(
-        AlbumTracker.objects.filter(user=user)
-        .filter(Q(album__image="") | Q(album__image=settings.IMG_NONE))
-        .exclude(album__artist__isnull=True)
-        .values_list("album__artist_id", flat=True)
-        .distinct()
-    )
-    for artist_id in artist_ids:
-        cache_key = f"music:cover-prefetch:{artist_id}"
-        if cache.add(cache_key, True, 60 * 10):
-            try:
-                prefetch_album_covers_batch.delay([artist_id], limit_per_artist=5)
-            except Exception:  # pragma: no cover - defensive
-                cache.delete(cache_key)
-
-
-def _artwork_cover_fingerprint(user):
-    """Cheap fingerprint of the user's missing-cover state.
-
-    The artwork poller only exists to pick up cover-art writes (Artist,
-    Album, PodcastShow images), which don't fire user-scoped row-cache
-    invalidation. Three indexed counts are enough to detect "a cover
-    arrived since the last poll" without rebuilding any rows.
-    """
-    from app.models import AlbumTracker, ArtistTracker, PodcastShowTracker
-
-    missing_artist = (
-        ArtistTracker.objects.filter(user=user)
-        .filter(Q(artist__image="") | Q(artist__image=settings.IMG_NONE))
-        .count()
-    )
-    missing_album = (
-        AlbumTracker.objects.filter(user=user)
-        .filter(Q(album__image="") | Q(album__image=settings.IMG_NONE))
-        .count()
-    )
-    missing_show = (
-        PodcastShowTracker.objects.filter(user=user)
-        .filter(Q(show__image="") | Q(show__image=settings.IMG_NONE))
-        .count()
-    )
-    return (missing_artist, missing_album, missing_show)
 
 
 @require_GET
@@ -671,33 +665,24 @@ def home_rows_artwork_refresh(request):
             },
         )
 
-    cover_state = _artwork_cover_fingerprint(request.user)
-    cover_state_key = f"home_artwork_cover_state_{request.user.id}"
-    if cache.get(cover_state_key) == cover_state:
+    rows, poll_row_ids, rows_pending = refresh_home_artwork(
+        request.user,
+        row_ids,
+        rows_pending,
+    )
+    if not rows:
         # No cover changed since the last poll: keep polling (and keep
         # retrying prefetch, it has its own cooldown) without paying the
         # row rebuild.
-        _queue_missing_cover_prefetch(request.user)
         return render(
             request,
             "app/components/home_artwork_poller.html",
             {
-                "poll_row_ids": sorted(row_ids),
+                "poll_row_ids": poll_row_ids,
                 "active": rows_pending,
                 "retry_soon": rows_pending,
             },
         )
-
-    home_groups = build_home_page_groups(
-        request.user,
-        items_limit=14,
-        only_row_ids=row_ids,
-        refresh_row_cache=True,
-    )
-    rows = [r for group in home_groups for r in group["rows"] if r["row_id"] in row_ids]
-
-    if any(row.get("poll_for_covers") for row in rows):
-        _queue_missing_cover_prefetch(request.user)
 
     row_fragments = [
         render_to_string(
@@ -709,6 +694,7 @@ def home_rows_artwork_refresh(request):
                 "IMG_NONE": settings.IMG_NONE,
                 "force_artwork_anchor": True,
                 "oob_swap": True,
+                "rails_mount": True,
             },
             request=request,
         )
@@ -717,15 +703,12 @@ def home_rows_artwork_refresh(request):
     poller = render_to_string(
         "app/components/home_artwork_poller.html",
         {
-            "poll_row_ids": sorted(
-                row["row_id"] for row in rows if row.get("poll_for_covers")
-            ),
+            "poll_row_ids": poll_row_ids,
             "active": rows_pending,
             "retry_soon": rows_pending,
         },
         request=request,
     )
-    cache.set(cover_state_key, cover_state, 60 * 60)
     return HttpResponse(poller + "".join(row_fragments))
 
 
@@ -750,7 +733,7 @@ def home_row_artwork_refresh(request, row_id: int):
         return HttpResponse("")
 
     if row.get("poll_for_covers"):
-        _queue_missing_cover_prefetch(request.user)
+        queue_missing_cover_prefetch(request.user)
 
     return render(
         request,
@@ -761,6 +744,7 @@ def home_row_artwork_refresh(request, row_id: int):
             "MediaTypes": MediaTypes,
             "IMG_NONE": settings.IMG_NONE,
             "force_artwork_anchor": True,
+            "rails_mount": True,
         },
     )
 
@@ -1321,12 +1305,21 @@ def _create_manual_podcast_show(request, form):
         title=item.title,
         image=item.image or "",
         description=item.synopsis or "",
+        rss_feed_url=form.cleaned_data.get("rss_feed_url") or "",
     )
 
     tracker = tracker_form.save(commit=False)
     tracker.user = request.user
     tracker.show = show
     tracker.save()
+
+    if show.rss_feed_url:
+        try:
+            from app.tasks_podcast import refresh_podcast_show_from_rss_task
+
+            refresh_podcast_show_from_rss_task.delay(show.id)
+        except Exception:
+            logger.exception("Could not queue the RSS import for %s", show.title)
 
     msg = gettext("%(value_1)s added successfully.") % {"value_1": item}
     messages.success(request, msg)
@@ -1415,11 +1408,21 @@ def create_entry(request):
 
 
 @require_GET
+def _parent_picker_payload(request, query, rows):
+    """Return JSON rows for the shared parent picker."""
+    if request.GET.get("format") != "json":
+        return None
+    return JsonResponse({"query": query, "results": rows})
+
+
 def search_parent_tv(request):
     """Return the search results for parent TV shows."""
     query = request.GET.get("q", "").strip()
 
     if len(query) <= 1:
+        payload = _parent_picker_payload(request, query, [])
+        if payload is not None:
+            return payload
         return render(request, "app/components/search_parent_tv.html")
 
     logger.debug(
@@ -1435,6 +1438,21 @@ def search_parent_tv(request):
         item__title__icontains=query,
     )[:5]
 
+    payload = _parent_picker_payload(
+        request,
+        query,
+        [
+            {
+                "id": parent_tv.id,
+                "title": parent_tv.item.title,
+                "label": parent_tv.item.title,
+            }
+            for parent_tv in parent_tvs
+        ],
+    )
+    if payload is not None:
+        return payload
+
     return render(
         request,
         "app/components/search_parent_tv.html",
@@ -1448,6 +1466,9 @@ def search_parent_season(request):
     query = request.GET.get("q", "").strip()
 
     if len(query) <= 1:
+        payload = _parent_picker_payload(request, query, [])
+        if payload is not None:
+            return payload
         return render(request, "app/components/search_parent_tv.html")
 
     logger.debug(
@@ -1462,6 +1483,23 @@ def search_parent_season(request):
         item__media_type=MediaTypes.SEASON.value,
         item__title__icontains=query,
     )[:5]
+
+    payload = _parent_picker_payload(
+        request,
+        query,
+        [
+            {
+                "id": season.id,
+                "title": gettext("%(title)s - Season %(number)s")
+                % {"title": season.item.title, "number": season.item.season_number},
+                "label": gettext("Season %(number)s of %(title)s")
+                % {"title": season.item.title, "number": season.item.season_number},
+            }
+            for season in parent_seasons
+        ],
+    )
+    if payload is not None:
+        return payload
 
     return render(
         request,
@@ -2183,6 +2221,7 @@ __all__ = [
     "_build_track_modal_discover_tab_context",
     "_build_trakt_popularity_context",
     "_bulk_episode_form_initial_data",
+    "_bulk_episode_presentation",
     "_cached_history_entry_matches_filters",
     "_can_use_cached_month_history",
     "_coerce_discover_debug",
@@ -2259,10 +2298,13 @@ __all__ = [
     "_should_queue_game_lengths_refresh",
     "_sort_tv_media_by_time_left",
     "_statistics_day_boundary",
+    "_track_form_presentation",
     "_track_modal_date_suggestion",
     "_track_modal_field_groups",
     "_track_modal_release_date_shortcut",
     "_track_modal_release_runtime_minutes",
+    "_track_tab_labels",
+    "_track_tabs_presentation",
     "_tracked_media_entries",
     "_user_tags_for_item",
     "activity_sessions_modal",
@@ -2280,6 +2322,8 @@ __all__ = [
     "bulk_collection_quick_add",
     "bulk_episode_tracking",
     "bulk_music_tracking",
+    "bulk_show_plays_start",
+    "bulk_show_plays_status",
     "bulk_status_update",
     "calendar",
     "collection_add",
@@ -2347,7 +2391,11 @@ __all__ = [
     "openlibrary",
     "parse_date",
     "person_detail",
+    "podcast_episode_add",
+    "podcast_episode_delete",
+    "podcast_episode_edit",
     "podcast_episodes_api",
+    "podcast_episodes_manage",
     "podcast_mark_all_played",
     "podcast_save",
     "podcast_show_delete",
@@ -2410,7 +2458,9 @@ __all__ = [
     "update_media_score",
     "update_metadata_language_preference",
     "update_metadata_provider_preference",
+    "update_podcast_show_score",
     "update_statistics_compare_mode",
+    "update_statistics_media_types",
     "update_statistics_preferences",
     "update_studio_sort",
     "update_table_columns",

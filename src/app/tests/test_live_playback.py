@@ -153,6 +153,64 @@ class OffsetlessPauseTests(TestCase):
         self.assertEqual(state["view_offset_seconds"], 42)
 
 
+class CardEventOrderTests(TestCase):
+    """The card orders queued events by fractional receipt time."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="cardorder",
+            password="pw",
+        )
+        self.base = float(live_playback._now_ts())
+
+    def tearDown(self):
+        live_playback.clear_user_playback_state(self.user.id)
+        cache.clear()
+        super().tearDown()
+
+    @patch("app.live_playback._attach_resolved_image")
+    def _event(self, _mock_image, *, event_type, offset, event_ts):
+        live_playback.apply_playback_event(
+            user_id=self.user.id,
+            event_type=event_type,
+            playback_media_type=MediaTypes.MOVIE.value,
+            media_id="701",
+            source=Sources.TMDB.value,
+            rating_key="rk-1",
+            title="A Movie",
+            view_offset_seconds=offset,
+            duration_seconds=5340,
+            event_ts=event_ts,
+        )
+
+    def _state(self):
+        return live_playback.get_user_playback_state(self.user.id)
+
+    def test_older_event_in_the_same_second_is_ignored(self):
+        self._event(event_type="media.pause", offset=900, event_ts=self.base + 0.9)
+        self._event(event_type="media.play", offset=0, event_ts=self.base + 0.1)
+
+        state = self._state()
+        self.assertEqual(state["status"], live_playback.PLAYBACK_STATUS_PAUSED)
+        self.assertEqual(state["view_offset_seconds"], 900)
+        self.assertEqual(state["event_ts"], self.base + 0.9)
+        # The card's display timestamps stay whole seconds.
+        self.assertEqual(state["updated_at_ts"], int(self.base))
+
+    def test_card_from_before_fractional_times_orders_by_whole_seconds(self):
+        """A cached card with only ``updated_at_ts`` still drops older events."""
+        self._event(event_type="media.pause", offset=900, event_ts=self.base)
+        state = self._state()
+        state.pop("event_ts", None)
+        live_playback.set_user_playback_state(self.user.id, state)
+
+        self._event(event_type="media.play", offset=0, event_ts=self.base - 1)
+        self.assertEqual(self._state()["view_offset_seconds"], 900)
+
+        self._event(event_type="media.play", offset=950, event_ts=self.base + 0.5)
+        self.assertEqual(self._state()["view_offset_seconds"], 950)
+
+
 class ApplyPlaybackEventImageTests(TestCase):
     """Image resolution happens when webhook events are applied."""
 
@@ -928,6 +986,26 @@ class UnknownRuntimeCardTests(TestCase):
         self.assertEqual(Item.objects.get(media_id="88").runtime_minutes, 100)
 
 
+class WebhookEventTimeScopeTests(TestCase):
+    """The receipt-time scope nests and is restored when processing fails."""
+
+    def test_nested_scopes_restore_the_outer_time(self):
+        self.assertIsNone(live_playback.current_webhook_event_at())
+        with live_playback.webhook_event_time(100.5):
+            with live_playback.webhook_event_time(200.25):
+                self.assertEqual(live_playback.current_webhook_event_at(), 200.25)
+            self.assertEqual(live_playback.current_webhook_event_at(), 100.5)
+        self.assertIsNone(live_playback.current_webhook_event_at())
+
+    def test_failure_inside_the_scope_restores_it(self):
+        with (
+            self.assertRaises(RuntimeError),
+            live_playback.webhook_event_time(100.5),
+        ):
+            raise RuntimeError
+        self.assertIsNone(live_playback.current_webhook_event_at())
+
+
 class ResumePointClosedOnWatchedTests(TestCase):
     """Marking a title watched closes its open resume point (#1809)."""
 
@@ -952,3 +1030,80 @@ class ResumePointClosedOnWatchedTests(TestCase):
         Movie.objects.create(user=user, item=item, status=Status.COMPLETED.value)
 
         self.assertTrue(PlaybackProgress.objects.get(user=user, item=item).completed)
+
+    def test_deduplicated_episode_order_play_still_dates_the_closure(self):
+        """A repeat play mapped through an episode order saves nothing either."""
+        from datetime import UTC, datetime, timedelta
+
+        from api.fork_views_playback import upsert_playback_progress
+        from app.models import TV, Episode, Season, Status
+        from integrations.episode_orders import apply_targets
+
+        user = get_user_model().objects.create_user(username="order", password="pw")
+        show = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Show",
+        )
+        season_item = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Show",
+        )
+        episode_item = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Pilot",
+        )
+        tv = TV.objects.create(item=show, user=user, status=Status.IN_PROGRESS.value)
+        season = Season.objects.create(
+            item=season_item,
+            related_tv=tv,
+            user=user,
+            status=Status.IN_PROGRESS.value,
+        )
+        watched_at = datetime(2026, 1, 1, 20, tzinfo=UTC)
+        Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            end_date=watched_at,
+        )
+        first = datetime(2026, 1, 2, tzinfo=UTC)
+        progress = PlaybackProgress.objects.create(
+            user=user,
+            item=episode_item,
+            position_seconds=1300,
+            duration_seconds=1320,
+            completed=True,
+            last_event_at=first,
+        )
+        updated_at = progress.updated_at
+        repeated = first + timedelta(seconds=2)
+
+        # Outside a webhook there is no receipt time to record.
+        apply_targets(user, [episode_item], watched_at=watched_at)
+        progress.refresh_from_db()
+        self.assertEqual(progress.last_event_at, first)
+
+        with live_playback.webhook_event_time(repeated.timestamp()):
+            apply_targets(user, [episode_item], watched_at=watched_at)
+        upsert_playback_progress(
+            user,
+            episode_item,
+            600,
+            1320,
+            event_at=(first + timedelta(seconds=1)).timestamp(),
+        )
+
+        progress.refresh_from_db()
+        self.assertEqual(Episode.objects.filter(item=episode_item).count(), 1)
+        self.assertTrue(progress.completed)
+        self.assertEqual(progress.position_seconds, 1300)
+        self.assertEqual(progress.last_event_at, repeated)
+        self.assertEqual(progress.updated_at, updated_at)

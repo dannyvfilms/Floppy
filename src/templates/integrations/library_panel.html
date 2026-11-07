@@ -1,4 +1,5 @@
 {% load i18n %}
+{% load ui_tags %}
 <div class="library-panel mb-4 divide-y divide-[var(--color-surface-border)] border-b border-[var(--color-surface-border)] pb-1">
   {% if message %}
     <p class="pb-2 text-sm text-[var(--color-success-text)]">{{ message }}</p>
@@ -100,7 +101,7 @@
           <p class="flex items-center gap-2 text-sm">
             <span class="text-[var(--color-text-secondary)]">{{ request.by|default:"—" }}</span>
             <span class="text-xs text-[var(--color-text-muted)]">{{ request.when|date:"M j, Y" }}</span>
-            <span class="ml-auto rounded-full border border-[var(--color-surface-border)] px-2 py-0.5 text-xs text-[var(--color-text-secondary)]">{{ request.status }}</span>
+            <span class="ml-auto flex">{% badge request.status "sm" "outline" %}</span>
           </p>
         {% endfor %}
       {% else %}

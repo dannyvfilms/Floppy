@@ -66,7 +66,11 @@ if (!window.__floppySavedViewsBound) {
 
       init() {
         this.loadPinnedLists();
-        this.listsOpen = readOpen("lists") === "1" || this.pinnedLists.some((item) => item.url === window.location.pathname);
+        const listsOpen = readOpen("lists");
+        this.listsOpen = listsOpen === null
+          ? this.pinnedLists.length > 0
+          : listsOpen === "1" || this.pinnedLists.some((item) => item.url === window.location.pathname);
+        if (this.pinnedLists.length) this.navOpen = true;
         try {
           const saved = JSON.parse(localStorage.getItem(`floppy:sidebar-pins:${userId}`) || "[]");
           this.pinned = Array.isArray(saved) ? saved.filter((key) => this.keys.includes(key)) : [];

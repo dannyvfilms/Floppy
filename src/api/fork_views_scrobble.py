@@ -11,8 +11,11 @@ from rest_framework.response import Response
 
 import app.providers.tmdb
 from app import live_playback
-from app.models import MediaTypes, Sources
+from app.models import MediaTypes, PlaybackProgress, Sources
 from app.providers import services
+from app.providers.services import ProviderAPIError
+from app.services.sync_lock import state_transaction
+from app.services.unwatch import retract_watch
 from app.stats_utils import parse_runtime_to_minutes
 from integrations.delivery import get_or_record_receipt
 from integrations.models import IntegrationToken
@@ -28,7 +31,7 @@ from .helpers import (
 
 logger = logging.getLogger(__name__)
 
-_ACTIONS = ("start", "pause", "stop")
+_ACTIONS = ("start", "pause", "stop", "unwatch")
 _MEDIA_TYPES = (MediaTypes.MOVIE.value, MediaTypes.EPISODE.value)
 _EVENT_TYPE_MAP = {
     "start": "media.play",
@@ -111,33 +114,28 @@ def _scrobble_request_error(data):
 def _resolve_live_playback_media_id(media_type, ids):
     """Best-effort tmdb id resolution for the Now Playing card.
 
-    Falls back to a single TMDB find() lookup when only imdb/tvdb ids are
+    Falls back to TMDB find() lookups when only imdb/tvdb ids are
     given. Failures are swallowed — the live card is best-effort and must
     never block a client's playback loop.
     """
     if ids.get("tmdb"):
         return str(ids["tmdb"])
 
-    ext_id = ids.get("imdb") or ids.get("tvdb")
-    ext_type = "imdb_id" if ids.get("imdb") else "tvdb_id"
-    if not ext_id:
-        return None
-
-    try:
-        find_response = app.providers.tmdb.find(ext_id, ext_type)
-    except Exception:
-        logger.warning("Scrobble live-playback id resolution failed", exc_info=True)
-        return None
-
-    if media_type == MediaTypes.MOVIE.value:
-        results = find_response.get("movie_results") or []
-        return str(results[0]["id"]) if results else None
-
-    episode_results = find_response.get("tv_episode_results") or []
-    if episode_results:
-        return str(episode_results[0]["show_id"])
-    tv_results = find_response.get("tv_results") or []
-    return str(tv_results[0]["id"]) if tv_results else None
+    for key in ("imdb", "tvdb"):
+        if not ids.get(key):
+            continue
+        try:
+            find_response = app.providers.tmdb.find(ids[key], f"{key}_id")
+        except Exception:
+            logger.warning("Scrobble live-playback id resolution failed", exc_info=True)
+            continue
+        result_key = (
+            "movie_results" if media_type == MediaTypes.MOVIE.value else "tv_results"
+        )
+        results = find_response.get(result_key) or []
+        if results:
+            return str(results[0]["id"])
+    return None
 
 
 def _runtime_seconds(item):
@@ -168,22 +166,26 @@ def _runtime_seconds(item):
 
 # /api/v1/scrobble/
 class ScrobbleView(drf_views.APIView):
-    """Generic start/pause/stop scrobble events for third-party clients.
+    """Generic start/pause/stop/unwatch events for third-party clients.
 
     Authenticated the same way as the rest of the API (Bearer/API-Key
     token). "start"/"pause" only update the home page's Now Playing card;
     "stop" additionally persists a durable progress/status update via the
     same shared logic the Plex/Jellyfin/Emby webhooks use internally.
+    "unwatch" retracts a watch and clears its resume point, so a client that
+    marked a title watched by hand can undo that mark without deleting the
+    user's other plays.
     """
 
     @extend_schema(
         description=(
             "Record a playback start/pause/stop event from a third-party "
-            "client. Movies are identified by tmdb/imdb id; episodes "
-            "additionally require season_number/episode_number. Anime "
-            "clients may add an anidb id to pin the exact MyAnimeList cour. "
-            "'start'/'pause' only update the live Now Playing card; "
-            "'stop' persists a durable watch/progress update."
+            "client, or retract a watch. Movies are identified by tmdb/imdb "
+            "id; episodes additionally require season_number/episode_number. "
+            "Anime clients may add an anidb id to pin the exact MyAnimeList "
+            "cour. 'start'/'pause' only update the live Now Playing card; "
+            "'stop' persists a durable watch/progress update; 'unwatch' "
+            "retracts the recorded watch and clears the saved resume position."
         ),
         request={
             "application/json": {
@@ -295,6 +297,15 @@ class ScrobbleView(drf_views.APIView):
                 "properties": {
                     "detail": {"type": "string"},
                     "errors": {"type": "string"},
+                    "code": {"type": "string"},
+                },
+            },
+            503: {
+                "type": "object",
+                "properties": {
+                    "detail": {"type": "string"},
+                    "code": {"type": "string"},
+                    "retryable": {"type": "boolean"},
                 },
             },
         },
@@ -316,7 +327,12 @@ class ScrobbleView(drf_views.APIView):
             media_type = request.data.get("media_type")
             ids = request.data.get("ids") or {}
 
-            self._update_live_playback(request.user, action, media_type, ids, request.data)
+            if action == "unwatch":
+                return self._unwatch(request)
+
+            self._update_live_playback(
+                request.user, action, media_type, ids, request.data
+            )
 
             if action != "stop":
                 return Response({"detail": "accepted"}, status=HTTP.OK)
@@ -340,6 +356,29 @@ class ScrobbleView(drf_views.APIView):
             }
             try:
                 GenericScrobbleProcessor().process_payload(payload, request.user)
+            except ProviderAPIError as exc:
+                logger.warning(
+                    "Scrobble stop media resolution failed: provider=%s status=%s",
+                    exc.provider,
+                    exc.status_code,
+                    exc_info=True,
+                )
+                if exc.status_code == HTTP.NOT_FOUND:
+                    return Response(
+                        {
+                            "detail": "Could not resolve media.",
+                            "code": "MEDIA_NOT_FOUND",
+                        },
+                        status=HTTP.NOT_FOUND,
+                    )
+                return Response(
+                    {
+                        "detail": "Could not resolve media.",
+                        "code": "PROVIDER_UNAVAILABLE",
+                        "retryable": True,
+                    },
+                    status=HTTP.SERVICE_UNAVAILABLE,
+                )
             except Exception:
                 logger.exception("Failed to process generic scrobble payload.")
                 return Response(
@@ -370,6 +409,61 @@ class ScrobbleView(drf_views.APIView):
 
         return _execute()
 
+    def _unwatch(self, request):
+        """Retract a watch and clear its resume point.
+
+        Resolves the item with the same ids a stop uses, then hands off to
+        ``retract_watch`` so an attributable play is removed while the user's
+        other plays are left alone. An item Floppy never tracked is accepted
+        as a no-op: unmarking something that is already unmarked is the same
+        outcome, and a retry must not fail.
+        """
+        data = request.data
+        try:
+            item = fork_views_playback.resolve_video_item(
+                request.user,
+                data.get("media_type"),
+                data.get("ids") or {},
+                data.get("season_number"),
+                data.get("episode_number"),
+                create=False,
+            )
+        except ProviderAPIError as exc:
+            logger.warning(
+                "Scrobble unwatch media resolution failed: provider=%s status=%s",
+                exc.provider,
+                exc.status_code,
+                exc_info=True,
+            )
+            if exc.status_code == HTTP.NOT_FOUND:
+                return Response(
+                    {"detail": "Could not resolve media.", "code": "MEDIA_NOT_FOUND"},
+                    status=HTTP.NOT_FOUND,
+                )
+            return Response(
+                {
+                    "detail": "Could not resolve media.",
+                    "code": "PROVIDER_UNAVAILABLE",
+                    "retryable": True,
+                },
+                status=HTTP.SERVICE_UNAVAILABLE,
+            )
+        except Exception:
+            logger.exception("Failed to resolve media for scrobble unwatch.")
+            return Response(
+                {"detail": "Could not resolve media."},
+                status=HTTP.NOT_FOUND,
+            )
+
+        if item is not None:
+            retract_watch(request.user, item)
+            with state_transaction(request.user.pk):
+                PlaybackProgress.objects.filter(
+                    user=request.user,
+                    item=item,
+                ).delete()
+
+        return Response({"detail": "accepted"}, status=HTTP.OK)
 
     def _apply_episode_score(self, user, payload, raw_score):
         """Set the episode's rating; failures are logged, never raised.
@@ -389,7 +483,9 @@ class ScrobbleView(drf_views.APIView):
             )
             if item is None:
                 return
-            season = get_tracked_season(user, item.media_id, item.source, item.season_number)
+            season = get_tracked_season(
+                user, item.media_id, item.source, item.season_number
+            )
             if season is None:
                 return
             apply_episode_score(season, item.episode_number, score)

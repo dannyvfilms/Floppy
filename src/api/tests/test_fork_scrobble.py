@@ -8,6 +8,7 @@ from unittest.mock import patch
 from django.test import tag
 
 from app.models import Episode, Movie, Status
+from app.providers.services import ProviderAPIError
 
 from .base import FloppyApiTestCase
 
@@ -178,6 +179,59 @@ class ScrobbleLivePlaybackTests(FloppyApiTestCase):
 
 class ScrobbleStopTests(FloppyApiTestCase):
     """'stop' persists a durable watch/progress update."""
+
+    @patch(
+        "api.fork_views_scrobble.GenericScrobbleProcessor.process_payload",
+        side_effect=ProviderAPIError("tmdb", RuntimeError("provider timeout")),
+    )
+    def test_transient_provider_failure_returns_retryable_503(self, mock_process):
+        """A provider outage must not create a cached 404 idempotency receipt."""
+        payload = {
+            "action": "stop",
+            "media_type": "movie",
+            "ids": {"imdb": "tt0133093"},
+            "position_seconds": 1200,
+            "duration_seconds": 8160,
+        }
+        headers = {
+            **self.auth_headers,
+            "HTTP_IDEMPOTENCY_KEY": "scrobble:provider-unavailable:001",
+        }
+
+        first = self.call_api("post", "api_scrobble", payload=payload, headers=headers)
+        second = self.call_api("post", "api_scrobble", payload=payload, headers=headers)
+
+        self.assertEqual(first.status_code, HTTP.SERVICE_UNAVAILABLE)
+        self.assertEqual(second.status_code, HTTP.SERVICE_UNAVAILABLE)
+        self.assertEqual(first.json()["code"], "PROVIDER_UNAVAILABLE")
+        self.assertTrue(first.json()["retryable"])
+        self.assertEqual(mock_process.call_count, 2)
+
+    @patch("api.fork_views_scrobble.GenericScrobbleProcessor.process_payload")
+    def test_provider_not_found_remains_404_and_is_idempotent(self, mock_process):
+        """A confirmed missing item stays 404 and retains its cached receipt."""
+        response = SimpleNamespace(status_code=404, headers={}, text="")
+        mock_process.side_effect = ProviderAPIError(
+            "tmdb", SimpleNamespace(response=response)
+        )
+        payload = {
+            "action": "stop",
+            "media_type": "movie",
+            "ids": {"tmdb": "603"},
+            "completed": True,
+        }
+        headers = {
+            **self.auth_headers,
+            "HTTP_IDEMPOTENCY_KEY": "scrobble:provider-not-found:001",
+        }
+
+        first = self.call_api("post", "api_scrobble", payload=payload, headers=headers)
+        second = self.call_api("post", "api_scrobble", payload=payload, headers=headers)
+
+        self.assertEqual(first.status_code, HTTP.NOT_FOUND)
+        self.assertEqual(second.status_code, HTTP.NOT_FOUND)
+        self.assertEqual(first.json()["code"], "MEDIA_NOT_FOUND")
+        mock_process.assert_called_once()
 
     @tag("network")
     def test_stop_completed_marks_movie_completed(self):

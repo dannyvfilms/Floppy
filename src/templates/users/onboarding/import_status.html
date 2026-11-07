@@ -1,4 +1,5 @@
 {% extends "users/onboarding/_layout.html" %}
+{% load ui_tags %}
 {% load i18n %}
 
 {% load user_tags %}
@@ -42,9 +43,6 @@
   {% endif %}
   <form method="post" class="flex justify-end">
     {% csrf_token %}
-    <button type="submit"
-            class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-      {% translate "Continue" %}
-    </button>
+    {% button _("Continue") submit=True %}
   </form>
 {% endblock step_options %}

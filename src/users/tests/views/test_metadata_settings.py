@@ -147,10 +147,28 @@ class MetadataSettingsPageTests(TestCase):
             soup.find("button", attrs={"aria-label": "Read-only: explain instance credential access"})
         )
         self.assertIsNotNone(soup.find(attrs={"role": "dialog", "aria-modal": "true"}))
-        key_link = soup.find("a", href="https://hardcover.app/account/api")
-        self.assertEqual(key_link.get_text(strip=True), "Get a key from Hardcover")
-        self.assertIsNone(soup.find("button", attrs={"x-ref": "setupInfoTrigger"}))
+        setup_trigger = soup.find("button", attrs={"x-ref": "setupInfoTrigger"})
+        self.assertIsNotNone(setup_trigger)
+        self.assertEqual(setup_trigger.get_text(strip=True), "Get a key from Hardcover")
+        setup_dialog = soup.find(
+            attrs={"role": "dialog", "aria-labelledby": "setup-info-title"}
+        )
+        self.assertIsNotNone(setup_dialog)
+        key_link = setup_dialog.find("a", href="https://hardcover.app/account/api")
+        self.assertIsNotNone(key_link)
         self.assertNotContains(response, "Back to Providers")
+
+    @override_settings(HARDCOVER_API="")
+    def test_hardcover_connection_page_documents_token_scopes(self, _probe):
+        """A read:catalog token is enough for metadata; read:me is only for import."""
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse("provider_detail", args=["hardcover"]), {"tab": "connection"}
+        )
+
+        self.assertContains(response, "read:catalog")
+        self.assertContains(response, "read:me")
 
     @override_settings(IGDB_ID="environment-id", IGDB_SECRET="")
     def test_superuser_can_edit_unlocked_fields_without_exposing_environment(self, _probe):

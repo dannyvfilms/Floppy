@@ -15,10 +15,22 @@ def ok(payload=None):
 async def test_search_media(api_base_url):
     with respx.mock:
         route = respx.get(f"{api_base_url}/search/movie").mock(return_value=ok())
-        await server.search_media("movie", "matrix", page=2)
+        await server.search_media("movie", "matrix", limit=5, offset=10)
         req = route.calls.last.request
         assert req.url.params["search"] == "matrix"
-        assert req.url.params["page"] == "2"
+        assert req.url.params["limit"] == "5"
+        assert req.url.params["offset"] == "10"
+        assert "page" not in req.url.params
+        assert "source" not in req.url.params
+
+
+async def test_search_media_forwards_source(api_base_url):
+    with respx.mock:
+        route = respx.get(f"{api_base_url}/search/book").mock(return_value=ok())
+        await server.search_media("book", "scientific ontology", source="openlibrary")
+        req = route.calls.last.request
+        assert req.url.params["search"] == "scientific ontology"
+        assert req.url.params["source"] == "openlibrary"
 
 
 async def test_search_tracked_media(api_base_url):
@@ -835,3 +847,38 @@ async def test_track_media_multiple_game_sessions_stay_separate(api_base_url):
     assert result["operation"]["outcome"] == "appended"
     assert result["operation"]["consumption_id"] == 2
     assert result["operation"]["applied"]["progress_unit"] == "minutes"
+
+
+async def test_track_media_sends_idempotency_key_and_reports_replay(api_base_url):
+    with respx.mock:
+        respx.get(f"{api_base_url}/media/game/igdb/7").mock(
+            return_value=_tracked([{"consumption_id": 1, "status": "Completed"}]),
+        )
+        post = respx.post(f"{api_base_url}/media/game").mock(
+            return_value=Response(
+                201,
+                json={"consumption_id": 2, "idempotent_replayed": True},
+            ),
+        )
+        result = await server.track_media(
+            "game",
+            "igdb",
+            "7",
+            mode="new_play",
+            idempotency_key="play-2019-03-07",
+        )
+    assert post.calls.last.request.headers["Idempotency-Key"] == "play-2019-03-07"
+    assert result["operation"]["outcome"] == "skipped"
+    assert result["operation"]["consumption_id"] == 2
+
+
+async def test_track_media_omits_idempotency_header_by_default(api_base_url):
+    with respx.mock:
+        respx.get(f"{api_base_url}/media/game/igdb/7").mock(
+            return_value=Response(404, json={"detail": "nope"}),
+        )
+        post = respx.post(f"{api_base_url}/media/game").mock(
+            return_value=Response(201, json={"consumption_id": 3}),
+        )
+        await server.track_media("game", "igdb", "7")
+    assert "Idempotency-Key" not in post.calls.last.request.headers
