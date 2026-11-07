@@ -660,7 +660,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
     def test_overview_shows_three_cards_using_real_state(self):
         """Credential saves, enabled schedules and the latest run feed Overview."""
         self.open_cards("overview")
-        expect(self.page.locator("[data-testid="provider-overview"] [data-testid="settings-card"]")).to_have_count(3)
+        expect(self.page.locator('[data-testid="provider-overview"] [data-testid="settings-card"]')).to_have_count(3)
         expect(self.page.get_by_text("No credentials active", exact=True)).to_be_visible()
         expect(self.page.get_by_text("No automatic imports configured", exact=True)).to_be_visible()
         credentials.set_user("anilist", self.user, {"client_id": "browser-client", "client_secret": "browser-secret"})
@@ -717,7 +717,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
                              ("goodreads", ["Automatic import", "Last active import"])):
             self.page.goto(f"{self.live_server_url}/settings/providers/{slug}?tab=overview")
             expect(self.page.locator("[data-provider-root][data-react-mounted=true]")).to_have_count(1)
-            cards = self.page.locator("[data-testid="provider-overview"] [data-testid="settings-card"]")
+            cards = self.page.locator('[data-testid="provider-overview"] [data-testid="settings-card"]')
             self.assertEqual(cards.locator('[role="heading"]').all_text_contents(), titles)
             self.assertFalse(self.page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"))
             self.assertEqual(self.page.locator('[data-testid="provider-page"]').count(), 1)
@@ -922,7 +922,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             with self.subTest(width=width):
                 self.page.set_viewport_size({"width": width, "height": 1000})
                 self.open_cards("overview")
-                spills = self.page.locator("[data-testid="provider-overview"] [data-testid="settings-card"]").evaluate_all("""cards => cards.flatMap(card => {
+                spills = self.page.locator('[data-testid="provider-overview"] [data-testid="settings-card"]').evaluate_all("""cards => cards.flatMap(card => {
                   const bounds = card.getBoundingClientRect();
                   return [...card.querySelectorAll('[data-testid=settings-card-badge]')].filter(badge => {
                     const box = badge.getBoundingClientRect();
@@ -987,7 +987,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
     def test_overview_subtitles_and_interactive_chips_are_consistent(self):
         """Match status typography and shared link/button chip interactions."""
         self.open_cards("overview")
-        subtitles = self.page.locator("[data-testid="provider-overview"] [data-testid="settings-card"]").evaluate_all("""cards => cards.map(card => {
+        subtitles = self.page.locator('[data-testid="provider-overview"] [data-testid="settings-card"]').evaluate_all("""cards => cards.map(card => {
           const p = card.querySelector('p'), style = getComputedStyle(p);
           return {text:p.textContent.trim(), color:style.color, weight:style.fontWeight, size:style.fontSize};
         })""")
