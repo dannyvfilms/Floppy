@@ -1,11 +1,13 @@
 from pathlib import Path
 from unittest.mock import patch
 
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase, override_settings, tag
 
 from app.models import MediaTypes, Sources
 from app.providers import (
+    credentials,
     hardcover,
     igdb,
     mal,
@@ -347,6 +349,81 @@ class Search(TestCase):
             mock_api_request.call_args.kwargs["headers"]["Authorization"],
             "Bearer raw-hardcover-token",
         )
+
+
+class SearchSourceResolution(TestCase):
+    """Search never lands on a provider with no usable credentials (#1856)."""
+
+    def setUp(self):
+        cache.clear()
+
+    @override_settings(HARDCOVER_API="")
+    @patch("app.providers.openlibrary.search")
+    def test_book_search_falls_back_to_open_library_without_hardcover_token(
+        self,
+        mock_openlibrary_search,
+    ):
+        mock_openlibrary_search.return_value = {
+            "results": [],
+            "total_results": 0,
+            "total_pages": 1,
+        }
+
+        services.search(MediaTypes.BOOK.value, "Scientific Ontology", 1)
+
+        mock_openlibrary_search.assert_called_once()
+
+    @override_settings(HARDCOVER_API="")
+    @patch("app.providers.openlibrary.search")
+    def test_explicit_unconfigured_source_falls_back(self, mock_openlibrary_search):
+        mock_openlibrary_search.return_value = {
+            "results": [],
+            "total_results": 0,
+            "total_pages": 1,
+        }
+
+        services.search(
+            MediaTypes.BOOK.value,
+            "Scientific Ontology",
+            1,
+            Sources.HARDCOVER.value,
+        )
+
+        mock_openlibrary_search.assert_called_once()
+
+    @override_settings(HARDCOVER_API="token")
+    @patch("app.providers.hardcover.search")
+    def test_configured_hardcover_stays_the_book_default(
+        self,
+        mock_hardcover_search,
+    ):
+        mock_hardcover_search.return_value = {
+            "results": [],
+            "total_results": 0,
+            "total_pages": 1,
+        }
+
+        services.search(MediaTypes.BOOK.value, "Scientific Ontology", 1)
+
+        mock_hardcover_search.assert_called_once()
+
+    @override_settings(HARDCOVER_API="")
+    @patch("app.providers.hardcover.search")
+    def test_a_personal_hardcover_token_keeps_hardcover_for_that_user(
+        self,
+        mock_hardcover_search,
+    ):
+        user = get_user_model().objects.create_user(username="hardcover-searcher")
+        credentials.set_user("hardcover", user, {"api_key": "personal-token"})
+        mock_hardcover_search.return_value = {
+            "results": [],
+            "total_results": 0,
+            "total_pages": 1,
+        }
+
+        services.search(MediaTypes.BOOK.value, "Scientific Ontology", 1, user=user)
+
+        mock_hardcover_search.assert_called_once()
 
 
 class SearchById(TestCase):

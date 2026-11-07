@@ -13,13 +13,14 @@
 {% block alphabet_filter %}{% alphabet_filter "filter-form" %}{% endblock alphabet_filter %}
 
 {% block content %}
-  <div class="alphabet-surface">
+  <div class="alphabet-surface" data-page-slot-scope>
   {% include "app/components/filter_toolbar_scripts.html" %}
   {% url 'list_detail' custom_list.public_reference as list_filter_endpoint %}
   {# Form CSS lives in the content block so boosted navigation keeps it #}
   {% if form %}{{ form.media.css }}{% endif %}
   {# Editors' bulk selection spans the header too: its Select Items button lives there. #}
   {% if can_edit %}<div x-data="bulkSelection('list-bulk-action-data', 'bulk-action-refresh')">{% endif %}
+  <div data-page-slot="list-detail-header">
   <div class="mb-6">
     <div class="w-full min-w-0">
       <div class="mb-2 flex flex-wrap items-center gap-3">
@@ -66,7 +67,7 @@
           {% endif %}
         </div>
       </div>
-      {% if custom_list.visibility == "public" or collaborators_count > 1 %}
+      {% if custom_list.visibility != "private" or collaborators_count > 1 or viewers_count %}
         <div class="mb-5 flex w-full flex-nowrap items-center gap-2 overflow-x-auto pb-1 pr-2 text-sm sm:flex-wrap sm:overflow-visible sm:pb-0 sm:pr-0">
           {% include "lists/components/list_visibility_chips.html" %}
         </div>
@@ -333,6 +334,7 @@
     </div>
   {% endif %}
   {% if custom_list.description %}<p class="mb-6 text-[var(--color-text-muted)]">{{ custom_list.description }}</p>{% endif %}
+  </div>
 
   {% translate "All Types" as media_i18n_16 %}{% translate "Status" as media_i18n_74 %}{% translate " Statuses" as media_i18n_75 %}{{ list_filter_state|json_script:"list-filter-state" }}<div x-data="{
     ...libraryFilterState(
@@ -388,8 +390,12 @@
        "
        @open-list-edit-modal.window="showModal = true">
 
+    <div data-list-detail-page-root data-props-id="list-detail-page-model">
+      {{ list_detail_page_model|json_script:"list-detail-page-model" }}
+    </div>
 
     <!-- Form to manage state -->
+    <div data-page-slot="list-detail-controls">
     {% include "app/components/filter_form.html" with filter_search_name="q" filter_search_var="query" filter_show_ranges=True filter_show_completed_date=True filter_platform_multi=False filter_show_media_types=True filter_data=list_filter_data %}
     {% if can_edit %}
       <button id="bulk-action-refresh"
@@ -408,9 +414,11 @@
   {% if can_edit %}
     {{ bulk_action_data|json_script:"list-bulk-action-data" }}
   {% endif %}
-    {% if can_edit %}
-      {% include "lists/components/list_form.html" %}
-    {% endif %}
+    <div data-page-slot="list-detail-dialogs">
+      {% if can_edit %}
+        {% include "lists/components/list_form.html" %}
+      {% endif %}
+    </div>
 
     <div class="flex flex-col gap-3 md:flex-row md:gap-4 mb-8">
       <div class="relative grow min-w-0 md:hidden">
@@ -468,7 +476,9 @@
         </div>
 
         <div class="contents" x-cloak x-show="!searchMode">
-          {% include "app/components/filter_menu.html" with filter_show_completed_date=True filter_hx_endpoint=list_filter_endpoint filter_hx_target="#items-view" filter_form_id="filter-form" filter_data_id="list-filter-data" filter_show_ranges=True filter_show_media_types=True filter_data=list_filter_data %}
+          {{ list_filter_data|json_script:"list-filter-data" }}
+          {% filter_bar endpoint=list_filter_endpoint target="#items-view" form_id="filter-form" surface="list" ranges=True platform_multi=False state=list_filter_state media_types=media_type_breakdown %}
+          {% include "app/components/filter_menu.html" with filter_show_completed_date=True filter_hx_endpoint=list_filter_endpoint filter_hx_target="#items-view" filter_form_id="filter-form" filter_data_id="list-filter-data" filter_show_ranges=True filter_show_media_types=True filter_data=list_filter_data filter_suppress_data_script=True %}
 
           {# Filter by Status #}
           <div class="relative filter-control" x-data="{ open: false }">
@@ -598,9 +608,13 @@
             </div>
           </div>
 
+          {% endfilter_bar %}
           <div class="ml-auto flex items-center gap-2">
             {% if column_config %}
-              {% include "app/components/table_column_menu.html" with table_column_update_url=table_column_update_url table_refresh_url=table_refresh_url table_refresh_target=table_refresh_target table_refresh_include_selector=table_refresh_include_selector table_loading_indicator="#loading-indicator" table_type=table_type table_column_media_type=table_column_media_type %}
+              {% if table_browser_props %}{{ table_browser_props|json_script:"table-column-menu-props" }}{% endif %}
+              <div data-media-column-menu-root data-props-id="table-column-menu-props">
+                {% include "app/components/table_column_menu.html" with table_column_update_url=table_column_update_url table_refresh_url=table_refresh_url table_refresh_target=table_refresh_target table_refresh_include_selector=table_refresh_include_selector table_loading_indicator="#loading-indicator" table_type=table_type table_column_media_type=table_column_media_type %}
+              </div>
             {% endif %}
 
             <div class="flex rounded-md overflow-hidden border border-gray-700 layout-toggle">
@@ -642,6 +656,9 @@
         </div>
       </div>
     </div>
+    </div>
+
+    <div data-page-slot="list-detail-content">
     <div id="list-results-summary">
       {% include "lists/components/list_results_summary.html" %}
     </div>
@@ -732,10 +749,13 @@
       {% endif %}
       {% endif %}
     </div>
+    </div>
 
-    <div id="loading-indicator" class="htmx-indicator text-center pt-8">
-      <div class="inline-flex justify-center items-center">
-        {% spinner 32 %}
+    <div data-page-slot="list-detail-footer">
+      <div id="loading-indicator" class="htmx-indicator text-center pt-8">
+        <div class="inline-flex justify-center items-center">
+          {% spinner 32 %}
+        </div>
       </div>
     </div>
     </div>

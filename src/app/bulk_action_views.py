@@ -36,13 +36,18 @@ def bulk_status_update(request):
 
     status = request.POST.get("status", "")
     valid_statuses = {value for value, _label in Status.choices}
-    if status not in valid_statuses:
+    clearing_status = status == bulk_actions.NO_STATUS_VALUE
+    if status not in valid_statuses and not clearing_status:
         return JsonResponse(
             {"success": False, "error": "Invalid status."},
             status=400,
         )
 
-    result = bulk_actions.apply_bulk_status(request.user, item_ids, status)
+    result = bulk_actions.apply_bulk_status(
+        request.user,
+        item_ids,
+        None if clearing_status else status,
+    )
     result["success"] = True
     result["message"] = (
         f"Updated {result['updated'] + result['created']} item(s)."

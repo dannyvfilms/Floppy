@@ -1,3 +1,4 @@
+import json
 from unittest import mock
 
 import requests
@@ -168,6 +169,16 @@ class WhatsNewViewTests(TestCase):
         self.assertIn("Tiers", text)
         self.assertIn("See the release page for what changed.", text)
 
+    def test_json_branch_returns_structured_releases(self):
+        with mock.patch.object(release_notes, "get_releases", return_value=self._releases()):
+            response = self.client.get(reverse("whats_new"), {"format": "json"})
+
+        self.assertEqual(response.status_code, 200)
+        releases = response.json()["releases"]
+        self.assertEqual([release["tag"] for release in releases], ["v26.10.8", "v26.10.1"])
+        self.assertTrue(releases[0]["newer"])
+        self.assertTrue(releases[1]["installed"])
+
     def test_unreachable_github_links_to_the_releases_page(self):
         with mock.patch.object(release_notes, "get_releases", return_value=None):
             response = self.client.get(reverse("whats_new"))
@@ -178,15 +189,20 @@ class WhatsNewViewTests(TestCase):
         self.assertEqual(soup.find("a")["href"], release_notes.RELEASES_PAGE_URL)
 
     def test_about_loads_the_notes_in_the_background(self):
+        """The About card hands the browser a JSON URL instead of blocking."""
         response = self.client.get(reverse("about"))
 
         soup = BeautifulSoup(response.content, "html.parser")
         section = soup.find(id="whats-new")
         self.assertIsNotNone(section)
         self.assertEqual(
-            section.find(attrs={"hx-get": True})["hx-get"],
-            reverse("whats_new"),
+            section.find_parent(attrs={"data-props-id": True})["data-props-id"],
+            "about-whats-new-props",
         )
+        props = json.loads(soup.find("script", id="about-whats-new-props").string)
+        self.assertEqual(props["kind"], "whatsNew")
+        self.assertEqual(props["url"], reverse("whats_new") + "?format=json")
+        self.assertFalse(props["releasesLoaded"])
 
     def test_anonymous_visitors_cannot_read_the_fragment(self):
         self.client.logout()

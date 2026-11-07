@@ -1,4 +1,4 @@
-{% load app_tags %}
+{% load app_tags ui_tags %}
 {# Named, scoped API tokens. The account token above stays for webhooks; these #}
 {# are what a third-party client should be given, because they can be revoked  #}
 {# one at a time and only reach what their permissions name.                   #}
@@ -188,10 +188,7 @@
         </div>
       </fieldset>
 
-      <button type="submit"
-              class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
-        Create token
-      </button>
+      {% button "Create token" "primary" "sm" submit=True %}
     </form>
   </details>
 </div>

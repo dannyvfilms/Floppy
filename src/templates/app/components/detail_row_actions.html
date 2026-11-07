@@ -24,6 +24,7 @@
   {% elif track_button_variant != "episode" %}
     <div x-data="{ trackOpen: false }">
       <button hx-get="{% media_view_url 'track_modal' episode %}"
+              data-children-action="track"
               hx-target="#{% component_id 'track' episode %}"
               hx-trigger="click once"
               @click="trackOpen = true"
@@ -68,6 +69,7 @@
   {% if episode.item or media_type == MediaTypes.SEASON.value or action_media_type == MediaTypes.COMIC_ISSUE.value %}
     <div>
       <button class="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full transition duration-300 cursor-pointer"
+              data-children-action="lists"
               title="{% translate "Add to custom lists" %}"
               {% if episode.item %}{% lists_modal_click episode.item detail_return_url %}{% else %}{% lists_modal_click episode detail_return_url %}{% endif %}>
         {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
@@ -78,6 +80,7 @@
 
   {% if track_button_variant == "episode" %}
     <button type="button"
+            data-children-action="history"
             class="p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-full transition-colors cursor-pointer"
             title="{% translate "View your activity history" %}"
             hx-get="{% url 'activity_sessions_modal' %}?media_type=tv&amp;media_id={{ episode.media_id|urlencode }}&amp;source={{ episode.source|urlencode }}&amp;season_number={{ episode.season_number }}&amp;episode_number={{ episode.episode_number }}"
@@ -89,6 +92,7 @@
   {% elif history_item %}
     <div x-data="{ historyOpen: false }">
       <button class="p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-full transition duration-300 cursor-pointer"
+              data-children-action="history"
               title="{% translate "View your activity history" %}"
               hx-get="{% media_view_url 'history_modal' history_item %}"
               hx-vals='{"return_url": "{{ detail_return_url|urlencode }}"}'

@@ -542,3 +542,65 @@ class NoDateEntriesInAllTimeTopTalentTests(TestCase):
             row["name"] for row in data["top_talent"]["by_sort"]["plays"]["top_actors"]
         }
         self.assertIn("Only Undated Movie Actor", actor_names)
+
+
+class PersonCreditBatchingTests(TestCase):
+    """The person-credit fetch batches large item-ID lists (#1855)."""
+
+    def test_credits_are_aggregated_across_id_batches(self):
+        user = get_user_model().objects.create_user(
+            username="talent-batch-tester",
+            password="password123",
+        )
+        person = Person.objects.create(
+            source=Sources.TMDB.value,
+            source_person_id="batch-1",
+            name="Batch Actor",
+            gender=PersonGender.MALE.value,
+        )
+        played_at = timezone.now()
+        items = Item.objects.bulk_create(
+            [
+                Item(
+                    media_id=f"batch-movie-{offset}",
+                    source=Sources.MANUAL.value,
+                    media_type=MediaTypes.MOVIE.value,
+                    title=f"Batch Movie {offset}",
+                )
+                for offset in range(501)
+            ]
+        )
+        Movie.objects.bulk_create(
+            [
+                Movie(
+                    user=user,
+                    item=item,
+                    status=Status.COMPLETED.value,
+                    end_date=played_at,
+                )
+                for item in items
+            ]
+        )
+        ItemPersonCredit.objects.bulk_create(
+            [
+                ItemPersonCredit(
+                    item=item,
+                    person=person,
+                    role_type=CreditRoleType.CAST.value,
+                    role="Lead",
+                )
+                for item in items
+            ]
+        )
+
+        result = _aggregate_top_talent(
+            user,
+            None,
+            None,
+            schedule_missing_backfill=False,
+        )
+
+        top_actor = result["top_actors"][0]
+        self.assertEqual(top_actor["name"], "Batch Actor")
+        self.assertEqual(top_actor["plays"], 501)
+        self.assertEqual(top_actor["unique_movies"], 501)

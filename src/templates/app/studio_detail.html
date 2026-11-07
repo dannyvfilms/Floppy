@@ -3,12 +3,14 @@
 
 {% load app_tags %}
 {% load user_tags %}
+{% load ui_tags %}
 
 {% block title %}
   {{ studio.name }} - Floppy
 {% endblock title %}
 
 {% block content %}
+  {% people_hero "studio" %}
   <div class="flex flex-col md:flex-row gap-8 md:gap-10 mb-10 md:mb-8">
     <div class="w-full md:w-1/4 max-w-[250px] mx-auto md:mx-0">
       <img
@@ -112,6 +114,7 @@
       </div>
     </div>
   </div>
+  {% endpeople_hero %}
 
   <section {% detail_section_attrs user "studio" "content" "works" %}>
     <div class="flex items-end justify-between gap-3 mb-4">

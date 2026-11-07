@@ -2,7 +2,9 @@
 {% load i18n %}
 {% block title %}{% translate "Move tracking" %} - {{ item.title }}{% endblock title %}
 {% block content %}
+  {{ tv_provider_switch_props|json_script:"tv-provider-switch-props" }}
   <div class="mx-auto max-w-2xl space-y-6">
+    <div data-tv-provider-switch-root data-props-id="tv-provider-switch-props">
     <header>
       <h1 class="text-3xl font-bold">{% translate "Move tracking" %}</h1>
       <p class="mt-2 text-lg">{{ item.title }}</p>
@@ -46,5 +48,6 @@
         <a href="{% url 'media_details' item.source item.media_type item.media_id item.title|default:'item' %}" class="px-4 py-2">{% translate "Cancel" %}</a>
       </form>
     {% endif %}
+    </div>
   </div>
 {% endblock content %}

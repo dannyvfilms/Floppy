@@ -16,11 +16,15 @@
           <li>
             {% translate "Set ND_LISTENBRAINZ_BASEURL in Navidrome to this address and restart it. This applies to every Navidrome user." %}
             {# djlint:off #}
-            <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
-              <input readonly id="navidrome-listenbrainz-url" class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{% absolute_app_url '/apis/listenbrainz/1/' %}">
-              <span class="flex items-center cursor-pointer group" title="{% translate "Copy" %}" data-copy-target="#navidrome-listenbrainz-url">
-                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
-              </span>
+            {% absolute_app_url '/apis/listenbrainz/1/' as navidrome_listenbrainz_url %}
+            <script type="application/json" id="navidrome-copy-props">{"label": "{% translate 'ListenBrainz URL' as copy_label %}{{ copy_label|escapejs }}", "value": "{{ navidrome_listenbrainz_url|escapejs }}", "copyLabel": "{% translate 'Copy' as copy_action %}{{ copy_action|escapejs }}", "copiedLabel": "{% translate 'Copied!' as copied_action %}{{ copied_action|escapejs }}"}</script>
+            <div class="mt-2 w-[calc(100%-30px)]" data-copy-field-root data-props-id="navidrome-copy-props">
+              <div class="inline-flex items-center gap-2 w-full">
+                <input readonly id="navidrome-listenbrainz-url" class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{{ navidrome_listenbrainz_url }}">
+                <span class="flex items-center cursor-pointer group" title="{% translate "Copy" %}" data-copy-target="#navidrome-listenbrainz-url">
+                  {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
+                </span>
+              </div>
             </div>
             {# djlint:on #}
           </li>

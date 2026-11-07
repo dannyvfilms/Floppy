@@ -49,8 +49,19 @@ UNSUPPORTED_TYPES = {
 
 def importer(file, user, mode):
     """Import media from IMDB CSV file."""
+    # Every row is resolved through TMDB, so an unconfigured provider would
+    # otherwise skip the whole file and still report a completed import.
+    if not app.providers.tmdb.enabled(user):
+        msg = (
+            "TMDB is not configured. Add your TMDB API key in Settings → "
+            "Metadata providers before importing IMDB data."
+        )
+        raise MediaImportError(msg)
     imdb_importer = IMDBImporter(file, user, mode)
-    return imdb_importer.import_data()
+    try:
+        return imdb_importer.import_data()
+    except ProviderAPIError as error:
+        raise MediaImportError(str(error)) from error
 
 
 class IMDBImporter:
@@ -91,6 +102,8 @@ class IMDBImporter:
                     for row in DictReader(wrapper):
                         try:
                             data = self._process_first_pass(row)
+                        except (ProviderAPIError, MediaImportError):
+                            raise
                         except Exception as error:
                             msg = f"Error processing entry: {row}"
                             raise MediaImportUnexpectedError(msg) from error
@@ -298,11 +311,9 @@ class IMDBImporter:
 
     def _lookup_in_tmdb(self, imdb_id, title_type):
         """Look up media in TMDB using IMDB ID."""
-        try:
-            response = app.providers.tmdb.find(imdb_id, "imdb_id")
-        except ProviderAPIError as e:
-            logger.warning("Error looking up IMDB ID %s in TMDB: %s", imdb_id, e)
-            return None
+        # A provider failure is not the same as "no match": continuing would
+        # skip every remaining row and report a successful, empty import.
+        response = app.providers.tmdb.find(imdb_id, "imdb_id")
 
         media_type = IMDB_TYPE_MAPPING.get(title_type, "")
 

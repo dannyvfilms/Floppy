@@ -132,7 +132,8 @@ home screen. [Step-by-step guide](https://github.com/dannyvfilms/Floppy/wiki/2.-
 ### If you know what you're doing
 
 - [Docker Compose](docs/deployment.md#docker-compose-recommended) works for
-  Unraid, Synology and Portainer too. `SECRET` is the only setting you must fill in.
+  Unraid, Synology and Portainer too. [`SECRET`](docs/deployment.md#secret-the-signing-key)
+  is the only setting you must fill in.
 - [Docker Run](docs/deployment.md#docker-run) if you don't use Compose.
 - [Deployment reference](docs/deployment.md) covers PostgreSQL, reverse proxies,
   environment variables, upgrades and troubleshooting.

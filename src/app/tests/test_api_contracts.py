@@ -539,6 +539,11 @@ class OpenAPIArtifactTests(SimpleTestCase):
                     "name": "X-API-Key",
                 },
                 "bearerAuth": {"type": "http", "scheme": "bearer"},
+                "cookieAuth": {
+                    "type": "apiKey",
+                    "in": "cookie",
+                    "name": "sessionid",
+                },
                 "listenBrainzToken": {
                     "type": "apiKey",
                     "in": "header",
@@ -669,7 +674,7 @@ class OpenAPIArtifactTests(SimpleTestCase):
                     )
                 self.assertEqual(
                     operation["security"],
-                    [{"bearerAuth": []}, {"ApiKeyAuth": []}],
+                    [{"bearerAuth": []}, {"ApiKeyAuth": []}, {"cookieAuth": []}],
                 )
 
     def test_search_media_type_enum_matches_supported_provider_types(self):
@@ -1013,7 +1018,7 @@ class SchemaFindingContractTests(SimpleTestCase):
         self.assertIn(SCHEMA_REGENERATION_COMMAND, message)
 
     def test_reviewed_baseline_has_expected_unique_counts(self):
-        self.assertEqual(len(EXPECTED_SCHEMA_ERRORS), 83)
+        self.assertEqual(len(EXPECTED_SCHEMA_ERRORS), 86)
         self.assertEqual(len(EXPECTED_SCHEMA_WARNINGS), 18)
 
     def test_generated_schema_findings_match_reviewed_baseline(self):

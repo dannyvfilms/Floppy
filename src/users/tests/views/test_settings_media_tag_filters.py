@@ -1,6 +1,7 @@
 """Media type filters and the settings navigation."""
 
 from django.contrib.auth import get_user_model
+from django.template.loader import render_to_string
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
@@ -30,6 +31,21 @@ class MediaTagHelperTests(SimpleTestCase):
             "['games']",
         )
         self.assertEqual(str(media_tag_list(None)), "[]")
+
+    def test_media_filter_keeps_alpine_fallback_under_mount(self):
+        html = media_tag_filter_alpine_html()
+
+        self.assertIn("data-tag-media-filter-root", html)
+        self.assertIn('data-props-id="media-tag-filter-options"', html)
+        self.assertIn("@tag-media-filter-change.stop", html)
+        self.assertIn("activeMediaTag = 'all'", html)
+
+
+def media_tag_filter_alpine_html():
+    return render_to_string(
+        "users/components/media_tag_filter.html",
+        {"tags": media_tag_choices(), "all_label": "All"},
+    )
 
 
 class SettingsPageTests(TestCase):
