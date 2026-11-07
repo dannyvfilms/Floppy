@@ -2,6 +2,8 @@
 {% load i18n %}
 {% load app_tags %}
 
+{% if remap_results_props %}{{ remap_results_props|json_script:"remap-results-props" }}{% endif %}
+<div data-metadata-match-results-root{% if remap_results_props %} data-props-id="remap-results-props"{% endif %}>
 {% if not results %}
   <p class="text-xs text-[var(--color-text-muted)] py-2">
     {% if provider %}{% translate "No matches found. Try a different search." %}{% endif %}
@@ -28,3 +30,4 @@
     {% endfor %}
   </div>
 {% endif %}
+</div>

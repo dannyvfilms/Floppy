@@ -11,13 +11,18 @@
       ['script[src*="ui/settings-islands.js"]', 'src', '{{ ui_loader_url|escapejs }}{{ ui_loader_version|escapejs }}'],
       ['link[href*="ui/settings-islands.css"]', 'href', '{{ ui_styles_url|escapejs }}{{ ui_styles_version|escapejs }}'],
     ];
-    const stale = assets.some(([selector, attribute, expected]) => {
+    const stale = () => assets.some(([selector, attribute, expected]) => {
       const current = document.head.querySelector(selector);
       return !current || current[attribute] !== new URL(expected, document.baseURI).href;
     });
-    if (stale && !window.__floppyUiRefreshPending) {
+    const check = () => {
+      if (!stale() || window.__floppyUiRefreshPending) return;
       window.__floppyUiRefreshPending = true;
       window.location.replace('{{ request.get_full_path|escapejs }}');
-    }
+    };
+    check();
+    // A back/forward-cache restore repeats the old document without re-running
+    // this script; check again so an old loader or stylesheet cannot stay live.
+    window.addEventListener('pageshow', check);
   })();
 </script>

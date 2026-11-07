@@ -1,0 +1,55 @@
+{% load i18n %}
+
+{{ props|json_script:props_id }}
+<div data-progress-changer-root data-props-id="{{ props_id }}" class="ui-progress-changer-host" x-ignore>
+  <div class="progress-changer flex items-center justify-center space-x-4">
+    <button type="button"
+            class="progress-adjust-btn inline-flex w-6 h-6 items-center justify-center bg-[var(--color-surface-dim)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text)] rounded-md transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] disabled:opacity-50 disabled:hover:bg-[var(--color-surface-dim)] disabled:cursor-not-allowed"
+            aria-label="{{ props.decreaseLabel }}"
+            title="{{ props.decreaseLabel }}"
+            {% if not props.canDecrease %}disabled{% endif %}
+            hx-post="{{ props.url }}"
+            hx-headers='{"X-CSRFToken": "{{ props.csrfToken }}"}'
+            hx-vals='{"operation": "decrease"}'
+            hx-swap="innerHTML"
+            hx-target="#{{ props.target }}">
+      <span class="progress-btn-icon-wrap grid w-3 h-3">
+        <span class="progress-btn-icon col-start-1 row-start-1">
+          {% include "app/icons/minus.svg" with classes="w-3 h-3" %}
+        </span>
+        {% include "app/icons/circle-spinning-clockwise.svg" with classes="w-3 h-3 htmx-indicator animate-spin col-start-1 row-start-1" %}
+      </span>
+    </button>
+
+    <div class="text-xs text-[var(--color-info-text)] font-medium min-w-[4ch] text-center"
+         aria-live="polite"
+         aria-atomic="true">
+      <span class="progress-value">{{ props.value }}</span>
+      {% if props.showMax %}
+        <span class="progress-slash">/</span>
+        <span class="progress-max">{{ props.max }}</span>
+      {% endif %}
+      {% if props.unit %}
+        <span class="progress-unit">{{ props.unit }}</span>
+      {% endif %}
+    </div>
+
+    <button type="button"
+            class="progress-adjust-btn inline-flex w-6 h-6 items-center justify-center bg-[var(--color-surface-dim)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text)] rounded-md transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] disabled:opacity-50 disabled:hover:bg-[var(--color-surface-dim)] disabled:cursor-not-allowed"
+            aria-label="{{ props.increaseLabel }}"
+            title="{{ props.increaseLabel }}"
+            {% if not props.canIncrease %}disabled{% endif %}
+            hx-post="{{ props.url }}"
+            hx-headers='{"X-CSRFToken": "{{ props.csrfToken }}"}'
+            hx-vals='{"operation": "increase"{% if props.watchOperationId %}, "watch_operation_id": "{{ props.watchOperationId }}"{% endif %}}'
+            hx-swap="innerHTML"
+            hx-target="#{{ props.target }}">
+      <span class="progress-btn-icon-wrap grid w-3 h-3">
+        <span class="progress-btn-icon col-start-1 row-start-1">
+          {% include "app/icons/plus.svg" with classes="w-3 h-3" %}
+        </span>
+        {% include "app/icons/circle-spinning-clockwise.svg" with classes="w-3 h-3 htmx-indicator animate-spin col-start-1 row-start-1" %}
+      </span>
+    </button>
+  </div>
+</div>

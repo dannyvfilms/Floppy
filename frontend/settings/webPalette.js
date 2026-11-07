@@ -5,6 +5,7 @@ export const webPalette = Object.fromEntries([
   ['badgeText', 'badge-text'], ['badgeHover', 'badge-hover'], ['focus', 'focus'],
 ].map(([key, name]) => [key, token(name)]));
 webPalette.fontFamily = 'inherit';
+webPalette.radius = 'var(--theme-radius, 18px)';
 webPalette.interactiveStyle = {
   cursor: 'pointer', textDecorationLine: 'none',
   transitionProperty: 'background-color, border-color, color, box-shadow',

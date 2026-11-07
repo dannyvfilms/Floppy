@@ -19,8 +19,8 @@ from integrations.models import AudiobookshelfAccount, ImportRun
 # The header search form, the sidebar, the popup host and the bulk-actions dock are React islands
 # on every signed-in page, so the card counts below leave them out.
 MOUNTED_ISLANDS = (
-    '[data-react-mounted="true"]:not([data-global-search-root]):not([data-sidebar-root])'
-    ":not([data-modal-host-root]):not([data-bulk-actions-root])"
+    '[data-react-mounted="true"]:not([data-shell-root]):not([data-global-search-root])'
+    ":not([data-sidebar-root]):not([data-modal-host-root]):not([data-bulk-actions-root])"
 )
 
 

@@ -15,10 +15,22 @@ def ok(payload=None):
 async def test_search_media(api_base_url):
     with respx.mock:
         route = respx.get(f"{api_base_url}/search/movie").mock(return_value=ok())
-        await server.search_media("movie", "matrix", page=2)
+        await server.search_media("movie", "matrix", limit=5, offset=10)
         req = route.calls.last.request
         assert req.url.params["search"] == "matrix"
-        assert req.url.params["page"] == "2"
+        assert req.url.params["limit"] == "5"
+        assert req.url.params["offset"] == "10"
+        assert "page" not in req.url.params
+        assert "source" not in req.url.params
+
+
+async def test_search_media_forwards_source(api_base_url):
+    with respx.mock:
+        route = respx.get(f"{api_base_url}/search/book").mock(return_value=ok())
+        await server.search_media("book", "scientific ontology", source="openlibrary")
+        req = route.calls.last.request
+        assert req.url.params["search"] == "scientific ontology"
+        assert req.url.params["source"] == "openlibrary"
 
 
 async def test_search_tracked_media(api_base_url):

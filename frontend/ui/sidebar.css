@@ -2,3 +2,8 @@
 [data-sidebar-root] {
   display: contents;
 }
+
+/* Keep a keyboard ring, but do not leave a focus ring after a pointer click. */
+[data-sidebar-root] :focus:not(:focus-visible) {
+  outline: none !important;
+}

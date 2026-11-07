@@ -9,8 +9,13 @@
   --settings-card-focus: var(--color-accent);
 }
 .settings-chip { display: inline-flex; min-width: 0; max-width: 100%; }
-[data-ui-chip] { outline: none; }
-[data-ui-chip]:focus-visible { outline: 2px solid var(--settings-card-focus); outline-offset: 2px; }
+.settings-chip a { text-decoration: none; }
+.settings-chip a:focus-visible,
+.settings-chip [role="button"]:focus-visible,
+.settings-card [data-testid="settings-card-badge"]:focus-visible {
+  outline: 2px solid var(--settings-card-focus);
+  outline-offset: 2px;
+}
 .settings-card {
   border: 1px solid var(--settings-card-border);
   border-radius: var(--theme-radius, .5rem);
@@ -57,4 +62,4 @@
   --settings-card-badge-text: var(--color-success-text);
   --settings-card-badge-hover: rgb(16 185 129 / .24);
 }
-.settings-chip [data-ui-chip]:hover, .ui-chip-link:hover { text-decoration: none; }
+.settings-chip a:hover, .ui-chip-link:hover { text-decoration: none; }

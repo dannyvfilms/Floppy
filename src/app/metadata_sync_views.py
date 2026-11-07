@@ -9,7 +9,8 @@ from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.db.models import Max, Min
 from django.db.utils import OperationalError
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -25,6 +26,7 @@ from app import (
     custom_metadata,
     helpers,
     history_cache,
+    image_cache,
     metadata_utils,
 )
 from app.cover_views import user_has_item
@@ -212,6 +214,10 @@ def search_remap_candidates(request, source, media_type, media_id):
         )
         results = (response or {}).get("results") or []
 
+    return_url = helpers.normalize_navigation_url(request.GET.get("return_url"))
+    provider_label = (
+        metadata_resolution.metadata_provider_label(provider) if provider else ""
+    )
     return render(
         request,
         "app/components/remap_search_results.html",
@@ -221,11 +227,89 @@ def search_remap_candidates(request, source, media_type, media_id):
             "source": source,
             "media_type": media_type,
             "media_id": media_id,
-            "return_url": helpers.normalize_navigation_url(
-                request.GET.get("return_url")
-            ),
+            "return_url": return_url,
+            "remap_results_props": {
+                "labels": {
+                    "useMatch": gettext("Use this match"),
+                    "noMatches": gettext("No matches found. Try a different search."),
+                },
+                "model": {
+                    "variant": "remap",
+                    "provider": provider,
+                    "providerLabel": provider_label,
+                    "query": query,
+                    "results": [
+                        {
+                            "id": str(result.get("media_id", "")),
+                            "title": str(result.get("title", "")),
+                            "image": image_cache.rewrite_image_url(
+                                result.get("image") or "",
+                            ),
+                            "meta": provider_label,
+                        }
+                        for result in results
+                    ],
+                    "returnUrl": return_url,
+                },
+                "csrf": get_token(request),
+                "actions": {
+                    "choose": reverse(
+                        "remap_metadata_provider",
+                        kwargs={
+                            "source": source,
+                            "media_type": media_type,
+                            "media_id": media_id,
+                        },
+                    ),
+                },
+            },
         },
     )
+
+
+def _library_move_results_props(
+    request, item, results=None, query="", error="", move_context=None, return_url="",
+):
+    """Localized props for the shared library-move result choices."""
+    move_context = move_context or {}
+    labels = {
+        "moveIntro": gettext(
+            "Confirm the exact title before moving your tracking identity."
+        ),
+        "moveTo": gettext("Move"),
+        "moving": gettext("Moving..."),
+        "noMatches": gettext("No matching titles found."),
+    }
+    target_source = move_context.get("target_source", "")
+    target_source_label = move_context.get("target_source_label", "")
+    return {
+        "labels": labels,
+        "model": {
+            "variant": "libraryMove",
+            "query": query,
+            "error": error,
+            "results": [
+                {
+                    "id": str(result.get("media_id", "")),
+                    "title": str(result.get("title", "")),
+                    "image": image_cache.rewrite_image_url(result.get("image") or ""),
+                    "meta": " · ".join(
+                        part for part in (
+                            target_source_label,
+                            str(result.get("year") or ""),
+                        ) if part
+                    ),
+                }
+                for result in (results or [])
+            ],
+            "target": "#library-move-results",
+            "targetSource": target_source,
+            "targetMediaType": move_context.get("target_media_type", ""),
+            "returnUrl": return_url,
+        },
+        "csrf": get_token(request),
+        "actions": {"choose": reverse("move_library_item", kwargs={"item_id": item.id})},
+    }
 
 
 @login_required
@@ -257,6 +341,7 @@ def search_library_move_candidates(request, item_id):
                 exc_info=True,
             )
 
+    return_url = helpers.normalize_navigation_url(request.GET.get("return_url"))
     return render(
         request,
         "app/components/library_move_results.html",
@@ -264,10 +349,12 @@ def search_library_move_candidates(request, item_id):
             "results": results,
             "item_id": item.id,
             "query": query,
-            "return_url": helpers.normalize_navigation_url(
-                request.GET.get("return_url"),
-            ),
+            "return_url": return_url,
             **(move_context or {}),
+            "library_move_results_props": _library_move_results_props(
+                request, item, results=results, query=query,
+                move_context=move_context, return_url=return_url,
+            ),
         },
     )
 
@@ -305,6 +392,14 @@ def move_library_item(request, item_id):
                         "The database is busy with another operation. "
                         "Nothing was changed; please try Move again."
                     ),
+                    "library_move_results_props": _library_move_results_props(
+                        request,
+                        item,
+                        error=(
+                            "The database is busy with another operation. "
+                            "Nothing was changed; please try Move again."
+                        ),
+                    ),
                 },
             )
         raise
@@ -313,7 +408,12 @@ def move_library_item(request, item_id):
             return render(
                 request,
                 "app/components/library_move_results.html",
-                {"error": str(error)},
+                {
+                    "error": str(error),
+                    "library_move_results_props": _library_move_results_props(
+                        request, item, error=str(error),
+                    ),
+                },
             )
         messages.error(request, str(error))
         if return_url and url_has_allowed_host_and_scheme(
@@ -353,6 +453,59 @@ def move_library_item(request, item_id):
     return redirect(destination_url)
 
 
+def _tv_provider_switch_props(request, item, source_label, switch=None, error=None):
+    """Localized props for the shared provider-move confirmation."""
+    labels = {
+        "moveTracking": gettext("Move tracking"),
+        "confirmation": gettext("Confirm the move"),
+        "matchedOn": gettext("Matched on"),
+        "trackedSeasons": gettext("Tracked seasons"),
+        "watchedEpisodes": gettext("Watched episodes"),
+        "missing": gettext("Missing:"),
+        "cancel": gettext("Cancel"),
+        "back": gettext("Back"),
+    }
+    back_url = reverse(
+        "media_details",
+        kwargs={
+            "source": item.source,
+            "media_type": item.media_type,
+            "media_id": item.media_id,
+            "title": item.get_display_title(request.user) or "item",
+        },
+    )
+    model = {
+        "itemTitle": item.title,
+        "error": error or "",
+        "backUrl": back_url,
+        "cancelUrl": back_url,
+    }
+    if switch is not None:
+        model.update({
+            "sourceLabel": source_label,
+            "targetLabel": switch.target_label,
+            "targetTitle": switch.target_title,
+            "seasons": switch.seasons,
+            "episodes": switch.episodes,
+            "missing": switch.missing,
+            "missingTitle": gettext(
+                "%(target)s is missing some of what you track, so this show can't be moved yet."
+            ) % {"target": switch.target_label},
+            "moveLabel": gettext("Move to %(target)s") % {"target": switch.target_label},
+            "copy": gettext(
+                "This show is tracked on %(source)s. Moving it keeps your status, ratings, "
+                "notes and every watched episode, and only changes which provider "
+                "(%(target)s) supplies its seasons and episodes."
+            ) % {"source": source_label, "target": switch.target_label},
+        })
+    return {
+        "labels": labels,
+        "model": model,
+        "csrf": get_token(request),
+        "actions": {"move": request.path},
+    }
+
+
 @login_required
 @require_http_methods(["GET", "POST"])
 def switch_tv_provider(request, item_id):
@@ -364,7 +517,13 @@ def switch_tv_provider(request, item_id):
         return render(
             request,
             "app/tv_provider_switch.html",
-            {"item": item, "error": str(error)},
+            {
+                "item": item,
+                "error": str(error),
+                "tv_provider_switch_props": _tv_provider_switch_props(
+                    request, item, "", error=str(error),
+                ),
+            },
         )
 
     if request.method == "POST" and switch.plan is not None:
@@ -399,13 +558,17 @@ def switch_tv_provider(request, item_id):
                 title=target_item.get_display_title(request.user) or "item",
             )
 
+    source_label = metadata_resolution.metadata_provider_label(item.source)
     return render(
         request,
         "app/tv_provider_switch.html",
         {
             "item": item,
             "switch": switch,
-            "source_label": metadata_resolution.metadata_provider_label(item.source),
+            "source_label": source_label,
+            "tv_provider_switch_props": _tv_provider_switch_props(
+                request, item, source_label, switch=switch,
+            ),
         },
     )
 
@@ -488,6 +651,14 @@ def list_hardcover_editions(request, media_id):
                 for field in ("title", "language", "format", "publisher")
             ).lower()
         ]
+    if request.GET.get("format") == "json":
+        return JsonResponse({
+            "pickerType": "hardcover",
+            "results": [
+                {**edition, "image": image_cache.rewrite_image_url(edition.get("image"))}
+                for edition in editions
+            ],
+        })
     return render(
         request,
         "app/components/hardcover_edition_results.html",
