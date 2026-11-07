@@ -177,6 +177,23 @@ function TagsTab({ tab, itemTitle, palette, labels, onChange }) {
     onDelete={remove} />;
 }
 
+function useLegacyPopupOpen(host) {
+  // The server wrapper owns the popup's open state through Alpine (`x-show`).
+  // React renders the dialog in a portal, so without mirroring that state the
+  // dialog escapes the hidden wrapper and covers the page from first paint.
+  const popup = host.closest('[data-track-modal-root]');
+  const [open, setOpen] = useState(() => !popup || getComputedStyle(popup).display !== 'none');
+  useLayoutEffect(() => {
+    if (!popup) return undefined;
+    const sync = () => setOpen(getComputedStyle(popup).display !== 'none');
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(popup, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
+    return () => observer.disconnect();
+  }, [popup]);
+  return open;
+}
+
 function Adapter({ host, props }) {
   const model = useMemo(() => normalizeTrackForm(props?.model || {}), [props]);
   const initialValues = useMemo(() => initialTrackValues(model), [model]);
@@ -185,6 +202,7 @@ function Adapter({ host, props }) {
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState('');
   const [palette, setPalette] = useState(readPalette);
+  const popupOpen = useLegacyPopupOpen(host);
   const startCleared = useRef(false);
 
   useEffect(() => {
@@ -293,6 +311,8 @@ function Adapter({ host, props }) {
     }
     return tab;
   });
+
+  if (!popupOpen) return null;
 
   return <TrackDialog
     open

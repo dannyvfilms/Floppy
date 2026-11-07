@@ -18,6 +18,9 @@
               <p class="text-sm text-[var(--color-text-muted)]">
                 {% if episode.episode_number %}{% blocktranslate trimmed with value_1=episode.episode_number %}Episode {{ value_1 }} •{% endblocktranslate %} {% endif %}{{ episode.air_date|user_date_format:user|default_if_none:"Unknown date" }}{% if episode.runtime %} • {{ episode.runtime }}{% endif %}
               </p>
+              {% if episode.description %}
+                <p class="text-sm text-[var(--color-text-secondary)] line-clamp-2">{{ episode.description }}</p>
+              {% endif %}
               {% if episode.website_url %}
                 <a href="{{ episode.website_url }}"
                    target="_blank"
@@ -88,6 +91,10 @@
         {% endif %}
       </div>
     </div>
+  </div>
+{% empty %}
+  <div class="bg-[var(--color-surface)] rounded-lg p-8 text-center text-[var(--color-text-muted)]">
+    <p>{% translate "No episodes yet." %}</p>
   </div>
 {% endfor %}
 
