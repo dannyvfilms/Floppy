@@ -49,9 +49,25 @@ export default function App() {
   const [tab, setTab] = useState('home');
   const [libraryType, setLibraryType] = useState('movie');
   const [stack, setStack] = useState([]);
+  const [tabHistory, setTabHistory] = useState([]);
   const navigate = (screen, params) => setStack(current => [...current, { screen, params }]);
-  const openTab = next => { setStack([]); setTab(next); };
-  const back = () => setStack(current => current.slice(0, -1));
+  const openTab = (next, mediaType = libraryType) => {
+    if (next === 'home') setTabHistory([]);
+    else if (next !== tab || mediaType !== libraryType) {
+      setTabHistory(current => [...current, { tab, libraryType, stack }]);
+    }
+    setStack([]);
+    setLibraryType(mediaType);
+    setTab(next);
+  };
+  const back = () => {
+    if (stack.length) { setStack(current => current.slice(0, -1)); return; }
+    const previous = tabHistory[tabHistory.length - 1];
+    setTabHistory(current => current.slice(0, -1));
+    setStack(previous?.stack || []);
+    setTab(previous?.tab || 'home');
+    if (previous) setLibraryType(previous.libraryType);
+  };
   const active = stack[stack.length - 1];
 
   // Web requires a session before it renders any app page; native does the
@@ -88,7 +104,7 @@ export default function App() {
     if (path === '/calendar') { openTab('calendar'); return; }
     if (path.startsWith('/settings') || path === '/appearance') { openTab('settings'); return; }
     const media = path.match(/^\/medialist\/([^/?#]+)/);
-    if (media) { setLibraryType(media[1]); openTab('library'); return; }
+    if (media) { openTab('library', media[1]); return; }
     if (path.startsWith('/collection')) { navigate('Collection'); return; }
     if (path.startsWith('/history')) { navigate('History'); return; }
     if (path.startsWith('/lists')) { navigate('Lists'); return; }
@@ -109,7 +125,7 @@ export default function App() {
 
   return <NativeRoot style={[styles.root, { paddingTop: statusBarInset }]}>
     <NativeStatusBar backgroundColor={palette.background} />
-    <ShellSlot active={tab} activeHref={activeHref} onNavigate={openTab} onOpenHref={openHref}
+    <ShellSlot active={tab} activeHref={activeHref} canGoBack={Boolean(active) || tab !== 'home'} onBack={back} onNavigate={openTab} onOpenHref={openHref}
       onOpenSearch={params => navigate('Search', params)}
       onOpenSuggestion={item => navigate('Detail', { item })}>
       <View style={styles.body}>

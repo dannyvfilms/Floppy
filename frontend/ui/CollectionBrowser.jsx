@@ -1,6 +1,7 @@
+import { Modal, ModalCloseButton } from './Modal';
 import { SearchIcon } from './Icon';
 import React, { useMemo, useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { FilterBar } from './FilterBar';
@@ -163,10 +164,10 @@ function FilterMenu({ menu, labels, palette, onChoose, onClose }) {
       <View style={[styles.sheet, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.sheetHeader}>
           <Text style={[styles.sheetTitle, { color: colors.text }]}>{menu.title}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel={labels.close} onPress={onClose}
+          <ModalCloseButton accessibilityRole="button" accessibilityLabel={labels.close} onPress={onClose}
             style={styles.close}>
             <Text style={[styles.closeText, { color: colors.textMuted }]}>×</Text>
-          </Pressable>
+          </ModalCloseButton>
         </View>
         <ScrollView style={styles.menuList} contentContainerStyle={styles.menuContent}>
           {[{ value: '', label: labels.any }, ...(menu.options || [])].map(option => {

@@ -1,5 +1,6 @@
+import { Modal } from './Modal';
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { FormError, FormField, FormHeader, FormSelect, FormTextField } from './MediaCardFormControls';

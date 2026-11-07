@@ -3233,6 +3233,29 @@
           "evidence": "Universal file uses React Native primitives and theme props; it is not placed in the native app shell and no emulator pass was performed."
         }
       }
+    },
+    "frontend/ui/Modal.jsx": {
+      "components": [
+        "Modal",
+        "ModalCloseButton",
+        "RailModalProvider",
+        "RailModalHost"
+      ],
+      "register": "FORM-CONTROLS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Retains the existing React Native Web Modal and close controls; runtime regression verification pending."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Duo modal presentation stays in the canvas so the system rail can dismiss the topmost dialog. Runtime verification pending. Other iOS devices retain RN Modal."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Retains RN Modal and inline close controls; runtime unverified."
+        }
+      }
     }
   },
   "legacy": {},
@@ -4394,6 +4417,56 @@
         "android": {
           "status": "unverified",
           "evidence": "Not run."
+        }
+      }
+    },
+    "frontend/ui/Modal.native.jsx": {
+      "kind": "presentation",
+      "components": [
+        "Modal",
+        "ModalCloseButton",
+        "RailModalProvider",
+        "RailModalHost"
+      ],
+      "register": "FORM-CONTROLS",
+      "purpose": "Platform modal presentation and close affordance, with a canvas host for the Duo system rail and standard modal behavior elsewhere.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Retains the existing React Native Web Modal and close controls; runtime regression verification pending."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Duo modal presentation stays in the canvas so the system rail can dismiss the topmost dialog. Runtime verification pending. Other iOS devices retain RN Modal."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Retains RN Modal and inline close controls; runtime unverified."
+        }
+      }
+    },
+    "frontend/ui/Modal.web.jsx": {
+      "kind": "presentation",
+      "components": [
+        "Modal",
+        "ModalCloseButton",
+        "RailModalProvider",
+        "RailModalHost"
+      ],
+      "register": "FORM-CONTROLS",
+      "purpose": "Platform modal presentation and close affordance, with a canvas host for the Duo system rail and standard modal behavior elsewhere.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Retains the existing React Native Web Modal and close controls; runtime regression verification pending."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Duo modal presentation stays in the canvas so the system rail can dismiss the topmost dialog. Runtime verification pending. Other iOS devices retain RN Modal."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Retains RN Modal and inline close controls; runtime unverified."
         }
       }
     }

@@ -149,6 +149,8 @@ function absoluteLogo(model, serverUrl) {
 export default function ShellSlot({
   active = 'home',
   activeHref = '/',
+  canGoBack = false,
+  onBack,
   onNavigate,
   onOpenHref,
   onOpenSearch,
@@ -216,7 +218,8 @@ export default function ShellSlot({
 
   if (Platform.OS === 'ios') {
     return <NativeShell open={open} onToggle={() => setOpen(value => !value)}
-      sidebar={sidebar} search={search} labels={labels} palette={shellPalette}>
+      sidebar={sidebar} search={search} labels={labels} palette={shellPalette}
+      canGoBack={canGoBack} onBack={() => { setOpen(false); onBack?.(); }}>
       {children}
     </NativeShell>;
   }

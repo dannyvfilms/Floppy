@@ -1,6 +1,6 @@
+import { Modal, ModalCloseButton } from './Modal';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -409,7 +409,7 @@ export function DateTimePicker({
                 <Text style={[styles.panelTitle, { color: palette.textSecondary }]}>
                   {labels.field || labels.picker}
                 </Text>
-                <Pressable
+                <ModalCloseButton
                   accessibilityRole="button"
                   accessibilityLabel={labels.close}
                   onPress={close}
@@ -419,7 +419,7 @@ export function DateTimePicker({
                   ]}
                 >
                   <Text style={[styles.iconGlyph, { color: palette.textMuted }]}>x</Text>
-                </Pressable>
+                </ModalCloseButton>
               </View>
             ) : null}
             <ScrollView

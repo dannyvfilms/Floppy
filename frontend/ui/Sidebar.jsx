@@ -1,7 +1,7 @@
+import { Modal } from './Modal';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,

@@ -78,6 +78,8 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## FORM-CONTROLS
 
+- `frontend/ui/Modal.jsx`, `frontend/ui/Modal.native.jsx`, `frontend/ui/Modal.web.jsx` (shared modal boundary and header close controls; Duo canvas host and topmost rail dismissal; existing dialog consumers retain their mapped surface ownership)
+
 Status: `Partial / coexisting`
 
 - `frontend/ui/controls`

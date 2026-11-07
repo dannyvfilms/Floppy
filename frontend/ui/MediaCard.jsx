@@ -1,5 +1,6 @@
+import { Modal } from './Modal';
 import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ArtworkImage } from './ArtworkImage';
 import { CardScrim } from './CardScrim';
 import { MediaCardActionRow, MediaCardActions } from './MediaCardActions';

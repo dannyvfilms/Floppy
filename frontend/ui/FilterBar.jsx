@@ -1,7 +1,7 @@
+import { Modal, ModalCloseButton } from './Modal';
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -380,13 +380,13 @@ export function FilterBar({
         <View style={styles.sheet} accessibilityViewIsModal>
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>{sheetTitle}</Text>
-            <Pressable
+            <ModalCloseButton
               accessibilityRole="button"
               accessibilityLabel={copy.close}
               onPress={closeSheet}
               style={({ pressed }) => [styles.close, pressed && styles.pressed]}>
               <Text style={styles.closeText}>×</Text>
-            </Pressable>
+            </ModalCloseButton>
           </View>
           <ScrollView style={styles.sheetBody} contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
             {openSheet === 'filters' ? <FiltersSheet

@@ -1,8 +1,8 @@
+import { Modal, ModalCloseButton } from './Modal';
 import React, { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -622,10 +622,10 @@ export function StatisticsToolbar({
         <View style={[styles.sheet, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }, compact && styles.sheetCompact]}>
           <View style={[styles.sheetHeader, { borderBottomColor: colors.border }]}>
             <Text style={[styles.sheetTitle, { color: colors.text }]}>{copy.range}</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel={copy.close}
+            <ModalCloseButton accessibilityRole="button" accessibilityLabel={copy.close}
               onPress={close} style={({ pressed }) => [styles.closeButton, { backgroundColor: colors.surfaceMuted }, pressed && styles.pressed]}>
               <Text style={[styles.closeText, { color: colors.textSecondary }]}>{'\u00D7'}</Text>
-            </Pressable>
+            </ModalCloseButton>
           </View>
           <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent}
             keyboardShouldPersistTaps="handled">
@@ -678,10 +678,10 @@ export function StatisticsToolbar({
         <View style={[styles.sheet, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }, compact && styles.sheetCompact]}>
           <View style={[styles.sheetHeader, { borderBottomColor: colors.border }]}>
             <Text style={[styles.sheetTitle, { color: colors.text }]}>{copy.mediaType}</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel={copy.close}
+            <ModalCloseButton accessibilityRole="button" accessibilityLabel={copy.close}
               onPress={close} style={({ pressed }) => [styles.closeButton, { backgroundColor: colors.surfaceMuted }, pressed && styles.pressed]}>
               <Text style={[styles.closeText, { color: colors.textSecondary }]}>{'\u00D7'}</Text>
-            </Pressable>
+            </ModalCloseButton>
           </View>
           <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent}
             keyboardShouldPersistTaps="handled">

@@ -1,5 +1,6 @@
+import { Modal } from './Modal';
 import React, { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Badge } from './Badge';
 import { BulkActionDialog, BulkOptionRow } from './BulkActions';
 import { Button } from './Button';

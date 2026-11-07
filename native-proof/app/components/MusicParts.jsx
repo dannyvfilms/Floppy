@@ -1,7 +1,7 @@
+import { Modal, ModalCloseButton } from '../../../frontend/ui/Modal';
 import React, { useEffect, useState } from 'react';
 import {
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -677,9 +677,9 @@ export function SheetModal({ open, title, subtitle, children, onClose }) {
             <Text role="heading" aria-level={2} style={styles.modalTitle}>{title}</Text>
             {subtitle ? <Text style={styles.modalSubtitle}>{subtitle}</Text> : null}
           </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={styles.modalClose}>
+          <ModalCloseButton accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={styles.modalClose}>
             <Text style={styles.modalCloseText}>×</Text>
-          </Pressable>
+          </ModalCloseButton>
         </View>
         <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
           {children}

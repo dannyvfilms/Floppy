@@ -7,6 +7,8 @@ import { ArrangementView, Host, RNHostView } from '@expo/ui/swift-ui';
 import { arrangementViewStyle, frame } from '@expo/ui/swift-ui/modifiers';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ReservedRegionsProvider, useReservedRegions } from 'react-native-reserved-regions';
+import { useVerticalBarEdgeIOS } from 'expo-status-bar';
+import { RailModalHost, RailModalProvider, useRailModal } from '../../../frontend/ui/Modal';
 import { menuGeometry } from './menuGeometry.mjs';
 
 function MenuLayout({ open, sidebar, search, children, palette, division }) {
@@ -51,7 +53,16 @@ function MeasuredMenuLayout(props) {
   return <MenuLayout {...props} division={division} />;
 }
 
-export default function NativeShell({ open, onToggle, sidebar, search, children, palette }) {
+export default function NativeShell(props) {
+  const hinge = useHinge();
+  const railEdge = useVerticalBarEdgeIOS();
+  return <RailModalProvider enabled={Boolean(hinge || railEdge)}>
+    <ShellWithRail {...props} hasRail={Boolean(hinge || railEdge)} />
+  </RailModalProvider>;
+}
+
+function ShellWithRail({ open, onToggle, sidebar, search, children, palette, hasRail, canGoBack, onBack }) {
+  const modal = useRailModal()?.active;
   const [reduceMotion, setReduceMotion] = useState(false);
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
@@ -69,15 +80,22 @@ export default function NativeShell({ open, onToggle, sidebar, search, children,
     <Stack.Screen options={{ headerShown: true, headerTransparent: true, headerShadowVisible: false,
       title: '', headerTitle: '', headerTintColor: palette.text, contentStyle: { backgroundColor: palette.sidebar } }} />
     <Stack.Toolbar placement="right">
-      <Stack.Toolbar.Button icon="line.3.horizontal.decrease" tintColor={palette.text} onPress={toggle}
-        accessibilityLabel={open ? 'Close navigation' : 'Open navigation'} />
+      <Stack.Toolbar.Button icon={modal ? "xmark" : "line.3.horizontal.decrease"} tintColor={palette.text}
+        onPress={modal ? modal.onRequestClose : toggle}
+        accessibilityLabel={modal ? 'Close dialog' : open ? 'Close navigation' : 'Open navigation'} />
+      {canGoBack ? <Stack.Toolbar.Button icon="chevron.left" tintColor={palette.text}
+        onPress={modal ? modal.onRequestClose : onBack} accessibilityLabel="Back" separateBackground /> : null}
     </Stack.Toolbar>
-    <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.root}>
+    <SafeAreaView edges={hasRail ? ['top', 'left', 'right'] : ['top', 'left', 'right', 'bottom']} style={styles.root}>
+      <View style={styles.root} accessibilityElementsHidden={Boolean(modal)}
+        importantForAccessibility={modal ? 'no-hide-descendants' : 'auto'}>
       {Constants.executionEnvironment === ExecutionEnvironment.StoreClient
         ? <MenuLayout {...menu} />
         : <ReservedRegionsProvider style={styles.root}>
           <MeasuredMenuLayout {...menu} />
         </ReservedRegionsProvider>}
+      </View>
+      <RailModalHost />
     </SafeAreaView>
   </>;
 }

@@ -1,3 +1,4 @@
+import { ModalCloseButton } from './Modal';
 import React from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Spinner } from './Spinner';
@@ -28,10 +29,10 @@ export function FormHeader({ title, closeLabel, onClose, closeRef, palette }) {
   const colors = resolvePalette(palette);
   return <View style={styles.header}>
     <Text accessibilityRole="header" style={[styles.headerTitle, { color: colors.text }]}>{title}</Text>
-    {onClose ? <Pressable ref={closeRef} accessibilityRole="button" accessibilityLabel={closeLabel} onPress={onClose}
+    {onClose ? <ModalCloseButton ref={closeRef} accessibilityRole="button" accessibilityLabel={closeLabel} onPress={onClose}
       style={({ focused }) => [styles.close, focused && colors.focusStyle]}>
       <Text style={[styles.closeText, { color: colors.textMuted }]}>×</Text>
-    </Pressable> : null}
+    </ModalCloseButton> : null}
   </View>;
 }
 
