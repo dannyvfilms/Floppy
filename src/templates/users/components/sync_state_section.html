@@ -1,4 +1,4 @@
-{% load i18n user_tags %}
+{% load i18n user_tags ui_tags %}
 {% comment %}
 Watched-state synchronization settings, one card per connection.
 
@@ -156,10 +156,7 @@ Two things this section is careful about:
               <input type="hidden" name="direction" x-bind:value="selectedValue">
             </div>
 
-            <button type="submit"
-                    class="px-4 py-2 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white">
-              Save
-            </button>
+            {% button "Save" "primary" "sm" submit=True %}
           </form>
 
           <ul class="mt-3 space-y-1">

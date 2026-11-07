@@ -574,15 +574,28 @@ def _settle_slot(user_id, media_type):
 def _running_phase(record, now_ts):
     """Return the phase of a running check-in, and when its label next changes."""
     duration = record["duration"]
+    started_at = record["started_at_ts"]
     if duration is None:
-        return {"phase": PHASE_FINISHABLE, "reload_in": None}
-    finish_at = record["started_at_ts"] + max(
+        return {
+            "phase": PHASE_FINISHABLE,
+            "reload_in": None,
+            "started_at_ts": started_at,
+        }
+    finish_at = started_at + max(
         0,
         int(duration * FINISH_RATIO) - record["offset"],
     )
     if now_ts >= finish_at:
-        return {"phase": PHASE_FINISHABLE, "reload_in": record["end_ts"] - now_ts}
-    return {"phase": PHASE_ACTIVE, "reload_in": finish_at - now_ts}
+        return {
+            "phase": PHASE_FINISHABLE,
+            "reload_in": record["end_ts"] - now_ts,
+            "started_at_ts": started_at,
+        }
+    return {
+        "phase": PHASE_ACTIVE,
+        "reload_in": finish_at - now_ts,
+        "started_at_ts": started_at,
+    }
 
 
 def _idle_target(user, instance):

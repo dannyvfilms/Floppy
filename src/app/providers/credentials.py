@@ -21,6 +21,8 @@ from dataclasses import field as dataclass_field
 from django.conf import settings
 from django.core.cache import cache
 
+from app.log_safety import redact_secrets
+
 logger = logging.getLogger(__name__)
 
 CACHE_KEY = "provider_credentials_instance"
@@ -101,6 +103,47 @@ class ProviderCredentialSpec:
 VALIDATION_TIMEOUT = 10
 
 
+def _probe_reason(response):
+    """Return the provider's own explanation for a rejected credential.
+
+    The status code alone cannot tell a user why a key failed: Hardcover says
+    "Missing scopes: read:me" in its error body. Read the common JSON shapes
+    and fall back to a short, redacted slice of the response text.
+    """
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    if isinstance(payload, dict):
+        # OAuth-style errors, like Hardcover's insufficient_scope body.
+        for key in ("error_description", "message"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return redact_secrets(value.strip())
+        # Some providers wrap the message in an error object.
+        error = payload.get("error")
+        if isinstance(error, str) and error.strip():
+            return redact_secrets(error.strip())
+        if isinstance(error, dict):
+            message = error.get("message")
+            if isinstance(message, str) and message.strip():
+                return redact_secrets(message.strip())
+        # GraphQL errors array, used by several metadata providers.
+        errors = payload.get("errors")
+        if isinstance(errors, list):
+            messages = [
+                item.get("message", "").strip()
+                for item in errors
+                if isinstance(item, dict) and item.get("message")
+            ]
+            if messages:
+                return redact_secrets("; ".join(messages))
+    text = getattr(response, "text", "") or ""
+    if not isinstance(text, str):
+        text = ""
+    return redact_secrets(text.strip()[:200])
+
+
 def _probe(method, url, **kwargs):
     """Run a credential probe, returning an error string or None.
 
@@ -125,12 +168,26 @@ def _probe(method, url, **kwargs):
         requests.codes.forbidden,
         requests.codes.bad_request,
     }:
+        reason = _probe_reason(response)
+        logger.warning(
+            "Credential probe rejected by %s (HTTP %s): %s",
+            url,
+            response.status_code,
+            reason or "no response body",
+        )
+        if reason:
+            return f"the provider rejected that credential ({reason})"
         return "the provider rejected that credential"
     return None
 
 
 def _validate_hardcover(values):
-    """Check a Hardcover token with a minimal GraphQL query."""
+    """Check a Hardcover token with the catalog query metadata uses.
+
+    Hardcover's ``me`` query needs the read:me scope, but metadata search and
+    lookup only need read:catalog. Probing ``me`` rejected valid read:catalog
+    tokens with an unexplained failure (#1857).
+    """
     token = values.get("api_key", "")
     if not token:
         return None
@@ -139,7 +196,7 @@ def _validate_hardcover(values):
     return _probe(
         "POST",
         "https://api.hardcover.app/v1/graphql",
-        json={"query": "{ me { id } }"},
+        json={"query": "{ books_by_pk(id: 1) { id } }"},
         headers={"Authorization": token},
     )
 
@@ -286,6 +343,10 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
             label="Hardcover",
             description="Book metadata. Free tier is metered per account.",
             docs_url="https://hardcover.app/account/api",
+            setup_hint=(
+                "The token needs the read:catalog scope for book metadata. "
+                "Add read:me as well to import your own Hardcover library."
+            ),
             fields=(CredentialField("api_key", "API token", "HARDCOVER_API"),),
         ),
         ProviderCredentialSpec(

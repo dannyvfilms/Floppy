@@ -1,8 +1,13 @@
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import RequestFactory, TestCase
 
-from app.columns import resolve_columns
-from app.models import MediaTypes
+from app.columns import (
+    resolve_column_config,
+    resolve_columns,
+    resolve_default_column_config,
+)
+from app.models import Item, MediaTypes, Movie, Sources, Status
+from app.table_browser import build_table_browser_props, table_json_url
 
 
 class ResolveColumnsTests(TestCase):
@@ -275,3 +280,81 @@ class ResolveColumnsTests(TestCase):
             table_type="media",
         )
         self.assertNotIn("entry_source", [column.key for column in columns])
+
+
+class TableBrowserPropsTests(TestCase):
+    """The browser table projection mirrors the authoritative column model."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="table-browser-user",
+            password="12345",
+        )
+        item = Item.objects.create(
+            media_id="table-browser-movie",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Projected Movie",
+        )
+        self.movie = Movie.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            score=8.5,
+        )
+
+    def test_projection_matches_resolved_columns_and_cells(self):
+        resolved = resolve_columns(
+            MediaTypes.MOVIE.value,
+            "score",
+            self.user,
+            "media",
+        )
+        config = resolve_column_config(
+            MediaTypes.MOVIE.value,
+            "score",
+            self.user,
+            "media",
+        )
+        defaults = resolve_default_column_config(
+            MediaTypes.MOVIE.value,
+            "score",
+            "media",
+        )
+        props = build_table_browser_props(
+            rows=[self.movie],
+            resolved_columns=resolved,
+            column_config=config,
+            default_column_config=defaults,
+            user=self.user,
+            table_type="media",
+            media_type=MediaTypes.MOVIE.value,
+            current_sort="score",
+            current_direction="desc",
+            update_url="/medialist/movie/columns",
+            refresh_url="/medialist/movie",
+            refresh_target="#media-table-view",
+            refresh_include="#filter-form",
+            csrf_token="token",
+        )
+
+        self.assertEqual(
+            [column["key"] for column in props["table"]["columns"]],
+            [column.key for column in resolved],
+        )
+        self.assertEqual(props["table"]["columns"][0]["key"], "image")
+        row = props["table"]["rows"][0]
+        self.assertEqual(row["title"], "Projected Movie")
+        self.assertEqual(row["cells"]["title"]["text"], "Projected Movie")
+        self.assertTrue(row["cells"]["score"]["rated"])
+        self.assertEqual(row["cells"]["status"]["text"], "Completed")
+        self.assertEqual(props["menu"]["columns"][0]["key"], "image")
+        self.assertIn("score", [column["key"] for column in props["menu"]["columns"]])
+        self.assertEqual(props["menu"]["csrfToken"], "token")
+
+    def test_table_json_url_keeps_filters_and_requests_one_page(self):
+        request = RequestFactory().get("/medialist/movie?layout=table&status=Paused")
+        self.assertEqual(
+            table_json_url(request, 2),
+            "/medialist/movie?layout=table&status=Paused&page=2&table_json=1",
+        )

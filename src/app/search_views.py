@@ -5,8 +5,11 @@ from dataclasses import replace
 from django.conf import settings
 from django.contrib import messages
 from django.db.models import Exists, OuterRef, Q
+from django.http import JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import render
-from django.utils.translation import gettext
+from django.urls import reverse
+from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_GET
 
 from app import helpers
@@ -33,7 +36,9 @@ from app.models import (
 )
 from app.providers import services
 from app.services import metadata_resolution
+from app.templatetags import app_tags
 from app.templatetags.app_tags import (
+    image_url,
     media_type_readable,
     media_type_readable_plural,
     media_url,
@@ -470,7 +475,7 @@ def _local_library_groups(user, query, limit):
 @require_GET
 def media_search(request):
     """Return the media search page."""
-    requested_media_type = request.GET["media_type"]
+    requested_media_type = request.GET.get("media_type", "")
     if request.user.is_authenticated:
         media_type = request.user.update_preference(
             "last_search_type",
@@ -480,7 +485,7 @@ def media_search(request):
         media_type = requested_media_type
     else:
         media_type = MediaTypes.TV.value
-    query = request.GET["q"]
+    query = request.GET.get("q", "")
     page = helpers.get_page_number(request)
     layout = request.GET.get("layout", "grid")
 
@@ -815,17 +820,34 @@ def get_saved_suggestions(user, media_type, query, limit=8):
     return suggestions
 
 
+def _suggestion_json(suggestions):
+    """Map saved-library suggestions to the universal autocomplete contract."""
+    return [
+        {
+            "id": str(index),
+            "title": suggestion["title"],
+            "subtitle": suggestion["subtitle"],
+            "image": image_url(suggestion["image"]) if suggestion["image"] else None,
+            "url": suggestion["url"],
+        }
+        for index, suggestion in enumerate(suggestions)
+    ]
+
+
 @require_GET
 def search_suggestions(request):
-    """Return the autocomplete dropdown fragment for the global search bar."""
+    """Return suggestions as an HTML fragment or the JSON presentation contract."""
     query = request.GET.get("q", "").strip()
     media_type = request.GET.get("media_type", "")
+    wants_json = request.GET.get("format") == "json"
 
     if (
         not request.user.is_authenticated
         or len(query) < MIN_SUGGESTION_QUERY_LENGTH
         or media_type not in {*MediaTypes.values, ALL_SEARCH_TYPE}
     ):
+        if wants_json:
+            return JsonResponse({"suggestions": []})
         return render(request, "app/components/search_suggestions.html")
 
     try:
@@ -833,6 +855,9 @@ def search_suggestions(request):
     except Exception as exc:  # pragma: no cover - defensive
         logger.debug("Suggestion search failed: %s", exception_summary(exc))
         suggestions = []
+
+    if wants_json:
+        return JsonResponse({"suggestions": _suggestion_json(suggestions)})
 
     return render(
         request,
@@ -843,3 +868,719 @@ def search_suggestions(request):
             "media_type": media_type,
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Shared React results surface
+# ---------------------------------------------------------------------------
+
+_PAGINATION_WINDOW = 2
+
+
+_ACTION_GLYPHS = {
+    "track": "✎",
+    "lists": "☰",
+    "history": "◷",
+}
+
+
+def _plain_title(item):
+    """Return an item's title for either a stored item or a provider dict."""
+    if isinstance(item, dict):
+        return str(item.get("title") or "")
+    return str(getattr(item, "title", None) or "")
+
+
+def _add_action_glyphs(model):
+    """Give shared card actions a portable glyph for native and web renderers."""
+    actions = model.get("actions") if isinstance(model, dict) else None
+    if not actions:
+        return model
+    for action in actions.get("items") or []:
+        if action.get("glyph"):
+            continue
+        if action.get("modal") in _ACTION_GLYPHS:
+            action["glyph"] = _ACTION_GLYPHS[action["modal"]]
+        elif action.get("kind") == "link":
+            action["glyph"] = _ACTION_GLYPHS["history"]
+        else:
+            action["glyph"] = "•"
+    return model
+
+
+def _search_card(result, *, user, request, layout):
+    """Return one result as the shared card model, list row or poster."""
+    from app.card_surfaces import card_context
+    from app.media_card_model import row_card_model
+
+    item = result.get("item")
+    media = result.get("media")
+    title = _plain_title(item)
+    matched = result.get("matched_title")
+    if layout == "list":
+        model = row_card_model(item, media, title, matched, user, request)
+    else:
+        page_context = {
+            "user": user,
+            "request": request,
+            "csrf_token": get_token(request),
+        }
+        card = card_context(
+            page_context,
+            "search",
+            {
+                "item": item,
+                "media": media,
+                "title": title,
+                "matched_title": matched,
+            },
+        )
+        model = card["react_props"]["model"]
+    return _add_action_glyphs(model)
+
+
+def _search_cards(results, *, user, request, layout):
+    return [
+        _search_card(result, user=user, request=request, layout=layout)
+        for result in results or []
+    ]
+
+
+def _result_count_label(total):
+    return ngettext(
+        "%(value_1)s result",
+        "%(value_1)s results",
+        total,
+    ) % {"value_1": total}
+
+
+def _shown_label(count):
+    return gettext("· Showing first %(value_1)s") % {"value_1": count}
+
+
+def _search_url(request, **overrides):
+    """Return a search URL with the current query and the given overrides."""
+    params = request.GET.copy()
+    params.pop("page", None)
+    for key, value in overrides.items():
+        if value is None:
+            params.pop(key, None)
+        else:
+            params[key] = value
+    return f"{reverse('search')}?{params.urlencode()}"
+
+
+def _page_url(request, page):
+    params = request.GET.copy()
+    params["page"] = page
+    return f"{reverse('search')}?{params.urlencode()}"
+
+
+def _pagination_pages(request, page, total_pages):
+    pages = []
+    for number in range(1, total_pages + 1):
+        if number in (1, total_pages) or abs(number - page) <= _PAGINATION_WINDOW:
+            pages.append(
+                {
+                    "number": number,
+                    "href": _page_url(request, number),
+                    "current": number == page,
+                },
+            )
+        elif pages and not pages[-1].get("ellipsis"):
+            pages.append({"ellipsis": True})
+    return pages
+
+
+def _music_lines(user, item, media):
+    from users.card_metadata import card_lines
+
+    return [
+        {
+            "clamp": True,
+            "dormant": bool(line.get("dormant")),
+            "parts": [
+                {"text": part["text"], **({"score": True} if part.get("score") else {})}
+                for part in line.get("parts") or []
+            ],
+        }
+        for line in card_lines(user, MediaTypes.MUSIC.value, item, media)
+    ]
+
+
+def _music_rating(score, rate_url, user):
+    if score is None:
+        return None
+    label = app_tags.score_display(score, user)
+    if label is None:
+        return None
+    try:
+        value = float(score)
+    except (TypeError, ValueError):
+        value = None
+    return {
+        "label": str(label),
+        "value": value,
+        "rateUrl": rate_url,
+        "scaleMax": app_tags.rating_scale_max(user),
+        "rateLabel": gettext("Rate"),
+    }
+
+
+def _music_actions(*, href, request, track_url, track_target, view_title, view_glyph, history_url):
+    return {
+        "href": href,
+        "items": [
+            {
+                "kind": "modal",
+                "modal": "track",
+                "tone": "indigo",
+                "title": gettext("Edit tracking"),
+                "glyph": _ACTION_GLYPHS["track"],
+                "url": track_url,
+                "vals": {"return_url": request.get_full_path()},
+                "target": track_target,
+            },
+            {
+                "kind": "link",
+                "tone": "emerald",
+                "title": view_title,
+                "glyph": view_glyph,
+                "href": href,
+            },
+            {
+                "kind": "link",
+                "tone": "amber",
+                "title": gettext("View listening history"),
+                "glyph": _ACTION_GLYPHS["history"],
+                "href": history_url,
+            },
+        ],
+        "ordering": None,
+        "modals": {},
+        "csrfToken": get_token(request),
+        "clickable": bool(getattr(request.user, "clickable_media_cards", False)),
+    }
+
+
+def _local_music_artist_model(tracker, user, request):
+    artist = tracker.artist
+    href = app_tags.music_artist_url(artist)
+    return {
+        "mediaType": MediaTypes.MUSIC.value,
+        "shape": "poster",
+        "href": href,
+        "image": {
+            "src": app_tags.image_url(artist.image),
+            "fallback": "",
+            "source": "primary",
+        },
+        "title": artist.name,
+        "altTitle": None,
+        "statusChip": {
+            "kind": "status",
+            "status": tracker.status,
+            "label": tracker.status,
+        },
+        "cornerChips": [],
+        "titleLinks": [],
+        "progressBar": None,
+        "lines": _music_lines(user, artist, tracker),
+        "rating": _music_rating(
+            tracker.score,
+            reverse("update_artist_score", args=[artist.id]),
+            user,
+        ),
+        "ratingEditable": True,
+        "csrfToken": get_token(request),
+        "actions": _music_actions(
+            href=href,
+            request=request,
+            track_url=reverse("artist_track_modal", args=[artist.id]),
+            track_target=f"#artist-track-modal-{artist.id}",
+            view_title=gettext("View artist"),
+            view_glyph=">",
+            history_url=f"{reverse('history')}?artist={artist.id}",
+        ),
+    }
+
+
+def _local_music_album_model(tracker, user, request):
+    album = tracker.album
+    href = app_tags.music_album_url(album)
+    return {
+        "mediaType": MediaTypes.MUSIC.value,
+        "shape": "square",
+        "href": href,
+        "image": {
+            "src": app_tags.image_url(album.image),
+            "fallback": "",
+            "source": "primary",
+        },
+        "title": album.title,
+        "altTitle": None,
+        "statusChip": {
+            "kind": "status",
+            "status": tracker.status,
+            "label": tracker.status,
+        },
+        "cornerChips": [],
+        "titleLinks": [],
+        "progressBar": None,
+        "lines": _music_lines(user, album, tracker),
+        "rating": _music_rating(
+            tracker.score,
+            reverse("update_album_score", args=[album.id]),
+            user,
+        ),
+        "ratingEditable": True,
+        "csrfToken": get_token(request),
+        "actions": _music_actions(
+            href=href,
+            request=request,
+            track_url=reverse("album_track_modal", args=[album.id]),
+            track_target=f"#album-track-modal-{album.id}",
+            view_title=gettext("View album"),
+            view_glyph=">",
+            history_url=f"{reverse('history')}?album={album.id}",
+        ),
+    }
+
+
+def _online_music_artist_model(artist):
+    artist_id = artist.get("artist_id") if isinstance(artist, dict) else None
+    name = (artist.get("name") if isinstance(artist, dict) else None) or ""
+    disambiguation = artist.get("disambiguation") if isinstance(artist, dict) else None
+    image = artist.get("image") if isinstance(artist, dict) else None
+    return {
+        "mediaType": MediaTypes.MUSIC.value,
+        "shape": "poster",
+        "href": reverse("create_artist_from_search", args=[artist_id])
+        if artist_id
+        else None,
+        "image": {
+            "src": app_tags.image_url(image),
+            "fallback": "",
+            "source": "primary",
+        },
+        "title": name,
+        "altTitle": None,
+        "statusChip": None,
+        "cornerChips": [],
+        "titleLinks": [],
+        "progressBar": None,
+        "lines": [
+            {"clamp": True, "parts": [{"text": disambiguation}], "dormant": True}
+        ]
+        if disambiguation
+        else [],
+        "rating": None,
+        "ratingEditable": False,
+        "actions": None,
+    }
+
+
+def _online_music_release_model(release):
+    release_id = release.get("release_id") if isinstance(release, dict) else None
+    title = (release.get("title") if isinstance(release, dict) else None) or ""
+    artist_name = release.get("artist_name") if isinstance(release, dict) else None
+    image = release.get("image") if isinstance(release, dict) else None
+    return {
+        "mediaType": MediaTypes.MUSIC.value,
+        "shape": "square",
+        "href": reverse("create_album_from_search", args=[release_id])
+        if release_id
+        else None,
+        "image": {
+            "src": app_tags.image_url(image),
+            "fallback": "",
+            "source": "primary",
+        },
+        "title": title,
+        "altTitle": None,
+        "statusChip": None,
+        "cornerChips": [],
+        "titleLinks": [],
+        "progressBar": None,
+        "lines": [{"parts": [{"text": artist_name}], "dormant": True}]
+        if artist_name
+        else [],
+        "rating": None,
+        "ratingEditable": False,
+        "actions": None,
+    }
+
+
+def _music_subsection(key, title, items, *, total=None, shown=None, layout="grid"):
+    if not items:
+        return None
+    subsection = {"key": key, "title": title, "items": items, "layout": layout}
+    if total is not None:
+        subsection["totalLabel"] = _result_count_label(total)
+        if shown is not None and total > shown:
+            subsection["shownLabel"] = _shown_label(shown)
+    return subsection
+
+
+def _media_subsection(results, *, user, request, layout):
+    return {
+        "key": "results",
+        "items": _search_cards(results, user=user, request=request, layout=layout),
+        "layout": "list" if layout == "list" else "grid",
+    }
+
+
+def _build_local_group_section(group, *, user, request, layout):
+    section = {
+        "key": group["media_type"],
+        "title": group["label"],
+        "subsections": [],
+    }
+    if group["kind"] == "music":
+        section["totalLabel"] = _result_count_label(group["total"])
+        artists = _music_subsection(
+            "artists",
+            gettext("Artists"),
+            [
+                _local_music_artist_model(tracker, user, request)
+                for tracker in group.get("artists") or []
+            ],
+            total=group.get("artists_total"),
+            shown=len(group.get("artists") or []),
+        )
+        albums = _music_subsection(
+            "albums",
+            gettext("Albums"),
+            [
+                _local_music_album_model(tracker, user, request)
+                for tracker in group.get("albums") or []
+            ],
+            total=group.get("albums_total"),
+            shown=len(group.get("albums") or []),
+        )
+        section["subsections"] = [item for item in (artists, albums) if item]
+    else:
+        section["totalLabel"] = _result_count_label(group["total"])
+        if group["total"] > len(group.get("results") or []):
+            section["shownLabel"] = _shown_label(len(group.get("results") or []))
+        section["subsections"] = [
+            _media_subsection(
+                group.get("results") or [],
+                user=user,
+                request=request,
+                layout=layout,
+            ),
+        ]
+    section["searchOnline"] = {
+        "label": gettext("Search online"),
+        "href": _search_url(
+            request,
+            media_type=group["media_type"],
+            source=None,
+        ),
+    }
+    return section
+
+
+def _build_typed_music_sections(context, *, user, request, layout):
+    sections = []
+    local_artists = context.get("local_music_artists") or []
+    local_albums = context.get("local_music_albums") or []
+    if local_artists or local_albums:
+        section = {
+            "key": "local",
+            "title": gettext("In Your Library"),
+            "subsections": [
+                item
+                for item in (
+                    _music_subsection(
+                        "artists",
+                        gettext("Artists"),
+                        [
+                            _local_music_artist_model(tracker, user, request)
+                            for tracker in local_artists
+                        ],
+                        total=context.get("local_music_artists_total"),
+                        shown=len(local_artists),
+                    ),
+                    _music_subsection(
+                        "albums",
+                        gettext("Albums"),
+                        [
+                            _local_music_album_model(tracker, user, request)
+                            for tracker in local_albums
+                        ],
+                        total=context.get("local_music_albums_total"),
+                        shown=len(local_albums),
+                    ),
+                )
+                if item
+            ],
+        }
+        sections.append(section)
+
+    online_artists = context.get("music_online_artists") or []
+    online_releases = context.get("music_online_releases") or []
+    if online_artists or online_releases:
+        section = {
+            "key": "online",
+            "title": gettext("Online Results"),
+            "subsections": [
+                item
+                for item in (
+                    _music_subsection(
+                        "artists",
+                        gettext("Artists"),
+                        [_online_music_artist_model(artist) for artist in online_artists],
+                    ),
+                    _music_subsection(
+                        "albums",
+                        gettext("Albums"),
+                        [
+                            _online_music_release_model(release)
+                            for release in online_releases
+                        ],
+                    ),
+                )
+                if item
+            ],
+        }
+        sections.append(section)
+    return sections
+
+
+def _build_typed_sections(context, *, user, request, layout):
+    media_type = context.get("media_type")
+    if media_type == MediaTypes.MUSIC.value:
+        return _build_typed_music_sections(
+            context,
+            user=user,
+            request=request,
+            layout=layout,
+        )
+
+    sections = []
+    local_results = context.get("local_results") or []
+    local_total = context.get("local_results_total") or 0
+    if local_results:
+        section = {
+            "key": "local",
+            "title": gettext("In Your Library"),
+            "totalLabel": _result_count_label(local_total),
+            "subsections": [
+                _media_subsection(
+                    local_results,
+                    user=user,
+                    request=request,
+                    layout=layout,
+                ),
+            ],
+        }
+        if local_total > len(local_results):
+            section["shownLabel"] = _shown_label(len(local_results))
+        sections.append(section)
+
+    data = context.get("data") or {}
+    online_results = data.get("results") or []
+    if online_results:
+        section = {
+            "key": "online",
+            "title": gettext("Online Results"),
+            "subsections": [
+                _media_subsection(
+                    online_results,
+                    user=user,
+                    request=request,
+                    layout=layout,
+                ),
+            ],
+        }
+        if media_type == MediaTypes.PODCAST.value:
+            source_label = context.get("source_label") or gettext("Online Results")
+            fallback_label = context.get("fallback_source_label")
+            if fallback_label:
+                section["title"] = fallback_label
+                section["tip"] = {
+                    "label": gettext("About these results"),
+                    "text": gettext(
+                        "%(value_1)s had no match for this search, so these results "
+                        "come from %(value_2)s. Paste an Apple Podcasts link or an RSS "
+                        "feed address to add a show directly.",
+                    )
+                    % {"value_1": source_label, "value_2": fallback_label},
+                }
+            else:
+                section["title"] = source_label
+                section["tip"] = {
+                    "label": gettext("About these results"),
+                    "text": gettext(
+                        "These results come from %(value_1)s. Paste an Apple Podcasts "
+                        "link or an RSS feed address to add a show directly.",
+                    )
+                    % {"value_1": source_label},
+                }
+        sections.append(section)
+    return sections
+
+
+def _build_empty_state(context):
+    query = context.get("query") or ""
+    media_type = context.get("media_type")
+    empty = {
+        "title": gettext("No results found"),
+        "body": gettext(
+            'We couldn\'t find any matches for "%(value_1)s". '
+            "Try checking your spelling or using different keywords.",
+        )
+        % {"value_1": query},
+    }
+    if media_type == ALL_SEARCH_TYPE:
+        empty["body"] = gettext(
+            "Nothing in your library matches “%(value_1)s”. "
+            "Pick a media type to search online.",
+        ) % {"value_1": query}
+    elif media_type == MediaTypes.PODCAST.value:
+        empty["extra"] = gettext(
+            "Can't find it? Paste the show's RSS feed address into the "
+            "search box to add it directly.",
+        )
+    return empty
+
+
+def build_search_results_props(context):
+    """Build the serialisable props for the shared React search results."""
+    request = context.get("request")
+    user = context.get("user")
+    media_type = context.get("media_type")
+    layout = context.get("layout") or "grid"
+    layout = "list" if layout == "list" else "grid"
+    query = request.GET.get("q", "") if request else ""
+
+    sections = []
+    if media_type == ALL_SEARCH_TYPE:
+        sections = [
+            _build_local_group_section(
+                group,
+                user=user,
+                request=request,
+                layout=layout,
+            )
+            for group in context.get("local_groups") or []
+        ]
+    else:
+        sections = _build_typed_sections(
+            context,
+            user=user,
+            request=request,
+            layout=layout,
+        )
+
+    source_options = context.get("source_options") or []
+    source = context.get("source")
+    scope = {
+        "label": gettext("Source:"),
+        "options": [
+            {
+                "value": option.value,
+                "label": option.label,
+                "active": option.value == source,
+                "href": _search_url(
+                    request,
+                    media_type=media_type,
+                    source=option.value,
+                ),
+            }
+            for option in source_options
+        ],
+    }
+
+    layout_options = [
+        {
+            "value": "grid",
+            "label": gettext("Grid View"),
+            "glyph": "▦",
+            "active": layout == "grid",
+            "href": _search_url(request, layout="grid"),
+        },
+        {
+            "value": "list",
+            "label": gettext("List View"),
+            "glyph": "☰",
+            "active": layout == "list",
+            "href": _search_url(request, layout="list"),
+        },
+    ]
+
+    notes = []
+    if media_type == MediaTypes.PODCAST.value:
+        notes.append(
+            gettext(
+                "Search by name, or paste an Apple Podcasts link or an RSS feed "
+                "address to add a show directly.",
+            ),
+        )
+    if media_type == ALL_SEARCH_TYPE:
+        notes.append(
+            gettext(
+                "Searching your library only: items you track, collect or tag. "
+                "Pick a media type to search online.",
+            ),
+        )
+
+    paging = None
+    data = context.get("data") or {}
+    page = data.get("page") or 1
+    total_pages = data.get("total_pages") or 1
+    if media_type != MediaTypes.MUSIC.value and total_pages > 1:
+        paging = {
+            "page": page,
+            "totalPages": total_pages,
+            "totalResults": data.get("total_results") or 0,
+            "previous": {"href": _page_url(request, page - 1)} if page > 1 else None,
+            "next": {"href": _page_url(request, page + 1)}
+            if page < total_pages
+            else None,
+            "pages": _pagination_pages(request, page, total_pages),
+            "summary": gettext("Page %(page)s of %(total)s (%(results)s results)")
+            % {
+                "page": page,
+                "total": total_pages,
+                "results": data.get("total_results") or 0,
+            },
+        }
+
+    return {
+        "title": gettext("Search Results"),
+        "query": query,
+        "mediaType": media_type,
+        "layout": layout,
+        "state": "ready" if sections else "empty",
+        "sections": sections,
+        "notes": notes,
+        "scope": scope if media_type != ALL_SEARCH_TYPE else {
+            "label": "",
+            "options": [],
+        },
+        "layoutOptions": layout_options,
+        "paging": paging,
+        "empty": _build_empty_state({**context, "query": query}),
+        "labels": {
+            "source": gettext("Source:"),
+            "searchOnline": gettext("Search online"),
+            "emptyTitle": gettext("No results found"),
+            "loading": gettext("Loading results…"),
+            "errorTitle": gettext("Search could not load"),
+            "errorBody": gettext("Please try again."),
+            "retry": gettext("Try again"),
+            "loadMore": gettext("Load more"),
+            "loadingMore": gettext("Loading more…"),
+            "previous": gettext("Previous page"),
+            "next": gettext("Next page"),
+            "rate": gettext("Rate"),
+            "close": gettext("Close"),
+            "open": gettext("Open"),
+            "altTitle": gettext("Show alternative title"),
+            "nextEpisode": gettext("Jump to next episode"),
+            "noStatus": gettext("No Status"),
+        },
+    }

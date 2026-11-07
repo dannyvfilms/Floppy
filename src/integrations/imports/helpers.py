@@ -530,9 +530,9 @@ def _backfill_completed_season_episodes(seasons, *, prepare_only=False):
     Bulk imports persist Season instances via bulk_create, which bypasses
     Season.save() and the episode-completion fan-out it normally performs
     (see Season.save() in app/models/tv.py). A season imported directly as
-    Completed with no per-episode history (e.g. a rating-only import) would
-    otherwise end up with zero Episode rows, making it invisible to
-    exports/statistics that key off episode data.
+    Completed with no per-episode history (e.g. a season watched at title
+    level) would otherwise end up with zero Episode rows, making it invisible
+    to exports/statistics that key off episode data.
 
     Returns warning messages for seasons that could not be backfilled, so
     the importer can surface them to the user instead of only logging.

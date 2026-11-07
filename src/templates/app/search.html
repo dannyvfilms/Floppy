@@ -9,6 +9,9 @@
 {% endblock title %}
 
 {% block content %}
+  {% search_results_react as search_results %}
+  {{ search_results.props|json_script:search_results.id }}
+  <div data-search-results-root data-props-id="{{ search_results.id }}">
   <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-y-4">
     <h2 class="text-2xl font-bold">{% translate "Search Results" %}</h2>
     <div class="flex items-center flex-wrap gap-x-4 gap-y-2">
@@ -391,4 +394,5 @@
       </div>
     {% endif %}
   {% endif %}
+  </div>
 {% endblock content %}

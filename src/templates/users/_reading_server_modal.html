@@ -95,9 +95,8 @@
           {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
         </div>
       </div>
-      <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-        {% blocktranslate %}Connect {{ name }}{% endblocktranslate %}
-      </button>
+      {% blocktranslate asvar reading_connect_label %}Connect {{ name }}{% endblocktranslate %}
+      {% button reading_connect_label "primary" "sm" "full" submit=True %}
     </form>
   {% endif %}
 </div>

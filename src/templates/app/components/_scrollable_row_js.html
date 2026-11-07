@@ -60,7 +60,14 @@
       const rowId = event.detail && event.detail.rowId;
       if (!rowId) return;
       const row = document.querySelector(`#media-grid-row-${rowId}`);
-      if (row) reloadHomeRow(row, rowId);
+      if (row) {
+        reloadHomeRow(row, rowId);
+        return;
+      }
+      const mounted = document.querySelector(`[data-rails-row-root][data-row-id="${rowId}"]`);
+      if (mounted) {
+        mounted.dispatchEvent(new CustomEvent('railsRowRefresh', { bubbles: true }));
+      }
     });
   }
 
@@ -168,7 +175,7 @@
 
   function initHomeRowInfiniteScroll() {
     document.querySelectorAll('[data-home-row="true"]').forEach(row => {
-      if (row.dataset.homeRowBound === 'true') {
+      if (row.dataset.homeRowBound === 'true' || row.closest('[data-rails-row-root]')) {
         return;
       }
       row.dataset.homeRowBound = 'true';
@@ -182,6 +189,9 @@
     });
     requestAnimationFrame(() => {
       document.querySelectorAll('[data-home-row="true"]').forEach(row => {
+        if (row.closest('[data-rails-row-root]')) {
+          return;
+        }
         ensureHomeRowObserver(row);
         syncHomeRowLoadedCount(row);
         maybeAutofillHomeRow(row);

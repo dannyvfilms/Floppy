@@ -1083,6 +1083,13 @@ class NowPlayingTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, HTTP.OK)
         self.assertEqual(response.json(), {"active": False})
 
+    def test_signed_in_browser_session_can_read(self):
+        """The Expo app authenticates with the browser session, like web Home."""
+        self.client.force_login(self.user1)
+        response = self.client.get("/api/v1/playback/now-playing/")
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response.json(), {"active": False})
+
     def test_active_movie_state_is_projected(self):
         """An active movie state surfaces title/image/progress/url/ids."""
         movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]

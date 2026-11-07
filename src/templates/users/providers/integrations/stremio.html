@@ -20,11 +20,14 @@
           <li>
             {% translate "Copy your personal addon URL:" %}
             {# djlint:off #}
-            <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
-              <input readonly id="stremio-addon-url" class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{{ stremio_addon_url }}">
-              <span class="flex items-center cursor-pointer group" title="{% translate "Copy" %}" data-copy-target="#stremio-addon-url">
-                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
-              </span>
+            <script type="application/json" id="stremio-copy-props">{"label": "{% translate 'Addon URL' as copy_label %}{{ copy_label|escapejs }}", "value": "{{ stremio_addon_url|escapejs }}", "copyLabel": "{% translate 'Copy' as copy_action %}{{ copy_action|escapejs }}", "copiedLabel": "{% translate 'Copied!' as copied_action %}{{ copied_action|escapejs }}"}</script>
+            <div class="mt-2 w-[calc(100%-30px)]" data-copy-field-root data-props-id="stremio-copy-props">
+              <div class="inline-flex items-center gap-2 w-full">
+                <input readonly id="stremio-addon-url" class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{{ stremio_addon_url }}">
+                <span class="flex items-center cursor-pointer group" title="{% translate "Copy" %}" data-copy-target="#stremio-addon-url">
+                  {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
+                </span>
+              </div>
             </div>
             {# djlint:on #}
           </li>
