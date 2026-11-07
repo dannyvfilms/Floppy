@@ -2377,7 +2377,7 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "On a physical iOS 27.2 Duo in Expo Go, the search background appeared about 5 points above the camera cutout's vertical center. After shifting the field and sidebar content down 5 points, the search is centered on the cutout and the Home highlight stays aligned with search. Partial and full-open layouts remain previously observed. Saved-view interactions and VoiceOver remain unverified."
+          "evidence": "On a physical iOS 27.2 Duo in Device Hub, the menu control is visible as the first button below Wi-Fi on the right rail; the search field centers on the camera cutout and the Home highlight aligns with search. The modal X uses the same toolbar slot in code, but its runtime replacement was not exercised. Partial and full-open layouts remain previously observed. Saved-view interactions and VoiceOver remain unverified."
         },
         "android": {
           "status": "unverified",

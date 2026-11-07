@@ -80,9 +80,13 @@ function ShellWithRail({ open, onToggle, sidebar, search, children, palette, has
     <Stack.Screen options={{ headerShown: true, headerTransparent: true, headerShadowVisible: false,
       title: '', headerTitle: '', headerTintColor: palette.text, contentStyle: { backgroundColor: palette.sidebar } }} />
     <Stack.Toolbar placement="right">
-      <Stack.Toolbar.Button icon={modal ? "xmark" : "line.3.horizontal.decrease"} tintColor={palette.text}
-        onPress={modal ? modal.onRequestClose : toggle}
-        accessibilityLabel={modal ? 'Close dialog' : open ? 'Close navigation' : 'Open navigation'} />
+      {hasRail
+        ? <Stack.Toolbar.Button icon={modal ? 'xmark' : 'line.3.horizontal'} tintColor={palette.text}
+          onPress={modal ? modal.onRequestClose : toggle}
+          accessibilityLabel={modal ? 'Close dialog' : open ? 'Close navigation' : 'Open navigation'} />
+        : <Stack.Toolbar.Button icon={modal ? 'xmark' : 'line.3.horizontal.decrease'} tintColor={palette.text}
+          onPress={modal ? modal.onRequestClose : toggle}
+          accessibilityLabel={modal ? 'Close dialog' : open ? 'Close navigation' : 'Open navigation'} />}
       {canGoBack ? <Stack.Toolbar.Button icon="chevron.left" tintColor={palette.text}
         onPress={modal ? modal.onRequestClose : onBack} accessibilityLabel="Back" separateBackground /> : null}
     </Stack.Toolbar>
