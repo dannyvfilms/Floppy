@@ -70,6 +70,20 @@ services:
     networks:
       - floppy-net
 
+  floppy-discovery:
+    image: ghcr.io/dannyvfilms/floppy:latest
+    restart: unless-stopped
+    profiles: [discovery]
+    network_mode: host
+    depends_on:
+      floppy:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "app.discovery_advertiser"]
+    environment:
+      FLOPPY_ADVERTISE_HOST: ${FLOPPY_ADVERTISE_HOST:-}
+      FLOPPY_ADVERTISE_PORT: ${FLOPPY_ADVERTISE_PORT:-8000}
+      FLOPPY_ADVERTISE_NAME: ${FLOPPY_ADVERTISE_NAME:-Floppy}
+
   redis:
     image: redis:8-alpine
     container_name: floppy-redis
@@ -94,6 +108,26 @@ networks:
   floppy-net:
     driver: bridge
 ```
+
+### Optional local server discovery
+
+On a Linux Docker host such as Unraid, the optional discovery sidecar advertises
+Floppy over DNS-SD/mDNS. Enable it with `docker compose --profile discovery up
+-d`. The sidecar uses host networking for multicast; Floppy and Redis stay on the
+normal Compose bridge. The phone and server must be on the same local network.
+
+The default advertised port is `8000`. If the published host port differs, set
+`FLOPPY_ADVERTISE_PORT` to that host-side port in the Compose `.env` file. If the
+host has several network interfaces and automatic route selection chooses the
+wrong one, set `FLOPPY_ADVERTISE_HOST` to the LAN IPv4 address that the phone can
+reach. `FLOPPY_ADVERTISE_NAME` can distinguish multiple Floppy instances. Keep
+the discovery profile disabled on hosts that cannot expose mDNS multicast.
+
+The service appears among ordinary HTTP services, but carries a Floppy TXT
+marker; the app checks marked addresses through `/accounts/auth-config/` before
+offering them. Discovery does not make a private server reachable from outside
+the local network. Use a tunnel, VPN or another externally reachable address for
+remote access.
 
 Open `http://localhost:8000`, create your account, then set `REGISTRATION=False` and redeploy so strangers can't sign up.
 

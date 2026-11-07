@@ -90,15 +90,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the server-rendered allauth entrance templates remain the browser implementation and fallback. No browser pass was performed."
+          "evidence": "Not mounted by the web bundle; the server-rendered allauth entrance templates remain the browser implementation and fallback. Browser runtime regression was not exercised in this change."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the wired native Auth screen; server URL, sign-in, session, account-security and redirect-intent paths were not exercised in a simulator."
+          "evidence": "The two-step server/credentials flow compiled in the iOS Expo export, but Device Hub continued showing the previous one-page bundle after reload and the Expo server reports networking disabled. Two-step runtime verification is pending. Earlier Expo Go checks covered the single address action, clear behavior, brief discovery notice, Local/Remote suggestions, and compact Remote info control. Native DNS-SD browsing is not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the wired native Auth screen; server URL, sign-in, session, account-security and redirect-intent paths were not exercised on an emulator."
+          "evidence": "The shared sign-in includes Local/Remote mode, advertised server selection and manual entry. The one-action address/error layout and DNS-SD browsing have not been exercised on Android."
         }
       }
     },
@@ -607,15 +607,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the legacy controls.jsx provider fields remain the browser implementation."
+          "evidence": "Not mounted by the web bundle; the legacy controls.jsx provider fields remain the browser implementation. The configurable trailing inset does not change existing web consumers."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared field through the native Settings provider slot; no simulator run was performed."
+          "status": "verified",
+          "evidence": "In the current Expo Go bundle on Device Hub iOS 27.2, both the server field placeholder and an entered server URL appeared vertically centered in the row. Username and password use the same shared large TextField style; secure credential entry was not separately exercised."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared field through the native Settings provider slot; no emulator run was performed."
+          "evidence": "The shared auth field keeps URL values on one line and uses a single state-dependent trailing action; Android runtime and accessibility verification are pending."
         }
       }
     },

@@ -200,7 +200,8 @@ export default function ShellSlot({
   };
 
   const adaptivePalette = Platform.OS === 'ios' && (hinge || railEdge)
-    ? { ...shellPalette, navRowHeight: 48, navContentPaddingTop: 25, navFontSize: 17, navIconSize: 22 }
+    ? { ...shellPalette, navRowHeight: 44, navContentPaddingTop: 25,
+      navContentPaddingRight: 0, navFontSize: 17, navIconSize: 22 }
     : shellPalette;
   const sidebar = <Sidebar model={model} pins={pins} palette={adaptivePalette}
     labels={SIDEBAR_LABELS}

@@ -43,7 +43,7 @@ Status: `Partial / coexisting`
 - `src/templates/app/components/sidebar_pin_menu.html`
 - `src/templates/base.html`
 - `frontend/ui/GlobalSearch.jsx`, `frontend/ui/mountGlobalSearch.jsx`, `frontend/ui/global-search.css` (header search form inside `base.html`; suggestions stay a server fragment)
-- `frontend/ui/Sidebar.jsx`, `frontend/ui/mountSidebar.jsx`, `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html` and Expo; native adapter supplies larger foldable row tokens, a 25-point top inset on iOS side-rail layouts to align the Home highlight with the camera-cutout-centered search field, and hides Appearance; explicit uniform row corners and Reveal animate native Explore without forced scrolling; the onboarding banner stays a server slot)
+- `frontend/ui/Sidebar.jsx`, `frontend/ui/mountSidebar.jsx`, `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html` and Expo; native adapter supplies 44-point rows, a 25-point top inset on iOS side-rail layouts to align the Home highlight with the camera-cutout-centered search field, and hides Appearance; explicit uniform row corners and Reveal animate native Explore without forced scrolling; the onboarding banner stays a server slot)
 - `native-proof/app/surfaces/ShellSlot.jsx`, `native-proof/app/surfaces/NativeShell.ios.jsx`, `native-proof/app/surfaces/NativeShell.jsx`, `native-proof/app/surfaces/NativeRoot.ios.jsx`, `native-proof/app/surfaces/NativeRoot.jsx`, `native-proof/app/surfaces/menuGeometry.mjs`, `native-proof/app/routes/_layout.jsx`, `native-proof/app/routes/index.jsx`, `native-proof/App.js` (Expo navigation model, menu button first below Wi-Fi in the iOS side-rail toolbar with modal X replacing it in the same slot, Back toolbar, single native drawer/canvas layout transition; search is centered on the camera cutout and the sidebar Home highlight shares its vertical position; Android and web retain the shared modal path)
 - `frontend/ui/Icon.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
 - `src/app/card_events.py` (the floppyCardUpdate event sent by `media_save` and the score views so React cards refresh their status chip and rating)
@@ -81,6 +81,8 @@ build artifacts. The Python composition tag is documented in the register.
 - `frontend/ui/Modal.jsx`, `frontend/ui/Modal.native.jsx`, `frontend/ui/Modal.web.jsx` (shared modal boundary and header close controls; Duo canvas host and topmost rail dismissal; existing dialog consumers retain their mapped surface ownership)
 
 Status: `Partial / coexisting`
+
+The shared React Native `TextField` keeps its large fixed-height input vertically centered without imposing a line-height; legacy browser fields remain owned by `controls.jsx` and CSS.
 
 - `frontend/ui/controls`
 - `frontend/ui/controls.css`
@@ -825,7 +827,9 @@ Status: `Legacy`
 
 ## AUTH
 
-Status: `Legacy`
+Status: `Partial / coexisting`
+
+Native `AuthEntrance` separates server selection from credentials, keeps manual entry, changes its suggested address with Local/Remote mode, and explains briefly that discovery is unavailable in Expo Go; browser authentication remains server-rendered.
 
 - `src/templates/account/login.html`
 - `src/templates/account/messages/logged_in.txt`
@@ -851,6 +855,12 @@ Status: `Legacy`
 - `src/templates/socialaccount/snippets/provider_list.html`
 - `src/templates/users/account.html`
 - `src/templates/users/password_recover.html`
+- `frontend/auth/AuthEntrance.jsx`
+- `native-proof/app/screens/AuthScreen.jsx`
+- `native-proof/app/data/serverDiscovery.native.js`
+- `native-proof/app/data/serverDiscovery.web.js`
+- `native-proof/app/data/serverDiscoveryCore.js`
+- `native-proof/app/data/authTransportCore.js`
 
 ## SET-NOTIFICATIONS
 
@@ -921,7 +931,6 @@ Status: `Legacy`
 Status: `Partial / coexisting`
 
 - `frontend/auth/AccountSecurity.jsx`
-- `frontend/auth/AuthEntrance.jsx`
 - `frontend/discover/DiscoverScreen.jsx`
 - `frontend/discover/mountDiscover.jsx`
 - `frontend/errors/ApiDocs.jsx`

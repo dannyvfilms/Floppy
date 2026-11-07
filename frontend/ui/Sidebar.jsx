@@ -427,7 +427,10 @@ export function Sidebar({
         : <Text style={[styles.logoText, { color: palette.text }]}>{logo.text || labels.logo}</Text>}
     </View> : null}
     <ScrollView ref={list} style={styles.primary}
-      contentContainerStyle={[styles.navContent, { paddingTop: palette.navContentPaddingTop ?? 16 }]}
+      contentContainerStyle={[styles.navContent, {
+        paddingTop: palette.navContentPaddingTop ?? 16,
+        paddingRight: palette.navContentPaddingRight ?? 16,
+      }]}
       onContentSizeChange={() => { if (navOpen && autoScrollExplore) list.current?.scrollToEnd?.({ animated: false }); }}>
       {model.primary.map(item => renderItem({ ...item, pinKey: null }))}
       <View style={[secondaryVisible && styles.secondary, { borderTopColor: palette.border }]}>

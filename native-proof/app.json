@@ -6,7 +6,19 @@
     "version": "1.0.0",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "bundleIdentifier": "app.floppy.nativeproof"
+      "bundleIdentifier": "app.floppy.nativeproof",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Floppy searches your local network for Floppy servers you can connect to.",
+        "NSBonjourServices": ["_http._tcp."]
+      }
+    },
+    "android": {
+      "permissions": [
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.ACCESS_WIFI_STATE",
+        "android.permission.CHANGE_WIFI_MULTICAST_STATE",
+        "android.permission.ACCESS_LOCAL_NETWORK"
+      ]
     },
     "experiments": {
       "baseUrl": "/static/native-proof"
