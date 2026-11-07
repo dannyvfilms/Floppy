@@ -320,11 +320,20 @@ class AlphabetBrowserTests(SerialStaticLiveServerTestCase):
                         "element => element.scrollHeight <= element.clientHeight + 1"
                     )
                 )
-                self.assertTrue(
-                    rail.locator("a").evaluate_all(
-                        "elements => elements.every(element => { const bounds = element.getBoundingClientRect(); return bounds.top >= 96 && bounds.bottom <= innerHeight - 15; })"
-                    )
+                # Verify the actual link hit areas, not only the clipped rail.
+                # Include the offending letter and measured viewport position
+                # in failures so a short-screen regression is diagnosable.
+                violations = rail.locator("a").evaluate_all(
+                    """elements => elements.flatMap(element => {
+                      const rect = element.getBoundingClientRect();
+                      const within = rect.top >= 95 && rect.bottom <= innerHeight - 14;
+                      return within ? [] : [{
+                        letter: element.getAttribute('aria-label') || element.textContent,
+                        top: rect.top, bottom: rect.bottom, viewport: innerHeight
+                      }];
+                    })"""
                 )
+                self.assertEqual(violations, [], (height, violations))
             page.set_viewport_size({"width": 390, "height": 844})
             expect(page.locator(".alphabet-rail")).to_be_hidden()
             self.assertLessEqual(

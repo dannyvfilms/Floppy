@@ -165,7 +165,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
     def test_import_settings_submit_and_private_gate_still_work(self):
         """React preference writes and private/public toggles preserve entered state."""
         self.open_cards()
-        self.page.locator('[name="user"]').fill("public-person")
+        self.page.get_by_label("Public username", exact=True).fill("public-person")
         with self.page.expect_response(lambda response: "/settings/import/save-settings" in response.url) as result:
             self.choose_option("Override mode", "Overwrite Existing")
         self.assertEqual(result.value.status, 204)
@@ -182,7 +182,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         toggle.press("Space")
         expect(toggle).to_have_text("Public")
         expect(toggle).to_have_attribute("aria-pressed", "false")
-        expect(self.page.locator('[name="user"]')).to_have_value("public-person")
+        expect(self.page.get_by_label("Public username", exact=True)).to_have_value("public-person")
         self.assertEqual(self.errors, [])
 
     def test_shared_import_preferences_and_steam_tooltip(self):
@@ -195,10 +195,10 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.assertLess(mode.bounding_box()["y"], frequency.bounding_box()["y"])
         self.choose_option("Import Mode", "Watchlist")
         expect(self.page.get_by_text("This import mode is not supported by this provider.")).to_be_visible()
-        expect(self.page.get_by_role("combobox", name="Watchlist status")).to_contain_text("Planning")
-        expect(self.page.get_by_role("combobox", name="Watchlist tag")).to_contain_text("No tag")
+        expect(self.select_trigger("Watchlist status")).to_contain_text("Planning")
+        expect(self.select_trigger("Watchlist tag")).to_contain_text("No tag")
         self.choose_option("Import Mode", "History")
-        expect(self.page.get_by_role("combobox", name="Override mode")).to_be_visible()
+        expect(self.select_trigger("Override mode")).to_be_visible()
         tooltip = self.page.locator("[data-tooltip-root] button")
         tooltip.click()
         box = self.page.get_by_role("tooltip").bounding_box()
@@ -284,10 +284,15 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         activity_card = root.locator('[data-testid="settings-card"]').filter(has=self.page.get_by_role("heading", name="Automatic import"))
         expect(activity_card.get_by_text("Connecting starts an initial import and recurring sync.")).to_be_visible()
         expect(activity_card.get_by_role("button", name="View activity")).to_be_visible()
-        colors = self.page.evaluate("""() => ['Connect', 'View activity'].map(label => {
-          const element = Array.from(document.querySelectorAll('[role="button"]')).find(node => node.getAttribute('aria-label') === label);
-          const style = getComputedStyle(element); return [style.backgroundColor, style.color, element.getBoundingClientRect().width];
-        })""")
+        colors = [
+            self.page.get_by_role("button", name=label, exact=True).evaluate(
+                """element => {
+                  const style = getComputedStyle(element);
+                  return [style.backgroundColor, style.color, element.getBoundingClientRect().width];
+                }"""
+            )
+            for label in ("Connect", "View activity")
+        ]
         self.assertEqual(colors[0], colors[1])
         root.get_by_label("Base URL").fill("https://books.example.com")
         root.get_by_label("API token").fill("browser-secret-token")
@@ -324,7 +329,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=import")
         frequency = self.select_trigger("Import Frequency")
         expect(frequency).to_be_disabled()
-        expect(frequency).to_have_text("One Time Import")
+        expect(frequency).to_contain_text("One Time Import")
         self.page.get_by_role("button", name="Import frequency help").click()
         expect(self.page.get_by_role("tooltip")).to_contain_text("automatic imports are unavailable")
         expect(self.page.get_by_role("link", name="CLZ (formerly Collectorz.com)")).to_have_attribute("href", "https://clz.com/")
@@ -339,7 +344,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.goto(f"{self.live_server_url}/settings/providers/hardcover?tab=import")
         frequency = self.select_trigger("Import Frequency")
         expect(frequency).to_be_enabled()
-        expect(frequency).to_have_text("Every Day")
+        expect(frequency).to_contain_text("Every Day")
         self.assertEqual(self.errors, [])
 
     @patch("integrations.views._queue_staged_task_or_message")
@@ -352,7 +357,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(self.page.locator('[data-file-import-root][data-react-mounted="true"]')).to_be_visible()
         mode = self.select_trigger("Import Mode")
         expect(mode).to_be_disabled()
-        expect(mode).to_have_text("Collection and wishlist")
+        expect(mode).to_contain_text("Collection and wishlist")
         self.page.get_by_role("button", name="Import mode help").click()
         expect(self.page.get_by_role("tooltip")).to_contain_text("does not import reading or viewing history")
         self.choose_option("Wishlist items", "Planning")
@@ -809,7 +814,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.goto(f"{self.live_server_url}/settings/providers/openlibrary?tab=metadata")
         expect(self.page.locator('[data-provider-root][data-react-mounted="true"]')).to_have_count(1)
         self.page.get_by_role("button", name="Configure Books", exact=True).click()
-        expect(self.select_trigger("Provider for new titles")).to_have_text("Hardcover")
+        expect(self.select_trigger("Provider for new titles")).to_contain_text("Hardcover")
         expect(self.page.get_by_role("img", name="Search results: From Hardcover", exact=True)).to_be_visible()
         for width in (390, 768, 1440):
             self.page.set_viewport_size({"width": width, "height": 1000})
@@ -821,7 +826,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             self.page.goto(f"{self.live_server_url}/settings/providers/{slug}?tab=metadata")
             expect(self.page.locator('[data-provider-root][data-react-mounted="true"]')).to_have_count(1)
             expect(self.page.locator('[data-testid="feature-list"] [data-testid="feature-row"]').first).to_be_visible()
-            feature_list = self.page.locator('[data-testid="feature-list"]')
+            feature_list = self.page.locator('[data-testid="provider-metadata"] [data-testid="feature-list"]').first
             expect(feature_list.get_by_text("Active", exact=True)).to_have_count(0)
             self.assertTrue(feature_list.evaluate("element => element.nextElementSibling === null"))
             self.assertTrue(feature_list.locator('[data-testid="feature-row"]').evaluate_all("""rows => rows.every(row => {
