@@ -364,5 +364,5 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         # The checkbox sits inside the card's link; a click on it used to be
         # cancelled, so it never ticked (the rest of the card still worked).
         expect(checkbox).to_be_checked()
-        expect(self.page.get_by_text("1 selected")).to_be_visible()
+        expect(self.page.locator(".ui-bulk-count span")).to_have_text("1 item selected")
         self.assertEqual(self.page.url, list_url)
