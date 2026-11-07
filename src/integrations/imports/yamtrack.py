@@ -820,6 +820,8 @@ class YamtrackImporter:
                 continue
             raw_value = (row.get(field.name) or "").strip()
             if not raw_value:
+                if field.name == "progressed_at":
+                    values[field.name] = None
                 continue
             parsed = parse_value(raw_value)
             if parsed is not None:

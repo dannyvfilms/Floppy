@@ -8,6 +8,7 @@ from app.models.choices import MediaTypes
 from users.card_metadata import (
     ABSORBED_PREFERENCE_FIELDS,
     OMIT,
+    _resolve_last_played_dt,
     absorbed_preference_value,
     apply_absorbed_preference,
     default_profile,
@@ -25,6 +26,32 @@ class CardMetadataTests(SimpleTestCase):
         self.assertEqual(profile["fields"], ["release_year", "progress"])
         self.assertEqual(profile["display"], "hover")
         self.assertFalse(profile["options"]["rating"]["hide_zero"])
+
+    def test_last_played_does_not_fall_back_to_created_at(self):
+        """An unknown play date stays absent rather than becoming Date Added."""
+        item = SimpleNamespace(media_type=MediaTypes.MOVIE.value)
+        media = SimpleNamespace(
+            last_played_at=None,
+            aggregated_end_date=None,
+            end_date=None,
+            progressed_at=None,
+            created_at=object(),
+        )
+
+        self.assertIsNone(_resolve_last_played_dt(item, media))
+
+    def test_last_played_uses_end_date_when_progressed_at_is_unknown(self):
+        """A known completion date remains a valid Last Played value."""
+        item = SimpleNamespace(media_type=MediaTypes.MOVIE.value)
+        end_date = object()
+        media = SimpleNamespace(
+            last_played_at=None,
+            aggregated_end_date=None,
+            end_date=end_date,
+            progressed_at=None,
+        )
+
+        self.assertIs(_resolve_last_played_dt(item, media), end_date)
 
     def test_parser_drops_unknown_fields(self):
         """A stale field id cannot land in the stored profile."""
