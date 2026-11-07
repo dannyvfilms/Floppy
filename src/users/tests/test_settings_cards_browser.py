@@ -78,7 +78,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         """Allow real local HTTP responses and block only provider traffic/chunks."""
         url = urlsplit(route.request.url)
         if url.netloc != urlsplit(self.live_server_url).netloc or (self.block_renderer and (
-            "/static/ui/mount-" in url.path or "/static/ui/Directory-" in url.path
+            "/static/ui/mount" in url.path or "/static/ui/Directory-" in url.path
         )):
             route.abort()
         else:
@@ -233,7 +233,8 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             self.page.emulate_media(color_scheme=scheme)
             self.open_cards()
             for label in ("Import Frequency", "Import Mode", "Public username"):
-                field = self.page.get_by_label(label, exact=True)
+                field = (self.page.get_by_label(label, exact=True)
+                         if label == "Public username" else self.select_trigger(label))
                 style = field.evaluate("""element => {
                   const style = getComputedStyle(element), probe = document.createElement('div');
                   probe.style.color = 'var(--color-surface-border)'; element.after(probe);
@@ -269,7 +270,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
                 self.open_cards(tab)
                 heading = self.page.get_by_role("heading", name=title, exact=True)
                 gap = heading.evaluate("""heading => heading.getBoundingClientRect().top -
-                  document.querySelector('.ui-tabs').getBoundingClientRect().bottom""")
+                  document.querySelector('[role="tablist"]').getBoundingClientRect().bottom""")
                 self.assertGreaterEqual(gap, 23)
                 self.assertLessEqual(gap, 26)
                 gaps.append(gap)
@@ -285,7 +286,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
                 self.page.goto(f"{self.live_server_url}/settings/providers/steam?tab={tab}")
                 heading = self.page.get_by_role("heading", name=title, exact=True)
                 expect(heading).to_be_visible()
-                gaps.append(heading.evaluate("heading => heading.getBoundingClientRect().top - document.querySelector('.ui-tabs').getBoundingClientRect().bottom"))
+                gaps.append(heading.evaluate("heading => heading.getBoundingClientRect().top - document.querySelector('[role="tablist"]').getBoundingClientRect().bottom"))
             self.assertLessEqual(abs(gaps[0] - gaps[1]), 2, (width, gaps))
             self.assertEqual(self.page.locator(".ui-card-grid").count(), 1)
             heading = self.page.get_by_role("heading", name="Import settings", exact=True)
@@ -854,7 +855,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
           return field.getBoundingClientRect().top - element.getBoundingClientRect().bottom;
         }""")
         self.assertGreaterEqual(gap, 10)
-        self.page.get_by_role("navigation", name="Provider sections").get_by_role("link", name="Metadata", exact=True).click()
+        self.page.get_by_role("navigation", name="Provider sections").get_by_role("tab", name="Metadata", exact=True).click()
         expect(self.page.get_by_text("Public artwork needs no API key", exact=True)).to_have_count(0)
         expect(self.page.get_by_role("img", name="Title logos: Active", exact=True)).to_be_visible()
         expect(self.page.get_by_role("img", name="Background images: Active", exact=True)).to_be_visible()
@@ -1018,9 +1019,9 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             key_link.click()
         popup.value.close()
         for name in ("Overview", "Connection", "Import", "Activity"):
-            tab = self.page.get_by_role("navigation", name="Provider sections").get_by_role("link", name=name, exact=True)
+            tab = self.page.get_by_role("navigation", name="Provider sections").get_by_role("tab", name=name, exact=True)
             tab.hover()
             self.assertEqual(tab.evaluate("element => getComputedStyle(element).textDecorationLine"), "none")
-        active = self.page.locator('.ui-tabs a[aria-current="page"]')
+        active = self.page.get_by_role("tab", name="Activity", exact=True)
         self.assertEqual(active.evaluate("element => getComputedStyle(element).borderBottomWidth"), "2px")
         self.assertEqual(self.errors, [])
