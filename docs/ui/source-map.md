@@ -485,9 +485,17 @@ Status: `Legacy`
 - `src/templates/app/components/detail_music_track_actions.html`
 - `src/templates/app/components/detail_music_track_button.html`
 - `src/templates/app/components/detail_music_track_history_line.html`
-- `src/templates/app/components/podcast_episode_list.html`
+- `src/templates/app/components/podcast_episode_list.html` (optional episode description and empty state)
 - `src/templates/app/music_album_detail.html`
 - `src/templates/app/podcast_show_detail.html`
+
+## PODCAST-EPISODES
+
+Status: `Partial / coexisting`
+
+- `frontend/ui/PodcastEpisodeManager.jsx`
+- `frontend/ui/mountPodcastEpisodeManager.jsx`
+- `src/templates/app/podcast_episodes_manage.html`
 
 ## PEOPLE
 
@@ -530,7 +538,7 @@ Status: `Legacy`
 
 Status: `Legacy`
 
-- `src/templates/app/components/detail_secondary_content.html` (related and DLC sections, plus the Book "Format" and "Narrator" facts)
+- `src/templates/app/components/detail_secondary_content.html` (related and DLC sections, the Book "Format" and "Narrator" facts, and the manual podcast manager trigger)
 
 ## HISTORY
 

@@ -74,6 +74,17 @@ class PodcastEpisode(models.Model):
     )
     title = models.CharField(max_length=500)
     slug = models.CharField(max_length=255, blank=True, default="")
+    description = models.TextField(
+        blank=True,
+        default="",
+        help_text="Episode description from the feed or manual entry",
+    )
+    image = models.URLField(
+        max_length=500,
+        blank=True,
+        default="",
+        help_text="Episode artwork URL, when it differs from the show image",
+    )
     published = models.DateTimeField(null=True, blank=True)
     duration = models.PositiveIntegerField(
         null=True,

@@ -449,7 +449,7 @@ can inform a focused completion pass.
 
 - Purpose/usage: dialogs and manual creation.
 - Status: `Deferred (blocker)`. The Track popup and manual-entry forms are server forms with htmx out-of-band responses. The blocker, port order and reopening condition are recorded under POPUP-HOST (Track form). A few includes use `Button`, `Spinner` and `Badge`.
-- Implementation: `src/templates/app/create_entry.html`, fill-track/music/podcast modals, metadata panel; `src/static/js/mediaStatusDateHandler.js`, `episodeBulkTrackForm.js`.
+- Implementation: `src/templates/app/create_entry.html`, fill-track/music/podcast modals, metadata panel; `src/static/js/mediaStatusDateHandler.js`, `episodeBulkTrackForm.js`. Create Custom Entry now also offers an optional RSS Feed URL for custom podcasts; it is stored on `PodcastShow` and queues the existing RSS import. The React track-form island mirrors the legacy `[data-track-modal-root]` Alpine open state (`frontend/ui/mountTrackForm.jsx`), so its portal dialog stays hidden until the user opens the legacy popup instead of covering the page from first paint.
 - Contract: medium fields/repeat identity, date/status/progress coupling, notes/errors/delete/events; bulk range/add modes/date distribution remain supported.
 - Data: `src/app/track_modal_views.py`, `save_views.py`, Django forms and music/podcast handlers.
 - Backend normalization: season modals use the tracked item's coordinate; missing
@@ -521,11 +521,24 @@ can inform a focused completion pass.
 
 - Purpose/usage: artist relations/discography, album tracks, show/episode detail.
 - Status: `Legacy`. Artist, album and podcast pages are server templates and Alpine; they use shared React `Badge` (type, year, genre pills), the rating picker and the Add-to-lists form.
-- Implementation: `src/templates/app/music_album_detail.html`, `podcast_show_detail.html`, music/artist/album/podcast components in map.
+- Implementation: `src/templates/app/music_album_detail.html`, `podcast_show_detail.html`, music/artist/album/podcast components in map. Podcast episode rows now render an optional description and an empty state; the manual-show episode header mounts the separate `PODCAST-EPISODES` manager.
 - Contract: hierarchy/deferred art, per-track actions/history/notes/scores, episode filter/pagination, repeats and show tracking.
 - Data: `src/app/music_views.py`, `music_album_views.py`, `podcast_views.py`; web episode JSON/HTML is not proven native API parity.
 - Reuse/blockers: consume shared cards/rows/tracking; preserve hierarchy/feed behavior and explicit playback boundaries.
 - Validation targets: `src/app/tests/views/test_music_release_views.py`, `test_podcast_show_detail.py`, `test_podcast_detail_rss_refresh.py`.
+
+### PODCAST-EPISODES — Manual podcast episode management
+
+- Purpose/usage: add, edit and delete episodes on a podcast show created through Create Custom Entry.
+- Status: `Partial / coexisting`. React owns the manager trigger, dialog, episode list, form and inline delete confirmation through `PodcastEpisodeManager.jsx`; the episode rows, detail header and no-JavaScript management page remain server-rendered.
+- Native readiness: `Primitives`. The dialog and form use React Native primitives, shared `Button`, `FormTextField`, `FormError`, `FormStatus` and `Dialog`; it is not mounted in the native shell.
+- Implementation: `frontend/ui/PodcastEpisodeManager.jsx`, `frontend/ui/mountPodcastEpisodeManager.jsx`, `src/templates/app/podcast_episodes_manage.html`. The manager trigger is mounted from `src/templates/app/components/detail_secondary_content.html` and `src/templates/app/podcast_show_detail.html`.
+- Contract: manual shows only (the viewer must track the show); create/edit submit the existing Django form and return field errors as JSON; delete asks for confirmation; duration accepts minutes, mm:ss or h:mm:ss; manual episodes reuse the normal PodcastEpisode catalog so episode tracking, playback progress, history and statistics keep working. Provider-backed shows keep their feed-owned catalog.
+- Data: `src/app/podcast_views.py` (`podcast_episodes_manage`, `podcast_episode_add`, `podcast_episode_edit`, `podcast_episode_delete`), `src/app/forms.py` (`PodcastEpisodeForm`), `src/app/models/podcast.py` (`description`, `image`), migration `0223_podcastepisode_description_podcastepisode_image`. Create Custom Entry can also store an optional RSS feed and queue the existing RSS import.
+- Reuse/blockers: remaining legacy consumers are the episode list rows, the standalone show page and the no-JavaScript fallback page. They move when the MUSIC episode-row family is ported; the manager no longer depends on them.
+- Verification: Django tests (`app.tests.views.test_manual_podcast_episodes`, `test_entry`, `test_podcast_show_detail`, `test_podcast_rss_refresh`, `test_music_genres`), `npm run check:ui`, `npm run check:ui-architecture` and `python3 scripts/check_ui_docs.py` pass. Headless Chromium against a local manual show verified the trigger, add, edit, delete and the normal episode track modal. iOS and Android were not run.
+- Related work: #1719.
+- Deferrals: none.
 
 ### PEOPLE — People/studios, credits and medium extras
 

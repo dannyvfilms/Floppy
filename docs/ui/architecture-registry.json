@@ -3212,6 +3212,26 @@
           "evidence": "Settings nav row added for the shared settings navigation; browser anchors are supplied by the web adapter and iOS/Android runtime was not exercised."
         }
       }
+    },
+    "frontend/ui/PodcastEpisodeManager.jsx": {
+      "components": [
+        "PodcastEpisodeManager"
+      ],
+      "register": "PODCAST-EPISODES",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Headless Chromium against a local manual podcast show: opened the manager, added an episode, edited it, deleted it, and opened the episode track modal; the web bundle was served from the committed build."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Universal file uses React Native primitives and theme props; it is not placed in the native app shell and no simulator pass was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Universal file uses React Native primitives and theme props; it is not placed in the native app shell and no emulator pass was performed."
+        }
+      }
     }
   },
   "legacy": {},
@@ -4691,6 +4711,10 @@
     "frontend/settings/mountSettingsView.jsx": {
       "register": "SET-NAV",
       "purpose": "Mount the shared settings page composition from the server navigation/page model: render the shared nav and page wrapper, keep the existing server-owned forms by re-parenting the page content into the composition slot, and process the new boosted anchors with HTMX."
+    },
+    "frontend/ui/mountPodcastEpisodeManager.jsx": {
+      "register": "PODCAST-EPISODES",
+      "purpose": "Browser adapter for the shared manual podcast episode manager: mount the island, read the current theme palette, load the show's manual episodes as JSON, and POST create/edit/delete through the existing Django forms and CSRF contract."
     }
   }
 }
