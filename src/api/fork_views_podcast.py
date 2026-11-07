@@ -56,7 +56,8 @@ def _serialize_show(show, tracker=None):
         "description": show.description,
         "genres": show.genres,
         "language": show.language,
-        "rss_feed_url": show.rss_feed_url,
+        # No rss_feed_url: shows are a shared catalog and an imported
+        # feed URL can carry the importing user's private token.
         "website_url": show.website_url,
         "tracker": tracker_payload,
     }
