@@ -101,7 +101,9 @@ jobs:
           }
 
           wait_for_health() {
-            for _ in $(seq 1 60); do
+            # A cold boot runs migrations before the services listen; allow
+            # that plus one health interval of detection lag.
+            for _ in $(seq 1 120); do
               state=$(docker inspect --format '{{.State.Status}}' "$SMOKE_APP")
               health=$(docker inspect --format '{{.State.Health.Status}}' "$SMOKE_APP")
               if [ "$health" = healthy ]; then

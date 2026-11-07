@@ -167,6 +167,11 @@ def setup_guides(request, slug, context):
                 ]},
                 [_t("Set the webhook URL to:"), _copy("webhook")],
                 [_t("Under the"), _b("Template"), _t("section, paste the following JSON:"), _pre(JELLYFIN_TEMPLATE)],
+                [_b("KefinTweaks watchlist users:"),
+                 _t("KefinTweaks stores watchlist membership as a rating of 1, which Floppy cannot tell apart from a real 1-star rating. "
+                    "Remove the"), _code("{{#if Rating}}"),
+                 _t("block (the comma and the"), _code('"Rating": {{Rating}}'),
+                 _t("line it guards) from the template above. Otherwise every item you add to a KefinTweaks watchlist is saved with a 1-star rating.")],
             ], {"webhook": url}, warning=warning)
         unofficial, _copy_values = _guide(
             _("Jellyfin Integration (Unofficial Repo)"),
