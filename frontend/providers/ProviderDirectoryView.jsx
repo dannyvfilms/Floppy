@@ -278,7 +278,7 @@ export function ProviderDirectoryView({
     <View accessibilityState={{ busy: loading }}>
       <CatalogGrid>
         {items.map(item => <CatalogCard key={item.slug} title={item.title} description={item.description}
-          href={item.url} logo={item.logo} label={item.openLabel} attention={item.attention} status={item.status}
+          logo={item.logo} label={item.openLabel} attention={item.attention} status={item.status}
           pinned={Boolean(item.pinned)}
           pinLabel={item.pinned ? (item.unpinLabel || copy.unpin) : (item.pinLabel || copy.pin)}
           pinDisabled={Boolean(pinPending)}

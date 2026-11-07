@@ -144,7 +144,6 @@ export function CatalogCard({
     {hasPin ? <Pressable
       accessibilityRole="button"
       accessibilityLabel={pinLabel || (pinned ? 'Unpin' : 'Pin')}
-      aria-pressed={Boolean(pinned)}
       accessibilityState={{ disabled: pinDisabled, selected: Boolean(pinned) }}
       disabled={pinDisabled}
       onPress={event => {

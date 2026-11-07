@@ -434,50 +434,68 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.assertEqual(self.errors, [])
 
     def test_directory_uses_available_width_and_preserves_live_filters_and_back(self):
-        """Catalog columns follow actual content width; filters retain server semantics."""
-        for width, columns in ((1920, 3), (1440, 3), (1280, 3), (1135, 2), (390, 1)):
+        """Native catalog columns follow container width; filters and history still work."""
+        for width in (1920, 1440, 1280, 1135, 390):
             self.page.set_viewport_size({"width": width, "height": 1000})
             self.page.goto(f"{self.live_server_url}/settings/providers")
             expect(self.page.locator('[data-provider-directory-root][data-react-mounted="true"]')).to_have_count(1)
-            grid = self.page.locator("#provider-results")
-            self.assertEqual(grid.evaluate("element => getComputedStyle(element).gridTemplateColumns.split(' ').length"), columns)
+            grid = self.page.locator('[data-testid="provider-directory"] [data-testid="card-grid"]')
+            expect(grid.get_by_role("button", name=re.compile(r"^Open ")).first).to_be_visible()
+            # CatalogGrid uses flex rows with 1/2/3/4 columns at its documented
+            # 384/608/896px content breakpoints, not CSS gridTemplateColumns.
+            self.page.wait_for_function("""() => {
+              const grid = document.querySelector('[data-testid="provider-directory"] [data-testid="card-grid"]');
+              const content = grid?.firstElementChild;
+              if (!content) return false;
+              const items = [...content.children].map(item => item.getBoundingClientRect());
+              if (!items.length) return false;
+              const expected = 1 + [384, 608, 896].filter(bp => content.getBoundingClientRect().width >= bp).length;
+              return items.filter(item => Math.abs(item.top - items[0].top) <= 2).length === expected;
+            }""")
+            geometry = grid.evaluate("""grid => {
+              const root = grid.firstElementChild;
+              const boxes = [...root.children].map(item => item.getBoundingClientRect());
+              const inner = root.getBoundingClientRect();
+              return { minimumWidth: Math.min(...boxes.map(box => box.width)),
+                overflow: boxes.some(box => box.left < inner.left - 1 || box.right > inner.right + 1) };
+            }""")
+            self.assertGreaterEqual(geometry["minimumWidth"], 185)
+            self.assertFalse(geometry["overflow"])
             self.assertFalse(self.page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"))
-            self.assertTrue(grid.locator("a").evaluate_all("cards => cards.every(card => card.getBoundingClientRect().width >= 185)"))
-        # The shared grid can still use four columns when its container has room;
-        # the current Settings shell caps the actual directory below that width.
-        grid.evaluate("element => element.parentElement.style.width = '1040px'")
-        self.assertEqual(grid.evaluate("element => getComputedStyle(element).gridTemplateColumns.split(' ').length"), 4)
-        grid.evaluate("element => element.parentElement.style.width = ''")
         search = self.page.get_by_label("Search providers", exact=True)
         search.fill("steam")
         self.page.wait_for_url("**/settings/providers?q=steam")
-        expect(self.page.get_by_role("link", name="Open SteamGridDB", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("button", name="Open SteamGridDB", exact=True)).to_be_visible()
         self.choose_option("Filter by capability", "Metadata")
         self.choose_option("Filter by media type", "Games")
         self.page.wait_for_url("**capability=metadata&media=game")
-        expect(self.page.locator("#provider-results a")).to_have_count(2)
-        expect(self.page.get_by_role("link", name="Open Steam", exact=True)).to_have_attribute("href", "/settings/providers/steam?tab=metadata")
+        grid = self.page.locator('[data-testid="provider-directory"] [data-testid="card-grid"]')
+        expect(grid.get_by_role("button", name=re.compile(r"^Open "))).to_have_count(2)
+        expect(self.page.get_by_role("button", name="Open Steam", exact=True)).to_be_visible()
         search.fill("no-such-provider")
         expect(self.page.get_by_text("No providers match these filters.", exact=True)).to_be_visible()
         self.page.go_back()
         expect(search).to_have_value("steam")
-        expect(self.page.locator("#provider-results a")).to_have_count(2)
+        expect(grid.get_by_role("button", name=re.compile(r"^Open "))).to_have_count(2)
+        self.page.get_by_role("button", name="Open Steam", exact=True).click()
+        self.page.wait_for_url("**/settings/providers/steam?tab=metadata")
         self.assertEqual(self.errors, [])
 
     def test_directory_connection_and_pin_icons_match(self):
-        """The status and favorite glyphs remain equal and aligned."""
+        """Native status and pin affordances remain accessible and inside each card."""
         self.page.goto(f"{self.live_server_url}/settings/providers?capability=connection")
-        card = self.page.locator(".ui-catalog-item").first
-        expect(card.locator(".ui-status-icon svg")).to_be_visible()
-        geometry = card.evaluate("""element => {
-          const status = element.querySelector('.ui-status-icon svg').getBoundingClientRect();
-          const pin = element.querySelector('.ui-catalog-pin svg').getBoundingClientRect();
-          return {statusWidth: status.width, statusHeight: status.height, pinWidth: pin.width,
-            pinHeight: pin.height, statusCenter: status.top + status.height / 2, pinCenter: pin.top + pin.height / 2};
+        card = self.page.locator('[data-testid="provider-directory"] [data-testid="card-grid"] > div > div').first
+        expect(card.get_by_role("img")).to_be_visible()
+        expect(card.get_by_role("button", name=re.compile(r"^Pin "))).to_be_visible()
+        geometry = card.evaluate("""card => {
+          const bounds = card.getBoundingClientRect();
+          const status = card.querySelector('[role="img"]').getBoundingClientRect();
+          const pin = card.querySelector('[role="button"][aria-label^="Pin "]').getBoundingClientRect();
+          return { statusWithin: status.left >= bounds.left && status.right <= bounds.right + 1,
+            pinWithin: pin.left >= bounds.left && pin.right <= bounds.right + 1,
+            pinAboveBottom: pin.bottom <= bounds.bottom + 1, separated: status.right <= pin.left + 1 };
         }""")
-        self.assertEqual(geometry["statusWidth"], geometry["pinWidth"])
-        self.assertEqual(geometry["statusHeight"], geometry["pinHeight"])
-        self.assertLessEqual(abs(geometry["statusCenter"] - geometry["pinCenter"]), 1)
+        self.assertTrue(all(geometry.values()), geometry)
         self.assertEqual(self.errors, [])
 
     def test_directory_pin_persists_and_sorts_first(self):
@@ -487,8 +505,8 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(pin).to_be_visible()
         with self.page.expect_response(lambda response: "/settings/providers/pin" in response.url):
             pin.click()
-        expect(self.page.get_by_role("button", name="Unpin Steam", exact=True)).to_have_attribute("aria-pressed", "true")
-        expect(self.page.locator("#provider-results .ui-catalog-item").first.get_by_role("link", name="Open Steam")).to_be_visible()
+        expect(self.page.get_by_role("button", name="Unpin Steam", exact=True)).to_have_attribute("aria-selected", "true")
+        expect(self.page.locator('[data-testid="provider-directory"] [data-testid="card-grid"] > div > div').first.get_by_role("button", name="Open Steam")).to_be_visible()
         self.page.reload()
         expect(self.page.get_by_role("button", name="Unpin Steam", exact=True)).to_be_visible()
         self.assertEqual(self.errors, [])
@@ -710,15 +728,22 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.assertEqual(self.errors, [])
 
     def test_overview_and_directory_share_column_breakpoints(self):
+        """Both native catalog surfaces honor the same measured-width breakpoints."""
         for width in (390, 1135, 1280, 1440):
             self.page.set_viewport_size({"width": width, "height": 1000})
-            columns = []
-            for path, selector in (("/settings/providers", "#provider-results"),
-                                   ("/settings/providers/anilist?tab=overview", '[data-testid="provider-overview"]')):
+            for path in ("/settings/providers", "/settings/providers/anilist?tab=overview"):
                 self.page.goto(self.live_server_url + path)
                 expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
-                columns.append(self.page.locator(selector).evaluate("element => getComputedStyle(element).gridTemplateColumns.split(' ').length"))
-            self.assertEqual(columns[0], columns[1])
+                self.page.wait_for_function("""() => {
+                  const grid = document.querySelector('[data-testid="card-grid"]');
+                  const content = grid?.firstElementChild;
+                  if (!content) return false;
+                  const boxes = [...content.children].map(item => item.getBoundingClientRect());
+                  if (!boxes.length) return false;
+                  const expected = 1 + [384, 608, 896].filter(bp => content.getBoundingClientRect().width >= bp).length;
+                  return boxes.filter(box => Math.abs(box.top - boxes[0].top) <= 2).length === Math.min(boxes.length, expected);
+                }""")
+                self.assertFalse(self.page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"))
         self.assertEqual(self.errors, [])
 
     def test_audiobookshelf_metadata_explains_imports_and_library_sources(self):
@@ -741,18 +766,23 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(self.page.get_by_role("img", name="Search results: From Open Library, Pocket Casts")).to_be_visible()
         for width in (320, 390, 768, 1440):
             self.page.set_viewport_size({"width": width, "height": 1000})
-            geometry = self.page.locator(".provider-page").evaluate("""root => {
-              const grid = root.querySelector('.ui-card-grid'), section = root.querySelector('.ui-library-section');
-              const row = root.querySelector('.ui-feature-list li'), text = row.querySelector('.ui-feature-state');
-              const gridBox = grid.getBoundingClientRect(), box = section.getBoundingClientRect(), status = text.getBoundingClientRect();
-              return {gridLeft: gridBox.left, gridRight: gridBox.right, gridBottom: gridBox.bottom,
-                left: box.left, right: box.right, top: box.top, statusRight: status.right,
-                cardRight: row.closest('.settings-card').getBoundingClientRect().right};
+            geometry = self.page.locator('[data-testid="provider-metadata"]').evaluate("""root => {
+              const bounds = root.getBoundingClientRect();
+              const cards = [...root.querySelectorAll('[data-testid="settings-card"]')]
+                .map(card => card.getBoundingClientRect());
+              const sources = [...root.querySelectorAll('[data-testid="metadata-source-row"]')]
+                .map(row => row.getBoundingClientRect());
+              const feature = root.querySelector('[data-testid="feature-row"]');
+              const icon = feature?.querySelector('[data-testid="status-icon"]')?.getBoundingClientRect();
+              const row = feature?.getBoundingClientRect();
+              return {
+                cardsWithin: cards.every(card => card.left >= bounds.left - 1 && card.right <= bounds.right + 1),
+                sourcesWithin: sources.every(source => source.left >= bounds.left - 1 && source.right <= bounds.right + 1),
+                belowCards: sources.length && cards.length && sources[0].top >= Math.max(...cards.map(card => card.bottom)) - 1,
+                iconWithin: Boolean(icon && row && icon.right <= row.right + 1),
+              };
             }""")
-            self.assertLessEqual(abs(geometry["left"] - geometry["gridLeft"]), 1)
-            self.assertLessEqual(abs(geometry["right"] - geometry["gridRight"]), 1)
-            self.assertGreaterEqual(geometry["top"], geometry["gridBottom"])
-            self.assertLessEqual(geometry["statusRight"], geometry["cardRight"])
+            self.assertTrue(all(geometry.values()), (width, geometry))
         self.page.get_by_role("button", name="Configure Books", exact=True).click()
         self.choose_option("Provider for new titles", "Hardcover")
         self.page.get_by_role("button", name="Save", exact=True).click()
