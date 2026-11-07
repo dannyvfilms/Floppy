@@ -1,5 +1,6 @@
+import NativeStatusBar from './app/components/NativeStatusBar';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, SafeAreaView, ScrollView, StatusBar, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Image, SafeAreaView, ScrollView, StyleSheet, View } from 'react-native';
 import { getActiveAuthSession, subscribeAuthSession } from './app/data/authSession';
 import { restoreAuthSession } from './app/data/authTransport';
 import { EXTRA_SCREENS } from './app/extraScreens';
@@ -18,6 +19,7 @@ import SearchScreen from './app/screens/SearchScreen';
 import SettingsScreen from './app/screens/SettingsScreen';
 import StatisticsScreen from './app/screens/StatisticsScreen';
 import ShellSlot from './app/surfaces/ShellSlot';
+import NativeRoot from './app/surfaces/NativeRoot';
 import { statusBarInset } from './app/status-bar-inset';
 import { palette } from './app/theme';
 
@@ -62,13 +64,13 @@ export default function App() {
 
   if (restoring) {
     return <SafeAreaView style={[styles.root, { paddingTop: statusBarInset, alignItems: 'center', justifyContent: 'center' }]}>
-      <StatusBar barStyle="light-content" backgroundColor={palette.background} />
+      <NativeStatusBar backgroundColor={palette.background} />
       <ActivityIndicator color={palette.accentStrong} />
     </SafeAreaView>;
   }
   if (!session) {
     return <SafeAreaView style={[styles.root, { paddingTop: statusBarInset }]}>
-      <StatusBar barStyle="light-content" backgroundColor={palette.background} />
+      <NativeStatusBar backgroundColor={palette.background} />
       <ScrollView contentContainerStyle={styles.entrance} keyboardShouldPersistTaps="handled">
         <Image source={floppyLogo} accessibilityLabel="Floppy"
           resizeMode="contain" style={styles.entranceLogo} />
@@ -105,17 +107,18 @@ export default function App() {
   const ActiveScreen = active ? STACK_SCREENS[active.screen] : TAB_SCREENS[tab];
   const tabParams = tab === 'library' ? { mediaType: libraryType } : undefined;
 
-  return <SafeAreaView style={[styles.root, { paddingTop: statusBarInset }]}>
-    <StatusBar barStyle="light-content" backgroundColor={palette.background} />
+  return <NativeRoot style={[styles.root, { paddingTop: statusBarInset }]}>
+    <NativeStatusBar backgroundColor={palette.background} />
     <ShellSlot active={tab} activeHref={activeHref} onNavigate={openTab} onOpenHref={openHref}
       onOpenSearch={params => navigate('Search', params)}
-      onOpenSuggestion={item => navigate('Detail', { item })} />
-    <View style={styles.body}>
-      {active
-        ? <ActiveScreen params={active.params} navigate={navigate} onBack={back} />
-        : <ActiveScreen navigate={navigate} params={tabParams} />}
-    </View>
-  </SafeAreaView>;
+      onOpenSuggestion={item => navigate('Detail', { item })}>
+      <View style={styles.body}>
+        {active
+          ? <ActiveScreen params={active.params} navigate={navigate} onBack={back} />
+          : <ActiveScreen navigate={navigate} params={tabParams} />}
+      </View>
+    </ShellSlot>
+  </NativeRoot>;
 }
 
 const styles = StyleSheet.create({

@@ -2,7 +2,12 @@
   "expo": {
     "name": "Floppy Native Proof",
     "slug": "floppy-native-proof",
+    "scheme": "floppy-native-proof",
     "version": "1.0.0",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "app.floppy.nativeproof"
+    },
     "experiments": {
       "baseUrl": "/static/native-proof"
     },
@@ -19,7 +24,9 @@
           "photosPermission": "Allow Floppy to read an ISBN barcode from a photo."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      ["expo-router", { "root": "./app/routes" }],
+      "expo-status-bar"
     ]
   }
 }

@@ -15,7 +15,7 @@ import { Icon as WebIcon } from '../ui/IconRenderer.web.jsx';
 
 // Shared components render icons through this adapter, so universal files do
 // not import a browser-only SVG implementation.
-setIconRenderer(spec => React.createElement(WebIcon, { spec }));
+setIconRenderer((spec, options) => React.createElement(WebIcon, { spec, ...options }));
 
 // One small loader on every page; React/RNW are fetched only when a card appears.
 const roots = new Map();

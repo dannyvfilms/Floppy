@@ -43,12 +43,15 @@ Status: `Partial / coexisting`
 - `src/templates/app/components/sidebar_pin_menu.html`
 - `src/templates/base.html`
 - `frontend/ui/GlobalSearch.jsx`, `frontend/ui/mountGlobalSearch.jsx`, `frontend/ui/global-search.css` (header search form inside `base.html`; suggestions stay a server fragment)
-- `frontend/ui/Sidebar.jsx`, `frontend/ui/mountSidebar.jsx`, `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html` and Expo; native adapter supplies larger foldable row tokens; the onboarding banner stays a server slot)
-- `native-proof/app/surfaces/ShellSlot.jsx`, `native-proof/app/surfaces/NativeShell.ios.jsx`, `native-proof/app/surfaces/NativeShell.jsx`, `native-proof/app/surfaces/NativeRoot.ios.jsx`, `native-proof/app/surfaces/NativeRoot.jsx`, `native-proof/app/surfaces/menuGeometry.mjs`, `native-proof/app/routes/_layout.jsx`, `native-proof/app/routes/index.jsx`, `native-proof/App.js` (Expo navigation model, iOS toolbar and adaptive menu; Android and web retain the shared modal path)
+- `frontend/ui/Sidebar.jsx`, `frontend/ui/mountSidebar.jsx`, `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html` and Expo; native adapter supplies larger foldable row tokens and hides Appearance; explicit uniform row corners and Reveal animate native Explore without forced scrolling; the onboarding banner stays a server slot)
+- `native-proof/app/surfaces/ShellSlot.jsx`, `native-proof/app/surfaces/NativeShell.ios.jsx`, `native-proof/app/surfaces/NativeShell.jsx`, `native-proof/app/surfaces/NativeRoot.ios.jsx`, `native-proof/app/surfaces/NativeRoot.jsx`, `native-proof/app/surfaces/menuGeometry.mjs`, `native-proof/app/routes/_layout.jsx`, `native-proof/app/routes/index.jsx`, `native-proof/App.js` (Expo navigation model, iOS toolbar, single native drawer/canvas layout transition and search insets; Android and web retain the shared modal path)
 - `frontend/ui/Icon.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
 - `src/app/card_events.py` (the floppyCardUpdate event sent by `media_save` and the score views so React cards refresh their status chip and rating)
 - `frontend/ui/mountFilterChips.jsx`, `ScrollRow` and `FilterChips` in `frontend/ui/controls` (Discover media-type row; `Tabs` shares `ScrollRow`)
 - `src/templates/base_public.html`
+
+- `native-proof/app/components/NativeStatusBar.jsx`, `native-proof/app/components/NativeStatusBar.ios.jsx`, `native-proof/app/theme.js`, `native-proof/app/systemColor.ios.js`, `native-proof/app/systemColor.js` (iOS system semantic colors; other hosts retain the existing proof palette)
+- `native-proof/app/components/Screen.jsx`, `native-proof/app/components/Screen.ios.jsx` (shared screen presentation; iOS aligns page content and search at a 22-point left inset and removes extra right content padding because the system rail owns that inset)
 
 ## SETTINGS-CARD
 
@@ -301,6 +304,8 @@ Status: `Partial / coexisting`
 - `src/app/bulk_action_views.py`, `src/app/services/bulk_show_plays.py` (endpoints and the Add Plays job; the shared `ActionMenu` lives in `frontend/ui/controls`)
 
 ## SEARCH
+
+- `src/templates/app/icons/magnifying-glass.svg` (connected SVG shared by GlobalSearch, CollectionBrowser, ProviderDirectoryView and remaining server-template search controls; shared SearchIcon is mapped under SHELL)
 
 Status: `Partial / coexisting`
 
@@ -1072,7 +1077,7 @@ Status: `Partial / coexisting`
 - `frontend/ui/RatingStarIcon.native.jsx`
 - `frontend/ui/RatingStarIcon.web.jsx`
 - `frontend/ui/RefreshNotice.jsx`
-- `frontend/ui/ReleaseCalendar.jsx`
+- `frontend/ui/ReleaseCalendar.jsx` (calendar filter/menu dialogs: uniform floating corners; compact bottom-sheet corners preserved)
 - `frontend/ui/Reveal.jsx`
 - `frontend/ui/Reveal.native.jsx`
 - `frontend/ui/Reveal.web.jsx`

@@ -1,3 +1,4 @@
+import { SearchIcon } from './Icon';
 import React, { useMemo, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Badge } from './Badge';
@@ -425,7 +426,7 @@ export function CollectionBrowser({
 
   return <View style={styles.root}>
     {chrome ? <View style={[styles.searchRow, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-      <Text style={[styles.searchGlyph, { color: palette.textMuted }]}>⌕</Text>
+      <SearchIcon color={palette.textMuted} size={20} />
       <TextInput
         accessibilityLabel={labels.search}
         value={filters.query || ''}

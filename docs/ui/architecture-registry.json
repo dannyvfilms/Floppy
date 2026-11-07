@@ -907,7 +907,7 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiles the shared calendar and its durable file-system preference adapter; no iOS simulator run was performed."
+          "evidence": "Floating filter/menu corner symmetry updated; runtime verification pending. Compact bottom-sheet corner geometry retained."
         },
         "android": {
           "status": "unverified",
@@ -1969,7 +1969,7 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Native reveal mounts the open block; no simulator pass for the animation."
+          "evidence": "Shared measured height animation; runtime verification pending physical Duo reconnection."
         },
         "android": {
           "status": "unverified",
@@ -2568,7 +2568,8 @@
     },
     "frontend/ui/Icon.jsx": {
       "components": [
-        "Icon"
+        "Icon",
+        "SearchIcon"
       ],
       "register": "SHELL",
       "verification": {
@@ -2578,7 +2579,7 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the glyph fallback; no simulator run was performed."
+          "evidence": "SearchIcon renders connected magnifier SVG through the installed native renderer; runtime check pending."
         },
         "android": {
           "status": "unverified",
@@ -3850,7 +3851,7 @@
       "components": [
         "Reveal"
       ],
-      "purpose": "Keep the sidebar reveal contract native-compatible; native mount behavior is unchanged pending a platform animation pass.",
+      "purpose": "Resolve shared Reveal with measured height animation and retained children through collapse.",
       "verification": {
         "web": {
           "status": "unverified",
@@ -3858,7 +3859,7 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo source graph; no simulator pass for the reveal."
+          "evidence": "Compile checks only for the animation refinement; physical Duo unavailable in Device Hub."
         },
         "android": {
           "status": "unverified",

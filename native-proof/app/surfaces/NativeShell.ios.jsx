@@ -1,0 +1,92 @@
+import React, { useEffect, useState } from 'react';
+import { AccessibilityInfo, LayoutAnimation, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Stack } from 'expo-router';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
+import { useHinge } from 'expo-hinge';
+import { ArrangementView, Host, RNHostView } from '@expo/ui/swift-ui';
+import { arrangementViewStyle, frame } from '@expo/ui/swift-ui/modifiers';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ReservedRegionsProvider, useReservedRegions } from 'react-native-reserved-regions';
+import { menuGeometry } from './menuGeometry.mjs';
+
+function MenuLayout({ open, sidebar, search, children, palette, division }) {
+  const { width } = useWindowDimensions();
+  const [contentWidth, setContentWidth] = useState(0);
+  const [arrangement, setArrangement] = useState(null);
+  const hinge = useHinge();
+  const measuredDivision = division?.frame || (arrangement?.containerWidth === contentWidth ? arrangement : null);
+  const geometry = menuGeometry(contentWidth || width, hinge?.status, measuredDivision);
+  return <View style={styles.row} onLayout={event => setContentWidth(event.nativeEvent.layout.width)}>
+    {Constants.executionEnvironment === ExecutionEnvironment.StoreClient && hinge?.status === 'partiallyOpen'
+      ? <Host pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
+        style={StyleSheet.absoluteFill}>
+        <ArrangementView modifiers={[arrangementViewStyle('split', { axes: 'horizontal' }), frame({ maxWidth: Infinity, maxHeight: Infinity })]}>
+          <ArrangementView.Primary><RNHostView onLayout={event => {
+            const measured = event.nativeEvent.layout;
+            if (measured.width > 0 && measured.width < contentWidth) {
+              setArrangement(current => current?.x === measured.width && current?.containerWidth === contentWidth
+                ? current : { x: measured.width, width: 0, containerWidth: contentWidth });
+            }
+          }}><View style={styles.root} /></RNHostView></ArrangementView.Primary>
+          <ArrangementView.Secondary><RNHostView><View style={styles.root} /></RNHostView></ArrangementView.Secondary>
+        </ArrangementView>
+      </Host> : null}
+    <View accessibilityElementsHidden={!open} importantForAccessibility={open ? 'auto' : 'no-hide-descendants'}
+      pointerEvents={open ? 'auto' : 'none'}
+      style={[styles.sidebar, { backgroundColor: palette.sidebar, width: geometry.menuWidth,
+        left: open ? 0 : -geometry.menuWidth }]}>
+      {sidebar}
+    </View>
+    <View style={[styles.content, { marginLeft: open && !geometry.full ? geometry.menuWidth + geometry.gap : 0 }]} accessibilityElementsHidden={open && geometry.full}
+      importantForAccessibility={open && geometry.full ? 'no-hide-descendants' : 'auto'}>
+      <View style={styles.search}>{search}</View>
+      {children}
+    </View>
+  </View>;
+}
+
+function MeasuredMenuLayout(props) {
+  const division = useReservedRegions().find(region => region.kind === 'division'
+    && region.frame.height > region.frame.width && region.frame.x > 0);
+  return <MenuLayout {...props} division={division} />;
+}
+
+export default function NativeShell({ open, onToggle, sidebar, search, children, palette }) {
+  const [reduceMotion, setReduceMotion] = useState(false);
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => subscription.remove();
+  }, []);
+  // Animate both target frames in the same native transaction.
+  const toggle = () => {
+    if (!reduceMotion) LayoutAnimation.configureNext({ duration: 220,
+      update: { type: LayoutAnimation.Types.easeOut } });
+    onToggle();
+  };
+  const menu = { open, sidebar, search, palette, children };
+  return <>
+    <Stack.Screen options={{ headerShown: true, headerTransparent: true, headerShadowVisible: false,
+      title: '', headerTitle: '', headerTintColor: palette.text, contentStyle: { backgroundColor: palette.sidebar } }} />
+    <Stack.Toolbar placement="right">
+      <Stack.Toolbar.Button icon="line.3.horizontal.decrease" tintColor={palette.text} onPress={toggle}
+        accessibilityLabel={open ? 'Close navigation' : 'Open navigation'} />
+    </Stack.Toolbar>
+    <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.root}>
+      {Constants.executionEnvironment === ExecutionEnvironment.StoreClient
+        ? <MenuLayout {...menu} />
+        : <ReservedRegionsProvider style={styles.root}>
+          <MeasuredMenuLayout {...menu} />
+        </ReservedRegionsProvider>}
+    </SafeAreaView>
+  </>;
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  search: { zIndex: 2, width: '100%', minHeight: 44,
+    justifyContent: 'center', paddingLeft: 22, paddingRight: 0, paddingTop: 20, paddingBottom: 32 },
+  row: { flex: 1, flexDirection: 'row', minHeight: 0, overflow: 'hidden' },
+  sidebar: { position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 3, overflow: 'hidden' },
+  content: { flex: 1, minWidth: 0, zIndex: 0 },
+});

@@ -30,6 +30,8 @@ the affected work remains incomplete. Record actual platform verification separa
 
 ## Operating Principles
 
+When the user supplies a plan and asks for the work, execute it through implementation and verification; do not stop after restating the scope. Continue until complete or an evidenced external blocker prevents further progress.
+
 Keep it simple. Simple is better than complex.
 Make the smallest maintainable change that solves the actual request.
 Prefer existing patterns over new abstractions.
