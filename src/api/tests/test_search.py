@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+from django.test import override_settings
 from django.urls import reverse
 
 from api.helpers import check_source_type
@@ -120,6 +121,73 @@ class SearchTests(FloppyApiTestCase):
         payload = response.json()
         self.assertEqual(payload["pagination"]["limit"], 5)
         self.assertEqual(payload["pagination"]["offset"], 2)
+
+    @patch("api.views.services.search")
+    def test_search_defaults_to_the_users_preferred_source(self, mock_search):
+        """An omitted source follows the user's Settings > Metadata choice."""
+        self.user1.book_metadata_source_default = Sources.OPENLIBRARY.value
+        self.user1.save(update_fields=["book_metadata_source_default"])
+        mock_search.return_value = {
+            "results": [],
+            "total_results": 0,
+            "total_pages": 1,
+        }
+
+        response = self.call_api(
+            "get",
+            "api_search_provider",
+            args=("book",),
+            params={"search": "scientific ontology"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mock_search.call_args.args[3], Sources.OPENLIBRARY.value)
+
+    @override_settings(HARDCOVER_API="")
+    @patch("api.views.services.search")
+    def test_search_skips_an_unconfigured_default_book_source(self, mock_search):
+        """No Hardcover token means books search a provider that can answer."""
+        mock_search.return_value = {
+            "results": [],
+            "total_results": 0,
+            "total_pages": 1,
+        }
+
+        response = self.call_api(
+            "get",
+            "api_search_provider",
+            args=("book",),
+            params={"search": "scientific ontology"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotEqual(
+            mock_search.call_args.args[3],
+            Sources.HARDCOVER.value,
+        )
+
+    @patch("api.views.services.search")
+    def test_search_forwards_an_explicit_source(self, mock_search):
+        """An explicit source still wins over the user's preference."""
+        self.user1.book_metadata_source_default = Sources.OPENLIBRARY.value
+        self.user1.save(update_fields=["book_metadata_source_default"])
+        mock_search.return_value = {
+            "results": [],
+            "total_results": 0,
+            "total_pages": 1,
+        }
+
+        self.call_api(
+            "get",
+            "api_search_provider",
+            args=("book",),
+            params={"search": "scientific ontology", "source": "googlebooks"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(mock_search.call_args.args[3], Sources.GOOGLEBOOKS.value)
 
     @patch("api.views.services.search")
     def test_search_enforces_max_limit(self, mock_search):

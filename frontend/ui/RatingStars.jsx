@@ -6,7 +6,7 @@ import { Pressable, Text, View } from 'react-native';
  * the surface adapter owns the write, the CSRF token and any popup state.
  * Selecting the current value again clears it (`onSelect(null)`).
  */
-export function RatingStars({ scaleMax, value, label, renderStar, onSelect, palette }) {
+export function RatingStars({ scaleMax, value, label, renderStar, onSelect, palette, showLabels = true }) {
   const [hover, setHover] = useState(null);
   const shown = hover ?? value;
   return <View role="group" accessibilityLabel={label}
@@ -19,10 +19,10 @@ export function RatingStars({ scaleMax, value, label, renderStar, onSelect, pale
         aria-pressed={value === star}
         onPress={() => onSelect(value === star ? null : star)}
         onHoverIn={() => setHover(star)}
-        style={({ focused }) => [{ alignItems: 'center', cursor: 'pointer' },
+        style={({ focused }) => [{ alignItems: 'center' },
           focused && palette.focusStyle]}>
         <View style={{ color: lit ? palette.lit : palette.unlit }}>{renderStar(lit)}</View>
-        <Text style={{ fontSize: 12, marginTop: 4, color: palette.muted }}>{star}</Text>
+        {showLabels ? <Text style={{ fontSize: 12, marginTop: 4, color: palette.muted }}>{star}</Text> : null}
       </Pressable>;
     })}
   </View>;

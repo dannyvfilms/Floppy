@@ -1083,6 +1083,7 @@ function initStatisticsCharts() {
 
     function drawCombinedChart(spec, mediaTypes) {
       const container = document.getElementById(spec.containerId);
+      if (!container) return;
       const byKey = (combinedPlaysData && combinedPlaysData[spec.key]) || {};
       const chartData = StatsMediaMerge.mergeSeriesChart(byKey, mediaTypes);
 

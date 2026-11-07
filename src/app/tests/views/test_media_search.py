@@ -79,6 +79,21 @@ class MediaSearchViewTests(TestCase):
         )
 
     @patch("app.providers.services.search")
+    def test_media_search_without_media_type_renders(self, mock_search):
+        """A search URL without media_type should render instead of raising KeyError."""
+        mock_search.return_value = {
+            "page": 1,
+            "total_results": 0,
+            "total_pages": 0,
+            "results": [],
+        }
+        response = self.client.get(reverse("search") + "?q=test")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "app/search.html")
+        mock_search.assert_called_once()
+
+    @patch("app.providers.services.search")
     def test_video_search_lists_local_videos_without_a_provider_call(self, mock_search):
         """Videos have no provider, so only the user's own library is searched."""
         item = Item.objects.create(

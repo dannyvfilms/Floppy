@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Floppy Native Proof",
+    "slug": "floppy-native-proof",
+    "version": "1.0.0",
+    "experiments": {
+      "baseUrl": "/static/native-proof"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Floppy to scan book barcodes."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Floppy to read an ISBN barcode from a photo."
+        }
+      ],
+      "expo-secure-store"
+    ]
+  }
+}

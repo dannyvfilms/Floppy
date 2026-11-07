@@ -1,10 +1,15 @@
 {% extends "base.html" %}
 {% load i18n %}
+{% load ui_tags %}
 
 {% load static %}
 
 {% block content %}
   <div class="mx-auto max-w-6xl">
+    {% settings_view_react as settings_view %}
+    {% if settings_view.props %}{{ settings_view.props|json_script:settings_view.id }}{% endif %}
+    <div data-settings-view-root data-props-id="{{ settings_view.id }}">
+    <div data-settings-fallback>
     <div class="mb-8">
       <h1 class="text-3xl font-bold">{% translate "Settings" %}</h1>
       <p class="text-[var(--color-text-muted)] mt-2 text-sm">{% translate "Configure your account and preferences" %}</p>
@@ -125,6 +130,16 @@
               <span>{% translate "Advanced" %}</span>
             </a>
 
+            {% if request.user.is_superuser %}
+              {% url 'manage_users' as manage_users_url %}
+              <a href="{{ manage_users_url }}"
+                 {% if request.path == manage_users_url %}aria-current="page"{% endif %}
+                 class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == manage_users_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
+                {% include "app/icons/persons.svg" with classes="w-5 h-5" %}
+                <span>{% translate "Users" %}</span>
+              </a>
+            {% endif %}
+
             {% url 'about' as about_url %}
             <a href="{{ about_url }}"
                {% if request.path == about_url %}aria-current="page"{% endif %}
@@ -137,10 +152,12 @@
       </div>
 
       <!-- min-w-0 prevents flex item overflow, happens when creating periodic import for Simkl -->
-      <div class="flex-1 min-w-0">
+      <div class="flex-1 min-w-0" data-settings-page-content>
         {% block settings_content %}
         {% endblock settings_content %}
       </div>
+    </div>
+    </div>
     </div>
   </div>
 {% endblock content %}

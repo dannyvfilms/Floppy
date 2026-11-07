@@ -13,6 +13,7 @@ from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.response import Response
 
 import app.providers.tmdb
@@ -34,6 +35,7 @@ from app.templatetags.app_tags import media_url
 from integrations.delivery import get_or_record_receipt
 from integrations.models import IntegrationToken
 
+from .authentication import APIKeyAuthentication, BearerAuthentication
 from .helpers import paginate_data, parse_limit_offset, try_parse_datetime_input
 
 logger = logging.getLogger(__name__)
@@ -72,7 +74,7 @@ def resolve_show_tmdb_id(media_type, ids):
     """Resolve an `ids` object to a TMDB movie/show id, or None.
 
     Tries the ids we've already persisted before falling back to a single
-    network `find()` — unlike the live-playback card this feeds a durable
+    network `find()` calls — unlike the live-playback card this feeds a durable
     write, so it must not guess.
     """
     if ids.get("tmdb"):
@@ -92,21 +94,17 @@ def resolve_show_tmdb_id(media_type, ids):
         if known:
             return known.media_id
 
-    ext_id = ids.get("imdb") or ids.get("tvdb")
-    if not ext_id:
-        return None
-    ext_type = "imdb_id" if ids.get("imdb") else "tvdb_id"
-    find_response = app.providers.tmdb.find(ext_id, ext_type)
-
-    if media_type == MediaTypes.MOVIE.value:
-        results = find_response.get("movie_results") or []
-        return str(results[0]["id"]) if results else None
-
-    episode_results = find_response.get("tv_episode_results") or []
-    if episode_results:
-        return str(episode_results[0]["show_id"])
-    tv_results = find_response.get("tv_results") or []
-    return str(tv_results[0]["id"]) if tv_results else None
+    for key in ("imdb", "tvdb"):
+        if not ids.get(key):
+            continue
+        find_response = app.providers.tmdb.find(ids[key], f"{key}_id")
+        result_key = (
+            "movie_results" if media_type == MediaTypes.MOVIE.value else "tv_results"
+        )
+        results = find_response.get(result_key) or []
+        if results:
+            return str(results[0]["id"])
+    return None
 
 
 def _find_existing_item(media_type, tmdb_id, season_number, episode_number):
@@ -813,7 +811,6 @@ class PlaybackProgressView(drf_views.APIView):
 
         return _execute()
 
-
     def _clear(self, request):
         """Delete the stored position for the identified media."""
         data = request.data
@@ -952,6 +949,15 @@ def build_now_playing_payload(user):
 # /api/v1/playback/now-playing/
 class NowPlayingView(drf_views.APIView):
     """Read-only snapshot of the user's active playback (from scrobble/webhook state)."""
+
+    # Home-style endpoint: the Expo app authenticates with the signed-in
+    # browser session, the same way the web Home endpoints do. Without
+    # SessionAuthentication here DRF answers 403 for that session.
+    authentication_classes = (
+        BearerAuthentication,
+        APIKeyAuthentication,
+        SessionAuthentication,
+    )
 
     @extend_schema(
         description=(

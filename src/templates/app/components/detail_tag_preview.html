@@ -1,7 +1,10 @@
 {% load i18n %}
+{% with preview_props_id=preview_id|add:"-props" %}
 <div id="{{ preview_id }}"
      {% if swap_oob %}hx-swap-oob="outerHTML"{% endif %}
      data-has-preview="{% if detail_tag_sections %}true{% else %}false{% endif %}">
+  {{ detail_tag_sections|json_script:preview_props_id }}
+  <div data-tag-preview-root data-props-id="{{ preview_props_id }}" data-preview-id="{{ preview_id }}">
   {% if detail_tag_sections %}
     {% for detail_tag_section in detail_tag_sections %}
       <div class="{% if not forloop.first %}mt-3 border-t border-[var(--color-border)] pt-3{% endif %}">
@@ -28,4 +31,6 @@
       </div>
     {% endfor %}
   {% endif %}
+  </div>
 </div>
+{% endwith %}

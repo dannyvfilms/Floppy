@@ -785,3 +785,46 @@ class ListsTests(FloppyApiTestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+
+    def test_lists_post_unlisted_with_viewers(self):
+        """Unlisted lists can be shared read-only with installed users."""
+        response = self.call_api(
+            "post",
+            "api_lists",
+            payload={
+                "name": "Unlisted Share",
+                "visibility": "unlisted",
+                "viewers": [self.user2.id],
+            },
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertEqual(payload["visibility"], "unlisted")
+        self.assertTrue(payload["is_unlisted"])
+        self.assertFalse(payload["is_public"])
+        self.assertEqual(
+            [viewer["username"] for viewer in payload["viewers"]],
+            [self.user2.username],
+        )
+        custom_list = CustomList.objects.get(name="Unlisted Share")
+        self.assertTrue(custom_list.user_can_view(self.user2))
+        self.assertFalse(custom_list.user_can_edit(self.user2))
+
+    def test_lists_patch_viewers_and_visibility(self):
+        """Patching viewers keeps the list read-only for them."""
+        custom_list = self.lists_by_name["favorites"]
+        response = self.call_api(
+            "patch",
+            "api_list_detail",
+            args=(custom_list.id,),
+            payload={"visibility": "unlisted", "viewers": [self.user2.id]},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        custom_list.refresh_from_db()
+        self.assertEqual(custom_list.visibility, "unlisted")
+        self.assertTrue(custom_list.viewers.filter(id=self.user2.id).exists())
+        self.assertFalse(custom_list.user_can_edit(self.user2))

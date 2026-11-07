@@ -1,5 +1,7 @@
 """Coverage for the metadata provider credential registry and resolver."""
 
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase, override_settings
@@ -239,3 +241,92 @@ class ProviderGatingTests(TestCase):
 
         self.assertTrue(metadata_resolution.provider_is_enabled("openlibrary"))
         self.assertTrue(metadata_resolution.provider_is_enabled("musicbrainz"))
+
+
+class CredentialProbeReasonTests(TestCase):
+    """A rejected key should tell the user why, without leaking the token."""
+
+    @patch("requests.request")
+    def test_forbidden_probe_reports_the_providers_reason(self, mock_request):
+        response = mock_request.return_value
+        response.status_code = 403
+        response.json.return_value = {
+            "error": "insufficient_scope",
+            "error_description": "Missing scopes: read:me",
+            "scope": "read:me",
+        }
+
+        error = credentials._probe("POST", "https://api.hardcover.app/v1/graphql")
+
+        self.assertIn("Missing scopes: read:me", error)
+
+    @patch("requests.request")
+    def test_probe_redacts_a_token_echoed_in_the_reason(self, mock_request):
+        response = mock_request.return_value
+        response.status_code = 403
+        response.json.return_value = {
+            "error_description": "Bearer secret-token is not allowed",
+        }
+
+        error = credentials._probe("POST", "https://example.test")
+
+        self.assertNotIn("secret-token", error)
+        self.assertIn("Bearer [REDACTED]", error)
+
+    @patch("requests.request")
+    def test_probe_falls_back_to_a_short_response_slice(self, mock_request):
+        response = mock_request.return_value
+        response.status_code = 401
+        response.json.side_effect = ValueError
+        response.text = "unauthorized " * 100
+
+        error = credentials._probe("GET", "https://example.test")
+
+        self.assertIn("unauthorized", error)
+        self.assertNotIn(response.text, error)
+        self.assertLessEqual(len(error), 300)
+
+    @patch("requests.request")
+    def test_probe_reads_a_nested_error_message(self, mock_request):
+        """Google Books nests the useful text under error.message."""
+        response = mock_request.return_value
+        response.status_code = 400
+        response.json.return_value = {
+            "error": {
+                "code": 400,
+                "message": "API key not valid. Please pass a valid API key.",
+            },
+        }
+
+        error = credentials._probe(
+            "GET", "https://www.googleapis.com/books/v1/volumes"
+        )
+
+        self.assertIn("API key not valid", error)
+
+
+class HardcoverCredentialValidatorTests(TestCase):
+    """Hardcover's metadata validator must not demand the read:me scope."""
+
+    @patch("app.providers.credentials._probe", return_value=None)
+    def test_hardcover_probe_uses_a_catalog_query(self, mock_probe):
+        credentials._validate_hardcover({"api_key": "token"})
+
+        _, kwargs = mock_probe.call_args
+        query = kwargs["json"]["query"]
+        self.assertIn("books_by_pk", query)
+        self.assertNotIn("me", query)
+        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer token")
+
+    @patch("app.providers.credentials._probe", return_value=None)
+    def test_hardcover_probe_normalizes_bearer_prefix(self, mock_probe):
+        credentials._validate_hardcover({"api_key": "Bearer token"})
+
+        _, kwargs = mock_probe.call_args
+        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer token")
+
+    def test_hardcover_setup_hint_documents_required_scopes(self):
+        spec = credentials.REGISTRY["hardcover"]
+
+        self.assertIn("read:catalog", spec.setup_hint)
+        self.assertIn("read:me", spec.setup_hint)

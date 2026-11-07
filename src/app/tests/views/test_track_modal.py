@@ -140,7 +140,7 @@ class TrackModalViewTests(TestCase):
         """The shared date/time picker should carry the release-date suggestion label."""
         content = response.content.decode()
         self.assertEqual(
-            content.count("suggestionLabel: 'Release Date'"),
+            content.count('"suggestionLabel": "Release Date"'),
             count,
         )
 
@@ -349,10 +349,10 @@ class TrackModalViewTests(TestCase):
         # also appears once per picker in the unconditional x-data config
         # (see suggestionLabel below), plus once as the start field's
         # visible quick-action label.
-        self.assertEqual(content.count("Start Now"), 1)
-        self.assertEqual(content.count("Just Finished"), 1)
-        self.assertEqual(content.count("Release Date"), 3)
-        self.assertEqual(content.count('x-show="resolvedSuggestionDate()"'), 1)
+        self.assertEqual(content.count("Start Now"), 2)
+        self.assertEqual(content.count("Just Finished"), 2)
+        self.assertEqual(content.count("Release Date"), 4)
+        self.assertEqual(content.count('"id": "release-date"'), 2)
         general_field_names = [
             field.name for field in response.context["general_fields"]
         ]
@@ -374,10 +374,161 @@ class TrackModalViewTests(TestCase):
         self.assertContains(response, "Currently visible in Discover.")
         self.assertContains(response, 'hx-post="/discover/toggle-hidden"', html=False)
         self.assertContains(response, 'name="action"', html=False)
-        self.assertContains(response, "data-calendar-component", html=False)
-        self.assertContains(response, "showMonthsView", html=False)
-        self.assertContains(response, "showYearsView", html=False)
+        self.assertContains(response, "data-date-time-picker-root", html=False)
+        self.assertContains(response, '"quickActions"', html=False)
         self.assertNotContains(response, "Custom Metadata")
+
+    def test_track_modal_exposes_shared_general_form_presentation(self):
+        """The General tab carries a serialized model for the shared TrackForm."""
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "238",
+                },
+            )
+            + "?return_url=/home",
+        )
+
+        model = response.context["track_form_presentation"]["model"]
+        self.assertEqual(model["title"], "Test Movie")
+        self.assertEqual(model["submitLabel"], "Update")
+        self.assertEqual(model["action"], reverse("media_save") + "?next=/home")
+        self.assertEqual(
+            model["deleteAction"],
+            reverse("media_delete") + "?next=/home",
+        )
+        self.assertEqual(model["hidden"]["instance_id"], str(self.movie.id))
+        self.assertEqual(
+            model["hidden"]["track_form_id"],
+            response.context["track_form_id"],
+        )
+        self.assertTrue(model["csrfToken"])
+        self.assertEqual(
+            [field["name"] for field in model["fields"]][:2],
+            ["score", "status"],
+        )
+        status_field = next(
+            field for field in model["fields"] if field["name"] == "status"
+        )
+        self.assertEqual(status_field["type"], "select")
+        self.assertTrue(status_field["options"])
+        self.assertEqual(model["notes"]["value"], "")
+        self.assertContains(response, "data-track-form-root")
+        self.assertContains(response, "data-track-form-legacy")
+
+    def test_track_modal_serializes_remaining_tabs_for_shared_dialog(self):
+        """The shared dialog receives the available tab models and actions."""
+        tag = Tag.objects.create(user=self.user, name="Favourite")
+        ItemTag.objects.create(tag=tag, item=self.item)
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "238",
+                },
+            )
+            + "?return_url=/home",
+        )
+
+        tabs = response.context["track_form_presentation"]["tabs"]
+        by_id = {tab["id"]: tab for tab in tabs}
+        self.assertEqual(
+            list(by_id),
+            ["tags", "metadata", "collection", "discover"],
+        )
+        self.assertEqual(by_id["tags"]["kind"], "tags")
+        self.assertEqual(
+            [tag["name"] for tag in by_id["tags"]["tags"]],
+            ["Favourite"],
+        )
+        self.assertEqual(
+            by_id["tags"]["urls"]["toggle"],
+            reverse("tag_item_toggle"),
+        )
+        self.assertEqual(by_id["metadata"]["kind"], "server")
+        self.assertEqual(by_id["collection"]["kind"], "server")
+        self.assertEqual(by_id["discover"]["itemId"], self.item.id)
+        self.assertFalse(by_id["discover"]["hidden"])
+        self.assertEqual(
+            by_id["discover"]["url"],
+            reverse("discover_toggle_hidden"),
+        )
+
+    def test_track_modal_serializes_status_history_tab(self):
+        """A tracked show exposes its status changes to the shared dialog."""
+        tv_item = Item.objects.create(
+            media_id="279977",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Finished Show",
+            image="https://example.com/finished-show.jpg",
+        )
+        TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+        )
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": tv_item.media_id,
+                },
+            )
+            + "?return_url=/home",
+        )
+
+        tabs = response.context["track_form_presentation"]["tabs"]
+        status_tab = next(tab for tab in tabs if tab["id"] == "status-history")
+        self.assertEqual(status_tab["kind"], "status-history")
+        self.assertTrue(status_tab["changes"])
+        self.assertEqual(status_tab["changes"][0]["next"], Status.COMPLETED.value)
+
+    def test_track_modal_presentation_offers_rewatch_on_completed_show(self):
+        """The shared form keeps the repeat identity offered by the server."""
+        tv_item = Item.objects.create(
+            media_id="279977",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Finished Show",
+            image="https://example.com/finished-show.jpg",
+        )
+        TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+        )
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": tv_item.media_id,
+                },
+            )
+            + "?return_url=/home",
+        )
+
+        repeat = response.context["track_form_presentation"]["model"][
+            "repeatIdentity"
+        ]
+        self.assertEqual(repeat["rewatchAction"], "start")
+        self.assertEqual(
+            repeat["rewatchUrl"],
+            reverse("media_rewatch") + "?action=start&next=/home",
+        )
+        self.assertEqual(repeat["rewatchLabel"], "Rewatch")
 
     def test_track_modal_renders_tags_tab_for_tracked_media(self):
         """The edit modal exposes tag management in its own tab."""
@@ -397,10 +548,13 @@ class TrackModalViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.context["tags_tab_available"])
+        self.assertEqual(response.context["tag_assignment_data"]["item"]["id"], self.item.id)
         self.assertContains(response, "@click=\"activeTab = 'tags'\"")
         self.assertContains(response, "Favourite")
         self.assertContains(response, 'name="tag_surface"')
         self.assertContains(response, 'value="track"')
+        self.assertContains(response, "data-tag-assignment-root")
+        self.assertContains(response, 'data-tag-surface="track"')
         self.assertNotContains(response, "tagsOpen = false")
 
     @patch("app.providers.services.get_media_metadata")
@@ -789,9 +943,9 @@ class TrackModalViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        self.assertEqual(content.count("suggestionDate: '2024\\u002D01\\u002D15'"), 2)
-        self.assertEqual(content.count("suggestionRuntimeMinutes: '95'"), 2)
-        self.assert_release_shortcut_labels(response)
+        self.assertEqual(content.count('"suggestionDate": "2024-01-15"'), 4)
+        self.assertEqual(content.count('"suggestionRuntimeMinutes": "95"'), 2)
+        self.assert_release_shortcut_labels(response, count=4)
 
     def test_track_modal_close_button_supports_split_button_wrapper(self):
         """The shared close button should work for edit/create split-button wrappers."""
@@ -923,8 +1077,8 @@ class TrackModalViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        self.assertEqual(content.count("suggestionDate: '2024\\u002D02\\u002D03'"), 2)
-        self.assert_release_shortcut_labels(response)
+        self.assertEqual(content.count('"suggestionDate": "2024-02-03"'), 4)
+        self.assert_release_shortcut_labels(response, count=4)
 
     def test_artist_save_redirects_to_canonical_music_details(self):
         """Artist saves should land on the canonical shared details page."""
@@ -1184,9 +1338,9 @@ class TrackModalViewTests(TestCase):
             "Save this image from the General tab when you add or update the entry.",
         )
         content = response.content.decode()
-        self.assertEqual(content.count("suggestionDate: '2024\\u002D01\\u002D15'"), 2)
-        self.assertEqual(content.count("suggestionRuntimeMinutes: '95'"), 2)
-        self.assert_release_shortcut_labels(response)
+        self.assertEqual(content.count('"suggestionDate": "2024-01-15"'), 4)
+        self.assertEqual(content.count('"suggestionRuntimeMinutes": "95"'), 2)
+        self.assert_release_shortcut_labels(response, count=4)
         self.assertNotContains(response, "Save Image")
 
     @patch("app.providers.services.get_media_metadata")
@@ -1742,6 +1896,19 @@ class TrackModalViewTests(TestCase):
             ],
             24,
         )
+        presentation = response.context["episode_plays_presentation"]
+        self.assertEqual(
+            presentation["formId"],
+            f"{response.context['track_form_id']}-episode-plays-form",
+        )
+        self.assertEqual(presentation["action"], reverse("episode_bulk_save"))
+        self.assertEqual(
+            presentation["values"]["first_episode_number"],
+            "1",
+        )
+        self.assertTrue(presentation["domain"]["seasonEpisodeMap"])
+        self.assertContains(response, "data-bulk-episode-form-root")
+        self.assertContains(response, presentation["formId"])
 
     @patch("app.views.metadata_resolution.resolve_detail_metadata")
     @patch("app.providers.services.get_media_metadata")
@@ -2130,6 +2297,10 @@ class PodcastTrackModalViewTests(TestCase):
             html=False,
         )
         self.assertContains(response, 'name="media_type" value="podcast"', html=False)
+        self.assertContains(response, "data-track-form-root")
+        self.assertContains(response, "data-track-form-legacy")
+        self.assertContains(response, '"variant": "song"')
+        self.assertContains(response, f'"episode_uuid": "{episode.episode_uuid}"')
 
     def test_podcast_track_modal_can_force_standard_editor(self):
         """History cards should be able to request the full shared editor for podcast plays."""

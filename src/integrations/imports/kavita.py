@@ -369,14 +369,21 @@ def _provider_item(media_id, media_type, title, user, enrich):
     return item
 
 
+# Comic Vine answers a rate-limited request with 420 ("Enhance Your Calm"),
+# not 429. Treating it as permanent aborted the entire Kavita import.
+_PROVIDER_RATE_LIMIT_STATUSES = frozenset(
+    {420, HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_MANY_REQUESTS},
+)
+
+
 def _provider_unavailable(error):
-    """Return whether a provider error is transient: no response, 429 or a 5xx."""
+    """Return whether a provider error is transient: no response, 420/429 or a 5xx."""
     if not isinstance(error, services.ProviderAPIError):
         return False
     status = error.status_code
     return (
         status is None
-        or status in (HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_MANY_REQUESTS)
+        or status in _PROVIDER_RATE_LIMIT_STATUSES
         or status >= HTTPStatus.INTERNAL_SERVER_ERROR
     )
 

@@ -60,7 +60,9 @@ class AboutInstallSectionTests(SerialStaticLiveServerTestCase):
 
     def open_about(self, **context_kwargs):
         """Sign in and land on the About page, returning the page."""
-        context = self.browser.new_context(**context_kwargs)
+        # The install card is independent of the service worker; blocking it
+        # keeps cached static bundles from racing the React island mount.
+        context = self.browser.new_context(service_workers="block", **context_kwargs)
         self.addCleanup(context.close)
         page = context.new_page()
         page.goto(f"{self.live_server_url}/")
@@ -72,6 +74,13 @@ class AboutInstallSectionTests(SerialStaticLiveServerTestCase):
         )
         page.get_by_role("button", name="Sign in").click()
         page.goto(f"{self.live_server_url}/settings/about")
+        # The install card is a React island over the server fallback; wait for
+        # the shared presentation before asserting on its platform panels.
+        page.wait_for_function(
+            "() => document.querySelector("
+            "'[data-props-id=\"about-install-props\"]'"
+            ")?.dataset.reactMounted === 'true'",
+        )
         return page
 
     def install_button(self, page):

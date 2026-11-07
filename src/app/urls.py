@@ -305,6 +305,11 @@ urlpatterns = [
         name="update_statistics_compare_mode",
     ),
     path(
+        "statistics/media-types",
+        views.update_statistics_media_types,
+        name="update_statistics_media_types",
+    ),
+    path(
         "statistics/select-featured-person",
         views.select_featured_person,
         name="select_featured_person",

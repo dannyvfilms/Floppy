@@ -83,7 +83,8 @@ sign in** in Docker Desktop's settings so Floppy is back after a restart.
   floppy.env              this installation's settings
   install.conf            the answers needed to resume
   db/                     the database and the generated secret key
-  backups/                automatic database backups
+  backups/                daily database snapshots and scheduled CSV
+                          exports (see the deployment backup guide)
   logs/                   log files
   redis/                  Redis persistence
   docker-compose.yml      Docker installs only
