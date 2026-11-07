@@ -313,6 +313,23 @@ def _verified_path(db_path: str) -> Path:
     return database_path.with_name(f"{database_path.name}{_VERIFIED_SUFFIX}")
 
 
+def same_verified_file(record: dict, path: Path, file_stat) -> bool:
+    """Whether a live file is the one a verification record describes.
+
+    ``st_dev`` is not compared: btrfs subvolumes, device-mapper, and loop
+    devices get it at mount time, so it changes across reboots. ``f_fsid``
+    names the filesystem stably (on btrfs it includes the subvolume, so a
+    rolled-back snapshot, whose inodes repeat, does not match).
+    """
+    if record.get("inode") != file_stat.st_ino:
+        return False
+    if "fsid" not in record:
+        # shortcut: a record from before "fsid" was stored is matched by inode
+        # alone until the next verification rewrites it.
+        return True
+    return record["fsid"] == os.statvfs(path).f_fsid
+
+
 def record_verified_database(db_path: str, *, source: str) -> None:
     """Record a historical verification and its source file identity.
 
@@ -328,6 +345,7 @@ def record_verified_database(db_path: str, *, source: str) -> None:
             "commit_sha": os.environ.get("COMMIT_SHA"),
             "database": str(database_path),
             "device": file_stat.st_dev,
+            "fsid": os.statvfs(database_path).f_fsid,
             "inode": file_stat.st_ino,
             "schema_version": 1,
             "source": source,
@@ -377,14 +395,12 @@ def recent_verification(
         or record.get("commit_sha") != commit_sha
     ):
         return None, "the image changed since the last verification"
+    database_path = Path(db_path).resolve()
     try:
-        file_stat = Path(db_path).resolve().stat()
+        same = same_verified_file(record, database_path, database_path.stat())
     except OSError as error:
         return None, f"database could not be inspected: {error}"
-    if (record.get("device"), record.get("inode")) != (
-        file_stat.st_dev,
-        file_stat.st_ino,
-    ):
+    if not same:
         return None, "the database file was replaced since the last verification"
     report = _read_incident_report(db_path)
     if report and report.get("status") != "resolved":
