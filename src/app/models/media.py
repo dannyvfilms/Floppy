@@ -125,7 +125,12 @@ class Media(models.Model):
     )
     scored_at = ScoreMonitorField(monitor="score", null=True, blank=True)
     progress = models.PositiveIntegerField(default=0)
-    progressed_at = MonitorField(monitor="progress")
+    progressed_at = MonitorField(
+        monitor="progress",
+        default=timezone.now,
+        null=True,
+        blank=True,
+    )
     status = models.CharField(
         max_length=20,
         choices=Status,

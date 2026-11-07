@@ -287,6 +287,40 @@ class ImportYamtrackEpisodeHistoryDate(TestCase):
             datetime(2020, 3, 4, 5, 6, 7, tzinfo=UTC),
         )
 
+    def test_missing_progressed_at_stays_unknown_after_import(self):
+        """An import without play evidence must not use its insertion time."""
+        csv_data = """media_id,source,media_type,title,image,season_number,episode_number,score,progress,status,start_date,end_date,notes,created_at,progressed_at
+604,tmdb,movie,No Play Date,https://image.url,,,,0,In progress,,,,2020-04-03T12:34:56+00:00,
+"""
+
+        _, warnings = yamtrack.importer(BytesIO(csv_data.encode()), self.user, "new")
+        self.assertEqual(warnings, "")
+
+        movie = Movie.objects.get(user=self.user)
+        self.assertIsNone(movie.progressed_at)
+        self.assertEqual(
+            movie.created_at,
+            datetime(2020, 4, 3, 12, 34, 56, tzinfo=UTC),
+        )
+
+    def test_overwrite_without_progressed_at_clears_import_time(self):
+        """An overwrite with no play evidence also leaves progressed_at null."""
+        initial_csv = """media_id,source,media_type,title,image,season_number,episode_number,score,progress,status,start_date,end_date,notes,progressed_at
+605,tmdb,movie,No Play Date,https://image.url,,,,0,In progress,,,,2020-01-02T00:00:00+00:00
+"""
+        replacement_csv = """media_id,source,media_type,title,image,season_number,episode_number,score,progress,status,start_date,end_date,notes,progressed_at
+605,tmdb,movie,No Play Date,https://image.url,,,,0,In progress,,,,
+"""
+
+        yamtrack.importer(BytesIO(initial_csv.encode()), self.user, "new")
+        _, warnings = yamtrack.importer(
+            BytesIO(replacement_csv.encode()), self.user, "overwrite"
+        )
+
+        self.assertEqual(warnings, "")
+        movie = Movie.objects.get(user=self.user)
+        self.assertIsNone(movie.progressed_at)
+
     def test_overwrite_restores_source_timestamps(self):
         """Overwrite restores created, progressed and scored timestamps."""
         initial_csv = """media_id,source,media_type,title,image,season_number,episode_number,score,progress,status,start_date,end_date,notes,created_at,progressed_at,scored_at
