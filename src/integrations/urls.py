@@ -1,8 +1,28 @@
 from django.urls import path, re_path
 
-from integrations import tmdb_views, views, wetrakr_views
+from integrations import plex_push_views, tmdb_views, views, wetrakr_views
 
 urlpatterns = [
+    path(
+        "plex/push/targets",
+        plex_push_views.plex_push_targets,
+        name="plex_push_targets",
+    ),
+    path(
+        "plex/push/preview",
+        plex_push_views.plex_push_preview,
+        name="plex_push_preview",
+    ),
+    path(
+        "plex/push/send",
+        plex_push_views.plex_push_send,
+        name="plex_push_send",
+    ),
+    path(
+        "plex/push/status",
+        plex_push_views.plex_push_status,
+        name="plex_push_status",
+    ),
     path("tmdb/connect", tmdb_views.tmdb_connect, name="tmdb_connect"),
     path("tmdb/callback", tmdb_views.tmdb_callback, name="tmdb_callback"),
     path("tmdb/settings", tmdb_views.tmdb_settings, name="tmdb_settings"),
