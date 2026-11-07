@@ -2,6 +2,7 @@ import React from 'react';
 import { mountRoot } from '../settings/root';
 import { AlphabetBar, AlphabetEmpty } from './AlphabetBar';
 
+
 export function mountAlphabet(host, props) {
   const palette = {
     badgeBorder: 'var(--color-border)', badgeBackground: 'var(--color-surface)',

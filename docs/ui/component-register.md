@@ -113,7 +113,8 @@ can inform a focused completion pass.
 - Data: request/user/context, template tags and navigation preferences in `src/users/views.py`.
 - Reuse/blockers: share navigation values/tokens; document layout, history and Safari rail need platform adapters. Do not merge distinct public/auth semantics.
 - Status: `Partial / coexisting`. The signed-in sidebar (logo, media-type links with saved-view groups, the Explore section with pinning and pinned lists, Appearance, Settings, Logout) is React-owned through `frontend/ui/Sidebar.jsx` and `mountSidebar.jsx`, fed by `src/app/sidebar_model.py` and the `sidebar_react` tag. Icons travel as parsed shapes through one shared `Icon`. Pins, pinned lists and group open states keep their existing localStorage keys, so the list pin buttons on pages still work. The mobile open and close state, the top bar and the public shell stay Alpine and Django. The onboarding banner stays server-rendered and is placed into the sidebar. The Alpine sidebar markup stays inside the host as the fallback.
-- Native readiness: `DOM`. Its presentation (`Sidebar.jsx`, 342 lines) is React DOM with CSS classes and has 35 browser-API references; a rewrite to `react-native` primitives is owed before native.
+- Expo iOS uses `NativeShell` as the platform adapter around shared `Sidebar` and search: the native rail toggles an animated, non-modal sidebar, with larger sidebar rows on a supported foldable or vertical rail. Native reserved regions or Expo Go's system arrangement provide the partially folded layout. Expo Android and browser retain the existing `Shell`/`MobileNav` path. On a physical iOS 27.2 Duo in Expo Go, the folded rail toggle, authenticated sidebar, search type picker and partial/full-open layouts were exercised. On the browser Home page, Explore expanded and collapsed. Accessibility, responsive browser states and Android runtime remain unverified for this change. Retirement of the web fallback remains dependent on its existing parity and accessibility checks.
+- Native readiness: `Primitives`. The shared `Sidebar` and `TopBar` use React Native presentation; platform adapters provide navigation behavior. The Expo iOS toolbar and adaptive layout remain subject to the runtime checks above.
 - Verification: `app.tests.test_sidebar_model` (props, active page, all 95 icons parse). Chromium (built-in browser, macOS): the sidebar mounts, Movies is active, Explore opens, pinning Calendar moves it and persists, a pinned list shows under Lists, saved-view reorder mode shows handles, and finishing it saved the new order on the server. A native drag, the delete confirm dialog and a phone-width open and close were not exercised. iOS and Android not tested.
 - Validation targets: `src/app/tests/views/test_boosted_navigation.py`; menu/focus parity needs browser observation.
 
@@ -333,6 +334,7 @@ can inform a focused completion pass.
   the page's existing query scope is reused, including provider deduplication.
   Query-budget pins explicitly account for that fixed lookup and pass.
 - Related work: none recorded. Deferrals: none for the browser component.
+- Components: `AlphabetBar`, `AlphabetEmpty`.
 
 ### FILTERS — Filter state, menus and saved views
 
@@ -374,7 +376,8 @@ can inform a focused completion pass.
 - Data: `src/app/search_views.py`, provider services, manual artist/album routes; API search parity unverified.
 - Reuse/blockers: result/selection values shared; browser keyboard/file/blob and ZXing decoding need native camera equivalents.
 - Status: `Partial / coexisting`. The header search form (input, media-type menu, barcode button and its error toast) is React-owned through `frontend/ui/GlobalSearch.jsx` and `mountGlobalSearch.jsx`, fed by the `global_search_react` tag in `app_tags.py`. It appears on every signed-in page. The suggestions list is still a server fragment that htmx swaps into `#search-suggestions`, and `searchAutocomplete.js` and `searchShortcut.js` still drive its keyboard handling through the same element ids. The Alpine form stays inside the host as the fallback. Search results pages are unchanged.
-- Native readiness: `DOM`. Its presentation (`GlobalSearch.jsx`, 140 lines) is React DOM with CSS classes and has 14 browser-API references; a rewrite to `react-native` primitives is owed before native.
+- Native readiness: `Primitives`. `GlobalSearch` uses shared React Native presentation, with `SearchSlot` supplying native transport and scanner behavior. The iOS shell places it across the content width and removes the blue outline on focus.
+- This change: the iOS 27.2 Duo in Expo Go displayed the search type picker and an empty-result suggestion on the fully open screen. The search field was also observed beside the open sidebar. VoiceOver, barcode, Android runtime and browser interactions specific to this change were not tested.
 - Verification: `app.tests.test_global_search_props`. Chromium (built-in browser, macOS) on `/discover`: form mounts with the right placeholder, typing shows suggestions, the type menu opens with 12 options, picking Books submits `/search?q=matrix&media_type=book`. The barcode scan flow (camera, decode, error toast) was ported but not exercised, and nothing was checked on a phone or in other themes. iOS and Android not tested.
 - Validation targets: `src/app/tests/test_search_suggestions.py`, `src/app/tests/views/test_media_search.py`, barcode selfcheck.
 
