@@ -103,7 +103,7 @@ function ShellWithRail({ open, onToggle, sidebar, search, children, palette, has
 const styles = StyleSheet.create({
   root: { flex: 1 },
   search: { zIndex: 2, width: '100%', minHeight: 44,
-    justifyContent: 'center', paddingLeft: 22, paddingRight: 0, paddingTop: 20, paddingBottom: 32 },
+    justifyContent: 'center', paddingLeft: 22, paddingRight: 0, paddingTop: 25, paddingBottom: 27 },
   row: { flex: 1, flexDirection: 'row', minHeight: 0, overflow: 'hidden' },
   sidebar: { position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 3, overflow: 'hidden' },
   content: { flex: 1, minWidth: 0, zIndex: 0 },

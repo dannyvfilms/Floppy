@@ -2377,7 +2377,7 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "The authenticated sidebar opened and closed on a physical iOS 27.2 Duo in Expo Go with larger row tokens; partial and full-open layouts were observed. Saved-view interactions and VoiceOver remain unverified."
+          "evidence": "On a physical iOS 27.2 Duo in Expo Go, the search background appeared about 5 points above the camera cutout's vertical center. After shifting the field and sidebar content down 5 points, the search is centered on the cutout and the Home highlight stays aligned with search. Partial and full-open layouts remain previously observed. Saved-view interactions and VoiceOver remain unverified."
         },
         "android": {
           "status": "unverified",
