@@ -18,6 +18,8 @@ from app.models import (
     CollectionEntry,
     Comic,
     Episode,
+    EpisodeOrder,
+    EpisodeOrderChange,
     Game,
     Item,
     ItemTag,
@@ -257,8 +259,8 @@ class ImportYamtrackEpisodeHistoryDate(TestCase):
 
     def test_created_at_restores_tracking_record_added_time(self):
         """A Floppy CSV's created_at is preserved, not replaced by import time."""
-        csv_data = """media_id,source,media_type,title,image,season_number,episode_number,score,progress,status,start_date,end_date,notes,created_at,progressed_at
-603,tmdb,movie,Some Movie,https://image.url,,,,1,Completed,,,,2020-04-03T12:34:56+00:00,2025-11-19T19:00:05+00:00
+        csv_data = """media_id,source,media_type,title,image,season_number,episode_number,score,progress,status,start_date,end_date,notes,created_at,progressed_at,scored_at
+603,tmdb,movie,Some Movie,https://image.url,,,8,1,Completed,2019-02-03T04:05:06+00:00,2020-03-04T05:06:07+00:00,,2020-04-03T12:34:56+00:00,2025-11-19T19:00:05+00:00,2021-06-07T08:09:10+00:00
 """
 
         yamtrack.importer(BytesIO(csv_data.encode()), self.user, "new")
@@ -266,6 +268,59 @@ class ImportYamtrackEpisodeHistoryDate(TestCase):
         movie = Movie.objects.get(user=self.user)
         self.assertEqual(
             movie.created_at,
+            datetime(2020, 4, 3, 12, 34, 56, tzinfo=UTC),
+        )
+        self.assertEqual(
+            movie.progressed_at,
+            datetime(2025, 11, 19, 19, 0, 5, tzinfo=UTC),
+        )
+        self.assertEqual(
+            movie.scored_at,
+            datetime(2021, 6, 7, 8, 9, 10, tzinfo=UTC),
+        )
+        self.assertEqual(
+            movie.start_date,
+            datetime(2019, 2, 3, 4, 5, 6, tzinfo=UTC),
+        )
+        self.assertEqual(
+            movie.end_date,
+            datetime(2020, 3, 4, 5, 6, 7, tzinfo=UTC),
+        )
+
+    def test_overwrite_restores_source_timestamps(self):
+        """Overwrite restores created, progressed and scored timestamps."""
+        initial_csv = """media_id,source,media_type,title,image,season_number,episode_number,score,progress,status,start_date,end_date,notes,created_at,progressed_at,scored_at
+603,tmdb,movie,Some Movie,https://image.url,,,5,1,In progress,,,,2020-01-01T00:00:00+00:00,2020-01-02T00:00:00+00:00,2020-01-03T00:00:00+00:00
+"""
+        replacement_csv = """media_id,source,media_type,title,image,season_number,episode_number,score,progress,status,start_date,end_date,notes,created_at,progressed_at,scored_at
+603,tmdb,movie,Some Movie,https://image.url,,,8,1,Completed,2021-04-01T00:00:00+00:00,2021-04-02T00:00:00+00:00,,2021-04-03T12:34:56+00:00,2022-05-04T13:45:56+00:00,2023-06-05T14:56:57+00:00
+"""
+        yamtrack.importer(BytesIO(initial_csv.encode()), self.user, "new")
+
+        yamtrack.importer(BytesIO(replacement_csv.encode()), self.user, "overwrite")
+
+        movie = Movie.objects.get(user=self.user)
+        self.assertEqual(movie.created_at, datetime(2021, 4, 3, 12, 34, 56, tzinfo=UTC))
+        self.assertEqual(movie.progressed_at, datetime(2022, 5, 4, 13, 45, 56, tzinfo=UTC))
+        self.assertEqual(movie.scored_at, datetime(2023, 6, 5, 14, 56, 57, tzinfo=UTC))
+        self.assertEqual(movie.start_date, datetime(2021, 4, 1, tzinfo=UTC))
+        self.assertEqual(movie.end_date, datetime(2021, 4, 2, tzinfo=UTC))
+
+    def test_music_artist_created_at_is_restored(self):
+        """Music tracker rows also retain their exported created_at."""
+        artist = Artist.objects.create(
+            name="Import Date Artist",
+            musicbrainz_id="musicbrainz-import-date-artist",
+        )
+        csv_data = """row_type,media_id,source,media_type,title,score,status,start_date,end_date,notes,created_at
+media,musicbrainz-import-date-artist,musicbrainz,music_artist,Import Date Artist,8,In progress,,,,2020-04-03T12:34:56+00:00
+"""
+
+        yamtrack.importer(BytesIO(csv_data.encode()), self.user, "new")
+
+        tracker = ArtistTracker.objects.get(user=self.user, artist=artist)
+        self.assertEqual(
+            tracker.created_at,
             datetime(2020, 4, 3, 12, 34, 56, tzinfo=UTC),
         )
 
@@ -283,6 +338,75 @@ class ImportYamtrackEpisodeHistoryDate(TestCase):
         self.assertEqual(
             episode.history.get().history_date,
             datetime(2025, 11, 19, 19, 0, 5, tzinfo=UTC),
+        )
+
+    def test_episode_order_change_created_at_round_trips(self):
+        """Episode-order audit timestamps in a backup are retained."""
+        show_item = Item.objects.create(
+            media_id="episode-order-date-show",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.TV.value,
+            title="Episode Order Date Show",
+            image="https://image.url",
+        )
+        tv = TV.objects.create(
+            item=show_item,
+            user=self.user,
+            status=Status.PLANNING.value,
+        )
+        order = EpisodeOrder.objects.create(
+            show=show_item,
+            provider="tvdb",
+            series_id="episode-order-date-series",
+            key="aired",
+            label="Aired",
+            catalogue={"episodes": []},
+            revision="v1",
+        )
+        TV.objects.filter(pk=tv.pk).update(active_episode_order=order)
+        change_date = datetime(2021, 6, 7, 8, 9, 10, tzinfo=UTC)
+        change = EpisodeOrderChange.objects.create(
+            user=self.user,
+            tv=tv,
+            order=order,
+            mappings=[],
+            before_state={},
+        )
+        EpisodeOrderChange.objects.filter(pk=change.pk).update(
+            created_at=change_date,
+        )
+        target_user = get_user_model().objects.create_user(
+            username="episode-order-date-import",
+        )
+        csv_content = "".join(exports.generate_rows(self.user))
+
+        yamtrack.importer(BytesIO(csv_content.encode()), target_user, "new")
+
+        imported_tv = TV.objects.get(user=target_user, item=show_item)
+        self.assertEqual(imported_tv.active_episode_order.key, "aired")
+        imported_change = EpisodeOrderChange.objects.get(
+            user=target_user,
+            tv=imported_tv,
+        )
+        self.assertEqual(imported_change.created_at, change_date)
+
+        replacement_date = datetime(2022, 7, 8, 9, 10, 11, tzinfo=UTC)
+        EpisodeOrderChange.objects.filter(pk=change.pk).update(
+            created_at=replacement_date,
+        )
+        replacement_csv = "".join(exports.generate_rows(self.user))
+        yamtrack.importer(
+            BytesIO(replacement_csv.encode()),
+            target_user,
+            "overwrite",
+        )
+
+        imported_tv = TV.objects.get(user=target_user, item=show_item)
+        self.assertEqual(imported_tv.active_episode_order.key, "aired")
+        self.assertEqual(
+            EpisodeOrderChange.objects.get(user=target_user, tv=imported_tv).created_at,
+            replacement_date,
         )
 
     def test_rewatched_episode_imports_both_watches(self):
