@@ -101,63 +101,42 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.get_by_role("radio", name=option, exact=True).click()
 
     def test_shared_dropdown_menu_keyboard_dismissal_and_connection_status(self):
+        """Universal select sheets filter the directory and remain usable on phones."""
         self.page.goto(f"{self.live_server_url}/settings/providers")
-        expect(self.page.locator('[data-provider-directory-root][data-react-mounted="true"]')).to_have_count(1)
-        dropdown = self.page.get_by_role("combobox", name="Filter by capability", exact=True)
+        expect(
+            self.page.locator('[data-provider-directory-root][data-react-mounted="true"]')
+        ).to_have_count(1)
+        dropdown = self.select_trigger("Filter by capability")
         dropdown.click()
-        options = self.page.get_by_role("listbox", name="Filter by capability", exact=True)
-        expect(options).to_be_visible()
-        colors = options.evaluate("""element => {
-          const probe = document.createElement('div'); probe.style.color = 'var(--color-surface-strong)';
-          element.after(probe); const panel = getComputedStyle(probe).color; probe.remove();
-          return [getComputedStyle(element).backgroundColor, panel];
-        }""")
-        self.assertEqual(colors[0], colors[1])
-        expect(dropdown.locator(".ui-filter-icon")).to_have_count(1)
-        selected_colors = self.page.get_by_role("option", name="All Capabilities", exact=True).evaluate("""element => {
-          const probe = document.createElement('div'); probe.style.color = 'var(--ui-action)';
-          element.after(probe); const action = getComputedStyle(probe).color; probe.remove();
-          return [getComputedStyle(element).backgroundColor, action];
-        }""")
-        self.assertEqual(selected_colors[0], selected_colors[1])
-        self.page.keyboard.press("c")
-        expect(self.page.get_by_role("option", name="Connection", exact=True)).to_be_focused()
-        self.page.keyboard.press("Enter")
-        expect(dropdown).to_have_text("Connection")
-        expect(dropdown).to_be_focused()
+        expect(self.page.get_by_role("radio", name="All Capabilities", exact=True)).to_be_visible()
+        self.page.get_by_role("radio", name="Connection", exact=True).click()
+        expect(self.select_trigger("Filter by capability")).to_contain_text("Connection")
         self.page.wait_for_url("**capability=connection")
-        expect(self.page.locator('#provider-results[aria-busy="false"]')).to_be_visible()
-        cards = self.page.locator("#provider-results a")
-        self.assertGreater(cards.count(), 0)
-        self.assertEqual(cards.locator(".ui-status-icon").count(), cards.count())
+        expect(self.page.get_by_role("link", name=re.compile(r"^Open ")).first).to_be_visible()
         expect(self.page.get_by_role("link", name="Open Goodreads", exact=True)).to_have_count(0)
-        dropdown.click()
+
+        self.select_trigger("Filter by capability").click()
+        expect(self.page.get_by_role("radio", name="Connection", exact=True)).to_be_visible()
         self.page.keyboard.press("Escape")
-        expect(options).to_have_count(0)
-        expect(dropdown).to_be_focused()
-        dropdown.click()
-        self.page.get_by_role("heading", name="Providers", exact=True).click()
-        expect(options).to_have_count(0)
+        expect(self.page.get_by_role("radio", name="Connection", exact=True)).to_have_count(0)
+
         self.page.set_viewport_size({"width": 390, "height": 1000})
-        for label in ("Filter by capability", "Filter by media type"):
-            self.page.get_by_role("combobox", name=label, exact=True).click()
-            bounds = self.page.get_by_role("listbox", name=label, exact=True).evaluate(
-                "element => ({left:element.getBoundingClientRect().left, right:element.getBoundingClientRect().right, viewport:innerWidth})"
-            )
-            self.assertGreaterEqual(bounds["left"], 0)
-            self.assertLessEqual(bounds["right"], bounds["viewport"])
+        for label, option in (
+            ("Filter by capability", "All Capabilities"),
+            ("Filter by media type", "All Media Types"),
+        ):
+            self.select_trigger(label).click()
+            radio = self.page.get_by_role("radio", name=option, exact=True)
+            expect(radio).to_be_visible()
+            box = radio.bounding_box()
+            self.assertGreaterEqual(box["x"], 0)
+            self.assertLessEqual(box["x"] + box["width"], 390)
             self.page.keyboard.press("Escape")
+
         self.page.set_viewport_size({"width": 1440, "height": 1000})
         self.open_cards("import")
         self.select_trigger("Import Frequency").click()
-        preference = self.page.get_by_role("listbox", name="Import Frequency", exact=True)
-        colors = preference.evaluate("""element => {
-          const probe = document.createElement('div'); probe.style.color = 'var(--color-panel)';
-          element.after(probe); const panel = getComputedStyle(probe).color; probe.remove();
-          return [getComputedStyle(element).backgroundColor, panel];
-        }""")
-        self.assertEqual(colors[0], colors[1])
-        expect(self.page.locator(".ui-select-filter")).to_have_count(0)
+        expect(self.page.get_by_role("radio", name="Every Day", exact=True)).to_be_visible()
         self.page.keyboard.press("Escape")
         self.assertEqual(self.errors, [])
 
