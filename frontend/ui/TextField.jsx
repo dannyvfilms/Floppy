@@ -74,6 +74,7 @@ export function TextField({
         keyboardType={keyboardTypes[type] || 'default'}
         maxLength={maxLength}
         nativeID={id}
+        name={name}
         onChangeText={change}
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
