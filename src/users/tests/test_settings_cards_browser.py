@@ -112,8 +112,8 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.get_by_role("radio", name="Connection", exact=True).click()
         expect(self.select_trigger("Filter by capability")).to_contain_text("Connection")
         self.page.wait_for_url("**capability=connection")
-        expect(self.page.get_by_role("link", name=re.compile(r"^Open ")).first).to_be_visible()
-        expect(self.page.get_by_role("link", name="Open Goodreads", exact=True)).to_have_count(0)
+        expect(self.page.get_by_role("button", name=re.compile(r"^Open ")).first).to_be_visible()
+        expect(self.page.get_by_role("button", name="Open Goodreads", exact=True)).to_have_count(0)
 
         self.select_trigger("Filter by capability").click()
         expect(self.page.get_by_role("radio", name="Connection", exact=True)).to_be_visible()
@@ -123,7 +123,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.set_viewport_size({"width": 390, "height": 1000})
         for label, option in (
             ("Filter by capability", "All Capabilities"),
-            ("Filter by media type", "All Media Types"),
+            ("Filter by media type", "All Types"),
         ):
             self.select_trigger(label).click()
             radio = self.page.get_by_role("radio", name=option, exact=True)
@@ -559,9 +559,9 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         for _ in range(12):
             self.page.evaluate("""() => {
               const host = document.querySelector('[data-provider-root]');
-              const original = host.querySelector('input[name=user]');
+              const original = host.querySelector('input[aria-label="Public username"]');
               htmx.trigger(host, 'htmx:load', {elt: host});
-              if (host.querySelector('input[name=user]') !== original) throw Error('Duplicate load replaced the form');
+              if (host.querySelector('input[aria-label="Public username"]') !== original) throw Error('Duplicate load replaced the form');
               htmx.trigger(host, 'htmx:beforeCleanupElement', {elt: host});
               if (host.dataset.reactMounted) throw Error('Root was not disposed');
               const copy = host.cloneNode(true);
@@ -998,7 +998,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         """Match status typography and shared link/button chip interactions."""
         self.open_cards("overview")
         subtitles = self.page.locator('[data-testid="provider-overview"] [data-testid="settings-card"]').evaluate_all("""cards => cards.map(card => {
-          const p = card.querySelector('p'), style = getComputedStyle(p);
+          const p = card.querySelector('[data-testid="settings-card-heading"]').nextElementSibling, style = getComputedStyle(p);
           return {text:p.textContent.trim(), color:style.color, weight:style.fontWeight, size:style.fontSize};
         })""")
         self.assertTrue(all(not row["text"].endswith(".") for row in subtitles))
