@@ -124,6 +124,21 @@ class AlphabetBrowserTests(SerialStaticLiveServerTestCase):
                       return Math.max(96, Math.ceil(anchor));
                     }"""
                 )
+                # Mounting and poster layout can settle in separate frames.
+                # Wait for the rail's live position observer rather than
+                # comparing against the CSS fallback before it has run.
+                page.wait_for_function(
+                    """() => {
+                      const rail = document.querySelector('.alphabet-rail');
+                      const grid = document.querySelector('.media-grid');
+                      if (!rail || !grid) return false;
+                      const poster = grid.querySelector('img')?.getBoundingClientRect();
+                      const anchor = poster?.width && poster?.height
+                        ? poster.top : grid.getBoundingClientRect().top;
+                      return Math.abs(rail.getBoundingClientRect().top
+                        - Math.max(96, Math.ceil(anchor))) <= 1;
+                    }"""
+                )
                 self.assertAlmostEqual(
                     page.locator(".alphabet-rail").bounding_box()["y"],
                     expected_rail_top,
