@@ -469,6 +469,19 @@ class YamtrackImporter:
                 backfill_completed=False,
             ),
         )
+        for media_type, media_list in batch.items():
+            restored_dates = []
+            for media in media_list:
+                created_at = getattr(media, "_yamtrack_created_at", None)
+                if media.pk and created_at:
+                    media.created_at = created_at
+                    restored_dates.append(media)
+            if restored_dates:
+                apps.get_model("app", media_type).objects.bulk_update(
+                    restored_dates,
+                    ["created_at"],
+                    batch_size=YAMTRACK_IMPORT_BATCH_SIZE,
+                )
         # existing_media/existing_children are intentionally left as the
         # pre-import snapshot from __init__ and not updated with what this
         # loop just created: a repeat watch of an already-tracked item is a
@@ -731,6 +744,9 @@ class YamtrackImporter:
 
         if form.is_valid():
             self.seen_media_keys.add(media_key)
+            created_at = parse_datetime(row.get("created_at") or "")
+            if created_at:
+                form.instance._yamtrack_created_at = created_at
             if isinstance(watch_instance, datetime.datetime):
                 form.instance._history_date = watch_instance
             if media_type in (MediaTypes.TV.value, MediaTypes.SEASON.value):
