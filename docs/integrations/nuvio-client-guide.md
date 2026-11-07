@@ -285,13 +285,31 @@ An episode is marked the same way, with `season_number` and `episode_number`.
 `pause`. Add `played_at` when the client knows when the user watched it;
 otherwise Floppy uses the time of the request.
 
-**Unmark is not sent.** There is no call that reverses a mark without deciding
-what to do with the user's history, so a client should leave Floppy as it is
-when the user unmarks. Floppy's own unmark keeps past plays.
+### When the user unmarks something
+
+Send `action: "unwatch"` with the same media and ids a stop uses:
+
+```http
+POST /api/v1/scrobble/
+
+{"action": "unwatch", "media_type": "movie", "ids": {"imdb": "tt0133093", "tmdb": "603"},
+ "client_event_id": "unmark-1b6e..."}
+```
+
+| Situation | Result |
+|---|---|
+| Title has a watch | The recorded watch is retracted and its resume point is cleared |
+| Title is already unwatched | Accepted; nothing changes |
+| Same `client_event_id` again | The first result, no second mutation |
+
+This is a retraction, not a history wipe. Floppy removes the watch the client
+recorded and leaves plays it cannot attribute to the request alone, so a
+second viewing recorded elsewhere is not lost. An episode is addressed with
+`season_number` and `episode_number` like a stop.
 
 **Do not use `PUT .../watched-state/` for this.** It records the watched
-state in Floppy's sync ledger only. It adds no library entry and does not turn
-a Planning entry into Completed, so the title would not look watched in Floppy.
+state in Floppy's sync ledger only. It adds no library entry, does not turn
+a Planning entry into Completed, and does not retract a play.
 
 ## 4. Offline retries
 
@@ -442,8 +460,10 @@ title.
 
 The proposed tracker does not send a manual **Mark Watched** yet. It is not
 playback, so the table above does not cover it. A client that adds it sends the
-manual stop described in step 3; the exact bodies are in
-`src/api/tests/test_nuviotv_manual_mark.py`.
+manual stop described in step 3, and reverses it with the `unwatch` action in
+the same step. The exact bodies are in
+`src/api/tests/test_nuviotv_manual_mark.py` and
+`src/api/tests/test_nuviotv_unwatch.py`.
 
 What it does not do: send seconds (it has none), read history or lists back, or send ratings. The Nuvio and Floppy sides of those
 are separate changes.

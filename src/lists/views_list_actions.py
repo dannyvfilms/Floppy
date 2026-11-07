@@ -277,6 +277,8 @@ def edit(request):
             logger.error(form.errors.as_json())
             helpers.form_error_messages(form, request)
     else:
+        if custom_list.user_can_view(request.user):
+            return HttpResponse(status=403)
         messages.error(
             request, gettext("You do not have permission to edit this list.")
         )
@@ -298,7 +300,9 @@ def edit_form(request, list_id):
     available_tags = CustomListForm._normalize_tags(
         tag
         for other_list in CustomList.objects.filter(
-            Q(owner=request.user) | Q(collaborators=request.user),
+            Q(owner=request.user)
+            | Q(collaborators=request.user)
+            | Q(viewers=request.user),
         ).only("tags")
         for tag in (other_list.tags or [])
     )
@@ -452,7 +456,10 @@ def lists_modal(
 
     custom_lists = CustomList.objects.get_user_lists_with_item(request.user, item)
     if hasattr(custom_lists, "filter"):
-        custom_lists = custom_lists.filter(is_smart=False)
+        custom_lists = custom_lists.filter(
+            Q(owner=request.user) | Q(collaborators=request.user),
+            is_smart=False,
+        )
     else:
         custom_lists = [
             custom_list
@@ -604,12 +611,17 @@ def list_item_toggle(request):
         request,
         fallback_media_type=item.media_type,
     )
-    custom_list = get_object_or_404(
-        CustomList.objects.filter(
-            Q(owner=request.user) | Q(collaborators=request.user),
-            id=custom_list_id,
-        ).distinct(),  # To prevent duplicates, when user is owner and collaborator
-    )
+    custom_list = get_object_or_404(CustomList, id=custom_list_id)
+    if not custom_list.user_can_view(request.user):
+        msg = "List not found"
+        raise Http404(msg)
+    if not custom_list.user_can_edit(request.user):
+        if as_json:
+            return JsonResponse(
+                {"success": False, "error": "This list is read-only."},
+                status=403,
+            )
+        return HttpResponse(status=403)
 
     if custom_list.is_smart:
         if as_json:
@@ -686,11 +698,17 @@ def bulk_list_add(request):
         )
 
     custom_list = get_object_or_404(
-        CustomList.objects.filter(
-            Q(owner=request.user) | Q(collaborators=request.user),
-            id=request.POST.get("custom_list_id"),
-        ).distinct(),
+        CustomList,
+        id=request.POST.get("custom_list_id"),
     )
+    if not custom_list.user_can_view(request.user):
+        msg = "List not found"
+        raise Http404(msg)
+    if not custom_list.user_can_edit(request.user):
+        return JsonResponse(
+            {"success": False, "error": "This list is read-only."},
+            status=403,
+        )
     if custom_list.is_smart:
         return JsonResponse(
             {"success": False, "error": "Smart lists cannot be edited directly."},

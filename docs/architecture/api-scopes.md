@@ -29,6 +29,13 @@ Legacy account tokens are deliberately unrestricted. They predate scopes, they
 are the credential every existing integration was set up with, and narrowing
 them would break working installs. Scoping is what the named tokens are for.
 
+`SessionAuthentication` is in `REST_FRAMEWORK["DEFAULT_AUTHENTICATION_CLASSES"]`,
+so the table above holds for every endpoint rather than only the ones that opt
+in with a mixin. DRF enforces CSRF on unsafe methods for sessions; the native
+client sends `X-CSRFToken` and refreshes it from `/accounts/login/` when the
+server rotates it. Token clients are unaffected: they authenticate before the
+session class is reached.
+
 ## Enforcement rules
 
 All token authentication requires an active account. Disabling an account

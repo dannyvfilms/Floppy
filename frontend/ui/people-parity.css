@@ -1,0 +1,45 @@
+
+  #detail-secondary-content [data-detail-section="cast"] ul,
+  #detail-secondary-content [data-detail-section="crew"] ul {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+  #detail-secondary-content [data-detail-section="cast"] h3,
+  #detail-secondary-content [data-detail-section="crew"] h3,
+  #detail-secondary-content [data-detail-section="recommendations"] h3 {
+    line-height: 28px;
+  }
+  @media (max-width: 600px) {
+    #detail-secondary-content [data-detail-section="recommendations"] [data-rails-row-root][data-react-mounted="true"] .home-row-card {
+      width: 100% !important;
+    }
+  }
+  #detail-secondary-content [data-detail-section="cast"] .media-card-title,
+  #detail-secondary-content [data-detail-section="crew"] .media-card-title {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+  }
+  #detail-secondary-content [data-detail-section="recommendations"] .media-card > .media-card-visual {
+    position: relative;
+    height: auto;
+  }
+  #detail-secondary-content [data-detail-section="recommendations"] .media-card-poster {
+    height: auto !important;
+    aspect-ratio: auto !important;
+  }
+  #detail-secondary-content [data-detail-section="recommendations"] .media-card-title {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+  }
+  #detail-secondary-content [data-detail-section="recommendations"] ul {
+    margin-top: 0;
+    margin-bottom: 0;
+  }

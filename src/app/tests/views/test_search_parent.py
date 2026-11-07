@@ -134,3 +134,40 @@ class SearchParentViewTests(TestCase):
         self.assertIn("results", response.context)
 
         self.assertEqual(len(response.context["results"]), 0)
+
+    def test_search_parent_tv_json(self):
+        """The shared parent picker reads plain rows from the same endpoint."""
+        response = self.client.get(
+            reverse("search_parent_tv") + "?q=Test&format=json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["results"],
+            [{"id": self.tv1.id, "title": "Test TV Show", "label": "Test TV Show"}],
+        )
+
+    def test_search_parent_season_json(self):
+        """The shared parent picker labels season rows the way the field does."""
+        response = self.client.get(
+            reverse("search_parent_season") + "?q=Test&format=json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["results"],
+            [{
+                "id": self.season1.id,
+                "title": "Test Season - Season 1",
+                "label": "Season 1 of Test Season",
+            }],
+        )
+
+    def test_search_parent_json_short_query_is_empty(self):
+        """Short queries keep the server minimum and return no rows."""
+        response = self.client.get(
+            reverse("search_parent_tv") + "?q=T&format=json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["results"], [])

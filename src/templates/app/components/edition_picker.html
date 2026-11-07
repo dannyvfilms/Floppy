@@ -1,0 +1,57 @@
+{% load i18n %}
+{% load app_tags %}
+{% load ui_tags %}
+{% comment %}
+  Shared edition picker. The React component mounts over this section when the
+  bundle loads; the server search and result forms remain the fallback.
+  Needs: uid, picker_type, title, description, provider, placeholder, list_url,
+  selection_url, return_url, selected, selected_id.
+{% endcomment %}
+{% edition_picker_props uid picker_type description provider placeholder list_url selection_url return_url selected selected_id as picker_props %}
+{% with props_id=uid|add:"-picker-props" form_id=uid|add:"-form" fallback_id=uid|add:"-fallback" %}
+<section class="space-y-3">
+  {% if title %}<h3 class="text-xl font-semibold text-[var(--color-text)]">{{ title }}</h3>{% endif %}
+  {{ picker_props|json_script:props_id }}
+  <div data-edition-picker-root data-props-id="{{ props_id }}"></div>
+
+  <div id="{{ fallback_id }}" x-data="{ open: false }" @click.outside="open = false">
+    <form id="{{ form_id }}" method="post" action="{{ selection_url }}">
+      {% csrf_token %}
+      {% if picker_type == "music" %}
+        <input type="hidden" name="release_id" value="{{ selected_id }}">
+      {% else %}
+        <input type="hidden" name="edition_id" value="{{ selected_id }}">
+      {% endif %}
+      <input type="hidden" name="return_url" value="{{ return_url }}">
+    </form>
+
+    <p class="text-sm text-[var(--color-text-muted)] mt-1">{{ description }}</p>
+
+    {% if selected %}
+      <div class="mt-3">
+        <p class="text-xs font-medium text-[var(--color-text-muted)] mb-1">{% translate "Selected edition" %}</p>
+        <div class="flex items-start gap-3 px-3 py-2 text-sm bg-[var(--color-surface)] rounded-md border border-gray-600">
+          {% include "app/components/edition_picker_result.html" with edition=selected picker_type=picker_type selected_release_id=selected_id only %}
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="relative mt-3">
+      <input type="text"
+             name="q"
+             placeholder="{{ placeholder }}"
+             autocomplete="off"
+             role="combobox"
+             aria-autocomplete="list"
+             aria-controls="{{ uid }}-results"
+             @focus="open = true"
+             hx-get="{{ list_url }}?return_url={{ return_url|urlencode }}"
+             hx-trigger="focus, keyup changed delay:250ms"
+             hx-target="#{{ uid }}-results"
+             hx-swap="innerHTML"
+             class="w-full h-10 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]">
+      <div id="{{ uid }}-results" x-show="open" x-cloak></div>
+    </div>
+  </div>
+</section>
+{% endwith %}

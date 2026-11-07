@@ -16,8 +16,8 @@
          class="pointer-events-none invisible absolute inset-x-0 top-0 -z-10 text-[var(--color-text-secondary)] text-pretty">
     </div>
     <p :class="isClamped && !isExpanded ? 'block' : 'hidden'"
-       class="text-[var(--color-text-secondary)] text-pretty {% if not episode_preview %}sm:hidden{% endif %}">
-      <span x-text="mobilePreviewText"></span>
+       class="text-[var(--color-text-secondary)] text-pretty line-clamp-3 {% if not episode_preview %}sm:hidden{% endif %}">
+      <span x-text="mobilePreviewText">{{ synopsis_text|striptags }}</span>
       <button @click="isExpanded = true"
               class="inline whitespace-nowrap align-baseline ml-1 text-[13px] font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer">
         {% translate "Read more" %}

@@ -322,5 +322,10 @@ def phase(user, instance):
         and record["media_id"] == str(item.media_id)
         and record["source"] == item.source
     ):
-        return {"phase": PHASE_SESSION, "reload_in": None, "kind": "session"}
+        return {
+            "phase": PHASE_SESSION,
+            "reload_in": None,
+            "kind": "session",
+            "started_at_ts": record.get("started_at_ts"),
+        }
     return {"phase": PHASE_IDLE, "reload_in": None, "kind": "session"}

@@ -56,6 +56,8 @@ def add_list_item_page(request, list_id):
     )
 
     if not custom_list.user_can_edit(request.user):
+        if custom_list.user_can_view(request.user):
+            return HttpResponse(status=403)
         msg = "You do not have permission to add items to this list"
         raise Http404(msg)
 
@@ -101,6 +103,8 @@ def add_list_item_search(request, list_id):
     )
 
     if not custom_list.user_can_edit(request.user):
+        if custom_list.user_can_view(request.user):
+            return HttpResponse(status=403)
         msg = "You do not have permission to add items to this list"
         raise Http404(msg)
 
@@ -269,6 +273,8 @@ def add_list_item_submit(request, list_id):
     )
 
     if not custom_list.user_can_edit(request.user):
+        if custom_list.user_can_view(request.user):
+            return HttpResponse(status=403)
         messages.error(
             request, gettext("You do not have permission to edit this list.")
         )

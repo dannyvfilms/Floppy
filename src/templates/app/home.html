@@ -102,15 +102,20 @@
          hx-on::after-swap="this.style.display=this.children.length?'':'none'">
       {% include "app/components/active_playback_cards.html" %}
     </div>
-    {% include "app/components/home_groups.html" %}
-    {% if deferred_groups %}
-      {% comment %}
-        Remaining groups render in place; each row loads on its own so a slow
-        shelf cannot hold back the rest.
-      {% endcomment %}
-      {% include "app/components/home_deferred_groups.html" %}
+    {% if home_groups or deferred_groups %}
+      {{ home_props|json_script:"home-props" }}
+      <div data-home-root data-props-id="home-props">
+        {% include "app/components/home_groups.html" %}
+        {% if deferred_groups %}
+          {% comment %}
+            Remaining groups render in place; each row loads on its own so a slow
+            shelf cannot hold back the rest.
+          {% endcomment %}
+          {% include "app/components/home_deferred_groups.html" %}
+        {% endif %}
+        {% include "app/components/home_artwork_poller.html" with active=True initial=True %}
+      </div>
     {% endif %}
-    {% include "app/components/home_artwork_poller.html" with active=True initial=True %}
     {% if not home_groups and not deferred_groups %}
       <div class="flex flex-col items-center justify-center py-16 sm:py-32 px-3 sm:px-4 bg-[var(--color-surface)] rounded-lg">
         <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">

@@ -892,9 +892,15 @@ class ListSerializer(serializers.Serializer):
                 {"id": collaborator.id, "username": collaborator.username}
                 for collaborator in instance.collaborators.all()
             ],
+            "viewers": [
+                {"id": viewer.id, "username": viewer.username}
+                for viewer in instance.viewers.all()
+            ],
             "items_count": item_count,
             "latest_update": latest_update,
+            "visibility": instance.visibility,
             "is_public": instance.is_public,
+            "is_unlisted": instance.is_unlisted,
             "public_slug": instance.public_slug,
             "allow_recommendations": instance.allow_recommendations,
         }

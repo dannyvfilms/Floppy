@@ -76,6 +76,19 @@ class MusicReleaseViewTests(TestCase):
         )
         mock_releases.assert_called_once_with("release-group")
 
+    @patch("app.music_album_views.musicbrainz.get_release_group_releases")
+    def test_list_music_releases_serves_json_to_the_shared_picker(self, mock_releases):
+        mock_releases.return_value = [self._release("release-1", "Original Pressing")]
+
+        response = self.client.get(
+            reverse("list_music_releases", kwargs={"album_id": self.album.id}),
+            {"format": "json"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["pickerType"], "music")
+        self.assertEqual(response.json()["results"][0]["release_id"], "release-1")
+
     @patch("app.providers.musicbrainz.get_release")
     def test_album_track_modal_places_release_picker_in_metadata_panel(
         self,

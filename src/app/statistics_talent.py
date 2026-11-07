@@ -30,8 +30,7 @@ logger = logging.getLogger(__name__)
 # Controls the maximum items shown in every top-N statistics card.
 # Change this ONE value to resize all top cards simultaneously.
 STATISTICS_TOP_N = 50
-# Dense SQLite libraries are faster with a sequential credits scan than
-# thousands of index probes followed by random person lookups.
+# Scan credits sequentially for dense SQLite watch histories.
 DENSE_CREDIT_SCAN_MIN_ITEMS = 1_000
 DENSE_CREDIT_SCAN_RATIO = 0.8
 # Cross-type global top-rated heap — intentionally same value but a distinct card.
@@ -792,58 +791,65 @@ def _aggregate_top_talent(
     people_by_id = {}
     studios_by_id = {}
 
-    # Project only aggregation fields. A cached select_related queryset keeps a
-    # separate Person instance (including biography) alive for every credit.
-    # The indexed IN query is pathological for very dense SQLite histories:
-    # a representative production test fetched only 2,000 rows in 5 s,
-    # while scanning 200,000 rows took about 1 s. Retain the indexed path
-    # for sparse histories and other database backends.
+    # Project only aggregation fields, avoiding materialised Person objects.
+    # Sparse histories use the indexed, batched query introduced upstream in
+    # #1855. For dense SQLite histories, a sequential scan avoids repeated
+    # index probes and expensive person-join plans.
     dense_credit_scan = (
         connection.vendor == "sqlite"
         and len(played_item_ids) >= DENSE_CREDIT_SCAN_MIN_ITEMS
         and len(played_item_ids) >= Item.objects.count() * DENSE_CREDIT_SCAN_RATIO
     )
-    person_credit_qs = (
-        ItemPersonCredit.objects.all()
-        if dense_credit_scan
-        else ItemPersonCredit.objects.filter(item_id__in=played_item_ids)
-    )
-    person_credits = person_credit_qs.order_by().values_list(
-        "item_id",
-        "person_id",
-        "role_type",
-        "role",
-        "department",
-        "sort_order",
-        "person__gender",
-        "person__name",
-        named=True,
-    )
-    for credit in person_credits.iterator(chunk_size=2000):
-        if dense_credit_scan and credit.item_id not in played_item_ids:
-            continue
-        person_names[credit.person_id] = credit.person__name.lower()
-        if credit.role_type == CreditRoleType.CAST.value:
-            item_media_type = item_media_type_by_id.get(credit.item_id)
-            if (
-                item_media_type == MediaTypes.TV.value
-                and not credit_helpers.is_usable_tv_show_credit(
-                    item_source_by_id.get(credit.item_id),
-                    credit.role_type,
-                    credit.sort_order,
-                )
-            ):
+    played_item_id_batches = list(played_item_ids)
+    batch_size = 500
+    if dense_credit_scan:
+        credit_querysets = (ItemPersonCredit.objects.all().order_by(),)
+    else:
+        credit_querysets = (
+            ItemPersonCredit.objects.filter(
+                item_id__in=played_item_id_batches[offset : offset + batch_size]
+            ).order_by()
+            for offset in range(0, len(played_item_id_batches), batch_size)
+        )
+
+    for person_credit_qs in credit_querysets:
+        person_credits = person_credit_qs.values_list(
+            "item_id",
+            "person_id",
+            "role_type",
+            "role",
+            "department",
+            "sort_order",
+            "person__gender",
+            "person__name",
+            named=True,
+        )
+        chunk_size = 2000 if dense_credit_scan else batch_size
+        for credit in person_credits.iterator(chunk_size=chunk_size):
+            if dense_credit_scan and credit.item_id not in played_item_ids:
                 continue
-            if credit.person__gender == PersonGender.FEMALE.value:
-                cast_actress_ids_by_item[credit.item_id].add(credit.person_id)
-            else:
-                cast_actor_ids_by_item[credit.item_id].add(credit.person_id)
-            continue
-        if credit.role_type == CreditRoleType.CREW.value:
-            if _is_director_credit(credit):
-                director_ids_by_item[credit.item_id].add(credit.person_id)
-            if _is_writer_credit(credit):
-                writer_ids_by_item[credit.item_id].add(credit.person_id)
+            person_names[credit.person_id] = credit.person__name.lower()
+            if credit.role_type == CreditRoleType.CAST.value:
+                item_media_type = item_media_type_by_id.get(credit.item_id)
+                if (
+                    item_media_type == MediaTypes.TV.value
+                    and not credit_helpers.is_usable_tv_show_credit(
+                        item_source_by_id.get(credit.item_id),
+                        credit.role_type,
+                        credit.sort_order,
+                    )
+                ):
+                    continue
+                if credit.person__gender == PersonGender.FEMALE.value:
+                    cast_actress_ids_by_item[credit.item_id].add(credit.person_id)
+                else:
+                    cast_actor_ids_by_item[credit.item_id].add(credit.person_id)
+                continue
+            if credit.role_type == CreditRoleType.CREW.value:
+                if _is_director_credit(credit):
+                    director_ids_by_item[credit.item_id].add(credit.person_id)
+                if _is_writer_credit(credit):
+                    writer_ids_by_item[credit.item_id].add(credit.person_id)
 
     studio_item_ids = movie_item_ids | show_item_ids | game_item_ids
     studio_credits = (

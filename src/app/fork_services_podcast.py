@@ -29,7 +29,7 @@ _DUPLICATE_PLAY_WINDOW_SECONDS = 300
 def _episode_item_defaults(show, episode, runtime_minutes):
     defaults = {
         "title": episode.title if episode else "Unknown Episode",
-        "image": show.image or settings.IMG_NONE,
+        "image": (episode.image if episode else "") or show.image or settings.IMG_NONE,
     }
     if runtime_minutes:
         defaults["runtime_minutes"] = runtime_minutes
@@ -51,8 +51,9 @@ def record_podcast_play(user, show, episode=None, episode_uuid=None, end_date=No
     if episode and episode.duration:
         runtime_minutes = episode.duration // 60
 
+    media_id = episode_uuid or (episode.episode_uuid if episode else None)
     item, created = Item.objects.get_or_create(
-        media_id=episode_uuid,
+        media_id=media_id,
         source=show.source,
         media_type=MediaTypes.PODCAST.value,
         defaults=_episode_item_defaults(show, episode, runtime_minutes),
@@ -101,6 +102,40 @@ def record_podcast_play(user, show, episode=None, episode_uuid=None, end_date=No
         progress=runtime_minutes or 0,
     )
     return podcast, False
+
+
+def set_episode_notes(user, show, episode, notes):
+    """Save private episode notes without recording a play.
+
+    A note edit never creates a history record, and a blank note leaves an
+    untracked episode untouched. The Podcast row is the per-user tracker, so
+    this mirrors set_track_notes for music.
+    """
+    notes = notes or ""
+    runtime_minutes = episode.duration // 60 if episode and episode.duration else None
+    item, _ = Item.objects.get_or_create(
+        media_id=episode.episode_uuid,
+        source=show.source,
+        media_type=MediaTypes.PODCAST.value,
+        defaults=_episode_item_defaults(show, episode, runtime_minutes),
+    )
+    podcast = Podcast.objects.filter(user=user, item=item).first()
+    if podcast is None and not notes:
+        return None
+    if podcast is None:
+        podcast = Podcast(
+            item=item,
+            user=user,
+            show=show,
+            episode=episode,
+            status=Status.PLANNING.value,
+            progress=0,
+        )
+    podcast.notes = notes
+    podcast.save_without_historical_record(
+        update_fields=["notes"] if podcast.pk else None,
+    )
+    return podcast
 
 
 def _episode_fallback_uuid(episode_data):
@@ -243,6 +278,7 @@ def refresh_show_episodes_from_rss(show, episodes_data=None):
                 show=show,
                 episode_uuid=episode_uuid,
                 title=episode_data.get("title", "Unknown Episode"),
+                description=episode_data.get("description") or "",
                 published=episode_data.get("published"),
                 duration=episode_data.get("duration"),
                 audio_url=episode_data.get("audio_url", ""),

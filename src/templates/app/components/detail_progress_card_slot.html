@@ -4,8 +4,14 @@
      {% if progress_card_slot_oob %}hx-swap-oob="outerHTML"{% endif %}>
   {% if not public_view and current_instance and current_instance.watched_once_percentage is not None %}
     {% detail_progress current_instance as progress_display %}
+    {% detail_progress_card current_instance media_type as progress_card %}
     {% if media_type == 'season' %}{% url 'season_progress_breakdown' current_instance.id as progress_url %}{% else %}{% url 'tv_progress_breakdown' current_instance.id as progress_url %}{% endif %}
-    <div class="relative"
+    {% with card_props_id="progress-detail-"|add:media_type|add:"-"|add:media.media_id|add:"-"|add:media.source %}
+      {{ progress_card|json_script:card_props_id }}
+      <div data-progress-detail-root data-props-id="{{ card_props_id }}"></div>
+    {% endwith %}
+    <div data-progress-detail-fallback
+         class="relative"
          x-data="{ percent: {{ progress_display.percent|default_if_none:current_instance.watched_once_percentage }}, rewatch: {{ progress_display.rewatch_percent|default_if_none:'null' }}, offset: {{ progress_display.rewatch_offset|unlocalize }}, width: {{ progress_display.rewatch_width|unlocalize }}, label: '{{ progress_display.rewatch_label|escapejs }}', runKey: '{{ progress_display.run_key|escapejs }}', caughtUp: {{ progress_display.caught_up|yesno:'true,false' }}, open: false, failed: false }"
          @detail-progress-updated.window="if ($event.detail.tv_id === {% if media_type == 'season' %}{{ current_instance.related_tv_id }}{% else %}{{ current_instance.id }}{% endif %} || ($event.detail.id === {{ current_instance.id }} &amp;&amp; '{{ media_type }}' === 'season')) { htmx.ajax('GET', '{{ progress_url }}', { target: '#progress-breakdown-{{ current_instance.id }}-{{ media_type }}', swap: 'innerHTML' }) }"
          @rewatch-progress-resolved.window="if ($event.detail.id === {{ current_instance.id }} &amp;&amp; $event.detail.media_type === '{{ media_type }}') { const data = $event.detail; if (data.percent !== null) percent = data.percent; rewatch = data.rewatch; offset = data.offset; width = data.width; label = data.label; runKey = data.run_key; caughtUp = data.caught_up }"

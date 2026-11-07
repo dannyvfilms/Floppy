@@ -59,6 +59,8 @@ jobs:
       SMOKE_REDIS: floppy-smoke-redis-${{ github.run_id }}-${{ github.run_attempt }}
       SMOKE_SHA: ${{ github.sha }}
       SMOKE_VOLUME: floppy-smoke-db-${{ github.run_id }}-${{ github.run_attempt }}
+      READONLY_DB: floppy-smoke-ro-db-${{ github.run_id }}-${{ github.run_attempt }}
+      READONLY_BACKUP: floppy-smoke-ro-backup-${{ github.run_id }}-${{ github.run_attempt }}
 
     steps:
       - name: Checkout repository
@@ -99,7 +101,9 @@ jobs:
           }
 
           wait_for_health() {
-            for _ in $(seq 1 60); do
+            # A cold boot runs migrations before the services listen; allow
+            # that plus one health interval of detection lag.
+            for _ in $(seq 1 120); do
               state=$(docker inspect --format '{{.State.Status}}' "$SMOKE_APP")
               health=$(docker inspect --format '{{.State.Health.Status}}' "$SMOKE_APP")
               if [ "$health" = healthy ]; then
@@ -191,6 +195,51 @@ jobs:
           wait_for_health
           assert_runtime
 
+          # A distinct persistent volume exercises first boot and restart as a
+          # numeric user with a read-only image filesystem.
+          docker rm --force "$SMOKE_APP"
+          docker volume create "$READONLY_DB"
+          docker volume create "$READONLY_BACKUP"
+          docker run --rm --entrypoint sh \
+            -v "$READONLY_DB:/data" -v "$READONLY_BACKUP:/backup" \
+            "$SMOKE_IMAGE" -c 'chown 1000:1000 /data /backup; touch /data/.floppy-volume-ready /backup/.floppy-volume-ready'
+          start_readonly() {
+            docker run --detach --name "$SMOKE_APP" --network "$SMOKE_NETWORK" \
+              --read-only --user 1000:1000 --tmpfs /tmp:rw,nosuid,nodev,mode=1777 \
+              --publish 127.0.0.1:8000:8123 \
+              --env FLOPPY_PORT=8123 --env TZ=UTC \
+              --env SECRET=ci-smoke-only-not-a-production-secret \
+              --env REDIS_URL="redis://$SMOKE_REDIS:6379" \
+              --env ADMIN_ENABLED=False --env DEMO_ACCOUNT_ENABLED=False \
+              --env DEBUG=False --env FLOPPY_RESOURCE_TIER=minimal \
+              --volume "$READONLY_DB:/floppy/db" \
+              --volume "$READONLY_BACKUP:/floppy/backups" "$SMOKE_IMAGE"
+          }
+          for boot in first restart; do
+            start_readonly
+            wait_for_health
+            assert_runtime
+            docker exec "$SMOKE_APP" sh -c \
+              'test "$(id -u)" = 1000 && test "$(id -g)" = 1000 && test -w /floppy/backups && nginx -t -c /tmp/floppy-runtime/nginx.ipv6.conf && ps | grep "[c]elery" && ps | grep "[g]unicorn"'
+            if [ "$boot" = first ]; then
+              docker exec "$SMOKE_APP" python -c \
+                'from pathlib import Path; from config.sqlite_integrity import create_live_database_snapshot; p = Path("/floppy/backups/database"); p.mkdir(exist_ok=True); assert create_live_database_snapshot("/floppy/db/db.sqlite3", p, max_keep=2, timeout_seconds=60)'
+              docker exec "$SMOKE_APP" sh -c 'echo persisted > /floppy/backups/smoke'
+            else
+              docker exec "$SMOKE_APP" sh -c 'test "$(cat /floppy/backups/smoke)" = persisted && ls /floppy/backups/database/*.sqlite* >/dev/null'
+            fi
+            docker rm --force "$SMOKE_APP"
+          done
+          docker run --rm --user 1000:1000 --entrypoint sh \
+            -v "$READONLY_BACKUP:/backup" "$SMOKE_IMAGE" -c 'test "$(cat /backup/smoke)" = persisted'
+          if diagnostic=$(docker run --rm --read-only --user 1000:1000 \
+              --tmpfs /tmp:rw,nosuid,nodev,mode=1777 \
+              -v "$READONLY_DB:/floppy/db" "$SMOKE_IMAGE" 2>&1); then
+            echo 'Container unexpectedly started without a writable backup mount' >&2
+            exit 1
+          fi
+          grep -Fq 'must be writable by container UID 1000' <<<"$diagnostic"
+
       - name: Print test container logs
         if: failure()
         run: |
@@ -211,6 +260,7 @@ jobs:
           docker rm --force "$SMOKE_APP" "$SMOKE_REDIS" 2>/dev/null || true
           docker network rm "$SMOKE_NETWORK" 2>/dev/null || true
           docker volume rm "$SMOKE_VOLUME" 2>/dev/null || true
+          docker volume rm "$READONLY_DB" "$READONLY_BACKUP" 2>/dev/null || true
 
   build:
     needs: [test, quality]
