@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 from unittest.mock import patch
 from urllib.parse import urlsplit
 
@@ -21,6 +22,7 @@ from integrations.models import AudiobookshelfAccount, ImportRun
 MOUNTED_ISLANDS = (
     '[data-react-mounted="true"]:not([data-shell-root]):not([data-global-search-root])'
     ":not([data-sidebar-root]):not([data-modal-host-root]):not([data-bulk-actions-root])"
+    ":not([data-settings-view-root])"
 )
 
 
@@ -87,10 +89,16 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.goto(f"{self.live_server_url}/settings/providers/anilist?tab={tab}")
         expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
 
+    def select_trigger(self, label):
+        """SelectField exposes the field label and current value as a button."""
+        return self.page.get_by_role(
+            "button", name=re.compile(rf"^{re.escape(label)}: ")
+        )
+
     def choose_option(self, label, option):
-        """Operate the shared select by its accessible user-facing labels."""
-        self.page.get_by_role("combobox", name=label, exact=True).click()
-        self.page.get_by_role("option", name=option, exact=True).click()
+        """Exercise the native SelectField dialog and accessible radio choices."""
+        self.select_trigger(label).click()
+        self.page.get_by_role("radio", name=option, exact=True).click()
 
     def test_shared_dropdown_menu_keyboard_dismissal_and_connection_status(self):
         self.page.goto(f"{self.live_server_url}/settings/providers")
@@ -141,7 +149,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             self.page.keyboard.press("Escape")
         self.page.set_viewport_size({"width": 1440, "height": 1000})
         self.open_cards("import")
-        self.page.get_by_role("combobox", name="Import Frequency", exact=True).click()
+        self.select_trigger("Import Frequency").click()
         preference = self.page.get_by_role("listbox", name="Import Frequency", exact=True)
         colors = preference.evaluate("""element => {
           const probe = document.createElement('div'); probe.style.color = 'var(--color-panel)';
@@ -202,9 +210,9 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         """The retained provider uses the same controls and clamps help to the viewport."""
         self.page.set_viewport_size({"width": 390, "height": 850})
         self.page.goto(f"{self.live_server_url}/settings/providers/steam?tab=import")
-        expect(self.page.locator("[data-import-preferences-root] .settings-card")).to_be_visible()
-        mode = self.page.get_by_role("combobox", name="Import Mode", exact=True)
-        frequency = self.page.get_by_role("combobox", name="Import Frequency", exact=True)
+        expect(self.page.locator('[data-import-preferences-root] [data-testid="settings-card"]')).to_be_visible()
+        mode = self.select_trigger("Import Mode")
+        frequency = self.select_trigger("Import Frequency")
         self.assertLess(mode.bounding_box()["y"], frequency.bounding_box()["y"])
         self.choose_option("Import Mode", "Watchlist")
         expect(self.page.get_by_text("This import mode is not supported by this provider.")).to_be_visible()
@@ -293,7 +301,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         root = self.page.locator('[data-account-connection-root][data-react-mounted="true"]')
         expect(root).to_be_visible()
         expect(root.get_by_role("heading", name="Account connection")).to_be_visible()
-        activity_card = root.locator(".settings-card").filter(has=self.page.get_by_role("heading", name="Automatic import"))
+        activity_card = root.locator('[data-testid="settings-card"]').filter(has=self.page.get_by_role("heading", name="Automatic import"))
         expect(activity_card.get_by_text("Connecting starts an initial import and recurring sync.")).to_be_visible()
         expect(activity_card.get_by_role("link", name="View activity")).to_have_attribute("href", "/settings/providers/audiobookshelf?tab=activity")
         colors = self.page.evaluate("""() => ['Connect', 'View activity'].map(label => {
@@ -333,7 +341,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.user.import_frequency = "daily"
         self.user.save(update_fields=["import_frequency"])
         self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=import")
-        frequency = self.page.get_by_role("combobox", name="Import Frequency", exact=True)
+        frequency = self.select_trigger("Import Frequency")
         expect(frequency).to_be_disabled()
         expect(frequency).to_have_text("One Time Import")
         self.page.get_by_role("button", name="Import frequency help").click()
@@ -348,7 +356,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(card).to_contain_text("File only")
         expect(card).to_contain_text("Automatic imports are unavailable for file uploads")
         self.page.goto(f"{self.live_server_url}/settings/providers/hardcover?tab=import")
-        frequency = self.page.get_by_role("combobox", name="Import Frequency", exact=True)
+        frequency = self.select_trigger("Import Frequency")
         expect(frequency).to_be_enabled()
         expect(frequency).to_have_text("Every Day")
         self.assertEqual(self.errors, [])
@@ -361,7 +369,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.user.save(update_fields=["import_mode"])
         self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=import")
         expect(self.page.locator('[data-file-import-root][data-react-mounted="true"]')).to_be_visible()
-        mode = self.page.get_by_role("combobox", name="Import Mode", exact=True)
+        mode = self.select_trigger("Import Mode")
         expect(mode).to_be_disabled()
         expect(mode).to_have_text("Collection and wishlist")
         self.page.get_by_role("button", name="Import mode help").click()
@@ -585,7 +593,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
                     self.page.set_viewport_size({"width": width, "height": 1000})
                     for tab in ("overview", "connection", "import", "activity"):
                         self.open_cards(tab)
-                        expect(self.page.locator(".settings-card")).to_have_count(3 if tab == "overview" else 2)
+                        expect(self.page.locator('[data-provider-root] [data-testid="settings-card"]')).to_have_count(3 if tab == "overview" else 2)
                         self.assertFalse(self.page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"))
         self.assertEqual(self.errors, [])
 
@@ -618,7 +626,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             }
           }).observe({type: 'layout-shift', buffered: true});
           new MutationObserver(() => {
-            if (document.querySelectorAll('[data-react-mounted=true]:not([data-global-search-root]):not([data-sidebar-root]):not([data-modal-host-root]):not([data-modal-host-root])').length === 1) {
+            if (document.querySelectorAll('[data-react-mounted=true]:not([data-shell-root]):not([data-global-search-root]):not([data-sidebar-root]):not([data-modal-host-root]):not([data-bulk-actions-root]):not([data-settings-view-root])').length === 1) {
               cardProof.mountedAt ||= performance.now();
             }
           }).observe(document, {subtree:true, attributes:true, attributeFilter:['data-react-mounted']});
@@ -651,7 +659,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
     def test_overview_shows_three_cards_using_real_state(self):
         """Credential saves, enabled schedules and the latest run feed Overview."""
         self.open_cards("overview")
-        expect(self.page.locator(".provider-overview > .settings-card")).to_have_count(3)
+        expect(self.page.locator("[data-testid="provider-overview"] [data-testid="settings-card"]")).to_have_count(3)
         expect(self.page.get_by_text("No credentials active", exact=True)).to_be_visible()
         expect(self.page.get_by_text("No automatic imports configured", exact=True)).to_be_visible()
         credentials.set_user("anilist", self.user, {"client_id": "browser-client", "client_secret": "browser-secret"})
@@ -708,13 +716,13 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
                              ("goodreads", ["Automatic import", "Last active import"])):
             self.page.goto(f"{self.live_server_url}/settings/providers/{slug}?tab=overview")
             expect(self.page.locator("[data-provider-root][data-react-mounted=true]")).to_have_count(1)
-            cards = self.page.locator(".provider-overview > .settings-card")
+            cards = self.page.locator("[data-testid="provider-overview"] [data-testid="settings-card"]")
             self.assertEqual(cards.locator('[role="heading"]').all_text_contents(), titles)
             self.assertFalse(self.page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"))
-            self.assertEqual(self.page.locator(".provider-page").count(), 1)
+            self.assertEqual(self.page.locator('[data-testid="provider-page"]').count(), 1)
         self.page.goto(f"{self.live_server_url}/settings/providers/bgg?tab=overview")
         expect(self.page.locator("[data-provider-root][data-react-mounted=true]")).to_have_count(1)
-        self.page.locator(".provider-overview").get_by_role("link", name="Connection", exact=True).click()
+        self.page.locator('[data-testid="provider-overview"]').get_by_role("link", name="Connection", exact=True).click()
         expect(self.page.get_by_role("heading", name="Instance credentials", exact=True)).to_be_visible()
         expect(self.page.locator("[data-provider-root][data-react-mounted=true]")).to_have_count(1)
         expect(self.page.locator("[data-provider-credentials-root][data-react-mounted=true]")).to_have_count(1)
@@ -725,7 +733,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             self.page.set_viewport_size({"width": width, "height": 1000})
             columns = []
             for path, selector in (("/settings/providers", "#provider-results"),
-                                   ("/settings/providers/anilist?tab=overview", ".provider-overview")):
+                                   ("/settings/providers/anilist?tab=overview", '[data-testid="provider-overview"]')):
                 self.page.goto(self.live_server_url + path)
                 expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
                 columns.append(self.page.locator(selector).evaluate("element => getComputedStyle(element).gridTemplateColumns.split(' ').length"))
@@ -790,7 +798,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.goto(f"{self.live_server_url}/settings/providers/openlibrary?tab=metadata")
         expect(self.page.locator('[data-provider-root][data-react-mounted="true"]')).to_have_count(1)
         self.page.get_by_role("button", name="Configure Books", exact=True).click()
-        expect(self.page.get_by_role("combobox", name="Provider for new titles", exact=True)).to_have_text("Hardcover")
+        expect(self.select_trigger("Provider for new titles")).to_have_text("Hardcover")
         expect(self.page.get_by_role("img", name="Search results: From Hardcover", exact=True)).to_be_visible()
         for width in (390, 768, 1440):
             self.page.set_viewport_size({"width": width, "height": 1000})
@@ -828,10 +836,10 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
     def test_steam_explains_public_artwork_without_a_connection(self):
         self.page.goto(f"{self.live_server_url}/settings/providers/steam?tab=overview")
         expect(self.page.locator('[data-provider-root][data-react-mounted="true"]')).to_have_count(1)
-        connection = self.page.locator(".provider-overview").get_by_role("link", name="Connection", exact=True)
+        connection = self.page.locator('[data-testid="provider-overview"]').get_by_role("link", name="Connection", exact=True)
         expect(connection).to_contain_text("Active")
         expect(connection).to_contain_text("Public API active")
-        metadata = self.page.locator(".provider-overview").get_by_role("link", name="Metadata", exact=True)
+        metadata = self.page.locator('[data-testid="provider-overview"]').get_by_role("link", name="Metadata", exact=True)
         expect(metadata).to_contain_text("Supplemental metadata active")
         connection.click()
         card = self.page.locator(".settings-card").filter(has=self.page.get_by_role("heading", name="Instance credentials"))
@@ -913,7 +921,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             with self.subTest(width=width):
                 self.page.set_viewport_size({"width": width, "height": 1000})
                 self.open_cards("overview")
-                spills = self.page.locator(".provider-overview > .settings-card").evaluate_all("""cards => cards.flatMap(card => {
+                spills = self.page.locator("[data-testid="provider-overview"] [data-testid="settings-card"]").evaluate_all("""cards => cards.flatMap(card => {
                   const bounds = card.getBoundingClientRect();
                   return [...card.querySelectorAll('[data-testid=settings-card-badge]')].filter(badge => {
                     const box = badge.getBoundingClientRect();
@@ -923,18 +931,18 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
                   }).map(badge => badge.textContent);
                 })""")
                 self.assertEqual(spills, [])
-                expect(self.page.locator(".provider-overview").get_by_role("link")).to_have_count(3)
+                expect(self.page.locator('[data-testid="provider-overview"]').get_by_role("link")).to_have_count(3)
                 expect(self.page.get_by_text("Manage connection", exact=True)).to_have_count(0)
                 expect(self.page.get_by_text("Configure imports", exact=True)).to_have_count(0)
                 expect(self.page.get_by_text("View activity", exact=True)).to_have_count(0)
-        self.page.locator(".provider-overview").get_by_role("link", name="Connection", exact=True).click()
+        self.page.locator('[data-testid="provider-overview"]').get_by_role("link", name="Connection", exact=True).click()
         self.page.wait_for_url("**/settings/providers/anilist?tab=connection")
         self.open_cards("overview")
-        self.page.locator(".provider-overview").get_by_role("link", name="Automatic import", exact=True).focus()
+        self.page.locator('[data-testid="provider-overview"]').get_by_role("link", name="Automatic import", exact=True).focus()
         self.page.keyboard.press("Enter")
         self.page.wait_for_url("**/settings/providers/anilist?tab=import")
         self.open_cards("overview")
-        self.page.locator(".provider-overview").get_by_role("link", name="Last active import", exact=True).click()
+        self.page.locator('[data-testid="provider-overview"]').get_by_role("link", name="Last active import", exact=True).click()
         self.page.wait_for_url("**/settings/providers/anilist?tab=activity")
         self.assertEqual(self.errors, [])
 
@@ -942,7 +950,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         """Keep explanatory copy in a tooltip and sample the first painted hover frames."""
         self.page.emulate_media(color_scheme="dark")
         self.open_cards("overview")
-        card = self.page.locator(".provider-overview").get_by_role("link", name="Connection", exact=True)
+        card = self.page.locator('[data-testid="provider-overview"]').get_by_role("link", name="Connection", exact=True)
         expect(card.locator("p")).to_have_count(1)
         expect(card).to_have_attribute("title", "Public username imports do not require provider credentials.")
         self.page.mouse.move(0, 0)
@@ -978,7 +986,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
     def test_overview_subtitles_and_interactive_chips_are_consistent(self):
         """Match status typography and shared link/button chip interactions."""
         self.open_cards("overview")
-        subtitles = self.page.locator(".provider-overview > .settings-card").evaluate_all("""cards => cards.map(card => {
+        subtitles = self.page.locator("[data-testid="provider-overview"] [data-testid="settings-card"]").evaluate_all("""cards => cards.map(card => {
           const p = card.querySelector('p'), style = getComputedStyle(p);
           return {text:p.textContent.trim(), color:style.color, weight:style.fontWeight, size:style.fontSize};
         })""")
