@@ -473,8 +473,8 @@ def _extra_value(extra, name):
 
 
 @register.simple_tag(takes_context=True)
-def date_time_picker(context):
-    """Render the shared date/time field with the existing hidden form value.
+def _date_time_picker_values(context):
+    """Build the shared date/time picker template values for either renderer.
 
     Dynamic suggestion expressions stay on the legacy Alpine include; static
     consumer configurations are handed to the React presentation explicitly.
@@ -581,15 +581,40 @@ def date_time_picker(context):
             "activity": str(_("View activity for")),
         },
     }
-    props_id = f"date-time-picker-{uuid4().hex}"
-    return render_to_string("app/components/date_time_picker_react.html", {
+    return {
         "props": props,
-        "props_id": props_id,
+        "props_id": f"date-time-picker-{uuid4().hex}",
         "field_name": field_name,
         "field_id": props["fieldId"],
         "field_value": field_value,
         "track_time": track_time,
-    })
+    }
+
+
+@register.simple_tag(takes_context=True)
+def date_time_picker(context):
+    """Render the shared React date/time field with the existing hidden value."""
+    return render_to_string(
+        "app/components/date_time_picker_react.html",
+        _date_time_picker_values(context),
+    )
+
+
+@register.simple_tag(takes_context=True)
+def date_time_picker_props(context):
+    """Render the picker's hidden value and props without a React mount host.
+
+    The track modal keeps the release date-picker markup; this tag supplies the
+    same serialized contract the React picker would receive.
+    """
+    values = _date_time_picker_values(context)
+    # The release markup already renders the quick-action buttons; keep those
+    # labels out of the serialized contract so the page does not duplicate them.
+    values["props"]["suggestionLabel"] = ""
+    return render_to_string(
+        "app/components/date_time_picker_props.html",
+        values,
+    )
 
 
 @register.simple_tag(takes_context=True)

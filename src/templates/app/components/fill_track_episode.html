@@ -116,7 +116,7 @@
 
           <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-2">{% translate "Watch Date" %}</label>
 
-          {% include "app/components/date_time_picker.html" with field_name="end_date" field_value="" field_id="episode-watch-date" field_label=_("Watch Date") default_now=True track_time=TRACK_TIME suggestion_label=_("Release Date") suggestion_date=episode.air_date|date:"Y-m-d" runtime_minutes=episode.runtime_minutes week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format only %}
+          {% include "app/components/date_time_picker.html" with legacy_picker=True field_name="end_date" field_value="" field_id="episode-watch-date" field_label=_("Watch Date") default_now=True track_time=TRACK_TIME suggestion_label=_("Release Date") suggestion_date=episode.air_date|date:"Y-m-d" runtime_minutes=episode.runtime_minutes week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format only %}
         </form>
 
         {# Drop form (no date input) #}

@@ -583,16 +583,27 @@
       {% endif %}
     {% endif %}
 
-    {% if media_type == MediaTypes.PODCAST.value and episodes %}
+    {% if media_type == MediaTypes.PODCAST.value %}
+      {% if episodes or episode_manager_props %}
       <div class="w-full md:w-3/4"
            style="display: flex; flex-direction: column;">
         <div class="w-full" {% detail_section_attrs user detail_family "content" "episodes" %}>
-          <h2 class="text-xl font-bold mb-4">{% translate "Episodes" %}</h2>
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-bold">{% translate "Episodes" %}</h2>
+            {% if episode_manager_props %}
+              <div data-podcast-episode-manager-root data-props-id="podcast-episode-manager-props">
+                <a class="px-3 py-1.5 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700 transition-colors"
+                   href="{% url 'podcast_episodes_manage' podcast_show.id %}">{% translate "Manage episodes" %}</a>
+              </div>
+              {{ episode_manager_props|json_script:"podcast-episode-manager-props" }}
+            {% endif %}
+          </div>
           <div id="episodes-list">
             {% include "app/components/podcast_episode_list.html" with episodes=paginated_episodes|default:episodes user=user show=podcast_show IMG_NONE=IMG_NONE TRACK_TIME=TRACK_TIME has_more=has_more|default:has_more_episodes|default:False next_page=next_page|default:2 show_id=show_id request=request csrf_token=csrf_token only %}
           </div>
         </div>
       </div>
+      {% endif %}
     {% endif %}
 
     {% if media_type == MediaTypes.PODCAST.value and show_notes|default:False and notes_entry %}

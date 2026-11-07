@@ -16,8 +16,9 @@ permissions:
 jobs:
   test_shards:
     name: test (${{ matrix.suite }}, ${{ matrix.python-version }})
-    # Hosted full-suite execution has exceeded 68 minutes (run 38993407779).
-    # Leave setup/coverage time beyond the runner's bounded 110-minute budget.
+    # A single non-app shard grew past the 105-minute watchdog on a slow
+    # hosted runner. Keep each shard near half the old workload; the timeout
+    # still leaves setup/coverage margin beyond the test budget.
     timeout-minutes: 120
     env:
       SECRET: ci-tests-only-not-a-production-secret
@@ -29,17 +30,22 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 3
       matrix:
         # Separate serial processes avoid the documented multiprocessing
         # worker/result failures. Every app belongs to exactly one shard.
+        # Integrations is nearly as large as the remaining non-app apps and
+        # has the slowest provider suites, so it gets its own runner.
         include:
           - python-version: "3.12"
             suite: app
             apps: app
           - python-version: "3.12"
+            suite: integrations
+            apps: integrations
+          - python-version: "3.12"
             suite: other
-            apps: users integrations lists events api config
+            apps: users lists events api config
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -137,7 +143,7 @@ jobs:
           app.tests.test_reliable_sync_migration
           app.tests.views.test_collection_custom_field_list
 
-  # Preserve the existing required-check name while requiring both shards and OAuth.
+  # Preserve the existing required-check name while requiring every shard and OAuth.
   test:
     name: test (3.12)
     needs: [test_shards, oauth_postgres]

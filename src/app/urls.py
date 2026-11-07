@@ -511,6 +511,26 @@ urlpatterns = [
         name="podcast_episodes_api",
     ),
     path(
+        "podcast/show/<int:show_id>/episodes/manage/",
+        views.podcast_episodes_manage,
+        name="podcast_episodes_manage",
+    ),
+    path(
+        "podcast/show/<int:show_id>/episodes/add/",
+        views.podcast_episode_add,
+        name="podcast_episode_add",
+    ),
+    path(
+        "podcast/episode/<int:episode_id>/edit/",
+        views.podcast_episode_edit,
+        name="podcast_episode_edit",
+    ),
+    path(
+        "podcast/episode/<int:episode_id>/delete/",
+        views.podcast_episode_delete,
+        name="podcast_episode_delete",
+    ),
+    path(
         "podcast/show/<int:show_id>/mark-all-played/",
         views.podcast_mark_all_played,
         name="podcast_mark_all_played",
