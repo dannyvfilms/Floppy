@@ -1,7 +1,7 @@
 """Request movies and shows through the user's own Seerr instance (#772).
 
 The URL is one the user configured for their own server, usually on the LAN,
-so calls go through `send_to_self_hosted` like the other self-hosted clients
+so calls go through `send_to_self_hosted_pinned` like other self-hosted clients
 (docs/architecture/outbound-fetch.md).
 
 No `connection_broken` bookkeeping: Seerr answers 403 both for a bad API key and
@@ -10,15 +10,13 @@ credentials (see docs/architecture/connection-health.md). Errors are shown in
 the request panel instead.
 """
 
-from functools import partial
-
 import requests
 from django.utils.dateparse import parse_datetime
 
 from app.log_safety import exception_summary
 from app.models import MediaTypes
 from integrations.imports.helpers import decrypt_or_raise
-from integrations.safe_fetch import SelfHostedUrlError, send_to_self_hosted
+from integrations.safe_fetch import SelfHostedUrlError, send_to_self_hosted_pinned
 
 MEDIA_STATUSES = {
     1: "unknown",
@@ -53,8 +51,8 @@ class SeerrClient:
 
     def _call(self, method, path, **kwargs):
         try:
-            response = send_to_self_hosted(
-                partial(requests.request, method),
+            response = send_to_self_hosted_pinned(
+                method,
                 f"{self.base_url}/api/v1{path}",
                 headers={"X-Api-Key": self.api_key},
                 timeout=20,
