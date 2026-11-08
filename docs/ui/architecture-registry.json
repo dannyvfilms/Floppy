@@ -2373,11 +2373,11 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The shared sidebar rendered on the local Home page in the in-app browser; Explore expanded and collapsed. No responsive or screen-reader pass was performed."
+          "evidence": "The previous inline Explore sidebar was exercised in the in-app browser; the new overlay layout has not had a browser interaction pass. No responsive or screen-reader pass was performed."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "On the physical iOS 27.2 Duo in Expo Go, the sidebar was inspected on both sides against Claude. Screen-scoped safe-area insets changed with the side and the usual sidebar margin was reduced by the inset so the rail side received no duplicate padding. Direct side swapping and VoiceOver remain unverified."
+          "evidence": "On the physical iOS 27.2 Duo in Expo Go, the sidebar was inspected on both sides against Claude. Screen-scoped safe-area insets changed with the side and the usual sidebar margin was reduced by the inset so the rail side received no duplicate padding. Explore displayed all seven unpinned entries in a content-sized overlay with navigation visible above, with an up chevron when closed and down when open. Direct side swapping and VoiceOver remain unverified."
         },
         "android": {
           "status": "unverified",

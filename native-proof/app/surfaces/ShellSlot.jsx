@@ -214,7 +214,7 @@ export default function ShellSlot({
     renderIcon={renderNativeIcon}
     onNavigate={openItem}
     onLogout={() => { setOpen(false); signOut().catch(() => {}); }}
-    showLogo={false} autoScrollExplore={false} />;
+    showLogo={false} />;
   const search = <SearchSlot
     key={searchType}
     expanded
