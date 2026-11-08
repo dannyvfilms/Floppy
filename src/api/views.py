@@ -89,6 +89,7 @@ from .helpers import (
     build_lists_by_item_id,
     check_source_type,
     check_valid_type,
+    filter_item_bucket,
     get_item_lists,
     get_media_type_availability,
     paginate_data,
@@ -2920,31 +2921,42 @@ class MediaSeasonEpisodesView(drf_views.APIView):
 
         paginated = paginate_data(request, episodes, limit, offset)
 
-        # TODO: see if this can be optimized with a single query for all episodes instead of one per episode
         # TODO: see if lists infos can be saved in the `episodes` object to avoid using `context` to pass additional parameters
-        lists_by_number = {}
-        for episode in paginated["results"]:
-            episode_number = episode.get("episode_number")
-            if episode_number is None:
-                continue
-            lists_by_number[episode_number] = get_item_lists(
-                user,
-                media_id,
-                source,
-                "episode",
-                season_number=season_number,
-                episode_number=episode_number,
-                library_media_type=request.query_params.get("library_media_type"),
-            )
-
         episode_numbers = [
             episode.get("episode_number")
             for episode in paginated["results"]
             if episode.get("episode_number") is not None
         ]
 
+        lists_by_number = {}
         tracked_by_number = {}
         if episode_numbers:
+            episode_items = filter_item_bucket(
+                Item.objects.filter(
+                    media_id=media_id,
+                    source=source,
+                    media_type=MediaTypes.EPISODE.value,
+                    season_number=season_number,
+                    episode_number__in=episode_numbers,
+                ),
+                MediaTypes.EPISODE.value,
+                library_media_type=request.query_params.get("library_media_type"),
+            ).order_by("id")
+            item_ids_by_number = {}
+            for episode_number, item_id in episode_items.values_list(
+                "episode_number",
+                "id",
+            ):
+                item_ids_by_number.setdefault(episode_number, item_id)
+            lists_by_item_id = CustomListItem.objects.get_user_item_lists_map(
+                user,
+                item_ids_by_number.values(),
+            )
+            lists_by_number = {
+                episode_number: lists_by_item_id.get(item_id, [])
+                for episode_number, item_id in item_ids_by_number.items()
+            }
+
             tracked_episodes = BasicMedia.objects.get_season_episodes(
                 user,
                 media_id,

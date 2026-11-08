@@ -1,11 +1,14 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from django.db import connection
 from django.db.utils import OperationalError
+from django.test.utils import CaptureQueriesContext
 
 from api.serializers import EpisodeSerializer
 from app.models import TV, Episode, Item, MediaTypes, Season, Sources
 from app.providers import services
+from lists.models import CustomListItem
 
 from .base import FloppyApiTestCase
 from .helpers import (
@@ -1265,6 +1268,243 @@ class MediaSeasonTests(FloppyApiTestCase):
         check_pagination_structure(self, payload["pagination"])
         for episode in payload["results"]:
             check_media_structure(self, episode)
+
+    @patch("api.views.services.get_media_metadata")
+    def test_season_episodes_memberships_include_untracked_and_visible_lists(
+        self,
+        mock_metadata,
+    ):
+        """Page memberships include owned/shared lists, even without tracking."""
+        tracked_item = self.items_by_type[MediaTypes.EPISODE.value][0]
+        untracked_item = Item.objects.create(
+            media_id=tracked_item.media_id,
+            source=tracked_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            title="Untracked episode",
+            season_number=1,
+            episode_number=4,
+        )
+        shared_list = self.lists_by_name["user2_private"]
+        shared_list.collaborators.add(self.user1)
+        hidden_list = self.lists_by_name["watching"]
+        hidden_list.owner = self.user2
+        hidden_list.save()
+        owned_list = self.lists_by_name["favorites"]
+        expected_lists = {}
+        for item in (tracked_item, untracked_item):
+            memberships = [
+                CustomListItem.objects.create(custom_list=custom_list, item=item)
+                for custom_list in (owned_list, shared_list, hidden_list)
+            ]
+            expected_lists[item.episode_number] = [
+                {
+                    "list_id": membership.custom_list_id,
+                    "list_item_id": membership.list_item_id,
+                }
+                for membership in sorted(
+                    memberships[:2],
+                    key=lambda membership: membership.custom_list_id,
+                )
+            ]
+        mock_metadata.return_value = {
+            "episodes": [
+                {
+                    "episode_number": number,
+                    "season_number": 1,
+                    "show_id": tracked_item.media_id,
+                    "name": f"Episode {number}",
+                }
+                for number in (1, 4, 99)
+            ],
+        }
+
+        for params, expected_numbers in (
+            ({}, [1, 4, 99]),
+            ({"limit": 1, "offset": 1}, [4]),
+            ({"limit": 1, "offset": 2}, [99]),
+            ({"limit": 1, "offset": 3}, []),
+        ):
+            with (
+                self.subTest(params=params),
+                patch.object(
+                    CustomListItem.objects,
+                    "get_user_item_lists_map",
+                    wraps=CustomListItem.objects.get_user_item_lists_map,
+                ) as membership_lookup,
+            ):
+                response = self.call_api(
+                    "get",
+                    "api_media_season_episodes",
+                    args=("tv", tracked_item.source, tracked_item.media_id, 1),
+                    params=params,
+                    headers=self.auth_headers,
+                )
+                self.assertEqual(response.status_code, 200)
+                payload = response.json()
+                check_pagination_structure(self, payload["pagination"])
+                results = payload["results"]
+                self.assertEqual(
+                    [episode["item"]["episode_number"] for episode in results],
+                    expected_numbers,
+                )
+                for episode in results:
+                    number = episode["item"]["episode_number"]
+                    check_media_structure(self, episode)
+                    self.assertEqual(episode["tracked"], number == 1)
+                    self.assertEqual(episode["lists"], expected_lists.get(number, []))
+                if expected_numbers:
+                    membership_lookup.assert_called_once()
+                    self.assertEqual(
+                        set(membership_lookup.call_args.args[1]),
+                        {
+                            item.id
+                            for item in (tracked_item, untracked_item)
+                            if item.episode_number in expected_numbers
+                        },
+                    )
+                else:
+                    membership_lookup.assert_not_called()
+
+    @patch("api.views.services.get_media_metadata")
+    def test_season_episodes_membership_queries_are_constant(self, mock_metadata):
+        """Resolving page Items and memberships takes two queries at any size."""
+        first_item = self.items_by_type[MediaTypes.EPISODE.value][0]
+        for number in range(4, 21):
+            Item.objects.create(
+                media_id=first_item.media_id,
+                source=first_item.source,
+                media_type=MediaTypes.EPISODE.value,
+                title=f"Episode {number}",
+                season_number=1,
+                episode_number=number,
+            )
+        episode_items = Item.objects.filter(
+            media_id=first_item.media_id,
+            source=first_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+        )
+        CustomListItem.objects.bulk_create(
+            [
+                CustomListItem(custom_list=self.lists_by_name["favorites"], item=item)
+                for item in episode_items
+            ],
+        )
+        mock_metadata.return_value = {
+            "episodes": [
+                {
+                    "episode_number": number,
+                    "season_number": 1,
+                    "show_id": first_item.media_id,
+                    "name": f"Episode {number}",
+                }
+                for number in range(1, 21)
+            ],
+        }
+        for limit in (1, 3, 20):
+            with (
+                self.subTest(limit=limit),
+                CaptureQueriesContext(connection) as queries,
+            ):
+                response = self.call_api(
+                    "get",
+                    "api_media_season_episodes",
+                    args=("tv", first_item.source, first_item.media_id, 1),
+                    params={"limit": limit},
+                    headers=self.auth_headers,
+                )
+            self.assertEqual(response.status_code, 200)
+            results = response.json()["results"]
+            self.assertEqual(len(results), limit)
+            self.assertTrue(all(len(episode["lists"]) == 1 for episode in results))
+            item_queries = [
+                query["sql"] for query in queries if 'FROM "app_item"' in query["sql"]
+            ]
+            membership_queries = [
+                query["sql"]
+                for query in queries
+                if 'FROM "lists_customlistitem"' in query["sql"]
+            ]
+            self.assertEqual(len(item_queries), 1, item_queries)
+            self.assertEqual(len(membership_queries), 1, membership_queries)
+
+    @patch("api.views.services.get_media_metadata")
+    def test_season_episodes_memberships_use_bucket_and_lowest_item_id(
+        self,
+        mock_metadata,
+    ):
+        """Default resolution excludes anime and chooses the first eligible Item."""
+        seed_item = self.items_by_type[MediaTypes.EPISODE.value][0]
+        anime_item = Item.objects.create(
+            media_id=seed_item.media_id,
+            source=seed_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Anime episode",
+            season_number=1,
+            episode_number=4,
+        )
+        first_item = Item.objects.create(
+            media_id=seed_item.media_id,
+            source=seed_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            title="Default episode",
+            season_number=1,
+            episode_number=4,
+        )
+        tv_item = Item.objects.create(
+            media_id=first_item.media_id,
+            source=first_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            library_media_type=MediaTypes.TV.value,
+            title="TV episode",
+            season_number=1,
+            episode_number=4,
+        )
+        memberships = {
+            item.id: CustomListItem.objects.create(
+                custom_list=self.lists_by_name["favorites"],
+                item=item,
+            )
+            for item in (first_item, anime_item, tv_item)
+        }
+        mock_metadata.return_value = {
+            "episodes": [
+                {
+                    "episode_number": 4,
+                    "season_number": 1,
+                    "show_id": first_item.media_id,
+                    "name": "Episode 4",
+                },
+            ],
+        }
+        for bucket, expected_item in (
+            (None, first_item),
+            (MediaTypes.ANIME.value, anime_item),
+            (MediaTypes.TV.value, tv_item),
+        ):
+            with (
+                self.subTest(bucket=bucket),
+                patch.object(Item._meta, "ordering", ["-id"]),
+            ):
+                response = self.call_api(
+                    "get",
+                    "api_media_season_episodes",
+                    args=("tv", first_item.source, first_item.media_id, 1),
+                    params={"library_media_type": bucket} if bucket else {},
+                    headers=self.auth_headers,
+                )
+                self.assertEqual(response.status_code, 200)
+                membership = memberships[expected_item.id]
+                self.assertEqual(
+                    response.json()["results"][0]["lists"],
+                    [
+                        {
+                            "list_id": membership.custom_list_id,
+                            "list_item_id": membership.list_item_id,
+                        },
+                    ],
+                )
 
     @patch("api.views.services.get_media_metadata")
     def test_season_episodes_get_reports_tracked_episodes(self, mock_metadata):
