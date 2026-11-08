@@ -82,6 +82,7 @@ from app.models.playback import PlaybackProgress
 from app.models.podcast import (
     Podcast,
     PodcastEpisode,
+    PodcastPlay,
     PodcastShow,
     PodcastShowTracker,
 )
@@ -183,6 +184,7 @@ __all__ = [
     "PlaybackProgress",
     "Podcast",
     "PodcastEpisode",
+    "PodcastPlay",
     "PodcastShow",
     "PodcastShowTracker",
     "ProgressChange",

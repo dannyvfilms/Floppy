@@ -32,6 +32,7 @@ from app.models import (
     Status,
 )
 from app.providers import services
+from app.services import podcast_plays
 from app.services.completion import normalize_completed_entry
 from app.services.episode_coordinates import (
     InvalidEpisodeCoordinateError,
@@ -949,6 +950,7 @@ def _apply_bulk_podcast_plays(
 
         if episodes_to_create:
             created_episodes = bulk_create_with_history(episodes_to_create, Podcast)
+            podcast_plays.create_plays_for_trackers(created_episodes)
             for episode in created_episodes:
                 normalize_completed_entry(episode)
             created_count = len(episodes_to_create)

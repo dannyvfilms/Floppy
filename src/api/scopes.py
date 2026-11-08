@@ -151,6 +151,11 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
         "DELETE": "progress:write",
     },
     "api.fork_views_playback.NowPlayingView": {"GET": "progress:read"},
+    # Session-only: integration tokens cannot authenticate to this view.
+    "api.fork_views_playback.HomePlaybackCardsView": {
+        "GET": "progress:read",
+        "POST": "progress:write",
+    },
     "api.fork_views_podcast.PodcastShowsView": {
         "GET": "podcasts:read",
         "POST": "podcasts:write",
@@ -164,6 +169,11 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_podcast.PodcastShowEpisodesView": {"GET": "podcasts:read"},
     "api.fork_views_podcast.PodcastMarkAllPlayedView": {"POST": "podcasts:write"},
     "api.fork_views_podcast.PodcastEpisodePlayView": {"POST": "podcasts:write"},
+    "api.fork_views_podcast.PodcastEpisodePlayDetailView": {
+        "GET": "podcasts:read",
+        "PATCH": "podcasts:write",
+        "DELETE": "podcasts:write",
+    },
     "api.fork_views_podcast.PodcastEpisodeNotesView": {"PATCH": "podcasts:write"},
     "api.fork_views_scrobble.ScrobbleView": {"POST": "scrobble:write"},
     "api.fork_views_statistics.StatisticsOverviewView": {"GET": "statistics:read"},

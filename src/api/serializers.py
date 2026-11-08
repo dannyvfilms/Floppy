@@ -25,6 +25,7 @@ from app.models import (
     MoviePlay,
     Music,  # FORK: fork-only media type
     Podcast,  # FORK: fork-only media type
+    PodcastPlay,
     Season,
     Status,
 )
@@ -792,6 +793,23 @@ class HistorySerializer(serializers.Serializer):
                 # FORK: client-supplied play id, so a syncing client can match
                 # its own event to the stored play after a restart.
                 "external_id": getattr(instance, "external_id", None),
+            }
+        if isinstance(instance, PodcastPlay):
+            tracker = instance.podcast
+            return {
+                "consumption_id": instance.id,
+                "created": instance.created_at,
+                "score": float(tracker.score) if tracker.score is not None else None,
+                "scored_at": getattr(tracker, "scored_at", None),
+                "progress": instance.progress,
+                "played_up_to_seconds": instance.played_up_to_seconds,
+                "progressed_at": instance.end_date or instance.updated_at,
+                "status": get_media_status(instance.status),
+                "start_date": instance.start_date,
+                "end_date": instance.end_date,
+                "notes": tracker.notes,
+                "source": instance.entry_source,
+                "external_id": instance.external_id,
             }
         status = StatusField().to_representation(instance)
 
