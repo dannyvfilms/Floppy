@@ -160,6 +160,7 @@ export function CardsEditor({
   catalog = [],
   saved = {},
   initialSaved,
+  initialTouchActions = false,
   active,
   touchActions = false,
   onChange,
@@ -180,8 +181,8 @@ export function CardsEditor({
   const [localError, setLocalError] = useState('');
   const values = { saved, touchActions: Boolean(touchActions) };
   const serialized = useMemo(() => JSON.stringify(values), [saved, touchActions]);
-  const baseline = { saved: initialSaved || saved, touchActions: Boolean(touchActions) };
-  const dirty = useMemo(() => !sameValues(values, baseline), [saved, touchActions]);
+  const baseline = { saved: initialSaved || saved, touchActions: Boolean(initialTouchActions) };
+  const dirty = useMemo(() => !sameValues(values, baseline), [saved, touchActions, initialSaved, initialTouchActions]);
   const current = catalog.find(entry => entry.id === currentType) || catalog[0];
   const profile = useMemo(() => normalizeProfile(saved[currentType] || initialSaved?.[currentType] || { lines: [] }), [saved, initialSaved, currentType]);
 

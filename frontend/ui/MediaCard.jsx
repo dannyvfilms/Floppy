@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ArtworkImage } from './ArtworkImage';
 import { CardScrim } from './CardScrim';
 import { MediaCardActionRow, MediaCardActions } from './MediaCardActions';
+import { shouldRevealMediaCardActions } from './mediaCardBehavior';
 
 const ASPECT = { poster: 2 / 3, square: 1, landscape: 16 / 9 };
 const STATUS_GLYPHS = {
@@ -325,7 +326,7 @@ export function MediaCard({
       activeSelection.toggle?.();
       return;
     }
-    if (shownActions && !isRevealed) {
+    if (shouldRevealMediaCardActions(shownActions, isRevealed)) {
       setReveal(true);
       return;
     }
@@ -335,7 +336,7 @@ export function MediaCard({
   const rowOpen = activeSelection?.active ? activeSelection.toggle : onOpen;
 
   function gatedOpen() {
-    if (shownActions && !activeSelection?.active && !isRevealed) {
+    if (!activeSelection?.active && shouldRevealMediaCardActions(shownActions, isRevealed)) {
       setReveal(true);
       return;
     }
@@ -343,7 +344,7 @@ export function MediaCard({
   }
 
   function gatedOpenLink(href) {
-    if (shownActions && !activeSelection?.active && !isRevealed) {
+    if (!activeSelection?.active && shouldRevealMediaCardActions(shownActions, isRevealed)) {
       setReveal(true);
       return;
     }

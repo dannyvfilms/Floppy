@@ -178,7 +178,7 @@ Status: `Web Migrated`
 
 - `src/templates/app/components/card_lines.html`
 - `src/templates/app/components/media_card.html` (shell: wrapper classes, props script and first-paint poster and title; React replaces it on mount)
-- `frontend/ui/MediaCard.jsx`, `frontend/ui/MediaCard.web.jsx`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/media-card.css`, `frontend/ui/CardScrim.jsx`, `frontend/ui/CardScrim.native.jsx`, `frontend/ui/CardScrim.web.jsx`, `src/app/media_card_model.py`, `src/app/card_surfaces.py` (React Native primitives on native surfaces; native scrim uses an SVG gradient; the browser adapter retains DOM links, htmx integration and web-only slots; compact Up Next cards use the localized short label)
+- `frontend/ui/MediaCard.jsx`, `frontend/ui/MediaCard.web.jsx`, `frontend/ui/mediaCardBehavior.js`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/media-card.css`, `frontend/ui/CardScrim.jsx`, `frontend/ui/CardScrim.native.jsx`, `frontend/ui/CardScrim.web.jsx`, `src/app/media_card_model.py`, `src/app/card_surfaces.py` (React Native primitives on native surfaces; native poster action reveal follows server `actions.clickable`; native scrim uses an SVG gradient; the browser adapter retains DOM links, htmx integration and web-only slots; compact Up Next cards use the localized short label)
 - `src/templates/app/components/media_card_list.html`
 - `src/templates/app/components/media_card_status_chip.html` (out-of-band save fragment only; no card renders it)
 
@@ -683,10 +683,11 @@ Status: `Legacy`
 
 ## SET-CARDS
 
-Status: `Legacy`
+Status: `Partial / coexisting`
 
 - `src/templates/users/cards.html`
 - `src/templates/users/cards_preview.html`
+- `frontend/pages/SettingsCardsView.jsx`, `frontend/settings/CardsEditor.jsx`, `native-proof/app/surfaces/CardsSettingsSlot.jsx`, `native-proof/app/data/settingsTransport.js` (native touch action setting uses the account preference API; per-type native profiles remain local demo state)
 
 ## SET-HOME
 

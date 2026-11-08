@@ -51,12 +51,15 @@ class MediaCardModelTest(TestCase):
             [item["title"] for item in actions["items"]],
             ["Add to tracker", "Add to custom lists", "View your activity history"],
         )
+        self.assertFalse(actions["clickable"])
         track = actions["items"][0]
         self.assertEqual(track["modal"], "track")
         self.assertTrue(track["target"].startswith("#track-movie-model-1"))
         self.assertEqual(track["vals"]["instance_id"], str(self.movie.id))
         public = card_context({"user": self.user, "public_view": True}, "library", {"item": self.item, "media": self.movie})
         self.assertIsNone(card_model(public)["actions"])
+        self.user.clickable_media_cards = True
+        self.assertTrue(card_model(ctx)["actions"]["clickable"])
 
     def test_next_episode_chip_has_compact_label(self):
         """The next-episode action exposes a short localized label for phones."""

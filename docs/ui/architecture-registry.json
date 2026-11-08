@@ -1282,15 +1282,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The cards page remains the Django/Alpine editor; this shared editor is not mounted in the browser bundle during this change."
+          "evidence": "The browser cards page remains Django/Alpine-owned; the native editor's touch-action dirty baseline is updated in this revision. Browser runtime was not checked."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Settings screen; per-type lines, field order, preview and save states were not exercised at runtime."
+          "status": "verified",
+          "evidence": "Device Hub iOS 27.2 / Expo Go rendered Settings > Media Cards and both touch-action choices. The proof session had no server account, so preference load/save, save-error display and touch-action persistence were not exercised there; transport tests cover preference load/save and failure propagation."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Settings screen; per-type lines, field order, preview and save states were not exercised at runtime."
+          "evidence": "Expo export compiles the native editor; transport tests cover preference load, save and failure propagation. Touch-action dirty state and Android settings interaction were not exercised for this revision."
         }
       }
     },
@@ -2191,15 +2191,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The status badge and next-episode control now use a shared explicit 24px height; the compact label remains Next and wider cards retain Next ep. CSS/build output can be checked, but browser runtime confirmation for this sizing adjustment remains pending."
+          "evidence": "This revision changes native touch reveal behavior only; browser adapter behavior was not runtime-checked for this revision. The shared 24px status/next-episode sizing remains build-checked but browser runtime is pending."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "On iPhone Duo (Device Hub, iOS 27.2), compact Home Up Next cards were checked after hot reload; the play/status badge and Next chip render at matching heights. Link activation and full native consumer parity were not checked."
+          "status": "verified",
+          "evidence": "On iPhone Duo (Device Hub, iOS 27.2), compact Home Up Next cards show Next clear of the play/status badge. This revision also opened Settings > Media Cards in Expo Go and showed both touch-action choices; a local proof card with actions.clickable: true opened detail on first tap. No server session was available, so preference load/save and the false-value reveal-then-open path were not device-verified; native behavior tests cover both values."
         },
         "android": {
           "status": "unverified",
-          "evidence": "The shared 24px chip sizing adjustment has not been checked at Android runtime; full native consumer parity remains unverified."
+          "evidence": "Neither the shared 24px chip sizing nor Expo Go runtime interaction with the saved touch-action setting has been exercised on Android."
         }
       }
     },
@@ -2939,15 +2939,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Media Cards page composition added over the shared CardsEditor; browser page and native runtime were not exercised."
+          "evidence": "This revision passes the saved touch-action baseline into CardsEditor; the browser cards page remains server-owned and was not runtime-checked."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "Media Cards page composition added over the shared CardsEditor; browser page and native runtime were not exercised."
+          "status": "verified",
+          "evidence": "Device Hub iOS 27.2 / Expo Go opened the native Media Cards settings screen and rendered both touch-action choices. The proof session had no server account, so server preference load/save and save-error handling were not exercised there; transport tests cover these paths."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Media Cards page composition added over the shared CardsEditor; browser page and native runtime were not exercised."
+          "evidence": "Expo export compiles the settings view and CardsEditor; Android settings interaction was not exercised for this revision."
         }
       }
     },
@@ -3327,6 +3327,26 @@
         "android": {
           "status": "unverified",
           "evidence": "Pure shared form-model logic consumed by the native placement; not a renderer."
+        }
+      }
+    },
+    "frontend/ui/mediaCardBehavior.js": {
+      "components": [
+        "shouldRevealMediaCardActions"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Pure shared touch-action policy used by the native MediaCard; browser adapter behavior was not runtime-checked for this revision."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Node behavior tests cover hidden, visible and absent actions; iOS runtime interaction was not exercised for this revision."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Node behavior tests cover hidden, visible and absent actions; Android runtime interaction was not exercised for this revision."
         }
       }
     },
