@@ -756,6 +756,8 @@ Status: `Partial / coexisting`
 
 Status: `Partial / coexisting`
 
+PR #1878: CLZ preference changes mirror their live values into fallback POST inputs regardless of Alpine ancestry. App tracking browser tests submit through the shared search island instead of a retired form.
+
 PR #1878: The registered browser island loader discovers sidebar, global search, track form and statistics hosts consistently with its renderer dispatch list, restoring universal search mounting in browser workflows.
 
 PR #1878: Provider overview, credential key, and import website hyperlinks receive DOM-only URL attributes from the browser mounts, while their universal JSX remains native-compatible.

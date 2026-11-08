@@ -119,16 +119,14 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.page.wait_for_load_state("networkidle")
 
     def search_and_submit(self, query):
-        """Run a global search via the submit button.
+        """Submit through the shared search control.
 
-        The search form's Alpine.js submit guard only reliably recognizes
-        the click event's target as its own search button; relying on the
-        input's implicit Enter-to-submit behavior races with the
-        hx-trigger="... , search" suggestions fetch firing on the same
-        native `search` event and is intermittently swallowed.
+        The web mount replaces the legacy Alpine form with the accessible
+        React search button. Wait for that mount instead of a retired form.
         """
-        self.page.locator("#global-search").fill(query)
-        self.page.locator('form:has(#global-search) button[type="submit"]').click()
+        root = self.page.locator('[data-global-search-root][data-react-mounted="true"]')
+        root.locator("#global-search").fill(query)
+        root.get_by_role("button", name="Search", exact=True).click()
 
     def test_htmx_database_contention_retries_original_get(self):
         """A failed fragment retries its full URL without another user click."""
@@ -208,8 +206,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         try:
             touch_page = touch_context.new_page()
             touch_page.goto(self.live_server_url + "/")
-            touch_page.locator("#global-search").fill("breaking bad")
-            touch_page.locator('form:has(#global-search) button[type="submit"]').click()
+            search = touch_page.locator('[data-global-search-root][data-react-mounted="true"]')
+            search.locator("#global-search").fill("breaking bad")
+            search.get_by_role("button", name="Search", exact=True).click()
             expect(touch_page.get_by_role("heading", name="Search Results")).to_be_visible()
 
             card = touch_page.locator(".media-card").filter(has_text="Breaking Bad").first

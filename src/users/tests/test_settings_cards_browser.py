@@ -701,9 +701,9 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         cron = CrontabSchedule.objects.create(minute="0", hour="3")
         PeriodicTask.objects.create(name="browser-remove", task="Import from AniList", crontab=cron,
                                    kwargs=json.dumps({"user_id": self.user.pk, "mode": "new"}))
-        # The shared detail view is a dialog, not an inline toggle. Close it
-        # before accessing actions that were behind the overlay.
-        self.page.get_by_role("dialog").get_by_role("button", name="Close", exact=True).click()
+        # The dialog has both header dismiss and footer Close actions.
+        # Choose the footer to avoid a strict-mode selector ambiguity.
+        self.page.get_by_role("dialog").get_by_role("button", name="Close", exact=True).last.click()
         self.page.get_by_role("button", name="Remove schedule", exact=True).wait_for(state="visible")
         self.page.get_by_role("button", name="Remove schedule", exact=True).click()
         self.page.wait_for_url("**/settings/providers/anilist?tab=activity")
