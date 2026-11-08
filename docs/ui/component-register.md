@@ -1,5 +1,8 @@
 # UI component register
 
+For Expo versus PWA page status and remaining work, see the
+[Expo parity audit](expo-parity-audit.md).
+
 Use the [architecture and parity gates](../architecture/ui-modernization.md) and
 [complete source ownership map](source-map.md). IDs identify behavior families,
 not individual HTML elements. Slots, cells and small includes belong to their
