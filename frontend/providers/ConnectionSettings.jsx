@@ -243,8 +243,9 @@ export function ConnectionSettings({
     <Modal transparent visible={helpOpen} animationType="fade" accessibilityViewIsModal
       onRequestClose={() => setHelpOpen(false)}>
       <View style={styles.backdrop}>
-        <View style={[styles.dialog, { borderColor: colors.surfaceMuted, backgroundColor: colors.surface }]}>
-          <Text role="heading" aria-level={2} style={[styles.dialogTitle, { color: colors.text }]}>{labels.readOnlyHelp}</Text>
+        <View role="dialog" accessibilityLabel={labels.readOnlyDialogTitle || 'Instance credential access'}
+          style={[styles.dialog, { borderColor: colors.surfaceMuted, backgroundColor: colors.surface }]}>
+          <Text role="heading" aria-level={2} style={[styles.dialogTitle, { color: colors.text }]}>{labels.readOnlyDialogTitle || 'Instance credential access'}</Text>
           <Text style={[styles.copy, { color: colors.textSecondary }]}>{model.readOnlyReason}</Text>
           <Button label={labels.close} tone="surface" onPress={() => setHelpOpen(false)} palette={buttons} />
         </View>

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
 import { ProviderFileImportView } from './ProviderFileImportView';
-import { confirmAction, readThemePalette, submitNativeForm } from './transport.web';
+import { confirmAction, pickBrowserFiles, readThemePalette, submitNativeForm } from './transport.web';
 
 function parentPreferences(host, model) {
   return host.closest('[x-data]')?.importPreferences || model.values || {};
@@ -22,6 +22,7 @@ function FileImportHost({ host, model }) {
     preferences={preferences}
     palette={readThemePalette()}
     onSubmit={submitNativeForm}
+    pickFiles={pickBrowserFiles}
     onOpenUrl={url => { if (url) window.open(url, '_blank', 'noopener'); }}
     onConfirm={confirmAction}
     onPickError={error => window.alert(error?.message || 'Could not read the selected file.')}
