@@ -395,6 +395,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
   architecture registry. Run the architecture, build and relevant regression checks.
   Report browser, iOS and Android evidence independently; builds do not establish
   runtime verification. An unresolved external blocker leaves the task incomplete.
+- Expo ↔ PWA page parity and what remains: `docs/ui/expo-parity-audit.md`.
 - Provider pages use the shared provider model and page components; see
   `docs/ui/provider-pages.md`. Existing `frontend/ui/controls.jsx` is web-only:
   use its behavior as a migration source, not a universal dependency. See
