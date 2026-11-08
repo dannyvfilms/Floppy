@@ -430,14 +430,16 @@ class WorkflowTests(TestCase):
     def test_runs_on_events_not_only_on_the_schedule(self):
         """Approval, ready, push and close events advance the queue at once."""
         self.assertLessEqual(
-            {"push", "schedule", "pull_request_target", "workflow_run"},
+            {"push", "schedule", "pull_request_target", "workflow_dispatch"},
             set(self.triggers),
+        )
+        self.assertNotIn(
+            "workflow_run",
+            self.triggers,
+            "CI completions should not launch redundant merge-train runs",
         )
         self.assertIn(
             "auto_merge_enabled", self.triggers["pull_request_target"]["types"]
-        )
-        self.assertEqual(
-            set(self.triggers["workflow_run"]["workflows"]), {"App Tests", "Lint"}
         )
 
     def test_never_checks_out_pull_request_code(self):
