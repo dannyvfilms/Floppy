@@ -1949,7 +1949,7 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo Go on a physical iOS 27.2 Duo: a screen-scoped provider reported horizontal insets 84/0 on the left, 0/84 on the right, then 84/0 on return. The foreground shell, Search and Home content moved clear of the rail; movement used an intermediate full-screen state. The sidebar was observed open and closed, and partially open and closed Duo poses were observed. Direct side swapping, separate portrait/landscape interaction and accessibility remain unverified."
+          "evidence": "Expo Go on a physical iOS 27.2 Duo: a screen-scoped provider reported horizontal insets 84/0 on the left, 0/84 on the right, then 84/0 on return. The foreground shell, Search and Home content moved clear of the rail; movement used an intermediate full-screen state. The sidebar was observed open and closed, and partially open and closed Duo poses were observed. Both fully open to partially open and the reverse triggered drawer geometry animations. Direct side swapping, separate portrait/landscape interaction and accessibility remain unverified."
         },
         "android": {
           "status": "unverified",

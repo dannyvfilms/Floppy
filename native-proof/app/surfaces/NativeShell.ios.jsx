@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useState } from 'react';
 import { AccessibilityInfo, LayoutAnimation, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Stack } from 'expo-router';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
@@ -12,14 +12,22 @@ import { RailModalHost, RailModalProvider, useRailModal } from '../../../fronten
 import { menuGeometry } from './menuGeometry.mjs';
 import { horizontalContentPadding } from '../safeAreaSpacing.mjs';
 
-function MenuLayout({ open, sidebar, search, children, palette, division }) {
+function MenuLayout({ open, sidebar, search, children, palette, division, reduceMotion }) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [contentWidth, setContentWidth] = useState(0);
   const [arrangement, setArrangement] = useState(null);
   const hinge = useHinge();
   const measuredDivision = division?.frame || (arrangement?.containerWidth === contentWidth ? arrangement : null);
-  const geometry = menuGeometry(contentWidth || width, hinge?.status, measuredDivision);
+  const target = menuGeometry(contentWidth || width, hinge?.status, measuredDivision);
+  const [geometry, setGeometry] = useState(target);
+  useLayoutEffect(() => {
+    if (geometry.full === target.full && geometry.menuWidth === target.menuWidth && geometry.gap === target.gap) return;
+    if (open && !reduceMotion && (hinge?.status === 'fullyOpen' || hinge?.status === 'partiallyOpen')) {
+      LayoutAnimation.configureNext({ duration: 220, update: { type: LayoutAnimation.Types.easeOut } });
+    }
+    setGeometry(target);
+  }, [geometry, target.full, target.menuWidth, target.gap, hinge?.status, open, reduceMotion]);
   return <View style={styles.row} onLayout={event => setContentWidth(event.nativeEvent.layout.width)}>
     {Constants.executionEnvironment === ExecutionEnvironment.StoreClient && hinge?.status === 'partiallyOpen'
       ? <Host pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
@@ -91,7 +99,7 @@ function ShellWithRail({ open, onToggle, sidebar, search, children, palette, has
       update: { type: LayoutAnimation.Types.easeOut } });
     onToggle();
   };
-  const menu = { open, sidebar, search, palette, children };
+  const menu = { open, sidebar, search, palette, children, reduceMotion };
   return <>
     <Stack.Screen options={{ headerShown: true, headerTransparent: true, headerShadowVisible: false,
       title: '', headerTitle: '', headerTintColor: palette.text, contentStyle: { backgroundColor: palette.sidebar } }} />
