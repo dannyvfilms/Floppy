@@ -361,7 +361,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(mode).to_contain_text("Collection and wishlist")
         self.page.get_by_role("button", name="Import mode help").click()
         expect(self.page.get_by_role("tooltip")).to_contain_text("does not import reading or viewing history")
-        self.page.get_by_label("Wishlist items", exact=True).select_option("Planning")
+        self.choose_option("Wishlist items", "Planning")
         self.page.get_by_label("Tag for wishlist items").fill("Wanted comics")
         self.choose_option("Override mode", "Overwrite Existing")
         self.choose_option("Import as", "Comics")
@@ -585,7 +585,9 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.evaluate("window.dispatchEvent(new PageTransitionEvent('pageshow', {persisted:true}))")
         expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
         expect(self.page.get_by_label("Public username", exact=True)).to_have_value("retained-on-back")
-        self.page.evaluate("htmx.ajax('GET', '/settings/providers/anilist?tab=connection', {target:'body', swap:'innerHTML'})")
+        # Dispatch the navigation without returning an HTMX promise to
+        # Playwright: a body replacement can detach its fulfillment handler.
+        self.page.evaluate("() => { void htmx.ajax('GET', '/settings/providers/anilist?tab=connection', {target:'body', swap:'innerHTML'}); }")
         expect(self.page.get_by_role("heading", name="Instance credentials")).to_be_visible()
         expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
         self.assertEqual(self.errors, [])
@@ -699,7 +701,9 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         cron = CrontabSchedule.objects.create(minute="0", hour="3")
         PeriodicTask.objects.create(name="browser-remove", task="Import from AniList", crontab=cron,
                                    kwargs=json.dumps({"user_id": self.user.pk, "mode": "new"}))
-        self.page.get_by_text("Show traceback", exact=True).click()
+        # The shared detail view is a dialog, not an inline toggle. Close it
+        # before accessing actions that were behind the overlay.
+        self.page.get_by_role("dialog").get_by_role("button", name="Close", exact=True).click()
         self.page.get_by_role("button", name="Remove schedule", exact=True).wait_for(state="visible")
         self.page.get_by_role("button", name="Remove schedule", exact=True).click()
         self.page.wait_for_url("**/settings/providers/anilist?tab=activity")
