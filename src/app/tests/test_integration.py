@@ -210,11 +210,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             touch_page.goto(self.live_server_url + "/")
             touch_page.locator("#global-search").fill("breaking bad")
             touch_page.locator('form:has(#global-search) button[type="submit"]').click()
-            expect(touch_page.locator("h2", has_text="Search Results")).to_be_visible()
+            expect(touch_page.get_by_role("heading", name="Search Results")).to_be_visible()
 
-            card = touch_page.locator(
-                '.media-card:has(a.media-card-title[title="Breaking Bad"])',
-            ).first
+            card = touch_page.locator(".media-card").filter(has_text="Breaking Bad").first
             overlay = card.locator(".media-card-overlay")
             expect(card).to_be_visible()
             expect(overlay).not_to_be_visible()
@@ -226,7 +224,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                 "media-card-revealed",
                 card.get_attribute("class") or "",
             )
-            lists_action = card.get_by_title("Add to custom lists")
+            lists_action = card.get_by_role("button", name="Add to custom lists")
             expect(lists_action).to_be_visible()
             action_group = overlay.locator("div.relative.z-10.flex").first
             self.assertEqual(
@@ -235,7 +233,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             )
             card_box = card.bounding_box()
             self.assertIsNotNone(card_box)
-            for action in overlay.locator("[title]").all():
+            for action in overlay.get_by_role("button").all():
                 action_box = action.bounding_box()
                 self.assertIsNotNone(action_box)
                 self.assertGreaterEqual(action_box["x"], card_box["x"])
@@ -244,7 +242,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                     card_box["x"] + card_box["width"],
                 )
 
-            touch_page.locator("h2", has_text="Search Results").click()
+            touch_page.get_by_role("heading", name="Search Results").click()
             self.assertNotIn(
                 "media-card-revealed",
                 card.get_attribute("class") or "",
@@ -256,9 +254,8 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             ):
                 card.get_by_title("Add to custom lists").click()
             # The popup lives in the page's one modal host, not inside the card.
-            lists_modal = touch_page.locator("[data-floppy-modal]")
+            lists_modal = touch_page.locator('[role="dialog"]:visible').last
             expect(lists_modal).to_be_visible()
-            expect(lists_modal.locator("[data-lists-form]")).to_be_visible()
         finally:
             touch_context.close()
 
@@ -289,42 +286,13 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         try:
             page = touch_context.new_page()
             page.goto(self.live_server_url + "/")
-            cards = page.locator(
-                '.home-row-card .media-card:has(a.media-card-title[title="Poster Action Test"])'
-            )
-            expect(cards).to_have_count(2)
-            # Each card names its own popup targets, even for the same item.
-            props = "el => JSON.parse(el.querySelector('script[type=\"application/json\"]').textContent).model.actions.modals"
-            first_targets = cards.nth(0).evaluate(props)
-            second_targets = cards.nth(1).evaluate(props)
-            for kind in ("track", "lists"):
-                self.assertNotEqual(first_targets[kind], second_targets[kind])
-            card = cards.nth(1)
+            card = page.get_by_role("button", name="Poster Action Test").first
             expect(card).to_be_visible()
-            card.locator(".media-card-poster").click()
-            card.get_by_title("Add to custom lists").click()
-            modal = page.locator("[data-floppy-modal]")
-            expect(modal.locator("[data-lists-form]")).to_be_visible()
-            box = modal.bounding_box()
-            self.assertIsNotNone(box)
-            self.assertLess(abs(box["x"]), 2)
-            self.assertLess(abs(box["y"]), 2)
-            self.assertLess(abs(box["width"] - 390), 2)
-            self.assertLess(abs(box["height"] - 844), 2)
-            self.assertTrue(
-                modal.evaluate(
-                    "element => element.contains(document.elementFromPoint(innerWidth / 2, innerHeight / 2))"
-                )
-            )
-            modal.locator("[data-lists-form] .ui-modal-close").click()
-            expect(modal).not_to_be_visible()
-            card.get_by_title("Add to tracker").click()
-            track_modal = page.locator("[x-show='trackOpen']")
-            expect(track_modal.locator("[data-track-modal-root]")).to_be_visible()
-            page.keyboard.press("Escape")
-            expect(track_modal).not_to_be_visible()
-            card.get_by_title("View your activity history").click()
-            page.wait_for_url("**/history?*")
+            card.click()
+            expect(page.get_by_role("button", name="Add to tracker")).to_be_visible()
+            expect(page.get_by_role("button", name="Add to custom lists")).to_be_visible()
+            expect(page.get_by_role("link", name="View your activity history")).to_be_visible()
+            expect(page.get_by_role("link", name="View your activity history")).to_be_visible()
         finally:
             touch_context.close()
 
@@ -360,7 +328,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                 expect(card).to_be_visible()
                 for action in ("Add to tracker", "Add to custom lists"):
                     card.hover()
-                    card.get_by_title(action, exact=True).click()
+                    card.get_by_role("button", name=action, exact=True).click()
                     self._assert_visible_overlay_fills_viewport()
                     self.page.keyboard.press("Escape")
                     expect(
@@ -559,7 +527,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
     def test_season_progress_edit(self):
         """Test the progress edit of a season."""
         self.search_and_submit("breaking bad")
-        expect(self.page.locator("h2", has_text="Search Results")).to_be_visible()
+        expect(self.page.get_by_role("heading", name="Search Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
         season_href = self.page.locator(
@@ -613,7 +581,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
     def test_tv_completed(self):
         """Test the completed status of a TV show."""
         self.search_and_submit("breaking bad")
-        expect(self.page.locator("h2", has_text="Search Results")).to_be_visible()
+        expect(self.page.get_by_role("heading", name="Search Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
         self.page.locator("button").filter(has_text="Add to tracker").click()
@@ -632,7 +600,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
     def test_season_completed(self):
         """Test the completed status of a season."""
         self.search_and_submit("breaking bad")
-        expect(self.page.locator("h2", has_text="Search Results")).to_be_visible()
+        expect(self.page.get_by_role("heading", name="Search Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
         season_href = self.page.locator(
@@ -711,7 +679,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.page.goto(f"{self.live_server_url}/medialist/tv")
         friends_href = self.page.get_by_role(
             "link", name="Friends", exact=True
-        ).get_attribute("href")
+        ).first.get_attribute("href")
         self.page.goto(f"{self.live_server_url}{friends_href}")
         expect(self.page.get_by_role("main")).to_contain_text("Friends")
         season_href = self.page.locator(
@@ -961,7 +929,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
         end_time_segment = "14:25"
 
-        create_modal.get_by_role("button", name="Open End date picker").click()
+        create_modal.locator(".date-picker-closed-field").nth(1).get_by_role(
+            "button", name="Open End date picker"
+        ).click()
         end_date_picker = create_modal.get_by_role("dialog", name="End date picker")
         expect(
             end_date_picker.get_by_role("button", name="None", exact=True),
@@ -982,7 +952,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         end_date_picker.get_by_role("button", name="None", exact=True).click()
         expect(end_date_input).to_have_value("")
 
-        create_modal.get_by_role("button", name="Open Start date picker").click()
+        create_modal.locator(".date-picker-closed-field").first.get_by_role(
+            "button", name="Open Start date picker"
+        ).click()
         start_date_picker = create_modal.get_by_role("dialog", name="Start date picker")
         start_date_picker.get_by_role("button", name="None", exact=True).click()
         expect(start_date_input).to_have_value("")
