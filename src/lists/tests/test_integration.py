@@ -177,8 +177,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
     def test_blank_modal(self):
         """Test the blank modal for creating a list."""
-        self.page.get_by_role("button", name="TV Shows").click()
-        self.page.locator("form[action='/search'] li").filter(has_text=re.compile(r"^Anime$")).click()
+        # The universal search control exposes a labelled media-type menu.
+        self.page.locator('[data-global-search-root] [aria-haspopup="listbox"]').click()
+        self.page.get_by_role("button", name="Anime", exact=True).click()
         self.search_and_submit("perfect blue")
         self.click_card_lists_action()
         expect(self.page.locator('[id^="lists-anime-437-"]')).to_contain_text(
@@ -204,8 +205,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         expect(self.page.locator("#lists-grid")).to_contain_text("test")
 
         # Add item to list
-        self.page.get_by_role("button", name="TV Shows").click()
-        self.page.locator("form[action='/search'] li").filter(has_text=re.compile(r"^Anime$")).click()
+        # The universal search control exposes a labelled media-type menu.
+        self.page.locator('[data-global-search-root] [aria-haspopup="listbox"]').click()
+        self.page.get_by_role("button", name="Anime", exact=True).click()
         self.search_and_submit("perfect blue")
         self.click_card_lists_action()
         expect(self.page.locator('[id^="lists-anime-437-"]')).to_contain_text("Lists")
@@ -364,5 +366,5 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         # The checkbox sits inside the card's link; a click on it used to be
         # cancelled, so it never ticked (the rest of the card still worked).
         expect(checkbox).to_be_checked()
-        expect(self.page.get_by_text("1 selected")).to_be_visible()
+        expect(self.page.get_by_text("1 item selected")).to_be_visible()
         self.assertEqual(self.page.url, list_url)

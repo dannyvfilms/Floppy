@@ -366,7 +366,9 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.choose_option("Override mode", "Overwrite Existing")
         self.choose_option("Import as", "Comics")
         with self.page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith("/import/clz")):
-            self.page.locator('input[name="clz_export"]').set_input_files({"name": "clz.csv", "mimeType": "text/csv", "buffer": b"Title,Status\nExample,On Wish List\n"})
+            with self.page.expect_file_chooser() as chooser:
+                self.page.get_by_role("button", name="Select CLZ Export").click()
+            chooser.value.set_files({"name": "clz.csv", "mimeType": "text/csv", "buffer": b"Title,Status\nExample,On Wish List\n"})
         self.page.wait_for_url("**/settings/providers/clz?tab=import")
         mock_stage.assert_called_once()
         kwargs = mock_queue.call_args.kwargs
@@ -381,7 +383,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
     @patch("integrations.views._queue_staged_task_or_message")
     @patch("integrations.views._stage_upload_or_message", return_value="staged-clz.csv")
     def test_clz_upload_fallback_receives_react_preferences(self, mock_stage, mock_queue):
-        self.context.route("**/static/ui/FileImport-*", lambda route: route.abort())
+        self.context.route("**/static/ui/mountFileImport-*", lambda route: route.abort())
         self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=import")
         expect(self.page.locator('[data-import-preferences-root][data-react-mounted="true"]')).to_be_visible()
         self.choose_option("Wishlist items", "Planning")
@@ -398,21 +400,23 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
     @patch("integrations.views._queue_staged_task_or_message")
     @patch("integrations.views._stage_upload_or_message", return_value="staged-clz.csv")
     def test_clz_react_upload_receives_fallback_preferences(self, mock_stage, mock_queue):
-        self.context.route("**/static/ui/ImportPreferences-*", lambda route: route.abort())
+        self.context.route("**/static/ui/mountImportPreferences-*", lambda route: route.abort())
         self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=import")
         expect(self.page.locator('[data-file-import-root][data-react-mounted="true"]')).to_be_visible()
         self.page.get_by_label("Wishlist items", exact=True).select_option("Planning")
         self.page.get_by_label("Tag for wishlist items").fill("Fallback preferences")
         self.page.get_by_label("Override mode").select_option("overwrite")
         with self.page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith("/import/clz")):
-            self.page.locator('input[name="clz_export"]').set_input_files({"name": "clz.csv", "mimeType": "text/csv", "buffer": b"Title\nExample\n"})
+            with self.page.expect_file_chooser() as chooser:
+                self.page.get_by_role("button", name="Select CLZ Export").click()
+            chooser.value.set_files({"name": "clz.csv", "mimeType": "text/csv", "buffer": b"Title\nExample\n"})
         mock_stage.assert_called_once()
         self.assertEqual(mock_queue.call_args.kwargs["wishlist_status"], "Planning")
         self.assertEqual(mock_queue.call_args.kwargs["wishlist_tag"], "Fallback preferences")
         self.assertEqual(mock_queue.call_args.kwargs["mode"], "overwrite")
 
     def test_clz_file_import_fallback_without_bundle(self):
-        self.context.route("**/static/ui/FileImport-*", lambda route: route.abort())
+        self.context.route("**/static/ui/mountFileImport-*", lambda route: route.abort())
         self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=import")
         expect(self.page.get_by_label("Import as")).to_be_visible()
         expect(self.page.locator('input[name="clz_export"]')).to_be_visible()
@@ -511,7 +515,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(pin).to_be_visible()
         with self.page.expect_response(lambda response: "/settings/providers/pin" in response.url):
             pin.click()
-        expect(self.page.get_by_role("button", name="Unpin Steam", exact=True)).to_have_attribute("aria-selected", "true")
+        expect(self.page.get_by_role("button", name="Unpin Steam", exact=True)).to_have_attribute("aria-pressed", "true")
         expect(self.page.locator('[data-testid="provider-directory"] [data-testid="card-grid"] > div > div').first.get_by_role("button", name="Open Steam")).to_be_visible()
         self.page.reload()
         expect(self.page.get_by_role("button", name="Unpin Steam", exact=True)).to_be_visible()
@@ -831,7 +835,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             expect(feature_list.get_by_text("Active", exact=True)).to_have_count(0)
             self.assertTrue(feature_list.evaluate("element => element.nextElementSibling === null"))
             self.assertTrue(feature_list.locator('[data-testid="feature-row"]').evaluate_all("""rows => rows.every(row => {
-              const icon = row.querySelector('[data-testid="status-icon"]'), text = row.querySelector('div');
+              const icon = row.querySelector('[data-testid="status-icon"]'), text = row.querySelector('[data-testid="feature-copy"]');
               return icon.getBoundingClientRect().right <= text.getBoundingClientRect().left &&
                 getComputedStyle(row).borderTopWidth === '0px';
             })"""))
@@ -968,7 +972,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.emulate_media(color_scheme="dark")
         self.open_cards("overview")
         card = self.page.locator('[data-testid="provider-overview"]').get_by_role("link", name="Connection", exact=True)
-        expect(card.locator("p")).to_have_count(1)
+        expect(card.locator('[data-testid="settings-card-heading"] + *')).to_have_count(1)
         expect(card).to_have_attribute("title", "Public username imports do not require provider credentials.")
         self.page.mouse.move(0, 0)
         card.evaluate("""card => {
