@@ -152,16 +152,14 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         expect(locator).not_to_have_class(re.compile(r"\bhtmx-(swapping|settling)\b"))
 
     def search_and_submit(self, query):
-        """Run a global search via the submit button.
+        """Run a global search through the shared React search action.
 
-        The search form's Alpine.js submit guard only reliably recognizes
-        the click event's target as its own search button; relying on the
-        input's implicit Enter-to-submit behavior races with the
-        hx-trigger="... , search" suggestions fetch firing on the same
-        native `search` event and is intermittently swallowed.
+        The universal search control replaces the legacy form on mount. Use
+        its accessible submit button rather than requiring an old form node.
         """
-        self.page.locator("#global-search").fill(query)
-        self.page.locator('form:has(#global-search) button[type="submit"]').click()
+        root = self.page.locator("[data-global-search-root]")
+        root.locator("#global-search").fill(query)
+        root.get_by_role("button", name="Search", exact=True).click()
 
     @classmethod
     def tearDownClass(cls):
