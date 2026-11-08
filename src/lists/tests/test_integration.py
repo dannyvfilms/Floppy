@@ -176,7 +176,8 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
     def test_blank_modal(self):
         """Test the blank modal for creating a list."""
         # The universal search control exposes a labelled media-type menu.
-        self.page.locator('[data-global-search-root] [aria-haspopup="listbox"]').click()
+        self.page.locator('[data-global-search-root][data-react-mounted="true"]').wait_for(state="attached")
+        self.page.locator('[data-global-search-root] [data-testid="search-media-type-menu"]').click()
         self.page.get_by_role("button", name="Anime", exact=True).click()
         self.search_and_submit("perfect blue")
         self.click_card_lists_action()
@@ -204,7 +205,8 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
         # Add item to list
         # The universal search control exposes a labelled media-type menu.
-        self.page.locator('[data-global-search-root] [aria-haspopup="listbox"]').click()
+        self.page.locator('[data-global-search-root][data-react-mounted="true"]').wait_for(state="attached")
+        self.page.locator('[data-global-search-root] [data-testid="search-media-type-menu"]').click()
         self.page.get_by_role("button", name="Anime", exact=True).click()
         self.search_and_submit("perfect blue")
         self.click_card_lists_action()

@@ -756,7 +756,7 @@ Status: `Partial / coexisting`
 
 Status: `Partial / coexisting`
 
-PR #1878: The browser file-import mount now supplies a DOM chooser to the universal file picker. The chosen `File` objects flow through the existing browser form adapter, and the server fallback remains active when the lazy module cannot load.
+PR #1878: The browser file-import mount now supplies a DOM chooser to the universal picker. Chosen `File` objects flow through the existing form transport; the server fallback remains active when the lazy module is blocked, reflects current preferences, and exposes semantic provider website links.
 
 - `frontend/providers/ProviderFileImportView.jsx`
 - `frontend/providers/mountCredentials.jsx`

@@ -361,7 +361,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(mode).to_contain_text("Collection and wishlist")
         self.page.get_by_role("button", name="Import mode help").click()
         expect(self.page.get_by_role("tooltip")).to_contain_text("does not import reading or viewing history")
-        self.choose_option("Wishlist items", "Planning")
+        self.page.get_by_label("Wishlist items", exact=True).select_option("Planning")
         self.page.get_by_label("Tag for wishlist items").fill("Wanted comics")
         self.choose_option("Override mode", "Overwrite Existing")
         self.choose_option("Import as", "Comics")
