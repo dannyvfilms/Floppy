@@ -1835,11 +1835,11 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "UI architecture and generated browser bundle checks pass; no browser runtime pass was performed for this revision."
+          "evidence": "PlaybackCard uses the standard MediaCard indigo fill for playing and paused/stale progress states; browser runtime verification remains pending."
         },
         "ios": {
-          "status": "verified",
-          "evidence": "Device Hub iPhone Duo (iOS 27.2) shows the Now Playing heading above the 16:9 shared MediaCard; compact mobile width fits the content with its right edge visible. Pause/Stop and Stop/Cancel actions were not exercised."
+          "status": "unverified",
+          "evidence": "The earlier Now Playing layout was checked on Device Hub iPhone Duo (iOS 27.2); the latest playing and paused/stale color change has not been verified in a reloaded bundle."
         },
         "android": {
           "status": "unverified",

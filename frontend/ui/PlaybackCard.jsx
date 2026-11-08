@@ -123,9 +123,8 @@ export function PlaybackCard({ model, labels, palette, onOpenDetails, onPause, o
     border: colors.border,
     link: colors.link,
     placeholder: colors.placeholder,
-    progressTrack: colors.progressTrack,
-    progressFill: colors.progressFill,
-    progressPaused: colors.pausedFill,
+    progressFill: '#6366f1',
+    progressPaused: '#6366f1',
   };
   const header = <View style={styles.headingRow}>
     <Text role="heading" aria-level={3}
