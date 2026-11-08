@@ -128,10 +128,10 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         lists modal flow, not the overlay's hit-testing, so address the button
         directly and keep the assertions below meaningful.
         """
-        # The shared React card replaces the server overlay once it mounts.
-        expect(
-            self.page.locator('[data-media-card-root][data-react-mounted="true"]').first,
-        ).to_be_attached()
+        # Search-result cards are owned by the search-results island rather
+        # than each having a standalone media-card mount. Wait for the action
+        # overlay itself, which is the user-visible interaction under test.
+        expect(self.page.locator(".media-card-overlay").first).to_be_attached()
         button = (
             self.page.locator(".media-card-overlay")
             .first.locator(".relative > button:nth-child(2)")

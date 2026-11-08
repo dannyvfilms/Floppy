@@ -333,6 +333,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(frequency).to_contain_text("One Time Import")
         self.page.get_by_role("button", name="Import frequency help").click()
         expect(self.page.get_by_role("tooltip")).to_contain_text("automatic imports are unavailable")
+        self.page.get_by_role("tooltip").get_by_role("button", name="Close").click()
         expect(self.page.get_by_role("link", name="CLZ (formerly Collectorz.com)")).to_have_attribute("href", "https://clz.com/")
         with self.page.expect_response(lambda response: "/settings/import/save-settings" in response.url):
             self.choose_option("Override mode", "Overwrite Existing")
@@ -361,6 +362,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(mode).to_contain_text("Collection and wishlist")
         self.page.get_by_role("button", name="Import mode help").click()
         expect(self.page.get_by_role("tooltip")).to_contain_text("does not import reading or viewing history")
+        self.page.get_by_role("tooltip").get_by_role("button", name="Close").click()
         self.choose_option("Wishlist items", "Planning")
         self.page.get_by_label("Tag for wishlist items").fill("Wanted comics")
         self.choose_option("Override mode", "Overwrite Existing")

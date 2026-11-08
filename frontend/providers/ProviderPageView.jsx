@@ -187,7 +187,11 @@ function Overview({ model, colors, onNavigate }) {
         event?.preventDefault?.();
         onNavigate(card.url, card);
       } : undefined}
-      style={({ pressed }) => [styles.cardPressable, pressed && styles.pressed]}>
+      style={({ pressed, focused }) => [styles.cardPressable, {
+        outlineStyle: 'solid',
+        outlineWidth: focused ? 2 : 1,
+        outlineColor: focused ? colors.accent : colors.border,
+      }, pressed && styles.pressed]}>
       <SettingsCard title={card.title} badge={card.badge || undefined}
         palette={tonePalette(colors, card.tone)}>
         <Text style={[styles.cardText, { color: colors.textMuted }]}>{card.subtitle}</Text>
