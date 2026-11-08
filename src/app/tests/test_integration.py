@@ -364,7 +364,10 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                     modal = self.page.locator("[data-track-modal-root]:visible")
                     expect(modal).to_be_visible()
                     self._assert_visible_overlay_fills_viewport()
-                    modal.get_by_role("button", name="Close", exact=True).click()
+                    # RN Web portals the dialog outside the legacy modal root.
+                    self.page.get_by_role("dialog").last.get_by_role(
+                        "button", name="Close", exact=True,
+                    ).click()
                     expect(modal).to_have_count(0)
                     track_button.click()
                     expect(modal).to_be_visible()
@@ -586,11 +589,16 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.page.locator("button").filter(has_text="Add to tracker").click()
         track_form = self.page.locator("#track-tv-1396")
         expect(track_form).to_contain_text("Score")
-        track_form.get_by_label("Status").select_option("Completed")
+        # Status is now a shared accessible radio group, not an HTML select.
+        self.page.get_by_role("dialog").last.get_by_role(
+            "radio", name="Completed", exact=True,
+        ).click()
         with self.page.expect_request(
             lambda request: request.method == "POST" and "/media_save" in request.url,
         ) as save_request:
-            track_form.get_by_role("button", name="Add", exact=True).click()
+            self.page.get_by_role("dialog").last.get_by_role(
+                "button", name="Add", exact=True,
+            ).click()
         save_request.value.response()
         self.page.goto(f"{self.live_server_url}/medialist/tv")
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
@@ -613,7 +621,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         with self.page.expect_request(
             lambda request: request.method == "POST" and "/media_save" in request.url,
         ) as save_request:
-            track_form.get_by_role("button", name="Add", exact=True).click()
+            self.page.get_by_role("dialog").last.get_by_role(
+                "button", name="Add", exact=True,
+            ).click()
         save_request.value.response()
         self.page.goto(f"{self.live_server_url}/medialist/season")
         expect(self.page.get_by_role("main")).to_contain_text("Completed")
@@ -1627,9 +1637,11 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
         self.page.get_by_role("button", name="All media", exact=True).click()
         self.page.get_by_role("button", name="Movies", exact=True).click()
-        expect(self.page.get_by_text("Movie status breakdown.", exact=True)).to_have_text(
-            "Movie status breakdown.",
+        # The chart's accessible summary replaces the retired subtitle.
+        expect(self.page.locator('[data-testid="status-composition-chart"]')).to_have_attribute(
+            "aria-label", re.compile(r"^Status Composition\. Total "),
         )
+        self.assertIn("media-type=movie", self.page.url)
         filtered_layout = legend.evaluate(
             """element => ({
                 overflowX: getComputedStyle(element).overflowX,
