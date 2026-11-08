@@ -458,6 +458,10 @@ class TraktMetadataResolverMixin:
     Requires the including class to maintain a ``self.warnings`` list.
     """
 
+    # Entries kept per import. File exports replay a whole library in date
+    # order, so shows and seasons interleave and a tiny memo refetches them.
+    metadata_memo_size = METADATA_MEMO_SIZE
+
     def _get_tmdb_id(self, entry_data, media_type):
         """Extract TMDB ID from entry data, falling back to a title search."""
         # A fresh source decision for each entry observes corrections made
@@ -560,6 +564,20 @@ class TraktMetadataResolverMixin:
         if not title:
             return None
 
+        # Every episode of one show repeats this search; ask TMDB once.
+        memo_key = (media_type, title, entry_data.get("year"))
+        if not hasattr(self, "_title_search_memo"):
+            self._title_search_memo = {}
+        if memo_key not in self._title_search_memo:
+            self._title_search_memo[memo_key] = self._title_search_uncached(
+                media_type,
+                title,
+                entry_data,
+            )
+        return self._title_search_memo[memo_key]
+
+    def _title_search_uncached(self, media_type, title, entry_data):
+        """Run the TMDB title search behind ``_search_tmdb_id_by_title``."""
         try:
             results = services.search(
                 media_type,
@@ -631,7 +649,7 @@ class TraktMetadataResolverMixin:
                     break
             else:
                 self._metadata_memo[key] = metadata
-                if len(self._metadata_memo) > METADATA_MEMO_SIZE:
+                if len(self._metadata_memo) > self.metadata_memo_size:
                     self._metadata_memo.popitem(last=False)
         except (TypeError, ValueError):
             pass  # Non-JSON metadata remains usable, just not memoized.

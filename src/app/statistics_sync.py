@@ -129,7 +129,8 @@ def _bulk_import_active(user_id: int) -> bool:
     from integrations.models import ImportRun
     from integrations.tasks._import_helpers import (
         SELF_RESCHEDULING_IMPORT_SOURCES,
-        STREMIO_IMPORT_TIME_LIMIT,
+        SOURCE_TIME_LIMITS,
+        abandoned_after_seconds,
     )
 
     runs = ImportRun.objects.filter(status=ImportRun.Status.RUNNING).exclude(
@@ -141,12 +142,20 @@ def _bulk_import_active(user_id: int) -> bool:
     # Statistics deferred forever. With no task limit, RUNNING is authoritative.
     time_limit = settings.CELERY_TASK_TIME_LIMIT
     if time_limit:
-        cutoff = timezone.now() - timedelta(
-            seconds=max(time_limit, STREMIO_IMPORT_TIME_LIMIT) + 300
+        now = timezone.now()
+        alive = Q(
+            started_at__gte=now
+            - timedelta(seconds=abandoned_after_seconds("", time_limit)),
         )
+        for source in SOURCE_TIME_LIMITS:
+            alive |= Q(
+                source=source,
+                started_at__gte=now
+                - timedelta(seconds=abandoned_after_seconds(source, time_limit)),
+            )
         # A resumed durable run keeps its original provenance/start timestamp,
         # while its fresh lease proves there is still a live writer.
-        runs = runs.filter(Q(started_at__gte=cutoff) | Q(lease_expires_at__gt=timezone.now()))
+        runs = runs.filter(alive | Q(lease_expires_at__gt=now))
     return runs.exists()
 
 

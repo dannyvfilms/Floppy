@@ -372,6 +372,9 @@ class WeTrakrExport:
 class WeTrakrImporter(TraktImporter):
     """Run the standard Trakt import over a WeTrakr export instead of the API."""
 
+    # Worst case ~16 MB: entries over METADATA_MEMO_MAX_BYTES are never kept.
+    metadata_memo_size = 128
+
     def __init__(self, export, user, mode):
         """Initialize from ``export``; the only network use is TMDB."""
         self.export = export
