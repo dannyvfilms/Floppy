@@ -11,10 +11,13 @@ function FileImportHost({ host, model }) {
   const [preferences, setPreferences] = useState(() => parentPreferences(host, model));
 
   useEffect(() => {
-    const parent = host.closest('[x-data]');
+    // The preferences React island and the file-import React island are often
+    // siblings. Alpine is optional, so listen at their shared page boundary
+    // instead of requiring an ancestor with x-data.
+    const scope = host.closest('[data-settings-page-content]') || document;
     const change = event => setPreferences(event.detail);
-    parent?.addEventListener('import-preferences-changed', change);
-    return () => parent?.removeEventListener('import-preferences-changed', change);
+    scope.addEventListener('import-preferences-changed', change);
+    return () => scope.removeEventListener('import-preferences-changed', change);
   }, [host]);
 
   return <ProviderFileImportView
