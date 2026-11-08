@@ -429,6 +429,7 @@ export function Sidebar({
     <ScrollView ref={list} style={styles.primary}
       contentContainerStyle={[styles.navContent, {
         paddingTop: palette.navContentPaddingTop ?? 16,
+        paddingLeft: palette.navContentPaddingLeft ?? 16,
         paddingRight: palette.navContentPaddingRight ?? 16,
       }]}
       onContentSizeChange={() => { if (navOpen && autoScrollExplore) list.current?.scrollToEnd?.({ animated: false }); }}>

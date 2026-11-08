@@ -1949,7 +1949,7 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo Go on a physical iOS 27.2 Duo exercised the folded rail toggle, authenticated sidebar, search type picker and partial/full-open layouts. An isolated native-build simulator proof also exercised an open-menu pose transition. Accessibility remains unverified."
+          "evidence": "Expo Go on a physical iOS 27.2 Duo: a screen-scoped provider reported horizontal insets 84/0 on the left, 0/84 on the right, then 84/0 on return. The foreground shell, Search and Home content moved clear of the rail; movement used an intermediate full-screen state. The sidebar was observed open and closed, and partially open and closed Duo poses were observed. Direct side swapping, separate portrait/landscape interaction and accessibility remain unverified."
         },
         "android": {
           "status": "unverified",
@@ -2377,7 +2377,7 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "On a physical iOS 27.2 Duo in Device Hub, the menu control is visible as the first button below Wi-Fi on the right rail; the search field centers on the camera cutout and the Home highlight aligns with search. The modal X uses the same toolbar slot in code, but its runtime replacement was not exercised. Partial and full-open layouts remain previously observed. Saved-view interactions and VoiceOver remain unverified."
+          "evidence": "On the physical iOS 27.2 Duo in Expo Go, the sidebar was inspected on both sides against Claude. Screen-scoped safe-area insets changed with the side and the usual sidebar margin was reduced by the inset so the rail side received no duplicate padding. Direct side swapping and VoiceOver remain unverified."
         },
         "android": {
           "status": "unverified",

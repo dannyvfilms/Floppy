@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHinge } from 'expo-hinge';
 import { useVerticalBarEdgeIOS } from 'expo-status-bar';
 import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
@@ -9,6 +10,7 @@ import { Sidebar } from '../../../frontend/ui/Sidebar';
 import { renderNativeIcon } from '../iconRenderer';
 import SearchSlot from './SearchSlot';
 import NativeShell from './NativeShell';
+import { horizontalContentPadding } from '../safeAreaSpacing.mjs';
 import { palette, radius } from '../theme';
 
 export const surface = {
@@ -163,6 +165,7 @@ export default function ShellSlot({
   const [pinned, setPinned] = useState([]);
   const hinge = useHinge();
   const railEdge = useVerticalBarEdgeIOS();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => subscribeAuthSession(setSession), []);
 
@@ -199,9 +202,12 @@ export default function ShellSlot({
     if (item?.href) onOpenHref?.(item.href, item);
   };
 
+  const navigationPadding = horizontalContentPadding(insets, 16);
   const adaptivePalette = Platform.OS === 'ios' && (hinge || railEdge)
     ? { ...shellPalette, navRowHeight: 44, navContentPaddingTop: 25,
-      navContentPaddingRight: 0, navFontSize: 17, navIconSize: 22 }
+      navContentPaddingLeft: navigationPadding.paddingLeft,
+      navContentPaddingRight: navigationPadding.paddingRight,
+      navFontSize: 17, navIconSize: 22 }
     : shellPalette;
   const sidebar = <Sidebar model={model} pins={pins} palette={adaptivePalette}
     labels={SIDEBAR_LABELS}

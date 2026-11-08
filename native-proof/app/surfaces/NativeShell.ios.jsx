@@ -5,14 +5,16 @@ import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { useHinge } from 'expo-hinge';
 import { ArrangementView, Host, RNHostView } from '@expo/ui/swift-ui';
 import { arrangementViewStyle, frame } from '@expo/ui/swift-ui/modifiers';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ReservedRegionsProvider, useReservedRegions } from 'react-native-reserved-regions';
 import { useVerticalBarEdgeIOS } from 'expo-status-bar';
 import { RailModalHost, RailModalProvider, useRailModal } from '../../../frontend/ui/Modal';
 import { menuGeometry } from './menuGeometry.mjs';
+import { horizontalContentPadding } from '../safeAreaSpacing.mjs';
 
 function MenuLayout({ open, sidebar, search, children, palette, division }) {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const [contentWidth, setContentWidth] = useState(0);
   const [arrangement, setArrangement] = useState(null);
   const hinge = useHinge();
@@ -41,28 +43,42 @@ function MenuLayout({ open, sidebar, search, children, palette, division }) {
     </View>
     <View style={[styles.content, { marginLeft: open && !geometry.full ? geometry.menuWidth + geometry.gap : 0 }]} accessibilityElementsHidden={open && geometry.full}
       importantForAccessibility={open && geometry.full ? 'no-hide-descendants' : 'auto'}>
-      <View style={styles.search}>{search}</View>
+      <View style={[styles.search, horizontalContentPadding(insets, 22)]}>{search}</View>
       {children}
     </View>
   </View>;
 }
 
-function MeasuredMenuLayout(props) {
-  const division = useReservedRegions().find(region => region.kind === 'division'
+function MeasuredNativeShell(props) {
+  const regions = useReservedRegions();
+  const division = regions.find(region => region.kind === 'division'
     && region.frame.height > region.frame.width && region.frame.x > 0);
-  return <MenuLayout {...props} division={division} />;
-}
-
-export default function NativeShell(props) {
   const hinge = useHinge();
   const railEdge = useVerticalBarEdgeIOS();
-  return <RailModalProvider enabled={Boolean(hinge || railEdge)}>
-    <ShellWithRail {...props} hasRail={Boolean(hinge || railEdge)} />
+  const hasRail = Boolean(hinge || railEdge);
+  return <RailModalProvider enabled={hasRail}>
+    <ShellWithRail {...props} division={division} hasRail={hasRail} />
   </RailModalProvider>;
 }
 
-function ShellWithRail({ open, onToggle, sidebar, search, children, palette, hasRail, canGoBack, onBack }) {
+function StoreClientNativeShell(props) {
+  const hinge = useHinge();
+  const railEdge = useVerticalBarEdgeIOS();
+  const hasRail = Boolean(hinge || railEdge);
+  return <RailModalProvider enabled={hasRail}>
+    <ShellWithRail {...props} hasRail={hasRail} />
+  </RailModalProvider>;
+}
+
+export default function NativeShell(props) {
+  return Constants.executionEnvironment === ExecutionEnvironment.StoreClient
+    ? <StoreClientNativeShell {...props} />
+    : <ReservedRegionsProvider style={styles.root}><MeasuredNativeShell {...props} /></ReservedRegionsProvider>;
+}
+
+function ShellWithRail({ open, onToggle, sidebar, search, children, palette, hasRail, canGoBack, onBack, division }) {
   const modal = useRailModal()?.active;
+  const insets = useSafeAreaInsets();
   const [reduceMotion, setReduceMotion] = useState(false);
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
@@ -90,24 +106,24 @@ function ShellWithRail({ open, onToggle, sidebar, search, children, palette, has
       {canGoBack ? <Stack.Toolbar.Button icon="chevron.left" tintColor={palette.text}
         onPress={modal ? modal.onRequestClose : onBack} accessibilityLabel="Back" separateBackground /> : null}
     </Stack.Toolbar>
-    <SafeAreaView edges={hasRail ? ['top', 'left', 'right'] : ['top', 'left', 'right', 'bottom']} style={styles.root}>
-      <View style={styles.root} accessibilityElementsHidden={Boolean(modal)}
+    <View style={[styles.root, { paddingTop: insets.top, paddingLeft: insets.left,
+      paddingRight: insets.right, paddingBottom: hasRail ? 0 : insets.bottom }]}>
+      <View style={styles.root}
+        accessibilityElementsHidden={Boolean(modal)}
         importantForAccessibility={modal ? 'no-hide-descendants' : 'auto'}>
       {Constants.executionEnvironment === ExecutionEnvironment.StoreClient
         ? <MenuLayout {...menu} />
-        : <ReservedRegionsProvider style={styles.root}>
-          <MeasuredMenuLayout {...menu} />
-        </ReservedRegionsProvider>}
+        : <MenuLayout {...menu} division={division} />}
       </View>
       <RailModalHost />
-    </SafeAreaView>
+    </View>
   </>;
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
   search: { zIndex: 2, width: '100%', minHeight: 44,
-    justifyContent: 'center', paddingLeft: 22, paddingRight: 0, paddingTop: 25, paddingBottom: 27 },
+    justifyContent: 'center', paddingTop: 25, paddingBottom: 27 },
   row: { flex: 1, flexDirection: 'row', minHeight: 0, overflow: 'hidden' },
   sidebar: { position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 3, overflow: 'hidden' },
   content: { flex: 1, minWidth: 0, zIndex: 0 },
