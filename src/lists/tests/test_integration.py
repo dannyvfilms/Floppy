@@ -221,7 +221,8 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         expect(self.page.locator("#lists-grid")).to_contain_text("test")
         expect(self.page.locator("#lists-grid")).to_contain_text("1 item")
         self.page.get_by_role("button", name="Options for test", exact=True).click()
-        self.page.get_by_role("button", name="Settings", exact=True).click()
+        # The sidebar also has a Settings button; the list menu is local.
+        self.page.locator("#lists-grid").get_by_role("button", name="Settings", exact=True).click()
         # The edit form is an HTMX dialog rather than a child of the grid.
         expect(self.page.get_by_role("heading", name="Edit List", exact=True)).to_be_visible()
         # The id embeds the list's primary key, which depends on which tests ran
