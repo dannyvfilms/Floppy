@@ -227,6 +227,11 @@ An empty value does not override a path. A relative path starts from the
 process working directory. Use absolute paths so that each process uses the
 same location.
 
+SQLite startup admission has a 30-second deadline by default. Set
+`FLOPPY_SQLITE_ADMISSION_TIMEOUT` to a positive whole number of seconds to
+adjust it for slower storage. If admission times out, the entrypoint retries
+once; a second timeout parks startup before migrations and services start.
+
 If `SECRET` and `SECRET_FILE` are not set, the container stores its generated
 `secret_key` in `FLOPPY_DATA_DIR`. Floppy stores backups in `BACKUP_DIR`;
 `FLOPPY_DATA_DIR` does not change that setting. Logs go to `LOG_DIR`, which
@@ -1030,9 +1035,10 @@ directly.
 
 ### If the SQLite startup check times out
 
-Admission stops after 30 seconds instead of running a multi-hour scan. Check
-the command's diagnosis and storage/lock state. A timeout alone is not a
-corruption finding and does not force a scan on the next ordinary restart.
+Each admission attempt stops after the configured deadline (30 seconds by
+default); after one retry, two consecutive timeouts park startup. Check the
+command's diagnosis and storage/lock state. A timeout alone is not a corruption
+finding and does not force a scan on the next ordinary restart.
 Full verification runs independently after startup or through explicit,
 bounded maintenance. Its phase/results live in `<database>.verification.json`;
 the container logs report deadline failures. The old recovery scanner's
