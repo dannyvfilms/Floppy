@@ -129,6 +129,10 @@ echo "\" | Out-Null; irm 'https://raw.githubusercontent.com/dannyvfilms/Floppy/l
 Once Floppy is running, open it in your phone's browser and add it to your
 home screen. [Step-by-step guide](https://github.com/dannyvfilms/Floppy/wiki/2.-User-Guide#installing-floppy-on-your-phone).
 
+Native iOS and Android apps are in development but aren't available for public
+testing yet. Interested in contributing? Our [Mobile App Development guide](https://github.com/dannyvfilms/Floppy/wiki/Mobile-App-Development)
+covers getting started with Expo Go and simulators.
+
 ### If you know what you're doing
 
 - [Docker Compose](docs/deployment.md#docker-compose-recommended) works for

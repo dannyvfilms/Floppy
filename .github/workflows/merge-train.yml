@@ -7,9 +7,10 @@ name: Merge Train
 # scripts/merge_train.py for the rules. Run it by hand with "dry run" ticked to
 # see what it would do without touching anything.
 #
-# It runs when latest moves, when a pull request is approved (auto-merge
-# switched on or off), marked ready, pushed to or closed, and when a CI run
-# finishes, so the queue advances as soon as anything changes. The 15 minute
+# It runs when latest moves, or a pull request's auto-merge, readiness, head,
+# or closed state changes. GitHub auto-merge already responds to required CI
+# completing, so workflow_run completion triggers only spawn extra train runs
+# for unrelated PRs, including on every failing test retry. The 15 minute
 # schedule is only a safety net: GitHub delays and drops scheduled runs (about
 # 5 of 96 ran on 2026-10-19). Pull request and CI events from forks run this
 # workflow as it is on latest, never the fork's copy, and nothing from the pull
@@ -38,12 +39,6 @@ on:
       - synchronize
       - reopened
       - closed
-  workflow_run:
-    workflows:
-      - App Tests
-      - Lint
-    types:
-      - completed
   schedule:
     - cron: "*/15 * * * *"
   workflow_dispatch:
