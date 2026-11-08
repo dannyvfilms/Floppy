@@ -18,7 +18,7 @@ RADARR_GET = "integrations.imports.radarr.requests.get"
 RADARR_SEND = "integrations.imports.radarr.requests.request"
 SONARR_GET = "integrations.imports.sonarr.requests.get"
 SONARR_SEND = "integrations.imports.sonarr.requests.request"
-SEERR_SEND = "integrations.seerr_api.requests.request"
+SEERR_SEND = "integrations.seerr_api.send_to_self_hosted_pinned"
 
 
 def _response(payload, status=200):
