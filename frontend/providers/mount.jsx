@@ -188,9 +188,20 @@ export function mountProvider(host, model) {
   }
 
   const onOpenLink = url => { if (url) window.open(url, '_blank', 'noopener'); };
+  const linkPropsForUrl = url => url ? {
+    href: url,
+    hrefAttrs: { target: '_blank', rel: 'noopener noreferrer' },
+  } : {};
+  const browserModel = {
+    ...model,
+    overviewCards: (model.overviewCards || []).map(card => ({
+      ...card,
+      linkProps: card.url ? { href: card.url } : {},
+    })),
+  };
 
   return mountRoot(host, <ProviderPageView
-    model={model}
+    model={browserModel}
     draft={draft}
     palette={colors}
     onOpenUrl={onOpenUrl}
@@ -204,6 +215,7 @@ export function mountProvider(host, model) {
         onSave={saveCredentials}
         onClear={clearCredentials}
         onOpenLink={onOpenLink}
+        linkPropsForUrl={linkPropsForUrl}
         onSetDefault={setDefaultProvider}
         onFollowUp={onNavigate}
         onConnect={connectAccount}

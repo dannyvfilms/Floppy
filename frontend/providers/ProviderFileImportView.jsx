@@ -142,8 +142,7 @@ function FileImportBody({
         {model.intro ? `${model.intro} ` : ''}
         <Text
           accessibilityRole={onOpenUrl && model.website ? 'link' : undefined}
-          href={model.website || undefined}
-          hrefAttrs={{ target: '_blank', rel: 'noopener noreferrer' }}
+          {...(model.websiteLinkProps || {})}
           onPress={onOpenUrl && model.website ? event => {
             event?.preventDefault?.();
             onOpenUrl(model.website);

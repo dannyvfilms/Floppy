@@ -194,8 +194,7 @@ export function ConnectionSettings({
       {showKeyLink && (model.getKeyUrl || model.getKeyLabel) ? <Pressable
         accessibilityRole="link"
         accessibilityLabel={(model.getKeyLabel || labels.getKey).replace('{name}', model.providerLabel || model.label || 'the provider')}
-        href={model.getKeyUrl || undefined}
-        hrefAttrs={{ target: '_blank', rel: 'noopener noreferrer' }}
+        {...(model.linkProps || {})}
         onPress={event => {
           if (onOpenLink && model.getKeyUrl) {
             event?.preventDefault?.();

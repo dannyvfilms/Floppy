@@ -756,6 +756,8 @@ Status: `Partial / coexisting`
 
 Status: `Partial / coexisting`
 
+PR #1878: Provider overview, credential key, and import website hyperlinks receive DOM-only URL attributes from the browser mounts, while their universal JSX remains native-compatible.
+
 PR #1878: The browser file-import mount now supplies a DOM chooser to the universal picker. Chosen `File` objects flow through the existing form transport; the server fallback remains active when the lazy module is blocked, reflects current preferences, and exposes semantic provider website links.
 
 - `frontend/providers/ProviderFileImportView.jsx`

@@ -181,7 +181,7 @@ function Overview({ model, colors, onNavigate }) {
       accessibilityRole={card.url ? 'link' : 'button'}
       accessibilityLabel={card.title}
       accessibilityHint={card.tooltip || undefined}
-      href={card.url || undefined}
+      {...(card.linkProps || {})}
       disabled={!onNavigate || !card.url}
       onPress={onNavigate && card.url ? event => {
         event?.preventDefault?.();

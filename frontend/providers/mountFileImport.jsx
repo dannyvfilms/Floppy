@@ -18,7 +18,13 @@ function FileImportHost({ host, model }) {
   }, [host]);
 
   return <ProviderFileImportView
-    model={model}
+    model={{
+      ...model,
+      websiteLinkProps: model.website ? {
+        href: model.website,
+        hrefAttrs: { target: '_blank', rel: 'noopener noreferrer' },
+      } : {},
+    }}
     preferences={preferences}
     palette={readThemePalette()}
     onSubmit={submitNativeForm}
