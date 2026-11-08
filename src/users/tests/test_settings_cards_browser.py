@@ -367,9 +367,15 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.get_by_label("Tag for wishlist items").fill("Wanted comics")
         self.choose_option("Override mode", "Overwrite Existing")
         self.choose_option("Import as", "Comics")
+        picker = self.page.get_by_role("button", name="Select CLZ Export")
+        self.assertTrue(
+            picker.count(),
+            f"CLZ file picker missing. Mounted root: {self.page.locator('[data-file-import-root]').inner_text()[:700]!r}; "
+            f"page errors: {self.errors!r}",
+        )
         with self.page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith("/import/clz")):
             with self.page.expect_file_chooser() as chooser:
-                self.page.get_by_role("button", name="Select CLZ Export").click()
+                picker.click()
             chooser.value.set_files({"name": "clz.csv", "mimeType": "text/csv", "buffer": b"Title,Status\nExample,On Wish List\n"})
         self.page.wait_for_url("**/settings/providers/clz?tab=import")
         mock_stage.assert_called_once()
@@ -408,9 +414,15 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.get_by_label("Wishlist items", exact=True).select_option("Planning")
         self.page.get_by_label("Tag for wishlist items").fill("Fallback preferences")
         self.page.get_by_label("Override mode").select_option("overwrite")
+        picker = self.page.get_by_role("button", name="Select CLZ Export")
+        self.assertTrue(
+            picker.count(),
+            f"CLZ file picker missing. Mounted root: {self.page.locator('[data-file-import-root]').inner_text()[:700]!r}; "
+            f"page errors: {self.errors!r}",
+        )
         with self.page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith("/import/clz")):
             with self.page.expect_file_chooser() as chooser:
-                self.page.get_by_role("button", name="Select CLZ Export").click()
+                picker.click()
             chooser.value.set_files({"name": "clz.csv", "mimeType": "text/csv", "buffer": b"Title\nExample\n"})
         mock_stage.assert_called_once()
         self.assertEqual(mock_queue.call_args.kwargs["wishlist_status"], "Planning")

@@ -17,6 +17,9 @@
 .provider-page p { color: var(--color-text-muted); margin: 0; }
 .provider-page :where(a) { color: var(--color-link); }
 .provider-page :where(a:hover) { text-decoration: underline; }
+/* The credential-key chip is a button-like link. Preserve its badge styling
+   on hover rather than inheriting the generic text-link underline. */
+.provider-page a[data-testid="provider-key-link"]:hover { text-decoration: none; }
 /* Outline appearance is immediate: interpolating the default currentColor/medium
    outline produces a thick white flash before the themed hover/focus ring. */
 .provider-page :where(a) {
