@@ -73,6 +73,17 @@ preflight (165.450s), statistics views (129.555s), Trakt allocation scaling
 media API tests (68.373s). First-start preflight includes another real database
 creation; the profiling and allocation regressions remain enabled.
 
+### API fixture side effects
+
+`FloppyApiTestCase` seeds a library in every test. Each seeded media row ran
+the tracked-media signal chain against caches that were still empty: under
+`cProfile`, `api.tests.test_media_core` spent 161s of its 209s inside
+`_handle_media_cache_change`, and `_invalidate_history_for_media_change` alone
+was 120s. Fixture creation now runs inside
+`suppress_media_change_side_effects()`; a test that exercises invalidation
+still writes through the API, where the signals run. The same module fell from
+86s to 18.7s on one machine (106 tests).
+
 Ordinary test settings now guard CPython socket audit events as well as
 requests. External DNS, TCP and UDP fail before I/O, including aiohttp and
 standard-library HTTP clients. Loopback and Unix sockets remain available.
