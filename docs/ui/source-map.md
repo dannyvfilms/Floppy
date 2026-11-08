@@ -84,6 +84,8 @@ Status: `Partial / coexisting`
 
 The shared React Native `TextField` keeps its large fixed-height input vertically centered without imposing a line-height; legacy browser fields remain owned by `controls.jsx` and CSS.
 
+PR #1878: `Modal.web.jsx` closes open dialogs on Escape while the native implementation remains platform-owned. Universal tooltips provide the tooltip role, and provider credential dialogs expose their accessible name. Shared catalog pin state uses `aria-pressed`; `FeatureList` distinguishes its text body for stable geometry checks.
+
 - `frontend/ui/controls`
 - `frontend/ui/controls.css`
 - `src/static/css/libraries/select2-4.1.0.min.css`
@@ -753,6 +755,8 @@ Status: `Partial / coexisting`
 ## SET-IMPORT
 
 Status: `Partial / coexisting`
+
+PR #1878: The browser file-import mount now supplies a DOM chooser to the universal file picker. The chosen `File` objects flow through the existing browser form adapter, and the server fallback remains active when the lazy module cannot load.
 
 - `frontend/providers/ProviderFileImportView.jsx`
 - `frontend/providers/mountCredentials.jsx`
