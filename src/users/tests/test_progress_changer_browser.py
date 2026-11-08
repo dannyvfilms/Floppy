@@ -117,7 +117,8 @@ class ProgressChangerBrowserTests(SerialStaticLiveServerTestCase):
               const tx = getComputedStyle(oldText), ty = getComputedStyle(newText);
               return [
                 Math.abs(a.width - b.width) > 0.2 || Math.abs(a.height - b.height) > 0.2 ? 'button box' : null,
-                colorDiff(x.backgroundColor, y.backgroundColor) ? 'button color' : null,
+                colorDiff(x.backgroundColor, y.backgroundColor)
+                   ? 'button color (server=' + x.backgroundColor + ', shared=' + y.backgroundColor + ')' : null,
                 colorDiff(tx.color, ty.color) ? 'text color' : null,
                 Math.abs(parseFloat(tx.fontSize) - parseFloat(ty.fontSize)) > 0.2 ? 'font size' : null,
                 oldRow.innerText.trim() !== newRow.innerText.trim() ? 'text' : null,

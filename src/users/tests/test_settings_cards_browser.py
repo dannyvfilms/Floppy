@@ -625,7 +625,9 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.wait_for_load_state("networkidle")
         self.assertFalse(self.page.evaluate("""performance.getEntriesByType('resource')
           .some(entry => /\\/ui\\/mount-/.test(entry.name))"""))
-        self.page.evaluate("htmx.ajax('GET', '/settings/providers/anilist?tab=import', {target:'body', swap:'innerHTML'})")
+        # An HTMX body replacement can orphan the thenable returned by ajax.
+        # Fire the request without awaiting a promise tied to the detached DOM.
+        self.page.evaluate("() => { void htmx.ajax('GET', '/settings/providers/anilist?tab=import', {target:'body', swap:'innerHTML'}); }")
         expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
         self.assertEqual(self.errors, [])
 
