@@ -33,6 +33,12 @@ through `app.progress_log.progress()`, which writes an `INFO` line with a
 3. **Finish.** One line with the outcome and `duration_ms`, and a count of what
    it did.
 
+Every Celery task already gets `task_started` and `task_finished` lines from
+`app/task_progress.py`, with the task name, a short id, the end state and
+`duration_ms`. Task arguments are never logged. A task that is still running, or
+hung, shows as a start with no finish. Add your own progress lines inside a task
+when it has stages or loops worth counting.
+
 Every start needs a finish on every path, including the early return and the
 `except` block. A start with no finish is how a reader spots a hang, so a path
 that skips the finish line makes a healthy run look stuck. The webhook log
