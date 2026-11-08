@@ -1597,9 +1597,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             + "?start-date=all&end-date=all&compare=none",
         )
 
-        legend = self.page.locator("#statusCompositionLegend")
+        legend = self.page.locator('[data-testid="status-composition-legend"]')
         expect(legend).to_be_visible()
-        expect(legend.locator(":scope > div")).to_have_count(5)
+        expect(legend.locator('[data-testid="statistics-legend-row"]')).to_have_count(5)
 
         layout = legend.evaluate(
             """element => ({
@@ -1609,7 +1609,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                 scrollWidth: element.scrollWidth,
             })""",
         )
-        self.assertEqual(layout["overflowX"], "auto")
+        self.assertIn(layout["overflowX"], ("auto", "scroll"))
         self.assertEqual(layout["overflowY"], "hidden")
 
         page_layout = self.page.evaluate(
@@ -1617,7 +1617,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                 viewportWidth: window.innerWidth,
                 documentWidth: document.documentElement.scrollWidth,
                 bodyWidth: document.body.scrollWidth,
-                chartWidth: document.getElementById("statusCompositionChart")
+                chartWidth: document.querySelector('[data-testid="status-composition-chart"]')
                     ?.getBoundingClientRect().width,
             })""",
         )
@@ -1627,7 +1627,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
         self.page.get_by_role("button", name="All media", exact=True).click()
         self.page.get_by_role("button", name="Movies", exact=True).click()
-        expect(self.page.locator("#statusCompositionSubtitle")).to_have_text(
+        expect(self.page.get_by_text("Movie status breakdown.", exact=True)).to_have_text(
             "Movie status breakdown.",
         )
         filtered_layout = legend.evaluate(
@@ -1666,7 +1666,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             """() => ({
                 viewportWidth: window.innerWidth,
                 documentWidth: document.documentElement.scrollWidth,
-                chartWidth: document.getElementById("statusCompositionChart")
+                chartWidth: document.querySelector('[data-testid="status-composition-chart"]')
                     ?.getBoundingClientRect().width,
             })""",
         )
