@@ -166,7 +166,7 @@ export default function SearchSlot({
       query={initialQuery}
       selectedType={selectedType}
       mediaTypes={mediaTypes}
-      barcodeTypes={['book', 'manga', 'comic', 'comicissue']}
+      barcodeTypes={['all', 'book', 'manga', 'comic', 'comicissue']}
       labels={labels}
       palette={searchPalette}
       onLoadSuggestions={loadSuggestions}

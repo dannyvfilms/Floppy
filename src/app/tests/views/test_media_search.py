@@ -28,6 +28,7 @@ from app.models import (
 )
 from app.providers import services
 from app.search_views import get_saved_suggestions
+from app.services import metadata_resolution
 from app.templatetags.app_tags import get_search_media_types
 from users.models import MetadataSourceDefaultChoices
 
@@ -931,5 +932,141 @@ class BarcodeOwnedSearchTests(TestCase):
                 {"media_type": MediaTypes.COMIC_ISSUE.value, "q": "x"},
             )
 
-        scan_types = f"['book', 'manga', 'comic', '{MediaTypes.COMIC_ISSUE.value}']"
+        scan_types = f"['all', 'book', 'manga', 'comic', '{MediaTypes.COMIC_ISSUE.value}']"
         self.assertContains(response, scan_types)
+
+
+class AllScopeIsbnSearchTests(TestCase):
+    """A checksum-valid ISBN in All scope fans out to the barcode-capable types."""
+
+    ISBN = "9780306406157"
+
+    def setUp(self):
+        """Create a signed-in user."""
+        self.user = get_user_model().objects.create_user("allscan", password="12345")
+        self.client.login(username="allscan", password="12345")
+
+    @staticmethod
+    def provider_result(media_type, title):
+        """Return a provider search payload with one result."""
+        return {
+            "page": 1,
+            "total_results": 1,
+            "total_pages": 1,
+            "results": [
+                {
+                    "media_id": f"{media_type}-1",
+                    "title": title,
+                    "media_type": media_type,
+                    "source": Sources.MANUAL.value,
+                    "image": "http://example.com/x.jpg",
+                },
+            ],
+        }
+
+    def search(self, query, side_effect):
+        """Run an All-scope search and return the response."""
+        with patch("app.providers.services.search", side_effect=side_effect) as mock:
+            response = self.client.get(
+                reverse("search"),
+                {"media_type": "all", "q": query},
+            )
+        self.assertEqual(response.status_code, 200)
+        return response, mock
+
+    def test_isbn_searches_each_barcode_type_with_its_default_source(self):
+        """Each eligible type is searched once, with its default provider."""
+        calls = []
+
+        def fake(media_type, query, page, source, **kwargs):
+            calls.append((media_type, query, source))
+            return self.provider_result(media_type, f"{media_type} hit")
+
+        response, _ = self.search(self.ISBN, fake)
+        searched = {call[0] for call in calls}
+        enabled = set(self.user.get_enabled_media_types())
+        self.assertEqual(
+            searched,
+            {
+                MediaTypes.BOOK.value,
+                MediaTypes.MANGA.value,
+                MediaTypes.COMIC.value,
+                MediaTypes.COMIC_ISSUE.value,
+            }
+            & enabled,
+        )
+        self.assertIn(MediaTypes.BOOK.value, searched)
+        for media_type, query, source in calls:
+            self.assertEqual(query, self.ISBN)
+            self.assertEqual(
+                source,
+                metadata_resolution.metadata_default_source(self.user, media_type),
+            )
+        groups = {g["media_type"]: g for g in response.context["local_groups"]}
+        self.assertEqual(set(groups), searched)
+        self.assertEqual(groups[MediaTypes.BOOK.value]["total"], 1)
+
+    def test_typed_text_never_fans_out(self):
+        """Titles and invalid ISBNs do not call a provider in All scope."""
+        _, mock = self.search("9780306406158", [])
+        mock.assert_not_called()
+
+    def test_disabled_types_are_not_searched(self):
+        """Only media types in the user's search menu are searched."""
+        self.user.manga_enabled = False
+        self.user.save()
+        calls = []
+
+        def fake(media_type, *args, **kwargs):
+            calls.append(media_type)
+            return self.provider_result(media_type, "hit")
+
+        self.search(self.ISBN, fake)
+        self.assertNotIn(MediaTypes.MANGA.value, calls)
+        self.assertIn(MediaTypes.BOOK.value, calls)
+
+    def test_one_provider_failing_keeps_the_others(self):
+        """A provider error drops only that type's group."""
+
+        def fake(media_type, *args, **kwargs):
+            if media_type == MediaTypes.BOOK.value:
+                raise services.ProviderAPIError(Sources.OPENLIBRARY.value, Exception("x"))
+            return self.provider_result(media_type, "hit")
+
+        response, _ = self.search(self.ISBN, fake)
+        groups = {g["media_type"] for g in response.context["local_groups"]}
+        self.assertNotIn(MediaTypes.BOOK.value, groups)
+        self.assertIn(MediaTypes.MANGA.value, groups)
+
+    def test_saved_barcode_is_grouped_with_online_results(self):
+        """An owned volume appears first in its type's group."""
+        group = CollectionFieldGroup.objects.create(user=self.user, name="Shelf")
+        field = CollectionField.objects.create(
+            group=group,
+            label="Barcode",
+            field_type=CollectionFieldType.TEXT,
+            media_types=[MediaTypes.BOOK.value],
+        )
+        owned = Item.objects.create(
+            media_id="owned-1",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.BOOK.value,
+            title="Owned Book",
+            image="",
+        )
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=owned,
+            custom_field_values={str(field.id): self.ISBN},
+        )
+        response, _ = self.search(
+            self.ISBN,
+            lambda media_type, *a, **k: self.provider_result(media_type, "hit"),
+        )
+        books = next(
+            g
+            for g in response.context["local_groups"]
+            if g["media_type"] == MediaTypes.BOOK.value
+        )
+        self.assertEqual(books["results"][0]["item"], owned)
+        self.assertEqual(books["total"], 2)

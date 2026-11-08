@@ -448,18 +448,18 @@
 
                           </button>
                           {# Camera button (only visible for types sold with a book barcode) #}
-                          <button type="button"
-                                  x-show="['book', 'manga', 'comic', 'comicissue'].includes(selectedType.value)"
+                          {% if search_type == "all" or search_type == "book" or search_type == "manga" or search_type == "comic" or search_type == "comicissue" %}<button type="button"
+                                  x-show="['all', 'book', 'manga', 'comic', 'comicissue'].includes(selectedType.value)"
                                   @click="$refs.barcodeInput?.click()"
                                   x-bind:disabled="barcodeScanning"
                                   class="absolute right-2 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-(--color-accent) rounded-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                   title="{% translate "Scan barcode" %}"
                                   aria-label="{% translate "Scan barcode" %}">
-                            <span x-show="barcodeScanning" class="block">
+                            <span x-show="barcodeScanning" class="hidden">
                               {% spinner 20 "muted" %}
                             </span>
                             <span x-show="!barcodeScanning" class="block">{% include "app/icons/camera.svg" with classes="w-5 h-5" %}</span>
-                          </button>
+                          </button>{% endif %}
                           {# Hidden file input for barcode scanning #}
                           <input type="file"
                                  accept="image/*"
