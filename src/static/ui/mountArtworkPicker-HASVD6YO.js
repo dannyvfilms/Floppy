@@ -1,0 +1,1 @@
+import{a as p}from"./chunk-B4JMXREW.js";import{a as m}from"./chunk-R3WBGPEE.js";import{a as k,c as t}from"./chunk-NGIHSDH7.js";import{b as o}from"./chunk-SQE76S5B.js";var n=o(k());var i=o(t());function w(r,f){return m(r,(0,i.jsx)(p,{host:r,props:f}))}export{w as mountArtworkPicker};
