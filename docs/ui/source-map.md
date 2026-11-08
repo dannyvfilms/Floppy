@@ -336,7 +336,7 @@ Status: `Legacy`
 
 ## HOME
 
-Status: `Legacy`
+Status: `Partial / coexisting`
 
 - `src/templates/app/components/home_artwork_poller.html`
 - `src/templates/app/components/home_deferred_groups.html`

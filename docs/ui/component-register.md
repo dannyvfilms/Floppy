@@ -406,12 +406,13 @@ can inform a focused completion pass.
 
 - Purpose/usage: personalized Home composition.
 - Status: `Partial / coexisting`. Page composition and server data remain Django templates and Alpine; the shared `HomeShelves` component owns shelf rows on browser and native surfaces, with the canonical shared React media cards inside each row. Phone cards use a 110 pt width so three cards fill the visible row; poster cards grow proportionally taller.
+- Native readiness: `Primitives`. `HomeShelves` uses shared React Native presentation on web and Expo; Home data and actions remain in the browser and native adapters. The user reports extensive native Home use in Expo Go on an iPhone Duo; Android remains unverified.
 - Implementation: `src/templates/app/home.html`, `frontend/ui/HomeShelves.jsx`, Home group/grid/deferred/artwork-poller components.
 - Contract: configured sections, up-next semantics, deferred/coalesced cover polling, canonical cards/rails and progress actions.
 - Data: Home row/artwork handlers in `src/app/views.py`, user configuration and server projections.
 - Reuse/blockers: composition/data shareable; preserve per-user bounded queries; depends on cards/rails/preferences. Browser owns its Django/Alpine fallbacks; the native Home screen supplies the shared component from its adapter.
 - Remaining consumers and retirement: Django/Alpine still owns page composition, settings navigation, deferred markup and the browser polling fallback; retire the coexisting Home surface only when those server-owned responsibilities are replaced with equivalent shared presentation and data adapters, preserving the server fallback and per-user query bounds.
-- Verification: Device Hub iOS 27.2 hot-reloaded the shared sizing change; three poster cards now fill the visible row and are slightly taller. Browser and Android runtime verification remain pending.
+- Verification: The user reports extensive use of the native Home page in Expo Go on an iPhone Duo and considers Home done for the current milestone; follow-up issues will be handled as individual bug reports. The OS and Expo Go versions and specific interaction coverage were not recorded, so this is user-reported iOS acceptance rather than a complete interaction checklist. Separately, Device Hub iOS 27.2 hot-reloaded the shared sizing change; three poster cards now fill the visible row and are slightly taller. Browser and Android runtime verification remain pending.
 - Validation targets: `src/app/tests/views/test_home.py`, `test_home_screen_season_status.py`.
 
 ### PLAYBACK — Now Playing and check-in

@@ -1927,7 +1927,7 @@
         },
         "ios": {
           "status": "verified",
-          "evidence": "Hot-reloaded on the iPhone Duo in Device Hub (iOS 27.2); the 110 pt poster cards now fill the row with three cards, and remaining cards are reached by horizontal scrolling."
+          "evidence": "The user reports extensive use of the native Home page in Expo Go on an iPhone Duo and considers Home done for the current milestone. Device Hub hot-reload on iOS 27.2 also confirmed 110 pt poster cards fill the row with three cards, with remaining cards reached by horizontal scrolling. OS and Expo Go versions and specific interaction coverage were not recorded; this is user-reported page acceptance, not a complete interaction checklist."
         },
         "android": {
           "status": "unverified",
@@ -2638,8 +2638,8 @@
           "evidence": "The Home adapter renders the shared HomeView around the server shelf model; no browser interaction pass during this change."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled HomeView on the native Home screen; no simulator run was performed."
+          "status": "verified",
+          "evidence": "The user reports extensive use of HomeView on the native Home page in Expo Go on an iPhone Duo and considers Home done for the current milestone. OS and Expo Go versions and specific interaction coverage were not recorded; follow-up issues will be handled as individual bug reports. Expo export --platform all also compiled HomeView on the native Home screen."
         },
         "android": {
           "status": "unverified",
