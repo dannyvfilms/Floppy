@@ -143,7 +143,7 @@ test('every island renderer branch is discoverable by the host selector', () => 
   assert.ok(selector, 'missing browser island host selector');
   assert.ok(dispatch, 'missing browser island renderer dispatch');
   const roots = new Set(selector.split(',').map(item => item.trim()));
-  const dispatched = [...dispatch.matchAll(/host\\.matches\\('([^']+)'\\)/g)]
+  const dispatched = [...dispatch.matchAll(/host\.matches\('([^']+)'\)/g)]
     .flatMap(([, selectors]) => selectors.split(',').map(item => item.trim()));
   assert.ok(dispatched.length > 60, 'expected the full island dispatcher');
   for (const root of dispatched) {
