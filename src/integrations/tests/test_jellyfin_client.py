@@ -19,7 +19,27 @@ class JellyfinClientTests(SimpleTestCase):
         """Create a client pointed at a fake server."""
         self.client = JellyfinClient("https://jellyfin.local:8096", "api-key", "user-1")
 
-    @patch("integrations.jellyfin_client.requests.request")
+    @patch("integrations.safe_fetch._send_pinned_self_hosted")
+    @patch("integrations.safe_fetch.socket.getaddrinfo")
+    def test_healthcheck_reuses_validated_address(self, mock_lookup, mock_send):
+        """An actual client call reaches the pinned transport, not Requests."""
+        mock_lookup.return_value = [
+            (0, 0, 0, "", ("192.168.40.20", 0)),
+        ]
+        mock_send.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {"Version": "10.9"},
+        )
+
+        result = self.client.healthcheck()
+
+        self.assertEqual(result, {"Version": "10.9"})
+        mock_lookup.assert_called_once()
+        mock_send.assert_called_once()
+        self.assertEqual(mock_send.call_args.args[0], "GET")
+        self.assertEqual(str(mock_send.call_args.args[2]), "192.168.40.20")
+
+    @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
     def test_healthcheck_returns_json(self, mock_request):
         """Healthcheck should hit /System/Info and return the parsed body."""
         mock_request.return_value = MagicMock(
@@ -37,7 +57,7 @@ class JellyfinClientTests(SimpleTestCase):
             'MediaBrowser Token="api-key"',
         )
 
-    @patch("integrations.jellyfin_client.requests.request")
+    @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
     def test_timeout_raises_client_error_not_auth_error(self, mock_request):
         """A read timeout is transient: it must not look like a rejected key."""
         mock_request.side_effect = requests.ReadTimeout("Read timed out")
@@ -47,7 +67,7 @@ class JellyfinClientTests(SimpleTestCase):
 
         self.assertNotIsInstance(ctx.exception, JellyfinAuthError)
 
-    @patch("integrations.jellyfin_client.requests.request")
+    @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
     def test_library_pages_use_longer_timeout(self, mock_request):
         """Recursive library pages get the long read timeout; lookups do not."""
         mock_request.return_value = MagicMock(
@@ -61,7 +81,7 @@ class JellyfinClientTests(SimpleTestCase):
         self.client.healthcheck()
         self.assertEqual(mock_request.call_args.kwargs["timeout"], REQUEST_TIMEOUT)
 
-    @patch("integrations.jellyfin_client.requests.request")
+    @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
     def test_unauthorized_raises_auth_error(self, mock_request):
         """A 401 response should raise JellyfinAuthError."""
         mock_request.return_value = MagicMock(status_code=401)
@@ -69,7 +89,7 @@ class JellyfinClientTests(SimpleTestCase):
         with self.assertRaises(JellyfinAuthError):
             self.client.healthcheck()
 
-    @patch("integrations.jellyfin_client.requests.request")
+    @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
     def test_server_error_raises_client_error(self, mock_request):
         """A 500 response should raise JellyfinClientError."""
         mock_request.return_value = MagicMock(status_code=500, text="")
@@ -77,7 +97,7 @@ class JellyfinClientTests(SimpleTestCase):
         with self.assertRaises(JellyfinClientError):
             self.client.healthcheck()
 
-    @patch("integrations.jellyfin_client.requests.request")
+    @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
     def test_error_message_includes_response_body(self, mock_request):
         """Failure messages should carry a snippet of what Jellyfin answered."""
         mock_request.return_value = MagicMock(
@@ -88,14 +108,14 @@ class JellyfinClientTests(SimpleTestCase):
         with self.assertRaisesRegex(JellyfinClientError, "Something exploded"):
             self.client.healthcheck()
 
-    @patch("integrations.jellyfin_client.requests.request")
+    @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
     def test_get_current_user_returns_none_on_client_error(self, mock_request):
         """A 400 from /Users/Me (Dashboard API key) should resolve to no user."""
         mock_request.return_value = MagicMock(status_code=400, text="Bad Request")
 
         self.assertIsNone(self.client.get_current_user())
 
-    @patch("integrations.jellyfin_client.requests.request")
+    @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
     def test_get_current_user_still_raises_auth_error(self, mock_request):
         """A 401 from /Users/Me means the key is bad and must propagate."""
         mock_request.return_value = MagicMock(status_code=401)
@@ -103,7 +123,7 @@ class JellyfinClientTests(SimpleTestCase):
         with self.assertRaises(JellyfinAuthError):
             self.client.get_current_user()
 
-    @patch("integrations.jellyfin_client.requests.request")
+    @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
     def test_get_current_user(self, mock_request):
         """Users/Me should resolve to the current Jellyfin user."""
         mock_request.return_value = MagicMock(
@@ -116,7 +136,7 @@ class JellyfinClientTests(SimpleTestCase):
 
         self.assertEqual(result, {"Id": "abc123", "Name": "danny"})
 
-    @patch("integrations.jellyfin_client.requests.request")
+    @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
     def test_iter_library_items_pages_until_exhausted(self, mock_request):
         """Library iteration should page through results using StartIndex/Limit."""
         page_one = MagicMock(
@@ -142,7 +162,7 @@ class JellyfinClientTests(SimpleTestCase):
         self.assertEqual(second_params["StartIndex"], 2)
         self.assertEqual(first_params["IncludeItemTypes"], "Movie,Episode,Series")
 
-    @patch("integrations.jellyfin_client.requests.request")
+    @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
     def test_mark_played_posts_to_played_items(self, mock_request):
         """mark_played should POST to the PlayedItems endpoint for the item."""
         mock_request.return_value = MagicMock(status_code=200)
@@ -153,7 +173,7 @@ class JellyfinClientTests(SimpleTestCase):
         self.assertEqual(method, "POST")
         self.assertTrue(url.endswith("/Users/user-1/PlayedItems/item-42"))
 
-    @patch("integrations.jellyfin_client.requests.request")
+    @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
     def test_mark_unplayed_deletes_played_items(self, mock_request):
         """mark_unplayed should DELETE the PlayedItems entry for the item."""
         mock_request.return_value = MagicMock(status_code=200)
@@ -171,7 +191,7 @@ class JellyfinClientTests(SimpleTestCase):
         with self.assertRaises(JellyfinClientError):
             client.mark_played("item-42")
 
-    @patch("integrations.jellyfin_client.requests.request")
+    @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
     def test_probe_playback_reporting_true_when_reachable(self, mock_request):
         """A 200 from the plugin's route means the API tier is usable."""
         mock_request.return_value = MagicMock(status_code=200, content=b"[]")
@@ -180,14 +200,14 @@ class JellyfinClientTests(SimpleTestCase):
         called_url = mock_request.call_args.args[1]
         self.assertTrue(called_url.endswith("/user_usage_stats/type_filter_list"))
 
-    @patch("integrations.jellyfin_client.requests.request")
+    @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
     def test_probe_playback_reporting_false_when_forbidden(self, mock_request):
         """A non-admin key (403) or missing plugin (404) both mean unavailable."""
         mock_request.return_value = MagicMock(status_code=403, text="Forbidden")
 
         self.assertFalse(self.client.probe_playback_reporting())
 
-    @patch("integrations.jellyfin_client.requests.request")
+    @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
     def test_fetch_playback_activity_parses_rows(self, mock_request):
         """Rows come back positionally and are mapped to named columns."""
         mock_request.return_value = MagicMock(
@@ -230,7 +250,7 @@ class JellyfinClientTests(SimpleTestCase):
         self.assertIn("rowid > 2", body["CustomQueryString"])
         self.assertIn("LIMIT 100", body["CustomQueryString"])
 
-    @patch("integrations.jellyfin_client.requests.request")
+    @patch("integrations.jellyfin_client.send_to_self_hosted_pinned")
     def test_fetch_max_playback_activity_rowid(self, mock_request):
         """The max-rowid lookup returns 0 for an empty table."""
         mock_request.return_value = MagicMock(

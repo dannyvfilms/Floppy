@@ -15,7 +15,7 @@ from typing import Any
 import requests
 from django.utils.dateparse import parse_datetime
 
-from integrations.safe_fetch import send_to_self_hosted
+from integrations.safe_fetch import send_to_self_hosted_pinned
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +93,8 @@ def _make_api_request(
     for attempt in range(MAX_RETRIES):
         try:
             start_time = time.time()
-            response = send_to_self_hosted(
-                requests.get,
+            response = send_to_self_hosted_pinned(
+                "GET",
                 url,
                 params=params,
                 headers=headers,
