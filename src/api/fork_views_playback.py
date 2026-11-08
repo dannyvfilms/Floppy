@@ -1048,16 +1048,21 @@ class HomePlaybackCardsView(drf_views.APIView):
             "check-in from the supplied card identity; no check-in token is exposed."
         ),
         request={
-            "type": "object",
-            "required": ["source", "media_type", "media_id", "action"],
-            "properties": {
-                "source": {"type": "string"},
-                "media_type": {"type": "string"},
-                "media_id": {"type": "string"},
-                "action": {"type": "string", "enum": ["pause", "finish", "stop", "cancel"]},
+            "application/json": {
+                "type": "object",
+                "required": ["source", "media_type", "media_id", "action"],
+                "properties": {
+                    "source": {"type": "string"},
+                    "media_type": {"type": "string"},
+                    "media_id": {"type": "string"},
+                    "action": {
+                        "type": "string",
+                        "enum": ["pause", "finish", "stop", "cancel"],
+                    },
+                },
             },
         },
-        responses={204: None, 400: None},
+        responses={204: None, 400: _DETAIL_SCHEMA, 502: _DETAIL_SCHEMA},
     )
     def post(self, request):
         """Run a current card action after resolving its server-owned control."""
