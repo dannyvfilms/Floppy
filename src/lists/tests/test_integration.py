@@ -222,7 +222,8 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         expect(self.page.locator("#lists-grid")).to_contain_text("1 item")
         self.page.get_by_role("button", name="Options for test", exact=True).click()
         self.page.get_by_role("button", name="Settings", exact=True).click()
-        expect(self.page.locator("#lists-grid")).to_contain_text("Edit List")
+        # The edit form is an HTMX dialog rather than a child of the grid.
+        expect(self.page.get_by_role("heading", name="Edit List", exact=True)).to_be_visible()
         # The id embeds the list's primary key, which depends on which tests ran
         # before in the same database; find the field by what it holds instead.
         name_field = self.page.locator('input[name="name"][value="test"]')
