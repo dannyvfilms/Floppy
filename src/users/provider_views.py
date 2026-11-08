@@ -1,5 +1,7 @@
 """Provider settings navigation using the existing forms and action handlers."""
 
+import json
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
@@ -101,6 +103,49 @@ def pin_provider(request):
     from app.helpers import safe_return_url
 
     return redirect(safe_return_url(request, request.POST.get("next", ""), reverse("providers")))
+
+
+MAX_PINNED_LISTS = 200
+
+
+def clean_sidebar_pins(data):
+    """Return only well-formed sidebar pins from untrusted ``data``."""
+    from app.sidebar_model import PIN_KEYS
+
+    data = data if isinstance(data, dict) else {}
+    nav = [key for key in dict.fromkeys(data.get("nav") or []) if key in PIN_KEYS] if isinstance(data.get("nav"), list) else []
+    lists, seen = [], set()
+    for item in data.get("lists") if isinstance(data.get("lists"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        ident, name, url = (item.get(key) for key in ("id", "name", "url"))
+        if (
+            not all(isinstance(value, str) for value in (ident, name, url))
+            or ident in seen
+            or not url.startswith("/")
+            or url.startswith("//")
+            or len(lists) >= MAX_PINNED_LISTS
+        ):
+            continue
+        seen.add(ident)
+        lists.append({"id": ident[:64], "name": name[:255], "url": url[:512]})
+    return {"nav": nav, "lists": lists}
+
+
+@login_required
+@require_POST
+def save_sidebar_pins(request):
+    """Store the user's sidebar pins so every browser shows the same sidebar."""
+    if request.user.is_demo:
+        return HttpResponse(status=403)
+    try:
+        data = json.loads(request.body or b"{}")
+    except ValueError:
+        return HttpResponse(status=400)
+    pins = clean_sidebar_pins(data)
+    request.user.sidebar_pins = pins
+    request.user.save(update_fields=["sidebar_pins"])
+    return JsonResponse(pins)
 
 
 INSTANCE_CONNECTIONS = {

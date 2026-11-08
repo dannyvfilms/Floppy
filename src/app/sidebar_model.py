@@ -113,6 +113,7 @@ def sidebar_model(request, user, media_type):
     mono = user.is_authenticated and user.logo_style == "monochrome"
     return {
         "userId": str(user.pk),
+        "pinsUrl": reverse("sidebar_pins"),
         "logo": {
             "src": static("img/floppy-logo-white.png" if mono else "img/floppy-logo.png"),
             "srcSet": None if mono else f'{static("img/floppy-logo.png")} 1x, {static("img/floppy-logo@2x.png")} 2x',
