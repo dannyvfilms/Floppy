@@ -540,12 +540,14 @@ can inform a focused completion pass.
 ### MUSIC — Artist/album/track and podcast composition
 
 - Purpose/usage: artist relations/discography, album tracks, show/episode detail.
-- Status: `Legacy`. Artist, album and podcast pages are server templates and Alpine; they use shared React `Badge` (type, year, genre pills), the rating picker and the Add-to-lists form.
-- Implementation: `src/templates/app/music_album_detail.html`, `podcast_show_detail.html`, music/artist/album/podcast components in map. Podcast episode rows now render an optional description and an empty state; the manual-show episode header mounts the separate `PODCAST-EPISODES` manager.
+- Status: `Partial / coexisting`. The artist discography album grid and relation grid are React islands over Django fallbacks; album and track details, podcast pages and episode rows remain server-rendered/Alpine, with the manual-show episode manager tracked separately under `PODCAST-EPISODES`.
+- Native readiness: `Primitives`. `MusicView`, `MusicAlbumCard` and `MusicRelationCard` use React Native primitives; native runtime verification remains unperformed.
+- Implementation: `frontend/ui/MusicAlbumCard.jsx` maps the server album URL into the shared card model; `frontend/ui/mountMusicAlbums.jsx` owns browser navigation and the Django-rendered grid remains the no-JavaScript fallback. Artist relations use `MusicRelationCard.jsx` and `mountMusicRelations.jsx`. Album/track/podcast components remain in the source map. Podcast episode rows render an optional description and an empty state.
 - Contract: hierarchy/deferred art, per-track actions/history/notes/scores, episode filter/pagination, repeats and show tracking.
 - Data: `src/app/music_views.py`, `music_album_views.py`, `podcast_views.py`; web episode JSON/HTML is not proven native API parity.
-- Reuse/blockers: consume shared cards/rows/tracking; preserve hierarchy/feed behavior and explicit playback boundaries.
+- Reuse/blockers: remaining server consumers retire as their detail and episode components migrate; keep their current hierarchy/feed behavior and explicit playback boundaries. The album grid uses shared `MusicAlbumCard`/`MediaCard` and keeps its server fallback.
 - Validation targets: `src/app/tests/views/test_music_release_views.py`, `test_podcast_show_detail.py`, `test_podcast_detail_rss_refresh.py`.
+- Verification: Browser: local artist page island mounted and both album cover/title links opened their album pages after the href mapping fix. iOS and Android runtime verification not performed; registry status remains unverified.
 
 ### PODCAST-EPISODES — Manual podcast episode management
 
@@ -715,6 +717,7 @@ templates are compatibility/composition sources, not equally active parallel pag
 
 - Purpose/usage: per-media line selection/reorder/live preview.
 - Status: `Partial / coexisting`. Browser settings remain the server template with its inline Alpine editor. Expo Settings uses the shared React Native `CardsEditor`; its touch-action preference is server-backed, while native per-type profiles remain a local preview.
+- Native readiness: `Primitives`. Expo `CardsEditor` uses React Native components; touch-action preference transport is server-backed, while per-type profile persistence remains a local preview.
 - Implementation: `src/templates/users/cards.html`, `cards_preview.html`, inline `cardsEditor()`; `frontend/pages/SettingsCardsView.jsx`, `frontend/settings/CardsEditor.jsx`, `native-proof/app/surfaces/CardsSettingsSlot.jsx`.
 - Contract: per-type values/default/order and previews consistent with canonical projection.
 - Data: `src/users/card_metadata.py`, card settings/preview handlers; `native-proof/app/data/settingsTransport.js` reads and writes `clickable_media_cards` through `/api/v1/user/preferences/`.

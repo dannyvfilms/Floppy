@@ -1772,8 +1772,8 @@
       "register": "MUSIC",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "Mounted through mountMusicAlbums on the artist discography grid over the server fallback; no browser runtime pass has been performed for the album grid."
+          "status": "verified",
+          "evidence": "Browser verified on a local artist page: the island mounted and replaced the server fallback; before the fix both React anchors lacked href values. After MusicAlbumCard preserved the server album href in the shared card model, clicking each album cover and title opened its correct album page."
         },
         "ios": {
           "status": "unverified",

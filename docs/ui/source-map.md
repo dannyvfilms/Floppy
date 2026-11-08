@@ -485,7 +485,9 @@ Status: `Legacy`
 
 ## MUSIC
 
-Status: `Legacy`
+Status: `Partial / coexisting`
+
+The artist relation and album grids are React islands over server-rendered fallbacks (`MusicRelationCard`, `MusicAlbumCard`, `mountMusicRelations`, `mountMusicAlbums`). Album/track details, podcast pages and episode rows remain server-owned or Alpine; retire each remaining group when its component migration preserves the existing fallback and behavior.
 
 - `src/templates/app/components/album_grid.html`
 - `src/templates/app/components/album_list_grid_items.html`
@@ -504,6 +506,11 @@ Status: `Legacy`
 - `src/templates/app/components/podcast_episode_list.html` (optional episode description and empty state)
 - `src/templates/app/music_album_detail.html`
 - `src/templates/app/podcast_show_detail.html`
+- `frontend/pages/MusicView.jsx`
+- `frontend/ui/MusicAlbumCard.jsx`
+- `frontend/ui/MusicRelationCard.jsx`
+- `frontend/ui/mountMusicAlbums.jsx`
+- `frontend/ui/mountMusicRelations.jsx`
 
 ## PODCAST-EPISODES
 
@@ -955,7 +962,6 @@ Status: `Partial / coexisting`
 - `frontend/pages/LibraryPageView.jsx`
 - `frontend/pages/ListDetailPageView.jsx`
 - `frontend/pages/ListsPageView.jsx`
-- `frontend/pages/MusicView.jsx`
 - `frontend/pages/OnboardingView.jsx`
 - `frontend/pages/PageChrome.jsx`
 - `frontend/pages/PeopleView.jsx`
@@ -966,7 +972,6 @@ Status: `Partial / coexisting`
 - `frontend/pages/SettingsAccountView.jsx`
 - `frontend/pages/SettingsAdvancedView.jsx`
 - `frontend/pages/SettingsAppearanceView.jsx`
-- `frontend/pages/SettingsCardsView.jsx`
 - `frontend/pages/SettingsDataView.jsx`
 - `frontend/pages/SettingsHomeScreenView.jsx`
 - `frontend/pages/SettingsNavLink.jsx`
@@ -990,7 +995,6 @@ Status: `Partial / coexisting`
 - `frontend/settings/AccessSettings.jsx`
 - `frontend/settings/AdvancedSettings.jsx`
 - `frontend/settings/AppearanceEditor.jsx`
-- `frontend/settings/CardsEditor.jsx`
 - `frontend/settings/Chip.web.jsx`
 - `frontend/settings/ConfirmDialog.jsx`
 - `frontend/settings/DataSettings.jsx`
@@ -1065,8 +1069,6 @@ Status: `Partial / coexisting`
 - `frontend/ui/MediaTable.jsx`
 - `frontend/ui/MetadataReview.jsx`
 - `frontend/ui/ModalHost.native.jsx`
-- `frontend/ui/MusicAlbumCard.jsx`
-- `frontend/ui/MusicRelationCard.jsx`
 - `frontend/ui/PageSlot.web.jsx`
 - `frontend/ui/ParentPicker.jsx`
 - `frontend/ui/ParentPicker.web.jsx`
@@ -1158,8 +1160,6 @@ Status: `Partial / coexisting`
 - `frontend/ui/mountMarkdownIslands.jsx`
 - `frontend/ui/mountMediaTable.jsx`
 - `frontend/ui/mountMetadataReview.jsx`
-- `frontend/ui/mountMusicAlbums.jsx`
-- `frontend/ui/mountMusicRelations.jsx`
 - `frontend/ui/mountParentPicker.jsx`
 - `frontend/ui/mountPeople.jsx`
 - `frontend/ui/mountProgressBreakdown.jsx`
