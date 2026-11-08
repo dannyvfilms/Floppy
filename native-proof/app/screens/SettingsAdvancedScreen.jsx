@@ -146,6 +146,14 @@ export default function SettingsAdvancedScreen({ onBack, params }) {
     setLogsSuccess('Sanitized logs prepared. The server sends the redacted file.');
   }
 
+  async function downloadDiagnostics() {
+    setLogsBusy(true);
+    setLogsSuccess('');
+    await wait(450);
+    setLogsBusy(false);
+    setLogsSuccess('Diagnostic report prepared. It holds server details and recent warnings and errors only.');
+  }
+
   async function saveImageCache(enabled) {
     setImageBusy(true);
     setImageSuccess('');
@@ -206,7 +214,7 @@ export default function SettingsAdvancedScreen({ onBack, params }) {
         isSuperuser: true, logsSince: 'Oct 2, 2026 13:39', lastUncleanExit: 'Oct 28, 2026 22:14',
         bugReportUrl: 'https://github.com/dannyvfilms/Floppy/issues/new?title=%5BBUG%5D%20',
         busy: logsBusy, success: logsSuccess,
-        onDownloadLogs: downloadLogs, onOpenUrl: openUrl,
+        onDownloadLogs: downloadLogs, onDownloadDiagnostics: downloadDiagnostics, onOpenUrl: openUrl,
       }}
       imageCache={{
         isSuperuser: true, enabled: imageEnabled, count: 1284, size: '412 MB',

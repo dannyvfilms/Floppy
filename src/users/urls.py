@@ -210,6 +210,11 @@ urlpatterns = [
     ),
     path("settings/advanced/logs", views.export_logs, name="export_logs"),
     path(
+        "settings/advanced/diagnostics",
+        views.export_diagnostics,
+        name="export_diagnostics",
+    ),
+    path(
         "settings/advanced/server-port",
         server_port_views.update_server_port,
         name="update_server_port",

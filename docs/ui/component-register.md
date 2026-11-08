@@ -919,6 +919,7 @@ templates are compatibility/composition sources, not equally active parallel pag
 - Contract: filters/candidates/chosen identity, POST/error and retained tracking semantics.
 - Data: integration views and `src/integrations/match_corrections.py`.
 - Reuse/blockers: shared selection/review pattern; distinct correction semantics and permissions remain explicit.
+- Logs card: `LogsCard` in `frontend/settings/AdvancedSettings.jsx` (React-owned, shared with `native-proof/app/screens/SettingsAdvancedScreen.jsx`) shows Download Sanitized Logs to superusers and Download Diagnostic Report to every signed-in user. Server contract: `src/users/diagnostics.py`, `export_diagnostics`. Browser verification of the new button: pending. iOS/Android: not verified; the native screen is a stub that waits and shows a message.
 - Validation targets: `src/integrations/tests/test_matching_and_corrections.py`.
 
 ### INTEGRATION-PANELS — Library/download and Seerr requests
