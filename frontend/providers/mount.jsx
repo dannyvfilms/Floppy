@@ -196,7 +196,14 @@ export function mountProvider(host, model) {
     ...model,
     overviewCards: (model.overviewCards || []).map(card => ({
       ...card,
-      linkProps: card.url ? { href: card.url } : {},
+      linkProps: card.url ? {
+        href: card.url,
+        // RN Web does not forward an HTML title on Pressable. Keep the real
+        // browser hover hint in the web adapter; native uses accessibilityHint.
+        ref: node => {
+          if (node && card.tooltip) node.setAttribute('title', card.tooltip);
+        },
+      } : {},
     })),
   };
 
