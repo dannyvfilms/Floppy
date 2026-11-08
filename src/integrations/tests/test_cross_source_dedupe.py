@@ -613,3 +613,123 @@ class WebhookAfterImport(TestCase):
             ).count(),
             1,
         )
+
+
+class KodiGenericMovieSessionTests(TestCase):
+    """Two writers for one playback must not create two History cards."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="same-session")
+        self.item = Item.objects.create(
+            media_id="900",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Same Session",
+            runtime_minutes=90,
+        )
+        self.started_at = timezone.now().replace(
+            second=0, microsecond=0,
+        ) - timedelta(minutes=90)
+        self.finished_at = timezone.now().replace(second=0, microsecond=0)
+        patcher = patch(
+            "app.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        releases = patch("app.models.Item.fetch_releases")
+        releases.start()
+        self.addCleanup(releases.stop)
+
+    def _completed(self, *, score=None):
+        return Movie.objects.create(
+            user=self.user,
+            item=self.item,
+            status=Status.COMPLETED.value,
+            progress=1,
+            start_date=self.started_at,
+            end_date=self.finished_at,
+            entry_source="kodi",
+            score=score,
+        )
+
+    def _unfinished(self, *, started_at=None, score=None, notes=""):
+        return Movie.objects.create(
+            user=self.user,
+            item=self.item,
+            status=Status.IN_PROGRESS.value,
+            progress=0,
+            start_date=started_at or self.started_at,
+            entry_source="scrobble",
+            score=score,
+            notes=notes,
+        )
+
+    def test_completion_merges_competing_generic_stop_and_keeps_rating(self):
+        from integrations.webhooks.generic_scrobble import GenericScrobbleProcessor
+
+        completed = self._completed()
+        unfinished = self._unfinished(score=7)
+        GenericScrobbleProcessor()._reconcile_kodi_scrobble_movie_session(
+            self.user, self.item, self.started_at,
+        )
+
+        self.assertEqual(
+            list(Movie.objects.filter(item=self.item).values_list("pk", flat=True)),
+            [completed.pk],
+        )
+        completed.refresh_from_db()
+        self.assertEqual(completed.score, 7)
+        self.assertFalse(Movie.objects.filter(pk=unfinished.pk).exists())
+
+    def test_different_session_is_preserved_as_rewatch(self):
+        from integrations.webhooks.generic_scrobble import GenericScrobbleProcessor
+
+        self._completed()
+        later = self._unfinished(
+            started_at=self.started_at + timedelta(days=1),
+        )
+        GenericScrobbleProcessor()._reconcile_kodi_scrobble_movie_session(
+            self.user, self.item, self.started_at,
+        )
+        self.assertTrue(Movie.objects.filter(pk=later.pk).exists())
+        self.assertEqual(Movie.objects.filter(item=self.item).count(), 2)
+
+    def test_conflicting_ratings_prevent_automatic_deletion(self):
+        from integrations.webhooks.generic_scrobble import GenericScrobbleProcessor
+
+        self._completed(score=5)
+        pending = self._unfinished(score=7)
+        GenericScrobbleProcessor()._reconcile_kodi_scrobble_movie_session(
+            self.user, self.item, self.started_at,
+        )
+        self.assertTrue(Movie.objects.filter(pk=pending.pk).exists())
+
+    @patch("app.live_playback.get_session_start")
+    @patch("app.services.metadata_resolution.upsert_provider_links")
+    @patch("app.providers.tmdb.movie")
+    def test_unfinished_generic_stop_after_kodi_completion_is_ignored(
+        self, tmdb_movie, _provider_links, get_session_start,
+    ):
+        from integrations.webhooks.generic_scrobble import GenericScrobbleProcessor
+
+        existing = self._completed()
+        tmdb_movie.return_value = {"title": "Same Session", "image": ""}
+        get_session_start.return_value = self.started_at
+
+        GenericScrobbleProcessor()._handle_movie(
+            "900",
+            {
+                "media_type": "movie",
+                "ids": {"tmdb": "900"},
+                "completed": False,
+                "position_seconds": 120,
+                "duration_seconds": 5400,
+            },
+            self.user,
+        )
+
+        self.assertEqual(
+            list(Movie.objects.filter(item=self.item).values_list("pk", flat=True)),
+            [existing.pk],
+        )
