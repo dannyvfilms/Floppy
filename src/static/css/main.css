@@ -4801,6 +4801,11 @@
       visibility: hidden;
     }
   }
+  .max-lg\:z-\[10000\] {
+    @media (width < 64rem) {
+      z-index: 10000;
+    }
+  }
   .max-lg\:max-w-none {
     @media (width < 64rem) {
       max-width: none;
@@ -8202,7 +8207,7 @@ html.light .theme-toggle-icon-moon {
     color: white;
     text-shadow: 0 1px 4px rgb(0 0 0 / 80%);
   }
-  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header * {
+  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header :is(a, button, input, select, textarea, label, summary, [role="button"], [role="link"], [role="menuitem"], [tabindex]) {
     pointer-events: auto;
   }
   .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header .shrink-0 {
