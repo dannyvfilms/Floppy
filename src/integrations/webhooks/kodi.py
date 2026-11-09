@@ -3,8 +3,10 @@ import logging
 from enum import StrEnum
 
 from app.models import MediaTypes
+from app.providers import tmdb
+from app.providers.services import ProviderAPIError
 
-from .base import BaseWebhookProcessor
+from .base import BaseWebhookProcessor, _is_transient_provider_error
 
 logger = logging.getLogger(__name__)
 
@@ -116,11 +118,96 @@ class KodiWebhookProcessor(BaseWebhookProcessor):
         return payload.get("tvShowTitle")
 
     def _extract_external_ids(self, payload):
-        episode_ids = payload.get("uniqueIds", {})
-        series_ids = payload.get("tvShowUniqueIds", {})
+        episode_ids = payload.get("uniqueIds") or {}
+        series_ids = payload.get("tvShowUniqueIds") or {}
+        if not isinstance(episode_ids, dict):
+            episode_ids = {}
+        if not isinstance(series_ids, dict):
+            series_ids = {}
+
+        fields = (
+            ("tmdb", "tmdb_id"),
+            ("tvdb", "tvdb_id"),
+            ("imdb", "imdb_id"),
+            ("tvmaze", "tvmaze_id"),
+        )
+        if self._get_media_type(payload) == MediaTypes.TV.value and series_ids:
+            # Episode and series identifiers have separate namespaces. Pick
+            # one show-level identifier rather than combining contradictory
+            # episode and show GUIDs in the provider resolver.
+            for provider, field in fields:
+                if series_ids.get(provider):
+                    return {
+                        name: str(series_ids[provider]) if name == field else None
+                        for _, name in fields
+                    }
+
         return {
-            "tmdb_id": episode_ids.get("tmdb") or series_ids.get("tmdb"),
-            "imdb_id": episode_ids.get("imdb") or series_ids.get("imdb"),
-            "tvdb_id": episode_ids.get("tvdb") or series_ids.get("tvdb"),
-            "tvmaze_id": episode_ids.get("tvmaze") or series_ids.get("tvmaze"),
+            name: episode_ids.get(provider) or series_ids.get(provider)
+            for provider, name in fields
         }
+
+    def _process_tv(self, payload, user, ids, season_number=None, episode_number=None):
+        """Resolve and verify the series before any episode write."""
+        show_ids = payload.get("tvShowUniqueIds")
+        has_series_id = isinstance(show_ids, dict) and any(
+            show_ids.get(provider) for provider in ("tmdb", "tvdb", "imdb", "tvmaze")
+        )
+        title = self._extract_series_title(payload)
+        if has_series_id:
+            # _extract_external_ids has already reduced conflicting identifiers
+            # to a single series-level authority.
+            media_id = ids.get("tmdb_id")
+            if not media_id:
+                media_id, _, _ = self._find_tv_media_id(
+                    ids,
+                    user=user,
+                    episode_ids=False,
+                    raise_transient=True,
+                )
+        else:
+            # Legacy Kodi sends episode-level IDs with no show GUID. A unique
+            # show title is safer than treating an episode's GUID as a series.
+            if not title:
+                logger.warning("Ignoring legacy Kodi episode without a series title")
+                return None
+            season = season_number if season_number is not None else payload.get("season")
+            media_id = self._resolve_tv_by_title(title, season_number=season)
+
+        if not media_id:
+            logger.warning("Ignoring Kodi episode with unresolved show identity")
+            return None
+
+        try:
+            metadata = tmdb.tv(media_id)
+        except ProviderAPIError as exc:
+            if _is_transient_provider_error(exc):
+                raise
+            logger.warning("Ignoring Kodi episode with invalid show ID %s", media_id)
+            return None
+
+        if title:
+            expected = self._normalize_series_title(title)
+            candidate_titles = {
+                self._normalize_series_title(metadata.get(field))
+                for field in ("title", "original_title", "localized_title")
+            } - {None}
+            if not expected or expected not in candidate_titles:
+                logger.warning(
+                    "Ignoring Kodi episode: series title contradicts TMDB show %s",
+                    media_id,
+                )
+                return None
+
+        # Never pass episode GUIDs (or unverified alternate series IDs) into
+        # the tracking and fallback stages.
+        verified_ids = {
+            "tmdb_id": str(media_id),
+            "tvdb_id": None,
+            "imdb_id": None,
+            "tvmaze_id": None,
+        }
+        return super()._process_tv(
+            payload, user, verified_ids,
+            season_number=season_number, episode_number=episode_number,
+        )

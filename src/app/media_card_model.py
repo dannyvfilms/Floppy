@@ -377,7 +377,12 @@ def _corner_chips(ctx, media_type):
     ):
         href = app_tags.next_episode_url(item, media)
         if href:
-            chips.append({"kind": "next-episode", "text": _("Next ep"), "href": href})
+            chips.append({
+                "kind": "next-episode",
+                "text": _("Next ep"),
+                "compactText": _("Next"),
+                "href": href,
+            })
     return chips
 
 

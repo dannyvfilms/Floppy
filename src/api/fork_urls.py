@@ -266,6 +266,11 @@ urlpatterns = [
         name="api_podcast_episode_play",
     ),
     re_path(
+        r"^podcasts/episodes/plays/(?P<consumption_id>\d+)/?$",
+        fork_views_podcast.PodcastEpisodePlayDetailView.as_view(),
+        name="api_podcast_episode_play_detail",
+    ),
+    re_path(
         r"^lists/(?P<list_id>\d+)/smart-rules/?$",
         fork_views_lists.ListSmartRulesView.as_view(),
         name="api_list_smart_rules",
@@ -424,6 +429,11 @@ urlpatterns = [
         r"^playback/now-playing/?$",
         fork_views_playback.NowPlayingView.as_view(),
         name="api_playback_now_playing",
+    ),
+    re_path(
+        r"^playback/home-cards/?$",
+        fork_views_playback.HomePlaybackCardsView.as_view(),
+        name="api_playback_home_cards",
     ),
     re_path(
         r"^scrobble/?$",

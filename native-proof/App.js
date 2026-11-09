@@ -1,5 +1,6 @@
+import NativeStatusBar from './app/components/NativeStatusBar';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, SafeAreaView, ScrollView, StatusBar, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Image, SafeAreaView, ScrollView, StyleSheet, View } from 'react-native';
 import { getActiveAuthSession, subscribeAuthSession } from './app/data/authSession';
 import { restoreAuthSession } from './app/data/authTransport';
 import { EXTRA_SCREENS } from './app/extraScreens';
@@ -18,6 +19,7 @@ import SearchScreen from './app/screens/SearchScreen';
 import SettingsScreen from './app/screens/SettingsScreen';
 import StatisticsScreen from './app/screens/StatisticsScreen';
 import ShellSlot from './app/surfaces/ShellSlot';
+import NativeRoot from './app/surfaces/NativeRoot';
 import { statusBarInset } from './app/status-bar-inset';
 import { palette } from './app/theme';
 
@@ -47,9 +49,25 @@ export default function App() {
   const [tab, setTab] = useState('home');
   const [libraryType, setLibraryType] = useState('movie');
   const [stack, setStack] = useState([]);
+  const [tabHistory, setTabHistory] = useState([]);
   const navigate = (screen, params) => setStack(current => [...current, { screen, params }]);
-  const openTab = next => { setStack([]); setTab(next); };
-  const back = () => setStack(current => current.slice(0, -1));
+  const openTab = (next, mediaType = libraryType) => {
+    if (next === 'home') setTabHistory([]);
+    else if (next !== tab || mediaType !== libraryType) {
+      setTabHistory(current => [...current, { tab, libraryType, stack }]);
+    }
+    setStack([]);
+    setLibraryType(mediaType);
+    setTab(next);
+  };
+  const back = () => {
+    if (stack.length) { setStack(current => current.slice(0, -1)); return; }
+    const previous = tabHistory[tabHistory.length - 1];
+    setTabHistory(current => current.slice(0, -1));
+    setStack(previous?.stack || []);
+    setTab(previous?.tab || 'home');
+    if (previous) setLibraryType(previous.libraryType);
+  };
   const active = stack[stack.length - 1];
 
   // Web requires a session before it renders any app page; native does the
@@ -62,13 +80,13 @@ export default function App() {
 
   if (restoring) {
     return <SafeAreaView style={[styles.root, { paddingTop: statusBarInset, alignItems: 'center', justifyContent: 'center' }]}>
-      <StatusBar barStyle="light-content" backgroundColor={palette.background} />
+      <NativeStatusBar backgroundColor={palette.background} />
       <ActivityIndicator color={palette.accentStrong} />
     </SafeAreaView>;
   }
   if (!session) {
     return <SafeAreaView style={[styles.root, { paddingTop: statusBarInset }]}>
-      <StatusBar barStyle="light-content" backgroundColor={palette.background} />
+      <NativeStatusBar backgroundColor={palette.background} />
       <ScrollView contentContainerStyle={styles.entrance} keyboardShouldPersistTaps="handled">
         <Image source={floppyLogo} accessibilityLabel="Floppy"
           resizeMode="contain" style={styles.entranceLogo} />
@@ -86,7 +104,7 @@ export default function App() {
     if (path === '/calendar') { openTab('calendar'); return; }
     if (path.startsWith('/settings') || path === '/appearance') { openTab('settings'); return; }
     const media = path.match(/^\/medialist\/([^/?#]+)/);
-    if (media) { setLibraryType(media[1]); openTab('library'); return; }
+    if (media) { openTab('library', media[1]); return; }
     if (path.startsWith('/collection')) { navigate('Collection'); return; }
     if (path.startsWith('/history')) { navigate('History'); return; }
     if (path.startsWith('/lists')) { navigate('Lists'); return; }
@@ -105,17 +123,18 @@ export default function App() {
   const ActiveScreen = active ? STACK_SCREENS[active.screen] : TAB_SCREENS[tab];
   const tabParams = tab === 'library' ? { mediaType: libraryType } : undefined;
 
-  return <SafeAreaView style={[styles.root, { paddingTop: statusBarInset }]}>
-    <StatusBar barStyle="light-content" backgroundColor={palette.background} />
-    <ShellSlot active={tab} activeHref={activeHref} onNavigate={openTab} onOpenHref={openHref}
+  return <NativeRoot style={[styles.root, { paddingTop: statusBarInset }]}>
+    <NativeStatusBar backgroundColor={palette.background} />
+    <ShellSlot active={tab} activeHref={activeHref} canGoBack={Boolean(active) || tab !== 'home'} onBack={back} onNavigate={openTab} onOpenHref={openHref}
       onOpenSearch={params => navigate('Search', params)}
-      onOpenSuggestion={item => navigate('Detail', { item })} />
-    <View style={styles.body}>
-      {active
-        ? <ActiveScreen params={active.params} navigate={navigate} onBack={back} />
-        : <ActiveScreen navigate={navigate} params={tabParams} />}
-    </View>
-  </SafeAreaView>;
+      onOpenSuggestion={item => navigate('Detail', { item })}>
+      <View style={styles.body}>
+        {active
+          ? <ActiveScreen params={active.params} navigate={navigate} onBack={back} />
+          : <ActiveScreen navigate={navigate} params={tabParams} />}
+      </View>
+    </ShellSlot>
+  </NativeRoot>;
 }
 
 const styles = StyleSheet.create({

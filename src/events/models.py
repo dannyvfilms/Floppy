@@ -209,10 +209,13 @@ class EventManager(models.Manager):
         """
         return list(
             Item.objects.filter(
-                tv__user=user,
+                # Select from the user's own TV rows: excluding through the
+                # reverse relation would also match other accounts' trackers.
+                id__in=TV.objects.filter(user=user)
+                .exclude(status__in=INACTIVE_TRACKING_STATUSES)
+                .values("item_id"),
                 media_type=MediaTypes.TV.value,
             )
-            .exclude(tv__status__in=INACTIVE_TRACKING_STATUSES)
             .only(*_DEDUPE_ITEM_FIELDS),
         )
 

@@ -1,6 +1,6 @@
+import { Modal, ModalCloseButton } from '../Modal';
 import React, { useEffect, useRef } from 'react';
 import {
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -93,7 +93,7 @@ export function Dialog({
         ]}>
         <View style={styles.header}>
           <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>{title}</Text>
-          <Pressable
+          <ModalCloseButton
             ref={closeRef}
             accessibilityRole="button"
             accessibilityLabel={closeLabel}
@@ -108,7 +108,7 @@ export function Dialog({
               focused && colors.focusStyle,
             ]}>
             <Text style={[styles.closeText, { color: colors.link || colors.text }]}>×</Text>
-          </Pressable>
+          </ModalCloseButton>
         </View>
         {children ? <ScrollView
           style={styles.bodyWrap}

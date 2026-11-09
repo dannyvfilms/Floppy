@@ -734,7 +734,7 @@ class KoitoReceiveOnlyTests(KoitoTestCase):
     @patch("integrations.koito_api.get_track", return_value={})
     @patch("integrations.koito_api.get_export")
     @patch("integrations.koito_api.get_listens")
-    @patch("integrations.koito_api.requests.get")
+    @patch("integrations.koito_api.send_to_self_hosted_pinned")
     def test_no_write_verbs_are_available_or_used(
         self,
         mock_get,
@@ -759,8 +759,20 @@ class KoitoReceiveOnlyTests(KoitoTestCase):
         # And a full poll cycle only ever issues GETs.
         mock_listens.return_value = _page([_listen()])
         tasks._run_incremental_koito_sync(self.account)
-        for call in mock_get.call_args_list:
-            self.assertTrue(str(call).startswith("call("))
+        # The API adapter itself must always issue GET through the
+        # pinned boundary, even if the task-level methods are mocked above.
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {}
+        koito_api._make_api_request("http://koito.local", "secret", "listens")
+        mock_get.assert_called_once()
+        self.assertEqual(
+            mock_get.call_args.args,
+            ("GET", "http://koito.local/apis/web/v1/listens"),
+        )
+        self.assertEqual(
+            mock_get.call_args.kwargs["headers"]["Authorization"],
+            "Token secret",
+        )
 
 
 class KoitoFanOutProbeTests(KoitoTestCase):

@@ -30,6 +30,8 @@ the affected work remains incomplete. Record actual platform verification separa
 
 ## Operating Principles
 
+When the user supplies a plan and asks for the work, execute it through implementation and verification; do not stop after restating the scope. Continue until complete or an evidenced external blocker prevents further progress.
+
 Keep it simple. Simple is better than complex.
 Make the smallest maintainable change that solves the actual request.
 Prefer existing patterns over new abstractions.
@@ -339,6 +341,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - `docs/agents/pr_screenshots.md`: `scripts/pr_screenshots.py` captures before/after screenshots of a PR and posts them to its description.
 - `docs/architecture/log-redaction.md`: the log boundary contract — where credentials are removed, what the rules match, and what they do not cover.
 - `docs/architecture/theming.md`: the theme resolution contract and the six theme states any colour change must hold.
+- `docs/architecture/podcast-plays.md`: what a podcast listen is (`PodcastPlay`), the one service that writes it, how a direct tracker save is carried onto its play, and the API lifecycle.
 - `docs/architecture/webhook-write-rules.md`: when a media-server webhook may write tracking rows — the shared policy table every integration is listed in, its exceptions, and the test that catches a missing row.
 - `docs/architecture/webhook-delivery.md`: the sync/async boundary, expected webhook queue latency, the structured `event_id`/`queue_delay_ms`/`outcome` log contract, time limits, and the ordering guard that stops a late play erasing a scrobble (#1708).
 - `docs/architecture/connection-health.md`: when an integration account may be marked `connection_broken` (rejected credentials only), how scheduled work re-probes it, and the test that catches a direct write.

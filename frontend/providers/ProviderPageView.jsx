@@ -181,9 +181,17 @@ function Overview({ model, colors, onNavigate }) {
       accessibilityRole={card.url ? 'link' : 'button'}
       accessibilityLabel={card.title}
       accessibilityHint={card.tooltip || undefined}
+      {...(card.linkProps || {})}
       disabled={!onNavigate || !card.url}
-      onPress={onNavigate && card.url ? () => onNavigate(card.url, card) : undefined}
-      style={({ pressed }) => [styles.cardPressable, pressed && styles.pressed]}>
+      onPress={onNavigate && card.url ? event => {
+        event?.preventDefault?.();
+        onNavigate(card.url, card);
+      } : undefined}
+      style={({ pressed, focused }) => [styles.cardPressable, {
+        outlineStyle: 'solid',
+        outlineWidth: focused ? 2 : 1,
+        outlineColor: focused ? colors.accent : colors.border,
+      }, pressed && styles.pressed]}>
       <SettingsCard title={card.title} badge={card.badge || undefined}
         palette={tonePalette(colors, card.tone)}>
         <Text style={[styles.cardText, { color: colors.textMuted }]}>{card.subtitle}</Text>

@@ -17,7 +17,7 @@ Completion state was spread across six stores with no single answer:
 | `Episode` rows | One row per watch, plus a redundant `dropped` flag |
 | `MoviePlay` | Plays from `Movie.watch()` — importers instead add duplicate `Movie` rows |
 | `PlaybackProgress.completed` | A third completion boolean, per (user, item) |
-| `HistoricalMusic` / `HistoricalPodcast` | Play records for audio types |
+| `HistoricalMusic` / `PodcastPlay` | Play records for audio types; a podcast listen is a `PodcastPlay` row, music still reads history records |
 | `Season.rewatch_started_at` | Windows all of the above into a rewatch pass |
 
 Two consequences drove this work. Nothing could answer "is this watched, who

@@ -159,7 +159,7 @@ function EmptyCopy({ text, palette }) {
 }
 
 function RingChart({
-  segments, palette, accessibilityLabel, centerTitle, centerCaption, size = 150, thickness = 26,
+  segments, palette, accessibilityLabel, centerTitle, centerCaption, size = 150, thickness = 26, testID,
 }) {
   const total = segments.reduce((sum, segment) => sum + numberValue(segment.value), 0);
   const tickCount = 180;
@@ -182,7 +182,7 @@ function RingChart({
   const radius = size / 2 - thickness / 2;
   const tickWidth = Math.max(3, (Math.PI * (size - thickness)) / tickCount + 1.8);
   return <View accessible accessibilityRole="image"
-    accessibilityLabel={accessibilityLabel}
+    accessibilityLabel={accessibilityLabel} testID={testID}
     style={[styles.ring, { width: size, height: size }]}>
     {ticks.map((color, index) => {
       const angle = (360 / tickCount) * index;
@@ -211,7 +211,7 @@ function RingChart({
 function LegendRow({
   color, label, percent, value, palette, labelWidth, rowGap, percentColor, valueMinWidth,
 }) {
-  return <View style={[styles.legendRow, { gap: rowGap || 14 }]}>
+  return <View testID="statistics-legend-row" style={[styles.legendRow, { gap: rowGap || 14 }]}>
     <View style={[styles.legendLabelWrap, { width: labelWidth || 74 }]}>
       <View style={[styles.legendSwatch, { backgroundColor: color }]} />
       <Text numberOfLines={1} style={[styles.legendLabel, { color: '#d1d5db' }]}>{label}</Text>
@@ -503,8 +503,9 @@ export function StatisticsStatusCompositionChart({ chart = {}, labels, palette }
         ? <EmptyCopy text={copy.statusEmpty} palette={colors} />
         : <View style={[styles.donutRow, stacked && styles.donutRowStacked]}>
           <RingChart segments={segments} palette={colors} accessibilityLabel={summary}
+            testID="status-composition-chart"
             centerTitle={formatNumber(total)} centerCaption={copy.statusTotal} />
-          <ScrollView horizontal={!stacked} showsHorizontalScrollIndicator={false}
+          <ScrollView testID="status-composition-legend" horizontal={!stacked} showsHorizontalScrollIndicator={false}
             style={[styles.legendScroll, stacked && styles.legendScrollStacked]}>
             <View style={styles.statusLegendRows}>
               {rows.map(row => <LegendRow key={row.key} color={row.color} label={row.label}

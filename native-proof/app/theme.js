@@ -1,14 +1,15 @@
-// Web dark theme tokens (src/static/css/input.css). Native is not a separate
-// design system: these are the values the browser resolves for the same theme.
+import { systemColor } from './systemColor';
+
+// Semantic colors follow iOS appearance, including already-created styles.
 export const palette = {
-  background: '#212529',
-  surface: '#2a2f35',
-  surfaceStrong: '#39404b',
-  surfaceMuted: '#3e454d',
-  border: '#2c3136',
-  text: '#f3f4f6',
-  textSecondary: '#d1d5db',
-  textMuted: '#adb5bd',
+  background: systemColor('#f8f9fa', '#212529'),
+  surface: systemColor('#ffffff', '#2a2f35'),
+  surfaceStrong: systemColor('#e9ecef', '#39404b'),
+  surfaceMuted: systemColor('#dee2e6', '#3e454d'),
+  border: systemColor('#dee2e6', '#2c3136'),
+  text: systemColor('#212529', '#f3f4f6'),
+  textSecondary: systemColor('#495057', '#d1d5db'),
+  textMuted: systemColor('#6c757d', '#adb5bd'),
   accent: '#4a9eff',
   accentStrong: '#4f46e5',
   link: '#a5b4fc',

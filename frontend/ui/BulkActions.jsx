@@ -1,5 +1,6 @@
+import { Modal } from './Modal';
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button } from './Button';
 
 const FALLBACK_PALETTE = {

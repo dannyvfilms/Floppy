@@ -12,6 +12,7 @@ from app.models import (
     Movie,
     Season,
     Sources,
+    Status,
 )
 
 from .base import FloppyApiTestCase
@@ -338,6 +339,46 @@ class EpisodeScoreTests(FloppyApiTestCase):
         self.assertEqual(cleared.status_code, HTTP.OK)
         episode.refresh_from_db()
         self.assertIsNone(episode.score)
+
+    def test_score_honours_library_bucket(self):
+        """A score aimed at the anime bucket must not land on the default season (#1873, B09)."""
+        show = Item.objects.create(
+            media_id="3001", source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value, title="Bucket Show", image="",
+        )
+        season_item = Item.objects.create(
+            media_id="3001", source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value, title="Bucket Show", image="",
+            season_number=1,
+        )
+        episode_item = Item.objects.create(
+            media_id="3001", source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value, title="Bucket Show", image="",
+            season_number=1, episode_number=1,
+        )
+        tv = TV.objects.create(item=show, user=self.user1, status=Status.IN_PROGRESS.value)
+        season = Season.objects.create(
+            item=season_item, user=self.user1, related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        episode = Episode.objects.create(item=episode_item, related_season=season)
+
+        with patch(
+            "api.fork_views_metadata.resolve_or_create_season",
+            side_effect=RuntimeError("stop"),
+        ) as create_season:
+            response = self.call_api(
+                "patch",
+                "api_media_episode_score",
+                args=("tv", "tmdb", "3001", 1, 1),
+                params={"library_media_type": "anime"},
+                payload={"score": 9},
+                headers=self.auth_headers,
+            )
+
+        episode.refresh_from_db()
+        self.assertIsNone(episode.score, response.content)
+        self.assertEqual(create_season.call_args.args[4], "anime")
 
     def test_invalid_score_rejected(self):
         """Out-of-range and non-numeric scores return 400."""

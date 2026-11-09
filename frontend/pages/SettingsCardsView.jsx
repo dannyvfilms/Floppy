@@ -14,6 +14,7 @@ export function SettingsCardsView({
   catalog = [],
   saved = {},
   initialSaved,
+  initialTouchActions = false,
   active,
   touchActions = false,
   onChange,
@@ -29,7 +30,8 @@ export function SettingsCardsView({
   const copy = { ...settingsCardsCopy, ...(labels || {}) };
   return <View><SettingsPage title={copy.title} copy={copy.copy} palette={palette} heading={heading}>
     {content || <>
-    <CardsEditor catalog={catalog} saved={saved} initialSaved={initialSaved} active={active}
+    <CardsEditor catalog={catalog} saved={saved} initialSaved={initialSaved}
+      initialTouchActions={initialTouchActions} active={active}
       touchActions={touchActions} onChange={onChange} onSave={onSave} validate={validate}
       labels={labels} palette={palette} buttonPalette={buttonPalette} disabled={disabled} />
     </>}

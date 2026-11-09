@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { Text } from 'react-native';
 import { SettingsCardsView } from '../../../frontend/pages/SettingsCardsView';
+import { createSettingsTransport, preferencesToForm } from '../data/settingsTransport';
 import { palette, radius } from '../theme';
 
 export const surface = {
@@ -7,7 +9,7 @@ export const surface = {
   title: 'Media card layout editor',
   where: 'Settings media cards per-type line selection, order and preview',
   status: 'in_progress',
-  note: 'Every media type in users.card_metadata.editor_catalog() renders from the shared React Native CardsEditor with per-type line visibility, field and line ordering, add/remove, type copy/reset/defaults, title and rating options, a profile-driven card preview and the shared dirty/saving/error save bar. Saved profiles mirror the server defaults plus tuned types so the demo opens clean and the preview changes with each type. Demo saves stay local: native credential transport and on-device interaction remain unverified.',
+  note: 'Every media type in users.card_metadata.editor_catalog() renders from the shared React Native CardsEditor with per-type line visibility, field and line ordering, add/remove, type copy/reset/defaults, title and rating options, a profile-driven card preview and the shared dirty/saving/error save bar. The touch action visibility preference loads and saves through /api/v1/user/preferences/; per-type card profiles and unauthenticated saves remain local demo state.',
 };
 
 const settingsPalette = {
@@ -214,11 +216,37 @@ function wait(ms) {
 }
 
 export default function CardsSettingsSlot() {
+  const [transport] = useState(() => createSettingsTransport());
   const [values, setValues] = useState({ saved: savedProfiles, touchActions: false });
   const [savedValues, setSavedValues] = useState({ saved: baselineProfiles, touchActions: false });
+  const [loading, setLoading] = useState(transport.mode === 'server');
+  const [loadError, setLoadError] = useState('');
+
+  useEffect(() => {
+    if (transport.mode !== 'server') return undefined;
+    let active = true;
+    transport.loadPreferences()
+      .then(payload => {
+        if (!active) return;
+        const touchActions = Boolean(preferencesToForm(payload).clickable_media_cards);
+        setValues(current => ({ ...current, touchActions }));
+        setSavedValues(current => ({ ...current, touchActions }));
+        setLoading(false);
+      })
+      .catch(error => {
+        if (!active) return;
+        setLoadError(error?.message || 'Media Card settings could not be loaded from the server.');
+        setLoading(false);
+      });
+    return () => { active = false; };
+  }, [transport]);
 
   async function save({ values: submitted }) {
-    await wait(450);
+    if (transport.mode === 'server') {
+      await transport.savePreferences({ clickable_media_cards: Boolean(submitted.touchActions) });
+    } else {
+      await wait(450);
+    }
     setSavedValues({ saved: submitted.saved, touchActions: submitted.touchActions });
   }
 
@@ -226,10 +254,15 @@ export default function CardsSettingsSlot() {
     catalog={catalog}
     saved={values.saved}
     initialSaved={savedValues.saved}
+    initialTouchActions={savedValues.touchActions}
     active="tv"
     touchActions={values.touchActions}
     onChange={setValues}
     onSave={save}
+    disabled={loading || Boolean(loadError)}
+    content={loadError ? <Text accessibilityRole="alert" style={{ color: palette.danger, padding: 12 }}>
+      {loadError}
+    </Text> : undefined}
     palette={settingsPalette}
     buttonPalette={buttonPalette}
   />;

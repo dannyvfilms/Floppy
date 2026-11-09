@@ -1,5 +1,6 @@
+import { Modal, ModalCloseButton } from '../Modal';
 import React, { useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 // Legacy visual intent: a small muted info trigger and a compact help bubble.
 const FALLBACK_PALETTE = {
@@ -166,6 +167,7 @@ export function Tooltip({
         <Pressable accessible={false} style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay }]}
           onPress={close} />
         <View
+          role="tooltip"
           onLayout={event => {
             const next = event.nativeEvent.layout.height;
             if (Math.abs(next - bubbleHeight) > 0.5) {
@@ -185,10 +187,10 @@ export function Tooltip({
             fontSize,
             lineHeight: fontSize * 1.3,
           }]}>{content}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel={closeLabel}
+          <ModalCloseButton accessibilityRole="button" accessibilityLabel={closeLabel}
             hitSlop={6} onPress={close} style={styles.close}>
             <Text style={[styles.closeText, { color: colors.closeText }]}>×</Text>
-          </Pressable>
+          </ModalCloseButton>
         </View>
       </View>
     </Modal>

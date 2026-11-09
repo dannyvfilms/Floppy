@@ -1,5 +1,6 @@
+import { Modal, ModalCloseButton } from './Modal';
 import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Badge } from './Badge';
 import { Button } from './Button';
 import { DateTimePicker } from './DateTimePicker';
@@ -516,10 +517,10 @@ function DialogShell({ title, closeLabel, onClose, colors, children }) {
         style={[styles.dialog, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.dialogHeader}>
           <Text accessibilityRole="header" style={[styles.dialogTitle, { color: colors.text }]}>{title}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel={closeLabel} onPress={onClose}
+          <ModalCloseButton accessibilityRole="button" accessibilityLabel={closeLabel} onPress={onClose}
             style={styles.dialogClose}>
             <Text style={[styles.dialogCloseText, { color: colors.textMuted }]}>✕</Text>
-          </Pressable>
+          </ModalCloseButton>
         </View>
         {children}
       </View>

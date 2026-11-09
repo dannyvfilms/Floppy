@@ -180,7 +180,11 @@ function cookieHeader(cookies) {
 
 function extractDetail(data) {
   if (!data) return '';
-  if (typeof data === 'string') return data.trim().slice(0, 300);
+  if (typeof data === 'string') {
+    const detail = data.trim();
+    if (/<(?:!doctype|html|head|body|title|meta|style|script)\b/i.test(detail)) return '';
+    return detail.slice(0, 300);
+  }
   const value = data.detail || data.error || data.message;
   return typeof value === 'string' ? value.trim().slice(0, 300) : '';
 }
@@ -452,11 +456,12 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, now =
     return { cookies, csrfToken };
   }
 
-  async function fetchAuthConfig({ serverUrl } = {}) {
+  async function fetchAuthConfig({ serverUrl, signal } = {}) {
     const baseUrl = normalizeServerUrl(serverUrl);
     const response = await perform(`${baseUrl}/accounts/auth-config/`, {
       method: 'GET',
       headers: { Accept: 'application/json' },
+      ...(signal ? { signal } : {}),
     });
     const data = await readBody(response);
     if (!response.ok) throw classifyFailure(response, data, null);

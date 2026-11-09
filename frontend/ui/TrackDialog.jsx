@@ -1,5 +1,6 @@
+import { Modal } from './Modal';
 import React, { useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { TrackForm } from './TrackForm';
 
 const DEFAULT_PALETTE = {
