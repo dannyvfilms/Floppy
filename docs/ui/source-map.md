@@ -214,7 +214,15 @@ Status: `Partial / coexisting`
 
 ## LIBRARY
 
-Status: `Legacy`
+Status: `Partial / coexisting`
+
+- `native-proof/app/screens/LibraryScreen.jsx`
+- `native-proof/app/surfaces/LibraryGrid.jsx`
+- `native-proof/app/surfaces/LibraryBulkActions.jsx`
+- `native-proof/app/data/libraryTransport.js`
+- `native-proof/app/data/libraryTransportCore.js`
+- `src/api/fork_views_library.py`
+- `src/api/fork_views_lists.py`
 
 - `src/templates/app/components/_release_year_fetch_js.html`
 - `src/templates/app/components/game_grouped_items.html`
@@ -237,7 +245,11 @@ Status: `Web Migrated`
 - `frontend/ui/AlphabetBar.native.jsx`
 ## FILTERS
 
-Status: `Legacy`
+Status: `Partial / coexisting`
+
+- `frontend/ui/FilterBar.jsx`
+- `native-proof/app/screens/LibraryScreen.jsx`
+- `native-proof/app/data/libraryTransportCore.js`
 
 - `src/static/js/libraryFilterState.js`
 - `src/static/js/savedViews.js`
@@ -250,7 +262,11 @@ Status: `Legacy`
 
 ## TABLES
 
-Status: `Legacy`
+Status: `Partial / coexisting`
+
+- `frontend/ui/MediaTable.jsx`
+- `native-proof/app/screens/LibraryScreen.jsx`
+- `native-proof/app/surfaces/TableSlot.jsx`
 
 - `src/templates/app/components/cells/album_artist_cell.html`
 - `src/templates/app/components/cells/album_date_added_cell.html`
@@ -302,6 +318,10 @@ Status: `Legacy`
 
 Status: `Partial / coexisting`
 
+- `frontend/ui/BulkActions.jsx`
+- `native-proof/app/surfaces/LibraryBulkActions.jsx`
+- `native-proof/app/data/libraryTransportCore.js`
+
 - `src/static/js/bulkSelection.js`
 - `src/templates/app/components/bulk_selection_toolbar.html`
 - `src/templates/lists/components/bulk_select_button.html`
@@ -315,7 +335,7 @@ Status: `Partial / coexisting`
 
 Status: `Partial / coexisting`
 
-- `native-proof/app/surfaces/SearchSlot.jsx` (Expo search transport, scanner and iOS focus presentation; the shared `GlobalSearch` is mapped under SHELL)
+- `native-proof/app/surfaces/SearchSlot.jsx` (Expo search transport, scanner and iOS focus presentation; suggestion identity and destination are retained when opening detail; the shared `GlobalSearch` is mapped under SHELL)
 - `src/app/search_views.py` (`_all_scope_barcode_groups`: All-scope ISBN fan-out and saved Barcode matches)
 - `src/static/js/barcode-scanner.js`
 - `src/static/js/barcode-scanner.selfcheck.mjs`
@@ -352,7 +372,7 @@ Status: `Partial / coexisting`
 Status: `Partial / coexisting`
 
 - `frontend/ui/PlaybackCard.jsx`, `frontend/ui/PlaybackTheme.web.jsx`, `frontend/ui/mountPlaybackCard.jsx` (shared presentation, browser adapter and server-fragment fallback; Now Playing renders a 16:9 MediaCard with its section heading and controls above it, using the standard MediaCard indigo for both playing and paused/stale progress fills)
-- `native-proof/app/surfaces/PlaybackSlot.jsx`, `native-proof/app/data/playbackTransport.js`, `native-proof/app/data/settingsTransport.js`, `frontend/ui/mediaCardSizing.js` (native Now Playing spans up to three 110 pt cards plus two 16 pt gaps on compact mobile, two 168 pt cards plus a 12 pt gap on comfortable mobile, and two on desktop; narrow layouts shrink to fit)
+- `native-proof/app/surfaces/PlaybackSlot.jsx`, `native-proof/app/data/playbackTransport.js`, `native-proof/app/data/settingsTransport.js`, `frontend/ui/mediaCardSizing.js` (native Now Playing follows the server's web detail destination; cards span up to three 110 pt cards plus two 16 pt gaps on compact mobile, two 168 pt cards plus a 12 pt gap on comfortable mobile, and two on desktop; narrow layouts shrink to fit)
 - `src/api/fork_views_playback.py` (`/api/v1/playback/home-cards/`, session-only cards and server-resolved Pause/Stop or Stop/Cancel actions)
 - `src/templates/app/components/_scrollable_row_js.html` (browser playback width measures an ordinary Home media-grid card and spans three on compact mobile, two on comfortable mobile, or two on desktop)
 - `src/templates/app/components/active_playback_card.html`
@@ -371,7 +391,7 @@ Status: `Legacy`
 
 ## DETAIL
 
-Status: `Legacy`
+Status: `Partial / coexisting` — Expo uses the shared detail composition; the browser page remains server-owned.
 
 - `src/templates/app/components/detail_action_buttons.html`
 - `src/templates/app/components/detail_activity_subtitle.html`
@@ -386,10 +406,17 @@ Status: `Legacy`
 - `src/templates/app/components/trakt_series_graph_fragment.html`
 - `src/templates/app/components/video_details_extra.html`
 - `src/templates/app/media_details.html`
+- `native-proof/app/screens/DetailScreen.jsx`
+- `native-proof/app/surfaces/DetailSlot.jsx`
+- `native-proof/app/surfaces/detailIdentity.mjs`
+- `src/api/fork_views_detail.py`
+- `src/api/fork_urls.py`
+- `frontend/pages/DetailView.jsx`
+- `frontend/ui/DetailComposition.jsx`
 
 ## CHILDREN
 
-Status: `Legacy`
+Status: `Partial / coexisting` — browser rows remain server-owned; Expo renders the shared child composition.
 
 - `src/templates/app/comic_issue_details.html`
 - `src/templates/app/components/_episode_scroll_restore.html`
@@ -404,6 +431,7 @@ Status: `Legacy`
 - `src/templates/app/components/issue_row.html`
 - `src/templates/app/components/seasons_grid.html`
 - `src/templates/app/episode_details.html`
+- `frontend/ui/DetailChildren.jsx`
 
 ## TRACKING
 
@@ -562,9 +590,10 @@ Status: `Legacy`
 
 ## DETAIL-RELATED
 
-Status: `Legacy`
+Status: `Partial / coexisting` — Expo uses shared related cards; browser section chrome and Steam DLC cards remain server-owned.
 
 - `src/templates/app/components/detail_secondary_content.html` (related and DLC sections, the Book "Format" and "Narrator" facts, and the manual podcast manager trigger)
+- `frontend/ui/DetailRelated.jsx`
 
 ## HISTORY
 
@@ -975,7 +1004,6 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/pages/AuthView.jsx`
 - `frontend/pages/CalendarView.jsx`
 - `frontend/pages/CollectionView.jsx`
-- `frontend/pages/DetailView.jsx`
 - `frontend/pages/DiscoverView.jsx`
 - `frontend/pages/ErrorsView.jsx`
 - `frontend/pages/HistoryView.jsx`
@@ -1035,7 +1063,6 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/BadgeTheme.web.jsx`
 - `frontend/ui/BulkActionBar.native.jsx`
 - `frontend/ui/BulkActionBar.web.jsx`
-- `frontend/ui/BulkActions.jsx`
 - `frontend/ui/BulkEpisodeForm.jsx`
 - `frontend/ui/BulkJobDock.native.jsx`
 - `frontend/ui/BulkJobDock.web.jsx`
@@ -1051,16 +1078,12 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/CopyBlock.jsx`
 - `frontend/ui/CopyField.jsx`
 - `frontend/ui/DateTimePicker.jsx`
-- `frontend/ui/DetailChildren.jsx`
 - `frontend/ui/DetailChildrenTheme.web.jsx`
-- `frontend/ui/DetailComposition.jsx`
 - `frontend/ui/DetailCompositionTheme.native.jsx`
 - `frontend/ui/DetailCompositionTheme.web.jsx`
-- `frontend/ui/DetailRelated.jsx`
 - `frontend/ui/DetailRelatedTheme.native.jsx`
 - `frontend/ui/DetailRelatedTheme.web.jsx`
 - `frontend/ui/DeviceConnect.jsx`
-- `frontend/ui/FilterBar.jsx`
 - `frontend/ui/FormSaveBar.jsx`
 - `frontend/ui/GlobalSearch.web.jsx`
 - `frontend/ui/HistoryFeed.jsx`
@@ -1087,7 +1110,6 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/MediaCardActionHost.jsx`
 - `frontend/ui/MediaCardActions.jsx`
 - `frontend/ui/MediaCardFormControls.jsx`
-- `frontend/ui/MediaTable.jsx`
 - `frontend/ui/MetadataReview.jsx`
 - `frontend/ui/ModalHost.native.jsx`
 - `frontend/ui/PageSlot.web.jsx`

@@ -132,6 +132,7 @@ export default function SearchSlot({
       const payload = await transport.searchLocal({ search: query, mediaType, limit: 8, offset: 0 });
       return {
         suggestions: localResultsFromPayload(payload).slice(0, 8).map((item, index) => ({
+          ...item,
           id: `${item.type}-${index}`,
           title: item.title,
           subtitle: [item.note, item.year, item.status].filter(Boolean).join(' · '),
