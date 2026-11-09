@@ -957,6 +957,8 @@ Status: `Legacy`
 
 Status: `Partial / coexisting`
 
+PR #1878: the Track dialog adapter (`mountTrackForm.jsx`) posts its payload, mirrors the card's Alpine open flag when it has no legacy modal root, and `mediaCardForms.js` passes date shortcuts and runtime through to `TrackForm.jsx`; shared status options set `aria-checked`.
+
 - `frontend/auth/AccountSecurity.jsx`
 - `frontend/discover/DiscoverScreen.jsx`
 - `frontend/discover/mountDiscover.jsx`

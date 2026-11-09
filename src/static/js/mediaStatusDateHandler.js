@@ -315,6 +315,31 @@ window.closeTrackModal = function closeTrackModal(target) {
   return trackModalSetOpen(target, false);
 };
 
+// Lets the shared Track dialog mirror the Alpine open flag when its host was
+// swapped into a card (episode tracking) and has no legacy modal root to watch.
+window.watchTrackModalOpen = function watchTrackModalOpen(target, callback) {
+  const stateTarget = trackModalFindStateTarget(target);
+  if (!stateTarget || !window.Alpine) {
+    return null;
+  }
+
+  try {
+    const data = Alpine.$data(stateTarget.host);
+    const runner = Alpine.effect(() => {
+      callback(Boolean(data[stateTarget.stateKey]));
+    });
+    return () => {
+      try {
+        Alpine.release(runner);
+      } catch {
+        // The effect is already gone with its component.
+      }
+    };
+  } catch {
+    return null;
+  }
+};
+
 window.openTrackModal = function openTrackModal(target) {
   return trackModalSetOpen(target, true);
 };
