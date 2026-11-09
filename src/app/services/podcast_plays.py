@@ -45,8 +45,35 @@ def in_service_write():
     return _in_service_write.get()
 
 
+BAD_STATUS = "bad_status"
+OPEN_WITH_END_DATE = "open_with_end_date"
+DATES_REVERSED = "dates_reversed"
+ALREADY_OPEN = "already_open"
+
+PLAY_ERROR_MESSAGES = {
+    BAD_STATUS: "'status' must be 'In progress' or 'Completed'.",
+    OPEN_WITH_END_DATE: "An In progress play cannot have an end_date.",
+    DATES_REVERSED: "'start_date' must not be after 'end_date'.",
+    ALREADY_OPEN: "This episode already has a play in progress.",
+}
+
+
 class PodcastPlayError(ValueError):
-    """Raised when a play change is not valid."""
+    """Raised when a play change is not valid.
+
+    ``code`` keys ``PLAY_ERROR_MESSAGES``, so a caller can show the fixed
+    message without echoing the exception.
+    """
+
+    def __init__(self, code):
+        """Store the error code."""
+        super().__init__(code)
+        self.code = code
+
+    @property
+    def message(self):
+        """Return the fixed message for this error."""
+        return PLAY_ERROR_MESSAGES[self.code]
 
 
 def episode_runtime_minutes(episode):
@@ -171,14 +198,11 @@ def _resolve_progress(minutes, seconds, default):
 
 def _validate(status, start_date, end_date):
     if status not in (Status.IN_PROGRESS.value, Status.COMPLETED.value):
-        msg = "'status' must be 'In progress' or 'Completed'."
-        raise PodcastPlayError(msg)
+        raise PodcastPlayError(BAD_STATUS)
     if status == Status.IN_PROGRESS.value and end_date:
-        msg = "An In progress play cannot have an end_date."
-        raise PodcastPlayError(msg)
+        raise PodcastPlayError(OPEN_WITH_END_DATE)
     if start_date and end_date and start_date > end_date:
-        msg = "'start_date' must not be after 'end_date'."
-        raise PodcastPlayError(msg)
+        raise PodcastPlayError(DATES_REVERSED)
 
 
 def _find_duplicate(podcast, completed_at):
@@ -295,8 +319,7 @@ def update_play(
             .exists()
         )
         if clash:
-            msg = "This episode already has a play in progress."
-            raise PodcastPlayError(msg)
+            raise PodcastPlayError(ALREADY_OPEN)
 
     default_progress = play.progress
     if (

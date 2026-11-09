@@ -582,7 +582,7 @@ class PodcastEpisodePlayView(drf_views.APIView):
                 **fields,
             )
         except podcast_plays.PodcastPlayError as error:
-            return Response({"detail": str(error)}, status=HTTP.BAD_REQUEST)
+            return Response({"detail": error.message}, status=HTTP.BAD_REQUEST)
 
         payload = serialize_data(play.podcast)
         payload.update(_serialize_play(play))
@@ -630,7 +630,7 @@ class PodcastEpisodePlayDetailView(drf_views.APIView):
         try:
             play = podcast_plays.update_play(play, **fields)
         except podcast_plays.PodcastPlayError as error:
-            return Response({"detail": str(error)}, status=HTTP.BAD_REQUEST)
+            return Response({"detail": error.message}, status=HTTP.BAD_REQUEST)
         play.refresh_from_db()
         return Response(_serialize_play(play))
 
