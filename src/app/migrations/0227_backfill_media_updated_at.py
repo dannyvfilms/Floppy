@@ -27,6 +27,6 @@ def backfill(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-    dependencies = [("app", "0225_media_updated_at")]
+    dependencies = [("app", "0226_media_updated_at")]
 
     operations = [migrations.RunPython(backfill, migrations.RunPython.noop)]

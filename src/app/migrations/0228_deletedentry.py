@@ -7,7 +7,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("app", "0226_backfill_media_updated_at"),
+        ("app", "0227_backfill_media_updated_at"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

@@ -61,7 +61,7 @@ class AddIndexIfNotExists(migrations.AddIndex):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("app", "0224_podcastplay"),
+        ("app", "0225_booklisteningsession_position_minutes"),
         ("integrations", "0063_wetrakr_account"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
