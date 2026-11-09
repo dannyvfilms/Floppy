@@ -14,7 +14,7 @@ from rest_framework import views as drf_views
 from rest_framework.response import Response
 
 from app.media_list_filters import MediaListFilterError, _Params, parse_since
-from app.models import DeletedMedia, Item, Media
+from app.models import DeletedEntry, Item, Media
 
 from .helpers import paginate_data, parse_limit_offset
 
@@ -41,7 +41,7 @@ def last_activity(user):
         for model in tracking_models()
     ]
     stamps.append(
-        DeletedMedia.objects.filter(user=user).aggregate(latest=Max("deleted_at"))[
+        DeletedEntry.objects.filter(user=user).aggregate(latest=Max("deleted_at"))[
             "latest"
         ],
     )
@@ -117,7 +117,7 @@ class LibraryDeletedView(drf_views.APIView):
                 {"detail": f"Invalid {error.parameter}: {error}"},
                 status=HTTP.BAD_REQUEST,
             )
-        tombstones = DeletedMedia.objects.filter(user=request.user)
+        tombstones = DeletedEntry.objects.filter(user=request.user)
         if since:
             tombstones = tombstones.filter(deleted_at__gte=since)
         tombstones = tombstones.order_by("deleted_at", "pk")
@@ -127,23 +127,28 @@ class LibraryDeletedView(drf_views.APIView):
                 "media_type": row.media_type,
                 "source": row.source,
                 "media_id": row.media_id,
+                "season_number": row.season_number,
                 "deleted_at": row.deleted_at,
             }
             for row in tombstones
-            if (row.media_type, row.source, row.media_id) not in live
+            if _key(row) not in live
         ]
         return Response(paginate_data(request, rows, limit, offset))
 
 
+def _key(row):
+    return (row.media_type, row.source, row.media_id, row.season_number)
+
+
 def _still_tracked(user, tombstones):
-    """Return (media_type, source, media_id) keys the user tracks again."""
-    keys = {(row.media_type, row.source, row.media_id) for row in tombstones}
+    """Return the tombstone keys the user tracks again."""
+    keys = {_key(row) for row in tombstones}
     if not keys:
         return set()
     items = Item.objects.filter(
         media_id__in={key[2] for key in keys},
-    ).values_list("pk", "media_type", "source", "media_id")
-    key_by_item = {pk: (mt, src, mid) for pk, mt, src, mid in items if (mt, src, mid) in keys}
+    ).values_list("pk", "media_type", "source", "media_id", "season_number")
+    key_by_item = {row[0]: row[1:] for row in items if row[1:] in keys}
     tracked = set()
     for model in tracking_models():
         for item_id in model._base_manager.filter(

@@ -65,25 +65,29 @@ def touch_on_list_change(sender, instance, **kwargs):
     touch_tracking_rows(owner_id, instance.item_id)
 
 
+def touch_seasons(season_ids):
+    """Stamp these seasons and the shows that own them as just changed."""
+    now = timezone.now()
+    seasons = [
+        model for model in _tracking_models() if model._meta.model_name == "season"
+    ]
+    for model in seasons:
+        rows = model._base_manager.filter(pk__in=season_ids)
+        tv_ids = set(rows.values_list("related_tv_id", flat=True))
+        models.QuerySet.update(rows, updated_at=now)
+        tv_ids.discard(None)
+        for tv_model in _tracking_models():
+            if tv_model._meta.model_name == "tv":
+                models.QuerySet.update(
+                    tv_model._base_manager.filter(pk__in=tv_ids),
+                    updated_at=now,
+                )
+
+
 @receiver(post_save, sender=Episode)
 @receiver(post_delete, sender=Episode)
 def touch_on_episode_change(sender, instance, **kwargs):
     """Watching or unwatching an episode changes its season and its show."""
-    if kwargs.get("raw"):
+    if kwargs.get("raw") or not instance.related_season_id:
         return
-    now = timezone.now()
-    try:
-        season = instance.related_season
-    except ObjectDoesNotExist:  # the season itself is being deleted
-        return
-    season_model = type(season)
-    models.QuerySet.update(
-        season_model._base_manager.filter(pk=season.pk),
-        updated_at=now,
-    )
-    if season.related_tv_id:
-        tv_model = type(season.related_tv)
-        models.QuerySet.update(
-            tv_model._base_manager.filter(pk=season.related_tv_id),
-            updated_at=now,
-        )
+    touch_seasons({instance.related_season_id})

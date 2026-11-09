@@ -5,7 +5,7 @@ from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.utils import timezone
 
-from app.models import ItemTag, MediaTypes, Movie, Tag
+from app.models import TV, Episode, ItemTag, Movie, Season, Tag
 from lists.models import CustomList, CustomListItem
 
 from .base import FloppyApiTestCase
@@ -158,3 +158,54 @@ class LibraryActivityTests(FloppyApiTestCase):
             "get", "api_library_deleted", headers=self.auth_headers2,
         )
         self.assertEqual(response.json()["results"], [])
+
+
+class SeasonAndEpisodeTests(FloppyApiTestCase):
+    """Seasons are tombstoned; bulk episode writes still stamp their owners."""
+
+    def setUp(self):
+        super().setUp()
+        self.season = Season.objects.filter(user=self.user1).first()
+        self.tv = self.season.related_tv
+        Season.objects.filter(pk=self.season.pk).update(
+            updated_at=timezone.now() - timedelta(days=10),
+        )
+        TV.objects.filter(pk=self.tv.pk).update(
+            updated_at=timezone.now() - timedelta(days=10),
+        )
+        self.cutoff = timezone.now() - timedelta(days=1)
+
+    def test_season_deletion_is_reported_with_season_number(self):
+        """Deleting a season is in the feed (DeletedMedia never covered it)."""
+        item = self.season.item
+        self.season.delete()
+        response = self.call_api(
+            "get", "api_library_deleted", headers=self.auth_headers,
+        )
+        self.assertIn(
+            ("season", item.media_id, item.season_number),
+            [
+                (r["media_type"], r["media_id"], r["season_number"])
+                for r in response.json()["results"]
+            ],
+        )
+
+    def test_bulk_episode_update_stamps_season_and_show(self):
+        """A queryset update of episodes moves the season and show."""
+        episode = Episode.objects.create(
+            related_season=self.season,
+            item=self.items_by_type["episode"][0]
+            if "episode" in self.items_by_type
+            else self.season.item,
+        )
+        Season.objects.filter(pk=self.season.pk).update(
+            updated_at=timezone.now() - timedelta(days=10),
+        )
+        TV.objects.filter(pk=self.tv.pk).update(
+            updated_at=timezone.now() - timedelta(days=10),
+        )
+        Episode.objects.filter(pk=episode.pk).update(notes="bulk")
+        self.season.refresh_from_db()
+        self.tv.refresh_from_db()
+        self.assertGreater(self.season.updated_at, self.cutoff)
+        self.assertGreater(self.tv.updated_at, self.cutoff)

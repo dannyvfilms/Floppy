@@ -83,6 +83,31 @@ def _has_updated_at(model):
     return True
 
 
+def _is_episode(instance):
+    return type(instance)._meta.model_name == "episode"
+
+
+def _owning_season_ids(queryset):
+    """Return the seasons the queryset's episode rows belong to (empty otherwise)."""
+    if queryset.model._meta.model_name != "episode":
+        return set()
+    return set(queryset.values_list("related_season_id", flat=True))
+
+
+def _touch_seasons(season_ids, *extra):
+    """Stamp seasons, and their shows, after bulk writes to their episodes.
+
+    Bulk writes skip the per-row signals that normally do this
+    (``app.library_changes``).
+    """
+    ids = {pk if isinstance(pk, int) else getattr(pk, "pk", None) for pk in (*season_ids, *extra)}
+    ids.discard(None)
+    if ids:
+        from app.library_changes import touch_seasons
+
+        touch_seasons(ids)
+
+
 class ImportScopedQuerySet(models.QuerySet):
     """Keep ORM bulk writers inside the same overwrite conflict contract."""
 
@@ -93,8 +118,11 @@ class ImportScopedQuerySet(models.QuerySet):
 
         if _has_updated_at(self.model) and "updated_at" not in kwargs:
             kwargs["updated_at"] = timezone.now()
+        seasons = _owning_season_ids(self)
         with tracking_mutation(self):
-            return super().update(**kwargs)
+            updated = super().update(**kwargs)
+        _touch_seasons(seasons, kwargs.get("related_season"))
+        return updated
 
     def delete(self):
         """Reject deletion within an active replacement scope."""
@@ -111,7 +139,9 @@ class ImportScopedQuerySet(models.QuerySet):
         from app.services.sync_lock import tracking_mutation
 
         with tracking_mutation(self, instances=objs):
-            return super().bulk_create(objs, *args, **kwargs)
+            created = super().bulk_create(objs, *args, **kwargs)
+        _touch_seasons({row.related_season_id for row in objs if _is_episode(row)})
+        return created
 
     def bulk_update(self, objs, fields, *args, **kwargs):
         """Check existing scope as well as reassigned item/owner identities."""
@@ -126,7 +156,9 @@ class ImportScopedQuerySet(models.QuerySet):
                 row.updated_at = now
             fields = [*fields, "updated_at"]
         with tracking_mutation(self.filter(pk__in=[row.pk for row in objs]), instances=objs):
-            return super().bulk_update(objs, fields, *args, **kwargs)
+            updated = super().bulk_update(objs, fields, *args, **kwargs)
+        _touch_seasons({row.related_season_id for row in objs if _is_episode(row)})
+        return updated
 
 
 ImportScopedManager = models.Manager.from_queryset(ImportScopedQuerySet)

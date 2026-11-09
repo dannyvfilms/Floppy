@@ -8,6 +8,7 @@ from celery import states
 from celery.signals import before_task_publish, task_failure, task_success
 from django.apps import apps
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.db.models.signals import (
     m2m_changed,
@@ -36,6 +37,7 @@ from app.models import (
     CollectionEntry,
     Comic,
     ComicIssue,
+    DeletedEntry,
     DeletedMedia,
     DiscoverFeedback,
     DiscoverFeedbackType,
@@ -57,6 +59,7 @@ from app.models import (
     Season,
     Sources,
     Status,
+    Video,
     VideoPlay,
 )
 from app.services import podcast_plays
@@ -738,6 +741,38 @@ def record_deleted_media_tombstone(sender, instance, **kwargs):
         media_type=item.media_type,
         source=item.source,
         media_id=item.media_id,
+    )
+
+
+@receiver(post_delete, sender=TV)
+@receiver(post_delete, sender=Season)
+@receiver(post_delete, sender=Anime)
+@receiver(post_delete, sender=Movie)
+@receiver(post_delete, sender=Manga)
+@receiver(post_delete, sender=Book)
+@receiver(post_delete, sender=Comic)
+@receiver(post_delete, sender=ComicIssue)
+@receiver(post_delete, sender=Game)
+@receiver(post_delete, sender=BoardGame)
+@receiver(post_delete, sender=Music)
+@receiver(post_delete, sender=Podcast)
+@receiver(post_delete, sender=Video)
+def record_deleted_entry(sender, instance, **kwargs):
+    """Log the deletion for the library change feed (unlike the importer tombstone)."""
+    if kwargs.get("raw") or _ACCOUNT_BEING_DELETED.get():
+        return
+    try:
+        user_id = instance.user_id
+        item = instance.item
+    except ObjectDoesNotExist:  # the owner or item is going away with it
+        return
+    DeletedEntry.objects.update_or_create(
+        user_id=user_id,
+        media_type=item.media_type,
+        source=item.source,
+        media_id=item.media_id,
+        season_number=item.season_number,
+        defaults={"deleted_at": timezone.now()},
     )
 
 
