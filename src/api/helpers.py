@@ -867,6 +867,16 @@ def validate_body(body, media_type):
     return filtered_body, error
 
 
+def unsupported_fields(record, validated_body):
+    """Return requested fields the record has no column for.
+
+    The exact-history records store fewer fields than the media row they hang
+    off (a movie play has no notes or score), so writing them would be silently
+    dropped while the request reported success (#1873).
+    """
+    return sorted(field for field in validated_body if not hasattr(record, field))
+
+
 # ---- Sorting ----
 
 
