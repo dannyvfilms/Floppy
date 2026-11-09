@@ -18,10 +18,10 @@ import PlaybackSlot from '../surfaces/PlaybackSlot';
 
 export const surface = {
   id: 'HOME',
-  status: 'in_progress',
+  status: 'ported',
   title: 'Home shelves, deferred groups and cover refresh',
   where: 'Home screen shelves, media-type sections, deferred rows and coalesced artwork polling',
-  note: 'The native Home screen composes the shared search field, Now Playing card, HomeShelves rails and cards, and the shared media card grid. It renders realistic demo shelves when signed out and loads bounded server groups, deferred rows, sort direction, load-more pages and cover refreshes through homeTransport when signed in, with loading, empty, error/retry and deferred-skeleton states. Two blockers keep it in progress: shelf card action and link intents route to Detail instead of opening the shared Track/Lists action host or their target link (that host is only composed inside MediaCardSlot), and Home Screen settings has no native route, so the screen inlines the shared editor. iOS/Android runtime interaction is unverified; Babel/esbuild parsing is compile-only evidence.',
+  note: 'The native Home screen composes the shared search field, Now Playing card, HomeShelves rails and cards, and the shared media card grid. It renders realistic demo shelves when signed out and loads bounded server groups, deferred rows, sort direction, load-more pages and cover refreshes through homeTransport when signed in, with loading, empty, error/retry and deferred-skeleton states. The user reports extensive use in Expo Go and considers Home done for the current milestone; handle follow-up issues as individual bug reports. Known follow-up gaps: shelf card action and link intents route to Detail instead of opening the shared Track/Lists action host or their target link, and Home Screen settings has no native route, so the screen inlines the shared editor. Device, OS, version and specific interaction coverage were not recorded; see the UI verification registry.',
 };
 
 const PAGE_LIMIT = 14;
@@ -449,7 +449,16 @@ export default function HomeScreen({ navigate }) {
         <Button label="Connect server" tone="surface" palette={palette}
           onPress={() => navigate?.('Auth')} />
       </View>}
-      playback={<PlaybackSlot onOpenDetail={() => navigate?.('Detail')} />}
+      playback={<PlaybackSlot onOpenDetail={card => navigate?.('Detail', { item: {
+        identity: {
+          mediaType: card.mediaType,
+          source: card.source,
+          mediaId: card.mediaId,
+        },
+        title: card.episodeTitle || card.title,
+        image: card.image,
+        href: card.href,
+      } })} />}
       groups={model.groups}
       deferredGroups={model.deferredGroups}
       showMediaTypeHeaders={model.showMediaTypeHeaders}

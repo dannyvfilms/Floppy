@@ -1,0 +1,9 @@
+# Platform-specific UI adaptations
+
+Shared presentation owns product content and actions; platform adapters own system chrome, capability detection and native layout. Reuse the same server-derived navigation and permissions on every platform. Prefer native system controls when the operating system owns placement and behavior.
+
+Use the current window, safe areas and measured reserved regions rather than model names or fixed fold coordinates. A missing platform capability must leave an accessible, usable fallback. Preserve destination and interaction state when the window or device posture changes. Avoid placing private reference screenshots in the repository.
+
+When adding an adaptation, record the observed reference behavior and any assumptions, supported platform and fallback, state transitions, component ownership, accessibility, regression checks and unresolved limitations. Update the UI component register, source map and architecture registry when presentation changes. Record browser, iOS and Android runtime evidence independently; a build does not establish runtime verification. Name the tested device or simulator, OS and relevant window/posture when reporting results.
+
+The Expo iOS shell uses a system toolbar action and a non-modal sidebar. The sidebar uses the measured vertical division for a partially opened device, fills compact windows, and otherwise uses the standard sidebar width. A native build reads reserved regions; Expo Go measures the system's `ArrangementView` split. If neither supplies a measurement, the adapter falls back to the compact or standard layout rather than estimating a seam. System chrome decides toolbar position and overflow. The shared sidebar and server navigation model remain authoritative; web and Android retain their existing shell presentation.

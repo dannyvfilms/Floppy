@@ -1472,6 +1472,11 @@ class User(AbstractUser):
         blank=True,
         help_text="Provider settings pinned by the user",
     )
+    sidebar_pins = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Sidebar pins: {'nav': [link keys], 'lists': [{'id', 'name', 'url'}]}",
+    )
     book_comic_manga_progress_percentage = models.BooleanField(
         default=False,
         help_text="Track book, comic, and manga progress as percentage instead of pages/issues/chapters",

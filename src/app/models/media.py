@@ -1079,13 +1079,21 @@ class Movie(Media):
         if play is None:
             return None
 
+        self.remove_play(play)
+
+        return play
+
+    def remove_play(self, play):
+        """Delete one play and re-derive the tracker's end date from what is left.
+
+        Without the re-derivation the tracker keeps the deleted play's date and
+        history falls back to it, so a deleted watch reappears (#1873).
+        """
         play.delete()
 
         latest = self.plays.order_by("-end_date", "-id").first()
         self.end_date = latest.end_date if latest else None
         self.save(update_fields=["end_date"])
-
-        return play
 
 
 class MoviePlay(models.Model):

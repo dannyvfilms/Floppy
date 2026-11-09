@@ -193,9 +193,9 @@ def _get_activity_bounds(user):
     ).aggregate(min_date=Min("end_date"), max_date=Max("end_date"))
     _add_bounds(music_bounds.get("min_date"), music_bounds.get("max_date"))
 
-    HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
-    podcast_bounds = HistoricalPodcast.objects.filter(
-        Q(history_user=user) | Q(history_user__isnull=True),
+    PodcastPlay = apps.get_model("app", "PodcastPlay")
+    podcast_bounds = PodcastPlay.objects.filter(
+        podcast__user=user,
         end_date__isnull=False,
     ).aggregate(min_date=Min("end_date"), max_date=Max("end_date"))
     _add_bounds(podcast_bounds.get("min_date"), podcast_bounds.get("max_date"))
@@ -356,10 +356,10 @@ def _get_sparse_activity_days(user):
         days.update(day for day in music_days if day)
 
     if MediaTypes.PODCAST.value in active_media_types:
-        HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
+        PodcastPlay = apps.get_model("app", "PodcastPlay")
         podcast_days = (
-            HistoricalPodcast.objects.filter(
-                Q(history_user=user) | Q(history_user__isnull=True),
+            PodcastPlay.objects.filter(
+                podcast__user=user,
                 end_date__isnull=False,
             )
             .annotate(

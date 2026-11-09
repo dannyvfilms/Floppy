@@ -2950,7 +2950,7 @@ def playback_card_react(context, card):
         "title": card.get("title") or "",
         "episodeCode": card.get("episode_code") or "",
         "episodeTitle": card.get("episode_title") or "",
-        "subtitleLine": "",
+        "subtitleLine": card.get("subtitle") or "",
         "href": card.get("details_url") or "",
         "image": {
             "src": image_url(card.get("image")) or "",
@@ -2983,6 +2983,7 @@ def playback_card_react(context, card):
         },
     }
     if control:
+        props["labels"]["pauseCheckIn"] = str(_("Pause check-in"))
         props["labels"]["stopCheckIn"] = str(_("Stop check-in"))
         props["labels"]["cancelCheckIn"] = str(_("Cancel check-in"))
         url = media_view_url("checkin_action", {
@@ -2992,16 +2993,21 @@ def playback_card_react(context, card):
         })
         props["control"] = {
             "token": control.get("token"),
+            "pause": {
+                "url": url,
+                "action": "pause",
+                "token": control.get("token"),
+            } if control.get("action") == "pause" else None,
             "stop": {
                 "url": url,
-                "action": control.get("action"),
+                "action": "finish" if control.get("action") == "pause" else "stop",
                 "token": control.get("token"),
             },
             "cancel": {
                 "url": url,
                 "action": "cancel",
                 "token": control.get("token"),
-            },
+            } if control.get("action") == "stop" else None,
         }
     return {
         "id": f"playback-card-{uuid4().hex}",

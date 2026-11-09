@@ -1,12 +1,11 @@
+import { Modal } from './Modal';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { Reveal } from './Reveal';
@@ -30,6 +29,9 @@ const defaultPalette = {
   overlay: 'rgba(0, 0, 0, 0.5)',
   focusStyle: {},
   radius: 6,
+  navRowHeight: 36,
+  navFontSize: 14,
+  navIconSize: 20,
 };
 
 const defaultLabels = {
@@ -131,7 +133,8 @@ function HoverRow({ active, palette, rowActions = 'always', children, actions, s
     onBlur: () => setFocused(false),
   } : {};
   return <View {...rest} {...hoverProps}
-    style={[styles.row, style, { borderRadius: palette.radius },
+    style={[styles.row, style, { borderTopLeftRadius: palette.radius, borderTopRightRadius: palette.radius,
+        borderBottomLeftRadius: palette.radius, borderBottomRightRadius: palette.radius, minHeight: palette.navRowHeight, overflow: 'hidden' },
       hovered && !active && { backgroundColor: palette.hoverDim },
       active && { backgroundColor: palette.border }]}>
     {children}
@@ -147,13 +150,13 @@ function LinkRow({ item, palette, labels, renderIcon, onNavigate, rowActions, ac
     <Pressable {...link} accessibilityRole="link"
       accessibilityLabel={item.label} accessibilityState={{ selected: item.active }}
       onPress={webLink ? undefined : () => onNavigate?.(item)}
-      style={({ pressed, focused }) => [styles.link,
+      style={({ pressed, focused }) => [styles.link, { minHeight: palette.navRowHeight },
         pressed && !webLink && { backgroundColor: palette.hoverDim },
         focused && palette.focusStyle]}>
-      <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={20}
+      <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={palette.navIconSize}
         color={item.active ? palette.link : palette.textMuted} />
       <Text numberOfLines={1} style={[styles.linkText,
-        { color: item.active ? palette.text : palette.textMuted }]}>{item.label}</Text>
+        { color: item.active ? palette.text : palette.textMuted, fontSize: palette.navFontSize }]}>{item.label}</Text>
     </Pressable>
   </HoverRow>;
 }
@@ -209,11 +212,11 @@ function SavedViewGroup({
       <Pressable {...(item.platformProps || {})} accessibilityRole="link"
         accessibilityLabel={item.label} accessibilityState={{ selected: item.active }}
         onPress={item.platformProps?.href ? undefined : () => onNavigate?.(item)}
-        style={({ focused }) => [styles.link, focused && palette.focusStyle]}>
-        <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={20}
+        style={({ focused }) => [styles.link, { minHeight: palette.navRowHeight }, focused && palette.focusStyle]}>
+        <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={palette.navIconSize}
           color={item.active ? palette.link : palette.textMuted} />
         <Text numberOfLines={1} style={[styles.linkText,
-          { color: item.active ? palette.text : palette.textMuted }]}>{item.label}</Text>
+          { color: item.active ? palette.text : palette.textMuted, fontSize: palette.navFontSize }]}>{item.label}</Text>
       </Pressable>
     </HoverRow>
     {open ? <View ref={list} style={styles.savedViewList}>
@@ -309,11 +312,11 @@ function ListsItem({
       <Pressable {...(item.platformProps || {})} accessibilityRole="link"
         accessibilityLabel={item.label} accessibilityState={{ selected: item.active }}
         onPress={item.platformProps?.href ? undefined : () => onNavigate?.(item)}
-        style={({ focused }) => [styles.link, focused && palette.focusStyle]}>
-        <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={20}
+        style={({ focused }) => [styles.link, { minHeight: palette.navRowHeight }, focused && palette.focusStyle]}>
+        <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={palette.navIconSize}
           color={item.active ? palette.link : palette.textMuted} />
         <Text numberOfLines={1} style={[styles.linkText,
-          { color: item.active ? palette.text : palette.textMuted }]}>{item.label}</Text>
+          { color: item.active ? palette.text : palette.textMuted, fontSize: palette.navFontSize }]}>{item.label}</Text>
       </Pressable>
     </HoverRow>
     {expanded ? <View style={styles.savedViewList}>
@@ -347,12 +350,13 @@ function BottomLink({ item, palette, renderIcon, onNavigate }) {
   return <Pressable {...(item.platformProps || {})} accessibilityRole={item.platformProps?.href ? 'link' : 'button'}
     accessibilityLabel={item.label}
     onPress={item.platformProps?.href ? undefined : () => onNavigate?.(item)}
-    style={({ pressed, hovered, focused }) => [styles.bottomLink, { borderRadius: palette.radius },
+    style={({ pressed, hovered, focused }) => [styles.bottomLink, { borderTopLeftRadius: palette.radius, borderTopRightRadius: palette.radius,
+        borderBottomLeftRadius: palette.radius, borderBottomRightRadius: palette.radius, minHeight: palette.navRowHeight },
       (pressed || hovered) && { backgroundColor: palette.hoverDim },
       focused && palette.focusStyle]}>
-    <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={20}
+    <IconSlot spec={item.icon} glyph={item.glyph} renderIcon={renderIcon} size={palette.navIconSize}
       color={item.active ? palette.link : palette.textMuted} />
-    <Text style={[styles.linkText, { color: item.active ? palette.text : palette.textMuted }]}>
+    <Text style={[styles.linkText, { color: item.active ? palette.text : palette.textMuted, fontSize: palette.navFontSize }]}>
       {item.label}
     </Text>
   </Pressable>;
@@ -379,20 +383,20 @@ export function Sidebar({
 }) {
   const labels = { ...defaultLabels, ...labelOverrides };
   const palette = { ...defaultPalette, ...paletteOverrides };
-  const { width, height } = useWindowDimensions();
-  const compact = width < 1024;
   const [navOpen, setNavOpen] = useState(false);
-  const list = useRef(null);
+  const [rootHeight, setRootHeight] = useState(0);
+  const [bottomHeight, setBottomHeight] = useState(0);
+  const [exploreContentHeight, setExploreContentHeight] = useState(0);
   const hasUnpinned = model.pinKeys.some(key => !pins.isPinned(key));
   const unpinned = model.secondary.filter(item => !pins.isPinned(item.pinKey));
   const pinned = model.secondary.filter(item => pins.isPinned(item.pinKey));
-  const secondaryVisible = navOpen || pinned.length > 0;
+  const secondaryVisible = pinned.length > 0;
 
-  const toggleNav = () => {
-    const next = !navOpen;
-    setNavOpen(next);
-    if (next) setTimeout(() => list.current?.scrollToEnd?.({ animated: false }), 0);
-  };
+  useEffect(() => {
+    if (!hasUnpinned) setNavOpen(false);
+  }, [hasUnpinned]);
+
+  const toggleNav = () => setNavOpen(value => !value);
 
   const renderItem = item => {
     if (item.type === 'group') {
@@ -415,7 +419,11 @@ export function Sidebar({
 
   const logo = model.logo || {};
 
-  return <View style={[styles.root, { backgroundColor: palette.sidebar }, style]}>
+  const overlayTop = showLogo ? 64 : 0;
+  const overlayHeight = Math.max(rootHeight - bottomHeight - overlayTop, 0);
+
+  return <View onLayout={event => setRootHeight(event.nativeEvent.layout.height)}
+    style={[styles.root, { backgroundColor: palette.sidebar }, style]}>
     {showLogo ? <View style={[styles.header, { borderBottomColor: palette.border }]}>
       {logo.src
         ? <Image accessible accessibilityLabel={logo.alt || labels.logo}
@@ -423,41 +431,64 @@ export function Sidebar({
           style={logo.mono ? styles.logoMono : styles.logo} />
         : <Text style={[styles.logoText, { color: palette.text }]}>{logo.text || labels.logo}</Text>}
     </View> : null}
-    <ScrollView ref={list} style={styles.primary} contentContainerStyle={styles.navContent}
-      onContentSizeChange={() => { if (navOpen) list.current?.scrollToEnd?.({ animated: false }); }}>
+    <ScrollView style={styles.primary}
+      accessibilityElementsHidden={navOpen}
+      importantForAccessibility={navOpen ? 'no-hide-descendants' : 'auto'}
+      contentContainerStyle={[styles.navContent, {
+        paddingTop: palette.navContentPaddingTop ?? 16,
+        paddingLeft: palette.navContentPaddingLeft ?? 16,
+        paddingRight: palette.navContentPaddingRight ?? 16,
+      }]}>
       {model.primary.map(item => renderItem({ ...item, pinKey: null }))}
-      {secondaryVisible ? <View style={[styles.secondary, { borderTopColor: palette.border }]}>
-        <Reveal open={navOpen}>
-          <View style={styles.navGroup}>{unpinned.map(renderItem)}</View>
-        </Reveal>
+      <View style={[secondaryVisible && styles.secondary, { borderTopColor: palette.border }]}>
         <View style={styles.navGroup}>{pinned.map(renderItem)}</View>
-      </View> : null}
+      </View>
     </ScrollView>
-    <View>{onboarding}</View>
-    <View style={[styles.bottom, { borderTopColor: palette.border }]}>
-      <Pressable accessibilityRole="button" accessibilityLabel={labels.explore}
-        accessibilityState={{ expanded: navOpen, disabled: !hasUnpinned }}
-        onPress={hasUnpinned ? toggleNav : undefined}
-        style={({ pressed, hovered, focused }) => [styles.explore, { borderRadius: palette.radius },
-          !hasUnpinned && styles.exploreReserved,
-          (pressed || hovered) && hasUnpinned && { backgroundColor: palette.hoverDim },
-          focused && hasUnpinned && palette.focusStyle]}>
-        <IconSlot spec={model.icons?.chevron} glyph={controlGlyphs.chevron} renderIcon={renderIcon}
-          size={20} color={palette.textMuted} rotate={navOpen ? '0deg' : '180deg'} />
-        <Text style={[styles.linkText, { color: palette.textMuted }]}>{labels.explore}</Text>
-      </Pressable>
-      {compact ? <BottomLink item={model.bottom.appearance} palette={palette}
-        renderIcon={renderIcon} onNavigate={onNavigate} /> : null}
-      <BottomLink item={model.bottom.settings} palette={palette}
-        renderIcon={renderIcon} onNavigate={onNavigate} />
-      <Pressable accessibilityRole="button" accessibilityLabel={labels.logout} onPress={onLogout}
-        style={({ pressed, hovered, focused }) => [styles.bottomLink, { borderRadius: palette.radius },
-          (pressed || hovered) && { backgroundColor: palette.hoverDim },
-          focused && palette.focusStyle]}>
-        <IconSlot spec={model.bottom.logoutIcon} glyph={model.bottom.logoutGlyph}
-          renderIcon={renderIcon} size={20} color={palette.textMuted} />
-        <Text style={[styles.linkText, { color: palette.textMuted }]}>{labels.logout}</Text>
-      </Pressable>
+    <View pointerEvents="box-none" style={[styles.exploreViewport, {
+      top: overlayTop,
+      bottom: bottomHeight,
+    }]}>
+      <Reveal open={navOpen}>
+        <View style={[styles.explorePanel, { height: Math.min(overlayHeight, exploreContentHeight || overlayHeight),
+          backgroundColor: palette.sidebar, borderTopColor: palette.border }]}>
+          <ScrollView style={styles.secondaryScroll} onContentSizeChange={(_width, height) => setExploreContentHeight(height)}
+            contentContainerStyle={[styles.navContent, {
+              paddingTop: palette.navContentPaddingTop ?? 16,
+              paddingLeft: palette.navContentPaddingLeft ?? 16,
+              paddingRight: palette.navContentPaddingRight ?? 16,
+            }]}>
+            <View style={styles.navGroup}>{unpinned.map(renderItem)}</View>
+          </ScrollView>
+        </View>
+      </Reveal>
+    </View>
+    <View onLayout={event => setBottomHeight(event.nativeEvent.layout.height)}>
+      <View>{onboarding}</View>
+      <View style={[styles.bottom, { borderTopColor: palette.border }]}>
+        <Pressable accessibilityRole="button" accessibilityLabel={labels.explore}
+          accessibilityState={{ expanded: navOpen, disabled: !hasUnpinned }}
+          onPress={hasUnpinned ? toggleNav : undefined}
+          style={({ pressed, hovered, focused }) => [styles.explore, { borderTopLeftRadius: palette.radius, borderTopRightRadius: palette.radius,
+          borderBottomLeftRadius: palette.radius, borderBottomRightRadius: palette.radius, minHeight: palette.navRowHeight },
+            !hasUnpinned && styles.exploreReserved,
+            (pressed || hovered) && hasUnpinned && { backgroundColor: palette.hoverDim },
+            focused && hasUnpinned && palette.focusStyle]}>
+          <IconSlot spec={model.icons?.chevron} glyph={controlGlyphs.chevron} renderIcon={renderIcon}
+            size={palette.navIconSize} color={palette.textMuted} rotate={navOpen ? '0deg' : '180deg'} />
+          <Text style={[styles.linkText, { color: palette.textMuted, fontSize: palette.navFontSize }]}>{labels.explore}</Text>
+        </Pressable>
+        <BottomLink item={model.bottom.settings} palette={palette}
+          renderIcon={renderIcon} onNavigate={onNavigate} />
+        <Pressable accessibilityRole="button" accessibilityLabel={labels.logout} onPress={onLogout}
+          style={({ pressed, hovered, focused }) => [styles.bottomLink, { borderTopLeftRadius: palette.radius, borderTopRightRadius: palette.radius,
+          borderBottomLeftRadius: palette.radius, borderBottomRightRadius: palette.radius, minHeight: palette.navRowHeight },
+            (pressed || hovered) && { backgroundColor: palette.hoverDim },
+            focused && palette.focusStyle]}>
+          <IconSlot spec={model.bottom.logoutIcon} glyph={model.bottom.logoutGlyph}
+            renderIcon={renderIcon} size={palette.navIconSize} color={palette.textMuted} />
+          <Text style={[styles.linkText, { color: palette.textMuted, fontSize: palette.navFontSize }]}>{labels.logout}</Text>
+        </Pressable>
+      </View>
     </View>
   </View>;
 }
@@ -470,10 +501,13 @@ const styles = StyleSheet.create({
   logoMono: { width: 158, height: 36 },
   logoText: { fontSize: 20, fontWeight: '700', letterSpacing: 0.2 },
   primary: { flex: 1, minHeight: 0 },
+  exploreViewport: { position: 'absolute', left: 0, right: 0,
+    justifyContent: 'flex-end', zIndex: 2 },
+  explorePanel: { width: '100%', borderTopWidth: 1 },
   navContent: { padding: 16, gap: 4 },
   navGroup: { gap: 4 },
   secondary: { borderTopWidth: 1, marginTop: 4, paddingTop: 4 },
-  secondaryScroll: { minHeight: 0 },
+  secondaryScroll: { flex: 1, minHeight: 0 },
   secondaryContent: { width: '100%' },
   row: { minHeight: 36, flexDirection: 'row', alignItems: 'center',
     backgroundColor: 'transparent' },

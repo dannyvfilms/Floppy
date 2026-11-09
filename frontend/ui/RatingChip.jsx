@@ -1,5 +1,6 @@
+import { Modal } from './Modal';
 import React, { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { RatingStars } from './RatingStars';
 
 const fallbackPalette = {

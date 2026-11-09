@@ -70,31 +70,33 @@ def user_podcasts_by_episode(user, show, episodes):
 
 
 def completed_plays_by_podcast_id(podcast_ids, limit=None):
-    """Return ``{podcast_id: [history record, ...]}``, newest completed play first.
+    """Return ``{podcast_id: [PodcastPlay, ...]}``, newest completed play first.
 
-    ``limit`` keeps only that many records per podcast, in SQL, for callers
+    ``limit`` keeps only that many plays per podcast, in SQL, for callers
     that display a few plays of an entry with a long history.
     """
     from django.db.models import F, Window
     from django.db.models.functions import RowNumber
 
-    from app.models import Podcast
+    from app.models import PodcastPlay
 
     by_podcast = defaultdict(list)
     if not podcast_ids:
         return by_podcast
-    records = Podcast.history.filter(id__in=podcast_ids, end_date__isnull=False)
+    plays = PodcastPlay.objects.filter(
+        podcast_id__in=podcast_ids,
+        end_date__isnull=False,
+    )
     if limit is not None:
-        records = records.annotate(
+        plays = plays.annotate(
             play_rank=Window(
                 RowNumber(),
-                partition_by=F("id"),
-                order_by=F("end_date").desc(),
+                partition_by=F("podcast_id"),
+                order_by=[F("end_date").desc(), F("id").desc()],
             ),
         ).filter(play_rank__lte=limit)
-    # history_user is read per record when the play list is rendered.
-    for record in records.select_related("history_user").order_by("-end_date"):
-        by_podcast[record.id].append(record)
+    for play in plays.order_by("-end_date", "-id"):
+        by_podcast[play.podcast_id].append(play)
     return by_podcast
 
 
@@ -932,8 +934,9 @@ def podcast_save(request):
         all_history = []
         if user_podcast:
             all_history = list(
-                user_podcast.history.filter(end_date__isnull=False).order_by(
-                    "-end_date"
+                user_podcast.plays.filter(end_date__isnull=False).order_by(
+                    "-end_date",
+                    "-id",
                 )[:10]
             )
 

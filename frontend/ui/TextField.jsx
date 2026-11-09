@@ -46,6 +46,7 @@ export function TextField({
   accessibilityLabel,
   palette = {},
   trailing = null,
+  trailingWidth = 44,
   size = 'default',
   testID,
 }) {
@@ -77,9 +78,11 @@ export function TextField({
         onChangeText={change}
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
+        multiline={false}
+        numberOfLines={1}
         secureTextEntry={secure}
         value={value ?? ''}
-        style={[styles.input, large && styles.inputLarge, trailing ? styles.inputWithTrailing : null, {
+        style={[styles.input, large && styles.inputLarge, trailing ? { paddingRight: trailingWidth } : null, {
           borderColor: error ? colors.danger : colors.border,
           backgroundColor: colors.inputBackground || colors.surface,
           color: colors.textSecondary,
@@ -103,8 +106,7 @@ const styles = StyleSheet.create({
   inputWrap: { position: 'relative', justifyContent: 'center' },
   input: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, fontSize: 14 },
   inputLarge: { borderRadius: 12, height: 50, paddingVertical: 0, paddingTop: 0, paddingBottom: 0,
-    fontSize: 16, lineHeight: 24, textAlignVertical: 'center', includeFontPadding: false },
-  inputWithTrailing: { paddingRight: 44 },
+    fontSize: 16, textAlignVertical: 'center', includeFontPadding: false },
   trailingWrap: { position: 'absolute', right: 6, top: 0, bottom: 0, justifyContent: 'center' },
   error: { fontSize: 12, lineHeight: 17 },
 });

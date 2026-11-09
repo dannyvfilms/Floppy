@@ -3,105 +3,48 @@
 # mark-all-played (extracted from podcast_views.podcast_mark_all_played).
 import hashlib
 import logging
-from datetime import timedelta
 
-from django.conf import settings
 from django.utils import timezone
 
 import events
 from app.log_safety import exception_summary
 from app.mixins import disable_fetch_releases
 from app.models import (
-    Item,
-    MediaTypes,
     Podcast,
     PodcastEpisode,
+    PodcastPlay,
     PodcastShowTracker,
     Status,
 )
+from app.services import podcast_plays
 from integrations import podcast_rss
 
 logger = logging.getLogger(__name__)
 
-_DUPLICATE_PLAY_WINDOW_SECONDS = 300
 
+def record_podcast_play(
+    user,
+    show,
+    episode=None,
+    episode_uuid=None,
+    end_date=None,
+    **play_fields,
+):
+    """Record a podcast play; returns (podcast, duplicate).
 
-def _episode_item_defaults(show, episode, runtime_minutes):
-    defaults = {
-        "title": episode.title if episode else "Unknown Episode",
-        "image": (episode.image if episode else "") or show.image or settings.IMG_NONE,
-    }
-    if runtime_minutes:
-        defaults["runtime_minutes"] = runtime_minutes
-    if episode and episode.published:
-        defaults["release_datetime"] = episode.published
-    return defaults
-
-
-def record_podcast_play(user, show, episode=None, episode_uuid=None, end_date=None):
-    """Record a completed podcast play; returns (podcast, duplicate).
-
-    Uses the current server time when the caller does not supply a completion
-    date. One Podcast row is kept per (user, item); a new play updates its
-    end_date, and plays within five minutes of the latest history entry are
-    treated as duplicates.
+    Thin wrapper over ``podcast_plays.create_play`` for callers that only know
+    a completion date. Uses the current server time when none is supplied;
+    plays within five minutes of an existing one are duplicates.
     """
-    completed_at = end_date if end_date is not None else timezone.now()
-    runtime_minutes = None
-    if episode and episode.duration:
-        runtime_minutes = episode.duration // 60
-
-    media_id = episode_uuid or (episode.episode_uuid if episode else None)
-    item, created = Item.objects.get_or_create(
-        media_id=media_id,
-        source=show.source,
-        media_type=MediaTypes.PODCAST.value,
-        defaults=_episode_item_defaults(show, episode, runtime_minutes),
-    )
-    if not created:
-        update_fields = []
-        if runtime_minutes and item.runtime_minutes != runtime_minutes:
-            item.runtime_minutes = runtime_minutes
-            update_fields.append("runtime_minutes")
-        if episode and episode.published and item.release_datetime != episode.published:
-            item.release_datetime = episode.published
-            update_fields.append("release_datetime")
-        if update_fields:
-            item.save(update_fields=update_fields)
-
-    existing_podcast = Podcast.objects.filter(user=user, item=item).first()
-    if existing_podcast:
-        # Compare against the plays near this timestamp, not against the newest
-        # one. An import that re-delivers a 2020 play has to be measured against
-        # the stored 2020 play; measuring it against the newest play means one
-        # "played just now" in between makes every replayed import look new.
-        window = timedelta(seconds=_DUPLICATE_PLAY_WINDOW_SECONDS)
-        if existing_podcast.history.filter(
-            end_date__gt=completed_at - window,
-            end_date__lt=completed_at + window,
-        ).exists():
-            logger.debug(
-                "Skipping duplicate podcast history entry near %s",
-                completed_at,
-            )
-            return existing_podcast, True
-
-        existing_podcast.end_date = completed_at
-        if runtime_minutes and existing_podcast.progress != runtime_minutes:
-            existing_podcast.progress = runtime_minutes
-        existing_podcast.save()
-        return existing_podcast, False
-
-    podcast = Podcast.objects.create(
-        item=item,
-        user=user,
-        show=show,
+    play, created = podcast_plays.create_play(
+        user,
+        show,
         episode=episode,
-        status=Status.COMPLETED.value,
-        end_date=completed_at,
-        progress=runtime_minutes or 0,
+        episode_uuid=episode_uuid,
+        end_date=end_date,
+        **play_fields,
     )
-    return podcast, False
+    return play.podcast, not created
 
 
 def set_episode_notes(user, show, episode, notes):
@@ -112,13 +55,7 @@ def set_episode_notes(user, show, episode, notes):
     this mirrors set_track_notes for music.
     """
     notes = notes or ""
-    runtime_minutes = episode.duration // 60 if episode and episode.duration else None
-    item, _ = Item.objects.get_or_create(
-        media_id=episode.episode_uuid,
-        source=show.source,
-        media_type=MediaTypes.PODCAST.value,
-        defaults=_episode_item_defaults(show, episode, runtime_minutes),
-    )
+    item, _ = podcast_plays.ensure_episode_item(show, episode)
     podcast = Podcast.objects.filter(user=user, item=item).first()
     if podcast is None and not notes:
         return None
@@ -370,43 +307,45 @@ def mark_all_episodes_played(user, show):
 
     created_count = 0
     items_created = []
+    plays = []
 
     with disable_fetch_releases():
         for episode in unplayed_episodes:
-            runtime_minutes = episode.duration // 60 if episode.duration else None
-            item, item_created = Item.objects.get_or_create(
-                media_id=episode.episode_uuid,
-                source=show.source,
-                media_type=MediaTypes.PODCAST.value,
-                defaults=_episode_item_defaults(show, episode, runtime_minutes),
-            )
-
-            if not item_created:
-                update_fields = []
-                if runtime_minutes and item.runtime_minutes != runtime_minutes:
-                    item.runtime_minutes = runtime_minutes
-                    update_fields.append("runtime_minutes")
-                if episode.published and item.release_datetime != episode.published:
-                    item.release_datetime = episode.published
-                    update_fields.append("release_datetime")
-                if update_fields:
-                    item.save(update_fields=update_fields)
-
+            item, item_created = podcast_plays.ensure_episode_item(show, episode)
             if item_created:
                 items_created.append(item)
 
             end_date = episode.published or timezone.now()
-
-            Podcast.objects.create(
-                item=item,
-                user=user,
-                show=show,
-                episode=episode,
-                status=Status.COMPLETED.value,
-                end_date=end_date,
-                progress=runtime_minutes or 0,
+            runtime_minutes = episode.duration // 60 if episode.duration else None
+            tracker = Podcast.objects.filter(user=user, item=item).first()
+            with podcast_plays.service_write():
+                if tracker is None:
+                    tracker = Podcast.objects.create(
+                        item=item,
+                        user=user,
+                        show=show,
+                        episode=episode,
+                        status=Status.COMPLETED.value,
+                        end_date=end_date,
+                        progress=runtime_minutes or 0,
+                    )
+                else:
+                    tracker.status = Status.COMPLETED.value
+                    tracker.end_date = end_date
+                    tracker.progress = runtime_minutes or 0
+                    tracker.save()
+            plays.append(
+                PodcastPlay(
+                    podcast=tracker,
+                    status=Status.COMPLETED.value,
+                    end_date=end_date,
+                    progress=runtime_minutes or 0,
+                    is_end_date_inferred=not episode.published,
+                ),
             )
             created_count += 1
+
+    PodcastPlay.objects.bulk_create(plays, batch_size=500)
 
     if items_created:
         events.tasks.reload_calendar.apply_async(

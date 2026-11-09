@@ -998,3 +998,72 @@ class BookPageHistoryTests(TestCase):
             history_cache.history_day_key(timezone.now()),
             history_cache.build_history_index(self.user, "repeats"),
         )
+
+
+class StaleBuilderDayPublishTests(TestCase):
+    """A builder that started before an invalidation must not republish days (#1873, B06)."""
+
+    def setUp(self):
+        """Start from a cold cache for one user."""
+        cache.clear()
+        self.addCleanup(cache.clear)
+        self.user = get_user_model().objects.create_user(username="stale-day")
+        self.style = "repeats"
+
+    def _day(self):
+        import datetime
+
+        return {
+            "date": datetime.date(2024, 5, 10),
+            "entries": [{"title": "old"}],
+            "total_minutes": 0,
+            "total_runtime_display": "0min",
+        }
+
+    def test_day_payload_from_a_retired_era_is_not_published(self):
+        from app import history_cache_index, history_cache_utils
+
+        captured_era = history_cache_utils._current_history_era(
+            self.user.id,
+            self.style,
+        )
+        history_cache.invalidate_history_days(
+            self.user.id,
+            day_keys=[history_cache_utils._day_key_for_date(self._day()["date"])],
+            logging_styles=[self.style],
+            force=True,
+            refresh_index=False,
+        )
+
+        history_cache_index.cache_history_payloads(
+            self.user.id,
+            self.style,
+            [self._day()],
+            era=captured_era,
+        )
+
+        key = history_cache_utils._day_cache_key(
+            self.user.id,
+            self.style,
+            history_cache_utils._day_key_for_date(self._day()["date"]),
+        )
+        self.assertIsNone(cache.get(key))
+
+    def test_day_payload_from_the_current_era_is_published(self):
+        from app import history_cache_index, history_cache_utils
+
+        era = history_cache_utils._current_history_era(self.user.id, self.style)
+
+        history_cache_index.cache_history_payloads(
+            self.user.id,
+            self.style,
+            [self._day()],
+            era=era,
+        )
+
+        key = history_cache_utils._day_cache_key(
+            self.user.id,
+            self.style,
+            history_cache_utils._day_key_for_date(self._day()["date"]),
+        )
+        self.assertIsNotNone(cache.get(key))

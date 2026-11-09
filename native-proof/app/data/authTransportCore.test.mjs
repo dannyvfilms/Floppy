@@ -417,3 +417,35 @@ test('auth config only accepts same-server redirect urls', async () => {
   assert.equal(config.connectionsUrl, 'https://floppy.example/accounts/3rdparty/');
   assert.equal(config.deviceUrl, 'https://floppy.example/oauth/device');
 });
+
+test('auth config errors do not display an HTML error page as field text', async () => {
+  const storage = createStorage();
+  const { fetchImpl } = createFetch([
+    {
+      match: url => url.endsWith('/accounts/auth-config/'),
+      respond: () => response({ status: 404, body: '<!DOCTYPE html><html><title>Page not found</title></html>' }),
+    },
+  ]);
+  const auth = createAuthTransport({ storage, fetchImpl });
+
+  await assert.rejects(
+    () => auth.fetchAuthConfig({ serverUrl: 'https://floppy.example' }),
+    error => error.message === 'The server does not expose this endpoint.' && !error.message.includes('<html>'),
+  );
+});
+
+test('auth config discovery requests pass through their cancellation signal', async () => {
+  const storage = createStorage();
+  const controller = new AbortController();
+  const { fetchImpl, calls } = createFetch([
+    {
+      match: url => url.endsWith('/accounts/auth-config/'),
+      respond: () => response({ body: { registrationEnabled: true } }),
+    },
+  ]);
+  const auth = createAuthTransport({ storage, fetchImpl });
+
+  await auth.fetchAuthConfig({ serverUrl: 'http://192.168.1.20:8000', signal: controller.signal });
+
+  assert.equal(calls[0].options.signal, controller.signal);
+});

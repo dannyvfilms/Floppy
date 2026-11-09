@@ -1,5 +1,6 @@
+import { Modal, ModalCloseButton } from './Modal';
 import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 const FALLBACK_PALETTE = {
   surface: '#27272a',
@@ -20,9 +21,9 @@ export function MediaCardActionHost({ action, open = false, labels = {}, palette
         style={[styles.dialog, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.header}>
           <Text role="heading" aria-level={2} style={[styles.title, { color: colors.text }]}>{action?.title || ''}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel={closeLabel} onPress={onClose} style={styles.close}>
+          <ModalCloseButton accessibilityRole="button" accessibilityLabel={closeLabel} onPress={onClose} style={styles.close}>
             <Text style={[styles.closeText, { color: colors.textMuted }]}>×</Text>
-          </Pressable>
+          </ModalCloseButton>
         </View>
         {children}
       </View>

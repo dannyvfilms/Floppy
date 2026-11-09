@@ -39,6 +39,7 @@ from app.models import (
     Movie,
     Music,
     Podcast,
+    PodcastPlay,
     Track,
     VideoPlay,
 )
@@ -383,15 +384,15 @@ class HistoryRangePrefetch:
                     self.album_scores[tracker["album_id"]] = tracker["score"]
 
     def _load_podcasts(self):
-        HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
-        owned = models.Q(history_user=self.user) | models.Q(history_user__isnull=True)
         records = list(
-            HistoricalPodcast.objects.filter(
-                owned, end_date__gte=self.win_start, end_date__lt=self.win_end,
-            ).values_list("id", "start_date", "end_date", "history_id", named=True),
+            PodcastPlay.objects.filter(
+                podcast__user=self.user,
+                end_date__gte=self.win_start,
+                end_date__lt=self.win_end,
+            ).values_list("podcast_id", "start_date", "end_date", "id", named=True),
         )
         self.podcasts_by_day = self._bucket(records, lambda r: r.end_date)
-        ids = list({r.id for r in records})
+        ids = list({r.podcast_id for r in records})
         self.podcast_lookup = {}
         self.podcast_counts = {}
         if ids:
@@ -402,12 +403,11 @@ class HistoryRangePrefetch:
                 .defer(*history_deferred_item_fields("item"))
             }
             self.podcast_counts = {
-                row["id"]: row["play_count"]
-                for row in HistoricalPodcast.objects.filter(
-                    id__in=ids, end_date__isnull=False,
+                row["podcast_id"]: row["play_count"]
+                for row in PodcastPlay.objects.filter(
+                    podcast_id__in=ids, end_date__isnull=False,
                 )
-                .filter(owned)
-                .values("id")
+                .values("podcast_id")
                 .annotate(play_count=models.Count("id"))
             }
 

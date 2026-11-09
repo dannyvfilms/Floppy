@@ -48,6 +48,10 @@ export function ComboField({
   const blurTimer = useRef(null);
   const latestValue = useRef(value ?? '');
   const committedValue = useRef(null);
+  // The blur commit runs after a delay. Keep the callback current so it
+  // cannot replay preferences from before a sibling field changed.
+  const onCommitRef = useRef(onCommit);
+  onCommitRef.current = onCommit;
   const text = value ?? '';
   latestValue.current = text;
 
@@ -109,7 +113,7 @@ export function ComboField({
       const settled = latestValue.current;
       if (settled !== committedValue.current) {
         committedValue.current = settled;
-        onCommit?.(settled);
+        onCommitRef.current?.(settled);
       }
     }, blurCommitDelay);
   }

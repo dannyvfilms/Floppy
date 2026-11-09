@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { Button } from './Button';
 import { MediaCard } from './MediaCard';
+import { mediaCardGridWidth } from './mediaCardSizing';
 import { MediaTable } from './MediaTable';
 import { MediaColumnMenu } from './ColumnMenu';
 import { RatingStars } from './RatingStars';
@@ -172,8 +173,7 @@ export function ListResultGrid({
   const colors = mergePalette(palette);
   const copy = mergeLabels(labels);
   const { width } = useWindowDimensions();
-  const columns = width >= 760 ? 4 : width >= 560 ? 3 : 2;
-  const cardWidth = Math.min(184, Math.max(128, (width - 32 - (columns - 1) * 12) / columns));
+  const cardWidth = mediaCardGridWidth(width);
   const ratingRenderer = renderRating || ((props) => <RatingStars
     scaleMax={props.scaleMax}
     value={props.value}

@@ -37,7 +37,7 @@ from app.media_list_filters import (
     get_next_episode_map,
     parse_media_list_filters,
 )
-from app.models import BasicMedia, Episode, Item, MediaTypes, Sources
+from app.models import BasicMedia, Episode, Item, MediaTypes, MoviePlay, Sources
 from app.providers import services, tmdb
 from app.services import metadata_resolution
 from app.services.metadata_sync import enrich_synced_item, sync_podcast_show_from_rss
@@ -89,6 +89,7 @@ from .helpers import (
     build_lists_by_item_id,
     check_source_type,
     check_valid_type,
+    filter_item_bucket,
     get_item_lists,
     get_media_type_availability,
     paginate_data,
@@ -99,6 +100,7 @@ from .helpers import (
     resolve_episode_coordinate_for_request,
     resolve_item_queryset,  # FORK: bucket-aware Item resolution
     try_parse_date,
+    unsupported_fields,
     validate_body,
 )
 from .idempotency import idempotent_create
@@ -1658,6 +1660,9 @@ class MediaConsumptionHistoryView(drf_views.APIView):
         # tracker row. Untouched movies keep today's single-entry behavior.
         movie_plays = fork_helpers.movie_plays_for_history(user_medias, media_type)
         history_rows = movie_plays if movie_plays is not None else list(user_medias)
+        podcast_plays = fork_helpers.podcast_plays_for_history(user_medias, media_type)
+        if podcast_plays is not None:
+            history_rows = podcast_plays
 
         # FORK: was "TODO: missing sorting"
         history_rows, sort_err = fork_helpers.sort_history_results(
@@ -1738,7 +1743,10 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
                 status=HTTP.NOT_FOUND,
             )
 
-        consumption.delete()
+        if isinstance(consumption, MoviePlay):
+            consumption.movie.remove_play(consumption)
+        else:
+            consumption.delete()
 
         return Response(status=HTTP.NO_CONTENT)
 
@@ -1876,6 +1884,18 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
                 status=HTTP.BAD_REQUEST,
             )
 
+        unsupported = unsupported_fields(consumption, validated_body)
+        if unsupported:
+            return Response(
+                {
+                    "detail": HTTP.BAD_REQUEST.phrase,
+                    "errors": "Fields not stored on this entry: "
+                    + ", ".join(unsupported),
+                    "code": "UNSUPPORTED_FIELDS",
+                },
+                status=HTTP.BAD_REQUEST,
+            )
+
         for field, value in validated_body.items():
             if hasattr(consumption, field):
                 setattr(consumption, field, value)
@@ -1942,6 +1962,7 @@ class MediaListDetailView(drf_views.APIView):
     """Media list detail view."""
 
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM, LIBRARY_MEDIA_TYPE_PARAM])
     def delete(self, request, media_type, source, media_id, list_id):
         """Remove a specific media from a specific list."""
         user = request.user
@@ -1983,11 +2004,21 @@ class MediaListDetailView(drf_views.APIView):
                 media_id,
                 source,
                 media_type,
+                library_media_type=request.query_params.get("library_media_type"),
             )
         except CustomListItem.DoesNotExist:
             return Response(
                 {"detail": "Media not found in the list."},
                 status=HTTP.NOT_FOUND,
+            )
+        except CustomListItem.MultipleObjectsReturned:
+            return Response(
+                {
+                    "detail": "The list holds this media in several library "
+                    "buckets; pass library_media_type to choose one.",
+                    "code": "AMBIGUOUS_LIBRARY_BUCKET",
+                },
+                status=HTTP.CONFLICT,
             )
 
         list_item.delete()
@@ -2920,31 +2951,42 @@ class MediaSeasonEpisodesView(drf_views.APIView):
 
         paginated = paginate_data(request, episodes, limit, offset)
 
-        # TODO: see if this can be optimized with a single query for all episodes instead of one per episode
         # TODO: see if lists infos can be saved in the `episodes` object to avoid using `context` to pass additional parameters
-        lists_by_number = {}
-        for episode in paginated["results"]:
-            episode_number = episode.get("episode_number")
-            if episode_number is None:
-                continue
-            lists_by_number[episode_number] = get_item_lists(
-                user,
-                media_id,
-                source,
-                "episode",
-                season_number=season_number,
-                episode_number=episode_number,
-                library_media_type=request.query_params.get("library_media_type"),
-            )
-
         episode_numbers = [
             episode.get("episode_number")
             for episode in paginated["results"]
             if episode.get("episode_number") is not None
         ]
 
+        lists_by_number = {}
         tracked_by_number = {}
         if episode_numbers:
+            episode_items = filter_item_bucket(
+                Item.objects.filter(
+                    media_id=media_id,
+                    source=source,
+                    media_type=MediaTypes.EPISODE.value,
+                    season_number=season_number,
+                    episode_number__in=episode_numbers,
+                ),
+                MediaTypes.EPISODE.value,
+                library_media_type=request.query_params.get("library_media_type"),
+            ).order_by("id")
+            item_ids_by_number = {}
+            for episode_number, item_id in episode_items.values_list(
+                "episode_number",
+                "id",
+            ):
+                item_ids_by_number.setdefault(episode_number, item_id)
+            lists_by_item_id = CustomListItem.objects.get_user_item_lists_map(
+                user,
+                item_ids_by_number.values(),
+            )
+            lists_by_number = {
+                episode_number: lists_by_item_id.get(item_id, [])
+                for episode_number, item_id in item_ids_by_number.items()
+            }
+
             tracked_episodes = BasicMedia.objects.get_season_episodes(
                 user,
                 media_id,
@@ -3256,6 +3298,18 @@ class MediaSeasonConsumptionEntryDetailView(drf_views.APIView):
                     "detail": HTTP.BAD_REQUEST.phrase,
                     "errors": str(error),
                     **validation_error_code(error),
+                },
+                status=HTTP.BAD_REQUEST,
+            )
+
+        unsupported = unsupported_fields(consumption, validated_body)
+        if unsupported:
+            return Response(
+                {
+                    "detail": HTTP.BAD_REQUEST.phrase,
+                    "errors": "Fields not stored on this entry: "
+                    + ", ".join(unsupported),
+                    "code": "UNSUPPORTED_FIELDS",
                 },
                 status=HTTP.BAD_REQUEST,
             )
@@ -4483,6 +4537,18 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
         if error:
             return Response(
                 {"detail": f"{error}", **validation_error_code(error)},
+                status=HTTP.BAD_REQUEST,
+            )
+
+        unsupported = unsupported_fields(consumption, validated_body)
+        if unsupported:
+            return Response(
+                {
+                    "detail": HTTP.BAD_REQUEST.phrase,
+                    "errors": "Fields not stored on this entry: "
+                    + ", ".join(unsupported),
+                    "code": "UNSUPPORTED_FIELDS",
+                },
                 status=HTTP.BAD_REQUEST,
             )
 

@@ -115,6 +115,21 @@ class ImportDispatchTests(FloppyApiTestCase):
         self.assertEqual(response.json()["task_id"], "yt-task-1")
         self.addCleanup(discard_staged_upload, mock_delay.call_args.kwargs["file"])
 
+    @patch("api.fork_views_integrations.tasks.import_trakt_export.delay")
+    def test_trakt_export_rejects_selective_modes(self, mock_delay):
+        """Selective modes would silently run the full import, so they are refused (#1873)."""
+        for mode in ("watchlist", "update_collection"):
+            upload = io.BytesIO(b"PK")
+            upload.name = "trakt.zip"
+            response = self.client.post(
+                reverse("api_import_dispatch", args=("trakt-export",)),
+                {"file": upload, "mode": mode},
+                **self.auth_headers,
+            )
+            self.assertEqual(response.status_code, HTTP.BAD_REQUEST, mode)
+            self.assertEqual(response.json()["choices"], ["new", "overwrite"])
+        mock_delay.assert_not_called()
+
     def test_file_missing_rejected(self):
         """File services without an upload return 400."""
         response = self.call_api(

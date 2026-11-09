@@ -1,7 +1,7 @@
+import { Modal } from './Modal';
 import React from 'react';
 import {
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
