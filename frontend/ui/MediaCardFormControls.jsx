@@ -110,6 +110,7 @@ export function FormSelect({
           accessibilityRole="radio"
           accessibilityLabel={option.label}
           accessibilityState={{ checked: selected }}
+          aria-checked={selected}
           onPress={() => onChange?.(option.value)}
           style={({ pressed, hovered }) => [
             styles.option,

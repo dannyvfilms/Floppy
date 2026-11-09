@@ -104,6 +104,47 @@ export function TrackForm({
     onTabChange?.(id);
   }
 
+  function runtimeOf(field) {
+    const minutes = Number(field.runtimeMinutes);
+    return Number.isFinite(minutes) && minutes > 0 ? minutes : 0;
+  }
+
+  // Picking a release date as the end back-fills an empty start a runtime earlier.
+  function changeDate(field, next, detail) {
+    change(field.name, next);
+    const runtime = runtimeOf(field);
+    if (field.name === 'end_date' && next && runtime && !values.start_date
+      && detail?.source === 'suggestion') {
+      const end = new Date(String(next).includes('T') ? next : `${next}T00:00`);
+      if (!Number.isNaN(end.getTime())) {
+        change('start_date', valueFromDate(new Date(end.getTime() - runtime * 60000),
+          Boolean(model.trackTime)));
+      }
+    }
+  }
+
+  function quickDate(field, action) {
+    const trackTime = Boolean(model.trackTime);
+    const runtime = runtimeOf(field);
+    const moment = new Date();
+    if (action === 'release-date') {
+      change(field.name, field.suggestionDate || '');
+    } else if (action === 'just-finished') {
+      change('end_date', valueFromDate(moment, trackTime));
+      if (runtime && !values.start_date) {
+        change('start_date', valueFromDate(new Date(moment.getTime() - runtime * 60000), trackTime));
+      }
+    } else {
+      change('start_date', valueFromDate(moment, trackTime));
+      if (runtime && !values.end_date) {
+        change('end_date', valueFromDate(new Date(moment.getTime() + runtime * 60000), trackTime));
+      }
+      if (['', 'Completed', 'Planning'].includes(values.status ?? '')) {
+        change('status', 'In progress');
+      }
+    }
+  }
+
   function change(name, value) {
     if (localErrors[name]) setLocalErrors(current => ({ ...current, [name]: '' }));
     onChange?.(name, value);
@@ -138,20 +179,19 @@ export function TrackForm({
       if (type === 'date') {
         return <FormField key={field.name} label={field.label} required={field.required}
           help={field.help} error={fieldErrors[field.name]} palette={palette}>
-          <DateTimePicker value={value} onChange={next => change(field.name, next)}
+          <DateTimePicker value={value}
+            onChange={(next, detail) => changeDate(field, next, detail)}
             trackTime={Boolean(model.trackTime)} labels={labels.dateTime || {}}
             palette={palette.dateTime || {}}
             quickActions={field.quickActions || []}
             suggestionDate={field.suggestionDate || ''}
             suggestionLabel={field.suggestionLabel || ''}
             suggestionExtras={field.suggestionExtras || []}
+            runtimeMinutes={field.runtimeMinutes || ''}
             copyValue={field.copyFrom ? (values[field.copyFrom] || '') : ''}
             copyLabel={field.copyFromLabel || ''}
             copyEmptyMessage={field.copyEmptyMessage || ''}
-            onQuickAction={action => change(field.name,
-              action === 'release-date'
-                ? (field.suggestionDate || '')
-                : valueFromDate(new Date(), Boolean(model.trackTime)))} />
+            onQuickAction={action => quickDate(field, action)} />
         </FormField>;
       }
       if (type === 'rating') {
