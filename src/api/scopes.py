@@ -246,6 +246,8 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.views.StatisticsView": {"GET": "statistics:read"},
     "api.views.MediaListView": {"GET": _R},
     "api.views.MediaTypeListView": {"GET": _R, "POST": _W},
+    "api.fork_views_library_changes.LibraryActivityView": {"GET": _R},
+    "api.fork_views_library_changes.LibraryDeletedView": {"GET": _R},
     "api.fork_views_library.LibrarySavedViewsView": {"GET": "user:read", "POST": "user:write"},
     "api.fork_views_library.LibrarySavedViewDetailView": {"GET": "user:read", "DELETE": "user:write"},
     "api.fork_views_library.LibrarySavedViewsReorderView": {"POST": "user:write"},

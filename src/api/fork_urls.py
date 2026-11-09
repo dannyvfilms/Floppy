@@ -9,6 +9,7 @@ from . import (
     fork_views_discover,
     fork_views_integrations,
     fork_views_library,
+    fork_views_library_changes,
     fork_views_lists,
     fork_views_metadata,
     fork_views_music,
@@ -54,6 +55,16 @@ urlpatterns = [
         r"^library/bulk/plays/(?P<operation_id>[a-f0-9]+)/?$",
         fork_views_library.LibraryBulkPlaysStatusView.as_view(),
         name="api_library_bulk_plays_status",
+    ),
+    re_path(
+        r"^library/activity/?$",
+        fork_views_library_changes.LibraryActivityView.as_view(),
+        name="api_library_activity",
+    ),
+    re_path(
+        r"^library/deleted/?$",
+        fork_views_library_changes.LibraryDeletedView.as_view(),
+        name="api_library_deleted",
     ),
     re_path(
         r"^library/saved-views/(?P<view_id>\d+)/?$",

@@ -1061,6 +1061,15 @@ paths:
           - not
           - or
       - in: query
+        name: updated_since
+        schema:
+          type: string
+        description: ISO 8601 date or datetime. Only entries changed at or after it,
+          judged by each result's `updated_at`, which moves on any edit (status, score,
+          progress, dates, notes, lists, tags, episodes). Pair with `GET /library/activity/`
+          to skip a sync when nothing changed and `GET /library/deleted/` for removed
+          entries.
+      - in: query
         name: year
         schema:
           type: string
@@ -1369,6 +1378,15 @@ paths:
           - and
           - not
           - or
+      - in: query
+        name: updated_since
+        schema:
+          type: string
+        description: ISO 8601 date or datetime. Only entries changed at or after it,
+          judged by each result's `updated_at`, which moves on any edit (status, score,
+          progress, dates, notes, lists, tags, episodes). Pair with `GET /library/activity/`
+          to skip a sync when nothing changed and `GET /library/deleted/` for removed
+          entries.
       - in: query
         name: year
         schema:
@@ -5466,6 +5484,13 @@ components:
           type: string
           format: date-time
           nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When this entry last changed in any way (status, score, progress,
+            dates, notes, lists, tags, episodes watched). Use it with `updated_since`
+            on the media list to sync only what changed.
         score:
           type: number
           format: double
@@ -5550,6 +5575,7 @@ components:
       - status
       - total_episodes_left
       - tracked
+      - updated_at
     TrackedMediaUpdateRequest:
       type: object
       description: Tracked-media PATCH fields, including the shared item's artwork

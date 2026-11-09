@@ -72,6 +72,7 @@ class AppConfig(AppConfig):
         """Import signals when the app is ready."""
         import_module("app.signals")
         import_module("app.signals_watch_state")
+        import_module("app.library_changes")
         from app.signals_music import load_music_listen_hooks
 
         load_music_listen_hooks()

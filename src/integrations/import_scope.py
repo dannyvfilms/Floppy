@@ -1,7 +1,9 @@
 """Cooperative tracking-write fence for destructive durable import scopes."""
 
+from django.core.exceptions import FieldDoesNotExist
 from django.db import models
 from django.db.models import Q
+from django.utils import timezone
 
 TRACKING_MODELS = frozenset({"tv", "season", "episode", "movie", "movieplay", "anime"})
 
@@ -73,6 +75,14 @@ def guard_instances(rows):
                 raise ImportOverwriteConflictError(message)
 
 
+def _has_updated_at(model):
+    try:
+        model._meta.get_field("updated_at")
+    except FieldDoesNotExist:
+        return False
+    return True
+
+
 class ImportScopedQuerySet(models.QuerySet):
     """Keep ORM bulk writers inside the same overwrite conflict contract."""
 
@@ -81,6 +91,8 @@ class ImportScopedQuerySet(models.QuerySet):
         guard_queryset(self)
         from app.services.sync_lock import tracking_mutation
 
+        if _has_updated_at(self.model) and "updated_at" not in kwargs:
+            kwargs["updated_at"] = timezone.now()
         with tracking_mutation(self):
             return super().update(**kwargs)
 
@@ -108,6 +120,11 @@ class ImportScopedQuerySet(models.QuerySet):
         guard_queryset(self.filter(pk__in=[row.pk for row in objs]))
         from app.services.sync_lock import tracking_mutation
 
+        if _has_updated_at(self.model) and "updated_at" not in fields:
+            now = timezone.now()
+            for row in objs:
+                row.updated_at = now
+            fields = [*fields, "updated_at"]
         with tracking_mutation(self.filter(pk__in=[row.pk for row in objs]), instances=objs):
             return super().bulk_update(objs, fields, *args, **kwargs)
 
