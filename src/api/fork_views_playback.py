@@ -1073,7 +1073,7 @@ class HomePlaybackCardsView(drf_views.APIView):
                 },
             },
         },
-        responses={204: None, 400: None},
+        responses={204: None, 400: _DETAIL_SCHEMA, 502: _DETAIL_SCHEMA},
     )
     def post(self, request):
         """Run a current card action after resolving its server-owned control."""

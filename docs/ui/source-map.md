@@ -43,7 +43,7 @@ Status: `Partial / coexisting`
 - `src/templates/app/components/sidebar_pin_menu.html`
 - `src/templates/base.html`
 - `frontend/ui/GlobalSearch.jsx`, `frontend/ui/mountGlobalSearch.jsx`, `frontend/ui/global-search.css` (header search form inside `base.html`; suggestions stay a server fragment)
-- `frontend/ui/Sidebar.jsx`, `frontend/ui/mountSidebar.jsx`, `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html` and Expo; Explore overlays the media-type rows at its content height, capped to the sidebar viewport, scrolls its options when needed and closes when the last option is pinned; native adapter supplies 44-point rows, a 25-point top inset on iOS side-rail layouts, margins accounting for each safe-area inset, and hides Appearance; the onboarding banner stays a server slot)
+- `frontend/ui/Sidebar.jsx`, `frontend/ui/mountSidebar.jsx`, `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html` and Expo; Explore overlays the media-type rows at its content height, capped to the sidebar viewport, scrolls its options when needed and closes when the last option is pinned; native adapter supplies 44-point rows, a 25-point top inset on iOS side-rail layouts, margins accounting for each safe-area inset, and hides Appearance; the onboarding banner stays a server slot; pins and pinned lists load from the account's `User.sidebar_pins` and save through the `sidebar_pins` endpoint, shared with the list pin buttons via `window.floppySidebarPins`)
 - `native-proof/app/surfaces/ShellSlot.jsx`, `native-proof/app/surfaces/NativeShell.ios.jsx`, `native-proof/app/surfaces/NativeShell.jsx`, `native-proof/app/surfaces/NativeRoot.ios.jsx`, `native-proof/app/surfaces/NativeRoot.jsx`, `native-proof/app/safeAreaSpacing.mjs`, `native-proof/app/surfaces/menuGeometry.mjs`, `native-proof/app/routes/_layout.jsx`, `native-proof/app/routes/index.jsx`, `native-proof/App.js` (Expo navigation model, native toolbar and drawer/canvas transition; iOS animates drawer geometry in both fold directions unless Reduce Motion is enabled; an iOS screen-scoped safe-area provider supplies live horizontal insets while the navigator supplies vertical insets; the foreground shell reserves those insets and shared spacing subtracts them from the usual Search and sidebar margins; `useVerticalBarEdgeIOS` supplies the rail trait and reserved regions remain for fold layout; Android and web retain the shared modal path)
 - `frontend/ui/Icon.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
 - `src/app/card_events.py` (the floppyCardUpdate event sent by `media_save` and the score views so React cards refresh their status chip and rating)
@@ -83,6 +83,8 @@ build artifacts. The Python composition tag is documented in the register.
 Status: `Partial / coexisting`
 
 The shared React Native `TextField` keeps its large fixed-height input vertically centered without imposing a line-height; legacy browser fields remain owned by `controls.jsx` and CSS.
+
+PR #1878: `Modal.web.jsx` closes open dialogs on Escape while the native implementation remains platform-owned. Universal tooltips provide the tooltip role, and provider credential dialogs expose their accessible name. Shared catalog pin state uses `aria-pressed`; `FeatureList` distinguishes its text body for stable geometry checks.
 
 - `frontend/ui/controls`
 - `frontend/ui/controls.css`
@@ -186,7 +188,7 @@ Status: `Web Migrated`
 
 Status: `Partial / coexisting`
 
-- `frontend/ui/ModalHost.web.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted once from `base.html`; the card hover buttons and the Add-to-lists buttons open it through `floppy-open-modal`; the Track body is still the server form, see the register)
+- `frontend/ui/ModalHost.web.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted once from `base.html`; the card hover buttons and the Add-to-lists buttons open it through `floppy-open-modal`; the Track body is still the server form, see the register; unmounting a host disposes the React islands inside it, so the Track dialog is not stranded when Escape closes the popup mid-load)
 - `frontend/ui/ListsFormView.jsx`
 - `frontend/ui/modal-forms.css`
 
@@ -754,6 +756,20 @@ Status: `Partial / coexisting`
 
 Status: `Partial / coexisting`
 
+PR #1878: Provider overview outline/focus and linked chip decoration are styled by universal React Native presentation; browser tests wait for current search-result overlays and mounted sidebar links instead of retired DOM wrappers.
+
+PR #1878: Shared statistics presentation exposes stable RN Web test IDs for total labels, summary values, and status legend/ring geometry. Browser tests retain their substantive UI assertions across the native migration.
+
+PR #1878: The file-import web adapter listens for preference changes on the shared page boundary, covering sibling islands with or without Alpine while retaining the universal file-picker presentation.
+
+PR #1878: CLZ preference changes mirror their live values into fallback POST inputs regardless of Alpine ancestry. App tracking browser tests submit through the shared search island instead of a retired form.
+
+PR #1878: The registered browser island loader discovers sidebar, global search, track form and statistics hosts consistently with its renderer dispatch list, restoring universal search mounting in browser workflows.
+
+PR #1878: Provider overview, credential key, and import website hyperlinks receive DOM-only URL attributes from the browser mounts, while their universal JSX remains native-compatible.
+
+PR #1878: The browser file-import mount now supplies a DOM chooser to the universal picker. Chosen `File` objects flow through the existing form transport; the server fallback remains active when the lazy module is blocked, reflects current preferences, and exposes semantic provider website links.
+
 - `frontend/providers/ProviderFileImportView.jsx`
 - `frontend/providers/mountCredentials.jsx`
 - `frontend/providers/mountSetupGuide.jsx`
@@ -940,6 +956,8 @@ Status: `Legacy`
 ## MIGRATION
 
 Status: `Partial / coexisting`
+
+PR #1878: the Track dialog adapter (`mountTrackForm.jsx`) posts its payload, mirrors the card's Alpine open flag when it has no legacy modal root, and `mediaCardForms.js` passes date shortcuts and runtime through to `TrackForm.jsx`; shared status options set `aria-checked`.
 
 - `frontend/auth/AccountSecurity.jsx`
 - `frontend/discover/DiscoverScreen.jsx`

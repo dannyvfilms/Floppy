@@ -556,9 +556,11 @@ networks:
     driver: bridge
 ```
 
-Remove any `network_mode:` line, then redeploy the stack. Alternatively, set
-`REDIS_URL` to an address the Floppy container can reach, such as the host's
-IP and Redis's published port.
+Remove any `network_mode: bridge` declaration from Floppy or its datastore
+services, then redeploy the stack. The optional `floppy-discovery` sidecar uses
+`network_mode: host` for mDNS multicast and remains separate from the app's
+bridge network. Alternatively, set `REDIS_URL` to an address the Floppy
+container can reach, such as the host's IP and Redis's published port.
 
 **Check:** `docker exec floppy python manage.py floppy_preflight` names the
 problem and reports `redis: ok` once Floppy can reach Redis.

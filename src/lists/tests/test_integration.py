@@ -128,10 +128,10 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         lists modal flow, not the overlay's hit-testing, so address the button
         directly and keep the assertions below meaningful.
         """
-        # The shared React card replaces the server overlay once it mounts.
-        expect(
-            self.page.locator('[data-media-card-root][data-react-mounted="true"]').first,
-        ).to_be_attached()
+        # Search-result cards are owned by the search-results island rather
+        # than each having a standalone media-card mount. Wait for the action
+        # overlay itself, which is the user-visible interaction under test.
+        expect(self.page.locator(".media-card-overlay").first).to_be_attached()
         button = (
             self.page.locator(".media-card-overlay")
             .first.locator(".relative > button:nth-child(2)")
@@ -152,16 +152,14 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         expect(locator).not_to_have_class(re.compile(r"\bhtmx-(swapping|settling)\b"))
 
     def search_and_submit(self, query):
-        """Run a global search via the submit button.
+        """Run a global search through the shared React search action.
 
-        The search form's Alpine.js submit guard only reliably recognizes
-        the click event's target as its own search button; relying on the
-        input's implicit Enter-to-submit behavior races with the
-        hx-trigger="... , search" suggestions fetch firing on the same
-        native `search` event and is intermittently swallowed.
+        The universal search control replaces the legacy form on mount. Use
+        its accessible submit button rather than requiring an old form node.
         """
-        self.page.locator("#global-search").fill(query)
-        self.page.locator('form:has(#global-search) button[type="submit"]').click()
+        root = self.page.locator("[data-global-search-root]")
+        root.locator("#global-search").fill(query)
+        root.get_by_role("button", name="Search", exact=True).click()
 
     @classmethod
     def tearDownClass(cls):
@@ -177,8 +175,10 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
     def test_blank_modal(self):
         """Test the blank modal for creating a list."""
-        self.page.get_by_role("button", name="TV Shows").click()
-        self.page.locator("form[action='/search'] li").filter(has_text=re.compile(r"^Anime$")).click()
+        # The universal search control exposes a labelled media-type menu.
+        self.page.locator('[data-global-search-root][data-react-mounted="true"]').wait_for(state="attached")
+        self.page.locator('[data-global-search-root] [data-testid="search-media-type-menu"]').click()
+        self.page.get_by_role("button", name="Anime", exact=True).click()
         self.search_and_submit("perfect blue")
         self.click_card_lists_action()
         expect(self.page.locator('[id^="lists-anime-437-"]')).to_contain_text(
@@ -204,8 +204,10 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         expect(self.page.locator("#lists-grid")).to_contain_text("test")
 
         # Add item to list
-        self.page.get_by_role("button", name="TV Shows").click()
-        self.page.locator("form[action='/search'] li").filter(has_text=re.compile(r"^Anime$")).click()
+        # The universal search control exposes a labelled media-type menu.
+        self.page.locator('[data-global-search-root][data-react-mounted="true"]').wait_for(state="attached")
+        self.page.locator('[data-global-search-root] [data-testid="search-media-type-menu"]').click()
+        self.page.get_by_role("button", name="Anime", exact=True).click()
         self.search_and_submit("perfect blue")
         self.click_card_lists_action()
         expect(self.page.locator('[id^="lists-anime-437-"]')).to_contain_text("Lists")
@@ -219,8 +221,10 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         expect(self.page.locator("#lists-grid")).to_contain_text("test")
         expect(self.page.locator("#lists-grid")).to_contain_text("1 item")
         self.page.get_by_role("button", name="Options for test", exact=True).click()
-        self.page.get_by_role("button", name="Settings", exact=True).click()
-        expect(self.page.locator("#lists-grid")).to_contain_text("Edit List")
+        # The sidebar also has a Settings button; the list menu is local.
+        self.page.locator("#lists-grid").get_by_role("button", name="Settings", exact=True).click()
+        # The edit form is an HTMX dialog rather than a child of the grid.
+        expect(self.page.get_by_role("heading", name="Edit List", exact=True)).to_be_visible()
         # The id embeds the list's primary key, which depends on which tests ran
         # before in the same database; find the field by what it holds instead.
         name_field = self.page.locator('input[name="name"][value="test"]')
@@ -364,5 +368,5 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         # The checkbox sits inside the card's link; a click on it used to be
         # cancelled, so it never ticked (the rest of the card still worked).
         expect(checkbox).to_be_checked()
-        expect(self.page.get_by_text("1 selected")).to_be_visible()
+        expect(self.page.get_by_text("1 item selected")).to_be_visible()
         self.assertEqual(self.page.url, list_url)

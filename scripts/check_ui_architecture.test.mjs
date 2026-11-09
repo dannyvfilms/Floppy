@@ -1,5 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { inspectUniversal, inspectWebAdapter, isNativeAppShellPresentation, legacyStatements, validateRegistry } from './check_ui_architecture.mjs';
 
@@ -131,4 +132,21 @@ test('native application shell screens are allowed outside frontend but still ch
   assert.deepEqual(inspectUniversal(native, 'native-proof/app/screens/HomeScreen.jsx', { nativeAdapter: true, shell: true }), []);
   assert.deepEqual(inspectUniversal("import React from 'react'; import {Screen} from './Screen'; export default function Home(){return <Screen/>}", 'native-proof/app/screens/HomeScreen.jsx', { nativeAdapter: true, shell: true }), []);
   assert.ok(inspectUniversal(`${native}; <div/>`, 'native-proof/app/screens/HomeScreen.jsx', { nativeAdapter: true, shell: true }).length);
+});
+
+// The island dispatch already supports these roots; a missing host selector
+// leaves server fallbacks mounted forever and browser interactions time out.
+test('every island renderer branch is discoverable by the host selector', () => {
+  const source = readFileSync(new URL('../frontend/settings/index.js', import.meta.url), 'utf8');
+  const selector = source.match(/const selector = '([^']+)'/)?.[1];
+  const dispatch = source.split('const kind = host.matches(')[1]?.split('    try {')[0];
+  assert.ok(selector, 'missing browser island host selector');
+  assert.ok(dispatch, 'missing browser island renderer dispatch');
+  const roots = new Set(selector.split(',').map(item => item.trim()));
+  const dispatched = [...dispatch.matchAll(/host\.matches\('([^']+)'\)/g)]
+    .flatMap(([, selectors]) => selectors.split(',').map(item => item.trim()));
+  assert.ok(dispatched.length > 60, 'expected the full island dispatcher');
+  for (const root of dispatched) {
+    assert.ok(roots.has(root), `island renderer cannot discover ${root}`);
+  }
 });

@@ -146,7 +146,7 @@ export function FeatureList({
       const interactive = typeof item.onPress === 'function' || typeof onSelect === 'function';
       const body = <>
         <StatusMark label={statusLabel} tone={tone} palette={palette} />
-        <View style={styles.body}>
+        <View style={styles.body} testID="feature-copy">
           <Text style={[styles.label, { color: palette.text }]}>{item.label}</Text>
           {item.description ? <Text style={[styles.description, { color: palette.textMuted }]}>
             {item.description}
