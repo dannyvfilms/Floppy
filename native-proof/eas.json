@@ -1,0 +1,11 @@
+{
+  "cli": { "appVersionSource": "local" },
+  "build": {
+    "native-preview": {
+      "distribution": "internal",
+      "env": { "EXPO_PUBLIC_SEARCH_PREVIEW": "1" },
+      "ios": { "simulator": true },
+      "android": { "buildType": "apk" }
+    }
+  }
+}
