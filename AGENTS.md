@@ -340,6 +340,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - `docs/agents/view_authentication.md`: guide for view authentication and declaring public route exemptions.
 - `docs/agents/pr_screenshots.md`: `scripts/pr_screenshots.py` captures before/after screenshots of a PR and posts them to its description.
 - `docs/architecture/log-redaction.md`: the log boundary contract — where credentials are removed, what the rules match, and what they do not cover.
+- `docs/architecture/log-levels.md`: what each log level means, the start/progress/finish lines every long-running process must write so a hang is visible, and what the Settings > Advanced downloads include.
 - `docs/architecture/theming.md`: the theme resolution contract and the six theme states any colour change must hold.
 - `docs/architecture/podcast-plays.md`: what a podcast listen is (`PodcastPlay`), the one service that writes it, how a direct tracker save is carried onto its play, and the API lifecycle.
 - `docs/architecture/webhook-write-rules.md`: when a media-server webhook may write tracking rows — the shared policy table every integration is listed in, its exceptions, and the test that catches a missing row.
@@ -395,6 +396,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
   architecture registry. Run the architecture, build and relevant regression checks.
   Report browser, iOS and Android evidence independently; builds do not establish
   runtime verification. An unresolved external blocker leaves the task incomplete.
+- Expo ↔ PWA page parity and what remains: `docs/ui/expo-parity-audit.md`.
 - Provider pages use the shared provider model and page components; see
   `docs/ui/provider-pages.md`. Existing `frontend/ui/controls.jsx` is web-only:
   use its behavior as a migration source, not a universal dependency. See
