@@ -444,7 +444,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
     def expect_track_status(self, dialog, label):
         """Assert the Track dialog's Status dropdown shows the given status."""
         expect(
-            dialog.get_by_role("button", name=re.compile(rf"^Status: {label}$", re.I)),
+            dialog.get_by_role("button", name=re.compile(rf"^Status: {label}$", re.IGNORECASE)),
         ).to_be_visible()
 
     def shared_date_buttons(self, dialog):
