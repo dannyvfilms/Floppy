@@ -242,7 +242,7 @@ class MergeTrainTests(TestCase):
         """A fork PR without 'Allow edits from maintainers' needs its contributor."""
         fork = pr(1, fork=True, editable=False)
         action, number, notes = train.choose([fork], {1: 3}, NOW)
-        self.assertEqual((action, number), ("stuck", None))
+        self.assertEqual((action, number), ("manual", None))
         self.assertIn("the contributor has to", notes[0])
 
     def test_editable_fork_branch_is_updated(self):
@@ -343,7 +343,7 @@ class MainTests(TestCase):
             ],
         )
         code, fake = self.run_train([old], {1: 2}, {1: "gh: user doesn't have permission (HTTP 403)"})
-        self.assertEqual((code, fake.updated), (1, []))
+        self.assertEqual((code, fake.updated), (0, []))
         self.assertIn(f"merge-train-base:{LATEST_SHA}:refused", old["body"])
 
     def test_dry_run_updates_nothing(self):
@@ -371,11 +371,36 @@ class MainTests(TestCase):
         code, fake = self.run_train(prs, {1: 1, 2: 1}, refuse)
         self.assertEqual((code, fake.updated), (0, [2]))
 
-    def test_refused_update_with_nothing_else_fails_the_run(self):
-        """If the only candidate is refused, the run must not look healthy."""
+    def test_refused_fork_update_is_a_visible_manual_handoff(self):
+        """A token cannot update a contributor fork; report it without a false CI error."""
         refuse = {1: "gh: user doesn't have permission (HTTP 403)"}
         code, fake = self.run_train([pr(1, fork=True)], {1: 1}, refuse)
+        self.assertEqual((code, fake.updated), (0, []))
+
+    def test_refused_local_branch_remains_an_error(self):
+        """A 403 updating our own branch signals broken token permissions."""
+        refuse = {1: "gh: user doesn't have permission (HTTP 403)"}
+        code, fake = self.run_train([pr(1, fork=False)], {1: 1}, refuse)
         self.assertEqual((code, fake.updated), (1, []))
+
+    def test_fork_permission_skip_does_not_hide_an_unrelated_conflict(self):
+        prs = [pr(1, fork=True, editable=False), pr(2, state="DIRTY")]
+        code, fake = self.run_train(prs, {1: 1, 2: 1})
+        self.assertEqual((code, fake.updated), (1, []))
+
+    def test_prior_refused_fork_is_a_manual_handoff_on_same_base(self):
+        """Avoid failing forever on the already-recorded contributor-side refusal."""
+        fork = pr(1, fork=True)
+        fork["_latest_oid"] = LATEST_SHA
+        fork["_latest_date"] = "2026-10-05T10:00:00Z"
+        fork["body"] += f"\n<!-- merge-train-base:{LATEST_SHA}:refused -->"
+        fork["commits"]["nodes"][0]["commit"]["statusCheckRollup"]["contexts"]["nodes"] = [
+            {"name": "lint", "status": "COMPLETED", "conclusion": "FAILURE",
+             "startedAt": _iso(timedelta(hours=3)), "completedAt": _iso(timedelta(hours=3))}
+        ]
+        action, _, notes = train.choose([fork], {1: 2}, NOW)
+        self.assertEqual(action, "manual")
+        self.assertIn("contributor has to", notes[0])
 
     def test_conflict_found_while_updating_is_reported(self):
         """GitHub says 422 when latest does not merge cleanly into the branch."""

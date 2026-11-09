@@ -84,6 +84,8 @@ Status: `Partial / coexisting`
 
 The shared React Native `TextField` keeps its large fixed-height input vertically centered without imposing a line-height; legacy browser fields remain owned by `controls.jsx` and CSS.
 
+PR #1878: `Modal.web.jsx` closes open dialogs on Escape while the native implementation remains platform-owned. Universal tooltips provide the tooltip role, and provider credential dialogs expose their accessible name. Shared catalog pin state uses `aria-pressed`; `FeatureList` distinguishes its text body for stable geometry checks.
+
 - `frontend/ui/controls`
 - `frontend/ui/controls.css`
 - `src/static/css/libraries/select2-4.1.0.min.css`
@@ -754,6 +756,20 @@ Status: `Partial / coexisting`
 
 Status: `Partial / coexisting`
 
+PR #1878: Provider overview outline/focus and linked chip decoration are styled by universal React Native presentation; browser tests wait for current search-result overlays and mounted sidebar links instead of retired DOM wrappers.
+
+PR #1878: Shared statistics presentation exposes stable RN Web test IDs for total labels, summary values, and status legend/ring geometry. Browser tests retain their substantive UI assertions across the native migration.
+
+PR #1878: The file-import web adapter listens for preference changes on the shared page boundary, covering sibling islands with or without Alpine while retaining the universal file-picker presentation.
+
+PR #1878: CLZ preference changes mirror their live values into fallback POST inputs regardless of Alpine ancestry. App tracking browser tests submit through the shared search island instead of a retired form.
+
+PR #1878: The registered browser island loader discovers sidebar, global search, track form and statistics hosts consistently with its renderer dispatch list, restoring universal search mounting in browser workflows.
+
+PR #1878: Provider overview, credential key, and import website hyperlinks receive DOM-only URL attributes from the browser mounts, while their universal JSX remains native-compatible.
+
+PR #1878: The browser file-import mount now supplies a DOM chooser to the universal picker. Chosen `File` objects flow through the existing form transport; the server fallback remains active when the lazy module is blocked, reflects current preferences, and exposes semantic provider website links.
+
 - `frontend/providers/ProviderFileImportView.jsx`
 - `frontend/providers/mountCredentials.jsx`
 - `frontend/providers/mountSetupGuide.jsx`
@@ -940,6 +956,8 @@ Status: `Legacy`
 ## MIGRATION
 
 Status: `Partial / coexisting`
+
+PR #1878: the Track dialog adapter (`mountTrackForm.jsx`) posts its payload, mirrors the card's Alpine open flag when it has no legacy modal root, and `mediaCardForms.js` passes date shortcuts and runtime through to `TrackForm.jsx`; shared status options set `aria-checked`.
 
 - `frontend/auth/AccountSecurity.jsx`
 - `frontend/discover/DiscoverScreen.jsx`
