@@ -260,6 +260,34 @@ class PlaybackProgressClearTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, HTTP.NO_CONTENT)
         self.assertFalse(PlaybackProgress.objects.filter(id=self.progress.id).exists())
 
+    def test_delete_clears_position_saved_on_another_bucket_item(self):
+        """A position saved against a same-media Item in another bucket is cleared too (#1873)."""
+        movie = self.items_by_type[MediaTypes.MOVIE.value][0]
+        other_bucket = Item.objects.create(
+            media_id=movie.media_id,
+            source=movie.source,
+            media_type=MediaTypes.MOVIE.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title=movie.title,
+            image=movie.image,
+        )
+        other_progress = PlaybackProgress.objects.create(
+            user=self.user1,
+            item=other_bucket,
+            position_seconds=300,
+        )
+
+        response = self.call_api(
+            "delete",
+            "api_playback_progress",
+            payload={"media_type": "movie", "ids": {"tmdb": "701"}},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.NO_CONTENT)
+        self.assertFalse(PlaybackProgress.objects.filter(id=self.progress.id).exists())
+        self.assertFalse(PlaybackProgress.objects.filter(id=other_progress.id).exists())
+
     def test_delete_does_not_touch_other_users(self):
         """Clearing only affects the requesting user's row."""
         other = PlaybackProgress.objects.create(

@@ -2432,6 +2432,12 @@ paths:
       operationId: api_v1_media_lists_destroy
       description: Remove a specific media from a specific list.
       parameters:
+      - in: query
+        name: library_media_type
+        schema:
+          type: string
+        description: Library the tv show, season or episode is stored in. Set to `anime`
+          for titles in the Anime library; omitted means the regular TV library.
       - in: path
         name: list_id
         schema:
