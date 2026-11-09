@@ -145,6 +145,14 @@ Floppy (for example a disc with its own details) is left alone, and `DELETE`
 answers `404` when only such copies exist. Add `?all=true` to remove every
 copy of the title.
 
+Anime episodes can live in the anime library or, for a show Floppy has not
+seen before, in the default library. With `?library_media_type=anime` the API
+looks in the anime library first and falls back to the default library, so a
+call finds an episode wherever it was created. Add `&strict_library=true` to
+address only the named library: the default library is never searched or
+created in, and an item that is not there answers `404` (`LIBRARY_ITEM_NOT_FOUND`
+on `PUT`) so you can track it in that library first.
+
 Limits:
 
 - Shows are collected per episode. `PUT .../media/tv/tmdb/{id}/collection/`
