@@ -53,7 +53,11 @@
   {% endif %}
 
   {% if media_type == "all" %}
+    {% if isbn_search %}
+      <p class="mb-6 text-sm text-[var(--color-text-muted)]">{% translate "Showing your library and an online ISBN lookup for each book type." %}</p>
+    {% else %}
     <p class="mb-6 text-sm text-[var(--color-text-muted)]">{% translate "Searching your library only: items you track, collect or tag. Pick a media type to search online." %}</p>
+    {% endif %}
 
     {% for group in local_groups %}
       <div class="mb-8">

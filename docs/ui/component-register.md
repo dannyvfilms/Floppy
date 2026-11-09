@@ -1,5 +1,8 @@
 # UI component register
 
+For Expo versus PWA page status and remaining work, see the
+[Expo parity audit](expo-parity-audit.md).
+
 Use the [architecture and parity gates](../architecture/ui-modernization.md) and
 [complete source ownership map](source-map.md). IDs identify behavior families,
 not individual HTML elements. Slots, cells and small includes belong to their
@@ -400,6 +403,7 @@ can inform a focused completion pass.
 - Native readiness: `Primitives`. `GlobalSearch` uses shared React Native presentation, with `SearchSlot` supplying native transport and scanner behavior. The iOS shell places it across the content width and removes the blue outline on focus.
 - This change: the iOS 27.2 Duo in Expo Go displayed the search type picker and an empty-result suggestion on the fully open screen. The search field was also observed beside the open sidebar. VoiceOver, barcode, Android runtime and browser interactions specific to this change were not tested.
 - Verification: `app.tests.test_global_search_props`. Chromium (built-in browser, macOS) on `/discover`: form mounts with the right placeholder, typing shows suggestions, the type menu opens with 12 options, picking Books submits `/search?q=matrix&media_type=book`. The barcode scan flow (camera, decode, error toast) was ported but not exercised, and nothing was checked on a phone or in other themes. iOS and Android not tested.
+- Barcode scope: the camera shows for All, Book, Manga, Comic and Comic Issue (`barcodeTypes` in `global_search_react` and `SearchSlot.jsx`; the server fallback renders it only for those scopes and keeps its spinner hidden). In All scope a typed or scanned checksum-valid ISBN also searches saved Barcode fields and each barcode-capable type in the user's search menu with its default provider (`_all_scope_barcode_groups` in `search_views.py`); results are grouped by type on the existing results page and a failing provider drops only its group. No new endpoint. Status stays `Partial / coexisting` (server fallback and HTMX suggestions remain). Verified: `app.tests.views.test_media_search` (All-scope fan-out). Browser, iOS and Android runtime not yet verified for this change.
 - Validation targets: `src/app/tests/test_search_suggestions.py`, `src/app/tests/views/test_media_search.py`, barcode selfcheck.
 
 ### RAILS — Horizontal scrolling and load more
@@ -926,6 +930,7 @@ templates are compatibility/composition sources, not equally active parallel pag
 - Contract: filters/candidates/chosen identity, POST/error and retained tracking semantics.
 - Data: integration views and `src/integrations/match_corrections.py`.
 - Reuse/blockers: shared selection/review pattern; distinct correction semantics and permissions remain explicit.
+- Logs card: `LogsCard` in `frontend/settings/AdvancedSettings.jsx` (React-owned, shared with `native-proof/app/screens/SettingsAdvancedScreen.jsx`) shows Download Sanitized Logs to superusers and Download Diagnostic Report to every signed-in user. Server contract: `src/users/diagnostics.py`, `export_diagnostics`. Browser verification of the new button: pending. iOS/Android: not verified; the native screen is a stub that waits and shows a message.
 - Validation targets: `src/integrations/tests/test_matching_and_corrections.py`.
 
 ### INTEGRATION-PANELS — Library/download and Seerr requests

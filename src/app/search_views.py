@@ -471,6 +471,100 @@ def _local_library_groups(user, query, limit):
             groups.append(group)
     return groups
 
+# Types sold with a book barcode: the camera shows for these (and All).
+BARCODE_SEARCH_TYPES = (
+    MediaTypes.BOOK.value,
+    MediaTypes.MANGA.value,
+    MediaTypes.COMIC.value,
+    MediaTypes.COMIC_ISSUE.value,
+)
+
+
+def _item_key(item):
+    """Identify an Item or an enriched provider result dict."""
+    get = item.get if isinstance(item, dict) else lambda k: getattr(item, k, None)
+    return (get("media_type"), get("source"), str(get("media_id")))
+
+
+def _all_scope_barcode_groups(request, query, groups):
+    """Add saved Barcode matches and online ISBN results to All-scope groups.
+
+    A checksum-valid ISBN is searched with each barcode-capable type in the
+    user's search menu, using that type's default provider. One provider
+    failing leaves the other types' results in place.
+    """
+    user = request.user
+    by_type = {group["media_type"]: group for group in groups}
+
+    def group_for(media_type):
+        return by_type.setdefault(
+            media_type,
+            {
+                "media_type": media_type,
+                "label": media_type_readable_plural(media_type),
+                "kind": "media",
+                "results": [],
+                "total": 0,
+            },
+        )
+
+    enabled = [
+        media_type
+        for media_type in user.get_enabled_media_types()
+        if media_type not in (MediaTypes.SEASON.value, MediaTypes.PODCAST.value)
+    ]
+    for media_type in enabled:
+        group = None
+        for item in _barcode_owned_items(user, media_type, query):
+            group = group_for(media_type)
+            if _item_key(item) not in {_item_key(r["item"]) for r in group["results"]}:
+                group["results"].insert(
+                    0,
+                    {"item": item, "media": None, "matched_title": None},
+                )
+                group["total"] += 1
+
+    isbn = services._normalize_isbn_candidate(query)
+    if isbn:
+        for media_type in (t for t in BARCODE_SEARCH_TYPES if t in enabled):
+            source = metadata_resolution.metadata_default_source(user, media_type)
+            try:
+                with services.interactive_request_scope():
+                    data = services.search(
+                        media_type,
+                        isbn,
+                        1,
+                        source,
+                        user=user,
+                        language=metadata_resolution.metadata_language_default(user),
+                    )
+            except (services.ProviderNotConfiguredError, services.ProviderAPIError) as exc:
+                logger.warning(
+                    "ISBN search skipped for media_type=%s: %s",
+                    media_type,
+                    exception_summary(exc),
+                )
+                continue
+            online = helpers.enrich_items_with_user_data(
+                request,
+                data.get("results") or [],
+                section_name="search",
+            )
+            if not online:
+                continue
+            group = group_for(media_type)
+            shown = {_item_key(r["item"]) for r in group["results"]}
+            fresh = [
+                {**r, "matched_title": None}
+                for r in online[:LOCAL_GROUP_LIMIT]
+                if _item_key(r["item"]) not in shown
+            ]
+            group["results"] += fresh
+            group["total"] += len(fresh)
+
+    order = {t: i for i, t in enumerate(enabled)}
+    return sorted(by_type.values(), key=lambda g: order.get(g["media_type"], 99))
+
 
 @require_GET
 def media_search(request):
@@ -491,6 +585,7 @@ def media_search(request):
 
     if media_type == ALL_SEARCH_TYPE:
         local_groups = []
+        isbn_search = False
         if request.user.is_authenticated and query:
             try:
                 local_groups = _local_library_groups(
@@ -500,6 +595,9 @@ def media_search(request):
                 )
             except Exception as exc:  # pragma: no cover - defensive
                 logger.debug("Local search failed: %s", exception_summary(exc))
+        if request.user.is_authenticated and query:
+            local_groups = _all_scope_barcode_groups(request, query, local_groups)
+            isbn_search = bool(services._normalize_isbn_candidate(query))
         return render(
             request,
             "app/search.html",
@@ -508,6 +606,7 @@ def media_search(request):
                 "media_type": media_type,
                 "layout": layout,
                 "local_groups": local_groups,
+                "isbn_search": isbn_search,
                 "local_group_limit": LOCAL_GROUP_LIMIT,
             },
         )

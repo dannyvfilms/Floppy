@@ -66,6 +66,8 @@ from integrations.tasks._import_helpers import (
     LEGACY_GOODREADS_IMPORT_TASK_NAMES,
     STREMIO_IMPORT_SOFT_TIME_LIMIT,
     STREMIO_IMPORT_TIME_LIMIT,
+    WETRAKR_IMPORT_SOFT_TIME_LIMIT,
+    WETRAKR_IMPORT_TIME_LIMIT,
     _run_file_import,
     format_import_message,
     format_watchlist_sync_message,
@@ -449,7 +451,11 @@ def import_trakt_export(file, user_id, mode):
     )
 
 
-@shared_task(name="Import WeTrakr data export")
+@shared_task(
+    name="Import WeTrakr data export",
+    soft_time_limit=WETRAKR_IMPORT_SOFT_TIME_LIMIT,
+    time_limit=WETRAKR_IMPORT_TIME_LIMIT,
+)
 def import_wetrakr_export(file, user_id, mode):
     """Celery task for importing a WeTrakr data export archive."""
     return _run_file_import(wetrakr.importer, file, user_id, mode)

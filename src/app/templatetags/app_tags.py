@@ -2539,7 +2539,7 @@ def global_search_react(context, search_type):
                 {"display": str(item["display"]), "value": str(item["value"])}
                 for item in get_search_media_types(context.get("user"))
             ],
-            "barcodeTypes": ["book", "manga", "comic", "comicissue"],
+            "barcodeTypes": ["all", "book", "manga", "comic", "comicissue"],
             "suggestionsUrl": reverse("search_suggestions"),
             "labels": {
                 "inputLabel": str(_("Search your library or online")),
