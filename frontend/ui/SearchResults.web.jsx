@@ -31,7 +31,9 @@ function readPalette() {
     surfaceStrong: color('--color-surface-strong', '#3f3f46'),
     surfaceMuted: color('--color-surface-muted', '#52525b'),
     border: color('--color-surface-border', '#3f3f46'),
-    accent: color('--color-accent', '#6366f1'),
+    // The release search page fixed its selected pills, layout buttons and page
+    // numbers to indigo-600 rather than the theme accent.
+    accent: color('--color-indigo-600', '#4f46e5'),
     accentText: '#ffffff',
     link: color('--color-link', '#818cf8'),
     danger: color('--color-danger', '#ef4444'),

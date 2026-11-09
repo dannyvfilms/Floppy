@@ -80,8 +80,8 @@ export function TagsPageView({
 }
 
 const styles = StyleSheet.create({
-  root: { gap: 16, minWidth: 0 },
+  root: { gap: 32, minWidth: 0 },
   sorts: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sortButton: { borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 },
-  sortText: { fontSize: 13, fontWeight: '600' },
+  sortText: { fontSize: 14, lineHeight: 20, fontWeight: '400' },
 });
