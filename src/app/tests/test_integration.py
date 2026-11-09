@@ -119,16 +119,14 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.page.wait_for_load_state("networkidle")
 
     def search_and_submit(self, query):
-        """Run a global search via the submit button.
+        """Submit through the shared search control.
 
-        The search form's Alpine.js submit guard only reliably recognizes
-        the click event's target as its own search button; relying on the
-        input's implicit Enter-to-submit behavior races with the
-        hx-trigger="... , search" suggestions fetch firing on the same
-        native `search` event and is intermittently swallowed.
+        The web mount replaces the legacy Alpine form with the accessible
+        React search button. Wait for that mount instead of a retired form.
         """
-        self.page.locator("#global-search").fill(query)
-        self.page.locator('form:has(#global-search) button[type="submit"]').click()
+        root = self.page.locator('[data-global-search-root][data-react-mounted="true"]')
+        root.locator("#global-search").fill(query)
+        root.get_by_role("button", name="Search", exact=True).click()
 
     def test_htmx_database_contention_retries_original_get(self):
         """A failed fragment retries its full URL without another user click."""
@@ -208,8 +206,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         try:
             touch_page = touch_context.new_page()
             touch_page.goto(self.live_server_url + "/")
-            touch_page.locator("#global-search").fill("breaking bad")
-            touch_page.locator('form:has(#global-search) button[type="submit"]').click()
+            search = touch_page.locator('[data-global-search-root][data-react-mounted="true"]')
+            search.locator("#global-search").fill("breaking bad")
+            search.get_by_role("button", name="Search", exact=True).click()
             expect(touch_page.get_by_role("heading", name="Search Results")).to_be_visible()
 
             card = touch_page.locator(".media-card").filter(has_text="Breaking Bad").first
@@ -365,7 +364,10 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                     modal = self.page.locator("[data-track-modal-root]:visible")
                     expect(modal).to_be_visible()
                     self._assert_visible_overlay_fills_viewport()
-                    modal.get_by_role("button", name="Close", exact=True).click()
+                    # RN Web portals the dialog outside the legacy modal root.
+                    self.page.get_by_role("dialog").last.get_by_role(
+                        "button", name="Close", exact=True,
+                    ).click()
                     expect(modal).to_have_count(0)
                     track_button.click()
                     expect(modal).to_be_visible()
@@ -587,11 +589,16 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.page.locator("button").filter(has_text="Add to tracker").click()
         track_form = self.page.locator("#track-tv-1396")
         expect(track_form).to_contain_text("Score")
-        track_form.get_by_label("Status").select_option("Completed")
+        # Status is now a shared accessible radio group, not an HTML select.
+        self.page.get_by_role("dialog").last.get_by_role(
+            "radio", name="Completed", exact=True,
+        ).click()
         with self.page.expect_request(
             lambda request: request.method == "POST" and "/media_save" in request.url,
         ) as save_request:
-            track_form.get_by_role("button", name="Add", exact=True).click()
+            self.page.get_by_role("dialog").last.get_by_role(
+                "button", name="Add", exact=True,
+            ).click()
         save_request.value.response()
         self.page.goto(f"{self.live_server_url}/medialist/tv")
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
@@ -614,7 +621,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         with self.page.expect_request(
             lambda request: request.method == "POST" and "/media_save" in request.url,
         ) as save_request:
-            track_form.get_by_role("button", name="Add", exact=True).click()
+            self.page.get_by_role("dialog").last.get_by_role(
+                "button", name="Add", exact=True,
+            ).click()
         save_request.value.response()
         self.page.goto(f"{self.live_server_url}/medialist/season")
         expect(self.page.get_by_role("main")).to_contain_text("Completed")
@@ -1598,9 +1607,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             + "?start-date=all&end-date=all&compare=none",
         )
 
-        legend = self.page.locator("#statusCompositionLegend")
+        legend = self.page.locator('[data-testid="status-composition-legend"]')
         expect(legend).to_be_visible()
-        expect(legend.locator(":scope > div")).to_have_count(5)
+        expect(legend.locator('[data-testid="statistics-legend-row"]')).to_have_count(5)
 
         layout = legend.evaluate(
             """element => ({
@@ -1610,7 +1619,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                 scrollWidth: element.scrollWidth,
             })""",
         )
-        self.assertEqual(layout["overflowX"], "auto")
+        self.assertIn(layout["overflowX"], ("auto", "scroll"))
         self.assertEqual(layout["overflowY"], "hidden")
 
         page_layout = self.page.evaluate(
@@ -1618,7 +1627,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                 viewportWidth: window.innerWidth,
                 documentWidth: document.documentElement.scrollWidth,
                 bodyWidth: document.body.scrollWidth,
-                chartWidth: document.getElementById("statusCompositionChart")
+                chartWidth: document.querySelector('[data-testid="status-composition-chart"]')
                     ?.getBoundingClientRect().width,
             })""",
         )
@@ -1628,9 +1637,11 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
         self.page.get_by_role("button", name="All media", exact=True).click()
         self.page.get_by_role("button", name="Movies", exact=True).click()
-        expect(self.page.locator("#statusCompositionSubtitle")).to_have_text(
-            "Movie status breakdown.",
+        # The chart's accessible summary replaces the retired subtitle.
+        expect(self.page.locator('[data-testid="status-composition-chart"]')).to_have_attribute(
+            "aria-label", re.compile(r"^Status Composition\. Total "),
         )
+        self.assertIn("media-type=movie", self.page.url)
         filtered_layout = legend.evaluate(
             """element => ({
                 overflowX: getComputedStyle(element).overflowX,
@@ -1667,7 +1678,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             """() => ({
                 viewportWidth: window.innerWidth,
                 documentWidth: document.documentElement.scrollWidth,
-                chartWidth: document.getElementById("statusCompositionChart")
+                chartWidth: document.querySelector('[data-testid="status-composition-chart"]')
                     ?.getBoundingClientRect().width,
             })""",
         )

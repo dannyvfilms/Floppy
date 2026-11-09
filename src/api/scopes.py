@@ -151,6 +151,12 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
         "DELETE": "progress:write",
     },
     "api.fork_views_playback.NowPlayingView": {"GET": "progress:read"},
+    # Home playback controls are session-only; scoped integration tokens may
+    # not read the cards or invoke their actions.
+    "api.fork_views_playback.HomePlaybackCardsView": {
+        "GET": NEVER,
+        "POST": NEVER,
+    },
     "api.fork_views_podcast.PodcastShowsView": {
         "GET": "podcasts:read",
         "POST": "podcasts:write",

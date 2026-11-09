@@ -167,6 +167,7 @@ export function Tooltip({
         <Pressable accessible={false} style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay }]}
           onPress={close} />
         <View
+          role="tooltip"
           onLayout={event => {
             const next = event.nativeEvent.layout.height;
             if (Math.abs(next - bubbleHeight) > 0.5) {
