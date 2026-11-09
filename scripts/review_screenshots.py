@@ -164,7 +164,9 @@ def serve_proxy(floppy, port):
                 if key.lower() not in {"transfer-encoding", "connection", "content-length"}:
                     # Keep redirects on the proxy origin: the Expo client refuses
                     # a redirect to another origin.
-                    self.send_header(key, value.replace(floppy, proxy))
+                    # CR/LF are removed so a header value cannot split the response.
+                    clean = value.replace(floppy, proxy).replace("\r", "").replace("\n", "")
+                    self.send_header(key, clean)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
