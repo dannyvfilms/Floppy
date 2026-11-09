@@ -222,9 +222,11 @@
         {# Sidebar #}
         {% if not public_view|default:False %}
           <aside class="fixed top-0 left-0 z-[43] max-lg:z-[10000] h-dvh w-64 pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)] bg-[var(--color-sidebar)] transform transition-[transform,translate,visibility] duration-300 ease-in-out border-r border-[var(--color-border)] -translate-x-full lg:translate-x-0 lg:sticky flex flex-col"
-                 x-data="sidebarNavigation('{{ user.pk|escapejs }}')"
+                 x-data="sidebarNavigation('{% url 'sidebar_pins' %}', '{{ user.pk|escapejs }}')"
+                 @sidebar-pins-changed.window="onPinnedListsChanged()"
                  :class="isMobileMenuOpen ? 'translate-x-0' : 'max-lg:invisible'"
                  >
+            {{ user.sidebar_pins|json_script:"sidebar-pins-data" }}
             {% sidebar_react media_type as sidebar %}{% if sidebar.props %}{{ sidebar.props|json_script:sidebar.id }}{% endif %}<div data-sidebar-root data-props-id="{{ sidebar.id }}">
             <div class="h-16 border-b border-[var(--color-border)] flex items-center px-6">
               <h1 class="flex items-center">
