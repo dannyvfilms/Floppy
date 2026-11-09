@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "Floppy Native Proof",
+    "slug": "floppy-native-proof",
+    "scheme": "floppy-native-proof",
+    "version": "1.0.0",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "app.floppy.nativeproof",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Floppy searches your local network for Floppy servers you can connect to.",
+        "NSBonjourServices": ["_http._tcp."]
+      }
+    },
+    "android": {
+      "permissions": [
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.ACCESS_WIFI_STATE",
+        "android.permission.CHANGE_WIFI_MULTICAST_STATE",
+        "android.permission.ACCESS_LOCAL_NETWORK"
+      ]
+    },
+    "experiments": {
+      "baseUrl": "/static/native-proof"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Floppy to scan book barcodes."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Floppy to read an ISBN barcode from a photo."
+        }
+      ],
+      "expo-secure-store",
+      ["expo-router", { "root": "./app/routes" }],
+      "expo-status-bar"
+    ]
+  }
+}

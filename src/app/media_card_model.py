@@ -377,7 +377,12 @@ def _corner_chips(ctx, media_type):
     ):
         href = app_tags.next_episode_url(item, media)
         if href:
-            chips.append({"kind": "next-episode", "text": _("Next ep"), "href": href})
+            chips.append({
+                "kind": "next-episode",
+                "text": _("Next ep"),
+                "compactText": _("Next"),
+                "href": href,
+            })
     return chips
 
 
@@ -957,4 +962,45 @@ def rating_model(ctx, media_type):
         "rateUrl": rate_url or None,
         "scaleMax": app_tags.rating_scale_max(user),
         "rateLabel": _("Rate"),
+    }
+
+
+def progress_changer_model(media, csrf_token=""):
+    """Return the shared quick-progress control's props for one tracked row."""
+    media_type = media.item.media_type
+    percentage = bool(getattr(media, "progress_is_percentage", False))
+    show_units = (
+        media_type not in {MediaTypes.GAME.value, MediaTypes.MOVIE.value}
+        and not percentage
+    )
+    max_progress = getattr(media, "max_progress", None)
+    unit = ""
+    if show_units and getattr(media, "progress_unit", None) != "minutes":
+        count = max_progress or (getattr(media, "progress", 0) or 0)
+        if media_type == MediaTypes.TV.value:
+            unit = ngettext("Episode", "Episodes", count)
+        else:
+            unit = app_tags.progress_unit_label(media_type, count)
+    value = getattr(media, "formatted_progress", None) or str(
+        getattr(media, "progress", ""),
+    )
+    progress = getattr(media, "progress", 0) or 0
+    formatted_max = getattr(media, "formatted_max_progress", None) or str(max_progress)
+    return {
+        "value": str(value),
+        "max": str(formatted_max) if max_progress else None,
+        "unit": str(unit),
+        "showMax": bool(max_progress) and show_units,
+        "canDecrease": progress != 0,
+        "canIncrease": max_progress is None or progress != max_progress,
+        "decreaseLabel": str(_("Decrease progress")),
+        "increaseLabel": str(_("Increase progress")),
+        "url": reverse("progress_edit", args=[media_type, media.id]),
+        "target": f"progress-{media_type}-{media.id}",
+        "csrfToken": str(csrf_token or ""),
+        "watchOperationId": (
+            app_tags.watch_operation_id()
+            if media_type in {MediaTypes.TV.value, MediaTypes.SEASON.value}
+            else ""
+        ),
     }

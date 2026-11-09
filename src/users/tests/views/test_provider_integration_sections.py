@@ -109,6 +109,14 @@ class ProviderIntegrationSectionsTests(TestCase):
         self.assertNotContains(response, "Jellyfin connection")
         self.assertNotContains(response, "stored-key")
 
+    def test_jellyfin_guide_documents_kefin_tweaks_rating_flag(self):
+        """The official guide tells KefinTweaks users to omit the Rating field."""
+        response = self.client.get(reverse("provider_detail", args=["jellyfin"]) + "?tab=connection")
+        steps = response.context["setup_guides"][0]["methods"][0]["steps"]
+        text = " ".join(part[1] for step in steps for part in step)
+        self.assertIn("KefinTweaks stores watchlist membership as a rating of 1", text)
+        self.assertIn('"Rating": {{Rating}}', text)
+
     def test_provider_context_does_not_consume_one_time_token(self):
         """Only Access & Tokens may consume a newly generated app secret."""
         request = RequestFactory().get("/settings/providers/jellyfin")

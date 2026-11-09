@@ -1,18 +1,37 @@
 import React from 'react';
+import { Text } from 'react-native';
 
-// Icons arrive as parsed shapes from the server, never as markup.
-const camel = (name) => name.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase());
+// Web installs an SVG renderer during island startup. Native, and any web
+// surface that renders before that renderer is installed, falls back to a text
+// glyph. Keeping this module universal is what lets shared settings/provider
+// components use icons without importing a browser-only implementation.
+let iconRenderer = null;
 
-function Shape({ node }) {
-  const props = {};
-  for (const [name, value] of Object.entries(node.attrs)) if (name !== 'class') props[camel(name)] = value;
-  return React.createElement(node.tag, props, ...node.children.map((child, index) => <Shape key={index} node={child} />));
+// Same connected magnifier as app/icons/magnifying-glass.svg.
+const searchSpec = {
+  viewBox: '0 0 24 24',
+  root: { fill: 'none', stroke: 'currentColor', 'stroke-width': '2',
+    'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+  children: [
+    { tag: 'circle', attrs: { cx: '11', cy: '11', r: '8' }, children: [] },
+    { tag: 'path', attrs: { d: 'M21 21l-4.35-4.35' }, children: [] },
+  ],
+};
+
+export function SearchIcon({ color, size = 20, style }) {
+  return <Icon spec={searchSpec} color={color} size={size} style={style} />;
 }
 
-export function Icon({ spec, className }) {
-  return <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox={spec.viewBox}
-    fill={spec.root.fill} stroke={spec.root.stroke} strokeWidth={spec.root['stroke-width']}
-    strokeLinecap={spec.root['stroke-linecap']} strokeLinejoin={spec.root['stroke-linejoin']} className={className} aria-hidden="true">
-    {spec.children.map((child, index) => <Shape key={index} node={child} />)}
-  </svg>;
+export function setIconRenderer(renderer) {
+  iconRenderer = typeof renderer === 'function' ? renderer : null;
+}
+
+export function Icon({ spec, style, children, color, size }) {
+  const rendered = iconRenderer ? iconRenderer(spec, { color, size }) : null;
+  if (rendered !== null && rendered !== undefined) {
+    return rendered;
+  }
+  const label = spec?.label || spec?.name || '';
+  const glyph = String(label).trim().charAt(0).toUpperCase() || '\u2022';
+  return <Text accessible={false} style={style}>{children ?? glyph}</Text>;
 }

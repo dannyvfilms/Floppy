@@ -305,6 +305,11 @@ urlpatterns = [
         name="update_statistics_compare_mode",
     ),
     path(
+        "statistics/media-types",
+        views.update_statistics_media_types,
+        name="update_statistics_media_types",
+    ),
+    path(
         "statistics/select-featured-person",
         views.select_featured_person,
         name="select_featured_person",
@@ -504,6 +509,26 @@ urlpatterns = [
         "podcast/show/<int:show_id>/episodes/",
         views.podcast_episodes_api,
         name="podcast_episodes_api",
+    ),
+    path(
+        "podcast/show/<int:show_id>/episodes/manage/",
+        views.podcast_episodes_manage,
+        name="podcast_episodes_manage",
+    ),
+    path(
+        "podcast/show/<int:show_id>/episodes/add/",
+        views.podcast_episode_add,
+        name="podcast_episode_add",
+    ),
+    path(
+        "podcast/episode/<int:episode_id>/edit/",
+        views.podcast_episode_edit,
+        name="podcast_episode_edit",
+    ),
+    path(
+        "podcast/episode/<int:episode_id>/delete/",
+        views.podcast_episode_delete,
+        name="podcast_episode_delete",
     ),
     path(
         "podcast/show/<int:show_id>/mark-all-played/",

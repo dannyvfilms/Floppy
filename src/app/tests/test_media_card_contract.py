@@ -418,7 +418,7 @@ DOCUMENTED_EXCEPTIONS = {
     "app/components/person_filmography_card.html": "Statistics repeat-player strip",
     "app/components/statistics/highlight_set.html": "Statistics highlight tiles",
     "app/statistics.html": "Statistics page styles for its highlight tiles",
-    "app/components/active_playback_card.html": "Now Playing card",
+    "app/components/active_playback_card.html": "server-rendered fallback for the shared Now Playing MediaCard",
     "app/components/album_grid.html": "music album card: needs an Album, not an Item",
     "app/components/album_list_grid_items.html": "music library albums, no Item row",
     "app/components/artist_grid_items.html": "music library artists, no Item row",
@@ -549,7 +549,8 @@ PROFILE_CARDS = (
     "app/components/person_card_inline.html",
     "app/components/person_filmography_card.html",
     "app/components/statistics/highlight_set.html",
-    "app/components/active_playback_card.html",
+    # The Now Playing fallback has one fixed episode/progress subtitle, not
+    # profile-controlled metadata lines, matching the shared PlaybackCard.
     "app/episode_details.html",
     "events/components/calendar_list.html",
     "events/components/calendar_grid.html",

@@ -3,7 +3,9 @@
 {% load app_tags %}
 
 {% if selected_media_type == "hidden" %}
-  <div class="space-y-6">
+  {% if not discover_debug %}{% discover_hidden_react as discover_hidden %}{% endif %}
+  <div class="space-y-6"{% if not discover_debug %} data-discover-hidden-root data-props-id="{{ discover_hidden.id }}"{% endif %}>
+    {% if not discover_debug %}{{ discover_hidden.props|json_script:discover_hidden.id }}{% endif %}
     <div class="flex items-start justify-between gap-4">
       <div>
         <h2 class="text-2xl font-semibold text-[var(--color-text)]">{% translate "Hidden From Discover" %}</h2>
@@ -32,12 +34,16 @@
     {% endfor %}
   </div>
 {% elif discover_loading %}
-  <div class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-6 text-center">
+  {% discover_state_react "loading" as discover_loading_state %}
+  <div class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-6 text-center" data-discover-state-root data-props-id="{{ discover_loading_state.id }}">
+    {{ discover_loading_state.props|json_script:discover_loading_state.id }}
     <h2 class="text-lg font-semibold text-[var(--color-text)]">{% translate "Building Discover rows" %}</h2>
     <p class="mt-1 text-sm text-[var(--color-warning-text)]">{% translate "Recommendations are refreshing in the background and will appear automatically." %}</p>
   </div>
 {% else %}
-  <div class="rounded-lg border border-gray-700 bg-[var(--color-surface)] p-6 text-center">
+  {% discover_state_react "empty" as discover_empty_state %}
+  <div class="rounded-lg border border-gray-700 bg-[var(--color-surface)] p-6 text-center" data-discover-state-root data-props-id="{{ discover_empty_state.id }}">
+    {{ discover_empty_state.props|json_script:discover_empty_state.id }}
     <h2 class="text-lg font-semibold text-[var(--color-text)]">{% translate "No Discover rows available" %}</h2>
     <p class="mt-1 text-sm text-[var(--color-text-muted)]">{% translate "Try another media type or start tracking more items." %}</p>
   </div>

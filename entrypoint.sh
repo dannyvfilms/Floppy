@@ -115,6 +115,19 @@ warn_when_not_writable FLOPPY_DATA_DIR "$DATA_DIR"
 warn_when_not_writable LOG_DIR "$LOG_DIR_PATH"
 warn_when_not_writable BACKUP_DIR "$BACKUP_DIR_PATH"
 
+RUNNING_AS_ROOT=false
+if [ "$(id -u)" = 0 ]; then
+    RUNNING_AS_ROOT=true
+else
+    # These are persistent mounts; never attempt ownership repair without root.
+    for directory in "$DATA_DIR" "$LOG_DIR_PATH" "$BACKUP_DIR_PATH"; do
+        if ! mkdir -p -- "$directory" 2>/dev/null || [ ! -w "$directory" ]; then
+            echo "[entrypoint] ${directory} must be writable by container UID $(id -u) and GID $(id -g). Fix the mount permissions." >&2
+            exit 1
+        fi
+    done
+fi
+
 # Safe identifiers only, so this line can be pasted into a bug report without
 # redaction. Correlates a log against the image that produced it, and against
 # a specific container instance when HOSTNAME/HOST_CONTAINERNAME diverge.
@@ -122,18 +135,58 @@ echo "[entrypoint] Floppy runtime: version=${VERSION:-unknown} commit=${COMMIT_S
 
 SKIP_SQLITE_MIGRATIONS=false
 if [ -z "$DB_HOST" ]; then
+    SQLITE_ADMISSION_TIMEOUT=${FLOPPY_SQLITE_ADMISSION_TIMEOUT:-30}
+    case "$SQLITE_ADMISSION_TIMEOUT" in
+        ''|*[!0-9]*)
+            echo "[entrypoint] FLOPPY_SQLITE_ADMISSION_TIMEOUT must be a positive whole number of seconds; got '${SQLITE_ADMISSION_TIMEOUT}'." >&2
+            exit 1
+            ;;
+    esac
+    case "$SQLITE_ADMISSION_TIMEOUT" in
+        *[1-9]*) ;;
+        *)
+            echo "[entrypoint] FLOPPY_SQLITE_ADMISSION_TIMEOUT must be greater than zero; got '${SQLITE_ADMISSION_TIMEOUT}'." >&2
+            exit 1
+            ;;
+    esac
+
     DB_FILE_INPUT=${FLOPPY_DB_PATH:-"${DATA_DIR_INPUT}/db.sqlite3"}
     DB_FILE=$(python -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "$DB_FILE_INPUT")
     DB_PARENT=$(python -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).parent)' "$DB_FILE")
 
     reject_unsafe_managed_directory FLOPPY_DB_PATH "$DB_PARENT"
+    if [ "$RUNNING_AS_ROOT" = false ] && \
+       { ! mkdir -p -- "$DB_PARENT" 2>/dev/null || [ ! -w "$DB_PARENT" ]; }; then
+        echo "[entrypoint] SQLite directory ${DB_PARENT} must be writable by container UID $(id -u) and GID $(id -g). Fix the mount permissions." >&2
+        exit 1
+    fi
+
+    run_sqlite_admission() {
+        admission_attempt=1
+        while :; do
+            echo "[entrypoint] Checking SQLite startup admission for ${DB_FILE} (${SQLITE_ADMISSION_TIMEOUT}s deadline; attempt ${admission_attempt}/2)" >&2
+            integrity_status=0
+            timeout -k 5 "$SQLITE_ADMISSION_TIMEOUT" python manage.py sqlite_startup &
+            integrity_pid=$!
+            wait "$integrity_pid" || integrity_status=$?
+            case "$integrity_status" in
+                124|143)
+                    if [ "$admission_attempt" -eq 1 ]; then
+                        echo "[entrypoint] SQLite admission timed out after ${SQLITE_ADMISSION_TIMEOUT}s (exit ${integrity_status}); retrying once." >&2
+                        admission_attempt=2
+                        continue
+                    fi
+                    ;;
+            esac
+            return "$integrity_status"
+        done
+    }
 
     # Admit ordinary restarts using bounded schema/history/incident reads.
     # Pending migrations require explicit snapshot-based preparation. Repairs
     # remain an offline, incident-scoped maintenance action.
     if [ -f "$DB_FILE" ]; then
         while :; do
-            echo "[entrypoint] Checking SQLite startup admission for ${DB_FILE} (30s deadline)" >&2
             integrity_status=0
             integrity_pid=
             # Admission reads only schema/history and incident sidecars. Full
@@ -146,9 +199,7 @@ if [ -z "$DB_HOST" ]; then
                 wait "$integrity_pid" || integrity_status=$?
             fi
             if [ "$integrity_status" -eq 0 ]; then
-                timeout -k 5 30 python manage.py sqlite_startup &
-                integrity_pid=$!
-                wait "$integrity_pid" || integrity_status=$?
+                run_sqlite_admission || integrity_status=$?
             fi
             if [ "$integrity_status" -eq 11 ]; then
                 # Migrations pending and no snapshot: take one now (services are
@@ -163,9 +214,7 @@ if [ -z "$DB_HOST" ]; then
                     integrity_pid=$!
                     wait "$integrity_pid" || integrity_status=$?
                     if [ "$integrity_status" -eq 0 ]; then
-                        timeout -k 5 30 python manage.py sqlite_startup &
-                        integrity_pid=$!
-                        wait "$integrity_pid" || integrity_status=$?
+                        run_sqlite_admission || integrity_status=$?
                     fi
                 fi
             fi
@@ -178,8 +227,8 @@ if [ -z "$DB_HOST" ]; then
                 break
             fi
             case "$integrity_status" in
-                124)
-                    echo "[entrypoint] SQLite admission exceeded 30s; inspect storage/locks. Startup is paused before migrations and services." >&2
+                124|143)
+                    echo "[entrypoint] SQLite admission exceeded ${SQLITE_ADMISSION_TIMEOUT}s after two attempts (last exit ${integrity_status}); inspect storage/locks. Startup is paused before migrations and services." >&2
                     ;;
                 *)
                     echo "[entrypoint] SQLite startup is paused because the integrity check failed; migrations and services were not started. The container will remain unhealthy and idle." >&2
@@ -271,12 +320,17 @@ if python config/static_collection.py; then
     echo "[entrypoint] Reusing image static files" >&2
 else
     echo "[entrypoint] Collecting static files" >&2
+    if [ "$RUNNING_AS_ROOT" = false ] && [ ! -w /floppy/staticfiles ]; then
+        echo "[entrypoint] Image static files do not match the current configuration and /floppy/staticfiles is not writable. Provide a writable staticfiles mount or use the image's production configuration." >&2
+        exit 1
+    fi
     python manage.py collectstatic --noinput
 fi
 
 PUID=${PUID:-1000}
 PGID=${PGID:-1000}
 
+if [ "$RUNNING_AS_ROOT" = true ]; then
 echo "[entrypoint] Fixing file ownership (PUID=${PUID} PGID=${PGID})" >&2
 
 groupmod -o -g "$PGID" abc
@@ -337,12 +391,15 @@ if [ -e "$BACKUP_DIR_PATH" ] && ! timeout 600 chown abc:abc -- "$BACKUP_DIR_PATH
     echo "[entrypoint] WARNING: chown of ${BACKUP_DIR_PATH} failed or timed out (stalled mount?); continuing" >&2
 fi
 # Older images or root-run maintenance commands can leave the snapshot
-# directory root-owned. Repair this one managed directory, never a symlink or
-# the whole backup tree, so the unprivileged worker can publish snapshots.
+# directories root-owned. The startup snapshot before pending migrations runs
+# before the identity switch, so its files are written as root; repairing only
+# the directory left those files unreadable to PUID on the host (#1850). Repair
+# these two managed directories and their contents, never a symlink or the
+# whole backup tree, so the unprivileged worker can publish snapshots.
 for snapshot_dir in "${BACKUP_DIR_PATH}/database" "${BACKUP_DIR_PATH}/verification"; do
     if [ -L "$snapshot_dir" ]; then
         echo "[entrypoint] WARNING: snapshot directory ${snapshot_dir} is a symlink; refusing ownership repair" >&2
-    elif [ -d "$snapshot_dir" ] && ! timeout 600 chown -h abc:abc -- "$snapshot_dir"; then
+    elif [ -d "$snapshot_dir" ] && ! timeout 600 chown -R -h abc:abc -- "$snapshot_dir"; then
         echo "[entrypoint] WARNING: chown of ${snapshot_dir} failed or timed out (stalled mount?); continuing" >&2
     fi
 done
@@ -359,6 +416,10 @@ for dir in /floppy/staticfiles /var/log/nginx /var/lib/nginx; do
     timeout 600 chown -R abc:abc -- "$dir" || \
         echo "[entrypoint] WARNING: chown of ${dir} failed or timed out (stalled mount?); continuing" >&2
 done
+else
+    echo "[entrypoint] Running as UID $(id -u) GID $(id -g); PUID/PGID and ownership repair are skipped." >&2
+fi
+export LOG_DIR="$LOG_DIR_PATH"
 
 # Probe the host once, here, and export the sizing decision for supervisord to
 # expand into each program's command line. Doing it per-process would let the
@@ -422,4 +483,11 @@ fi
 export FLOPPY_SUPERVISORD_LOG
 
 echo "[entrypoint] Starting services" >&2
-exec supervisord -c /etc/supervisord.conf
+SUPERVISOR_CONFIG=/etc/supervisord.conf
+if [ "$RUNNING_AS_ROOT" = false ]; then
+    # Supervisor cannot switch users without root, and numeric Docker users
+    # need not exist in /etc/passwd. All children inherit the current identity.
+    SUPERVISOR_CONFIG=/tmp/floppy-runtime/supervisord.conf
+    sed '/^user=/d' /etc/supervisord.conf > "$SUPERVISOR_CONFIG"
+fi
+exec supervisord -c "$SUPERVISOR_CONFIG"

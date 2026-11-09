@@ -7,7 +7,7 @@
 <div x-show="showModal" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @mousedown.self="showModal = false">
   <div class="bg-[var(--color-surface)] p-6 rounded-lg w-152 max-h-[90dvh] overflow-y-auto"
     x-data="{
-      isPublic: {{ form.instance.is_public|yesno:'true,false' }},
+      visibility: '{{ form.instance.visibility|default:"private"|escapejs }}',
       includeNotes: {{ form.instance.include_notes|yesno:'true,false' }},
       isSmart: {{ form.instance.is_smart|yesno:'true,false' }} || (typeof listMode !== 'undefined' && listMode === 'smart'),
       slugValue: '{{ form.public_slug.value|default_if_none:''|escapejs }}',
@@ -26,10 +26,16 @@
       },
       currentReference() {
         const previewSlug = this.previewSlug();
-        if (this.isPublic && previewSlug) {
+        if (this.isLinkVisible() && previewSlug) {
           return previewSlug;
         }
         return this.listId || '';
+      },
+      isPublic() {
+        return this.visibility === 'public';
+      },
+      isLinkVisible() {
+        return this.visibility === 'public' || this.visibility === 'unlisted';
       },
       currentListUrl() {
         const reference = this.currentReference();
@@ -62,21 +68,43 @@
       {% for field in form %}
         <div>
           {% if field.name == 'is_public' %}
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
-                <div class="flex-1">
-                  <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
-                    {% include "app/icons/globe.svg" with classes="w-5 h-5 mr-2" %}
-                    <span class="text-sm font-medium">{% translate field.label %}</span>
-                  </div>
-                  <p class="text-xs text-[var(--color-text-muted)] ml-7">{% translate field.help_text %}</p>
+            <div class="space-y-3">
+              <div class="p-3 bg-[var(--color-surface-strong)] rounded-md space-y-3">
+                <div class="flex items-center text-[var(--color-text-secondary)]">
+                  {% include "app/icons/eye.svg" with classes="w-5 h-5 mr-2" %}
+                  <span class="text-sm font-medium">{% translate "Visibility" %}</span>
                 </div>
-                <label class="relative inline-flex items-center cursor-pointer ml-4">
-                  <input class="sr-only peer" type="checkbox" name="{{ field.name }}" x-model="isPublic" {% if form.instance.is_public %}checked{% endif %}>
-                  <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600"></div>
-                </label>
+                <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <label class="flex cursor-pointer items-start gap-2 rounded-md border border-gray-600 p-3 transition-colors"
+                         :class="visibility === 'public' ? 'border-indigo-500 bg-indigo-500/10' : 'hover:border-gray-500'">
+                    <input type="radio" name="{{ form.visibility.name }}" value="public" x-model="visibility" class="mt-0.5 accent-indigo-600">
+                    <span>
+                      <span class="block text-sm font-medium text-[var(--color-text)]">{% translate "Public" %}</span>
+                      <span class="block text-xs text-[var(--color-text-muted)]">{% translate "Listed on your profile. Anyone with the link can view it." %}</span>
+                    </span>
+                  </label>
+                  <label class="flex cursor-pointer items-start gap-2 rounded-md border border-gray-600 p-3 transition-colors"
+                         :class="visibility === 'unlisted' ? 'border-indigo-500 bg-indigo-500/10' : 'hover:border-gray-500'">
+                    <input type="radio" name="{{ form.visibility.name }}" value="unlisted" x-model="visibility" class="mt-0.5 accent-indigo-600">
+                    <span>
+                      <span class="block text-sm font-medium text-[var(--color-text)]">{% translate "Unlisted" %}</span>
+                      <span class="block text-xs text-[var(--color-text-muted)]">{% translate "Only people with the link can view it. It is not listed on your profile." %}</span>
+                    </span>
+                  </label>
+                  <label class="flex cursor-pointer items-start gap-2 rounded-md border border-gray-600 p-3 transition-colors"
+                         :class="visibility === 'private' ? 'border-indigo-500 bg-indigo-500/10' : 'hover:border-gray-500'">
+                    <input type="radio" name="{{ form.visibility.name }}" value="private" x-model="visibility" class="mt-0.5 accent-indigo-600">
+                    <span>
+                      <span class="block text-sm font-medium text-[var(--color-text)]">{% translate "Private" %}</span>
+                      <span class="block text-xs text-[var(--color-text-muted)]">{% translate "Only you and the people you share it with can view it." %}</span>
+                    </span>
+                  </label>
+                </div>
+                {% if form.visibility.errors %}
+                  <p class="text-sm text-red-400">{{ form.visibility.errors|join:", " }}</p>
+                {% endif %}
               </div>
-              <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md" :class="{ 'opacity-50': !isPublic }">
+              <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md" :class="{ 'opacity-50': !isLinkVisible() }">
                 <div class="flex-1">
                   <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
                     {% include "app/icons/eye.svg" with classes="w-5 h-5 mr-2" %}
@@ -84,15 +112,17 @@
                   </div>
                   <p class="text-xs text-[var(--color-text-muted)] ml-7">{{ form.include_notes.help_text }}</p>
                 </div>
-                <label class="relative inline-flex items-center ml-4" :class="isPublic ? 'cursor-pointer' : 'cursor-not-allowed'">
-                  <input class="sr-only peer" type="checkbox" name="{{ form.include_notes.name }}" x-model="includeNotes" :disabled="!isPublic" {% if form.instance.include_notes %}checked{% endif %}>
+                <label class="relative inline-flex items-center ml-4" :class="isLinkVisible() ? 'cursor-pointer' : 'cursor-not-allowed'">
+                  <input class="sr-only peer" type="checkbox" name="{{ form.include_notes.name }}" x-model="includeNotes" :disabled="!isLinkVisible()" {% if form.instance.include_notes %}checked{% endif %}>
                   <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600"></div>
                 </label>
               </div>
             </div>
+          {% elif field.name == 'visibility' %}
+            {# Rendered with the visibility controls above. #}
           {% elif field.name == 'allow_recommendations' %}
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md" :class="{ 'opacity-50': !isPublic }">
+              <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md" :class="{ 'opacity-50': !isPublic() }">
                 <div class="flex-1">
                   <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
                     {% include "app/icons/bell.svg" with classes="w-5 h-5 mr-2" %}
@@ -100,8 +130,8 @@
                   </div>
                   <p class="text-xs text-[var(--color-text-muted)] ml-7">{% translate field.help_text %}</p>
                 </div>
-                <label class="relative inline-flex items-center ml-4" :class="isPublic ? 'cursor-pointer' : 'cursor-not-allowed'">
-                  <input class="sr-only peer" type="checkbox" name="{{ field.name }}" :disabled="!isPublic" {% if form.instance.allow_recommendations %}checked{% endif %}>
+                <label class="relative inline-flex items-center ml-4" :class="isPublic() ? 'cursor-pointer' : 'cursor-not-allowed'">
+                  <input class="sr-only peer" type="checkbox" name="{{ field.name }}" :disabled="!isPublic()" {% if form.instance.allow_recommendations %}checked{% endif %}>
                   <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600"></div>
                 </label>
               </div>
@@ -139,7 +169,7 @@
                 </p>
               </div>
 
-              <div x-show="isPublic" x-cloak class="space-y-2">
+              <div x-show="isLinkVisible()" x-cloak class="space-y-2">
                 <div class="flex flex-col sm:flex-row rounded-md overflow-hidden border border-gray-600 bg-[var(--color-panel)]">
                   <span class="px-3 py-2 text-xs sm:text-sm text-[var(--color-text-muted)] border-b sm:border-b-0 sm:border-r border-gray-600 break-all"
                         x-text="listUrlPrefix()"></span>
@@ -151,22 +181,30 @@
                 {% endif %}
               </div>
 
-              <p x-show="!isPublic" x-cloak class="text-xs text-[var(--color-text-muted)]">
-                {% translate "Make this list public to customize the share URL." %}
+              <p x-show="!isLinkVisible()" x-cloak class="text-xs text-[var(--color-text-muted)]">
+                {% translate "Make this list public or unlisted to customize the share URL." %}
               </p>
             </div>
           {% elif field.name == 'tags' %}
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label class="block text text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate field.label %}</label>
-                {{ field }}
+            <div class="space-y-4">
+              <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label class="block text text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate field.label %}</label>
+                  {{ field }}
+                </div>
+                <div>
+                  <label class="block text text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate form.collaborators.label %}</label>
+                  {{ form.collaborators }}
+                  <p class="mt-1 text-xs text-[var(--color-text-muted)]">{% translate "People you share with can edit the list." %}</p>
+                </div>
               </div>
               <div>
-                <label class="block text text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate form.collaborators.label %}</label>
-                {{ form.collaborators }}
+                <label class="block text text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate form.viewers.label %}</label>
+                {{ form.viewers }}
+                <p class="mt-1 text-xs text-[var(--color-text-muted)]">{% translate "People you share with here can open and browse the list, but cannot change it." %}</p>
               </div>
             </div>
-          {% elif field.name == 'collaborators' %}
+          {% elif field.name == 'collaborators' or field.name == 'viewers' %}
             {# Rendered with List Tags above. #}
           {% elif field.name|slice:':6' == 'smart_' %}
           {% else %}

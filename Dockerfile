@@ -61,6 +61,7 @@ FROM ${PYTHON_IMAGE}
 
 # https://stackoverflow.com/questions/58701233/docker-logs-erroneously-appears-empty-until-container-stops
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
@@ -135,8 +136,13 @@ EXPOSE 8000
 
 CMD ["/runtime-entrypoint.sh"]
 
-HEALTHCHECK --interval=45s --timeout=15s --start-period=30s --retries=5 \
-  CMD port="$(cat /run/floppy/server-port 2>/dev/null)" \
+# A first boot on an empty volume runs every migration before supervisord
+# starts nginx and gunicorn, which can take several minutes on slow storage.
+# Failures inside the start period are informational only, so give a cold boot
+# that budget instead of reporting it unhealthy while migrations are still
+# finishing.
+HEALTHCHECK --interval=45s --timeout=15s --start-period=300s --retries=5 \
+  CMD port="$(cat /tmp/floppy-runtime/server-port 2>/dev/null)" \
       && case "$port" in *[!0-9]*|'') exit 1 ;; esac \
       && wget --no-verbose --tries=1 --spider "http://127.0.0.1:${port}/health/" \
       || exit 1

@@ -64,12 +64,14 @@
       window.removeEventListener('history-refresh-start', this.refreshListener);
     }
   }
-}" x-init="$el.closest('.container')?.classList.add('history-page-container')">
+}" x-init="$el.closest('.container')?.classList.add('history-page-container')"
+     @history-refresh-dismiss.window="cacheRefreshing = false; cacheUpdater?.stop()">
   
   {# Cache refresh notification banner #}
   <div x-show="cacheRefreshing"
        x-cloak
        x-transition
+       data-history-legacy-chrome
        class="fixed top-24 right-0 left-0 {% block messages_sidebar_offset %}lg:left-64{% endblock messages_sidebar_offset %} z-50 flex justify-center pointer-events-none mb-4">
     <div class="w-full max-w-xl px-4 pointer-events-auto">
       <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg toast-info opacity-0"
@@ -88,7 +90,7 @@
   {# Month-based navigation header #}
   {# Left = toward past (older), Right = toward present (newer) #}
   {% if use_month_view %}
-    <div class="flex items-center justify-between gap-3 sm:gap-6 mb-6">
+    <div class="flex items-center justify-between gap-3 sm:gap-6 mb-6" data-history-legacy-chrome>
       {# Left side: Last (back one year) + Older month #}
       <div class="flex items-center gap-1 sm:gap-2">
         {# Last button - go back 1 year from current view #}
@@ -150,7 +152,7 @@
 
   {# Legacy page-based pagination for filtered views #}
   {% if not use_month_view and total_pages|default:0 > 1 %}
-    <div class="history-pagination flex flex-wrap items-center justify-center gap-2 sm:gap-3 mb-3">
+    <div class="history-pagination flex flex-wrap items-center justify-center gap-2 sm:gap-3 mb-3" data-history-legacy-chrome>
       {% if current_page > 1 %}
         <a href="?{% if active_filters %}{% for key, value in active_filters.items %}{{ key }}={{ value }}{% if not forloop.last %}&{% endif %}{% endfor %}{% if active_filters %}&{% endif %}{% endif %}page={{ current_page|add:'-1' }}"
            class="p-2 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer"
@@ -249,13 +251,16 @@
   {% endif %}
 
   {% if history_days %}
-    <div class="space-y-10">
-      {% for day in history_days %}
-        {% include "app/components/history_day.html" with day=day history_mode=history_mode user=user %}
-      {% endfor %}
+    {{ history_feed_props|json_script:"history-feed-props" }}
+    <div data-history-feed-root data-props-id="history-feed-props">
+      <div class="space-y-10">
+        {% for day in history_days %}
+          {% include "app/components/history_day.html" with day=day history_mode=history_mode user=user %}
+        {% endfor %}
+      </div>
     </div>
     {% if not use_month_view and total_pages|default:0 > 1 %}
-      <div class="history-pagination flex flex-wrap items-center justify-center gap-2 sm:gap-3 mt-6">
+      <div class="history-pagination flex flex-wrap items-center justify-center gap-2 sm:gap-3 mt-6" data-history-legacy-chrome>
         {% if current_page > 1 %}
           <a href="?{% if active_filters %}{% for key, value in active_filters.items %}{{ key }}={{ value }}{% if not forloop.last %}&{% endif %}{% endfor %}{% if active_filters %}&{% endif %}{% endif %}page={{ current_page|add:'-1' }}"
              class="p-2 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer"
@@ -582,7 +587,7 @@
     if (!term) return this.availableImpliedGenres;
     return this.availableImpliedGenres.filter(g => g.toLowerCase().includes(term));
   }
-}">
+}" data-history-legacy-chrome>
   {# FAB button #}
   <button @click="open = true"
           class="fixed bottom-6 right-[max(1.5rem,var(--safe-right))] z-40 w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg flex items-center justify-center cursor-pointer transition-colors"

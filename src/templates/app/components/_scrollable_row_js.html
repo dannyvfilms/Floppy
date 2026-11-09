@@ -60,7 +60,14 @@
       const rowId = event.detail && event.detail.rowId;
       if (!rowId) return;
       const row = document.querySelector(`#media-grid-row-${rowId}`);
-      if (row) reloadHomeRow(row, rowId);
+      if (row) {
+        reloadHomeRow(row, rowId);
+        return;
+      }
+      const mounted = document.querySelector(`[data-rails-row-root][data-row-id="${rowId}"]`);
+      if (mounted) {
+        mounted.dispatchEvent(new CustomEvent('railsRowRefresh', { bubbles: true }));
+      }
     });
   }
 
@@ -168,7 +175,7 @@
 
   function initHomeRowInfiniteScroll() {
     document.querySelectorAll('[data-home-row="true"]').forEach(row => {
-      if (row.dataset.homeRowBound === 'true') {
+      if (row.dataset.homeRowBound === 'true' || row.closest('[data-rails-row-root]')) {
         return;
       }
       row.dataset.homeRowBound = 'true';
@@ -182,6 +189,9 @@
     });
     requestAnimationFrame(() => {
       document.querySelectorAll('[data-home-row="true"]').forEach(row => {
+        if (row.closest('[data-rails-row-root]')) {
+          return;
+        }
         ensureHomeRowObserver(row);
         syncHomeRowLoadedCount(row);
         maybeAutofillHomeRow(row);
@@ -241,9 +251,9 @@
     }
   }
 
-  // Several cards scroll sideways. Each keeps the width a lone card always had,
-  // which the page's own grid decides, so read it off a hidden probe grid that
-  // sits beside the row and obeys the same rules.
+  // Playback spans two regular cards on desktop and the configured mobile
+  // grid count on mobile. Measure an ordinary grid child so its own span does
+  // not get multiplied into the result.
   function syncActivePlaybackColumns() {
     const container = document.getElementById('active-playback-container');
     if (!container) return;
@@ -254,12 +264,16 @@
       probe.className = 'media-grid';
       probe.setAttribute('aria-hidden', 'true');
       probe.style.cssText = 'height:0;overflow:hidden;visibility:hidden;pointer-events:none;margin:0 !important';
-      probe.innerHTML = '<div data-active-playback-card data-active-playback-probe></div>';
+      probe.innerHTML = '<div data-active-playback-probe></div>';
       container.after(probe);
     }
     const item = probe.firstElementChild;
     if (!item) return;
-    const width = Math.round(item.getBoundingClientRect().width);
+    const columnWidth = item.getBoundingClientRect().width;
+    const gap = parseFloat(getComputedStyle(probe).columnGap) || 0;
+    const mobileColumns = document.body.dataset.mobileGrid === 'comfortable' ? 2 : 3;
+    const columns = window.matchMedia('(min-width: 769px)').matches ? 2 : mobileColumns;
+    const width = Math.round(columnWidth * columns + gap * (columns - 1));
     if (width > 0 && container.dataset.cardWidth !== String(width)) {
       container.dataset.cardWidth = String(width);
       container.style.setProperty('--playback-card-w', `${width}px`);

@@ -2,6 +2,7 @@
 {% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
+{% load track_tags %}
 
 
 {# Track Episode Modal #}
@@ -80,8 +81,17 @@
           <div class="border-t border-gray-600 my-6"></div>
         {% endif %}
 
+        {% episode_track_form media episode as episode_form %}
+        {% if episode_form %}
+          {% with episode_form.formId|add:"-props" as episode_form_props_id %}
+            {{ episode_form|json_script:episode_form_props_id }}
+            <div data-track-form-root data-props-id="{{ episode_form_props_id }}"></div>
+          {% endwith %}
+        {% endif %}
+
         {# Watch form (date input) #}
         <form id="episode-watch-{{ media.season_number }}-{{ episode.episode_number }}"
+              data-track-form-legacy
               method="post"
               action="{% url 'episode_save' %}?next={{ request.path }}"
               hx-post="{% url 'episode_save' %}?next={{ request.path }}"
@@ -106,11 +116,12 @@
 
           <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-2">{% translate "Watch Date" %}</label>
 
-          {% include "app/components/date_time_picker.html" with field_name="end_date" field_value="" field_id="episode-watch-date" field_label=_("Watch Date") default_now=True track_time=TRACK_TIME suggestion_label=_("Release Date") suggestion_date=episode.air_date|date:"Y-m-d" runtime_minutes=episode.runtime_minutes week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format only %}
+          {% include "app/components/date_time_picker.html" with legacy_picker=True field_name="end_date" field_value="" field_id="episode-watch-date" field_label=_("Watch Date") default_now=True track_time=TRACK_TIME suggestion_label=_("Release Date") suggestion_date=episode.air_date|date:"Y-m-d" runtime_minutes=episode.runtime_minutes week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format only %}
         </form>
 
         {# Drop form (no date input) #}
         <form id="episode-drop-{{ media.season_number }}-{{ episode.episode_number }}"
+              data-track-form-legacy
               method="post"
               action="{% url 'episode_drop' %}?next={{ request.path }}"
               hx-post="{% url 'episode_drop' %}?next={{ request.path }}"
@@ -131,7 +142,9 @@
         </form>
 
         {# Shared button row #}
-        <div class="flex justify-end-safe gap-3 mt-6">
+        <div id="episode-track-legacy-actions-{{ media.season_number }}-{{ episode.episode_number }}"
+             data-track-form-legacy
+             class="flex justify-end-safe gap-3 mt-6">
           <button type="submit"
                   form="episode-drop-{{ media.season_number }}-{{ episode.episode_number }}"
                   class="px-4 py-2 bg-[var(--color-surface-strong)] text-[var(--color-text)] rounded-md hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer">

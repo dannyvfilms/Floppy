@@ -1,5 +1,10 @@
 {% load i18n %}
+{% load app_tags %}
 {% load widget_tweaks %}
+{% collection_copy_form_props form collection_fields as copy_form_props %}
+{% with props_id="collection-copy-form-"|add:form.auto_id|cut:"%s" %}
+{{ copy_form_props|json_script:props_id }}
+<div data-collection-copy-fields-root data-props-id="{{ props_id }}">
 <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
   {% for field in form %}
     {% if field.name != 'item' %}
@@ -142,3 +147,5 @@
     {% endif %}
   {% endfor %}
 </div>
+</div>
+{% endwith %}

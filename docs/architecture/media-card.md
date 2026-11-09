@@ -26,16 +26,76 @@ A template renders the card with the tag, never with `{% include %}`:
 
 ## Who draws the card
 
-The shared React component (`frontend/ui/MediaCard.jsx`) draws every card: artwork, chips,
-status, rating, hover buttons, popups and bulk-select checkbox. The server sends the card
-wrapper, a props `<script>` built by `app/media_card_model.py`, and a first-paint poster and
-title link that React replaces on mount. The card's popups open in the shared host: the
-Add-to-lists form is React (a JSON form model from `lists_modal?format=json`), the Track form
-is still the server-rendered form (see POPUP-HOST in `docs/ui/component-register.md`). Tests that care about a chip, rating or button read the
-model with `app.tests.card_props.card_model`, not the markup. History and the Search list row use
-the same component. `MediaCardInventoryTest` fails if a surface opts out, the template regrows a
-legacy body, or a template draws `media-card` markup that is neither the tag nor listed in its
-`DOCUMENTED_EXCEPTIONS`.
+The shared `MediaCard` import resolves to `frontend/ui/MediaCard.web.jsx` on the
+browser and to the React Native implementation through
+`frontend/ui/MediaCard.native.jsx` on native. The browser implementation draws every
+browser surface — Home, library/search/discover/history/detail/list and the collection
+browser — with artwork, chips, status, rating, hover buttons, popups and the
+bulk-select checkbox. The title, rating and subtitle lines overlay the poster's bottom
+edge over the faded `bg-card-body` gradient, so the text is part of the card rather
+than a separate block below it. It keeps the established DOM classes so themes, title
+settings and hover rules still apply. The server sends the `.media-card` wrapper as
+the React host, a props `<script>` built by `app/media_card_model.py`, and a first-paint
+poster and title link that React replaces on mount. Keeping the wrapper as the host
+means the established `search-result-card`/poster first-child rules still size the
+artwork and place the body over it. The card's popups open in the shared host: the
+Add-to-lists form is React (a JSON form model from `lists_modal?format=json`), and the
+Track popup opens the shared Track dialog for every available tab, with Metadata,
+Collection and Episode plays still server-owned inside it (see POPUP-HOST in
+`docs/ui/component-register.md`). Tests that care about a chip, rating or
+button read the model with `app.tests.card_props.card_model`, not the markup.
+`MediaCardInventoryTest` fails if a surface opts out, the template regrows a
+legacy body, or a template draws `media-card` markup that is neither the tag nor
+listed in its `DOCUMENTED_EXCEPTIONS`.
+
+## Native card
+
+`frontend/ui/MediaCard.jsx` is the shared React Native card for native and the
+shared React Native surfaces over the same `card_model`: poster, square, landscape
+and row layouts, artwork fallback, status
+and media-type chips, corner chips, progress, title and alternative title,
+subtitle lines, score and the rating affordance, plus read-only and selectable
+states. Poster layouts overlay the title, rating and subtitle lines on the
+artwork's bottom edge; the row layout keeps metadata beside the artwork.
+`frontend/ui/MediaCardActions.jsx` renders the action overlay, row buttons
+and list-reorder controls from the same action specs, with explicit `onAction`,
+`onReorder` and reveal callbacks; touch reveals the buttons and hover reveals them
+where the platform reports hover. It never posts, fetches or opens a popup itself.
+`frontend/ui/MediaCardActionHost.jsx` is the native popup shell for modal actions,
+while the browser keeps `ModalHost.jsx`. `native-proof/app/surfaces/MediaCardSlot.jsx`
+renders the card and the callback contract on Home, Discover and Library with demo
+library items.
+
+`MediaCard.web.jsx` is the browser implementation and `mountMediaCard.jsx` is its
+server adapter; both keep web consumers, themes, popups and server writes. Every
+browser route must resolve this implementation through the shared `MediaCard` import;
+using the React Native shell on the browser regresses the established hover action
+overlay, faded metadata gradient, rating popup and chip appearance. The native action
+presentation owns Track and Add-to-lists form bodies, the song and episode Track
+variants, Discover plan/hide, list reorder and the shared card-change event. Link
+actions route through the platform navigation callback instead of opening an empty
+popup. The list reorder drag handle starts a native `PanResponder` gesture and moves
+the touched card over the nearest card centre; the same handle exposes an
+`adjustable` position and hint, increment/decrement accessibility actions, and the
+step buttons remain the keyboard and screen-reader equivalent. Reorder results and
+failures are announced through the native accessibility API. Drag drops persist
+through the full-order `PUT /api/v1/lists/{id}/items/order/` endpoint, with the
+existing first/back/next/last endpoint as the fallback when only one item id is
+available. Discover planning and dismiss send the complete candidate payload and
+remove the candidate from the native Discover grid; the Track Discover tab
+hide/unhide action publishes the same event. Bulk status changes arrive through the
+shared card-change bus and update matching cards without a page reload. Read-only
+cards suppress actions, selection and rating writes, while selectable cards expose
+the shared checkbox state for bulk surfaces.
+
+The web Track General form is now shared presentation through
+`frontend/ui/mountTrackForm.jsx`; the remaining Track tabs and the song/episode
+variants keep the server-rendered form as the progressive fallback. A live account,
+paged and tagged list loading, and a full browser/device/screen-reader interaction
+pass remain. The iOS 17.2 simulator and Android 15 Pixel 7 AVD rendered the shared
+cards earlier; Android demo images did not load and no action overlay, drag, popup,
+bulk refresh or screen-reader pass was exercised. Runtime evidence for the finish
+pass is unverified even though the component is otherwise complete.
 
 ## What `media` must be
 
@@ -108,7 +168,7 @@ chip that the table says should show.
 
 These cards are built separately, on purpose, because they show a different kind of
 thing or use a different layout: list cards (`lists/components/list_grid.html`),
-history day cards, the Now Playing card, person and cast cards, and statistics highlights.
+history day cards, the Now Playing server-rendered fallback, person and cast cards, and statistics highlights. The React-owned Now Playing card uses this shared MediaCard.
 A person's or studio's list of titles is not one of them: it uses the `credit` surface, with
 `people_views.attach_card_media` loading the viewer's tracking row for each title. The Statistics
 repeat-player strip is still the older hand-built `person_filmography_card.html`.

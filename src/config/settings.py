@@ -318,6 +318,11 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "api.authentication.BearerAuthentication",
         "api.authentication.APIKeyAuthentication",
+        # The native client signs in through allauth and calls the API with
+        # that session, like the web islands do. HasScope already treats a
+        # session (request.auth is None) as full access, and DRF still enforces
+        # CSRF on unsafe methods. Keep this last so token clients are unchanged.
+        "rest_framework.authentication.SessionAuthentication",
     ],
     "DEFAULT_RENDERER_CLASSES": ("api.renderers.ImageCacheJSONRenderer",),
     # ``format`` is a media-list filter, not a renderer override.

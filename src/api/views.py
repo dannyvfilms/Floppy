@@ -89,6 +89,7 @@ from .helpers import (
     build_lists_by_item_id,
     check_source_type,
     check_valid_type,
+    filter_item_bucket,
     get_item_lists,
     get_media_type_availability,
     paginate_data,
@@ -393,6 +394,7 @@ class ListsView(drf_views.APIView):
             )
         description = body.get("description", "")
         collaborator_ids = body.get("collaborators", [])
+        viewer_ids = body.get("viewers", [])
 
         if collaborator_ids and not isinstance(collaborator_ids, list):
             return Response(
@@ -401,11 +403,26 @@ class ListsView(drf_views.APIView):
                 },
                 status=HTTP.BAD_REQUEST,
             )
+        if viewer_ids and not isinstance(viewer_ids, list):
+            return Response(
+                {
+                    "detail": "Field 'viewers' must be an array of user IDs.",
+                },
+                status=HTTP.BAD_REQUEST,
+            )
 
         is_public = body.get("is_public", False)
         if not isinstance(is_public, bool):
             return Response(
                 {"detail": "Field 'is_public' must be a boolean."},
+                status=HTTP.BAD_REQUEST,
+            )
+        visibility = body.get("visibility")
+        if visibility is None:
+            visibility = "public" if is_public else "private"
+        if visibility not in dict(CustomList.VISIBILITY_CHOICES):
+            return Response(
+                {"detail": "Field 'visibility' must be public, unlisted or private."},
                 status=HTTP.BAD_REQUEST,
             )
         allow_recommendations = body.get("allow_recommendations", False)
@@ -419,7 +436,7 @@ class ListsView(drf_views.APIView):
         except django_forms.ValidationError as e:
             return Response({"detail": e.messages[0]}, status=HTTP.BAD_REQUEST)
 
-        if not is_public:
+        if visibility != "public":
             allow_recommendations = False
 
         try:
@@ -428,7 +445,7 @@ class ListsView(drf_views.APIView):
                 name=name,
                 description=description,
                 owner=user,
-                visibility="public" if is_public else "private",
+                visibility=visibility,
                 public_slug=public_slug,
                 allow_recommendations=allow_recommendations,
             )
@@ -446,6 +463,20 @@ class ListsView(drf_views.APIView):
                     )
 
                 custom_list.collaborators.set(collaborators)
+
+            if viewer_ids:
+                viewers = get_user_model().objects.filter(id__in=viewer_ids)
+
+                if viewers.count() != len(viewer_ids):
+                    custom_list.delete()
+                    return Response(
+                        {
+                            "detail": "One or more viewer IDs are invalid.",
+                        },
+                        status=HTTP.BAD_REQUEST,
+                    )
+
+                custom_list.viewers.set(viewers)
 
             serialized_data = serialize_data(
                 custom_list,
@@ -498,7 +529,7 @@ class ListDetailView(drf_views.APIView):
             # TODO: move to lists/models.py
             user_list = (
                 CustomList.objects.select_related("owner")
-                .prefetch_related("collaborators")
+                .prefetch_related("collaborators", "viewers")
                 .get(id=list_id)
             )
         except CustomList.DoesNotExist:
@@ -554,7 +585,9 @@ class ListDetailView(drf_views.APIView):
         name = body.get("name")
         description = body.get("description")
         collaborator_ids = body.get("collaborators")
+        viewer_ids = body.get("viewers")
         is_public = body.get("is_public")
+        visibility = body.get("visibility")
         allow_recommendations = body.get("allow_recommendations")
 
         if name is not None:
@@ -578,7 +611,35 @@ class ListDetailView(drf_views.APIView):
                     status=HTTP.BAD_REQUEST,
                 )
             custom_list.collaborators.set(collaborators)
-        if is_public is not None:
+        if viewer_ids is not None:
+            if not isinstance(viewer_ids, list):
+                return Response(
+                    {
+                        "detail": "Field 'viewers' must be an array of user IDs.",
+                    },
+                    status=HTTP.BAD_REQUEST,
+                )
+            viewers = get_user_model().objects.filter(id__in=viewer_ids)
+            if viewers.count() != len(viewer_ids):
+                return Response(
+                    {
+                        "detail": "One or more viewer IDs are invalid.",
+                    },
+                    status=HTTP.BAD_REQUEST,
+                )
+            custom_list.viewers.set(viewers)
+        if visibility is not None:
+            if visibility not in dict(CustomList.VISIBILITY_CHOICES):
+                return Response(
+                    {
+                        "detail": (
+                            "Field 'visibility' must be public, unlisted or private."
+                        ),
+                    },
+                    status=HTTP.BAD_REQUEST,
+                )
+            custom_list.visibility = visibility
+        elif is_public is not None:
             if not isinstance(is_public, bool):
                 return Response(
                     {"detail": "Field 'is_public' must be a boolean."},
@@ -2860,31 +2921,42 @@ class MediaSeasonEpisodesView(drf_views.APIView):
 
         paginated = paginate_data(request, episodes, limit, offset)
 
-        # TODO: see if this can be optimized with a single query for all episodes instead of one per episode
         # TODO: see if lists infos can be saved in the `episodes` object to avoid using `context` to pass additional parameters
-        lists_by_number = {}
-        for episode in paginated["results"]:
-            episode_number = episode.get("episode_number")
-            if episode_number is None:
-                continue
-            lists_by_number[episode_number] = get_item_lists(
-                user,
-                media_id,
-                source,
-                "episode",
-                season_number=season_number,
-                episode_number=episode_number,
-                library_media_type=request.query_params.get("library_media_type"),
-            )
-
         episode_numbers = [
             episode.get("episode_number")
             for episode in paginated["results"]
             if episode.get("episode_number") is not None
         ]
 
+        lists_by_number = {}
         tracked_by_number = {}
         if episode_numbers:
+            episode_items = filter_item_bucket(
+                Item.objects.filter(
+                    media_id=media_id,
+                    source=source,
+                    media_type=MediaTypes.EPISODE.value,
+                    season_number=season_number,
+                    episode_number__in=episode_numbers,
+                ),
+                MediaTypes.EPISODE.value,
+                library_media_type=request.query_params.get("library_media_type"),
+            ).order_by("id")
+            item_ids_by_number = {}
+            for episode_number, item_id in episode_items.values_list(
+                "episode_number",
+                "id",
+            ):
+                item_ids_by_number.setdefault(episode_number, item_id)
+            lists_by_item_id = CustomListItem.objects.get_user_item_lists_map(
+                user,
+                item_ids_by_number.values(),
+            )
+            lists_by_number = {
+                episode_number: lists_by_item_id.get(item_id, [])
+                for episode_number, item_id in item_ids_by_number.items()
+            }
+
             tracked_episodes = BasicMedia.objects.get_season_episodes(
                 user,
                 media_id,
@@ -4724,7 +4796,9 @@ class SearchProviderView(drf_views.APIView):
                 location=OpenApiParameter.QUERY,
                 required=False,
                 description="Provider to search (e.g. `tmdb`, `igdb`). Defaults to "
-                "the media type's default provider when omitted.",
+                "the viewer's preferred provider for the media type (Settings > "
+                "Metadata), falling back to the media type's default provider "
+                "when that one is not configured.",
             ),
             OpenApiParameter(
                 name="limit",
@@ -4783,7 +4857,6 @@ class SearchProviderView(drf_views.APIView):
     def get(self, request, media_type):
         """Search for media using the specified provider."""
         search = request.GET.get("search", "")
-        source = request.GET.get("source", None)
         limit, offset, err = parse_limit_offset(request)
         if err:
             return err
@@ -4802,6 +4875,17 @@ class SearchProviderView(drf_views.APIView):
                     "detail": f"Search for {media_type} is not supported.",
                 },
                 status=HTTP.BAD_REQUEST,
+            )
+
+        # API clients don't know which providers the instance can serve, so an
+        # omitted source follows the viewer's preferred provider for this media
+        # type (Settings > Metadata) and falls back to a configured one, as the
+        # web search does (#1856).
+        source = request.GET.get("source")
+        if not source:
+            source = metadata_resolution.metadata_default_source(
+                request.user,
+                media_type,
             )
 
         results_accum = []

@@ -54,11 +54,14 @@ def checkin_action(request, source, media_type, media_id):
         if found is None:
             return HttpResponseBadRequest("This check-in is no longer active.")
         record, card_action = found
+        allowed_actions = {card_action, "cancel"}
+        if card_action == "pause":
+            allowed_actions.add("finish")
         if (
             record.get("source", Sources.TMDB.value) != source
             or record["media_type"] != media_type
             or str(record["media_id"]) != str(media_id)
-            or name not in (card_action, "cancel")
+            or name not in allowed_actions
         ):
             return HttpResponseBadRequest("This check-in is no longer active.")
     if checkin_session.supports(media_type):

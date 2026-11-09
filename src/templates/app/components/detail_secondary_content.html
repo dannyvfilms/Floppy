@@ -106,7 +106,8 @@
                         {{ user_media.notes|json_script:user_notes_id }}
                         <div class="flex items-start mt-3"
                              x-data="{ isExpanded:false, isClamped:false, measure(){ const el = this.$refs.notesPreview; this.isClamped = el.scrollHeight > el.clientHeight }, rafMeasure(){ requestAnimationFrame(() => this.measure()) }, reset(){ this.isExpanded = false; this.$nextTick(() => this.rafMeasure()) } }"
-                             x-init="rafMeasure(); $watch('showRepeats', v => { if (v) reset() })">
+                             x-init="rafMeasure(); $watch('showRepeats', v => { if (v) reset() })"
+                             @markdown-preview-rendered="rafMeasure()">
                           {% include "app/icons/page-empty.svg" with classes="w-3 h-3 mr-1 text-yellow-400 shrink-0 mt-0.5" %}
                           <div class="flex-1">
                             <div x-ref="notesPreview"
@@ -369,48 +370,9 @@
             {% include "app/components/detail_notes_section.html" %}
           </div>
         {% endif %}
-        {% if media.related %}
+        {% if media.related or media.steam_dlcs %}
           <div {% detail_section_attrs user detail_family "content" "related" %}>
-          {% for name, related_items in media.related.items %}
-            {% if name != "seasons" and name != "recommendations" and related_items %}
-              <section class="mb-8"
-                       x-data="{ detailGridExpanded: false, detailGridVisibleCount: 0, syncDetailGrid() { this.$nextTick(() => { const grid = this.$refs.detailGrid; if (!grid) return; const templateColumns = window.getComputedStyle(grid).gridTemplateColumns || ''; const columnCount = templateColumns.split(' ').filter(Boolean).length || 1; this.detailGridVisibleCount = Math.max(columnCount, 1) * 2; }); }, shouldShowDetailCard(index) { return this.detailGridExpanded || index < this.detailGridVisibleCount; }, canToggleDetailGrid(total) { return this.detailGridVisibleCount > 0 && total > this.detailGridVisibleCount; } }"
-                       x-init="syncDetailGrid()"
-                       @resize.window.debounce.100ms="syncDetailGrid()">
-                {% with related_label=name|related_section_label %}
-                  <h2 class="text-xl font-bold mb-4">{% translate related_label %}</h2>
-                {% endwith %}
-                <div x-ref="detailGrid" class="detail-media-grid">
-                  {% for result in related_items %}
-                    <div x-show="shouldShowDetailCard({{ forloop.counter0 }})">
-                      {% media_card "related" item=result.item media=result.media title=result.item.season_header_title|default:result.item.title active=media.media_id|str_equals:result.item.media_id %}
-                    </div>
-                  {% endfor %}
-                </div>
-                <button x-show="canToggleDetailGrid({{ related_items|length }})"
-                        @click="detailGridExpanded = !detailGridExpanded"
-                        class="mt-4 inline-flex text-sm font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer">
-                  {% translate "Show less" as media_i18n_0 %}{% translate "Show more" as media_i18n_1 %}<span x-text="detailGridExpanded ? '{{ media_i18n_0|escapejs }}' : '{{ media_i18n_1|escapejs }}'"></span>
-                </button>
-              </section>
-            {% endif %}
-          {% endfor %}
-          {% if media.steam_dlcs %}
-            <section class="mb-8">
-              <h2 class="text-xl font-bold mb-4">{% translate "DLCs" %}</h2>
-              <div class="detail-media-grid">
-                {% for dlc in media.steam_dlcs %}
-                  <a href="{{ dlc.url }}"
-                     target="_blank"
-                     rel="noopener noreferrer"
-                     class="block">
-                    {% if dlc.image %}<img src="{{ dlc.image }}" alt="" loading="lazy" class="w-full rounded-lg aspect-[460/215] object-cover">{% endif %}
-                    <p class="mt-2 text-sm font-medium">{{ dlc.title }}</p>
-                  </a>
-                {% endfor %}
-              </div>
-            </section>
-          {% endif %}
+            {% detail_related %}
           </div>
         {% endif %}
 
@@ -435,6 +397,7 @@
               <div class="flex items-center gap-1">
                 {% if media_type != MediaTypes.PODCAST.value %}
                   <button @click="setLayout('grid')"
+                          data-children-layout="grid"
                           :class="epLayout === 'grid' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'"
                           class="p-1.5 rounded transition-colors cursor-pointer"
                           title="{% translate "Card view" %}"
@@ -444,6 +407,7 @@
                     </svg>
                   </button>
                   <button @click="setLayout('list')"
+                          data-children-layout="list"
                           :class="epLayout === 'list' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'"
                           class="p-1.5 rounded transition-colors cursor-pointer"
                           title="{% translate "List view" %}"
@@ -476,7 +440,15 @@
                   {# Use fragment for podcasts to enable infinite scroll #}
                   {% include "app/components/podcast_episode_list.html" with episodes=paginated_episodes|default:media.episodes user=user show=podcast_show IMG_NONE=IMG_NONE TRACK_TIME=TRACK_TIME has_more=has_more|default:has_more_episodes|default:False next_page=next_page|default:2 show_id=show_id request=request csrf_token=csrf_token only %}
                 {% else %}
+                {% detail_children_props as children_props %}
+                {% if children_props %}
+                <div class="space-y-6" id="episodes-batch" data-detail-children-root data-props-id="{{ children_props.props_id }}">
+                  {{ children_props.props|json_script:children_props.props_id }}
+                  <div data-detail-children-react></div>
+                  <div data-detail-children-legacy>
+                {% else %}
                 <div class="space-y-6" id="episodes-batch">
+                {% endif %}
                   {% for episode in media.episodes %}
                     {% if media_type == MediaTypes.COMIC.value %}
                       {% url 'media_details' source=episode.source media_type=episode.media_type media_id=episode.media_id title=episode.title|default:episode.issue_number|slug as ep_detail_url %}
@@ -498,7 +470,12 @@
                       </a>
                     </div>
                   {% endif %}
+                {% if children_props %}
+                  </div>
                 </div>
+                {% else %}
+                </div>
+                {% endif %}
                 {% endif %}
               </div>
             </div>
@@ -548,28 +525,36 @@
 
         {% if cast_row.total %}
           <section class="mb-8" {% detail_section_attrs user detail_family "content" "cast" %}>
-            {% include "app/components/_scrollable_row.html" with row=cast_row grid_template="app/components/detail_cast_grid.html" collapse_key="detail-cast-open" %}
+            {% people_cast row=cast_row source=media.source collapse_key="detail-cast-open" %}
+              {% include "app/components/_scrollable_row.html" with row=cast_row grid_template="app/components/detail_cast_grid.html" collapse_key="detail-cast-open" %}
+            {% endpeople_cast %}
           </section>
         {% endif %}
 
         {% if crew_row.total %}
           <section class="mb-8" {% detail_section_attrs user detail_family "content" "crew" %}>
-            {% include "app/components/_scrollable_row.html" with row=crew_row grid_template="app/components/detail_cast_grid.html" collapse_key="detail-crew-open" %}
+            {% people_cast row=crew_row source=media.source collapse_key="detail-crew-open" %}
+              {% include "app/components/_scrollable_row.html" with row=crew_row grid_template="app/components/detail_cast_grid.html" collapse_key="detail-crew-open" %}
+            {% endpeople_cast %}
           </section>
         {% endif %}
 
         {% if media.related.recommendations %}
           <section class="mb-8" {% detail_section_attrs user detail_family "content" "recommendations" %}>
-            {% include "app/components/_scrollable_row.html" with row=recommendations_row grid_template="app/components/home_grid.html" collapse_key="detail-recommendations-open" %}
+            {% include "app/components/_scrollable_row.html" with row=recommendations_row grid_template="app/components/home_grid.html" collapse_key="detail-recommendations-open" rails_mount=True %}
           </section>
         {% endif %}
 
         {% if media_type == MediaTypes.GAME.value %}
           {% if youtube_watch %}
-            {% include "app/components/youtube_watch_section.html" %}
+            {% people_extras "youtube" %}
+              {% include "app/components/youtube_watch_section.html" %}
+            {% endpeople_extras %}
           {% endif %}
           <div {% detail_section_attrs user detail_family "content" "game_lengths" %}>
-            {% include "app/components/game_lengths_section.html" %}
+            {% people_extras "game_lengths" %}
+              {% include "app/components/game_lengths_section.html" %}
+            {% endpeople_extras %}
           </div>
         {% endif %}
 
@@ -598,16 +583,27 @@
       {% endif %}
     {% endif %}
 
-    {% if media_type == MediaTypes.PODCAST.value and episodes %}
+    {% if media_type == MediaTypes.PODCAST.value %}
+      {% if episodes or episode_manager_props %}
       <div class="w-full md:w-3/4"
            style="display: flex; flex-direction: column;">
         <div class="w-full" {% detail_section_attrs user detail_family "content" "episodes" %}>
-          <h2 class="text-xl font-bold mb-4">{% translate "Episodes" %}</h2>
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-bold">{% translate "Episodes" %}</h2>
+            {% if episode_manager_props %}
+              <div data-podcast-episode-manager-root data-props-id="podcast-episode-manager-props">
+                <a class="px-3 py-1.5 rounded-md bg-indigo-600 text-white text-sm hover:bg-indigo-700 transition-colors"
+                   href="{% url 'podcast_episodes_manage' podcast_show.id %}">{% translate "Manage episodes" %}</a>
+              </div>
+              {{ episode_manager_props|json_script:"podcast-episode-manager-props" }}
+            {% endif %}
+          </div>
           <div id="episodes-list">
             {% include "app/components/podcast_episode_list.html" with episodes=paginated_episodes|default:episodes user=user show=podcast_show IMG_NONE=IMG_NONE TRACK_TIME=TRACK_TIME has_more=has_more|default:has_more_episodes|default:False next_page=next_page|default:2 show_id=show_id request=request csrf_token=csrf_token only %}
           </div>
         </div>
       </div>
+      {% endif %}
     {% endif %}
 
     {% if media_type == MediaTypes.PODCAST.value and show_notes|default:False and notes_entry %}

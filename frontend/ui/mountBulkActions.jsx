@@ -1,6 +1,12 @@
 import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { mountRoot } from '../settings/root';
-import { Button, Dialog, Field, SelectField } from './controls';
+import { Button } from './Button';
+import { Dialog } from './controls/Dialog';
+import { SelectField } from './SelectField';
+import { TextField } from './TextField';
+import { BulkActionDialog, BulkActionRow, BulkFieldRow, BulkJobCard, BulkJobMessage, BulkJobProblems, BulkJobProgress, BulkJobSummary, BulkNote } from './BulkActions';
+import { BulkJobDock } from './BulkJobDock';
+import { TagBulkDialog } from './TagManagement';
 
 // Mounted once in the base layout. The toolbar (mountBulkToolbar.jsx) opens a
 // short dialog with `bulk-actions-open`. Anything slow then runs as a "job" in a
@@ -32,6 +38,33 @@ const DATE_HELP = {
 };
 const STORE = 'floppy-bulk-jobs';
 
+function readPalette() {
+  const css = getComputedStyle(document.documentElement);
+  const token = (name, fallback) => (css.getPropertyValue(name) || '').trim() || fallback;
+  const accent = token('--color-accent', '#6366f1');
+  return {
+    background: token('--color-page-bg', '#18181b'),
+    surface: token('--color-surface', '#27272a'),
+    surfaceStrong: token('--color-surface-strong', '#3f3f46'),
+    surfaceMuted: token('--color-surface-muted', '#52525b'),
+    surfaceBorder: token('--color-surface-border', '#3f3f46'),
+    surfaceHover: token('--color-surface-hover', '#52525b'),
+    border: token('--color-surface-border', '#3f3f46'),
+    link: token('--color-link', '#818cf8'),
+    text: token('--color-text', '#fafafa'),
+    textSecondary: token('--color-text-secondary', '#d4d4d8'),
+    textMuted: token('--color-text-muted', '#a1a1aa'),
+    accent,
+    accentStrong: accent,
+    success: token('--color-success-text', '#10b981'),
+    warning: token('--color-warning-text', '#f59e0b'),
+    danger: token('--color-error-text', '#ef4444'),
+    overlay: 'rgba(0, 0, 0, 0.6)',
+    radius: 10,
+    focusStyle: {},
+  };
+}
+
 const plural = (n, word) => `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
 const notify = (message, type = 'success') => {
   if (message && typeof window.showTrackToast === 'function') window.showTrackToast({ message, type });
@@ -61,7 +94,8 @@ async function post(url, csrf, body) {
 
 function playsBody(job, dryRun) {
   const data = new URLSearchParams({ ...job.form, dry_run: dryRun ? '1' : '0' });
-  job.itemIds.forEach(id => data.append('item_ids', id));
+  // One field keeps select-all sizes above Django's field-count limit postable.
+  data.set('item_ids', job.itemIds.join(','));
   return data;
 }
 
@@ -77,7 +111,7 @@ async function startPlays(config, job, dryRun) {
 async function runStatus(config, job) {
   try {
     const body = new URLSearchParams({ status: job.status });
-    job.itemIds.forEach(id => body.append('item_ids', id));
+    body.set('item_ids', job.itemIds.join(','));
     const data = await post(config.statusUrl, config.csrfToken, body);
     patchJob(job.id, { phase: 'done', message: data.message || 'Status updated.' });
     notify(data.message || 'Status updated.');
@@ -87,39 +121,16 @@ async function runStatus(config, job) {
   }
 }
 
-// ---- docked job card -------------------------------------------------------
-function Progress({ done, total, label }) {
-  const known = total > 0 && done !== undefined;
-  return <div role="status">
-    <p>{label}{known ? ` ${done.toLocaleString()} of ${plural(total, 'show')}` : ''}</p>
-    <div className={`ui-progress${known ? '' : ' ui-progress-indeterminate'}`}>
-      <div style={known ? { width: `${Math.round((done / total) * 100)}%` } : undefined} /></div>
-  </div>;
-}
-
-function Summary({ totals, samples }) {
-  const notes = [
+function resultNotes(totals) {
+  return [
     totals.existing && `${plural(totals.existing, 'episode')} skipped (already have a play)`,
     totals.unaired && `${plural(totals.unaired, 'episode')} skipped (not aired yet)`,
     totals.no_date && `${plural(totals.no_date, 'episode')} skipped (no air date)`,
   ].filter(Boolean);
-  return <>
-    <p><strong>{plural(totals.plays, 'play')}</strong> across {plural(totals.shows, 'show')}.</p>
-    {samples.length > 0 && <ul className="ui-bulk-list">{samples.map(s => <li key={s.title}>{s.title}: {plural(s.add, 'play')}</li>)}</ul>}
-    {notes.length > 0 && <ul className="ui-bulk-list">{notes.map(note => <li key={note}>{note}</li>)}</ul>}
-  </>;
 }
 
-function Problems({ state }) {
-  if (!state?.problem_count) return null;
-  return <details className="ui-bulk-problems" open>
-    <summary>{plural(state.problem_count, 'show')} could not be used</summary>
-    <ul className="ui-bulk-list">{state.problems.map((p, i) => <li key={i}>{p.title}: {p.reason}</li>)}</ul>
-    {state.problem_count > state.problems.length && <p>And {(state.problem_count - state.problems.length).toLocaleString()} more.</p>}
-  </details>;
-}
-
-function JobCard({ config, job }) {
+// ---- docked job card -------------------------------------------------------
+function JobCard({ config, job, palette }) {
   const polling = job.kind === 'plays' && ['previewing', 'running'].includes(job.phase) && job.operation;
   useEffect(() => {
     if (!polling) return undefined;
@@ -149,68 +160,110 @@ function JobCard({ config, job }) {
   const title = job.kind === 'status' ? 'Update Status' : 'Add Plays to History';
   const result = job.result;
   const progress = job.progress || { done: 0, total: job.itemIds.length };
-  return <div className="ui-dock-card" role="group" aria-label={title}>
-    <div className="ui-dock-head"><h4>{title}</h4>
-      <Button type="button" secondary aria-label="Hide" title="Hide. A running job keeps going." onClick={() => dropJob(job.id)}>×</Button></div>
-    {job.phase === 'working' && <Progress label={`Setting ${plural(job.itemIds.length, 'item')} to ${job.statusLabel}`} />}
-    {job.phase === 'starting' && <Progress label="Starting" />}
-    {job.phase === 'previewing' && <Progress done={progress.done} total={progress.total} label="Checking" />}
-    {job.phase === 'running' && <Progress done={progress.done} total={progress.total} label="Adding plays" />}
-    {job.phase === 'review' && result && <>
-      <Summary totals={result.totals} samples={result.samples} />
-      <Problems state={result} />
-      {result.totals.plays === 0 && <p>Nothing to add with these choices.</p>}
-      <div className="ui-bulk-actions">
-        {result.totals.plays > 0 && <Button type="button" onClick={() => { patchJob(job.id, { phase: 'starting' }); startPlays(config, job, false); }}>Add {plural(result.totals.plays, 'play')}</Button>}
-        <Button type="button" secondary onClick={() => dropJob(job.id)}>Discard</Button></div></>}
-    {job.phase === 'done' && job.kind === 'status' && <p>{job.message}</p>}
+  const review = job.phase === 'review' && result;
+  return <BulkJobCard title={title} palette={palette} onHide={() => dropJob(job.id)} footer={review ? <>
+    {result.totals.plays > 0 && <Button type="button" onClick={() => { patchJob(job.id, { phase: 'starting' }); startPlays(config, job, false); }}>Add {plural(result.totals.plays, 'play')}</Button>}
+    <Button type="button" secondary onClick={() => dropJob(job.id)}>Discard</Button></> : null}>
+    {job.phase === 'working' && <BulkJobProgress label={`Setting ${plural(job.itemIds.length, 'item')} to ${job.statusLabel}`} palette={palette} />}
+    {job.phase === 'starting' && <BulkJobProgress label="Starting" palette={palette} />}
+    {job.phase === 'previewing' && <BulkJobProgress done={progress.done} total={progress.total} label="Checking" palette={palette} />}
+    {job.phase === 'running' && <BulkJobProgress done={progress.done} total={progress.total} label="Adding plays" palette={palette} />}
+    {review && <>
+      <BulkJobSummary totals={result.totals} samples={result.samples} notes={resultNotes(result.totals)} palette={palette} />
+      <BulkJobProblems count={result.problem_count} problems={result.problems} palette={palette} />
+      {result.totals.plays === 0 && <BulkJobMessage palette={palette}>Nothing to add with these choices.</BulkJobMessage>}
+    </>}
+    {job.phase === 'done' && job.kind === 'status' && <BulkJobMessage palette={palette}>{job.message}</BulkJobMessage>}
     {job.phase === 'done' && job.kind === 'plays' && result && <>
-      <p><strong>{plural(result.totals.plays, 'play')}</strong> added across {plural(result.totals.shows, 'show')}.</p>
-      <Problems state={result} /></>}
-    {job.phase === 'error' && <p role="alert" className="ui-bulk-error">{job.error}</p>}
-  </div>;
+      <BulkJobMessage palette={palette}>
+        {plural(result.totals.plays, 'play')} added across {plural(result.totals.shows, 'show')}.
+      </BulkJobMessage>
+      <BulkJobProblems count={result.problem_count} problems={result.problems} palette={palette} />
+    </>}
+    {job.phase === 'error' && <BulkJobMessage tone="danger" palette={palette}>{job.error}</BulkJobMessage>}
+  </BulkJobCard>;
 }
 
 // ---- dialogs that start a job ---------------------------------------------
-function StatusDialog({ request, close, start }) {
+function StatusDialog({ request, close, start, palette }) {
   const count = request.itemIds.length;
-  return <Dialog open title="Update Status" closeLabel="Close" onClose={close}>
-    <p>Set {plural(count, 'item')} to <strong>{request.statusLabel}</strong>?</p>
-    <p className="ui-bulk-note">{request.status === 'Completed'
+  const description = request.status === 'no_status'
+    ? `Clear the status for ${plural(count, 'item')}? They become Not set, leave the normal library view, and can be found again with the No Status filter. Nothing is removed from History or Statistics.`
+    : `Set ${plural(count, 'item')} to ${request.statusLabel}? ${request.status === 'Completed'
       ? 'Completed also adds a play for every episode not yet played, dated today. To choose the dates, use Add Plays to History first.'
-      : 'This changes status only. Nothing is added to History, Statistics or streaks. To record viewing activity, use Add Plays to History.'}</p>
-    <div className="ui-bulk-actions"><Button type="button" onClick={start}>Update status</Button>
-      <Button type="button" secondary onClick={close}>Cancel</Button></div>
-  </Dialog>;
+      : 'This changes status only. Nothing is added to History, Statistics or streaks. To record viewing activity, use Add Plays to History.'}`;
+  return <BulkActionDialog open title="Update Status" description={description}
+    confirmLabel="Update status" cancelLabel="Cancel" palette={palette}
+    onConfirm={start} onClose={close} />;
 }
 
-function PlaysDialog({ request, close, start }) {
+function PlaysDialog({ request, close, start, palette }) {
   const [form, setForm] = useState({ scope: 'aired', season_from: '1', season_to: '1', existing: 'skip',
     date_mode: 'air_date', date: '', start_date: '', end_date: '' });
   const today = new Date().toISOString().slice(0, 10);
   const set = event => setForm(prev => ({ ...prev, [event.target.name]: event.target.value }));
-  return <Dialog open title="Add Plays to History" closeLabel="Close" onClose={close}>
-    <p className="ui-bulk-note">Adds viewing records for {plural(request.itemIds.length, 'selected item')}. They show in History and count in activity, Statistics and streaks.</p>
-    <SelectField id="bulk-plays-scope" name="scope" label="Which episodes" value={form.scope} options={SCOPES} onChange={set} />
-    <p className="ui-bulk-note">{SCOPE_HELP[form.scope]}</p>
-    {form.scope === 'seasons' && <div className="ui-bulk-row">
-      <Field id="bulk-plays-from" name="season_from" type="number" min="0" label="First season" value={form.season_from} onChange={set} />
-      <Field id="bulk-plays-to" name="season_to" type="number" min="0" label="Last season" value={form.season_to} onChange={set} /></div>}
-    <SelectField id="bulk-plays-existing" name="existing" label="Episodes already played" value={form.existing} options={EXISTING} onChange={set} />
-    <SelectField id="bulk-plays-dates" name="date_mode" label="Play dates" value={form.date_mode} options={DATES} onChange={set} />
-    <p className="ui-bulk-note">{DATE_HELP[form.date_mode]}</p>
-    {form.date_mode === 'one_date' && <Field id="bulk-plays-date" name="date" type="date" max={today} label="Date" value={form.date} onChange={set} />}
-    {form.date_mode === 'range' && <div className="ui-bulk-row">
-      <Field id="bulk-plays-start" name="start_date" type="date" max={today} label="From" value={form.start_date} onChange={set} />
-      <Field id="bulk-plays-end" name="end_date" type="date" max={today} label="To" value={form.end_date} onChange={set} /></div>}
-    <p className="ui-bulk-note">Review checks every show in the background and shows the counts. Nothing is added until you confirm, and you can keep browsing meanwhile.</p>
-    <div className="ui-bulk-actions"><Button type="button" onClick={() => start(form)}>Review</Button>
-      <Button type="button" secondary onClick={close}>Cancel</Button></div>
+  return <Dialog open title="Add Plays to History" closeLabel="Close" onClose={close} palette={palette}>
+    <BulkNote>Adds viewing records for {plural(request.itemIds.length, 'selected item')}. They show in History and count in activity, Statistics and streaks.</BulkNote>
+    <SelectField id="bulk-plays-scope" name="scope" label="Which episodes" value={form.scope} options={SCOPES} onChange={set} palette={palette} />
+    <BulkNote>{SCOPE_HELP[form.scope]}</BulkNote>
+    {form.scope === 'seasons' && <BulkFieldRow>
+      <TextField id="bulk-plays-from" name="season_from" type="number" min="0" label="First season" value={form.season_from} onChange={set} palette={palette} />
+      <TextField id="bulk-plays-to" name="season_to" type="number" min="0" label="Last season" value={form.season_to} onChange={set} palette={palette} /></BulkFieldRow>}
+    <SelectField id="bulk-plays-existing" name="existing" label="Episodes already played" value={form.existing} options={EXISTING} onChange={set} palette={palette} />
+    <SelectField id="bulk-plays-dates" name="date_mode" label="Play dates" value={form.date_mode} options={DATES} onChange={set} palette={palette} />
+    <BulkNote>{DATE_HELP[form.date_mode]}</BulkNote>
+    {form.date_mode === 'one_date' && <TextField id="bulk-plays-date" name="date" type="date" max={today} label="Date" value={form.date} onChange={set} palette={palette} />}
+    {form.date_mode === 'range' && <BulkFieldRow>
+      <TextField id="bulk-plays-start" name="start_date" type="date" max={today} label="From" value={form.start_date} onChange={set} palette={palette} />
+      <TextField id="bulk-plays-end" name="end_date" type="date" max={today} label="To" value={form.end_date} onChange={set} palette={palette} /></BulkFieldRow>}
+    <BulkNote>Review checks every show in the background and shows the counts. Nothing is added until you confirm, and you can keep browsing meanwhile.</BulkNote>
+    <BulkActionRow><Button type="button" onClick={() => start(form)}>Review</Button>
+      <Button type="button" secondary onClick={close}>Cancel</Button></BulkActionRow>
   </Dialog>;
+}
+
+function TagDialog({ request, close, palette }) {
+  const [selectedTag, setSelectedTag] = useState('');
+  const [action, setAction] = useState('add');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function apply() {
+    if (!selectedTag || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const data = new URLSearchParams({ tag_name: selectedTag, action });
+      data.set('item_ids', request.itemIds.join(','));
+      await post(request.tagUrl, request.csrfToken, data);
+      notify(`Tag "${selectedTag}" ${action === 'add' ? 'added to' : 'removed from'} ${plural(request.itemIds.length, 'item')}.`);
+      finished();
+      close();
+    } catch (failure) {
+      setError(failure.message || 'The bulk tag action failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <TagBulkDialog
+    open
+    itemCount={request.itemIds.length}
+    tags={request.tags || []}
+    selectedTag={selectedTag}
+    action={action}
+    busy={busy}
+    error={error}
+    palette={palette}
+    onSelectTag={setSelectedTag}
+    onActionChange={setAction}
+    onApply={apply}
+    onClose={close} />;
 }
 
 function Adapter({ config }) {
   const [request, setRequest] = useState(null);
+  const [palette] = useState(readPalette);
   const all = useJobs();
   const seq = useRef(0);
   useEffect(() => {
@@ -234,11 +287,13 @@ function Adapter({ config }) {
     return job;
   };
   return <>
-    {request?.kind === 'status' && <StatusDialog request={request} close={() => setRequest(null)}
+    {request?.kind === 'status' && <StatusDialog request={request} palette={palette} close={() => setRequest(null)}
       start={() => runStatus(config, newJob({ kind: 'status', phase: 'working', status: request.status, statusLabel: request.statusLabel }))} />}
-    {request?.kind === 'plays' && <PlaysDialog request={request} close={() => setRequest(null)}
+    {request?.kind === 'tag' && <TagDialog request={request} palette={palette}
+      close={() => setRequest(null)} />}
+    {request?.kind === 'plays' && <PlaysDialog request={request} close={() => setRequest(null)} palette={palette}
       start={form => startPlays(config, newJob({ kind: 'plays', phase: 'starting', form }), true)} />}
-    {all.length > 0 && <div className="ui-dock" aria-live="polite">{all.map(job => <JobCard key={job.id} config={config} job={job} />)}</div>}
+    {all.length > 0 && <BulkJobDock label="Bulk jobs">{all.map(job => <JobCard key={job.id} config={config} job={job} palette={palette} />)}</BulkJobDock>}
   </>;
 }
 

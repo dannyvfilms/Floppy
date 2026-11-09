@@ -215,21 +215,25 @@ a.ui-card-link:focus-visible { outline: 2px solid var(--color-accent); outline-o
 .ui-menu-row button { padding: .15rem .5rem; border-radius: .25rem; font-size: .75rem; background: var(--color-surface); cursor: pointer; }
 .ui-menu-row button[aria-pressed="true"] { background: var(--color-surface-hover); color: var(--color-text); font-weight: 600; }
 .ui-menu-row button:hover { background: var(--color-surface-hover); color: var(--color-text); }
-.ui-bulk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.5rem; margin-bottom: 1rem; padding: .75rem 1rem;
+.ui-bulk-bar { display: flex; flex-wrap: nowrap; align-items: center; gap: .75rem; margin-bottom: 1rem; padding: .6rem .75rem;
   border: 1px solid var(--color-surface-border); border-radius: .5rem; background: var(--color-surface-strong); }
-.ui-bulk-count { display: flex; align-items: baseline; gap: .6rem; font-size: .875rem; color: var(--color-text-secondary); min-width: 8rem; }
-.ui-bulk-count strong { font-size: 1.125rem; color: var(--color-text); }
-.ui-bulk-count button { font-size: .8125rem; color: var(--color-text-muted); cursor: pointer; text-decoration: underline; }
-.ui-bulk-groups { display: flex; flex-wrap: wrap; align-items: stretch; gap: .75rem 0; flex: 1 1 auto; min-width: 0; }
-.ui-bulk-group { display: flex; flex-direction: column; gap: .3rem; padding: 0 1rem; min-width: 0; }
-.ui-bulk-group + .ui-bulk-group { border-left: 1px solid var(--color-surface-border); }
-.ui-bulk-group-label { font-size: .6875rem; letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-muted); }
-.ui-bulk-buttons { display: flex; flex-wrap: wrap; gap: .5rem; }
-.ui-bulk-buttons .ui-button { width: auto; }
-.ui-bulk-hint { font-size: .75rem; color: var(--color-text-muted); }
+.ui-bulk-count { display: flex; align-items: center; gap: .45rem; font-size: .875rem; color: var(--color-text-secondary); white-space: nowrap; }
+.ui-bulk-count svg { width: 1rem; height: 1rem; flex-shrink: 0; color: var(--color-accent); }
+.ui-bulk-count strong { font-size: 1rem; color: var(--color-text); }
+.ui-bulk-buttons { display: flex; flex: 1 1 auto; align-items: center; justify-content: center; gap: .4rem; min-width: 0; }
+.ui-bulk-buttons .ui-button { display: inline-flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; padding: 0; }
+.ui-bulk-buttons .ui-button svg { width: 1rem; height: 1rem; }
+.ui-bulk-deselect { display: inline-flex; align-items: center; gap: .3rem; padding: .35rem .5rem; border: 0;
+  border-radius: .375rem; background: transparent; color: var(--color-text-secondary); font: inherit; font-size: .8125rem;
+  white-space: nowrap; cursor: pointer; }
+.ui-bulk-deselect svg { width: .875rem; height: .875rem; }
+.ui-bulk-deselect:hover:not(:disabled) { background: var(--color-surface-hover); color: var(--color-text); }
+.ui-bulk-deselect:focus-visible { outline: 2px solid var(--ui-control-focus); outline-offset: 2px; }
+.ui-bulk-deselect:disabled { opacity: .5; cursor: not-allowed; }
 @media (max-width: 40rem) {
-  .ui-bulk-group { padding: 0; width: 100%; }
-  .ui-bulk-group + .ui-bulk-group { border-left: 0; border-top: 1px solid var(--color-surface-border); padding-top: .75rem; }
+  .ui-bulk-bar { flex-wrap: wrap; gap: .5rem; }
+  .ui-bulk-buttons { order: 3; flex-basis: 100%; justify-content: flex-start; }
+  .ui-bulk-deselect { margin-left: auto; }
 }
 .ui-dock { position: fixed; z-index: 60; right: max(1rem, env(safe-area-inset-right, 0px)); bottom: max(1rem, env(safe-area-inset-bottom, 0px));
   width: min(23rem, calc(100vw - 2rem)); display: flex; flex-direction: column; gap: .5rem; }
@@ -257,8 +261,7 @@ a.ui-card-link:focus-visible { outline: 2px solid var(--color-accent); outline-o
 [data-filter-chips-root][data-react-mounted] { display: block; min-width: 0; }
 
 /* Spinner: the host adds no box, so the ring sits where the legacy element did. */
-.ui-spinner-host { display: contents; }
-.ui-spinner { display: block; box-sizing: border-box; flex-shrink: 0; border-radius: 9999px;
+.ui-spinner-host { display: contents; }.ui-spinner { display: block; box-sizing: border-box; flex-shrink: 0; border-radius: 9999px;
   border: 0 solid transparent; border-bottom-width: 2px; animation: ui-spinner-spin 1s linear infinite; }
 .ui-spinner-thin { border-bottom-width: 1px; }
 .ui-spinner[data-tone="accent"] { border-bottom-color: var(--color-indigo-500, #6366f1); }
@@ -266,6 +269,8 @@ a.ui-card-link:focus-visible { outline: 2px solid var(--color-accent); outline-o
 .ui-spinner[data-tone="white"] { border-bottom-color: #fff; }
 @keyframes ui-spinner-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .ui-spinner { animation-duration: 3s; } }
+
+.ui-progress-changer-host { display: contents; }
 
 /* BADGE: small rounded label. Sizes and tones reproduce the legacy utility pills. */
 .ui-badge-host { display: contents; }
@@ -308,3 +313,16 @@ a.ui-badge[data-tone="genre"]:hover { background-color: var(--color-genre-badge-
 html:is(.glass, .custom) .ui-button.ui-button-tone-surface:not(:hover) { background: color-mix(in srgb, var(--color-surface) var(--theme-surface-opacity), transparent); backdrop-filter: blur(var(--theme-blur)) saturate(145%); -webkit-backdrop-filter: blur(var(--theme-blur)) saturate(145%); }
 .ui-button.ui-button-tone-ghost-danger { background: transparent; color: var(--color-red-400, oklch(70.4% 0.191 22.216)); padding: 0.25rem 0.5rem; }
 .ui-button.ui-button-tone-ghost-danger:hover:not(:disabled) { color: var(--color-red-300, oklch(80.8% 0.114 19.571)); background: color-mix(in oklab, var(--color-red-600, oklch(57.7% 0.245 27.325)) 20%, transparent); }
+
+/* Focus indication is for keyboard users only. React Native Web's `focused`
+   state is also true after a pointer click, which left rings on clicked
+   buttons (Explore, progress arrows, chips, menus). The !important rule wins
+   over any component-level inline outline; the focus-visible rule still gives
+   keyboard navigation a visible ring. */
+:where(a, button, input, select, textarea, [role="button"], [role="link"], [tabindex]):focus:not(:focus-visible) {
+  outline: none !important;
+}
+:where(a, button, input, select, textarea, [role="button"], [role="link"], [tabindex]):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}

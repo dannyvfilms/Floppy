@@ -115,29 +115,29 @@ class CalendarViewTests(TestCase):
 
     @patch("events.models.Event.objects.get_user_events")
     @patch.object(get_user_model(), "update_preference")
-    def test_calendar_with_view_param(
+    def test_calendar_view_param_keeps_grid_fallback(
         self,
         mock_update_preference,
         mock_get_user_events,
     ):
-        """Test the calendar view with view parameter."""
+        """The stored legacy list preference must not render the old list surface."""
         # Set up mocks
         mock_update_preference.return_value = "list"
         mock_get_user_events.return_value = []
 
-        # Make the request with view parameter
+        # Make the request with the legacy view parameter
         response = self.client.get(reverse("calendar") + "?view=list")
 
         # Check response
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "events/calendar.html")
-        self.assertContains(response, 'x-html="filteredGridHtml"')
-        self.assertNotContains(response, 'x-html="filteredListHtml"')
+        self.assertContains(response, 'data-calendar-view="grid"')
+        self.assertNotContains(response, 'data-calendar-view="list"')
 
         # Check that the view called the mocked methods
         mock_update_preference.assert_called_once_with("calendar_layout", "list")
 
-        # Check context data
+        # The preference is still stored even though the page renders the shared grid.
         self.assertEqual(response.context["view_type"], "list")
 
     @patch("events.models.Event.objects.get_user_events")
@@ -416,13 +416,28 @@ class CalendarViewTests(TestCase):
         menu = response.context["calendar_menu"]
         self.assertEqual(menu["weekStart"], "monday")
         self.assertEqual(menu["urls"]["preferences"], reverse("update_statistics_preferences"))
-        self.assertContains(response, "data-calendar-menu-root")
+        self.assertContains(response, "data-release-calendar-root")
+        self.assertEqual(
+            response.context["calendar_props"]["menu"]["weekStart"],
+            "monday",
+        )
 
         self.client.post(reverse("update_statistics_preferences"), {"week_start_day": "sunday"})
         with patch("events.models.Event.objects.get_user_events", return_value=[]):
             response = self.client.get(reverse("calendar"))
         self.assertEqual(response.context["calendar_menu"]["weekStart"], "sunday")
         self.assertEqual(response.context["weekday_headers"][0], "Sun")
+
+    def test_calendar_links_fallback_keeps_static_subscription_links(self):
+        """The no-JS links fallback exposes both feeds without Alpine state."""
+        with patch("events.models.Event.objects.get_user_events", return_value=[]):
+            response = self.client.get(reverse("calendar"))
+
+        links = response.context["calendar_links_props"]
+        self.assertContains(response, "data-calendar-links-root")
+        self.assertContains(response, links["releaseBaseUrl"])
+        self.assertContains(response, links["historyBaseUrl"])
+        self.assertNotContains(response, "calendarExportUrl")
 
     @patch("events.models.Event.objects.get_user_events")
     @patch.object(get_user_model(), "update_preference")

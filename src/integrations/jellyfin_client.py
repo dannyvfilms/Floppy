@@ -1,12 +1,11 @@
 """Thin REST client for pushing watched state to a Jellyfin server."""
 
 import logging
-from functools import partial
 from http import HTTPStatus
 
 import requests
 
-from integrations.safe_fetch import send_to_self_hosted
+from integrations.safe_fetch import send_to_self_hosted_pinned
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +42,8 @@ class JellyfinClient:
     def _request(self, method: str, path: str, **kwargs):
         timeout = kwargs.pop("timeout", REQUEST_TIMEOUT)
         try:
-            response = send_to_self_hosted(
-                partial(requests.request, method),
+            response = send_to_self_hosted_pinned(
+                method,
                 f"{self.base_url}{path}",
                 headers=self._headers(),
                 timeout=timeout,

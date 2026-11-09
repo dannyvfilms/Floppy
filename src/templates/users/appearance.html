@@ -163,30 +163,32 @@
   </form>
 
   <script>
+    // The catalog script is deferred; inline settings code may run first.
+    const translate = typeof gettext === 'function' ? gettext : (text) => text;
     // These labels arrive from configuration at runtime. Literal gettext calls
-    // keep them in djangojs.po so gettext(family.label) can resolve them.
+    // keep them in djangojs.po so translate(family.label) can resolve them.
     void [
-      gettext('System default'), gettext('Light'), gettext('Dark'),
-      gettext('Catppuccin Mocha'), gettext('Dracula'), gettext('Nord'),
-      gettext('Gruvbox'), gettext('OLED'), gettext('Glass cinema'),
-      gettext('Plex inspired'), gettext('Projector'), gettext('Video store'),
-      gettext('Custom palette'), gettext('Page'), gettext('Cards'),
-      gettext('Panels'), gettext('Text'), gettext('Muted text'),
-      gettext('Accent'), gettext('Text on accent'), gettext('Corner radius'),
-      gettext('Backdrop blur'), gettext('Surface opacity'),
-      gettext('Films, books and manga'), gettext('Series and seasons'),
-      gettext('Games'), gettext('Episodes'), gettext('Comic volumes'),
-      gettext('Comic issues'), gettext('Music albums'), gettext('Music artists'),
-      gettext('Podcasts'), gettext('People'), gettext('Studios'),
-      gettext('Information column'), gettext('Main content'),
-      gettext('Your history'), gettext('Details'), gettext('Genres'),
-      gettext('Collection'), gettext('Notes'), gettext('Related titles'),
-      gettext('Cast'), gettext('Crew'), gettext('Recommendations'),
-      gettext('Seasons'), gettext('Play times'), gettext('Content'),
-      gettext('Issues'), gettext('Authors'), gettext('Tracks'),
-      gettext('Related artists'), gettext('Discography'), gettext('Profile'),
-      gettext('Biography and facts'), gettext('Filmography'),
-      gettext('Overview and facts'), gettext('Works')
+      translate('System default'), translate('Light'), translate('Dark'),
+      translate('Catppuccin Mocha'), translate('Dracula'), translate('Nord'),
+      translate('Gruvbox'), translate('OLED'), translate('Glass cinema'),
+      translate('Plex inspired'), translate('Projector'), translate('Video store'),
+      translate('Custom palette'), translate('Page'), translate('Cards'),
+      translate('Panels'), translate('Text'), translate('Muted text'),
+      translate('Accent'), translate('Text on accent'), translate('Corner radius'),
+      translate('Backdrop blur'), translate('Surface opacity'),
+      translate('Films, books and manga'), translate('Series and seasons'),
+      translate('Games'), translate('Episodes'), translate('Comic volumes'),
+      translate('Comic issues'), translate('Music albums'), translate('Music artists'),
+      translate('Podcasts'), translate('People'), translate('Studios'),
+      translate('Information column'), translate('Main content'),
+      translate('Your history'), translate('Details'), translate('Genres'),
+      translate('Collection'), translate('Notes'), translate('Related titles'),
+      translate('Cast'), translate('Crew'), translate('Recommendations'),
+      translate('Seasons'), translate('Play times'), translate('Content'),
+      translate('Issues'), translate('Authors'), translate('Tracks'),
+      translate('Related artists'), translate('Discography'), translate('Profile'),
+      translate('Biography and facts'), translate('Filmography'),
+      translate('Overview and facts'), translate('Works')
     ];
 
     function appearanceEditor() {
