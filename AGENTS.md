@@ -49,6 +49,8 @@ native-only by accident; a deliberate carve-out is stated in the PR with its rea
   Extend those; do not build a second system. Open the images and look at them. On a
   Mac, `docs/agents/native_cloud_runtimes.md` is the recipe for real iOS and Android
   frames (`scripts/native_shots.sh <label>`).
+- The v26.10.29 web release is the visual baseline for React and React Native components.
+  Treat a layout or visual change from it as a regression unless a redesign is documented.
 - Report one evidence level per platform (web, iOS, Android), never a combined pass:
   1. **Runtime**: the real Expo app ran on a simulator, emulator, device or hosted
      runtime and screenshots were inspected. On a Mac, if Xcode or an Android SDK is
