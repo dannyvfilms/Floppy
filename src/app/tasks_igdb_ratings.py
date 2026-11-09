@@ -14,7 +14,7 @@ from django.core.cache import cache
 from app import backfill_queue, metadata_utils
 from app.log_safety import exception_summary
 from app.models import Item, MediaTypes, MetadataBackfillField, Sources
-from app.providers import services
+from app.providers import credentials, services
 from app.task_cooperation import CooperativeRun
 from app.tasks_backfill_state import (
     _apply_backfill_state_filters,
@@ -23,6 +23,7 @@ from app.tasks_backfill_state import (
     _record_backfill_failure,
     _record_backfill_success,
 )
+from app.tasks_game_groups import _users_by_item
 
 logger = logging.getLogger(__name__)
 
@@ -64,13 +65,15 @@ def _populate_igdb_ratings_for_items(items):
     updated_count = 0
     error_count = 0
     run = CooperativeRun("igdb_ratings_backfill")
+    scoped_user = _users_by_item(items)
     for item in run.iter(items):
         try:
-            metadata = services.get_media_metadata(
-                item.media_type,
-                item.media_id,
-                item.source,
-            )
+            with credentials.current_user_scope(scoped_user(item)):
+                metadata = services.get_media_metadata(
+                    item.media_type,
+                    item.media_id,
+                    item.source,
+                )
             if not isinstance(metadata, dict):
                 error_count += 1
                 _record_backfill_failure(
@@ -94,6 +97,11 @@ def _populate_igdb_ratings_for_items(items):
                 strategy_version=IGDB_RATINGS_BACKFILL_VERSION,
             )
             updated_count += 1
+        except services.ProviderNotConfiguredError:
+            # Missing keys say nothing about the item, so do not burn its
+            # attempts or log one error per game.
+            logger.info("IGDB ratings backfill skipped: IGDB is not configured")
+            break
         except Exception as exc:
             error_count += 1
             logger.exception(
