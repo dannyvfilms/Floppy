@@ -24,6 +24,7 @@ from app.db_retry import run_retryable_db_operation
 from app.history_cache_utils import history_deferred_item_fields
 from app.models import Episode, MediaTypes, Sources, Status
 from app.models.tv import _UNSET_END_DATE
+from app.services import podcast_plays
 from app.services.completion import normalize_completed_entries
 from app.services.watch_state import (
     PROJECTED_MEDIA_TYPES,
@@ -982,6 +983,8 @@ def bulk_create_media(bulk_media_list, user, *, backfill_completed=True, prepare
             )
 
         created_media = retry_on_lock(create_media)
+        if media_type == MediaTypes.PODCAST.value:
+            podcast_plays.create_plays_for_trackers(created_media)
         note_bulk_rows(created_media)
         if normalize:
             normalize_completed_entries(created_media)

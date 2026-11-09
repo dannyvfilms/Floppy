@@ -13,6 +13,7 @@ from app.models import (
     MoviePlay,
     Music,
     Podcast,
+    PodcastPlay,
     Sources,
     Video,
 )
@@ -123,6 +124,23 @@ def movie_plays_for_history(user_medias, media_type):
     return plays or None
 
 
+def podcast_plays_for_history(user_medias, media_type):
+    """Return the PodcastPlay rows of a tracked episode, or None if it has none.
+
+    A podcast listen is a PodcastPlay and its id is the consumption_id, so one
+    listening session stays one consumption from In Progress to Completed.
+    """
+    if media_type != MediaTypes.PODCAST.value:
+        return None
+    plays = list(
+        PodcastPlay.objects.filter(podcast__in=list(user_medias)).order_by(
+            "-end_date",
+            "-id",
+        ),
+    )
+    return plays or None
+
+
 def resolve_consumption_entry(user_medias, media_type, consumption_id):
     """Resolve an entry id the same way `.../history/` lists it.
 
@@ -132,6 +150,15 @@ def resolve_consumption_entry(user_medias, media_type, consumption_id):
     let an entry id resolve to the movie and delete it. Untouched movies keep
     the single tracker row.
     """
+    if media_type == MediaTypes.PODCAST.value:
+        play = PodcastPlay.objects.filter(
+            podcast__in=list(user_medias),
+            id=consumption_id,
+        ).first()
+        if play is not None or PodcastPlay.objects.filter(
+            podcast__in=list(user_medias),
+        ).exists():
+            return play
     if media_type == MediaTypes.MOVIE.value:
         movie = user_medias.first()
         if movie is not None and MoviePlay.objects.filter(movie=movie).exists():

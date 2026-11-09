@@ -136,6 +136,7 @@ from app.models import (
     Movie,
     Music,
     Podcast,
+    PodcastPlay,
     Sources,
     Track,
 )
@@ -700,7 +701,7 @@ def _build_podcast_entries(user, podcast_history_records, podcasts_lookup):
     """Build history entries for podcasts from pre-fetched history records."""
     podcast_play_counts = {}
     for history_record in podcast_history_records:
-        podcast = podcasts_lookup.get(history_record.id)
+        podcast = podcasts_lookup.get(history_record.podcast_id)
         if not podcast or not podcast.item:
             continue
         key = (podcast.item.media_id, podcast.item.source)
@@ -708,7 +709,7 @@ def _build_podcast_entries(user, podcast_history_records, podcasts_lookup):
 
     entries = []
     for history_record in podcast_history_records:
-        podcast = podcasts_lookup.get(history_record.id)
+        podcast = podcasts_lookup.get(history_record.podcast_id)
         if not podcast:
             continue
         if not podcast.item:
@@ -769,13 +770,13 @@ def _build_podcast_entries(user, podcast_history_records, podcasts_lookup):
                 else None,
                 "play_count": play_count,
                 "instance_id": podcast.id,
-                "entry_key": str(history_record.history_id),
+                "entry_key": str(history_record.id),
             }
             _attach_entry_score(entry, podcast)
             entries.append(entry)
         except Exception:
             logger.exception(
-                "Error processing podcast history record %s", history_record.history_id
+                "Error processing podcast history record %s", history_record.id
             )
     return entries
 
@@ -1304,11 +1305,8 @@ def build_history_days(
     podcast_history_records = []
     podcasts_lookup = {}
     if process_podcasts:
-        from django.apps import apps
-
-        HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
-        podcast_history_records = HistoricalPodcast.objects.filter(
-            models.Q(history_user=user) | models.Q(history_user__isnull=True),
+        podcast_history_records = PodcastPlay.objects.filter(
+            podcast__user=user,
             end_date__isnull=False,
         ).order_by("-end_date")
     if process_podcasts and start_date:
@@ -1319,10 +1317,10 @@ def build_history_days(
         podcast_history_records = podcast_history_records.filter(end_date__lte=end_date)
     if process_podcasts and podcast_show_filter:
         podcast_history_records = podcast_history_records.filter(
-            show_id=podcast_show_filter
+            podcast__show_id=podcast_show_filter
         )
     podcast_ids = (
-        list(set(podcast_history_records.values_list("id", flat=True)))
+        list(set(podcast_history_records.values_list("podcast_id", flat=True)))
         if process_podcasts
         else []
     )
@@ -1345,7 +1343,7 @@ def build_history_days(
             record
             for record in podcast_history_records
             if (
-                (pod := podcasts_lookup.get(record.id))
+                (pod := podcasts_lookup.get(record.podcast_id))
                 and pod.item
                 and str(pod.item.media_id) == target_media_id
                 and str(pod.item.source) == target_source

@@ -77,7 +77,7 @@ class CompletedPlaysByPodcastIdTests(TestCase):
 
         from django.contrib.auth import get_user_model
 
-        from app.models import Item, MediaTypes, Podcast, Sources, Status
+        from app.models import Item, MediaTypes, Podcast, PodcastPlay, Sources, Status
         from app.podcast_views import completed_plays_by_podcast_id
 
         user = get_user_model().objects.create_user(username="plays", password="x")
@@ -96,8 +96,10 @@ class CompletedPlaysByPodcastIdTests(TestCase):
             end_date=datetime(2024, 1, 1, tzinfo=UTC),
         )
         for day in range(2, 26):
-            podcast.end_date = datetime(2024, 1, 1, tzinfo=UTC) + timedelta(days=day)
-            podcast.save()
+            PodcastPlay.objects.create(
+                podcast=podcast,
+                end_date=datetime(2024, 1, 1, tzinfo=UTC) + timedelta(days=day),
+            )
 
         everything = completed_plays_by_podcast_id({podcast.id})[podcast.id]
         newest = completed_plays_by_podcast_id({podcast.id}, limit=10)[podcast.id]
