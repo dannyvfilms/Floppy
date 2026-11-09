@@ -240,11 +240,15 @@ class HomeTests(FloppyApiTestCase):
             params={"presentation": 1, "limit": 50},
             headers=self.auth_headers,
         ).json()
-        for group in payload["groups"]:
-            for row in group["rows"]:
-                if (row.get("total") or 0) >= 2:
-                    return row["rowId"], row["total"]
-        self.skipTest("fixture has no Home row with two items")
+        paged = [
+            (row["rowId"], row["total"])
+            for group in payload["groups"]
+            for row in group["rows"]
+            if (row.get("total") or 0) >= 2
+        ]
+        if not paged:
+            self.skipTest("fixture has no Home row with two items")
+        return paged[0]
 
     def test_home_row_continuation_inside_the_row_returns_more(self):
         """B13: a continuation request below the row total must return items."""
