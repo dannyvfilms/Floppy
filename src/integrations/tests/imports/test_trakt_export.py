@@ -947,6 +947,42 @@ class TraktExportUploadViewTests(TestCase):
         )
 
     @patch("integrations.views.tasks.import_trakt_export.delay")
+    def test_selective_modes_are_refused_for_the_export(self, mock_delay):
+        """watchlist/update_collection would run the full import, so nothing is queued (#1873)."""
+        payload = _zip_bytes({"watched-history-1.json": []}).getvalue()
+        for mode in ("watchlist", "update_collection"):
+            upload = SimpleUploadedFile("export.zip", payload, "application/zip")
+
+            response = self.client.post(
+                self.url,
+                {"mode": mode, "trakt_export": upload},
+                follow=True,
+            )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(
+                "supports only the 'new' and 'overwrite' modes",
+                " ".join(str(m) for m in response.context["messages"]),
+            )
+        mock_delay.assert_not_called()
+
+    @patch("integrations.views.tasks.import_trakt_collection_csv.delay")
+    def test_csv_upload_keeps_the_update_collection_mode(self, mock_delay):
+        """The collection CSV legitimately supports update_collection."""
+        upload = SimpleUploadedFile("collection.csv", b"collected_at,type\n", "text/csv")
+
+        self.client.post(
+            self.url,
+            {"mode": "update_collection", "trakt_export": upload},
+        )
+
+        mock_delay.assert_called_once()
+        self.addCleanup(
+            discard_staged_upload,
+            mock_delay.call_args.kwargs["file"],
+        )
+
+    @patch("integrations.views.tasks.import_trakt_export.delay")
     def test_large_upload_is_queued(self, mock_delay):
         """Large uploads are staged instead of rejected by an application cap."""
         self._post(SimpleUploadedFile("export.zip", b"x" * 100, "application/zip"))
