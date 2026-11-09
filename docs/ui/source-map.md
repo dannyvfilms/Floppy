@@ -640,6 +640,7 @@ Status: `Legacy`
 - `src/templates/app/components/taste_signals_genres.html`
 - `src/templates/app/statistics.html`
 - `src/templates/app/components/reading_consumption_section.html` (Books "Listening Time" card)
+- Web parity pass against v26.10.29: `frontend/ui/StatisticsSummary.jsx` caps the summary card text block at the card width.
 
 ## RELEASE-CALENDAR
 

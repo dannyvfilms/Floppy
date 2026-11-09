@@ -651,6 +651,7 @@ can inform a focused completion pass.
 - Data: `src/app/statistics_views.py`, snapshots/[statistics sync](../architecture/statistics-sync.md).
 - Reuse/blockers: transforms/tokens shared; canvas needs native renderer. Keep expensive computation server-owned.
 - Validation targets: `src/app/tests/views/test_statistics.py`, `src/app/tests/test_statistics_sync.py`, `test_statistics_media_merge_js.py`; browser layout checks are slow.
+- Web parity pass against v26.10.29: summary card text blocks cap at the card width so one-line labels truncate instead of spilling when the page font is wider (seen with a wide system font at 1024px). Browser verified; iOS and Android not verified.
 
 ### RELEASE-CALENDAR — Upcoming releases and subscriptions
 
