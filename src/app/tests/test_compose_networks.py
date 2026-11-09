@@ -66,6 +66,16 @@ def _service_networks(service):
     return set(service.get("networks") or [])
 
 
+def _is_discovery_sidecar(name, service):
+    """Identify only the optional mDNS advertiser that requires host networking."""
+    return (
+        name == "floppy-discovery"
+        and service.get("profiles") == ["discovery"]
+        and service.get("entrypoint")
+        == ["python", "-m", "app.discovery_advertiser"]
+    )
+
+
 class PublishedComposeNetworkTests(SimpleTestCase):
     def test_every_stack_persists_app_data_and_backups(self):
         for label, stack in _published_stacks():
@@ -117,6 +127,9 @@ class PublishedComposeNetworkTests(SimpleTestCase):
                 )
                 shared = None
                 for name, service in stack["services"].items():
+                    if _is_discovery_sidecar(name, service):
+                        self.assertEqual(service.get("network_mode"), "host")
+                        continue
                     joined = _service_networks(service)
                     self.assertTrue(
                         joined & declared,
@@ -129,8 +142,11 @@ class PublishedComposeNetworkTests(SimpleTestCase):
                 )
 
     def test_no_service_pins_a_network_mode(self):
-        """network_mode: bridge puts a service on the network with no DNS."""
+        """Only the optional mDNS advertiser may use host networking."""
         for label, stack in _published_stacks():
             for name, service in stack["services"].items():
                 with self.subTest(stack=label, service=name):
-                    self.assertNotIn("network_mode", service)
+                    if _is_discovery_sidecar(name, service):
+                        self.assertEqual(service.get("network_mode"), "host")
+                    else:
+                        self.assertNotIn("network_mode", service)

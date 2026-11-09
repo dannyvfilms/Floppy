@@ -99,7 +99,10 @@ class ProgressChangerBrowserTests(SerialStaticLiveServerTestCase):
 
         for theme in ("", "light", "dark", "catppuccin_mocha", "dracula", "nord", "gruvbox", "oled", "glass", "plex", "projector", "video_store", "custom"):
             page.evaluate("theme => { document.documentElement.className = theme; }", theme)
-            page.wait_for_timeout(150)
+            # The server fallback uses CSS background transitions when
+            # themes change; wait for those to settle before comparing its
+            # computed pixels with the immediately updated native surface.
+            page.wait_for_timeout(350)
             diffs = page.evaluate("""(id) => {
               const oldRow = document.querySelector('.old-case .progress-changer');
               const newRow = document.querySelector('#progress-movie-' + id + ' [data-progress-changer-root][data-react-mounted] > div');
@@ -117,7 +120,8 @@ class ProgressChangerBrowserTests(SerialStaticLiveServerTestCase):
               const tx = getComputedStyle(oldText), ty = getComputedStyle(newText);
               return [
                 Math.abs(a.width - b.width) > 0.2 || Math.abs(a.height - b.height) > 0.2 ? 'button box' : null,
-                colorDiff(x.backgroundColor, y.backgroundColor) ? 'button color' : null,
+                colorDiff(x.backgroundColor, y.backgroundColor)
+                   ? 'button color (server=' + x.backgroundColor + ', shared=' + y.backgroundColor + ')' : null,
                 colorDiff(tx.color, ty.color) ? 'text color' : null,
                 Math.abs(parseFloat(tx.fontSize) - parseFloat(ty.fontSize)) > 0.2 ? 'font size' : null,
                 oldRow.innerText.trim() !== newRow.innerText.trim() ? 'text' : null,

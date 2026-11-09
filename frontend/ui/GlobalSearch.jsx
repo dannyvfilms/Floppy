@@ -406,7 +406,7 @@ export function GlobalSearch({
           </ScrollView>
         </View> : null}
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel={type.display}
+      <Pressable testID="search-media-type-menu" accessibilityRole="button" accessibilityLabel={type.display}
         aria-haspopup="listbox" aria-expanded={menuOpen}
         onPress={() => setMenuOpen(open => !open)}
         style={({ hovered, pressed }) => [styles.typeButton, {

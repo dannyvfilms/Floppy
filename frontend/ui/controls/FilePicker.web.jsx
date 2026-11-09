@@ -27,7 +27,15 @@ export function FilePicker({
   const themed = Object.keys(palette).length > 0;
   return <label
     className="ui-button ui-file-picker"
+    role="button"
+    aria-label={label}
     aria-disabled={disabled || undefined}
+    tabIndex={disabled ? -1 : 0}
+    onKeyDown={event => {
+      if (disabled || (event.key !== 'Enter' && event.key !== ' ')) return;
+      event.preventDefault();
+      event.currentTarget.querySelector('input[type="file"]')?.click();
+    }}
     data-testid={testID}
     style={themed ? {
       backgroundColor: colors.background,
@@ -45,7 +53,8 @@ export function FilePicker({
       multiple={multiple}
       disabled={disabled}
       required={required}
-      aria-label={label}
+      aria-hidden="true"
+      tabIndex={-1}
       onChange={event => onChange?.(event)}
     />
     <span>{label}</span>
