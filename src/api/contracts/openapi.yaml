@@ -2764,10 +2764,14 @@ paths:
     post:
       operationId: api_v1_podcasts_episodes_plays_create
       description: |-
-        Add a completed play.
+        Add a play and return its ``consumption_id``.
 
-        If end_date is omitted or blank, use the current server time. Report
-        a repeat within five minutes as HTTP 200 with duplicate set to true.
+        ``status`` defaults to Completed. A completed play with no end_date ends
+        now, and accepts an optional start_date. An In progress play takes a
+        start_date, ``progress`` (minutes) and ``played_up_to_seconds``, and has
+        no end_date; update the same play later with PATCH. A repeat of a
+        completed play within five minutes, or a second In progress play for the
+        episode, is reported as HTTP 200 with duplicate set to true.
       tags:
       - api
       requestBody:

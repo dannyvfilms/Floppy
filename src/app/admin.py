@@ -12,6 +12,7 @@ from app.models import (
     MetadataProviderPreference,
     MoviePlay,
     PlaybackProgress,
+    PodcastPlay,
     VideoPlay,
 )
 
@@ -47,6 +48,14 @@ class MoviePlayAdmin(admin.ModelAdmin):
 
     search_fields = ["movie__item__title"]
     list_display = ["__str__", "end_date", "external_id"]
+
+
+@admin.register(PodcastPlay)
+class PodcastPlayAdmin(admin.ModelAdmin):
+    """Custom admin for a podcast episode play."""
+
+    search_fields = ["podcast__item__title", "external_id"]
+    list_display = ["__str__", "status", "start_date", "end_date", "external_id"]
 
 
 @admin.register(VideoPlay)
@@ -104,6 +113,7 @@ SpecialModels = [
     "Item",
     "Episode",
     "MoviePlay",
+    "PodcastPlay",
     "VideoPlay",
     "VideoGameLink",
     "BookListeningSession",

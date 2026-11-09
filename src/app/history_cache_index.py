@@ -39,6 +39,7 @@ from app.models import (
     Game,
     Manga,
     Movie,
+    PodcastPlay,
     VideoPlay,
 )
 
@@ -234,10 +235,9 @@ def _build_shared_history_days(user, requested_media_types):
 
     podcast_days = []
     if include_podcast:
-        HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
         podcast_days = (
-            HistoricalPodcast.objects.filter(
-                models.Q(history_user=user) | models.Q(history_user__isnull=True),
+            PodcastPlay.objects.filter(
+                podcast__user=user,
                 end_date__isnull=False,
             )
             .annotate(
