@@ -28,6 +28,7 @@ export function HomeView({
   onOpenLink,
   onAction,
   onRate,
+  renderCard,
   renderRating,
   renderActionIcon,
   railComponent,
@@ -60,6 +61,7 @@ export function HomeView({
       onOpenLink={onOpenLink}
       onAction={onAction}
       onRate={onRate}
+      renderCard={renderCard}
       renderRating={renderRating}
       renderActionIcon={renderActionIcon}
       railComponent={railComponent}
