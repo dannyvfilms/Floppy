@@ -480,6 +480,7 @@ def _release_calendar_props(request, context):
         },
         "selectedDay": context["selected_day"],
         "view": "list" if context["view_type"] == "list" else "grid",
+        "viewIcons": {"grid": file_icon("grid"), "list": file_icon("list")},
         "regionUnset": context["region_unset"],
         "regionNotice": gettext(
             "Set your watch provider region in Preferences to see digital and physical dates.",
@@ -573,6 +574,14 @@ def _release_props(request, release):
     elif not episode_label and not release_type_label:
         subtitle = gettext("Time unknown")
 
+    # The release list names the item itself ("Show S4") and shows the short
+    # content number ("E1 at 2 a.m."); the month agenda uses the longer forms.
+    list_parts = []
+    if release.readable_content_number:
+        list_parts.append(f"{release.readable_content_number} {event_time or ''}".strip())
+    if release_type_label:
+        list_parts.append(f"{release_type_label} {gettext('release')}")
+
     image = release.calendar_backdrop or item.image
     return {
         "id": release.id,
@@ -584,6 +593,8 @@ def _release_props(request, release):
         "href": calendar_event_url(release),
         "image": image_url(image),
         "subtitle": subtitle,
+        "listTitle": str(item),
+        "listSubtitle": " ".join(list_parts) or subtitle,
         "unknownTime": release.is_sentinel_time,
         "sortTime": 0 if release.is_sentinel_time else int(release.datetime.timestamp()),
         "cardLines": [

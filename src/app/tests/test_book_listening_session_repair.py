@@ -1,4 +1,4 @@
-"""Migration 0224 restores a ``position_minutes`` column that 0221 never created."""
+"""Migration 0225 restores a ``position_minutes`` column that 0221 never created."""
 
 from importlib import import_module
 
@@ -8,7 +8,7 @@ from django.test import TransactionTestCase
 
 from app.models import BookListeningSession
 
-repair = import_module("app.migrations.0224_booklisteningsession_position_minutes")
+repair = import_module("app.migrations.0225_booklisteningsession_position_minutes")
 
 
 def _columns():
