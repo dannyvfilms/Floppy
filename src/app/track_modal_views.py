@@ -677,6 +677,7 @@ def _track_form_presentation(
             else ""
         )
         field["suggestionExtras"] = suggestion.get("extras", [])
+        field["runtimeMinutes"] = str(suggestion.get("runtime_minutes") or "")
         copy_from = "end_date" if is_start else "start_date"
         if copy_from in form.fields:
             copy_label = str(gettext("End") if is_start else gettext("Start"))
