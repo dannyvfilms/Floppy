@@ -63,6 +63,13 @@ function normalizeField(field) {
     max: field.max ?? null,
     step: field.step ?? null,
     placeholder: field.placeholder || '',
+    quickActions: field.quickActions || [],
+    suggestionDate: field.suggestionDate || '',
+    suggestionLabel: field.suggestionLabel || '',
+    suggestionExtras: field.suggestionExtras || [],
+    copyFrom: field.copyFrom || '',
+    copyFromLabel: field.copyFromLabel || '',
+    copyEmptyMessage: field.copyEmptyMessage || '',
   };
 }
 

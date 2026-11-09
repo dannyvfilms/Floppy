@@ -3,6 +3,8 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Badge } from './Badge';
 import { Button } from './Button';
+import { DateTimePicker } from './DateTimePicker';
+import { SelectField } from './SelectField';
 import { FormError, FormField, FormHeader, FormSelect, FormTextField } from './MediaCardFormControls';
 
 const DEFAULT_PALETTE = {
@@ -29,6 +31,7 @@ const DEFAULT_LABELS = {
   title: 'Collection Entry',
   existing: 'Existing copies',
   addCopy: 'Add Copy',
+  yes: 'Yes',
   addAnother: 'Add Another Copy',
   editCopy: 'Edit Copy',
   save: 'Save',
@@ -117,7 +120,7 @@ export function CollectionCopySummary({ copies = [], labels: suppliedLabels, pal
   </View>;
 }
 
-function CheckboxField({ label, value, onChange, palette, editable, help }) {
+function CheckboxField({ label, value, onChange, palette, editable, help, yes = 'Yes' }) {
   return <FormField label={label} palette={palette}>
     <Pressable accessibilityRole="checkbox" accessibilityLabel={label}
       accessibilityState={{ checked: !!value, disabled: !editable }}
@@ -130,7 +133,7 @@ function CheckboxField({ label, value, onChange, palette, editable, help }) {
       <View style={[styles.checkboxBox, { borderColor: value ? palette.accent : palette.border, backgroundColor: value ? palette.accent : 'transparent' }]}>
         {value ? <Text style={[styles.checkboxCheck, { color: palette.accentContrast }]}>✓</Text> : null}
       </View>
-      <Text style={[styles.checkboxLabel, { color: palette.textSecondary }]}>{label}</Text>
+      <Text style={[styles.checkboxLabel, { color: palette.textSecondary }]}>{yes}</Text>
     </Pressable>
     {help ? <Text style={[styles.help, { color: palette.textMuted }]}>{help}</Text> : null}
   </FormField>;
@@ -140,22 +143,38 @@ function MediumFields({ fields = [], values, errors, labels, palette, canMutate,
   return <View style={styles.fieldsGrid}>
     {fields.map(field => {
       if (field.type === 'select') {
-        return <FormSelect key={field.name} label={field.label} value={values[field.name] ?? ''}
-          options={field.options || []} required={field.required}
-          error={errors[field.name]} help={field.help} palette={palette}
-          onChange={value => onChange?.(field.name, value)} />;
+        return <View key={field.name} style={styles.fieldCell}>
+          <FormField label={field.label} required={field.required} error={errors[field.name]}
+            palette={palette}>
+            <SelectField labelHidden filter label={field.label} value={values[field.name] ?? ''}
+              options={field.options || []} palette={palette} disabled={!canMutate}
+              onChange={event => onChange?.(field.name, event.target.value)} />
+          </FormField>
+        </View>;
       }
       if (field.type === 'checkbox') {
-        return <CheckboxField key={field.name} label={field.label} value={!!values[field.name]}
-          help={field.help} palette={palette} editable={canMutate}
-          onChange={value => onChange?.(field.name, value)} />;
+        return <View key={field.name} style={styles.fieldCell}>
+          <CheckboxField label={field.label} value={!!values[field.name]}
+            palette={palette} editable={canMutate} yes={labels.yes}
+            onChange={value => onChange?.(field.name, value)} />
+        </View>;
       }
-      return <FormTextField key={field.name} label={field.label}
-        value={values[field.name] ?? ''} required={field.required}
-        error={errors[field.name]} help={field.help}
-        keyboardType={field.type === 'number' ? 'decimal-pad' : 'default'}
-        editable={canMutate} palette={palette}
-        onChangeText={value => onChange?.(field.name, value)} />;
+      if (field.type === 'datetime') {
+        return <View key={field.name} style={styles.fieldCell}>
+          <FormField label={field.label} error={errors[field.name]} palette={palette}>
+            <DateTimePicker value={values[field.name] ?? ''} trackTime
+              onChange={value => onChange?.(field.name, value)} palette={palette} />
+          </FormField>
+        </View>;
+      }
+      return <View key={field.name} style={styles.fieldCell}>
+        <FormTextField label={field.label}
+          value={values[field.name] ?? ''} required={field.required}
+          error={errors[field.name]} placeholder={field.placeholder}
+          keyboardType={field.type === 'number' ? 'decimal-pad' : 'default'}
+          editable={canMutate} palette={palette}
+          onChangeText={value => onChange?.(field.name, value)} />
+      </View>;
     })}
   </View>;
 }
@@ -314,7 +333,8 @@ const styles = StyleSheet.create({
   iconText: { fontSize: 17 },
   emptyCopy: { fontSize: 12, paddingVertical: 4 },
   editor: { gap: 14 },
-  fieldsGrid: { gap: 14 },
+  fieldsGrid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 16, rowGap: 16 },
+  fieldCell: { flexGrow: 1, flexBasis: 240, minWidth: 0 },
   checkboxRow: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 8, minHeight: 44, paddingHorizontal: 10 },
   checkboxBox: { width: 18, height: 18, borderWidth: 1, borderRadius: 4, alignItems: 'center', justifyContent: 'center' },
   checkboxCheck: { fontSize: 12, fontWeight: '700' },

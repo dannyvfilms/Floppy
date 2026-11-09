@@ -272,6 +272,7 @@ export function TagPreview({
 export function TagAssignmentDialog({
   open = false,
   embedded = false,
+  plain = false,
   showClose = true,
   item,
   tags = [],
@@ -313,7 +314,41 @@ export function TagAssignmentDialog({
     setDeleteTarget(null);
   }
 
-  const panel = <View style={[styles.dialog, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+  // Plain: the Track modal's Tags tab, rows and an inline create form with no title or search.
+  const plainPanel = <View style={styles.plainPanel}>
+    {tags.length ? tags.map(tag => <View key={tag.id} style={[styles.plainRow, { backgroundColor: colors.surfaceStrong }]}>
+      <Text numberOfLines={1} style={[styles.plainName, { color: colors.text }]}>{tag.name}</Text>
+      <View style={styles.plainActions}>
+        <Pressable accessibilityRole="button" disabled={busy || tag.owned === false}
+          accessibilityLabel={`${tag.hasTag ? 'Remove' : 'Add'} ${tag.name} ${tag.hasTag ? 'from' : 'to'} this item`}
+          onPress={() => onToggle?.(tag)}
+          style={({ hovered }) => [styles.plainAction, hovered && { backgroundColor: colors.surfaceMuted }]}>
+          <Text style={[styles.plainActionText, { color: tag.hasTag ? colors.text : colors.textSecondary }]}>
+            {tag.hasTag ? 'Remove' : 'Add'}
+          </Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" disabled={busy || tag.owned === false}
+          accessibilityLabel={`Delete ${tag.name} tag`} onPress={() => setDeleteTarget(tag)}
+          style={({ hovered }) => [styles.plainTrash, hovered && { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
+          <Icon spec={TRASH_ICON} color="#f87171" size={16} />
+        </Pressable>
+      </View>
+    </View>) : <Text style={[styles.plainEmpty, { color: colors.textSecondary }]}>No tags yet. Create one below.</Text>}
+    <View style={styles.plainCreate}>
+      <View style={styles.createField}>
+        <TextField label="New tag" labelHidden value={newName} maxLength={50} placeholder="New tag..."
+          accessibilityLabel="New tag name" onChangeText={setNewName} error={error} disabled={busy}
+          palette={colors} />
+      </View>
+      <Pressable accessibilityRole="button" disabled={!newName.trim() || busy} onPress={createTag}
+        style={({ hovered }) => [styles.plainAdd, { backgroundColor: hovered ? '#6d28d9' : '#7c3aed',
+          opacity: !newName.trim() || busy ? 0.6 : 1 }]}>
+        <Text style={styles.plainAddText}>Add</Text>
+      </Pressable>
+    </View>
+  </View>;
+
+  const panel = plain ? plainPanel : <View style={[styles.dialog, { backgroundColor: colors.surface, borderColor: colors.border }]}>
     <View style={styles.dialogHead}>
       <View style={styles.dialogHeading}>
         <Text role="heading" aria-level={2} style={[styles.dialogTitle, { color: colors.text }]}>Tags</Text>
@@ -470,7 +505,18 @@ const styles = StyleSheet.create({
   dialogHeading: { flex: 1, gap: 2 },
   dialogTitle: { fontSize: 20, fontWeight: '700' },
   dialogCopy: { fontSize: 12, lineHeight: 17 },
-  tagScroll: { maxHeight: 360 },
+  plainPanel: { gap: 12 },
+plainRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 4, padding: 12, borderRadius: 6 },
+plainName: { flexShrink: 1, fontSize: 16 },
+plainActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+plainAction: { height: 32, paddingHorizontal: 12, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+plainActionText: { fontSize: 14, fontWeight: '500' },
+plainTrash: { width: 32, height: 32, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+plainEmpty: { fontSize: 16 },
+plainCreate: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 4 },
+plainAdd: { paddingHorizontal: 12, height: 40, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+plainAddText: { color: '#ffffff', fontSize: 14 },
+tagScroll: { maxHeight: 360 },
   assignmentRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, borderWidth: 1, borderRadius: 8, padding: 10 },
   assignmentBody: { flex: 1, gap: 4 },
   rowActions: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
