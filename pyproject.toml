@@ -39,6 +39,7 @@ dependencies = [
     "supervisor==4.3.0",
     "unidecode==1.4.0",
     "psnawp==2.0.0",
+    "zeroconf==0.154.0",
 ]
 
 [dependency-groups]

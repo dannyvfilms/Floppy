@@ -60,6 +60,7 @@ from app.models import (
     Movie,
     Music,
     Podcast,
+    PodcastPlay,
     Track,
     VideoPlay,
 )
@@ -150,9 +151,8 @@ def history_media_types_by_day(user, day_keys, logging_style):
             mark(media_type, *row)
     for row in _music_history_dates(user, win_start, win_end):
         mark(MediaTypes.MUSIC.value, row)
-    HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
-    for row in HistoricalPodcast.objects.filter(
-        models.Q(history_user=user) | models.Q(history_user__isnull=True),
+    for row in PodcastPlay.objects.filter(
+        podcast__user=user,
         end_date__gte=win_start,
         end_date__lt=win_end,
     ).values_list("end_date", flat=True):
@@ -706,23 +706,22 @@ def build_history_day(
                 entry["genres"] = genres
             entries.append(entry)
 
-    # Podcasts (HistoricalPodcast for the day)
+    # Podcasts (one entry per PodcastPlay for the day)
     podcast_history_records = []
     if include_podcast and prefetch:
         podcast_history_records = prefetch.podcasts(day_date)
     elif include_podcast:
-        HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
         podcast_history_records = list(
-            HistoricalPodcast.objects.filter(
-                models.Q(history_user=user) | models.Q(history_user__isnull=True),
+            PodcastPlay.objects.filter(
+                podcast__user=user,
                 end_date__gte=day_start,
                 end_date__lt=day_end,
             )
-            .values_list("id", "start_date", "end_date", "history_id", named=True)
+            .values_list("podcast_id", "start_date", "end_date", "id", named=True)
             .iterator(chunk_size=500)
         )
     if podcast_history_records:
-        podcast_ids = list({record.id for record in podcast_history_records})
+        podcast_ids = list({record.podcast_id for record in podcast_history_records})
         if prefetch:
             podcasts_lookup = prefetch.podcast_lookup
             counts_by_id = {
@@ -731,7 +730,6 @@ def build_history_day(
                 if podcast_id in prefetch.podcast_counts
             }
         else:
-            HistoricalPodcast = apps.get_model("app", "HistoricalPodcast")
             podcasts_lookup = {
                 p.id: p
                 for p in Podcast.objects.filter(
@@ -742,15 +740,13 @@ def build_history_day(
                 .defer(*history_deferred_item_fields("item"))
             }
             counts_by_id = {
-                row["id"]: row["play_count"]
-                for row in HistoricalPodcast.objects.filter(
-                    id__in=podcast_ids,
+                row["podcast_id"]: row["play_count"]
+                for row in PodcastPlay.objects.filter(
+                    podcast_id__in=podcast_ids,
+                    podcast__user=user,
                     end_date__isnull=False,
                 )
-                .filter(
-                    models.Q(history_user=user) | models.Q(history_user__isnull=True)
-                )
-                .values("id")
+                .values("podcast_id")
                 .annotate(play_count=models.Count("id"))
             }
 
@@ -764,7 +760,7 @@ def build_history_day(
                 podcast_play_counts[key] = podcast_play_counts.get(key, 0) + play_count
 
         for history_record in podcast_history_records:
-            podcast = podcasts_lookup.get(history_record.id)
+            podcast = podcasts_lookup.get(history_record.podcast_id)
             if not podcast or not podcast.item:
                 continue
 
@@ -819,7 +815,7 @@ def build_history_day(
                     else None,
                     "play_count": play_count,
                     "instance_id": podcast.id,
-                    "entry_key": str(history_record.history_id),
+                    "entry_key": str(history_record.id),
                 },
             )
 

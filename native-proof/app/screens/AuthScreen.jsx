@@ -16,6 +16,8 @@ import {
   verifyAuthSession,
 } from '../data/authTransport';
 import { subscribeAuthSession } from '../data/authSession';
+import { findFloppyServers } from '../data/serverDiscovery';
+import { verifyDiscoveredServers } from '../data/serverDiscoveryCore';
 import { AuthNotice } from '../../../frontend/auth/AuthEntrance';
 import { AuthView } from '../../../frontend/pages/AuthView';
 import { SettingsAccountView } from '../../../frontend/pages/SettingsAccountView';
@@ -115,12 +117,20 @@ function GuardChip({ label, active, onPress }) {
 export default function AuthScreen({ onBack, entranceOnly = false }) {
   const initialAuthState = getAuthState();
   const [view, setView] = useState('login');
+  const [authStep, setAuthStep] = useState('server');
   const [authState, setAuthState] = useState(initialAuthState);
   const [serverUrl, setServerUrl] = useState(initialAuthState.serverUrl || '');
   const [serverError, setServerError] = useState('');
   const [serverHelp, setServerHelp] = useState('');
   const [serverBusy, setServerBusy] = useState(false);
   const [serverChecked, setServerChecked] = useState(false);
+  const [serverMode, setServerMode] = useState('local');
+  const [serverHelpVisible, setServerHelpVisible] = useState(false);
+  const [serverDiscoveryBusy, setServerDiscoveryBusy] = useState(false);
+  const [serverDiscoverySupported, setServerDiscoverySupported] = useState(true);
+  const [serverDiscoveryPermissionDenied, setServerDiscoveryPermissionDenied] = useState(false);
+  const [serverDiscoveryMessage, setServerDiscoveryMessage] = useState('');
+  const [discoveredServers, setDiscoveredServers] = useState([]);
   const [authConfig, setAuthConfig] = useState(emptyConfig);
 
   const [authValues, setAuthValues] = useState(emptyAuthValues);
@@ -255,6 +265,7 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
       setServerUrl(value);
       setServerChecked(false);
       setServerError('');
+      setServerDiscoveryMessage('');
     }
   }
 
@@ -299,11 +310,65 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
       setServerChecked(true);
       setServerHelp(reachable.serverUrl ? `Reached ${reachable.serverUrl}` : 'Server reachable.');
       if (config.firstRun) setServerHelp('First run: create the first account for this server.');
+      return true;
     } catch (error) {
       setServerError(errorMessage(error, 'Could not reach that server.'));
+      return false;
     } finally {
       setServerBusy(false);
     }
+  }
+
+  async function continueToCredentials() {
+    if (serverChecked || await checkServer()) setAuthStep('credentials');
+  }
+
+  function clearServerAddress() {
+    updateAuth('serverUrl', '');
+    setServerError('');
+    setServerHelp('');
+    setServerChecked(false);
+    setDiscoveredServers([]);
+    setServerDiscoveryMessage('');
+  }
+
+  async function discoverServers() {
+    setServerDiscoveryBusy(true);
+    setServerDiscoveryPermissionDenied(false);
+    setServerError('');
+    setAuthErrors(current => ({ ...current, serverUrl: undefined }));
+    setServerHelp('');
+    setServerDiscoveryMessage('searching');
+    setDiscoveredServers([]);
+    try {
+      const result = await findFloppyServers();
+      setServerDiscoverySupported(result.supported);
+      if (!result.supported) {
+        setServerDiscoveryMessage('unavailable');
+        return;
+      }
+      if (result.permissionDenied) {
+        setServerDiscoveryPermissionDenied(true);
+        setServerDiscoveryMessage('permission');
+        return;
+      }
+
+      const verified = await verifyDiscoveredServers(result.servers, fetchAuthConfig);
+      setDiscoveredServers(verified);
+      setServerDiscoveryMessage(verified.length ? '' : 'empty');
+    } catch {
+      setServerDiscoveryMessage('Could not search this network for Floppy servers. Try again or enter the address manually.');
+    } finally {
+      setServerDiscoveryBusy(false);
+    }
+  }
+
+  function selectDiscoveredServer(server) {
+    setServerUrl(server.serverUrl);
+    setServerError('');
+    setServerChecked(true);
+    setServerHelp(`${server.name} found at ${server.serverUrl}`);
+    setAuthConfig(server.config);
   }
 
   async function submitAuth(options = {}) {
@@ -364,7 +429,10 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
         setRedirectLabel('Back to sign in');
       }
     } catch (error) {
-      if (error?.code === AUTH_ERROR_CODES.INVALID_SERVER) setServerError(errorMessage(error, 'Check the server address.'));
+      if (error?.code === AUTH_ERROR_CODES.INVALID_SERVER) {
+        setServerError(errorMessage(error, 'Check the server address.'));
+        setAuthStep('server');
+      }
       else setAuthError(errorMessage(error, 'Check the details and try again.'));
     } finally {
       setAuthBusy(false);
@@ -567,6 +635,7 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
     setAccount(null);
     setAuthValues(emptyAuthValues);
     setView('login');
+    setAuthStep('server');
     setAuthSuccess('Signed out.');
     setRedirectLabel('');
   }
@@ -584,6 +653,7 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
     palette={authPalette}
     buttonPalette={buttonPalette}
     entrance={{
+      authStep,
       firstRun: authConfig.firstRun,
       registrationEnabled: authConfig.registrationEnabled,
       socialOnly: authConfig.socialOnly,
@@ -593,6 +663,13 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
       serverHelp,
       serverBusy,
       serverChecked,
+      serverMode,
+      serverHelpVisible,
+      serverDiscoveryBusy,
+      serverDiscoverySupported,
+      serverDiscoveryPermissionDenied,
+      serverDiscoveryMessage,
+      discoveredServers,
       values: authValues,
       errors: authErrors,
       error: authError,
@@ -602,7 +679,14 @@ export default function AuthScreen({ onBack, entranceOnly = false }) {
       busyProvider,
       onChange: (name, value) => updateAuth(name, value),
       onServerChange: value => updateAuth('serverUrl', value),
+      onContinueServer: continueToCredentials,
+      onChangeServer: () => setAuthStep('server'),
+      onClearServerAddress: clearServerAddress,
       onCheckServer: checkServer,
+      onServerModeChange: setServerMode,
+      onToggleServerHelp: () => setServerHelpVisible(current => !current),
+      onDiscoverServers: discoverServers,
+      onSelectDiscoveredServer: selectDiscoveredServer,
       onSubmit: submitAuth,
       onSwitchMode: chooseView,
       onForgotPassword: () => chooseView('recovery'),

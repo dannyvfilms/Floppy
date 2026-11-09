@@ -433,6 +433,9 @@ class HomeRowView(HomeBrowserSessionMixin, drf_views.APIView):
 
     def get(self, request, row_id):
         """Return one bounded Home row window."""
+        # The route captures digits as text; the row builders compare ids as
+        # integers, so a text id never matched a row on a continuation (#1873).
+        row_id = int(row_id)
         try:
             items_limit = max(1, min(int(request.GET.get("limit", 14)), 50))
             offset = max(int(request.GET.get("offset", "0")), 0)

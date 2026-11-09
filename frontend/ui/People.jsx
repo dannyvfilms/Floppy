@@ -1,7 +1,7 @@
+import { Modal, ModalCloseButton } from './Modal';
 import React, { useState } from 'react';
 import {
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -414,10 +414,10 @@ export function LightboxDialog({
     <View style={[styles.lightbox, { backgroundColor: 'rgba(0, 0, 0, 0.94)' }]}>
       <View style={styles.lightboxTop}>
         <Text style={[styles.lightboxCount, { color: colors.chipText }]}>{bounded + 1} / {items.length}</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel={copy.close} onPress={onClose}
+        <ModalCloseButton accessibilityRole="button" accessibilityLabel={copy.close} onPress={onClose}
           style={[styles.roundButton, { backgroundColor: colors.chipBackground }]}>
           <Text style={[styles.roundGlyph, { color: colors.chipText }]}>✕</Text>
-        </Pressable>
+        </ModalCloseButton>
       </View>
       <View style={styles.lightboxBody}>
         <Image source={{ uri: isVideo ? current.posterUrl : current.url }} resizeMode="contain" style={styles.fill} />

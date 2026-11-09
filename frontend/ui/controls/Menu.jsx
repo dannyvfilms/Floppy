@@ -1,5 +1,6 @@
+import { Modal, ModalCloseButton } from '../Modal';
 import React, { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SelectField } from '../SelectField';
 
 const FALLBACK_PALETTE = {
@@ -107,13 +108,13 @@ export function ActionMenu({
             { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={[styles.header, { borderBottomColor: colors.border }]}>
             <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>{label}</Text>
-            <Pressable
+            <ModalCloseButton
               accessibilityRole="button"
               accessibilityLabel={closeLabel}
               onPress={close}
               style={({ pressed }) => [styles.close, pressed && styles.pressed]}>
               <Text accessible={false} style={[styles.closeText, { color: colors.textMuted }]}>×</Text>
-            </Pressable>
+            </ModalCloseButton>
           </View>
 
           <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">

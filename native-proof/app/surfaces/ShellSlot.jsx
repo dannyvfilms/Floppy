@@ -1,10 +1,16 @@
 import React, { useEffect, useState } from 'react';
+import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useHinge } from 'expo-hinge';
+import { useVerticalBarEdgeIOS } from 'expo-status-bar';
 import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
 import { signOut } from '../data/authTransport';
 import { Shell } from '../../../frontend/ui/Shell';
 import { Sidebar } from '../../../frontend/ui/Sidebar';
 import { renderNativeIcon } from '../iconRenderer';
 import SearchSlot from './SearchSlot';
+import NativeShell from './NativeShell';
+import { horizontalContentPadding } from '../safeAreaSpacing.mjs';
 import { palette, radius } from '../theme';
 
 export const surface = {
@@ -145,15 +151,21 @@ function absoluteLogo(model, serverUrl) {
 export default function ShellSlot({
   active = 'home',
   activeHref = '/',
+  canGoBack = false,
+  onBack,
   onNavigate,
   onOpenHref,
   onOpenSearch,
   onOpenSuggestion,
+  children,
 }) {
   const [session, setSession] = useState(() => getActiveAuthSession());
   const [serverModel, setServerModel] = useState(null);
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState([]);
+  const hinge = useHinge();
+  const railEdge = useVerticalBarEdgeIOS();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => subscribeAuthSession(setSession), []);
 
@@ -190,7 +202,36 @@ export default function ShellSlot({
     if (item?.href) onOpenHref?.(item.href, item);
   };
 
-  return <Shell
+  const navigationPadding = horizontalContentPadding(insets, 16);
+  const adaptivePalette = Platform.OS === 'ios' && (hinge || railEdge)
+    ? { ...shellPalette, navRowHeight: 44, navContentPaddingTop: 25,
+      navContentPaddingLeft: navigationPadding.paddingLeft,
+      navContentPaddingRight: navigationPadding.paddingRight,
+      navFontSize: 17, navIconSize: 22 }
+    : shellPalette;
+  const sidebar = <Sidebar model={model} pins={pins} palette={adaptivePalette}
+    labels={SIDEBAR_LABELS}
+    renderIcon={renderNativeIcon}
+    onNavigate={openItem}
+    onLogout={() => { setOpen(false); signOut().catch(() => {}); }}
+    showLogo={false} />;
+  const search = <SearchSlot
+    key={searchType}
+    expanded
+    initialMediaType={searchType}
+    onOpenSearch={onOpenSearch}
+    onOpenSuggestion={onOpenSuggestion}
+  />;
+
+  if (Platform.OS === 'ios') {
+    return <NativeShell open={open} onToggle={() => setOpen(value => !value)}
+      sidebar={sidebar} search={search} labels={labels} palette={shellPalette}
+      canGoBack={canGoBack} onBack={() => { setOpen(false); onBack?.(); }}>
+      {children}
+    </NativeShell>;
+  }
+
+  return <><Shell
     open={open}
     onToggleMenu={() => setOpen(value => !value)}
     onCloseMenu={() => setOpen(false)}
@@ -199,21 +240,10 @@ export default function ShellSlot({
     showMenu
     showSearch
     showThemeButton={false}
-    search={<SearchSlot
-      key={searchType}
-      expanded
-      initialMediaType={searchType}
-      onOpenSearch={onOpenSearch}
-      onOpenSuggestion={onOpenSuggestion}
-    />}
+    search={search}
     labels={labels}
     palette={shellPalette}
   >
-    <Sidebar model={model} pins={pins} palette={shellPalette}
-      labels={SIDEBAR_LABELS}
-      renderIcon={renderNativeIcon}
-      onNavigate={openItem}
-      onLogout={() => { setOpen(false); signOut().catch(() => {}); }}
-      showLogo={false} />
-  </Shell>;
+    {sidebar}
+  </Shell>{children}</>;
 }

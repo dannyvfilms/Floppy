@@ -677,6 +677,7 @@ def _track_form_presentation(
             else ""
         )
         field["suggestionExtras"] = suggestion.get("extras", [])
+        field["runtimeMinutes"] = str(suggestion.get("runtime_minutes") or "")
         copy_from = "end_date" if is_start else "start_date"
         if copy_from in form.fields:
             copy_label = str(gettext("End") if is_start else gettext("Start"))
@@ -1929,11 +1930,7 @@ def track_modal(
                 all_history = []
                 for podcast in all_podcasts:
                     # Only include history records with end_date (completed plays)
-                    history = (
-                        podcast.history.filter(end_date__isnull=False)
-                        if hasattr(podcast.history, "filter")
-                        else [h for h in podcast.history.all() if h.end_date]
-                    )
+                    history = podcast.plays.filter(end_date__isnull=False)
                     # Convert queryset to list if needed to ensure proper evaluation
                     if hasattr(history, "__iter__") and not isinstance(
                         history, (list, tuple)

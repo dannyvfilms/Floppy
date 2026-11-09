@@ -188,9 +188,27 @@ export function mountProvider(host, model) {
   }
 
   const onOpenLink = url => { if (url) window.open(url, '_blank', 'noopener'); };
+  const linkPropsForUrl = url => url ? {
+    href: url,
+    hrefAttrs: { target: '_blank', rel: 'noopener noreferrer' },
+  } : {};
+  const browserModel = {
+    ...model,
+    overviewCards: (model.overviewCards || []).map(card => ({
+      ...card,
+      linkProps: card.url ? {
+        href: card.url,
+        // RN Web does not forward an HTML title on Pressable. Keep the real
+        // browser hover hint in the web adapter; native uses accessibilityHint.
+        ref: node => {
+          if (node && card.tooltip) node.setAttribute('title', card.tooltip);
+        },
+      } : {},
+    })),
+  };
 
   return mountRoot(host, <ProviderPageView
-    model={model}
+    model={browserModel}
     draft={draft}
     palette={colors}
     onOpenUrl={onOpenUrl}
@@ -204,6 +222,7 @@ export function mountProvider(host, model) {
         onSave={saveCredentials}
         onClear={clearCredentials}
         onOpenLink={onOpenLink}
+        linkPropsForUrl={linkPropsForUrl}
         onSetDefault={setDefaultProvider}
         onFollowUp={onNavigate}
         onConnect={connectAccount}

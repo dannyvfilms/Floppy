@@ -7,6 +7,21 @@ import { Text } from 'react-native';
 // components use icons without importing a browser-only implementation.
 let iconRenderer = null;
 
+// Same connected magnifier as app/icons/magnifying-glass.svg.
+const searchSpec = {
+  viewBox: '0 0 24 24',
+  root: { fill: 'none', stroke: 'currentColor', 'stroke-width': '2',
+    'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+  children: [
+    { tag: 'circle', attrs: { cx: '11', cy: '11', r: '8' }, children: [] },
+    { tag: 'path', attrs: { d: 'M21 21l-4.35-4.35' }, children: [] },
+  ],
+};
+
+export function SearchIcon({ color, size = 20, style }) {
+  return <Icon spec={searchSpec} color={color} size={size} style={style} />;
+}
+
 export function setIconRenderer(renderer) {
   iconRenderer = typeof renderer === 'function' ? renderer : null;
 }

@@ -21,7 +21,7 @@ class GPodderApiTests(SimpleTestCase):
             "https://demo.example.com",
         )
 
-    @patch("integrations.gpodder_api.requests.request")
+    @patch("integrations.gpodder_api.send_to_self_hosted_pinned")
     def test_verify_login_success(self, mock_request):
         mock_request.return_value.status_code = 200
         mock_request.return_value.text = ""
@@ -36,7 +36,7 @@ class GPodderApiTests(SimpleTestCase):
 
         self.assertEqual(mock_request.call_args.kwargs["auth"], ("listener", "secret"))
 
-    @patch("integrations.gpodder_api.requests.request")
+    @patch("integrations.gpodder_api.send_to_self_hosted_pinned")
     def test_verify_login_failure(self, mock_request):
         mock_request.return_value.status_code = 401
         mock_request.return_value.text = "nope"
@@ -50,7 +50,7 @@ class GPodderApiTests(SimpleTestCase):
                 ),
             )
 
-    @patch("integrations.gpodder_api.requests.request")
+    @patch("integrations.gpodder_api.send_to_self_hosted_pinned")
     def test_fetch_subscriptions_uses_device_scoped_endpoint(self, mock_request):
         mock_request.return_value.status_code = 200
         mock_request.return_value.text = ""

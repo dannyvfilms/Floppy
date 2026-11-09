@@ -1,7 +1,7 @@
+import { Modal, ModalCloseButton } from '../../../frontend/ui/Modal';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Linking,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -134,10 +134,10 @@ export function BarcodeScannerModal({
           <Text role="heading" aria-level={1} style={styles.title}>{labels.title}</Text>
           <Text style={styles.help}>{labels.help}</Text>
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel={labels.cancel}
+        <ModalCloseButton accessibilityRole="button" accessibilityLabel={labels.cancel}
           onPress={onCancel} style={styles.close}>
           <Text style={styles.closeText}>×</Text>
-        </Pressable>
+        </ModalCloseButton>
       </View>
 
       <View style={styles.cameraFrame}>

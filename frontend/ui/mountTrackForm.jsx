@@ -191,6 +191,12 @@ function useLegacyPopupOpen(host) {
     observer.observe(popup, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
     return () => observer.disconnect();
   }, [popup]);
+  useLayoutEffect(() => {
+    // Episode tracking swaps this host into the card with no modal root above
+    // it; the card's Alpine flag is then the only record of open or closed.
+    if (popup) return undefined;
+    return window.watchTrackModalOpen?.(host, setOpen) || undefined;
+  }, [host, popup]);
   return open;
 }
 
@@ -262,7 +268,7 @@ function Adapter({ host, props }) {
     setBusy(true);
     setServerError('');
     const request = ajax('POST', url, {
-      values: body,
+      values: payload,
       target,
       swap: model.swap || 'none',
     });

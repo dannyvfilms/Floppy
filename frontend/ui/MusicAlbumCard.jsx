@@ -56,6 +56,7 @@ function albumModel(album, labels) {
   return {
     mediaType: 'music',
     shape: 'square',
+    href: album.href,
     image: { src: album.image, fallback: '', source: 'primary' },
     title: album.title,
     altTitle: null,

@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { Chip } from '../settings/Chip';
 import { Button } from '../ui/Button';
 import { TextField } from '../ui/TextField';
+import { SearchIcon } from '../ui/Icon';
 
 const defaultPalette = {
   background: '#18181b',
@@ -75,12 +76,28 @@ const defaultLabels = {
   redirecting: 'Signed in. Continue to Floppy.',
   continue: 'Continue',
   serverAddress: 'Server address',
+  serverStepTitle: 'Connect to your Floppy server',
+  continueToSignIn: 'Continue',
+  changeServer: 'Change',
+  localServerPlaceholder: 'http://floppy.local:8000',
   serverPlaceholder: 'floppy.example.com',
   checkServer: 'Check server',
   checkingServer: 'Checking server…',
   serverReady: 'Server found. Choose a sign-in method below.',
   serverOk: 'Server reachable. Check again',
-  serverFailed: 'Server check failed. Retry',
+  local: 'Local',
+  remote: 'Remote',
+  localServerMode: 'Local server mode',
+  remoteServerMode: 'Remote server mode',
+  remoteServerInfo: 'To reach Floppy away from your home network, configure a secure externally reachable address with a Cloudflare Tunnel, VPN, or another method, then enter that address here.',
+  discoverServers: 'Find Floppy servers on this network',
+  discoveringServers: 'Searching for Floppy servers…',
+  discoverySearching: 'Searching your local network for Floppy servers…',
+  discoveryUnavailable: 'Server discovery is unavailable in Expo Go.',
+  discoveryPermissionDenied: 'Allow local network access in your device settings to find Floppy servers.',
+  discoveryEmpty: 'Couldn’t find an advertised Floppy server on this network. Enable the server’s discovery advertiser, or enter its address manually.',
+  discoveredServers: 'Floppy servers found',
+  clearServerAddress: 'Clear server address',
 };
 
 // The same mark the web login button renders (account/login.html).
@@ -145,8 +162,8 @@ export function SocialProviders({
 // checking, then a check or an x. It replaces the separate Check server button.
 function ServerStatusButton({ state, busy, onPress, palette, labels }) {
   const color = state === 'ok' ? palette.success : state === 'error' ? palette.danger : palette.textMuted;
-  const label = busy ? labels.checkingServer : state === 'ok' ? labels.serverOk
-    : state === 'error' ? labels.serverFailed : labels.checkServer;
+  const label = busy ? labels.checkingServer : state === 'error' ? labels.clearServerAddress
+    : state === 'ok' ? labels.serverOk : labels.checkServer;
   return <Pressable accessibilityRole="button" accessibilityLabel={label}
     accessibilityState={{ busy, disabled: busy }} disabled={busy} onPress={onPress}
     style={({ pressed, focused }) => [styles.serverButton, pressed && { backgroundColor: palette.surfaceMuted },
@@ -155,6 +172,16 @@ function ServerStatusButton({ state, busy, onPress, palette, labels }) {
       : <Text aria-hidden style={[styles.serverGlyph, { color }]}>
         {state === 'ok' ? '✓' : state === 'error' ? '×' : '↻'}
       </Text>}
+  </Pressable>;
+}
+
+function ServerDiscoveryButton({ busy, onPress, palette, labels }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel={busy ? labels.discoveringServers : labels.discoverServers}
+    accessibilityState={{ busy }} disabled={busy} onPress={onPress}
+    style={({ pressed, focused }) => [styles.serverButton, pressed && { backgroundColor: palette.surfaceMuted },
+      focused && palette.focusStyle]}>
+    {busy ? <ActivityIndicator size="small" color={palette.accent} />
+      : <SearchIcon color={palette.textMuted} size={18} />}
   </Pressable>;
 }
 
@@ -167,6 +194,7 @@ function LinkButton({ label, onPress, palette, accessibilityLabel }) {
 
 export function AuthEntrance({
   mode = 'login',
+  authStep = 'credentials',
   firstRun = false,
   registrationEnabled = true,
   socialOnly = false,
@@ -176,8 +204,22 @@ export function AuthEntrance({
   serverHelp,
   serverBusy = false,
   serverChecked = false,
+  serverMode = 'local',
+  serverHelpVisible = false,
+  serverDiscoveryBusy = false,
+  serverDiscoverySupported = true,
+  serverDiscoveryPermissionDenied = false,
+  serverDiscoveryMessage = '',
+  discoveredServers = [],
   onServerChange,
+  onContinueServer,
+  onChangeServer,
+  onClearServerAddress,
   onCheckServer,
+  onServerModeChange,
+  onToggleServerHelp,
+  onDiscoverServers,
+  onSelectDiscoveredServer,
   values = {},
   errors = {},
   error,
@@ -203,30 +245,86 @@ export function AuthEntrance({
   const update = (name, value) => onChange?.(name, value);
   const submit = options => onSubmit?.(options);
 
-  const title = mode === 'signup'
+  const title = authStep === 'server' ? copy.serverStepTitle : mode === 'signup'
     ? (firstRun ? copy.firstRunSignupTitle : copy.signupTitle)
     : mode === 'recovery'
       ? copy.recoveryTitle
       : (firstRun ? copy.firstRunLoginTitle : copy.loginTitle);
   const busyLabel = mode === 'signup' ? copy.busySignUp : mode === 'recovery' ? copy.busyRecovery : copy.busySignIn;
+  const discoveryAction = serverMode === 'local' && !serverUrl.trim();
 
   return <View style={styles.root}>
     <View style={styles.heading}>
-      <Text role="heading" aria-level={2} style={[styles.title, { color: colors.textMuted }]}>{title}</Text>
+    <Text role="heading" aria-level={2} style={[styles.title, { color: colors.textMuted }]}>{title}</Text>
     </View>
     <View style={[styles.card, { backgroundColor: colors.surface, borderRadius: colors.radius }]}>
-    {mode === 'recovery' ? <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.recoveryNotice}</Text> : null}
-    {mode === 'signup' ? <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.authenticatorWarning}</Text> : null}
 
+    {authStep === 'server' ? <View style={styles.serverStep}>
     <View style={[styles.fields, styles.serverFields]}>
-      <TextField size="lg" id="auth-server" name="serverUrl" label={copy.serverAddress} type="url"
-        value={serverUrl} placeholder={copy.serverPlaceholder} autoComplete="url"
+      <View style={styles.serverLabelRow}>
+        <View style={styles.serverLabelGroup}>
+          <Text style={[styles.serverLabel, { color: colors.textMuted }]}>{copy.serverAddress}</Text>
+          {serverMode === 'remote' ? <Pressable accessibilityRole="button" accessibilityLabel="Remote server information"
+            accessibilityState={{ expanded: serverHelpVisible }} onPress={onToggleServerHelp}
+            style={({ pressed, focused }) => [styles.serverInfoButton, pressed && { backgroundColor: colors.surfaceMuted },
+              focused && colors.focusStyle]}>
+            <Text aria-hidden style={[styles.serverInfoGlyph, { color: colors.textSecondary, borderColor: colors.border }]}>i</Text>
+          </Pressable> : null}
+        </View>
+        <View style={styles.serverModeRow}>
+          <Chip label={serverMode === 'local' ? copy.local : copy.remote} palette={colors}
+            accessibilityLabel={serverMode === 'local' ? copy.localServerMode : copy.remoteServerMode}
+            accessibilityHint="Switch server address mode" pressed={serverMode === 'local'}
+            onPress={() => onServerModeChange?.(serverMode === 'local' ? 'remote' : 'local')} />
+        </View>
+      </View>
+      {serverMode === 'remote' && serverHelpVisible ? <Text style={[styles.serverMessage, { color: colors.textSecondary }]}>{copy.remoteServerInfo}</Text> : null}
+      <TextField size="lg" id="auth-server" name="serverUrl" label={copy.serverAddress} labelHidden type="url"
+        value={serverUrl} placeholder={serverMode === 'local' ? copy.localServerPlaceholder : copy.serverPlaceholder} autoComplete="url"
+        accessibilityLabel={copy.serverAddress}
         disabled={busy || serverBusy} error={serverError} help={serverHelp}
         palette={colors} onChangeText={value => onServerChange?.(value)}
-        trailing={<ServerStatusButton
+        trailingWidth={44}
+        trailing={discoveryAction
+          ? <ServerDiscoveryButton busy={serverDiscoveryBusy} onPress={onDiscoverServers} palette={colors} labels={copy} />
+          : <ServerStatusButton
           state={serverBusy ? 'idle' : serverError ? 'error' : serverChecked ? 'ok' : 'idle'}
-          busy={serverBusy} onPress={onCheckServer} palette={colors} labels={copy} />} />
+          busy={serverBusy} onPress={serverError ? onClearServerAddress : onCheckServer} palette={colors} labels={copy} />
+        } />
+      {serverMode === 'local' && serverDiscoveryMessage ? <Text accessibilityLiveRegion="polite"
+        style={[styles.serverMessage, { color: serverDiscoveryPermissionDenied || ['empty', 'unavailable'].includes(serverDiscoveryMessage)
+          ? colors.warning : colors.textMuted }]}>
+        {serverDiscoveryMessage === 'searching' ? copy.discoverySearching
+          : serverDiscoveryPermissionDenied ? copy.discoveryPermissionDenied
+          : !serverDiscoverySupported ? copy.discoveryUnavailable
+            : serverDiscoveryMessage === 'empty' ? copy.discoveryEmpty
+              : serverDiscoveryMessage === 'permission' ? copy.discoveryPermissionDenied
+                : serverDiscoveryMessage === 'unavailable' ? copy.discoveryUnavailable : serverDiscoveryMessage}
+      </Text> : null}
+      {serverMode === 'local' && discoveredServers.length ? <View style={styles.discoveredServers}>
+        <Text style={[styles.serverListTitle, { color: colors.textMuted }]}>{copy.discoveredServers}</Text>
+        {discoveredServers.map(server => <Pressable key={server.serverUrl} accessibilityRole="button"
+          accessibilityLabel={`${server.name}, ${server.serverUrl}`} onPress={() => onSelectDiscoveredServer?.(server)}
+          style={({ pressed, focused }) => [styles.discoveredServer, { borderColor: colors.border, backgroundColor: colors.surfaceStrong },
+            pressed && { backgroundColor: colors.surfaceMuted }, focused && colors.focusStyle]}>
+          <Text style={[styles.serverName, { color: colors.text }]}>{server.name}</Text>
+          <Text style={[styles.serverAddress, { color: colors.textMuted }]}>{server.serverUrl}</Text>
+        </Pressable>)}
+      </View> : null}
     </View>
+    {error ? <Notice tone="error" title={copy.errorsTitle} palette={colors}>{error}</Notice> : null}
+    <Button label={copy.continueToSignIn} tone="primary" size="lg" width="full"
+      busy={serverBusy} disabled={busy || serverBusy || !serverUrl.trim()} onPress={onContinueServer} palette={buttons} />
+    </View> : <>
+    <View style={styles.serverSummary}>
+      <View style={styles.serverSummaryText}>
+        <Text style={[styles.serverLabel, { color: colors.textMuted }]}>{copy.serverAddress}</Text>
+        <Text numberOfLines={1} style={[styles.serverSummaryAddress, { color: colors.text }]}>{serverUrl}</Text>
+      </View>
+      <LinkButton label={copy.changeServer} onPress={onChangeServer} palette={colors} />
+    </View>
+    {mode === 'recovery' ? <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.recoveryNotice}</Text> : null}
+    {mode === 'signup' ? <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.authenticatorWarning}</Text> : null}
 
     {error ? <Notice tone="error" title={copy.errorsTitle} palette={colors}>{error}</Notice> : null}
     {success ? <Notice tone="success" palette={colors}>{success}</Notice> : null}
@@ -322,6 +420,7 @@ export function AuthEntrance({
     {providers.length && (mode === 'login' || mode === 'signup') ? <SocialProviders
       providers={providers} busyProvider={busyProvider} palette={colors}
       buttonPalette={buttons} labels={copy} onProvider={onProvider} /> : null}
+    </>}
     </View>
   </View>;
 }
@@ -335,7 +434,11 @@ const styles = StyleSheet.create({
   copy: { fontSize: 13, lineHeight: 19 },
   help: { fontSize: 12, lineHeight: 17 },
   fields: { gap: 24 },
-  serverFields: { marginBottom: 24 },
+  serverFields: { gap: 8 },
+  serverStep: { gap: 16 },
+  serverSummary: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  serverSummaryText: { flex: 1, minWidth: 0, gap: 2 },
+  serverSummaryAddress: { fontSize: 13, lineHeight: 18 },
   section: { gap: 8, borderTopWidth: 1, paddingTop: 14 },
   sectionRule: { borderTopWidth: 1 },
   sectionTitle: { fontSize: 13, fontWeight: '600' },
@@ -343,6 +446,19 @@ const styles = StyleSheet.create({
   formActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 },
   serverButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 6 },
   serverGlyph: { fontSize: 19, fontWeight: '700', lineHeight: 22 },
+  serverLabelRow: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  serverLabelGroup: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  serverLabel: { fontSize: 14, fontWeight: '500', lineHeight: 20 },
+  serverModeRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  serverInfoButton: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
+  serverInfoGlyph: { width: 16, height: 16, borderWidth: 1, borderRadius: 8,
+    textAlign: 'center', fontSize: 11, fontWeight: '700', lineHeight: 14, overflow: 'hidden' },
+  serverMessage: { fontSize: 12, lineHeight: 17 },
+  discoveredServers: { gap: 6 },
+  serverListTitle: { fontSize: 12, fontWeight: '600' },
+  discoveredServer: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, gap: 2 },
+  serverName: { fontSize: 13, fontWeight: '600' },
+  serverAddress: { fontSize: 12, lineHeight: 16 },
   actions: { gap: 12 },
   footerLink: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 6 },
   footerBlock: { alignItems: 'center', marginTop: 8 },

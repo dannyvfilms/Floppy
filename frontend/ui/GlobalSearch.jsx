@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { Spinner } from './Spinner';
+import { SearchIcon as SearchGlyph } from './Icon';
 
 const MIN_QUERY_LENGTH = 2;
 
@@ -40,31 +41,6 @@ function fill(template, values) {
   return String(template).replace(/%\((\w+)\)s/g, (match, key) => (
     Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : match
   ));
-}
-
-function SearchGlyph({ color, size = 18 }) {
-  const ring = Math.round(size * 0.62);
-  return <View aria-hidden style={{ width: size, height: size }}>
-    <View style={{
-      position: 'absolute',
-      top: 1,
-      left: 1,
-      width: ring,
-      height: ring,
-      borderRadius: ring / 2,
-      borderWidth: 2,
-      borderColor: color,
-    }} />
-    <View style={{
-      position: 'absolute',
-      right: 1,
-      bottom: 0,
-      width: 2,
-      height: Math.round(size * 0.34),
-      backgroundColor: color,
-      transform: [{ rotate: '-45deg' }],
-    }} />
-  </View>;
 }
 
 function CameraGlyph({ color, size = 18 }) {
@@ -296,7 +272,9 @@ export function GlobalSearch({
     <View style={styles.row}>
       <View style={styles.inputWrap}>
         <Pressable accessibilityRole="button" accessibilityLabel={label(labels.search, 'Search')}
-          onPress={() => submit()} style={styles.searchButton}>
+          onPress={() => submit()} style={[styles.searchButton, palette.searchTouchWidth && {
+            left: 0, width: palette.searchTouchWidth, alignItems: 'center',
+          }]}>
           <SearchGlyph color={palette.textMuted} size={palette.iconSize} />
         </Pressable>
         <TextInput
@@ -323,9 +301,13 @@ export function GlobalSearch({
             styles.input,
             {
               color: palette.textSecondary,
+              minHeight: palette.inputHeight,
+              paddingLeft: palette.searchTouchWidth || 40,
               backgroundColor: palette.panel,
               borderTopLeftRadius: palette.radius,
               borderBottomLeftRadius: palette.radius,
+              borderTopRightRadius: 0,
+              borderBottomRightRadius: 0,
               paddingRight: isBarcodeType ? 40 : 16,
               outlineStyle: focused ? 'solid' : 'none',
               outlineWidth: focused ? 2 : 0,
@@ -424,18 +406,21 @@ export function GlobalSearch({
           </ScrollView>
         </View> : null}
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel={type.display}
+      <Pressable testID="search-media-type-menu" accessibilityRole="button" accessibilityLabel={type.display}
         aria-haspopup="listbox" aria-expanded={menuOpen}
         onPress={() => setMenuOpen(open => !open)}
         style={({ hovered, pressed }) => [styles.typeButton, {
           backgroundColor: (hovered || pressed) ? palette.surface : palette.panel,
           borderTopRightRadius: palette.radius,
           borderBottomRightRadius: palette.radius,
+          borderTopLeftRadius: 0,
+          borderBottomLeftRadius: 0,
         }]}>
         <Text numberOfLines={1} style={[styles.typeText, { color: palette.textSecondary }]}>{type.display}</Text>
         <Chevron color={palette.textMuted} size={14} />
       </Pressable>
       {menuOpen ? <View style={[styles.menu, {
+        top: palette.inputHeight + 12,
         width: palette.menuWidth,
         backgroundColor: palette.surface,
         borderColor: palette.border,

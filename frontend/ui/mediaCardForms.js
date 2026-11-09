@@ -63,6 +63,17 @@ function normalizeField(field) {
     max: field.max ?? null,
     step: field.step ?? null,
     placeholder: field.placeholder || '',
+    // Date fields carry their shortcuts (Just Finished, Start Now, Release
+    // Date) and copy-from-the-other-date wiring; dropping them hides those
+    // buttons from every Track dialog.
+    quickActions: Array.isArray(field.quickActions) ? field.quickActions : [],
+    suggestionDate: field.suggestionDate || '',
+    suggestionLabel: field.suggestionLabel || '',
+    suggestionExtras: Array.isArray(field.suggestionExtras) ? field.suggestionExtras : [],
+    runtimeMinutes: field.runtimeMinutes ? String(field.runtimeMinutes) : '',
+    copyFrom: field.copyFrom || '',
+    copyFromLabel: field.copyFromLabel || '',
+    copyEmptyMessage: field.copyEmptyMessage || '',
   };
 }
 

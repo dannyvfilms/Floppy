@@ -142,7 +142,11 @@ function FileImportBody({
         {model.intro ? `${model.intro} ` : ''}
         <Text
           accessibilityRole={onOpenUrl && model.website ? 'link' : undefined}
-          onPress={onOpenUrl && model.website ? () => onOpenUrl(model.website) : undefined}
+          {...(model.websiteLinkProps || {})}
+          onPress={onOpenUrl && model.website ? event => {
+            event?.preventDefault?.();
+            onOpenUrl(model.website);
+          } : undefined}
           style={[styles.link, { color: colors.link }]}>{model.sourceLabel}</Text>
         . {model.description || ''}
       </> : <>

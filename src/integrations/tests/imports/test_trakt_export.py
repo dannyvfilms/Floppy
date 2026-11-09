@@ -963,3 +963,13 @@ class TraktExportUploadViewTests(TestCase):
         self.client.post(self.url, {"mode": "new"})
 
         mock_delay.assert_not_called()
+
+
+class TraktExportModeGuardTests(TestCase):
+    """The importer refuses modes it would not honour (#1873)."""
+
+    def test_selective_modes_are_refused_before_reading_the_archive(self):
+        user = get_user_model().objects.create_user(username="mode-guard")
+        for mode in ("watchlist", "update_collection"):
+            with self.assertRaises(MediaImportError):
+                importer("/nonexistent.zip", user, mode)

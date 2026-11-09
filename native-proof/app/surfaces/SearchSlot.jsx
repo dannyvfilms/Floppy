@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { useWindowDimensions } from 'react-native';
+import { Platform, useWindowDimensions } from 'react-native';
 import { GlobalSearch } from '../../../frontend/ui/GlobalSearch.jsx';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import { createSearchTransport, localResultsFromPayload } from '../data/searchTransport';
@@ -93,6 +93,8 @@ const searchPalette = {
   errorSurface: palette.surface,
   errorBorder: palette.surfaceMuted,
   radius: radius.sm,
+  focusStyle: Platform.OS === 'ios' ? { outlineColor: 'transparent' } : {},
+  ...(Platform.OS === 'ios' ? { inputHeight: 44, searchTouchWidth: 44 } : {}),
 };
 
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));

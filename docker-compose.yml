@@ -44,6 +44,23 @@ services:
     networks:
       - floppy-net
 
+  # Optional LAN discovery. The host network is required for mDNS multicast;
+  # the app itself stays on the normal bridge network. Set
+  # FLOPPY_ADVERTISE_PORT when the host-side port is not 8000.
+  floppy-discovery:
+    image: ghcr.io/dannyvfilms/floppy:latest
+    restart: unless-stopped
+    profiles: [discovery]
+    network_mode: host
+    depends_on:
+      floppy:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "app.discovery_advertiser"]
+    environment:
+      FLOPPY_ADVERTISE_HOST: ${FLOPPY_ADVERTISE_HOST:-}
+      FLOPPY_ADVERTISE_PORT: ${FLOPPY_ADVERTISE_PORT:-8000}
+      FLOPPY_ADVERTISE_NAME: ${FLOPPY_ADVERTISE_NAME:-Floppy}
+
   redis:
     container_name: floppy-redis
     image: redis:8-alpine

@@ -232,6 +232,54 @@ class HomeTests(FloppyApiTestCase):
         response = self.call_api("get", "api_home_row", args=(1,))
         self.assertEqual(response.status_code, HTTP.OK)
 
+    def _paged_row(self):
+        """Return (row_id, total) of a built Home row with at least two items."""
+        payload = self.call_api(
+            "get",
+            "api_home",
+            params={"presentation": 1, "limit": 50},
+            headers=self.auth_headers,
+        ).json()
+        paged = [
+            (row["rowId"], row["total"])
+            for group in payload["groups"]
+            for row in group["rows"]
+            if (row.get("total") or 0) >= 2
+        ]
+        if not paged:
+            self.skipTest("fixture has no Home row with two items")
+        return paged[0]
+
+    def test_home_row_continuation_inside_the_row_returns_more(self):
+        """B13: a continuation request below the row total must return items."""
+        row_id, total = self._paged_row()
+        response = self.call_api(
+            "get",
+            "api_home_row",
+            args=(row_id,),
+            params={"limit": 1, "offset": 1},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        row = response.json()["row"]
+        self.assertIsNotNone(row, f"total={total}")
+        self.assertTrue(row["items"])
+
+    def test_home_row_past_the_end_reports_exhaustion(self):
+        """B13: running off the end returns an empty window with loadedCount at the total."""
+        row_id, total = self._paged_row()
+        response = self.call_api(
+            "get",
+            "api_home_row",
+            args=(row_id,),
+            params={"limit": 1, "offset": total + 5},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        row = response.json()["row"]
+        self.assertEqual(row["items"], [])
+        self.assertEqual(row["loadedCount"], total)
+
     def test_home_row_hides_a_row_the_user_cannot_see(self):
         """A missing/disabled row returns an empty window, not an error."""
         response = self.call_api(

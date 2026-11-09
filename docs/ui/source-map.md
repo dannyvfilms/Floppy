@@ -43,12 +43,15 @@ Status: `Partial / coexisting`
 - `src/templates/app/components/sidebar_pin_menu.html`
 - `src/templates/base.html`
 - `frontend/ui/GlobalSearch.jsx`, `frontend/ui/mountGlobalSearch.jsx`, `frontend/ui/global-search.css` (header search form inside `base.html`; suggestions stay a server fragment)
-- `frontend/ui/Sidebar.jsx`, `frontend/ui/mountSidebar.jsx`, `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html` and Expo; native adapter supplies larger foldable row tokens; the onboarding banner stays a server slot)
-- `native-proof/app/surfaces/ShellSlot.jsx`, `native-proof/app/surfaces/NativeShell.ios.jsx`, `native-proof/app/surfaces/NativeShell.jsx`, `native-proof/app/surfaces/NativeRoot.ios.jsx`, `native-proof/app/surfaces/NativeRoot.jsx`, `native-proof/app/surfaces/menuGeometry.mjs`, `native-proof/app/routes/_layout.jsx`, `native-proof/app/routes/index.jsx`, `native-proof/App.js` (Expo navigation model, iOS toolbar and adaptive menu; Android and web retain the shared modal path)
+- `frontend/ui/Sidebar.jsx`, `frontend/ui/mountSidebar.jsx`, `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html` and Expo; Explore overlays the media-type rows at its content height, capped to the sidebar viewport, scrolls its options when needed and closes when the last option is pinned; native adapter supplies 44-point rows, a 25-point top inset on iOS side-rail layouts, margins accounting for each safe-area inset, and hides Appearance; the onboarding banner stays a server slot; pins and pinned lists load from the account's `User.sidebar_pins` and save through the `sidebar_pins` endpoint, shared with the list pin buttons via `window.floppySidebarPins`)
+- `native-proof/app/surfaces/ShellSlot.jsx`, `native-proof/app/surfaces/NativeShell.ios.jsx`, `native-proof/app/surfaces/NativeShell.jsx`, `native-proof/app/surfaces/NativeRoot.ios.jsx`, `native-proof/app/surfaces/NativeRoot.jsx`, `native-proof/app/safeAreaSpacing.mjs`, `native-proof/app/surfaces/menuGeometry.mjs`, `native-proof/app/routes/_layout.jsx`, `native-proof/app/routes/index.jsx`, `native-proof/App.js` (Expo navigation model, native toolbar and drawer/canvas transition; iOS animates drawer geometry in both fold directions unless Reduce Motion is enabled; an iOS screen-scoped safe-area provider supplies live horizontal insets while the navigator supplies vertical insets; the foreground shell reserves those insets and shared spacing subtracts them from the usual Search and sidebar margins; `useVerticalBarEdgeIOS` supplies the rail trait and reserved regions remain for fold layout; Android and web retain the shared modal path)
 - `frontend/ui/Icon.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
 - `src/app/card_events.py` (the floppyCardUpdate event sent by `media_save` and the score views so React cards refresh their status chip and rating)
 - `frontend/ui/mountFilterChips.jsx`, `ScrollRow` and `FilterChips` in `frontend/ui/controls` (Discover media-type row; `Tabs` shares `ScrollRow`)
 - `src/templates/base_public.html`
+
+- `native-proof/app/components/NativeStatusBar.jsx`, `native-proof/app/components/NativeStatusBar.ios.jsx`, `native-proof/app/theme.js`, `native-proof/app/systemColor.ios.js`, `native-proof/app/systemColor.js` (iOS system semantic colors; other hosts retain the existing proof palette)
+- `native-proof/app/components/Screen.jsx`, `native-proof/app/components/Screen.ios.jsx` (shared screen presentation; iOS applies the remaining 22-point page margin after the shell's safe-area inset on each side)
 
 ## SETTINGS-CARD
 
@@ -75,7 +78,13 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## FORM-CONTROLS
 
+- `frontend/ui/Modal.jsx`, `frontend/ui/Modal.native.jsx`, `frontend/ui/Modal.web.jsx` (shared modal boundary and header close controls; Duo canvas host and topmost rail dismissal; existing dialog consumers retain their mapped surface ownership)
+
 Status: `Partial / coexisting`
+
+The shared React Native `TextField` keeps its large fixed-height input vertically centered without imposing a line-height; legacy browser fields remain owned by `controls.jsx` and CSS.
+
+PR #1878: `Modal.web.jsx` closes open dialogs on Escape while the native implementation remains platform-owned. Universal tooltips provide the tooltip role, and provider credential dialogs expose their accessible name. Shared catalog pin state uses `aria-pressed`; `FeatureList` distinguishes its text body for stable geometry checks.
 
 - `frontend/ui/controls`
 - `frontend/ui/controls.css`
@@ -171,7 +180,7 @@ Status: `Web Migrated`
 
 - `src/templates/app/components/card_lines.html`
 - `src/templates/app/components/media_card.html` (shell: wrapper classes, props script and first-paint poster and title; React replaces it on mount)
-- `frontend/ui/MediaCard.jsx`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/media-card.css`, `src/app/media_card_model.py`, `src/app/card_surfaces.py` (the whole card is React on every surface: body, status chip, rating, hover buttons, popups host, touch reveal and bulk-select checkbox)
+- `frontend/ui/MediaCard.jsx`, `frontend/ui/MediaCard.web.jsx`, `frontend/ui/mediaCardBehavior.js`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/media-card.css`, `frontend/ui/CardScrim.jsx`, `frontend/ui/CardScrim.native.jsx`, `frontend/ui/CardScrim.web.jsx`, `src/app/media_card_model.py`, `src/app/card_surfaces.py` (React Native primitives on native surfaces; native poster action reveal follows server `actions.clickable`; native scrim uses an SVG gradient; the browser adapter retains DOM links, htmx integration and web-only slots; compact Up Next cards use the localized short label)
 - `src/templates/app/components/media_card_list.html`
 - `src/templates/app/components/media_card_status_chip.html` (out-of-band save fragment only; no card renders it)
 
@@ -179,7 +188,7 @@ Status: `Web Migrated`
 
 Status: `Partial / coexisting`
 
-- `frontend/ui/ModalHost.web.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted once from `base.html`; the card hover buttons and the Add-to-lists buttons open it through `floppy-open-modal`; the Track body is still the server form, see the register)
+- `frontend/ui/ModalHost.web.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted once from `base.html`; the card hover buttons and the Add-to-lists buttons open it through `floppy-open-modal`; the Track body is still the server form, see the register; unmounting a host disposes the React islands inside it, so the Track dialog is not stranded when Escape closes the popup mid-load)
 - `frontend/ui/ListsFormView.jsx`
 - `frontend/ui/modal-forms.css`
 
@@ -302,6 +311,8 @@ Status: `Partial / coexisting`
 
 ## SEARCH
 
+- `src/templates/app/icons/magnifying-glass.svg` (connected SVG shared by GlobalSearch, CollectionBrowser, ProviderDirectoryView and remaining server-template search controls; shared SearchIcon is mapped under SHELL)
+
 Status: `Partial / coexisting`
 
 - `native-proof/app/surfaces/SearchSlot.jsx` (Expo search transport, scanner and iOS focus presentation; the shared `GlobalSearch` is mapped under SHELL)
@@ -324,11 +335,10 @@ Status: `Legacy`
 - `src/static/js/horizontal-scroll.js`
 - `src/static/js/horizontal-scroll.selfcheck.mjs`
 - `src/templates/app/components/_scrollable_row.html`
-- `src/templates/app/components/_scrollable_row_js.html`
 
 ## HOME
 
-Status: `Legacy`
+Status: `Partial / coexisting`
 
 - `src/templates/app/components/home_artwork_poller.html`
 - `src/templates/app/components/home_deferred_groups.html`
@@ -338,8 +348,12 @@ Status: `Legacy`
 
 ## PLAYBACK
 
-Status: `Legacy`
+Status: `Partial / coexisting`
 
+- `frontend/ui/PlaybackCard.jsx`, `frontend/ui/PlaybackTheme.web.jsx`, `frontend/ui/mountPlaybackCard.jsx` (shared presentation, browser adapter and server-fragment fallback; Now Playing renders a 16:9 MediaCard with its section heading and controls above it, using the standard MediaCard indigo for both playing and paused/stale progress fills)
+- `native-proof/app/surfaces/PlaybackSlot.jsx`, `native-proof/app/data/playbackTransport.js`, `native-proof/app/data/settingsTransport.js`, `frontend/ui/mediaCardSizing.js` (native Now Playing spans up to three 110 pt cards plus two 16 pt gaps on compact mobile, two 168 pt cards plus a 12 pt gap on comfortable mobile, and two on desktop; narrow layouts shrink to fit)
+- `src/api/fork_views_playback.py` (`/api/v1/playback/home-cards/`, session-only cards and server-resolved Pause/Stop or Stop/Cancel actions)
+- `src/templates/app/components/_scrollable_row_js.html` (browser playback width measures an ordinary Home media-grid card and spans three on compact mobile, two on comfortable mobile, or two on desktop)
 - `src/templates/app/components/active_playback_card.html`
 - `src/templates/app/components/detail_checkin_state.html`
 - `src/templates/app/components/active_playback_cards.html`
@@ -473,7 +487,9 @@ Status: `Legacy`
 
 ## MUSIC
 
-Status: `Legacy`
+Status: `Partial / coexisting`
+
+The artist relation and album grids are React islands over server-rendered fallbacks (`MusicRelationCard`, `MusicAlbumCard`, `mountMusicRelations`, `mountMusicAlbums`). Album/track details, podcast pages and episode rows remain server-owned or Alpine; retire each remaining group when its component migration preserves the existing fallback and behavior.
 
 - `src/templates/app/components/album_grid.html`
 - `src/templates/app/components/album_list_grid_items.html`
@@ -492,6 +508,11 @@ Status: `Legacy`
 - `src/templates/app/components/podcast_episode_list.html` (optional episode description and empty state)
 - `src/templates/app/music_album_detail.html`
 - `src/templates/app/podcast_show_detail.html`
+- `frontend/pages/MusicView.jsx`
+- `frontend/ui/MusicAlbumCard.jsx`
+- `frontend/ui/MusicRelationCard.jsx`
+- `frontend/ui/mountMusicAlbums.jsx`
+- `frontend/ui/mountMusicRelations.jsx`
 
 ## PODCAST-EPISODES
 
@@ -671,10 +692,11 @@ Status: `Legacy`
 
 ## SET-CARDS
 
-Status: `Legacy`
+Status: `Partial / coexisting`
 
 - `src/templates/users/cards.html`
 - `src/templates/users/cards_preview.html`
+- `frontend/pages/SettingsCardsView.jsx`, `frontend/settings/CardsEditor.jsx`, `native-proof/app/surfaces/CardsSettingsSlot.jsx`, `native-proof/app/data/settingsTransport.js` (native touch action setting uses the account preference API; per-type native profiles remain local demo state)
 
 ## SET-HOME
 
@@ -733,6 +755,20 @@ Status: `Partial / coexisting`
 ## SET-IMPORT
 
 Status: `Partial / coexisting`
+
+PR #1878: Provider overview outline/focus and linked chip decoration are styled by universal React Native presentation; browser tests wait for current search-result overlays and mounted sidebar links instead of retired DOM wrappers.
+
+PR #1878: Shared statistics presentation exposes stable RN Web test IDs for total labels, summary values, and status legend/ring geometry. Browser tests retain their substantive UI assertions across the native migration.
+
+PR #1878: The file-import web adapter listens for preference changes on the shared page boundary, covering sibling islands with or without Alpine while retaining the universal file-picker presentation.
+
+PR #1878: CLZ preference changes mirror their live values into fallback POST inputs regardless of Alpine ancestry. App tracking browser tests submit through the shared search island instead of a retired form.
+
+PR #1878: The registered browser island loader discovers sidebar, global search, track form and statistics hosts consistently with its renderer dispatch list, restoring universal search mounting in browser workflows.
+
+PR #1878: Provider overview, credential key, and import website hyperlinks receive DOM-only URL attributes from the browser mounts, while their universal JSX remains native-compatible.
+
+PR #1878: The browser file-import mount now supplies a DOM chooser to the universal picker. Chosen `File` objects flow through the existing form transport; the server fallback remains active when the lazy module is blocked, reflects current preferences, and exposes semantic provider website links.
 
 - `frontend/providers/ProviderFileImportView.jsx`
 - `frontend/providers/mountCredentials.jsx`
@@ -818,7 +854,9 @@ Status: `Legacy`
 
 ## AUTH
 
-Status: `Legacy`
+Status: `Partial / coexisting`
+
+Native `AuthEntrance` separates server selection from credentials, keeps manual entry, changes its suggested address with Local/Remote mode, and explains briefly that discovery is unavailable in Expo Go; browser authentication remains server-rendered.
 
 - `src/templates/account/login.html`
 - `src/templates/account/messages/logged_in.txt`
@@ -844,6 +882,12 @@ Status: `Legacy`
 - `src/templates/socialaccount/snippets/provider_list.html`
 - `src/templates/users/account.html`
 - `src/templates/users/password_recover.html`
+- `frontend/auth/AuthEntrance.jsx`
+- `native-proof/app/screens/AuthScreen.jsx`
+- `native-proof/app/data/serverDiscovery.native.js`
+- `native-proof/app/data/serverDiscovery.web.js`
+- `native-proof/app/data/serverDiscoveryCore.js`
+- `native-proof/app/data/authTransportCore.js`
 
 ## SET-NOTIFICATIONS
 
@@ -913,8 +957,9 @@ Status: `Legacy`
 
 Status: `Partial / coexisting`
 
+PR #1878: the Track dialog adapter (`mountTrackForm.jsx`) posts its payload, mirrors the card's Alpine open flag when it has no legacy modal root, and `mediaCardForms.js` passes date shortcuts and runtime through to `TrackForm.jsx`; shared status options set `aria-checked`.
+
 - `frontend/auth/AccountSecurity.jsx`
-- `frontend/auth/AuthEntrance.jsx`
 - `frontend/discover/DiscoverScreen.jsx`
 - `frontend/discover/mountDiscover.jsx`
 - `frontend/errors/ApiDocs.jsx`
@@ -935,7 +980,6 @@ Status: `Partial / coexisting`
 - `frontend/pages/LibraryPageView.jsx`
 - `frontend/pages/ListDetailPageView.jsx`
 - `frontend/pages/ListsPageView.jsx`
-- `frontend/pages/MusicView.jsx`
 - `frontend/pages/OnboardingView.jsx`
 - `frontend/pages/PageChrome.jsx`
 - `frontend/pages/PeopleView.jsx`
@@ -946,7 +990,6 @@ Status: `Partial / coexisting`
 - `frontend/pages/SettingsAccountView.jsx`
 - `frontend/pages/SettingsAdvancedView.jsx`
 - `frontend/pages/SettingsAppearanceView.jsx`
-- `frontend/pages/SettingsCardsView.jsx`
 - `frontend/pages/SettingsDataView.jsx`
 - `frontend/pages/SettingsHomeScreenView.jsx`
 - `frontend/pages/SettingsNavLink.jsx`
@@ -970,7 +1013,6 @@ Status: `Partial / coexisting`
 - `frontend/settings/AccessSettings.jsx`
 - `frontend/settings/AdvancedSettings.jsx`
 - `frontend/settings/AppearanceEditor.jsx`
-- `frontend/settings/CardsEditor.jsx`
 - `frontend/settings/Chip.web.jsx`
 - `frontend/settings/ConfirmDialog.jsx`
 - `frontend/settings/DataSettings.jsx`
@@ -999,7 +1041,6 @@ Status: `Partial / coexisting`
 - `frontend/ui/Button.web.jsx`
 - `frontend/ui/CacheStatusCard.jsx`
 - `frontend/ui/CalendarLinks.jsx`
-- `frontend/ui/CardScrim.jsx`
 - `frontend/ui/CollectionBrowser.jsx`
 - `frontend/ui/CollectionCopies.jsx`
 - `frontend/ui/CollectionCustomFields.jsx`
@@ -1022,7 +1063,7 @@ Status: `Partial / coexisting`
 - `frontend/ui/HistoryFeed.jsx`
 - `frontend/ui/HistoryFeed.native.jsx`
 - `frontend/ui/HistoryFeed.web.jsx`
-- `frontend/ui/HomeShelves.jsx`
+- `frontend/ui/HomeShelves.jsx` (shared browser and native Home shelf rows; compact phone cards are 110 pt wide)
 - `frontend/ui/IconRenderer.native.jsx`
 - `frontend/ui/IconRenderer.web.jsx`
 - `frontend/ui/InstallPromptCard.jsx`
@@ -1040,21 +1081,16 @@ Status: `Partial / coexisting`
 - `frontend/ui/MarkdownPreview.native.jsx`
 - `frontend/ui/MarkdownPreview.web.jsx`
 - `frontend/ui/MediaCard.native.jsx`
-- `frontend/ui/MediaCard.web.jsx`
 - `frontend/ui/MediaCardActionHost.jsx`
 - `frontend/ui/MediaCardActions.jsx`
 - `frontend/ui/MediaCardFormControls.jsx`
 - `frontend/ui/MediaTable.jsx`
 - `frontend/ui/MetadataReview.jsx`
 - `frontend/ui/ModalHost.native.jsx`
-- `frontend/ui/MusicAlbumCard.jsx`
-- `frontend/ui/MusicRelationCard.jsx`
 - `frontend/ui/PageSlot.web.jsx`
 - `frontend/ui/ParentPicker.jsx`
 - `frontend/ui/ParentPicker.web.jsx`
 - `frontend/ui/People.jsx`
-- `frontend/ui/PlaybackCard.jsx`
-- `frontend/ui/PlaybackTheme.web.jsx`
 - `frontend/ui/PreferencesForm.jsx`
 - `frontend/ui/ProgressBar.jsx`
 - `frontend/ui/ProgressBreakdown.jsx`
@@ -1072,7 +1108,7 @@ Status: `Partial / coexisting`
 - `frontend/ui/RatingStarIcon.native.jsx`
 - `frontend/ui/RatingStarIcon.web.jsx`
 - `frontend/ui/RefreshNotice.jsx`
-- `frontend/ui/ReleaseCalendar.jsx`
+- `frontend/ui/ReleaseCalendar.jsx` (calendar filter/menu dialogs: uniform floating corners; compact bottom-sheet corners preserved)
 - `frontend/ui/Reveal.jsx`
 - `frontend/ui/Reveal.native.jsx`
 - `frontend/ui/Reveal.web.jsx`
@@ -1142,11 +1178,8 @@ Status: `Partial / coexisting`
 - `frontend/ui/mountMarkdownIslands.jsx`
 - `frontend/ui/mountMediaTable.jsx`
 - `frontend/ui/mountMetadataReview.jsx`
-- `frontend/ui/mountMusicAlbums.jsx`
-- `frontend/ui/mountMusicRelations.jsx`
 - `frontend/ui/mountParentPicker.jsx`
 - `frontend/ui/mountPeople.jsx`
-- `frontend/ui/mountPlaybackCard.jsx`
 - `frontend/ui/mountProgressBreakdown.jsx`
 - `frontend/ui/mountProgressChanger.jsx`
 - `frontend/ui/mountProgressDetail.jsx`

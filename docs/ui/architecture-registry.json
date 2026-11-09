@@ -90,15 +90,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the server-rendered allauth entrance templates remain the browser implementation and fallback. No browser pass was performed."
+          "evidence": "Not mounted by the web bundle; the server-rendered allauth entrance templates remain the browser implementation and fallback. Browser runtime regression was not exercised in this change."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the wired native Auth screen; server URL, sign-in, session, account-security and redirect-intent paths were not exercised in a simulator."
+          "evidence": "The two-step server/credentials flow compiled in the iOS Expo export, but Device Hub continued showing the previous one-page bundle after reload and the Expo server reports networking disabled. Two-step runtime verification is pending. Earlier Expo Go checks covered the single address action, clear behavior, brief discovery notice, Local/Remote suggestions, and compact Remote info control. Native DNS-SD browsing is not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the wired native Auth screen; server URL, sign-in, session, account-security and redirect-intent paths were not exercised on an emulator."
+          "evidence": "The shared sign-in includes Local/Remote mode, advertised server selection and manual entry. The one-action address/error layout and DNS-SD browsing have not been exercised on Android."
         }
       }
     },
@@ -607,15 +607,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the legacy controls.jsx provider fields remain the browser implementation."
+          "evidence": "Not mounted by the web bundle; the legacy controls.jsx provider fields remain the browser implementation. The configurable trailing inset does not change existing web consumers."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared field through the native Settings provider slot; no simulator run was performed."
+          "status": "verified",
+          "evidence": "In the current Expo Go bundle on Device Hub iOS 27.2, both the server field placeholder and an entered server URL appeared vertically centered in the row. Username and password use the same shared large TextField style; secure credential entry was not separately exercised."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared field through the native Settings provider slot; no emulator run was performed."
+          "evidence": "The shared auth field keeps URL values on one line and uses a single state-dependent trailing action; Android runtime and accessibility verification are pending."
         }
       }
     },
@@ -907,7 +907,7 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiles the shared calendar and its durable file-system preference adapter; no iOS simulator run was performed."
+          "evidence": "Floating filter/menu corner symmetry updated; runtime verification pending. Compact bottom-sheet corner geometry retained."
         },
         "android": {
           "status": "unverified",
@@ -1282,15 +1282,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The cards page remains the Django/Alpine editor; this shared editor is not mounted in the browser bundle during this change."
+          "evidence": "The browser cards page remains Django/Alpine-owned; the native editor's touch-action dirty baseline is updated in this revision. Browser runtime was not checked."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Settings screen; per-type lines, field order, preview and save states were not exercised at runtime."
+          "status": "verified",
+          "evidence": "Device Hub iOS 27.2 / Expo Go rendered Settings > Media Cards and both touch-action choices. The proof session had no server account, so preference load/save, save-error display and touch-action persistence were not exercised there; transport tests cover preference load/save and failure propagation."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Settings screen; per-type lines, field order, preview and save states were not exercised at runtime."
+          "evidence": "Expo export compiles the native editor; transport tests cover preference load, save and failure propagation. Touch-action dirty state and Android settings interaction were not exercised for this revision."
         }
       }
     },
@@ -1772,8 +1772,8 @@
       "register": "MUSIC",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "Mounted through mountMusicAlbums on the artist discography grid over the server fallback; no browser runtime pass has been performed for the album grid."
+          "status": "verified",
+          "evidence": "Browser verified on a local artist page: the island mounted and replaced the server fallback; before the fix both React anchors lacked href values. After MusicAlbumCard preserved the server album href in the shared card model, clicking each album cover and title opened its correct album page."
         },
         "ios": {
           "status": "unverified",
@@ -1835,15 +1835,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compiled into the web bundle through mountPlaybackCard and mountCheckInState; the Home card and detail check-in state were not exercised in a browser in this change. The server fallback remains the progressive-enhancement path."
+          "evidence": "PlaybackCard uses the standard MediaCard indigo fill for playing and paused/stale progress states; browser runtime verification remains pending."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared card and detail check-in state into the native shell; no iOS simulator run or interaction pass was performed."
+          "evidence": "The earlier Now Playing layout was checked on Device Hub iPhone Duo (iOS 27.2); the latest playing and paused/stale color change has not been verified in a reloaded bundle."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared card and detail check-in state into the native shell; no Android emulator run or interaction pass was performed."
+          "evidence": "Expo export --platform all compiled the shared PlaybackCard; no Android runtime pass was performed for this revision."
         }
       }
     },
@@ -1923,15 +1923,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compiled into the web bundle through mountHome over the server-rendered Home shelves; no browser interaction pass was performed in this change."
+          "evidence": "Compact Home shelf cards now use a shared 110 pt width on phone layouts; browser runtime verification after the sizing change remains pending."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Home screen; no simulator run was performed in this change."
+          "status": "verified",
+          "evidence": "The user reports extensive use of the native Home page in Expo Go on an iPhone Duo and considers Home done for the current milestone. Device Hub hot-reload on iOS 27.2 also confirmed 110 pt poster cards fill the row with three cards, with remaining cards reached by horizontal scrolling. OS and Expo Go versions and specific interaction coverage were not recorded; this is user-reported page acceptance, not a complete interaction checklist."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Home screen; no emulator run was performed in this change."
+          "evidence": "Compact Home shelf cards now use a shared 110 pt width on phone layouts; Android runtime verification after the sizing change remains pending."
         }
       }
     },
@@ -1949,7 +1949,7 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo Go on a physical iOS 27.2 Duo exercised the folded rail toggle, authenticated sidebar, search type picker and partial/full-open layouts. An isolated native-build simulator proof also exercised an open-menu pose transition. Accessibility remains unverified."
+          "evidence": "Expo Go on a physical iOS 27.2 Duo: a screen-scoped provider reported horizontal insets 84/0 on the left, 0/84 on the right, then 84/0 on return. The foreground shell, Search and Home content moved clear of the rail; movement used an intermediate full-screen state. The sidebar was observed open and closed, and partially open and closed Duo poses were observed. Both fully open to partially open and the reverse triggered drawer geometry animations. Direct side swapping, separate portrait/landscape interaction and accessibility remain unverified."
         },
         "android": {
           "status": "unverified",
@@ -1969,7 +1969,7 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Native reveal mounts the open block; no simulator pass for the animation."
+          "evidence": "Shared measured height animation; runtime verification pending physical Duo reconnection."
         },
         "android": {
           "status": "unverified",
@@ -2190,16 +2190,16 @@
       "register": "MEDIA-CARD",
       "verification": {
         "web": {
-          "status": "verified",
-          "evidence": "Compiled for native presentation. Browser surfaces resolve the MediaCard.web.jsx implementation through the same MediaCard import; native and the shared React Native surfaces keep this implementation."
+          "status": "unverified",
+          "evidence": "This revision changes native touch reveal behavior only; browser adapter behavior was not runtime-checked for this revision. The shared 24px status/next-episode sizing remains build-checked but browser runtime is pending."
         },
         "ios": {
           "status": "verified",
-          "evidence": "iOS 17.2 simulator: rendered the shared card on Home. The link routing, read-only/selection states, drag announcements and bulk refresh were not exercised; no action overlay, rating popup or accessibility pass."
+          "evidence": "On iPhone Duo (Device Hub, iOS 27.2), compact Home Up Next cards show Next clear of the play/status badge. This revision also opened Settings > Media Cards in Expo Go and showed both touch-action choices; a local proof card with actions.clickable: true opened detail on first tap. No server session was available, so preference load/save and the false-value reveal-then-open path were not device-verified; native behavior tests cover both values."
         },
         "android": {
-          "status": "verified",
-          "evidence": "Android 15 Pixel 7 AVD: rendered the shared card on Home and Library; demo images did not load. The link routing, read-only/selection states, drag announcements and bulk refresh were not exercised; no action overlay, rating popup or accessibility pass."
+          "status": "unverified",
+          "evidence": "Neither the shared 24px chip sizing nor Expo Go runtime interaction with the saved touch-action setting has been exercised on Android."
         }
       }
     },
@@ -2231,15 +2231,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Rendered through the Expo web export at 440px; the Django web card keeps the equivalent .bg-card-body CSS gradient. No side-by-side browser capture of the two adapters yet."
+          "evidence": "UI architecture and generated browser bundle checks pass; no browser runtime pass was performed for this revision."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Rendered by the MediaCard on the iPhone Duo simulator; no pixel comparison against the web gradient yet."
+          "evidence": "The Now Playing media card was visible in Device Hub on iPhone Duo (iOS 27.2); gradient appearance was not separately inspected at full detail."
         },
         "android": {
           "status": "unverified",
-          "evidence": "No Android emulator pass was run."
+          "evidence": "Expo export --platform all compiled MediaCard; no Android runtime pass was performed for this revision."
         }
       }
     },
@@ -2373,11 +2373,11 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The shared sidebar rendered on the local Home page in the in-app browser; Explore expanded and collapsed. No responsive or screen-reader pass was performed."
+          "evidence": "The previous inline Explore sidebar was exercised in the in-app browser; the new overlay layout has not had a browser interaction pass. No responsive or screen-reader pass was performed."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "The authenticated sidebar opened and closed on a physical iOS 27.2 Duo in Expo Go with larger row tokens; partial and full-open layouts were observed. Saved-view interactions and VoiceOver remain unverified."
+          "evidence": "On the physical iOS 27.2 Duo in Expo Go, the sidebar was inspected on both sides against Claude. Screen-scoped safe-area insets changed with the side and the usual sidebar margin was reduced by the inset so the rail side received no duplicate padding. Explore displayed all seven unpinned entries in a content-sized overlay with navigation visible above, with an up chevron when closed and down when open. Direct side swapping and VoiceOver remain unverified."
         },
         "android": {
           "status": "unverified",
@@ -2568,7 +2568,8 @@
     },
     "frontend/ui/Icon.jsx": {
       "components": [
-        "Icon"
+        "Icon",
+        "SearchIcon"
       ],
       "register": "SHELL",
       "verification": {
@@ -2578,7 +2579,7 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the glyph fallback; no simulator run was performed."
+          "evidence": "SearchIcon renders connected magnifier SVG through the installed native renderer; runtime check pending."
         },
         "android": {
           "status": "unverified",
@@ -2637,8 +2638,8 @@
           "evidence": "The Home adapter renders the shared HomeView around the server shelf model; no browser interaction pass during this change."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "Expo export --platform all compiled HomeView on the native Home screen; no simulator run was performed."
+          "status": "verified",
+          "evidence": "The user reports extensive use of HomeView on the native Home page in Expo Go on an iPhone Duo and considers Home done for the current milestone. OS and Expo Go versions and specific interaction coverage were not recorded; follow-up issues will be handled as individual bug reports. Expo export --platform all also compiled HomeView on the native Home screen."
         },
         "android": {
           "status": "unverified",
@@ -2938,15 +2939,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Media Cards page composition added over the shared CardsEditor; browser page and native runtime were not exercised."
+          "evidence": "This revision passes the saved touch-action baseline into CardsEditor; the browser cards page remains server-owned and was not runtime-checked."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "Media Cards page composition added over the shared CardsEditor; browser page and native runtime were not exercised."
+          "status": "verified",
+          "evidence": "Device Hub iOS 27.2 / Expo Go opened the native Media Cards settings screen and rendered both touch-action choices. The proof session had no server account, so server preference load/save and save-error handling were not exercised there; transport tests cover these paths."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Media Cards page composition added over the shared CardsEditor; browser page and native runtime were not exercised."
+          "evidence": "Expo export compiles the settings view and CardsEditor; Android settings interaction was not exercised for this revision."
         }
       }
     },
@@ -3232,6 +3233,29 @@
           "evidence": "Universal file uses React Native primitives and theme props; it is not placed in the native app shell and no emulator pass was performed."
         }
       }
+    },
+    "frontend/ui/Modal.jsx": {
+      "components": [
+        "Modal",
+        "ModalCloseButton",
+        "RailModalProvider",
+        "RailModalHost"
+      ],
+      "register": "FORM-CONTROLS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Retains the existing React Native Web Modal and close controls; runtime regression verification pending."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Duo modal presentation stays in the canvas so the system rail can dismiss the topmost dialog. Runtime verification pending. Other iOS devices retain RN Modal."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Retains RN Modal and inline close controls; runtime unverified."
+        }
+      }
     }
   },
   "legacy": {},
@@ -3306,6 +3330,26 @@
         }
       }
     },
+    "frontend/ui/mediaCardBehavior.js": {
+      "components": [
+        "shouldRevealMediaCardActions"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Pure shared touch-action policy used by the native MediaCard; browser adapter behavior was not runtime-checked for this revision."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Node behavior tests cover hidden, visible and absent actions; iOS runtime interaction was not exercised for this revision."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Node behavior tests cover hidden, visible and absent actions; Android runtime interaction was not exercised for this revision."
+        }
+      }
+    },
     "frontend/ui/markdown.js": {
       "components": [
         "normalizeSelection",
@@ -3373,9 +3417,74 @@
           "evidence": "Static page inventory; not imported by the native runtime."
         }
       }
+    },
+    "frontend/ui/mediaCardSizing.js": {
+      "components": [
+        "mediaCardGridWidth",
+        "playbackCardWidth"
+      ],
+      "register": "PLAYBACK",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Shared responsive grid sizing is used by Lists; native playback sizing uses three 110 pt cards plus gaps on compact phone layouts. Browser runtime verification remains pending."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) hot-reloaded the shared 110 pt Home shelf and compact Now Playing sizing; both right edges align at 110 pt × 3 plus the Home rail's 16 pt × 2 gaps. Comfortable and desktop variants were not exercised on iOS."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Native playback sizing uses three 110 pt cards plus gaps on compact phone layouts; Android runtime verification remains pending."
+        }
+      }
     }
   },
   "platform": {
+    "frontend/ui/CardScrim.native.jsx": {
+      "kind": "presentation",
+      "register": "MEDIA-CARD",
+      "components": [
+        "CardScrim"
+      ],
+      "purpose": "Render the media-card artwork scrim as a continuous native SVG gradient.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Platform-specific native adapter; browser appearance is owned by CardScrim.web.jsx."
+        },
+        "ios": {
+          "status": "verified",
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) displayed the native Now Playing MediaCard with its gradient scrim; no pixel comparison was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Implemented with react-native-svg; no Android runtime pass for this revision."
+        }
+      }
+    },
+    "frontend/ui/CardScrim.web.jsx": {
+      "kind": "presentation",
+      "register": "MEDIA-CARD",
+      "components": [
+        "CardScrim"
+      ],
+      "purpose": "Render the media-card artwork scrim with the browser CSS gradient adapter.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Built for browser surfaces; no browser runtime pass for this revision."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not applicable to this web implementation."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not applicable to this web implementation."
+        }
+      }
+    },
     "frontend/ui/barcodeEntry.web.js": {
       "kind": "adapter",
       "register": "SEARCH",
@@ -3850,7 +3959,7 @@
       "components": [
         "Reveal"
       ],
-      "purpose": "Keep the sidebar reveal contract native-compatible; native mount behavior is unchanged pending a platform animation pass.",
+      "purpose": "Resolve shared Reveal with measured height animation and retained children through collapse.",
       "verification": {
         "web": {
           "status": "unverified",
@@ -3858,7 +3967,7 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo source graph; no simulator pass for the reveal."
+          "evidence": "Compile checks only for the animation refinement; physical Duo unavailable in Device Hub."
         },
         "android": {
           "status": "unverified",
@@ -3872,19 +3981,19 @@
       "components": [
         "MediaCard"
       ],
-      "purpose": "Render the shared media card on every browser surface with the established DOM classes, hover/touch actions, rating popup, status and corner chips, faded in-card metadata overlay and theme rules. Home, library/search/discover/history/detail/list and collection surfaces all resolve this implementation through the same MediaCard import.",
+      "purpose": "Browser MediaCard implementation shared by list item cards and Now Playing; it preserves the existing grid/poster artwork and gradient behavior and accepts an optional header slot.",
       "verification": {
         "web": {
-          "status": "verified",
-          "evidence": "Headless Chromium rendered Home, Collection, Discover, History and library surfaces through the shared browser card; poster metadata overlays the artwork bottom with the faded gradient, and hover action buttons appeared."
+          "status": "unverified",
+          "evidence": "The browser adapter places status and next-episode chips in opposing corners, so narrow cards can collide. Compact CSS selects Next and wider cards retain Next ep; generated CSS is checked, but compact-breakpoint browser runtime verification remains pending."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Not applicable to this browser implementation."
+          "evidence": "Not applicable to the browser implementation."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Not applicable to this browser implementation."
+          "evidence": "Not applicable to the browser implementation."
         }
       }
     },
@@ -3898,15 +4007,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not applicable to this native counterpart."
+          "evidence": "Shared Now Playing presentation now composes MediaCard with a header slot; code and bundle checks are pending, and no browser runtime pass has been performed."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the universal MediaCard; no simulator pass in this change."
+          "evidence": "On iPhone Duo (Device Hub, iOS 27.2), compact Home Up Next cards were checked after hot reload; the play/status badge and Next chip render at matching heights. Link activation and full native consumer parity were not checked."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the universal MediaCard; no emulator pass in this change."
+          "evidence": "Shared Now Playing presentation now composes MediaCard with a header slot; code and Expo checks are pending, and no Android runtime pass has been performed."
         }
       }
     },
@@ -4393,6 +4502,56 @@
         "android": {
           "status": "unverified",
           "evidence": "Not run."
+        }
+      }
+    },
+    "frontend/ui/Modal.native.jsx": {
+      "kind": "presentation",
+      "components": [
+        "Modal",
+        "ModalCloseButton",
+        "RailModalProvider",
+        "RailModalHost"
+      ],
+      "register": "FORM-CONTROLS",
+      "purpose": "Platform modal presentation and close affordance, with a canvas host for the Duo system rail and standard modal behavior elsewhere.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Retains the existing React Native Web Modal and close controls; runtime regression verification pending."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Duo modal presentation stays in the canvas so the system rail can dismiss the topmost dialog. Runtime verification pending. Other iOS devices retain RN Modal."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Retains RN Modal and inline close controls; runtime unverified."
+        }
+      }
+    },
+    "frontend/ui/Modal.web.jsx": {
+      "kind": "presentation",
+      "components": [
+        "Modal",
+        "ModalCloseButton",
+        "RailModalProvider",
+        "RailModalHost"
+      ],
+      "register": "FORM-CONTROLS",
+      "purpose": "Platform modal presentation and close affordance, with a canvas host for the Duo system rail and standard modal behavior elsewhere.",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Retains the existing React Native Web Modal and close controls; runtime regression verification pending."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Duo modal presentation stays in the canvas so the system rail can dismiss the topmost dialog. Runtime verification pending. Other iOS devices retain RN Modal."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Retains RN Modal and inline close controls; runtime unverified."
         }
       }
     }

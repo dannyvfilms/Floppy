@@ -174,40 +174,55 @@ function useFinePointer() {
   return fine;
 }
 
+function readPins() {
+  if (window.floppySidebarPins) return window.floppySidebarPins;
+  try {
+    const data = JSON.parse(document.getElementById('sidebar-pins-data')?.textContent || '{}');
+    return { nav: data?.nav || [], lists: data?.lists || [] };
+  } catch { return { nav: [], lists: [] }; }
+}
+
 function SidebarView({ host, props, onboarding }) {
   const palette = usePalette();
   const finePointer = useFinePointer();
-  const pinsKey = `floppy:sidebar-pins:${props.userId}`;
-  const listsKey = `floppy:sidebar-lists:${props.userId}`;
-  const [pinned, setPinned] = useState(() => (readJson(pinsKey, []) || []).filter(key => props.pinKeys.includes(key)));
-  const [rawLists, setRawLists] = useState(() => readJson(listsKey, []));
+  const [pins, setPins] = useState(readPins);
+  const pinned = pins.nav.filter(key => props.pinKeys.includes(key));
+  const rawLists = pins.lists;
   const [pathname] = useState(() => window.location.pathname);
 
   useEffect(() => {
-    const onLists = () => setRawLists(readJson(listsKey, []));
-    window.addEventListener('sidebar-lists-changed', onLists);
-    return () => window.removeEventListener('sidebar-lists-changed', onLists);
-  }, [listsKey]);
+    const onPins = () => setPins(readPins());
+    window.addEventListener('sidebar-pins-changed', onPins);
+    return () => window.removeEventListener('sidebar-pins-changed', onPins);
+  }, []);
+
+  const savePins = useCallback(next => {
+    window.floppySidebarPins = next;
+    setPins(next);
+    window.dispatchEvent(new Event('sidebar-pins-changed'));
+    fetch(props.pinsUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': props.csrfToken },
+      body: JSON.stringify(next),
+    }).catch(() => { /* The pins still apply to this page. */ });
+  }, [props.pinsUrl, props.csrfToken]);
 
   const togglePin = useCallback(key => {
-    const next = pinned.includes(key) ? pinned.filter(entry => entry !== key) : [...pinned, key];
-    setPinned(next);
-    writeJson(pinsKey, next);
-  }, [pinned, pinsKey]);
+    const nav = pinned.includes(key) ? pinned.filter(entry => entry !== key) : [...pinned, key];
+    savePins({ nav, lists: rawLists });
+  }, [pinned, rawLists, savePins]);
 
   const unpinList = useCallback(id => {
-    const next = rawLists.filter(entry => entry.id !== id);
-    setRawLists(next);
-    writeJson(listsKey, next);
-    window.dispatchEvent(new Event('sidebar-lists-changed'));
-  }, [rawLists, listsKey]);
+    savePins({ nav: pins.nav, lists: rawLists.filter(entry => entry.id !== id) });
+  }, [pins.nav, rawLists, savePins]);
 
   const decoratedLists = useMemo(() => rawLists.map(entry => ({
     ...entry,
     platformProps: { href: entry.url },
   })), [rawLists]);
 
-  const pins = useMemo(() => ({
+  const pinModel = useMemo(() => ({
     pinned,
     pinnedLists: decoratedLists,
     isPinned: key => pinned.includes(key),
@@ -260,7 +275,7 @@ function SidebarView({ host, props, onboarding }) {
   return <React.Fragment>
     <MobileState host={host} />
     <HtmxBridge host={host} />
-    <Sidebar model={model} pins={pins} palette={palette} labels={props.labels}
+    <Sidebar model={model} pins={pinModel} palette={palette} labels={props.labels}
       renderIcon={renderIcon} rowActions={finePointer ? 'hover' : 'always'} enableSortable={enableSortable}
       onNavigate={onNavigate} onToggleGroup={writeOpen} onToggleLists={open => writeOpen('lists', open)}
       onUnpinList={unpinList} onDeleteView={onDeleteView} onFinishReorder={onFinishReorder}
