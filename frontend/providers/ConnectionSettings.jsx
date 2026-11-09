@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { SelectField } from '../ui/SelectField';
 import { SettingsCard } from '../settings/SettingsCard';
@@ -190,11 +191,19 @@ export function ConnectionSettings({
       onInfo={!editable ? () => setHelpOpen(true) : undefined}>
       <Text style={[styles.copy, { color: colors.textSecondary }]}>{labels.instanceHelp}</Text>
       {model.description ? <Text style={[styles.copy, { color: colors.textMuted }]}>{model.description}</Text> : null}
-      {showKeyLink && (model.getKeyUrl || model.getKeyLabel) ? <Pressable accessibilityRole="link"
-        accessibilityLabel={(model.getKeyLabel || labels.getKey).replace('{name}', model.providerLabel || 'the provider')}
-        onPress={() => onOpenLink?.(model.getKeyUrl)} style={styles.linkRow}>
+      {showKeyLink && (model.getKeyUrl || model.getKeyLabel) ? <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={(model.getKeyLabel || labels.getKey).replace('{name}', model.providerLabel || model.label || 'the provider')}
+        {...(model.linkProps || {})}
+        onPress={event => {
+          if (onOpenLink && model.getKeyUrl) {
+            event?.preventDefault?.();
+            onOpenLink(model.getKeyUrl);
+          }
+        }}
+        style={styles.linkRow}>
         <Text style={[styles.link, { color: colors.accent }]}>
-          {(model.getKeyLabel || labels.getKey).replace('{name}', model.providerLabel || 'the provider')}
+          {(model.getKeyLabel || labels.getKey).replace('{name}', model.providerLabel || model.label || 'the provider')}
         </Text>
       </Pressable> : null}
       <View style={styles.fields}>
@@ -243,8 +252,9 @@ export function ConnectionSettings({
     <Modal transparent visible={helpOpen} animationType="fade" accessibilityViewIsModal
       onRequestClose={() => setHelpOpen(false)}>
       <View style={styles.backdrop}>
-        <View style={[styles.dialog, { borderColor: colors.surfaceMuted, backgroundColor: colors.surface }]}>
-          <Text role="heading" aria-level={2} style={[styles.dialogTitle, { color: colors.text }]}>{labels.readOnlyHelp}</Text>
+        <View role="dialog" accessibilityLabel={labels.readOnlyDialogTitle || 'Instance credential access'}
+          style={[styles.dialog, { borderColor: colors.surfaceMuted, backgroundColor: colors.surface }]}>
+          <Text role="heading" aria-level={2} style={[styles.dialogTitle, { color: colors.text }]}>{labels.readOnlyDialogTitle || 'Instance credential access'}</Text>
           <Text style={[styles.copy, { color: colors.textSecondary }]}>{model.readOnlyReason}</Text>
           <Button label={labels.close} tone="surface" onPress={() => setHelpOpen(false)} palette={buttons} />
         </View>

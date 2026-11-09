@@ -50,15 +50,13 @@ function ImportPreferencesHost({ host, initial }) {
   const [values, setValues] = useState(initialValues.current);
 
   function broadcast(next) {
-    if (parent) {
-      parent.importPreferences = next;
-      // The server-rendered file-import fallback reads these hidden inputs if
-      // its React chunk has not mounted yet. Keep them in sync with the live
-      // preferences so a fallback submit posts the same values.
-      parent.querySelectorAll('[data-import-preference]').forEach(input => {
-        input.value = next?.[input.dataset.importPreference] ?? '';
-      });
-    }
+    if (parent) parent.importPreferences = next;
+    // Fallback file forms may be siblings of the preferences island and may
+    // not have an Alpine ancestor. Always synchronize their posted fields.
+    const scope = host.closest('[data-settings-page-content]') || document;
+    scope.querySelectorAll('[data-import-preference]').forEach(input => {
+      input.value = next?.[input.dataset.importPreference] ?? '';
+    });
     host.dispatchEvent(new CustomEvent('import-preferences-changed', { bubbles: true, detail: next }));
   }
 

@@ -319,6 +319,7 @@ export function ProviderSettingsView({
   onSave,
   onClear,
   onOpenLink,
+  linkPropsForUrl,
   onSetDefault,
   onFollowUp,
   onImport,
@@ -365,9 +366,10 @@ export function ProviderSettingsView({
         <View style={styles.headingRow}>
           {heading ? <SectionHeading palette={colors}>{heading}</SectionHeading> : null}
           {credentials.setupHint
-            ? <Chip label={keyLabel} link hasPopup onPress={() => setSetupHint(credentials)} palette={keyPalette} />
+            ? <Chip testID="provider-key-link" label={keyLabel} link hasPopup onPress={() => setSetupHint(credentials)} palette={keyPalette} />
             : credentials.getKeyUrl
-              ? <Chip label={keyLabel} link onPress={keyAction} palette={keyPalette} />
+              ? <Chip testID="provider-key-link" label={keyLabel} link onPress={keyAction}
+                  {...(linkPropsForUrl?.(credentials.getKeyUrl) || {})} palette={keyPalette} />
               : null}
         </View>
         <ConnectionSettings model={card} onSave={onSave} onClear={onClear} showKeyLink={false}

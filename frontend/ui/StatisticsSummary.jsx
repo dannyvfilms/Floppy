@@ -215,7 +215,7 @@ function SummaryCard({
   icon, color, iconBackground, label, value, valueSuffix, caption, valueColor, info, palette, layout,
 }) {
   const [infoOpen, setInfoOpen] = useState(false);
-  return <View style={[styles.summaryCard, layout.card, layout.minHeight && {
+  return <View testID="stats-summary-card" style={[styles.summaryCard, layout.card, layout.minHeight && {
     minHeight: layout.minHeight,
   }, {
     backgroundColor: palette.surface,
@@ -230,13 +230,13 @@ function SummaryCard({
       <ActivityGlyph name={icon} size={layout.iconSize} color={color} />
     </View>
     <View style={styles.summaryCopy}>
-      <Text style={[styles.summaryLabel, {
+      <Text testID="stats-summary-label" style={[styles.summaryLabel, {
         fontSize: layout.labelSize,
         lineHeight: layout.labelLine,
         color: palette.textMuted,
       }]}
         numberOfLines={1}>{label}</Text>
-      <Text style={[styles.summaryValue, {
+      <Text testID="stats-summary-value" style={[styles.summaryValue, {
         fontSize: layout.valueSize,
         lineHeight: Math.round(layout.valueSize * 1.33),
         color: valueColor || palette.text,
@@ -292,7 +292,7 @@ export function StatisticsHero({ model, labels, palette }) {
     }]}>
       {copy.spent} <Text style={{ color: colors.link }}>{formatNumber(totalHours)}</Text> {copy.hours}
     </Text>
-    <Text numberOfLines={1} style={[styles.heroLine, {
+    <Text testID="stats-hero-count" numberOfLines={1} style={[styles.heroLine, {
       fontSize: titleSize,
       lineHeight: titleSize * 1.1,
       color: colors.text,
@@ -481,9 +481,9 @@ export function StatisticsSummaryCards({ model, labels, palette }) {
     while (row.length < columns) row.push(null);
     rows.push(row);
   }
-  return <View style={[styles.summaryColumn, { gap }]}>
-    {rows.map((row, rowIndex) => <View key={rowIndex} style={[styles.summaryRow, { gap }]}>
-      {row.map((card, cardIndex) => <View key={cardIndex} style={styles.summaryCell}>
+  return <View testID="stats-summary-cards" style={[styles.summaryColumn, { gap }]}>
+    {rows.map((row, rowIndex) => <View key={rowIndex} testID="stats-summary-row" style={[styles.summaryRow, { gap }]}>
+      {row.map((card, cardIndex) => <View key={cardIndex} testID="stats-summary-cell" style={styles.summaryCell}>
         {card}
       </View>)}
     </View>)}
