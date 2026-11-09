@@ -3029,3 +3029,59 @@ class MoviePlayExactHistoryReproTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, 200, response.content)
         play.refresh_from_db()
         self.assertEqual(play.end_date.month, 3)
+
+
+class MediaListRemovalBucketTests(FloppyApiTestCase):
+    """List removal must not guess between library buckets (#1873, B09)."""
+
+    def setUp(self):
+        """Put the same movie identity in the list in two library buckets."""
+        super().setUp()
+        self.list_id = self.lists_by_name["favorites"].id
+        self.default_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        self.anime_item = Item.objects.create(
+            media_id=self.default_item.media_id,
+            source=self.default_item.source,
+            media_type=MediaTypes.MOVIE.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title=self.default_item.title,
+            image=self.default_item.image,
+        )
+        self.lists_by_name["favorites"].items.add(self.anime_item)
+
+    def _delete(self, **params):
+        return self.call_api(
+            "delete",
+            "api_media_list_detail",
+            args=(
+                MediaTypes.MOVIE.value,
+                self.default_item.source,
+                self.default_item.media_id,
+                self.list_id,
+            ),
+            params=params or None,
+            headers=self.auth_headers,
+        )
+
+    def test_ambiguous_removal_is_refused_before_any_write(self):
+        """Both buckets are in the list and none was named: refuse, delete nothing."""
+        response = self._delete()
+
+        self.assertEqual(response.status_code, 409, response.content)
+        self.assertEqual(
+            self.lists_by_name["favorites"].items.filter(
+                media_id=self.default_item.media_id,
+            ).count(),
+            2,
+        )
+
+    def test_named_bucket_removes_only_that_bucket(self):
+        response = self._delete(library_media_type=MediaTypes.ANIME.value)
+
+        self.assertEqual(response.status_code, 204, response.content)
+        remaining = list(
+            self.lists_by_name["favorites"].items.filter(
+                media_id=self.default_item.media_id,
+            ),
+        )
+        self.assertEqual(remaining, [self.default_item])

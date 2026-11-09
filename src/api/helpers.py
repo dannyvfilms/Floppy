@@ -1048,19 +1048,28 @@ def build_game_lengths_summary(payload):
     return summary
 
 
-def get_tracked_season(user, media_id, source, season_number):
-    """Return the user's tracked Season row for a show/season, or None."""
-    return (
-        Season.objects.filter(
-            item__media_id=media_id,
-            item__source=source,
-            item__season_number=season_number,
-            item__episode_number=None,
-            user=user,
-        )
-        .order_by("id")
-        .first()
+def get_tracked_season(
+    user,
+    media_id,
+    source,
+    season_number,
+    library_media_type=None,
+):
+    """Return the user's tracked Season row for a show/season, or None.
+
+    ``library_media_type`` limits the match to one library bucket; without it
+    the oldest matching Season is returned.
+    """
+    seasons = Season.objects.filter(
+        item__media_id=media_id,
+        item__source=source,
+        item__season_number=season_number,
+        item__episode_number=None,
+        user=user,
     )
+    if library_media_type:
+        seasons = seasons.filter(item__library_media_type=library_media_type)
+    return seasons.order_by("id").first()
 
 
 def validate_episode_score(raw_score):

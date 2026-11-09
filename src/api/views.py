@@ -1959,6 +1959,7 @@ class MediaListDetailView(drf_views.APIView):
     """Media list detail view."""
 
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
+    @extend_schema(parameters=[MEDIA_TYPE_PARAM, LIBRARY_MEDIA_TYPE_PARAM])
     def delete(self, request, media_type, source, media_id, list_id):
         """Remove a specific media from a specific list."""
         user = request.user
@@ -2000,11 +2001,21 @@ class MediaListDetailView(drf_views.APIView):
                 media_id,
                 source,
                 media_type,
+                library_media_type=request.query_params.get("library_media_type"),
             )
         except CustomListItem.DoesNotExist:
             return Response(
                 {"detail": "Media not found in the list."},
                 status=HTTP.NOT_FOUND,
+            )
+        except CustomListItem.MultipleObjectsReturned:
+            return Response(
+                {
+                    "detail": "The list holds this media in several library "
+                    "buckets; pass library_media_type to choose one.",
+                    "code": "AMBIGUOUS_LIBRARY_BUCKET",
+                },
+                status=HTTP.CONFLICT,
             )
 
         list_item.delete()
