@@ -204,13 +204,14 @@ function useLegacyPopupOpen(host) {
     observer.observe(popup, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
     return () => observer.disconnect();
   }, [popup]);
+  const [flagOpen, setFlagOpen] = useState(true);
   useLayoutEffect(() => {
-    // Episode tracking swaps this host into the card with no modal root above
-    // it; the card's Alpine flag is then the only record of open or closed.
-    if (popup) return undefined;
-    return window.watchTrackModalOpen?.(host, setOpen) || undefined;
-  }, [host, popup]);
-  return open;
+    // The card's Alpine flag is the record of open or closed. Episode tracking
+    // swaps this host into the card with no modal root above it, and a save
+    // swaps the popup out of the page, which a style observer can no longer see.
+    return window.watchTrackModalOpen?.(host, setFlagOpen) || undefined;
+  }, [host]);
+  return open && flagOpen;
 }
 
 function Adapter({ host, props }) {

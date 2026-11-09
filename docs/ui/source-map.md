@@ -960,6 +960,8 @@ Status: `Partial / coexisting`
 
 PR #1878: the Track dialog adapter (`mountTrackForm.jsx`) posts its payload, mirrors the card's Alpine open flag when it has no legacy modal root, and `mediaCardForms.js` passes date shortcuts and runtime through to `TrackForm.jsx`; shared status options set `aria-checked`.
 
+Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.jsx`, `DateTimePicker.jsx`, `TagManagement.jsx` and `CollectionCopies.jsx` render the v26.10.29 layout (title bar, icon sidebar, two-column General grid, dropdown selects, date chips, Delete / Update footer) from the shared React form. Browser verified; iOS and Android not verified.
+
 - `frontend/auth/AccountSecurity.jsx`
 - `frontend/discover/DiscoverScreen.jsx`
 - `frontend/discover/mountDiscover.jsx`
