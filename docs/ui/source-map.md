@@ -188,7 +188,7 @@ Status: `Web Migrated`
 
 Status: `Partial / coexisting`
 
-- `frontend/ui/ModalHost.web.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted once from `base.html`; the card hover buttons and the Add-to-lists buttons open it through `floppy-open-modal`; the Track body is still the server form, see the register)
+- `frontend/ui/ModalHost.web.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted once from `base.html`; the card hover buttons and the Add-to-lists buttons open it through `floppy-open-modal`; the Track body is still the server form, see the register; unmounting a host disposes the React islands inside it, so the Track dialog is not stranded when Escape closes the popup mid-load)
 - `frontend/ui/ListsFormView.jsx`
 - `frontend/ui/modal-forms.css`
 
