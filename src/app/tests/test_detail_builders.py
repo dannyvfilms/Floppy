@@ -1,6 +1,7 @@
 from django.test import TestCase
 
 from app.detail_builders import (
+    _build_detail_link_entry,
     _build_detail_link_sections,
     _build_imdb_rating_context,
     _build_mal_rating_context,
@@ -253,6 +254,119 @@ class DetailLinkSectionsMalTests(TestCase):
 
         self.assertEqual(len(sections), 1)
         self.assertEqual(sections[0]["title"], "Source")
+
+
+class DetailExternalLinkBrandTests(TestCase):
+    def test_imdb_parent_guide_reuses_imdb_logo(self):
+        imdb = _build_detail_link_entry(
+            "IMDb",
+            "https://www.imdb.com/title/tt0137523/",
+            "IMDb",
+        )
+        guide = _build_detail_link_entry(
+            "IMDb Parent's Guide",
+            "https://www.imdb.com/title/tt0137523/parentalguide/",
+            "IMDb Parent's Guide",
+        )
+
+        self.assertEqual(guide["logo_src"], imdb["logo_src"])
+        self.assertEqual(guide["logo_src"], "/static/img/imdb-logo.png")
+
+    def test_game_with_stored_imdb_id_gets_parent_guide_link(self):
+        item = Item.objects.create(
+            media_id="igdb-parent-guide",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="A Game with an IMDb ID",
+            provider_external_ids={"imdb_id": "tt0137523"},
+        )
+
+        sections = _build_detail_link_sections(
+            {},
+            MediaTypes.GAME.value,
+            Sources.IGDB.value,
+            Sources.IGDB.value,
+            item=item,
+        )
+        entries = sections[-1]["entries"]
+        guide = next(entry for entry in entries if entry["label"] == "IMDb Parent's Guide")
+
+        self.assertEqual(
+            guide["url"],
+            "https://www.imdb.com/title/tt0137523/parentalguide/",
+        )
+        self.assertEqual(guide["logo_src"], "/static/img/imdb-logo.png")
+
+    def test_cached_steam_app_id_rebuilds_game_links_with_identifiable_badges(self):
+        sections = _build_detail_link_sections(
+            {
+                "external_ids": {"steam_app_id": "1116480"},
+                "external_links": {"HowLongToBeat": "https://howlongtobeat.com/"},
+            },
+            MediaTypes.GAME.value,
+            Sources.IGDB.value,
+            Sources.IGDB.value,
+        )
+        entries = sections[-1]["entries"]
+        by_label = {entry["label"]: entry for entry in entries}
+
+        self.assertEqual(
+            {
+                name: by_label[name]["url"]
+                for name in ("Steam", "SteamDB", "ProtonDB", "PCGamingWiki")
+            },
+            {
+                "Steam": "https://store.steampowered.com/app/1116480/",
+                "SteamDB": "https://steamdb.info/app/1116480/",
+                "ProtonDB": "https://www.protondb.com/app/1116480",
+                "PCGamingWiki": (
+                    "https://www.pcgamingwiki.com/api/appid.php?appid=1116480"
+                ),
+            },
+        )
+        self.assertEqual(by_label["Steam"]["logo_src"], "/static/img/steam-logo.ico")
+        self.assertEqual(by_label["SteamDB"]["logo_src"], "/static/img/steamdb-logo.svg")
+        self.assertEqual(by_label["ProtonDB"]["logo_src"], "/static/img/protondb-logo.png")
+        self.assertEqual(
+            by_label["PCGamingWiki"]["logo_src"],
+            "/static/img/pcgamingwiki-logo.svg",
+        )
+
+    def test_item_steam_app_id_backfills_links_without_replacing_existing_ones(self):
+        item = Item.objects.create(
+            media_id="igdb-stored-steam-id",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="A Game with a stored Steam ID",
+            provider_external_ids={"steam_app_id": "1116480"},
+        )
+
+        sections = _build_detail_link_sections(
+            {
+                "external_links": {
+                    "Steam": "https://store.steampowered.com/app/620/",
+                },
+            },
+            MediaTypes.GAME.value,
+            Sources.IGDB.value,
+            Sources.IGDB.value,
+            item=item,
+        )
+        entries = sections[-1]["entries"]
+        by_label = {entry["label"]: entry for entry in entries}
+
+        self.assertEqual(
+            [entry["label"] for entry in entries].count("Steam"),
+            1,
+        )
+        self.assertEqual(
+            by_label["Steam"]["url"],
+            "https://store.steampowered.com/app/620/",
+        )
+        self.assertEqual(
+            by_label["SteamDB"]["url"],
+            "https://steamdb.info/app/1116480/",
+        )
 
 
 class OtherBookFormatsTests(TestCase):
