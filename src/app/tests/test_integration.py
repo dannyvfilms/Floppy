@@ -436,6 +436,17 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         """Return the topmost shared dialog (the Track dialog or its picker)."""
         return self.page.get_by_role("dialog").last
 
+    def pick_track_status(self, dialog, label):
+        """Choose a status in the Track dialog's Status dropdown."""
+        dialog.get_by_role("button", name=re.compile(r"^Status:")).click()
+        self.page.get_by_role("radio", name=label, exact=True).click()
+
+    def expect_track_status(self, dialog, label):
+        """Assert the Track dialog's Status dropdown shows the given status."""
+        expect(
+            dialog.get_by_role("button", name=re.compile(rf"^Status: {label}$", re.IGNORECASE)),
+        ).to_be_visible()
+
     def shared_date_buttons(self, dialog):
         """Return each Track date field's chevron, in field order.
 
@@ -707,10 +718,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.page.locator("button").filter(has_text="Add to tracker").click()
         track_form = self.page.locator("#track-tv-1396")
         expect(track_form).to_contain_text("Score")
-        # Status is now a shared accessible radio group, not an HTML select.
-        self.page.get_by_role("dialog").last.get_by_role(
-            "radio", name="Completed", exact=True,
-        ).click()
+        self.pick_track_status(self.shared_dialog(), "Completed")
         with self.page.expect_request(
             lambda request: request.method == "POST" and "/media_save" in request.url,
         ) as save_request:
@@ -926,9 +934,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.assertEqual(end_dt - start_dt, timedelta(minutes=95))
         expect(start_now).to_have_count(0)
         expect(just_finished).to_have_count(0)
-        expect(
-            create_modal.get_by_role("radio", name="In Progress", exact=True),
-        ).to_be_checked()
+        self.expect_track_status(create_modal, "In Progress")
 
         clear_dates()
         expect(start_now).to_be_visible()
@@ -1379,8 +1385,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         modal = self.shared_dialog()
         expect(modal).to_be_visible()
         if status:
-            # Status is a radio group in the shared dialog, labelled by status.
-            modal.get_by_role("radio", name=Status(status).label, exact=True).click()
+            self.pick_track_status(modal, Status(status).label)
         return modal
 
     def _create_test_movie_item(self, mock_get_metadata):
@@ -1470,9 +1475,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.assertGreaterEqual(start_ms, before - 60 * 1000)
         self.assertLessEqual(start_ms, after + 1000)
         self.assertEqual(end_dt - start_dt, timedelta(milliseconds=runtime_ms))
-        expect(
-            modal.get_by_role("radio", name="In Progress", exact=True),
-        ).to_be_checked()
+        self.expect_track_status(modal, "In Progress")
 
         # An end date the user picked is kept when Start Now is pressed.
         modal = self._open_new_movie_tracker(Status.COMPLETED.value)
@@ -1573,7 +1576,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.page.get_by_role("button", name="Add to tracker").click()
         modal = self.shared_dialog()
         expect(modal).to_be_visible()
-        modal.get_by_role("radio", name="In Progress", exact=True).click()
+        self.pick_track_status(modal, "In Progress")
 
         dates = modal.get_by_role("button", name=re.compile(r"^Date picker:"))
         expect(dates).to_have_count(0)
