@@ -14,8 +14,15 @@
 
    Roots whose web adapter deliberately keeps server markup (the media table
    and its Alpine column menu) are excluded; they never set data-react-mounted
-   and must stay visible. */
-[data-props-id]:not([data-props-id] *):not([data-react-mounted]):not([data-media-table-root]):not([data-media-column-menu-root]) {
+   and must stay visible.
+
+   The sidebar is excluded too, for a different reason. hx-boost swaps the whole
+   body on every navigation, so a hidden fallback blanks the sidebar until the
+   island remounts (28-600 ms on a fast machine, up to the four-second fail-safe
+   when a chunk or the main thread is slow). v26.10.29 never blanked it. Its
+   server fallback has the same items, icons and box as the mounted sidebar, so
+   it stays visible and React takes over in place. */
+[data-props-id]:not([data-props-id] *):not([data-react-mounted]):not([data-media-table-root]):not([data-media-column-menu-root]):not([data-sidebar-root]) {
   visibility: hidden;
   animation: island-fallback-reveal 0s 4s forwards;
 }
