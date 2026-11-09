@@ -286,9 +286,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         try:
             page = touch_context.new_page()
             page.goto(self.live_server_url + "/")
-            card = page.get_by_role("button", name="Poster Action Test").first
+            card = page.locator(".media-card").first
             expect(card).to_be_visible()
-            card.click()
+            card.locator("img.media-card-poster").first.tap()
             expect(page.get_by_role("button", name="Add to tracker")).to_be_visible()
             expect(page.get_by_role("button", name="Add to custom lists")).to_be_visible()
             expect(page.get_by_role("link", name="View your activity history")).to_be_visible()

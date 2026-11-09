@@ -30,6 +30,7 @@ export function Rail({
   loadingMore = false,
   loadMoreThreshold = 1152,
   itemWidth = 176,
+  getItemWidth,
   itemGap = 16,
   viewAll,
   onSort,
@@ -193,7 +194,7 @@ export function Rail({
         onContentSizeChange={handleContentSizeChange}
         onLayout={handleLayout}
         contentContainerStyle={[styles.scroller, { gap: itemGap }]}>
-        {items.map((item, index) => <View key={item?.id ?? index} style={[styles.item, { width: itemWidth }]}>
+        {items.map((item, index) => <View key={item?.id ?? index} style={[styles.item, { width: getItemWidth ? getItemWidth(item) : itemWidth }]}>
           {renderItem?.(item, index)}
         </View>)}
         {loadingMore ? <View style={styles.loading}>

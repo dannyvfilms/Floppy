@@ -366,6 +366,7 @@ Status: `Partial / coexisting`
 - `src/templates/app/components/home_grid.html`
 - `src/templates/app/components/home_groups.html`
 - `src/templates/app/home.html`
+- Web parity pass against v26.10.29: `frontend/pages/HomeView.jsx` forwards `renderCard` and `renderProgress`; `frontend/ui/HomeShelves.jsx` and `frontend/ui/Rail.jsx` size video and mixed rows per item.
 
 ## PLAYBACK
 
@@ -639,6 +640,7 @@ Status: `Legacy`
 - `src/templates/app/components/taste_signals_genres.html`
 - `src/templates/app/statistics.html`
 - `src/templates/app/components/reading_consumption_section.html` (Books "Listening Time" card)
+- Web parity pass against v26.10.29: `frontend/ui/StatisticsSummary.jsx` caps the summary card text block at the card width.
 
 ## RELEASE-CALENDAR
 
