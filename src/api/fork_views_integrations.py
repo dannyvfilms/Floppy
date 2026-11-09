@@ -105,6 +105,15 @@ class ImportDispatchView(drf_views.APIView):
                 status=HTTP.BAD_REQUEST,
             )
 
+        if service == "trakt-export" and mode not in import_helpers.TRAKT_EXPORT_MODES:
+            return Response(
+                {
+                    "detail": import_helpers.TRAKT_EXPORT_UNSUPPORTED_MODE_MESSAGE,
+                    "choices": list(import_helpers.TRAKT_EXPORT_MODES),
+                },
+                status=HTTP.BAD_REQUEST,
+            )
+
         if service in _USERNAME_IMPORTS:
             task_export, label = _USERNAME_IMPORTS[service]
             task_fn = getattr(tasks, task_export)

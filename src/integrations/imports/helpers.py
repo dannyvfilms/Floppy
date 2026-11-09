@@ -122,6 +122,15 @@ def publish_bulk_rows(user_id, rows):
     return True
 
 
+# The Trakt export stage loop always runs in full; only New vs Overwrite changes
+# behaviour. Selective modes (watchlist, update_collection) would silently
+# import everything, so they are refused (#1873).
+TRAKT_EXPORT_MODES = ("new", "overwrite")
+TRAKT_EXPORT_UNSUPPORTED_MODE_MESSAGE = (
+    "The Trakt data export import supports only the 'new' and 'overwrite' modes."
+)
+
+
 class MediaImportError(Exception):
     """Custom exception for import errors."""
 
