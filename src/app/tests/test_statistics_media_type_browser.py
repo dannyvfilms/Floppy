@@ -88,17 +88,17 @@ class StatisticsMediaTypeSelectionTests(SerialStaticLiveServerTestCase):
     def test_first_click_selects_only_that_type_then_more_can_be_added(self):
         page = self.open_statistics()
         expect(self.trigger(page)).to_have_text("All media")
-        expect(page.locator(".stats-hero-title").nth(1)).to_contain_text("3 titles")
+        expect(page.locator('[data-testid="stats-hero-count"]')).to_contain_text("3 titles")
 
         self.pick(page, "Movies")
         expect(self.trigger(page)).to_have_text("Movies")
-        expect(page.locator(".stats-hero-title").nth(1)).to_contain_text("2 films")
+        expect(page.locator('[data-testid="stats-hero-count"]')).to_contain_text("2 films")
         self.assertIn("media-type=movie", page.url)
         self.assertNotIn("game", page.url)
 
         self.pick(page, "Games")
         expect(self.trigger(page)).to_have_text("Movies, Games")
-        expect(page.locator(".stats-hero-title").nth(1)).to_contain_text("3 titles")
+        expect(page.locator('[data-testid="stats-hero-count"]')).to_contain_text("3 titles")
         self.assertIn("media-type=movie%2Cgame", page.url)
 
     def test_menu_does_not_shift_as_the_trigger_label_changes(self):
@@ -138,7 +138,7 @@ class StatisticsMediaTypeSelectionTests(SerialStaticLiveServerTestCase):
 
         page = self.open_statistics("?media-type=game")
         expect(self.trigger(page)).to_have_text("Games")
-        expect(page.locator(".stats-hero-title").nth(1)).to_contain_text("1 games")
+        expect(page.locator('[data-testid="stats-hero-count"]')).to_contain_text("1 games")
 
     def test_selection_is_remembered_for_the_next_visit(self):
         page = self.open_statistics()
@@ -149,7 +149,7 @@ class StatisticsMediaTypeSelectionTests(SerialStaticLiveServerTestCase):
 
         page.goto(f"{self.live_server_url}/statistics")
         expect(self.trigger(page)).to_have_text("Movies")
-        expect(page.locator(".stats-hero-title").nth(1)).to_contain_text("2 films")
+        expect(page.locator('[data-testid="stats-hero-count"]')).to_contain_text("2 films")
         self.assertIn("media-type=movie", page.url)
 
         with page.expect_response("**/statistics/media-types"):

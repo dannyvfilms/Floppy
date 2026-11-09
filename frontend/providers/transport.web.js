@@ -103,6 +103,30 @@ export function confirmAction(message) {
   return window.confirm(message);
 }
 
+/** Browser-only picker, invoked from the active user gesture. */
+export function pickBrowserFiles({ accept = '', multiple = false } = {}) {
+  return new Promise(resolve => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = accept;
+    input.multiple = Boolean(multiple);
+    input.setAttribute('aria-hidden', 'true');
+    Object.assign(input.style, { position: 'fixed', left: '-9999px', width: '1px', height: '1px' });
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      const files = Array.from(input.files || []);
+      input.remove();
+      resolve({ files });
+    };
+    input.addEventListener('change', finish, { once: true });
+    input.addEventListener('cancel', finish, { once: true });
+    document.body.appendChild(input);
+    input.click();
+  });
+}
+
 /** Read the page's theme tokens so universal components follow the browser theme. */
 export function readThemePalette() {
   const css = getComputedStyle(document.documentElement);
