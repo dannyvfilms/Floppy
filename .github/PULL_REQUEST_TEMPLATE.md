@@ -14,6 +14,15 @@ After:
 
 - [ ] No UI change (nothing visible is different, so no screenshots needed)
 
+### Platforms
+Which surfaces did this change reach, and what evidence backs each? Levels: 1 = ran on a simulator, emulator or device; 2 = Expo Web screenshots plus logic tests; 3 = builds and tests only; 4 = unverified (say why). If a surface was left out on purpose, write the reason.
+
+| Surface | Changed? | Evidence level | Notes |
+|---|---|---|---|
+| Web | | | |
+| iOS | | | |
+| Android | | | |
+
 ## AI Assistance
 - If an AI assistant (such as Claude, Codex, Copilot) generated or shaped this code, specify the exact model name (e.g. `claude-sonnet-4-6`, `gpt-4o`).
 - If no AI assistance was used, delete this section.
