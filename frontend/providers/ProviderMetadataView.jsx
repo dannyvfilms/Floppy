@@ -285,7 +285,7 @@ export function ProviderMetadataView({
 const styles = StyleSheet.create({
   page: { gap: 24, minWidth: 0 },
   cardGrid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 12 },
-  cardColumn: { flexGrow: 1, flexBasis: 260, minWidth: 0 },
+  cardColumn: { flexGrow: 1, flexBasis: 260, minWidth: 0, maxWidth: '100%' },
   heading: { fontSize: 20, lineHeight: 28, fontWeight: '600' },
   subheading: { fontSize: 16, lineHeight: 24, fontWeight: '600', flexShrink: 1 },
   headingRow: {

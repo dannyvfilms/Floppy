@@ -31,7 +31,11 @@ from .helpers import (
     resolve_episode_coordinate_for_request,
     validate_episode_score,
 )
-from .schema import MEDIA_TYPE_PARAM, MEDIA_TYPE_TV_ONLY_PARAM
+from .schema import (
+    LIBRARY_MEDIA_TYPE_PARAM,
+    MEDIA_TYPE_PARAM,
+    MEDIA_TYPE_TV_ONLY_PARAM,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -256,7 +260,7 @@ class MediaEpisodeScoreView(drf_views.APIView):
     """Set or clear the score on all plays of an episode."""
 
     @extend_schema(
-        parameters=[MEDIA_TYPE_TV_ONLY_PARAM],
+        parameters=[MEDIA_TYPE_TV_ONLY_PARAM, LIBRARY_MEDIA_TYPE_PARAM],
         responses={404: DetailErrorSerializer},
     )
     @rating_edit
@@ -309,7 +313,14 @@ class MediaEpisodeScoreView(drf_views.APIView):
         if error:
             return error
 
-        season = get_tracked_season(request.user, media_id, source, season_number)
+        library_media_type = request.query_params.get("library_media_type") or None
+        season = get_tracked_season(
+            request.user,
+            media_id,
+            source,
+            season_number,
+            library_media_type,
+        )
         if season is None and score is not None:
             # Like movies, shows and seasons, rating an untracked episode
             # starts tracking it as Planning; the rating is not a watch.
@@ -319,6 +330,7 @@ class MediaEpisodeScoreView(drf_views.APIView):
                     media_id,
                     source,
                     int(season_number),
+                    library_media_type or "",
                     status=Status.PLANNING.value,
                 )
             except Exception:

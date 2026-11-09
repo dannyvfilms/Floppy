@@ -134,7 +134,9 @@ class SpinnerBrowserTests(SerialStaticLiveServerTestCase):
                     page.evaluate(
                         "window.previousSpinner = document.querySelector('#search-indicator-mobile [data-spinner-root]')"
                     )
-                    page.locator('#sidebar-nav a[href="/"]').first.evaluate(
+                    # The shared sidebar mounts anchor links rather than
+                    # the retired #sidebar-nav server element.
+                    page.locator('[data-sidebar-root][data-react-mounted="true"] a[href="/"]').first.evaluate(
                         "element => element.click()"
                     )
                     page.wait_for_url(self.live_server_url + "/", timeout=15000)

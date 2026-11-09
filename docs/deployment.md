@@ -70,6 +70,20 @@ services:
     networks:
       - floppy-net
 
+  floppy-discovery:
+    image: ghcr.io/dannyvfilms/floppy:latest
+    restart: unless-stopped
+    profiles: [discovery]
+    network_mode: host
+    depends_on:
+      floppy:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "app.discovery_advertiser"]
+    environment:
+      FLOPPY_ADVERTISE_HOST: ${FLOPPY_ADVERTISE_HOST:-}
+      FLOPPY_ADVERTISE_PORT: ${FLOPPY_ADVERTISE_PORT:-8000}
+      FLOPPY_ADVERTISE_NAME: ${FLOPPY_ADVERTISE_NAME:-Floppy}
+
   redis:
     image: redis:8-alpine
     container_name: floppy-redis
@@ -94,6 +108,26 @@ networks:
   floppy-net:
     driver: bridge
 ```
+
+### Optional local server discovery
+
+On a Linux Docker host such as Unraid, the optional discovery sidecar advertises
+Floppy over DNS-SD/mDNS. Enable it with `docker compose --profile discovery up
+-d`. The sidecar uses host networking for multicast; Floppy and Redis stay on the
+normal Compose bridge. The phone and server must be on the same local network.
+
+The default advertised port is `8000`. If the published host port differs, set
+`FLOPPY_ADVERTISE_PORT` to that host-side port in the Compose `.env` file. If the
+host has several network interfaces and automatic route selection chooses the
+wrong one, set `FLOPPY_ADVERTISE_HOST` to the LAN IPv4 address that the phone can
+reach. `FLOPPY_ADVERTISE_NAME` can distinguish multiple Floppy instances. Keep
+the discovery profile disabled on hosts that cannot expose mDNS multicast.
+
+The service appears among ordinary HTTP services, but carries a Floppy TXT
+marker; the app checks marked addresses through `/accounts/auth-config/` before
+offering them. Discovery does not make a private server reachable from outside
+the local network. Use a tunnel, VPN or another externally reachable address for
+remote access.
 
 Open `http://localhost:8000`, create your account, then set `REGISTRATION=False` and redeploy so strangers can't sign up.
 
@@ -192,6 +226,11 @@ Floppy uses these rules when `DB_HOST` is not set:
 An empty value does not override a path. A relative path starts from the
 process working directory. Use absolute paths so that each process uses the
 same location.
+
+SQLite startup admission has a 30-second deadline by default. Set
+`FLOPPY_SQLITE_ADMISSION_TIMEOUT` to a positive whole number of seconds to
+adjust it for slower storage. If admission times out, the entrypoint retries
+once; a second timeout parks startup before migrations and services start.
 
 If `SECRET` and `SECRET_FILE` are not set, the container stores its generated
 `secret_key` in `FLOPPY_DATA_DIR`. Floppy stores backups in `BACKUP_DIR`;
@@ -517,9 +556,11 @@ networks:
     driver: bridge
 ```
 
-Remove any `network_mode:` line, then redeploy the stack. Alternatively, set
-`REDIS_URL` to an address the Floppy container can reach, such as the host's
-IP and Redis's published port.
+Remove any `network_mode: bridge` declaration from Floppy or its datastore
+services, then redeploy the stack. The optional `floppy-discovery` sidecar uses
+`network_mode: host` for mDNS multicast and remains separate from the app's
+bridge network. Alternatively, set `REDIS_URL` to an address the Floppy
+container can reach, such as the host's IP and Redis's published port.
 
 **Check:** `docker exec floppy python manage.py floppy_preflight` names the
 problem and reports `redis: ok` once Floppy can reach Redis.
@@ -996,9 +1037,10 @@ directly.
 
 ### If the SQLite startup check times out
 
-Admission stops after 30 seconds instead of running a multi-hour scan. Check
-the command's diagnosis and storage/lock state. A timeout alone is not a
-corruption finding and does not force a scan on the next ordinary restart.
+Each admission attempt stops after the configured deadline (30 seconds by
+default); after one retry, two consecutive timeouts park startup. Check the
+command's diagnosis and storage/lock state. A timeout alone is not a corruption
+finding and does not force a scan on the next ordinary restart.
 Full verification runs independently after startup or through explicit,
 bounded maintenance. Its phase/results live in `<database>.verification.json`;
 the container logs report deadline failures. The old recovery scanner's

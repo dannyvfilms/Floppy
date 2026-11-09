@@ -1,5 +1,6 @@
+import { Modal, ModalCloseButton } from './Modal';
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { progressFallbackPalette } from './ProgressBar';
 import { ProgressBreakdown } from './ProgressBreakdown';
 
@@ -44,12 +45,12 @@ export function ProgressDialog({
         <View style={[styles.header, { borderBottomColor: colors.surfaceBorder }]}>
           <Text numberOfLines={1} style={[styles.title, { color: colors.text }]}>{title}</Text>
           <View style={styles.actions}>
-            <Pressable accessibilityRole="button"
+            <ModalCloseButton accessibilityRole="button"
               accessibilityLabel={text.close}
               onPress={() => onClose?.()}
               style={({ focused }) => [styles.close, focused && colors.focusStyle]}>
               <Text style={[styles.closeText, { color: colors.textMuted }]}>×</Text>
-            </Pressable>
+            </ModalCloseButton>
             {canCancel
               ? <Pressable accessibilityRole="button"
                 accessibilityState={{ busy: cancelling, disabled: cancelling }}

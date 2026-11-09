@@ -329,14 +329,22 @@ class CustomList(models.Model):
         media_type,
         season_number=None,
         episode_number=None,
+        library_media_type=None,
     ):
-        """Return a list item for this custom list matched by media identifiers."""
+        """Return a list item for this custom list matched by media identifiers.
+
+        Raises ``MultipleObjectsReturned`` when the same identity is in the list
+        under several library buckets and ``library_media_type`` does not pick
+        one.
+        """
         filters = {
             "custom_list": self,
             "item__media_id": media_id,
             "item__source": source,
             "item__media_type": media_type,
         }
+        if library_media_type:
+            filters["item__library_media_type"] = library_media_type
 
         if season_number is not None:
             filters["item__season_number"] = season_number

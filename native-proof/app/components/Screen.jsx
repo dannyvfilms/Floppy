@@ -2,10 +2,10 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { palette, spacing } from '../theme';
 
-export function Screen({ title, subtitle, children, scroll = true, onBack, chrome = true }) {
+export function Screen({ title, subtitle, children, scroll = true, onBack, chrome = true, contentStyle }) {
   const body = scroll
-    ? <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">{children}</ScrollView>
-    : <View style={styles.content}>{children}</View>;
+    ? <ScrollView contentContainerStyle={[styles.content, contentStyle]} keyboardShouldPersistTaps="handled">{children}</ScrollView>
+    : <View style={[styles.content, contentStyle]}>{children}</View>;
   return <View style={styles.screen}>
     {chrome ? <View style={styles.header}>
       {onBack ? <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={onBack} style={styles.back}>

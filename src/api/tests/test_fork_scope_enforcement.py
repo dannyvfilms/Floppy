@@ -54,6 +54,15 @@ def routed_api_views():
 class ScopeMapCoverageTests(FloppyApiTestCase):
     """The scope map must stay exhaustive over the routed API surface."""
 
+    def test_home_playback_cards_are_never_available_to_scoped_tokens(self):
+        """The Home playback endpoint stays reserved for browser sessions."""
+        self.assertEqual(
+            scopes.VIEW_SCOPES[
+                "api.fork_views_playback.HomePlaybackCardsView"
+            ],
+            {"GET": scopes.NEVER, "POST": scopes.NEVER},
+        )
+
     def test_every_routed_view_and_method_is_mapped(self):
         """A routed view or method missing from the map fails the build."""
         missing = []

@@ -1,7 +1,7 @@
+import { Modal, ModalCloseButton } from './Modal';
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -559,13 +559,13 @@ export function ReleaseCalendar({
               {selectedReleases.length} {selectedReleases.length === 1 ? copy.release : copy.releases}
             </Text>
           </View>
-          <Pressable
+          <ModalCloseButton
             accessibilityRole="button"
             accessibilityLabel={copy.closeDay}
             onPress={() => setAgendaOpen(false)}
             style={({ pressed }) => [styles.agendaClose, pressed && styles.pressed]}>
             <Text style={styles.agendaCloseText}>×</Text>
-          </Pressable>
+          </ModalCloseButton>
         </View>
 
         <ScrollView
@@ -620,13 +620,13 @@ export function ReleaseCalendar({
         <View style={styles.sheet} accessibilityViewIsModal>
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>{copy.filters}</Text>
-            <Pressable
+            <ModalCloseButton
               accessibilityRole="button"
               accessibilityLabel={copy.close}
               onPress={() => setFilterOpen(false)}
               style={({ pressed }) => [styles.sheetClose, pressed && styles.pressed]}>
               <Text style={styles.sheetCloseText}>×</Text>
-            </Pressable>
+            </ModalCloseButton>
           </View>
           <ScrollView style={styles.sheetBody} contentContainerStyle={styles.sheetContent}>
             <FilterSection title={copy.mediaTypes} styles={styles}>
@@ -691,13 +691,13 @@ export function ReleaseCalendar({
         <View style={styles.menuSheet} accessibilityViewIsModal>
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>{menuCopy.menu}</Text>
-            <Pressable
+            <ModalCloseButton
               accessibilityRole="button"
               accessibilityLabel={copy.close}
               onPress={() => setMenuOpen(false)}
               style={({ pressed }) => [styles.sheetClose, pressed && styles.pressed]}>
               <Text style={styles.sheetCloseText}>×</Text>
-            </Pressable>
+            </ModalCloseButton>
           </View>
           <View style={styles.menuBody}>
             <MenuRow label={menuCopy.today} onPress={() => menuAction('today')} styles={styles} />
@@ -1161,8 +1161,8 @@ function createStyles(colors, compact) {
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
-      borderTopLeftRadius: 16,
-      borderTopRightRadius: 16,
+      borderTopLeftRadius: compact ? 16 : 12,
+      borderTopRightRadius: compact ? 16 : 12,
       borderBottomLeftRadius: compact ? 0 : 12,
       borderBottomRightRadius: compact ? 0 : 12,
       overflow: 'hidden',
@@ -1173,8 +1173,8 @@ function createStyles(colors, compact) {
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
-      borderTopLeftRadius: 16,
-      borderTopRightRadius: 16,
+      borderTopLeftRadius: compact ? 16 : 12,
+      borderTopRightRadius: compact ? 16 : 12,
       borderBottomLeftRadius: compact ? 0 : 12,
       borderBottomRightRadius: compact ? 0 : 12,
       overflow: 'hidden',

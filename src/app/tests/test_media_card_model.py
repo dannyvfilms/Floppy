@@ -1,10 +1,13 @@
 """The card model reads the same answers the media card template renders."""
 
+from types import SimpleNamespace
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from app.card_surfaces import card_context
-from app.media_card_model import card_model, card_shape
+from app.media_card_model import _corner_chips, card_model, card_shape
 from app.models import Item, MediaTypes, Movie, Sources, Status
 
 
@@ -48,12 +51,33 @@ class MediaCardModelTest(TestCase):
             [item["title"] for item in actions["items"]],
             ["Add to tracker", "Add to custom lists", "View your activity history"],
         )
+        self.assertFalse(actions["clickable"])
         track = actions["items"][0]
         self.assertEqual(track["modal"], "track")
         self.assertTrue(track["target"].startswith("#track-movie-model-1"))
         self.assertEqual(track["vals"]["instance_id"], str(self.movie.id))
         public = card_context({"user": self.user, "public_view": True}, "library", {"item": self.item, "media": self.movie})
         self.assertIsNone(card_model(public)["actions"])
+        self.user.clickable_media_cards = True
+        self.assertTrue(card_model(ctx)["actions"]["clickable"])
+
+    def test_next_episode_chip_has_compact_label(self):
+        """The next-episode action exposes a short localized label for phones."""
+        media = SimpleNamespace(next_episode_queue=False)
+        ctx = {
+            "item": self.item,
+            "media": media,
+            "user": SimpleNamespace(is_authenticated=True, quick_season_update_mobile="next_episode"),
+        }
+        with patch("app.media_card_model.app_tags.next_episode_url", return_value="/episode/next/"):
+            chips = _corner_chips(ctx, "tv")
+
+        self.assertEqual(chips, [{
+            "kind": "next-episode",
+            "text": "Next ep",
+            "compactText": "Next",
+            "href": "/episode/next/",
+        }])
 
     def test_discover_actions(self):
         """Discover cards plan or hide a candidate with a POST that targets its row."""

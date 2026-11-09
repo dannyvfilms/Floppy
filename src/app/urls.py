@@ -5,6 +5,7 @@ from app import (
     converters,
     cover_views,
     episode_order_views,
+    history_views,
     media_details_views,
     progress_views,
     views,
@@ -282,7 +283,7 @@ urlpatterns = [
     ),
     path(
         "media/history/<str:media_type>/<int:history_id>/delete/",
-        views.delete_history_record,
+        history_views.delete_history_record,
         name="delete_history_record",
     ),
     path("create", views.create_entry, name="create_entry"),

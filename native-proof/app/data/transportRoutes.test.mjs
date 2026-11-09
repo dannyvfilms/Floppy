@@ -512,7 +512,12 @@ test('collection transport groups copies and settings transport reads preference
       collected_at: '2026-10-01T00:00:00Z',
       item: { media_type: 'movie', library_media_type: 'movie', title: 'Dune', source: 'tmdb', media_id: '693134', image: null, release_datetime: '2024-03-01T00:00:00Z' },
     }] };
-    return { preferences: { week_start_day: 'monday', session_duration: 604800, date_format: 'iso_8601' }, choices: {} };
+    return { preferences: {
+      week_start_day: 'monday',
+      session_duration: 604800,
+      date_format: 'iso_8601',
+      clickable_media_cards: true,
+    }, choices: {} };
   });
   const collection = createCollectionTransport({ auth: session });
   await collection.load();
@@ -533,6 +538,25 @@ test('collection transport groups copies and settings transport reads preference
     week_start_day: 'sunday',
     session_duration: '86400',
   });
+  assert.equal(preferencesToForm({ preferences: { clickable_media_cards: true } }).clickable_media_cards, true);
+  await settings.savePreferences({ clickable_media_cards: true });
+  assert.equal(calls[2].path, '/api/v1/user/preferences/');
+  assert.equal(calls[2].options.method, 'PATCH');
+  assert.deepEqual(calls[2].options.body, { clickable_media_cards: true });
+});
+
+test('settings transport propagates preference save errors', async () => {
+  const { session } = authFixture((path, options) => {
+    if (path === '/api/v1/user/preferences/' && options.method === 'PATCH') {
+      throw new Error('Preference update failed.');
+    }
+    return { preferences: { clickable_media_cards: false } };
+  });
+  const settings = createSettingsTransport({ auth: session });
+  await assert.rejects(
+    settings.savePreferences({ clickable_media_cards: true }),
+    /Preference update failed\./,
+  );
 });
 
 test('list items map tracked and untracked entries into list-detail rows', () => {

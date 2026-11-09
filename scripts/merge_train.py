@@ -19,9 +19,10 @@ while checks run. A PR that cannot merge as it is (conflict, failed or hung requ
 check, checks that never started, a fork branch the token may not update) is skipped
 with the reason, so it cannot hold the queue; its author has to act.
 
-The run exits 0 when a PR was updated, one is in flight, or the queue is empty. It
-exits 1 when the queue has PRs but none could advance because of a problem, so a
-stuck train shows up as a red run instead of a green one.
+The run exits 0 when a PR was updated, one is in flight, or the queue is empty.
+An unmodifiable contributor fork is also an expected manual handoff, not a
+broken automation: the contributor must update it, and the warning stays visible.
+A stalled queue with merge conflicts or failed checks still exits 1.
 
 Usage: merge_train.py [--dry-run]    (needs GH_TOKEN and GH_REPO)
 """
@@ -183,9 +184,10 @@ def judge(pr: dict, behind: int | None, now: datetime) -> tuple[str, str]:
 def choose(
     prs: list[dict], behind: dict[int, int | None], now: datetime
 ) -> tuple[str, int | None, list[str]]:
-    """Return (action, pr number, notes): 'update', 'wait', 'stuck' or 'idle'.
+    """Return (action, pr number, notes): 'update', 'wait', 'manual', 'stuck' or 'idle'.
 
-    'stuck' means the queue has PRs but every one was skipped. notes has one line
+    'manual' means only contributor forks inaccessible to this token were
+    skipped; 'stuck' indicates a genuine unresolved problem. notes has one line
     per PR looked at, saying what was decided and why.
     """
     queue = sorted(
@@ -194,6 +196,7 @@ def choose(
     )
     notes: list[str] = []
     chosen: tuple[str, int] | None = None
+    manual_only = bool(queue)
     for pr in queue:
         number = pr["number"]
         if chosen:
@@ -202,12 +205,25 @@ def choose(
         verdict, reason = judge(pr, behind.get(number), now)
         if verdict == "skip":
             notes.append(f"#{number} skipped: {reason}")
+            # Only an external fork permission boundary is a healthy manual
+            # handoff. Failed checks, conflicts, API errors and unknown states
+            # remain actionable automation failures.
+            if not (
+                pr["isCrossRepository"]
+                and (
+                    "fork branch that maintainers may not update" in reason
+                    or "GitHub refused the branch update (HTTP 403 or equivalent)" in reason
+                )
+            ):
+                manual_only = False
         else:
             notes.append(f"#{number} {verdict}: {reason}")
             chosen = (verdict, number)
     if chosen:
         return chosen[0], chosen[1], notes
-    return ("stuck" if queue else "idle"), None, notes
+    if not queue:
+        return "idle", None, notes
+    return ("manual" if manual_only else "stuck"), None, notes
 
 
 def unsettled(prs: list[dict]) -> bool:
@@ -316,11 +332,12 @@ def main(argv: list[str]) -> int:
         if not p["isDraft"] and p["autoMergeRequest"]
     }
     failed: list[str] = []  # PRs GitHub refused to update this run
+    critical_failures: list[str] = []
     while True:
         action, number, notes = choose(prs, behind, datetime.now(UTC))
         lines = [x for x in notes if not x.startswith(f"#{number} update:")] + failed
         if action != "update":
-            problem = action == "stuck" or (action == "idle" and bool(failed))
+            problem = action == "stuck" or bool(critical_failures)
             _report(lines or ["queue empty"], problem)
             return 1 if problem else 0
         if dry_run:
@@ -332,10 +349,12 @@ def main(argv: list[str]) -> int:
             try:
                 _record_attempt(owner, name, pr)
             except subprocess.CalledProcessError as error:
-                failed.append(
+                failure = (
                     f"#{number} skipped: could not record the one-time update attempt: "
                     f"{error.stderr.strip()}"
                 )
+                failed.append(failure)
+                critical_failures.append(failure)
                 prs = [p for p in prs if p["number"] != number]
                 continue
         try:
@@ -346,7 +365,10 @@ def main(argv: list[str]) -> int:
             if retrying_failed_checks:
                 with suppress(subprocess.CalledProcessError):
                     _record_attempt(owner, name, pr, refused=True)
-            failed.append(f"#{number} skipped: {_refusal(error.stderr.strip())}")
+            failure = f"#{number} skipped: {_refusal(error.stderr.strip())}"
+            failed.append(failure)
+            if not (pr["isCrossRepository"] and "HTTP 403" in error.stderr):
+                critical_failures.append(failure)
             prs = [p for p in prs if p["number"] != number]
             continue
         _report([*lines, f"#{number} updated: merged latest into its branch"], False)
