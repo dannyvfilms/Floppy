@@ -479,7 +479,7 @@ export function MediaCard({
             return chip && <CardStatusChip chip={chip} />;
           })()}</div>}
       {(model.cornerChips || []).map((chip) => <CornerChip key={chip.kind} chip={chip} labels={copy} />)}
-      {bar && <div className="media-card-progress-bar absolute bottom-0 left-0 right-0 h-1 bg-gray-900/60 z-20">
+      {bar && <div className={`media-card-progress-bar absolute bottom-0 left-0 right-0 h-1 bg-gray-900/60 z-20${bar.dormant ? ' media-card-progress-dormant' : ''}`}>
         <div className={`h-full ${bar.paused ? 'bg-indigo-500/40' : 'bg-indigo-500'} transition-[width] duration-300 ease-out`}
           style={{ width: `${bar.percent}%` }} />
       </div>}

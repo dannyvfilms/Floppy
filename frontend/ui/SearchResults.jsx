@@ -7,6 +7,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { Icon } from './Icon';
 import { MediaCard } from './MediaCard';
 import { ParentPicker } from './ParentPicker';
 import { SearchResultCard } from './SearchResultCard';
@@ -303,9 +304,13 @@ function LayoutToggle({ options, palette, onSelectLayout }) {
       style={[styles.layoutButton, {
         backgroundColor: option.active ? palette.accent : palette.surfaceStrong,
       }]}>
-      <Text style={[styles.layoutGlyph, { color: option.active ? palette.accentText : palette.textSecondary }]}>
-        {option.glyph || option.label}
-      </Text>
+      {option.icon
+        ? <Icon spec={option.icon} size={16} color={option.active ? palette.accentText : palette.textSecondary}>
+          {option.glyph || option.label}
+        </Icon>
+        : <Text style={[styles.layoutGlyph, { color: option.active ? palette.accentText : palette.textSecondary }]}>
+          {option.glyph || option.label}
+        </Text>}
     </Pressable>)}
   </View>;
 }
@@ -436,7 +441,7 @@ const styles = StyleSheet.create({
   scopeLabel: { fontSize: 14 },
   pills: { flexDirection: 'row', gap: 8, paddingRight: 4 },
   pill: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 },
-  pillText: { fontSize: 13, fontWeight: '600' },
+  pillText: { fontSize: 14, lineHeight: 20, fontWeight: '400' },
   layoutToggle: { flexDirection: 'row', overflow: 'hidden', borderWidth: 1, borderRadius: 6 },
   layoutButton: { width: 36, height: 34, alignItems: 'center', justifyContent: 'center' },
   layoutGlyph: { fontSize: 16, lineHeight: 18 },

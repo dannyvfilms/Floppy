@@ -283,6 +283,26 @@ class SQLiteAvailabilityTests(SimpleTestCase):
         with self.assertRaisesRegex(admission.StartupBlockedError, "replaced"):
             self.gate()
 
+    def _rewrite_verified(self, **changes):
+        path = integrity._verified_path(self.database)
+        record = json.loads(path.read_text())
+        record.update(changes)
+        path.write_text(json.dumps(record))
+        return record
+
+    def test_changed_device_number_admits_the_same_file(self):
+        # A reboot reassigns st_dev on btrfs and device-mapper volumes.
+        integrity.record_verified_database(self.database, source="startup")
+        self._rewrite_verified(device=9999)
+        self.gate()
+
+    def test_different_filesystem_blocks_startup(self):
+        integrity.record_verified_database(self.database, source="startup")
+        record = json.loads(integrity._verified_path(self.database).read_text())
+        self._rewrite_verified(fsid=record["fsid"] + 1)
+        with self.assertRaisesRegex(admission.StartupBlockedError, "replaced"):
+            self.gate()
+
     def test_corrupt_database_never_admitted(self):
         Path(self.database).write_bytes(b"not a SQLite database")
         with self.assertRaises((sqlite3.DatabaseError, admission.StartupBlockedError)):

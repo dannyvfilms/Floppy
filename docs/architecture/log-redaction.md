@@ -200,3 +200,6 @@ per-task and scheduler messages and anything about the `/health` and `/ping`
 endpoints. `DEBUG` on shows everything. The log file keeps the full record, so
 the download in Settings > Advanced is complete for a bug report without anyone
 changing a setting first.
+
+Which level a line belongs at, and what a long-running process must log, is in
+`log-levels.md`.

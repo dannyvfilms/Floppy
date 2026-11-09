@@ -180,6 +180,7 @@ class TV(Media):
     def save(self, *args, **kwargs):
         """Save the media instance."""
         is_create = self._state.adding
+        self._include_updated_at(kwargs)
         super(Media, self).save(*args, **kwargs)
 
         # A show created directly as COMPLETED (rather than transitioned into it)
@@ -1245,6 +1246,7 @@ class Season(Media):
             self.related_tv = self.get_tv()
 
         is_create = self._state.adding
+        self._include_updated_at(kwargs)
         super(Media, self).save(*args, **kwargs)
 
         # A season created directly as COMPLETED (rather than transitioned into

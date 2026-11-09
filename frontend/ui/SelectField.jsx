@@ -1,6 +1,7 @@
 import { Modal } from './Modal';
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Icon } from './Icon';
 
 const defaultPalette = {
   surface: '#27272a',
@@ -16,6 +17,13 @@ const defaultPalette = {
   danger: '#ef4444',
   overlay: 'rgba(0, 0, 0, 0.55)',
   disabled: '#71717a',
+};
+
+// Same stroke as templates/app/icons/chevron-down.svg.
+const CHEVRON_DOWN = {
+  viewBox: '0 0 24 24',
+  root: { fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+  children: [{ tag: 'path', attrs: { d: 'm6 9 6 6 6-6' }, children: [] }],
 };
 
 const defaultLabels = {
@@ -80,7 +88,8 @@ export function SelectField({
       ]}>
       {filter && leadingIcon ? <View style={styles.filterIcon}>{leadingIcon}</View> : null}
       <Text numberOfLines={1} style={[styles.triggerText, { color: filter ? colors.text : colors.textSecondary }]}>{selected?.label ?? placeholder}</Text>
-      <Text style={[styles.chevron, filter && styles.filterChevron, { color: colors.textMuted }]}>▾</Text>
+      {filter ? <View style={styles.filterChevron}><Icon spec={CHEVRON_DOWN} color={colors.textMuted} size={16} /></View>
+        : <Text style={[styles.chevron, { color: colors.textMuted }]}>▾</Text>}
     </Pressable>
     {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}
     <Modal transparent visible={open} animationType="fade" onRequestClose={() => setOpen(false)}>

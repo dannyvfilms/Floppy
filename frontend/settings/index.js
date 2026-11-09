@@ -49,7 +49,7 @@ const hostsWithin = (element) => [
   (host.matches('[data-playback-card-root], [data-checkin-state-root]') || !host.closest('[data-playback-card-root], [data-checkin-state-root]')) &&
   (host.matches('[data-media-table-root]') || !host.closest('[data-media-table-root]')) &&
   (host.matches('[data-filter-bar-root]') || !host.closest('[data-filter-bar-root]')) &&
-  (host.matches('[data-rails-row-root]') || !host.closest('[data-rails-row-root]')) &&
+  (host.matches('[data-rails-row-root], [data-media-card-root]') || !host.closest('[data-rails-row-root]')) &&
   (host.matches('[data-home-root]') || !host.closest('[data-home-root]')) &&
   (host.matches('[data-people-hero-root], [data-people-cast-root], [data-people-extras-root]') || !host.closest('[data-people-hero-root], [data-people-cast-root], [data-people-extras-root]')) &&
   (host.matches('[data-collection-browser-root]') || !host.closest('[data-collection-browser-root]')) &&

@@ -132,6 +132,7 @@ export default function SearchSlot({
       const payload = await transport.searchLocal({ search: query, mediaType, limit: 8, offset: 0 });
       return {
         suggestions: localResultsFromPayload(payload).slice(0, 8).map((item, index) => ({
+          ...item,
           id: `${item.type}-${index}`,
           title: item.title,
           subtitle: [item.note, item.year, item.status].filter(Boolean).join(' · '),
@@ -166,7 +167,7 @@ export default function SearchSlot({
       query={initialQuery}
       selectedType={selectedType}
       mediaTypes={mediaTypes}
-      barcodeTypes={['book', 'manga', 'comic', 'comicissue']}
+      barcodeTypes={['all', 'book', 'manga', 'comic', 'comicissue']}
       labels={labels}
       palette={searchPalette}
       onLoadSuggestions={loadSuggestions}

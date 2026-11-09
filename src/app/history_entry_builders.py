@@ -373,6 +373,10 @@ def _build_movie_entry(movie):
         "instance_id": movie.id,
         "entry_key": str(movie.id),
         "entry_source": movie.entry_source,
+        # A grouped movie row stands for the Movie tracker, so instance_id is a
+        # tracker id. A single watch is addressed by its play id on the
+        # per-media history endpoints, never by this value (#1873).
+        "record_type": "movie_tracker",
     }
     _attach_entry_score(entry, movie)
     if genres:

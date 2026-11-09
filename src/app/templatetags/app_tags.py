@@ -2539,7 +2539,7 @@ def global_search_react(context, search_type):
                 {"display": str(item["display"]), "value": str(item["value"])}
                 for item in get_search_media_types(context.get("user"))
             ],
-            "barcodeTypes": ["book", "manga", "comic", "comicissue"],
+            "barcodeTypes": ["all", "book", "manga", "comic", "comicissue"],
             "suggestionsUrl": reverse("search_suggestions"),
             "labels": {
                 "inputLabel": str(_("Search your library or online")),
@@ -3104,6 +3104,8 @@ def collection_copy_form_props(form, collection_fields=None):
             field_type = "select"
         elif widget_type == "number":
             field_type = "number"
+        elif widget_type == "datetime-local":
+            field_type = "datetime"
         else:
             field_type = "text"
         options = [
@@ -3113,6 +3115,8 @@ def collection_copy_form_props(form, collection_fields=None):
         value = form[name].value()
         if isinstance(value, (list, tuple)):
             value = value[0] if value else ""
+        if field_type == "datetime" and value:
+            value = str(value).replace(" ", "T")[:16]
         values[name] = "" if value is None else value
         if form.is_bound and form.errors.get(name):
             errors[name] = " ".join(str(message) for message in form.errors.get(name))
@@ -3123,5 +3127,6 @@ def collection_copy_form_props(form, collection_fields=None):
             "options": options,
             "required": bool(field.required),
             "help": str(field.help_text or ""),
+            "placeholder": str(field.widget.attrs.get("placeholder") or ""),
         })
     return {"fields": fields, "values": values, "errors": errors}
