@@ -28,6 +28,40 @@ Solve architectural incompatibilities; do not bypass checks or reclassify compon
 If reasonable solutions encounter an external blocker, report evidence and attempts;
 the affected work remains incomplete. Record actual platform verification separately.
 
+## Cross-platform by default
+
+Web, iOS and Android are all first-class. Unless the task names one platform, a UI
+change lands on every applicable surface in the same PR. Never ship web-only or
+native-only by accident; a deliberate carve-out is stated in the PR with its reason.
+"Implemented on all platforms" and "verified on all platforms" are separate claims.
+
+- Before editing, trace which component each surface (web adapter, `native-proof/`,
+  and any platform-specific file) actually imports. Do not assume a shared component is
+  active everywhere. `npm run check:page-parity` shows the registry state.
+- Platform-specific appearance is fine. Platform-specific feature loss is not, unless
+  asked for or forced by a real platform limit. No WebViews or web-only fallbacks just to
+  pass a check.
+- Run `scripts/env_capabilities.sh` once per session (add `--bootstrap` on a fresh
+  cloud checkout) to learn what can run here. Do not re-probe; do not install toolchains,
+  boot paid hosted runtimes or change account settings without asking.
+- Capture before and after for every visible change with the strongest evidence the
+  environment offers (`docs/agents/pr_screenshots.md`, `scripts/review_screenshots.py`).
+  Extend those; do not build a second system. Open the images and look at them. On a
+  Mac, `docs/agents/native_cloud_runtimes.md` is the recipe for real iOS and Android
+  frames (`scripts/native_shots.sh <label>`).
+- Report one evidence level per platform (web, iOS, Android), never a combined pass:
+  1. **Runtime**: the real Expo app ran on a simulator, emulator, device or hosted
+     runtime and screenshots were inspected. On a Mac, if Xcode or an Android SDK is
+     installed, start the simulator rather than treating it as unavailable.
+  2. **Expo Web + logic**: real shared components rendered in Chromium, plus tests of
+     native-only layout and state logic. Native appearance is unverified. A web
+     screenshot is never evidence of iOS or Android rendering.
+  3. **Structural**: builds, platform routing and tests pass; no rendering evidence.
+  4. **Unverified**: say what blocked it and the remaining risk.
+- Reviewers (human, Codex, `/code-review`) treat a UI diff that touches only one
+  surface as a finding unless the PR names the carve-out, and treat a missing evidence
+  level for an applicable platform as a gap to report, not to assume.
+
 ## Operating Principles
 
 When the user supplies a plan and asks for the work, execute it through implementation and verification; do not stop after restating the scope. Continue until complete or an evidenced external blocker prevents further progress.
@@ -339,6 +373,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - `docs/agents/migration_sync_playbook.md`: hard-gate flow for adapting accepted upstream migration outcomes to Floppy's current graph.
 - `docs/agents/view_authentication.md`: guide for view authentication and declaring public route exemptions.
 - `docs/agents/pr_screenshots.md`: `scripts/pr_screenshots.py` captures before/after screenshots of a PR and posts them to its description.
+- `docs/agents/native_cloud_runtimes.md`: how to get real iOS and Android screenshots: locally with Expo Go, the booted simulators and `scripts/native_shots.sh` (tested), or hosted via a contributor's own Expo account (opt-in; nothing runs in CI).
 - `docs/architecture/log-redaction.md`: the log boundary contract — where credentials are removed, what the rules match, and what they do not cover.
 - `docs/architecture/log-levels.md`: what each log level means, the start/progress/finish lines every long-running process must write so a hang is visible, and what the Settings > Advanced downloads include.
 - `docs/architecture/theming.md`: the theme resolution contract and the six theme states any colour change must hold.
