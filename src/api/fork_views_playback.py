@@ -11,8 +11,7 @@ from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.db import transaction
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema, inline_serializer
-from rest_framework import serializers
+from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import IsAuthenticated
@@ -1048,17 +1047,16 @@ class HomePlaybackCardsView(drf_views.APIView):
             "Stop or cancel a current Home check-in. The server resolves the "
             "check-in from the supplied card identity; no check-in token is exposed."
         ),
-        request=inline_serializer(
-            name="HomePlaybackAction",
-            fields={
-                "source": serializers.CharField(),
-                "media_type": serializers.CharField(),
-                "media_id": serializers.CharField(),
-                "action": serializers.ChoiceField(
-                    choices=["pause", "finish", "stop", "cancel"],
-                ),
+        request={
+            "type": "object",
+            "required": ["source", "media_type", "media_id", "action"],
+            "properties": {
+                "source": {"type": "string"},
+                "media_type": {"type": "string"},
+                "media_id": {"type": "string"},
+                "action": {"type": "string", "enum": ["pause", "finish", "stop", "cancel"]},
             },
-        ),
+        },
         responses={204: None, 400: None},
     )
     def post(self, request):

@@ -151,11 +151,6 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
         "DELETE": "progress:write",
     },
     "api.fork_views_playback.NowPlayingView": {"GET": "progress:read"},
-    # Session-only: integration tokens cannot authenticate to this view.
-    "api.fork_views_playback.HomePlaybackCardsView": {
-        "GET": "progress:read",
-        "POST": "progress:write",
-    },
     "api.fork_views_podcast.PodcastShowsView": {
         "GET": "podcasts:read",
         "POST": "podcasts:write",
