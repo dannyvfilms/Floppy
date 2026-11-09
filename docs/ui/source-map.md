@@ -1049,7 +1049,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/settings/DataSettings.jsx`
 - `frontend/settings/HomeScreenEditor.jsx`
 - `frontend/settings/NotificationSettings.jsx`
-- `frontend/settings/island-reveal.css`
+- `frontend/settings/island-reveal.css` (the sidebar root is excluded from the hide rule; see the Shell navigation entry in the component register)
 - `frontend/settings/mountAbout.jsx`
 - `frontend/settings/mountAdvanced.jsx`
 - `frontend/settings/mountBackupStatus.jsx`
