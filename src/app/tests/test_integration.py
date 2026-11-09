@@ -1,6 +1,7 @@
 import copy
 import os
 import re
+import time
 from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
@@ -333,6 +334,59 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                     expect(
                         self.page.locator("div.fixed.inset-0:visible")
                     ).to_have_count(0)
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_escape_while_track_form_loads_leaves_no_dialog(self, mock_get_metadata):
+        """Closing the tracker before its React form settles must not strand it.
+
+        The Track form's dialog is portaled to document.body. When Escape
+        removed the popup host mid-load, that dialog stayed on screen and
+        blocked every later click, so a slow load stranded the page.
+        """
+        mock_get_metadata.return_value = {
+            "media_id": "1579",
+            "title": "Modal Test",
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "image": "http://example.com/image.jpg",
+            "max_progress": 1,
+            "details": {"release_date": "2007-01-01"},
+            "related": {},
+        }
+        item = Item.objects.create(
+            media_id="1579",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Modal Test",
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.COMPLETED.value)
+
+        def slow(route):
+            time.sleep(0.6)
+            route.continue_()
+
+        self.user.theme = "custom"
+        self.user.save(update_fields=["theme"])
+        self.page.route("**/static/ui/mountTrackForm-*.js", slow)
+        self.page.route("**/track_modal/**", slow)
+        # The race only strands the dialog for some timings, so sweep several.
+        for delay_ms in (0, 50, 100, 200, 400, 800, 1200):
+            self.page.goto(f"{self.live_server_url}/medialist/movie?layout=grid")
+            card = self.page.locator(".media-card").first
+            expect(card).to_be_visible()
+            card.hover()
+            card.get_by_role("button", name="Add to tracker", exact=True).click()
+            self.page.wait_for_timeout(delay_ms)
+            self.page.keyboard.press("Escape")
+            # The stranded dialog mounts after the delayed form arrives, so an
+            # immediate count would see none; let both delayed loads settle.
+            self.page.wait_for_timeout(2000)
+            # A leaked dialog blocks every later click, so fail on the first one.
+            self.assertEqual(
+                self.page.get_by_role("dialog").count(),
+                0,
+                f"Tracker dialog stranded after Escape {delay_ms}ms after opening",
+            )
 
     def test_episode_track_modal_fills_viewport_in_card_and_list_layouts(self):
         """Episode surface blur must not confine the tracker to its row."""
