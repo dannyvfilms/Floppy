@@ -530,8 +530,20 @@ def cache_history_payloads(
         },
         timeout=HISTORY_CACHE_TIMEOUT,
     )
-    if day_payloads:
+    # The index above is tagged with the builder's era and discarded by readers
+    # once invalidation retires it, but day payloads carry no era. A builder
+    # that read its rows before an invalidation would otherwise republish
+    # outdated days after they were cleared (#1873).
+    if day_payloads and era == _current_history_era(user_id, logging_style):
         cache.set_many(day_payloads, timeout=HISTORY_DAY_CACHE_TIMEOUT)
+    elif day_payloads:
+        logger.info(
+            "history_day_publish_skipped user_id=%s logging_style=%s days=%s "
+            "reason=era_retired",
+            user_id,
+            logging_style,
+            len(day_payloads),
+        )
     logger.info(
         "history_cache_store user_id=%s logging_style=%s days=%s entries=%s",
         user_id,
