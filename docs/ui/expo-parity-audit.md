@@ -24,7 +24,7 @@ It also lists what remains, in an order people can pick up. Read
 | React share of UI lines (low-end estimate) | 48% |
 | Universal (shared RN) presentation files | 155, with 0 frozen legacy files |
 | Pages the registry labels `shared` | 26 of 32 |
-| **Expo pages verified at visual parity with the PWA** | **0 of 32** |
+| **Expo pages verified at visual parity with the PWA** | **1 of 32** (Home, iOS only; see the note below the table) |
 | Page views with any iOS runtime evidence | 2 of 32 (Home, Settings Cards) |
 | Page views with any Android runtime evidence | 0 of 32 |
 | Components verified on both iOS and Android | 4 of 155 (Spinner, Badge, ProgressChanger, GlobalSearch) |
@@ -90,7 +90,7 @@ data; each needs a manual look.
 
 | Page | Web route | Registry | Web server footprint | Native screen (lines) | Native demo refs | Verified (web / iOS / Android) |
 | --- | --- | --- | --- | --- | --- | --- |
-| Home | `/` | shared | 139 L / 6 | HomeScreen (506) | 29 (`demoRowDefs`, `/demo/…` hrefs) | – / **iOS** / – |
+| Home | `/` | shared | 139 L / 6 | HomeScreen (506) | 29 (`demoRowDefs`, `/demo/…` hrefs) | web / **iOS parity** / – |
 | Discover | `/discover` | **legacy** | 577 L / 12 | DiscoverScreen (14) | 1 | – / – / – |
 | Library | `/medialist/<type>` | shared | 276 L / 6 | LibraryScreen (472) | 7 | – |
 | Search | `/search` | shared | 398 L / 0 | SearchScreen (29) | 0 | – |
@@ -120,6 +120,12 @@ Reading the table:
   (native visual comparison at the same fixture state on iPhone, iPad and Duo).
 - **6 pages** are explicitly native-owned (`legacy`): Discover, Settings Sidebar,
   Providers, Auth, Onboarding, Utilities.
+- **Home is at parity with the PWA on iOS** (2026-11-09): the owner accepted it after
+  side-by-side use of the PWA and Expo Go in Device Hub (iOS 27.2, iPhone Duo): cards, status
+  chips, artwork, row headers, sort direction and loading. The few deliberate differences are
+  device-specific carve-outs, each documented with a short comment in code (native card
+  windowing in `Rail.jsx`; cookies sent by hand in `authTransportCore.js`). Android is
+  unverified, so this is iOS parity, not all-platform parity.
 - **8 pages** still carry hand-written demo content in the native screen (Home,
   People, Statistics, History, ListDetail, Collection, Music, Tags). Check each one:
   some demo paths are a loading fallback, others are the displayed content.
