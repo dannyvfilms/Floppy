@@ -34,12 +34,7 @@ function readPalette() {
     accent: color('--color-accent', '#4a9eff'),
     errorSurface: color('--color-surface', '#2a2f35'),
     errorBorder: color('--color-surface-muted', '#343a40'),
-    focusStyle: {
-      outlineStyle: 'solid',
-      outlineWidth: 2,
-      outlineColor: color('--color-accent', '#4a9eff'),
-      outlineOffset: -2,
-    },
+    focusStyle: {},
   };
 }
 

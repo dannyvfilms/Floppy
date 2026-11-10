@@ -34,6 +34,8 @@ const defaultPalette = {
   fontSize: 14,
 };
 
+const SUGGESTIONS_MAX_HEIGHT = 380;
+
 const label = (value, fallback) => (
   typeof value === 'string' && value.length ? value : fallback
 );
@@ -311,12 +313,9 @@ export function GlobalSearch({
               borderTopRightRadius: 0,
               borderBottomRightRadius: 0,
               paddingRight: isBarcodeType ? 40 : 16,
-              outlineStyle: focused ? 'solid' : 'none',
-              outlineWidth: focused ? 2 : 0,
-              outlineColor: palette.accent,
-              outlineOffset: -2,
+              // No focus ring: the caret and the open suggestions show where typing goes.
+              outlineStyle: 'none',
             },
-            focused && palette.focusStyle,
           ]}
         />
         {isBarcodeType ? <Pressable accessibilityRole="button"
@@ -338,10 +337,12 @@ export function GlobalSearch({
             right: 0,
             zIndex: 50,
             marginTop: 4,
-            maxHeight: 240,
+            // Rows follow the shared dropdown size, so the panel shows about six of them.
+            maxHeight: Math.min(SUGGESTIONS_MAX_HEIGHT, Math.max(windowHeight - palette.inputHeight - 36, DROPDOWN.itemPaddingVertical * 6)),
             borderWidth: 1,
             borderColor: palette.border,
-            borderRadius: palette.radius,
+            borderRadius: DROPDOWN.radius,
+            paddingVertical: DROPDOWN.paddingVertical,
             backgroundColor: palette.surface,
             elevation: 8,
             shadowColor: '#000',
@@ -470,13 +471,13 @@ const styles = StyleSheet.create({
   menu: { position: 'absolute', top: 48, right: 0, zIndex: 60, borderWidth: 1, paddingVertical: 4, elevation: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
   menuItem: { paddingHorizontal: DROPDOWN.itemPaddingHorizontal, paddingVertical: DROPDOWN.itemPaddingVertical },
   menuText: { fontSize: DROPDOWN.fontSize },
-  option: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 8 },
+  option: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: DROPDOWN.itemPaddingHorizontal, paddingVertical: DROPDOWN.itemPaddingVertical },
   optionText: { flex: 1, minWidth: 0 },
   optionTitle: { fontSize: 14 },
   optionSubtitle: { fontSize: 12, marginTop: 1 },
   thumb: { width: 32, height: 40, borderRadius: 4, flexShrink: 0 },
   thumbFallback: { alignItems: 'center', justifyContent: 'center' },
-  footerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 1 },
+  footerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: DROPDOWN.itemPaddingHorizontal, paddingVertical: DROPDOWN.itemPaddingVertical, borderTopWidth: 1 },
   footerText: { flex: 1, minWidth: 0, fontSize: 12 },
   keycap: { fontSize: 11, borderWidth: 1, borderRadius: 3, paddingHorizontal: 6, paddingVertical: 1 },
   stateRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 12 },

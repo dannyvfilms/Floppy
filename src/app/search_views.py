@@ -51,6 +51,8 @@ logger = logging.getLogger(__name__)
 
 # Minimum characters before the search bar fires autocomplete suggestions.
 MIN_SUGGESTION_QUERY_LENGTH = 2
+# Release years at or below this are placeholders, not shown on a suggestion.
+MIN_SUGGESTION_YEAR = 1800
 
 # Per-type cap on the library-only "All" search page, which shows every
 # enabled type at once (#1160).
@@ -794,12 +796,28 @@ def _all_saved_suggestions(user, query, limit):
             query,
             limit=ALL_SUGGESTIONS_PER_TYPE,
         ):
+            if suggestion.pop("labelled", False):
+                suggestions.append(suggestion)
+                continue
             subtitle = suggestion["subtitle"]
             suggestion["subtitle"] = f"{label} · {subtitle}" if subtitle else label
             suggestions.append(suggestion)
         if len(suggestions) >= limit:
             break
     return suggestions[:limit]
+
+
+def _suggestion_subtitle(item, query, user):
+    """Return "Type · Year · matched title", matching the detail line the native app shows."""
+    kind = getattr(item, "library_media_type", None) or item.media_type
+    released = getattr(item, "release_datetime", None)
+    year = released.year if released and released.year > MIN_SUGGESTION_YEAR else None
+    parts = [
+        media_type_readable(kind),
+        str(year) if year else None,
+        _matched_title(item, query, user),
+    ]
+    return " · ".join(part for part in parts if part)
 
 
 def get_saved_suggestions(user, media_type, query, limit=8):
@@ -911,7 +929,8 @@ def get_saved_suggestions(user, media_type, query, limit=8):
         suggestions.append(
             {
                 "title": _display_title_for_user(item, user),
-                "subtitle": _matched_title(item, query, user),
+                "subtitle": _suggestion_subtitle(item, query, user),
+                "labelled": True,
                 "image": getattr(item, "image", None) or None,
                 "url": url,
             }
