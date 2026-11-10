@@ -97,6 +97,19 @@ class InlineExtractionTests(unittest.TestCase):
                     translations.update_catalogs(root, ["de"])
             self.assertFalse((root / "inline_translation_extraction").exists())
 
+    def test_djangojs_skips_generated_bundles_and_expo_export(self):
+        """Build output is never scanned for JavaScript messages."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "templates").mkdir()
+            with patch.object(translations.subprocess, "run") as run:
+                translations.update_catalogs(root, ["de"])
+            js_command = next(
+                call.args[0] for call in run.call_args_list if "djangojs" in call.args[0]
+            )
+            for path in ("static/ui/*", "static/native-proof/*", "static/js/libraries/*"):
+                self.assertIn(f"--ignore={path}", js_command)
+
     @unittest.skipUnless(
         shutil.which("xgettext") and importlib.util.find_spec("django"),
         "Django and GNU gettext are required",

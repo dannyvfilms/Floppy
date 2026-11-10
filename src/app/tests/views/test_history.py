@@ -734,7 +734,7 @@ class SessionHistoryModalTests(TestCase):
         self.assertEqual(stats["Activity entries"], "2")
         self.assertEqual(stats["Tracked time"], "0min")
         self.assertEqual(stats["Average per active day"], "0min")
-        self.assertEqual(stats["Average gap"], "—")
+        self.assertEqual(stats["Average gap"], "-")
         self.assertEqual(stats["Longest streak"], "1 day")
         self.assertEqual(
             stats["Most active weekday"],

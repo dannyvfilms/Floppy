@@ -850,11 +850,11 @@ def _build_session_history_stats(history_days):
         )
 
     def format_minutes(minutes):
-        return helpers.minutes_to_hhmm(round(minutes)) if minutes is not None else "—"
+        return helpers.minutes_to_hhmm(round(minutes)) if minutes is not None else "-"
 
     def format_days(days):
         if days is None:
-            return "—"
+            return "-"
         rounded = round(days, 1)
         return f"{rounded:g} day{'s' if rounded != 1 else ''}"
 
@@ -867,7 +867,7 @@ def _build_session_history_stats(history_days):
         },
         {
             "label": gettext_noop("Average per active day"),
-            "value": format_minutes(total_minutes / len(dates)) if dates else "—",
+            "value": format_minutes(total_minutes / len(dates)) if dates else "-",
         },
         {"label": gettext_noop("Average gap"), "value": format_days(average_gap)},
         {
@@ -875,12 +875,12 @@ def _build_session_history_stats(history_days):
             "value": (
                 f"{longest_streak} day{'s' if longest_streak != 1 else ''}"
                 if longest_streak
-                else "—"
+                else "-"
             ),
         },
         {
             "label": gettext_noop("Most active weekday"),
-            "value": most_active_weekday or "—",
+            "value": most_active_weekday or "-",
         },
     ]
 

@@ -824,7 +824,7 @@ def media_rewatch(request):
             messages.warning(
                 request,
                 gettext(
-                    "%(value_1)s %(value_2)s already fully watched from that date — left as is."
+                    "%(value_1)s %(value_2)s already fully watched from that date. Left as is."
                 )
                 % {"value_1": gettext(season_word), "value_2": skipped_list},
             )
