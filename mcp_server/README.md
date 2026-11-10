@@ -33,6 +33,11 @@ Configure the server with two environment variables:
   access and also authenticates webhooks and iCal. Never put it in commits,
   logs, screenshots, or shared shell history. If it is exposed, regenerate it
   in Settings → Integrations. Sent as an `X-API-Key` header.
+- `FLOPPY_MCP_ALLOWED_HOSTS` — optional comma-separated HTTP Host authorities
+  accepted by Streamable HTTP host validation. Include a non-standard port
+  when the proxy sends one (for example, `mcp.example.com,mcp.example.com:8443`).
+  This does not authenticate clients or configure TLS; stdio users can leave it
+  unset.
 
 The Floppy host also publishes these API references:
 
