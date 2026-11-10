@@ -25,6 +25,7 @@ It also lists what remains, in an order people can pick up. Read
 | Universal (shared RN) presentation files | 155, with 0 frozen legacy files |
 | Pages the registry labels `shared` | 26 of 32 |
 | **Expo pages verified at visual parity with the PWA** | **1 of 32** (Home, iOS only; see the note below the table) |
+| **Shared shell components accepted at parity (iOS)** | Sidebar and the Search media type menu with its suggestions panel; Search results are not (see below) |
 | Page views with any iOS runtime evidence | 2 of 32 (Home, Settings Cards) |
 | Page views with any Android runtime evidence | 0 of 32 |
 | Components verified on both iOS and Android | 4 of 155 (Spinner, Badge, ProgressChanger, GlobalSearch) |
@@ -126,6 +127,13 @@ Reading the table:
   device-specific carve-outs, each documented with a short comment in code (native card
   windowing in `Rail.jsx`; cookies sent by hand in `authTransportCore.js`). Android is
   unverified, so this is iOS parity, not all-platform parity.
+- **Sidebar and the Search menu are at parity with the PWA on iOS** (2026-11-09): the owner
+  validated both on the iPhone Duo in Device Hub: saved views with the always-visible arrow, row
+  options as an anchored dropdown, the menu running through the side rail, the media type menu
+  and the suggestions panel, whose window resizes with the keyboard. The suggestions panel is
+  the dropdown part only: the Search *results* page is not at parity and is being rebuilt from
+  Home's row components. Deliberate differences are commented carve-outs (arrow always shown on
+  touch, web-only z-index lift above the phone drawer). Android is unverified.
 - **8 pages** still carry hand-written demo content in the native screen (Home,
   People, Statistics, History, ListDetail, Collection, Music, Tags). Check each one:
   some demo paths are a loading fallback, others are the displayed content.
