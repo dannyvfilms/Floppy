@@ -130,7 +130,8 @@ function AltTitle({ text, label, inline }) {
 
 function Line({ line }) {
   if (line.variant === 'credit-age') {
-    return <p className="text-xs text-[var(--color-text-muted)] mt-1 line-clamp-1">{line.parts[0].text}</p>;
+    return <p className="text-xs text-[var(--color-text-muted)] mt-1 line-clamp-2"
+      style={{ whiteSpace: 'pre-line' }}>{line.parts[0].text}</p>;
   }
   if (line.variant === 'provenance') {
     return <p className="text-xs text-[var(--color-text-muted)] mt-0.5 line-clamp-1">{line.parts[0].text}</p>;

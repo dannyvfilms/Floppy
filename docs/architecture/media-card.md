@@ -232,6 +232,9 @@ Hand-rolled cards call `{% card_lines %}`. `display` is `hover` or `always`.
 Rows (episode rows, calendar rows) have no hover state, so their hover lines are always
 visible. Hand-rolled poster cards add the saved title treatment with `{% card_title_classes %}`,
 and only once the user has changed a title option, so unchanged cards keep their own clamps.
+Credit-age lines are separate from profile-driven subtitle lines. A posthumous
+label puts `Died YYYY` on its own line without a dot. Web and native cards allow
+this variant up to two lines; other subtitle clamps are unchanged.
 The poster progress bar follows the `progress` field. A zero score is hidden per type
 via `options.rating.hide_zero`.
 

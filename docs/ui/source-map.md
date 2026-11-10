@@ -702,6 +702,8 @@ PeopleView's native full-page grid uses canonical MediaCard models and a render-
 
 Shared `PeopleView`/`PersonCard` expose event-age labels behind the Cards preference. Episode cast/crew rails retain the shared Home `MediaCard` surface and include the same preference-controlled event-age line; the lazy age lookup stays in the web adapter. Detail cast/crew rows supply event-date metadata while retaining the current season and recommendation card surfaces. Web capture remains pending; iOS and Android runtime are not verified.
 
+Posthumous labels show event age and `Died YYYY` on separate lines without a separator; both card variants allow two lines. Provider birth/death dates and successful-empty lookup state are persisted on `Person`.
+
 - `src/templates/app/components/detail_carousel_fragment.html`
 - `src/templates/app/components/detail_cast_grid.html`
 - `src/templates/app/components/game_lengths_section.html`

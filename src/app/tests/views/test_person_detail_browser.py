@@ -22,6 +22,8 @@ class PersonDetailCreditCardBrowserTests(SerialStaticLiveServerTestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
+        cls.async_override = patch.dict(os.environ, {"DJANGO_ALLOW_ASYNC_UNSAFE": "true"})
+        cls.async_override.start()
         cls.playwright = sync_playwright().start()
         cls.browser = cls.playwright.chromium.launch()
 
@@ -29,13 +31,14 @@ class PersonDetailCreditCardBrowserTests(SerialStaticLiveServerTestCase):
     def tearDownClass(cls):
         cls.browser.close()
         cls.playwright.stop()
+        cls.async_override.stop()
         super().tearDownClass()
 
     def setUp(self):
         self.user = get_user_model().objects.create_user(
             username="person-credit-touch",
             theme="system",
-            clickable_media_cards=True,
+            clickable_media_cards=False,
         )
         self.client.force_login(self.user)
         self.context = self.browser.new_context(
@@ -96,7 +99,19 @@ class PersonDetailCreditCardBrowserTests(SerialStaticLiveServerTestCase):
         card.locator("img.media-card-poster").click()
         self.assertEqual(self.page.url, f"{self.live_server_url}{url}")
         expect(card.locator(".media-card-year").filter(has_text="Rae of Light")).to_be_visible()
-        expect(card.locator(".media-card-year").filter(has_text="80 yo · died 2010")).to_be_visible()
+        age_line = card.get_by_text("85 yo at release\nDied 2010", exact=True)
+        expect(age_line).to_be_visible()
+        age_layout = age_line.evaluate("""element => {
+          const style = getComputedStyle(element);
+          return {
+            lineClamp: style.webkitLineClamp,
+            height: element.getBoundingClientRect().height,
+            lineHeight: parseFloat(style.lineHeight),
+          };
+        }""")
+        self.assertEqual(age_layout["lineClamp"], "2")
+        self.assertGreaterEqual(age_layout["height"], age_layout["lineHeight"] * 2)
+        self.assertEqual(age_line.evaluate("element => getComputedStyle(element).whiteSpace"), "pre-line")
         expect(card).to_have_class(re.compile("media-card-revealed"))
 
         screenshot = Path(os.environ["TMPDIR"]) / "person-credit-touch-revealed.png"
@@ -166,7 +181,7 @@ class PersonDetailCreditCardBrowserTests(SerialStaticLiveServerTestCase):
         )
         expect(role_button).to_be_visible()
         role_button.scroll_into_view_if_needed()
-        expect(self.page.get_by_text("29 yo at release · died 1993", exact=True)).to_be_visible()
+        expect(self.page.get_by_text("29 yo at release\nDied 1993", exact=True)).to_be_visible()
         persisted_person = Person.objects.get(
             source=Sources.TMDB.value,
             source_person_id="123",

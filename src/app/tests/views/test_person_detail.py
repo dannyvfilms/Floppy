@@ -361,7 +361,7 @@ class PersonDetailViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.context["filmography"][0]["age_label"],
-            "85 yo at release · died 2010",
+            "85 yo at release\nDied 2010",
         )
         self.assertEqual(
             response.context["filmography"][1]["age_label"],
@@ -370,7 +370,7 @@ class PersonDetailViewTests(TestCase):
         credit_models = card_models(response.content)
         self.assertTrue(
             any(
-                part.get("text") == "85 yo at release · died 2010"
+                part.get("text") == "85 yo at release\nDied 2010"
                 and not line.get("dormant")
                 for model in credit_models
                 for line in model["lines"]
@@ -390,7 +390,7 @@ class PersonDetailViewTests(TestCase):
         )
         self.assertEqual(
             json_response.json()["filmography"][0]["ageLabel"],
-            "85 yo at release · died 2010",
+            "85 yo at release\nDied 2010",
         )
 
     @patch(
@@ -408,7 +408,7 @@ class PersonDetailViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"ageLabel": "29 yo at release · died 1993"})
+        self.assertEqual(response.json(), {"ageLabel": "29 yo at release\nDied 1993"})
         mock_person_dates.assert_called_once_with("57700")
         person = Person.objects.get(
             source=Sources.TMDB.value,
