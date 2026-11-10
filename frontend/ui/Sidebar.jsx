@@ -2,6 +2,7 @@ import { Modal } from './Modal';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Image,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -113,8 +114,10 @@ function popoverPlacement(anchor, windowWidth, windowHeight) {
 function MenuModal({ open, onClose, children, palette, labels, anchor }) {
   const { width, height } = useWindowDimensions();
   const dropdown = Boolean(anchor);
+  // Web only: lets sidebar.css lift this modal layer above the phone drawer.
+  const webMarker = Platform.OS === 'web' ? { dataSet: { menuDropdown: '1' } } : null;
   return <Modal transparent visible={open} animationType={dropdown ? 'none' : 'fade'} onRequestClose={onClose}>
-    <View style={dropdown ? StyleSheet.absoluteFill : styles.modalRoot}>
+    <View {...webMarker} style={dropdown ? StyleSheet.absoluteFill : styles.modalRoot}>
       <Pressable accessibilityRole="button" accessibilityLabel={labels.closeMenu}
         onPress={onClose}
         style={[StyleSheet.absoluteFill, dropdown ? null : { backgroundColor: palette.overlay }]} />
@@ -574,7 +577,7 @@ const styles = StyleSheet.create({
   savedViewText: { flexShrink: 1, fontSize: 14 },
   dragHandle: { width: 24, alignItems: 'center', justifyContent: 'center' },
   doneButton: { flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingLeft: 12, paddingRight: 4, paddingVertical: 6 },
+    paddingLeft: LINK_PADDING, paddingRight: 4, paddingVertical: 6 },
   doneText: { fontSize: 14 },
   bottom: { padding: 16, borderTopWidth: 1, gap: 8 },
   explore: { flexDirection: 'row', alignItems: 'center', gap: 12,
