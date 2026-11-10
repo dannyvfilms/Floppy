@@ -4,7 +4,8 @@ import { Spinner } from './Spinner';
 
 // Native loads every mounted image at once, a few at a time in order, so a row
 // of 14 covers keeps the ones a person is waiting for in a queue. Mount only the
-// cards near the visible window; the rest fill in as the row scrolls.
+// cards near the visible window; the rest fill in as the row scrolls. Carve-out:
+// web mounts every card because its <img loading="lazy"> already loads only nearby covers.
 const WINDOWED_CARDS = Platform.OS !== 'web';
 const WINDOW_BUFFER = 3;
 const INITIAL_WINDOW = 7;

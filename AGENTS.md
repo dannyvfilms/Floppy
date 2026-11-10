@@ -46,6 +46,11 @@ other platform's status in the summary: same change applied, different change
 applied, or no change needed with evidence. Do not leave the other platform unmeasured
 and silent. Shared components and server changes are the default route to parity.
 
+Every device-specific carve-out gets a short comment at the code that makes it, saying
+why the platforms differ (for example "native mounts only nearby cards; web already
+lazy-loads images"). A reader who is asked or challenged later should find the reason
+next to the code, not only in a PR. Also list the carve-out in the register entry.
+
 - Before editing, trace which component each surface (web adapter, `native-proof/`,
   and any platform-specific file) actually imports. Do not assume a shared component is
   active everywhere. `npm run check:page-parity` shows the registry state.
