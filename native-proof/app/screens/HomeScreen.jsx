@@ -11,10 +11,12 @@ import {
   mergeHomeRowPage,
 } from '../data/homeTransport';
 import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
+import { useMobileGridLayout } from '../data/useMobileGridLayout';
 import { palette, radius, spacing } from '../theme';
 import { Screen } from '../components/Screen';
 import MediaCardSlot from '../surfaces/MediaCardSlot';
 import PlaybackSlot from '../surfaces/PlaybackSlot';
+import { playbackDetailItem } from '../data/playbackTransport';
 
 export const surface = {
   id: 'HOME',
@@ -334,7 +336,8 @@ export default function HomeScreen({ navigate }) {
   const { width } = useWindowDimensions();
   // The same breakpoint helper the web mount uses, so a card is never a
   // different size on one surface.
-  const itemWidth = shelfCardWidth(width);
+  const mobileGridLayout = useMobileGridLayout();
+  const itemWidth = shelfCardWidth(width, mobileGridLayout);
   const [session, setSession] = useState(() => getActiveAuthSession());
   useEffect(() => subscribeAuthSession(setSession), []);
   const transport = useMemo(
@@ -449,16 +452,7 @@ export default function HomeScreen({ navigate }) {
         <Button label="Connect server" tone="surface" palette={palette}
           onPress={() => navigate?.('Auth')} />
       </View>}
-      playback={<PlaybackSlot onOpenDetail={card => navigate?.('Detail', { item: {
-        identity: {
-          mediaType: card.mediaType,
-          source: card.source,
-          mediaId: card.mediaId,
-        },
-        title: card.episodeTitle || card.title,
-        image: card.image,
-        href: card.href,
-      } })} />}
+      playback={<PlaybackSlot onOpenDetail={card => navigate?.('Detail', { item: playbackDetailItem(card) })} />}
       groups={model.groups}
       deferredGroups={model.deferredGroups}
       showMediaTypeHeaders={model.showMediaTypeHeaders}

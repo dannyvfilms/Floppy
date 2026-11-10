@@ -7,10 +7,15 @@ import { Rail } from './Rail';
 // the phone breakpoint in mountHome; native passes the same value from here.
 export const SHELF_BREAKPOINTS = { phone: 640 };
 export const SHELF_CARD_WIDTHS = { phone: 110, default: 176 };
-export function shelfCardWidth(viewportWidth) {
-  return viewportWidth < SHELF_BREAKPOINTS.phone
-    ? SHELF_CARD_WIDTHS.phone
-    : SHELF_CARD_WIDTHS.default;
+// `mobileGridLayout` is the person's Comfortable (two across) or Compact (three across)
+// preference. It only changes phone-width shelves, and Compact keeps the width Home always had.
+export const SHELF_COMFORTABLE_MAX_WIDTH = 168;
+export function shelfCardWidth(viewportWidth, mobileGridLayout = 'compact') {
+  if (viewportWidth >= SHELF_BREAKPOINTS.phone) return SHELF_CARD_WIDTHS.default;
+  if (mobileGridLayout === 'comfortable') {
+    return Math.min(SHELF_COMFORTABLE_MAX_WIDTH, Math.floor((viewportWidth - 32 - 12) / 2));
+  }
+  return SHELF_CARD_WIDTHS.phone;
 }
 
 const DEFAULT_PALETTE = {
@@ -129,6 +134,7 @@ const RailRow = React.memo(function RailRow({
     sorting={sorting}
     itemWidth={itemWidth}
     items={items}
+    viewAll={row.viewAll ? { label: row.viewAll.label, onPress: () => onOpenLink?.(row.viewAll.href, null, row) } : undefined}
     onSort={onSortRow ? () => onSortRow(row) : undefined}
     sortLabel={sortLabel(row, labels)}
     onLoadMore={onLoadMore ? () => onLoadMore(row) : undefined}

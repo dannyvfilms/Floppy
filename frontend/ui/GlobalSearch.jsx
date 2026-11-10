@@ -45,6 +45,7 @@ const SUGGESTION_FOOTER_HEIGHT = 44;
 const SUGGESTION_PANEL_GAP = 4;
 // A little air above the keyboard or the window edge; the window takes every whole row that fits.
 const SUGGESTION_BOTTOM_AIR = 8;
+const BLUR_CLOSE_MS = 250;
 const SUGGESTION_ROWS_MIN = 2;
 const SUGGESTION_ROWS_MAX = 5;
 
@@ -167,6 +168,8 @@ export function GlobalSearch({
   const [type, setType] = useState(selectedType || mediaTypes[0] || { display: 'All', value: 'all' });
   const [menuOpen, setMenuOpen] = useState(false);
   const [focused, setFocused] = useState(false);
+  const blurTimer = useRef(null);
+  useEffect(() => () => clearTimeout(blurTimer.current), []);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [panel, setPanel] = useState({ status: 'idle', suggestions: [] });
   const visibleRows = useSuggestionRows(panel.status !== 'idle', barRef);
@@ -258,6 +261,8 @@ export function GlobalSearch({
   function submit(value = query, mediaType = type.value) {
     const next = String(value || '').trim();
     if (!next) return;
+    // Cancel any pending suggestion request so it cannot reopen the panel after the search runs.
+    setUserTyped(false);
     clearPanel();
     onSubmit?.({ query: next, mediaType });
   }
@@ -268,6 +273,7 @@ export function GlobalSearch({
       submit();
       return;
     }
+    setUserTyped(false);
     clearPanel();
     onSelectSuggestion?.(option.suggestion);
   }
@@ -359,8 +365,12 @@ export function GlobalSearch({
           aria-controls="global-search-suggestions"
           aria-activedescendant={activeOption?.id}
           returnKeyType="search"
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          onFocus={() => { clearTimeout(blurTimer.current); setFocused(true); }}
+          onBlur={() => {
+            setFocused(false);
+            // Leaving the field closes the suggestions, after a beat so a tap on one still lands.
+            blurTimer.current = setTimeout(clearPanel, BLUR_CLOSE_MS);
+          }}
           onKeyPress={handleKeyPress}
           onSubmitEditing={handleSubmitEditing}
           style={[
