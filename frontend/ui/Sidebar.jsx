@@ -14,7 +14,7 @@ import { Reveal } from './Reveal';
 
 // The signed-in sidebar as shared React Native presentation. The browser
 // adapter supplies links, storage, drag and transport; this file only lays out
-// the logo, media-type groups, pinned lists, onboarding slot and bottom actions.
+// the logo, media-type groups, pinned lists and bottom actions.
 
 const defaultPalette = {
   text: '#fafafa',
@@ -426,7 +426,6 @@ export function Sidebar({
   onFinishReorder,
   enableSortable,
   onLogout,
-  onboarding,
   rowActions = 'always',
   showLogo = true,
   labels: labelOverrides,
@@ -515,7 +514,6 @@ export function Sidebar({
       </Reveal>
     </View>
     <View onLayout={event => setBottomHeight(event.nativeEvent.layout.height)}>
-      <View>{onboarding}</View>
       <View style={[styles.bottom, { borderTopColor: palette.border }]}>
         <Pressable accessibilityRole="button" accessibilityLabel={labels.explore}
           accessibilityState={{ expanded: navOpen, disabled: !hasUnpinned }}
