@@ -175,13 +175,16 @@ export function mediaRowFromPayload(row) {
 
 export function mediaRowsFromPayload(payload, { subview } = {}) {
   const results = Array.isArray(payload) ? payload : payload?.results || [];
-  if (['artists', 'albums'].includes(subview)) {
+  if (['artists', 'albums', 'shows'].includes(subview)) {
     return results.map((entry, index) => {
       const artist = subview === 'artists';
+      const show = subview === 'shows';
       const tracker = entry.tracker || {};
       const title = artist ? entry.name || '' : entry.title || '';
-      const source = 'musicbrainz';
-      const mediaId = artist ? entry.musicbrainz_id || String(entry.id) : entry.musicbrainz_release_id || String(entry.id);
+      const source = show ? entry.source || 'pocketcasts' : 'musicbrainz';
+      const mediaId = show ? entry.podcast_uuid || String(entry.id)
+        : artist ? entry.musicbrainz_id || String(entry.id) : entry.musicbrainz_release_id || String(entry.id);
+      const kind = show ? 'podcast' : 'music';
       const row = {
         id: `${subview}-${entry.id}`,
         item_id: entry.id,
@@ -192,16 +195,16 @@ export function mediaRowsFromPayload(payload, { subview } = {}) {
         progress_unit: 'plays',
         progress: null,
         item: {
-          media_type: 'music', library_media_type: 'music', source, media_id,
+          media_type: kind, library_media_type: kind, source, media_id: mediaId,
           title, image: entry.image || null, release_datetime: artist ? null : entry.release_date,
           genres: entry.genres || [],
         },
-        _entity: { subview, id: entry.id, artistName: entry.artist_name || '' },
+        _entity: { subview, id: entry.id, artistName: entry.artist_name || entry.author || '' },
         _rank: index,
       };
       return { ...mediaRowFromPayload(row), identity: {
         ...mediaRowFromPayload(row).identity,
-        entityType: artist ? 'artist' : 'album',
+        entityType: show ? 'show' : artist ? 'artist' : 'album',
         entityId: entry.id,
       }, title, subtitle: row._entity.artistName, media: row };
     });
@@ -262,14 +265,15 @@ export function libraryQuery({
     if (range.within && range.unit) query[`${queryKey}_within_unit`] = range.unit;
   });
   Object.entries(fields).forEach(([key, value]) => {
-    const apiKey = key === 'selectedTags' ? 'tags' : key;
+    // The server reads tag names from `tag`.
+    const apiKey = key === 'selectedTags' || key === 'tags' ? 'tag' : key;
     if (Array.isArray(value) ? value.length > 0 : value !== '' && value != null) {
       query[apiKey] = value;
     }
   });
   Object.entries(modes).forEach(([key, value]) => {
     if (key === 'tags' && value) query.tag_mode = value;
-    if (key === 'platforms' && value) query.platform_mode = value;
+    if ((key === 'platforms' || key === 'platform') && value) query.platform_mode = value;
   });
   return query;
 }
@@ -277,7 +281,7 @@ export function libraryQuery({
 export function mediaCardModelFromRow(row) {
   const item = row?.item || {};
   const mediaType = item.library_media_type || item.media_type || '';
-  const status = STATUS_LABELS[row?.status] || '';
+  const status = STATUS_LABELS[row?.status] || (typeof row?.status === 'string' ? row.status : '');
   const progress = Number(row?.progress);
   const hasProgress = row?.progress != null && Number.isFinite(progress);
   const total = row?.episodes_left == null ? null : progress + Number(row.episodes_left);
@@ -325,9 +329,105 @@ export function mediaCardModelFromRow(row) {
   };
 }
 
+// The web card's hover actions: tracking, lists and the item's history.
+export function cardActionsFor(title, identity) {
+  return {
+    href: '',
+    items: [
+      { kind: 'modal', modal: 'track', title: 'Edit tracking', media: identity },
+      { kind: 'modal', modal: 'lists', title: 'Add to custom lists', media: identity },
+      { kind: 'link', title: 'View your activity history', href: '/history', media: identity },
+    ],
+    ordering: null,
+    modals: { track: 'track', lists: 'lists' },
+    csrfToken: '',
+    clickable: true,
+    title,
+    media: identity,
+  };
+}
+
+const STATIC_SECTIONS = {
+  rating: ['Rating', 'Any Rating', [['rated', 'Rated'], ['not_rated', 'Not Rated']]],
+  collection: ['Collection', 'Any Collection', [['collected', 'Collected'], ['not_collected', 'Not Collected']]],
+  progress: ['Progress', 'Any Progress', [['not_caught_up', 'Not Caught Up'], ['caught_up', 'Caught Up']]],
+  release: ['Released', 'All', [['released', 'Released'], ['not_released', 'Not Released']]],
+};
+
+function staticSection(key) {
+  const [label, any, entries] = STATIC_SECTIONS[key];
+  return {
+    key,
+    label,
+    state: key,
+    type: 'single',
+    clearValue: 'all',
+    idleLabel: any,
+    options: [{ value: 'all', label: any }, ...entries.map(([value, text]) => ({ value, label: text }))],
+  };
+}
+
+function optionSection(key, label, entries, extra = {}) {
+  const options = (Array.isArray(entries) ? entries : [])
+    .map(entry => (typeof entry === 'string'
+      ? { value: entry, label: entry }
+      : { value: String(entry?.value ?? ''), label: String(entry?.label ?? entry?.value ?? '') }))
+    .filter(option => option.value);
+  if (!options.length) return null;
+  return { key, label, state: key, type: 'single', clearValue: '', searchable: true, options, ...extra };
+}
+
+export const FILTER_MODES = [
+  { value: 'or', label: 'Any' },
+  { value: 'and', label: 'All' },
+  { value: 'not', label: 'Not' },
+];
+
+// Filter sections in the order of the web filter menu (filter_menu.html). The
+// option lists come from GET /api/v1/media/<type>/filter-options/, which uses
+// the same builder as the web menu; a section with nothing to choose is left
+// out, like the web does. Tags keep their own section, listed from /api/v1/tags/.
+export function libraryFilterSections(data) {
+  const info = data || {};
+  const sections = [staticSection('rating'), staticSection('collection')];
+  if (info.show_progress) sections.push(staticSection('progress'));
+  sections.push(
+    optionSection('genre', 'Genre', info.genres),
+    optionSection('implied_genre', 'Implied Genre', info.implied_genres),
+    optionSection('year', 'Date', info.years),
+    staticSection('release'),
+    optionSection('source', 'Source', info.sources),
+    optionSection('media_status', 'Availability', info.media_statuses),
+  );
+  if (info.show_languages) sections.push(optionSection('language', 'Language', info.languages));
+  if (info.show_countries) sections.push(optionSection('country', 'Country', info.countries));
+  if (info.show_platforms) {
+    sections.push(optionSection('platform', 'Platform', info.platforms, {
+      type: 'multi', clearValue: [], modes: FILTER_MODES, modeState: 'platform', modeValue: 'or',
+    }));
+  }
+  if (info.show_formats) sections.push(optionSection('format', 'Format', info.formats));
+  if (info.show_authors) {
+    sections.push(optionSection('author', info.author_is_channel ? 'Channel' : 'Author', info.authors));
+  }
+  if (info.show_providers) sections.push(optionSection('provider', 'Streaming Service', info.providers));
+  return sections.filter(Boolean);
+}
+
+// The query a filter state stands for, without paging: what the option lists,
+// the matching ids, a saved view and a shared view all describe.
+function filterQuery(params, drop = []) {
+  const query = libraryQuery(params);
+  ['limit', 'offset', ...drop].forEach(key => { delete query[key]; });
+  return query;
+}
+
 export function libraryPath(mediaType, subview) {
   if (mediaType === 'music' && ['artists', 'albums'].includes(subview)) {
     return `/api/v1/music/${subview}/`;
+  }
+  if (mediaType === 'podcast' && subview === 'shows') {
+    return '/api/v1/podcasts/shows/';
   }
   if (mediaType === 'comic' && subview === 'issues') {
     return '/api/v1/media/comicissue/';
@@ -347,6 +447,29 @@ export function createRemoteLibraryActions(request) {
       return request(path, {
         query,
       });
+    },
+    loadFilterOptions(params = {}) {
+      return request(`/api/v1/media/${encodeURIComponent(params.mediaType)}/filter-options/`, {
+        query: filterQuery(params, ['sort', 'direction', 'subview', 'group_by']),
+      });
+    },
+    async loadItemIds(params = {}) {
+      const payload = await request(`/api/v1/media/${encodeURIComponent(params.mediaType)}/item-ids/`, {
+        query: filterQuery(params, ['subview', 'group_by']),
+      });
+      return (payload?.item_ids || []).map(Number).filter(Number.isFinite);
+    },
+    loadPreferences(mediaType) {
+      return request(`/api/v1/library/preferences/${encodeURIComponent(mediaType)}/`);
+    },
+    savePreferences(mediaType, patch) {
+      return request(`/api/v1/library/preferences/${encodeURIComponent(mediaType)}/`, { method: 'PATCH', body: patch });
+    },
+    async shareView({ mediaType, ...params }) {
+      const payload = await request('/api/v1/library/share-view/', {
+        method: 'POST', body: { mediaType, query: filterQuery({ mediaType, ...params }, ['subview', 'group_by']) },
+      });
+      return payload?.url || '';
     },
     loadSavedViews({ mediaType }) {
       return request('/api/v1/library/saved-views/', { query: { media_type: mediaType } });
@@ -448,6 +571,11 @@ export function createLocalLibraryActions(reason) {
     mode: 'local',
     reason,
     load: async () => ({ local: true, reason }),
+    loadFilterOptions: async () => ({ local: true, reason }),
+    loadItemIds: async () => [],
+    loadPreferences: async () => ({ local: true, reason }),
+    savePreferences: async () => ({ local: true, reason }),
+    shareView: async () => '',
     loadSavedViews: async () => [],
     applySavedView: async () => ({ local: true, reason }),
     createSavedView: async () => ({ local: true, reason }),

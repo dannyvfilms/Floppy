@@ -732,4 +732,24 @@ export function detailModelFromPayloads({ item, metadata, state, detail, identit
   };
 }
 
+/**
+ * The tracking half of a detail page from the stored-metadata and state
+ * payloads: what the write controls need beside the page payload.
+ */
+export function trackingFromPayloads({ identity, metadata, state } = {}) {
+  const tracking = trackingFromState(state, null);
+  const rows = tracking ? consumptionRows(state, null) : [];
+  return {
+    catalogItemId: metadata?.item_id ?? null,
+    tracked: Boolean(tracking),
+    tracking,
+    score: tracking ? tracking.score : null,
+    plays: rows.filter(row => row.end_date).length,
+    notes: notesFromConsumptions(rows),
+    history: historyFromConsumptions(rows),
+    sourceUrl: metadata?.attribution?.source_url || '',
+    sourceName: String(metadata?.attribution?.source || identity?.source || '').toUpperCase(),
+  };
+}
+
 export const DETAIL_STATUS_LABELS = STATUS_LABELS;

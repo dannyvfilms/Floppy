@@ -407,6 +407,7 @@ export function createRemoteSettingsActions(request, { authType = 'session' } = 
     saveServerPort: port => send('PUT', '/api/v1/user/advanced/server-port/', { port }),
     resetServerPort: () => send('DELETE', '/api/v1/user/advanced/server-port/'),
     downloadLogs: () => get('/api/v1/user/advanced/logs/'),
+    downloadDiagnostics: () => get('/api/v1/user/advanced/diagnostics/'),
     loadAbout: () => get('/api/v1/user/about/'),
     loadSpecification: path => request(path, { headers: { Accept: 'text/plain, text/yaml, application/json, application/ld+json, */*' }, responseType: 'text' }),
     loadWhatsNew: () => get('/api/v1/user/about/whats-new/'),

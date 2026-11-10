@@ -65,8 +65,8 @@ export default function App() {
       return;
     }
     // Library is a tab, so stack callers such as Tags open the tab instead. A caller that
-    // brings filters (a Home row title) opens that filtered library on top, with a way back.
-    if (screen === 'Library' && !params?.query) { openTab('library', params?.mediaType); return; }
+    // brings filters (a Home row title, a tag) opens that filtered library on top, with a way back.
+    if (screen === 'Library' && !params?.query && !params?.tag) { openTab('library', params?.mediaType); return; }
     setStack(current => [...current, { screen, params }]);
   };
   const openTab = (next, mediaType = libraryType) => {

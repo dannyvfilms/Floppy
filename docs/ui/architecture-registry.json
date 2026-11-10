@@ -1,21 +1,43 @@
 {
   "universal": {
     "frontend/ui/MdblistConnect.jsx": {
-      "components": ["MdblistConnect"],
+      "components": [
+        "MdblistConnect"
+      ],
       "register": "LISTS",
       "verification": {
-        "web": { "status": "unverified", "evidence": "Expo import dialog has server-owned schedule choices; final browser comparison pending. Browser list import remains server-owned." },
-        "ios": { "status": "unverified", "evidence": "Not verified on iOS." },
-        "android": { "status": "unverified", "evidence": "Not verified on Android." }
+        "web": {
+          "status": "unverified",
+          "evidence": "Expo import dialog has server-owned schedule choices; final browser comparison pending. Browser list import remains server-owned."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not verified on iOS."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified on Android."
+        }
       }
     },
     "frontend/pages/ManualEntryView.jsx": {
-      "components": ["ManualEntryView"],
+      "components": [
+        "ManualEntryView"
+      ],
       "register": "TRACKING",
       "verification": {
-        "web": { "status": "unverified", "evidence": "Expo browser: searched and selected Deep Field, created season 99, then removed the test entry and verified absence. Final layout comparison remains pending. Browser /create remains server-owned until parity and a web adapter are complete." },
-        "ios": { "status": "unverified", "evidence": "Not verified." },
-        "android": { "status": "unverified", "evidence": "Not verified." }
+        "web": {
+          "status": "unverified",
+          "evidence": "Expo browser: searched and selected Deep Field, created season 99, then removed the test entry and verified absence. Final layout comparison remains pending. Browser /create remains server-owned until parity and a web adapter are complete."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        }
       }
     },
     "frontend/ui/ReorderList.jsx": {
@@ -2917,15 +2939,13 @@
     },
     "frontend/pages/DetailView.jsx": {
       "components": [
-        "DetailView",
-        "DetailPageView",
-        "DetailEpisodePageView"
+        "DetailView"
       ],
       "register": "DETAIL",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "The browser detail layout remains server-owned. Expo renders the structured projection; browser layout and interaction comparison remains outstanding."
+          "status": "verified",
+          "evidence": "Expo web build in native-variant preview at 375px compared with the Django detail page of the same seeded items (a TMDB film and show, a season, an episode, an anime, a comic and a book): the action bar, score row, sections, seasons, people and related slots render in the shared view. Order and hero treatment still differ from the web page; see the component register."
         },
         "ios": {
           "status": "unverified",
@@ -3508,32 +3528,23 @@
     },
     "frontend/ui/DetailPage.jsx": {
       "components": [
-        "DetailPageHero",
         "DetailActionBar",
-        "DetailLinkRow",
         "DetailScoreRow",
-        "DetailInfoCard",
-        "DetailChipCard",
         "DetailBlock",
         "DetailEmpty",
         "DetailLoading",
-        "DetailSkeleton",
         "DetailNotesBlock",
-        "DetailHistoryBlock",
         "DetailCollectionBlock",
-        "DetailPeopleRail",
-        "DetailPosterRail",
-        "DetailSeasonSelector",
-        "DetailStepper",
-        "DetailListCard",
         "DetailIssueCards",
-        "DetailEpisodeCards"
+        "DetailEpisodeCards",
+        "DetailRelatedGrid",
+        "DetailSeriesGraph"
       ],
       "register": "DETAIL",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "Expo browser at 375x812 observed mapped anime episode cards and an issue-specific Track dialog; discrepancies led to native-only card/list/collapse controls, separate episode-link/Rate targets, 25-row loading, synopsis clamping, studio links, outlined Genres and correct issue form fields. Native issue Add and the web modal bridge succeeded; newly created issue/tracker/history were removed against baseline. Anime Rate save/reopen/clear and Add watch succeeded. Native datetime-local submission sends an explicit instant; browser save/reopen preserved Nov 10, 2026 04:19:00 exactly. First page25 and Load more were observed; current-page viewer-owned rating-only projection preserves ratings saved without a watch; browser save/reopen/clear passed with Unwatched retained, and new parents/history restored with existing MAL tracking unchanged. test watches/ratings and new mapped parents/history restored with existing MAL tracking unchanged. Later pages, unexercised collection actions and restored comic Source/Notes/No Status fields remain unverified; tab/date-helper/layout differences remain. TV Details uses the shared server runtime property through metadata, season-count labels and no API-only episode-season helpers; browser full reload verified AIR DATES→Status→RUNTIME(3SEASONS),7h44min·19episodes and absent technical rows, matching the web. Shared components use props and RN primitives; server detail/child fallbacks remain."
+          "status": "verified",
+          "evidence": "Expo web build in native-variant preview at 375px compared with the Django detail page: track action bar (check-in started and cancelled, edit dialog saved), quick buttons (tags, notes, lists, more), provider score chip, collection block with its add dialog, notes block (one note saved and cleared), season poster grid, comic issue cards and anime episode cards."
         },
         "ios": {
           "status": "unverified",
@@ -3547,14 +3558,13 @@
     },
     "frontend/ui/DetailEpisode.jsx": {
       "components": [
-        "DetailEpisodeHeader",
-        "DetailEpisodeActions"
+        "DetailEpisodeHeader"
       ],
       "register": "DETAIL",
       "verification": {
         "web": {
           "status": "verified",
-          "evidence": "Expo web build in native-variant preview at 375px, episode page of the seeded show compared with the Django page: still, title, season and episode line, picker (menu opened, episode switched), Watched button, notes, lists and history buttons (history dialog opened), rating (one write, undone). Compared with the web page in a browser at 375px through the Expo web build's native-variant preview."
+          "evidence": "Expo web build in native-variant preview at 375px, episode page of the seeded show compared with the Django page: season and episode line, episode picker with previous and next. The still and the show title come from the shared hero, and the page has no cast, crew or genres, unlike the web page."
         },
         "ios": {
           "status": "unverified",

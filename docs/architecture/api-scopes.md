@@ -434,6 +434,7 @@ protected guide/copy URLs for bearer credentials without denying configuration.
 | `/api/v1/user/account/` | GET POST | NEVER |
 | `/api/v1/user/advanced/` | GET | NEVER |
 | `/api/v1/user/advanced/caches/{kind}/` | DELETE | NEVER |
+| `/api/v1/user/advanced/diagnostics/` | GET | NEVER |
 | `/api/v1/user/advanced/image-cache/` | DELETE PUT | NEVER |
 | `/api/v1/user/advanced/logs/` | GET | NEVER |
 | `/api/v1/user/advanced/server-port/` | DELETE PUT | NEVER |

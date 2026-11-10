@@ -997,6 +997,18 @@ class LogsExportView(drf_views.APIView):
         return export_logs(request._request)
 
 
+# /api/v1/user/advanced/diagnostics/
+class DiagnosticsExportView(drf_views.APIView):
+    """The sanitized diagnostic report any signed-in user may download."""
+
+    @extend_schema(responses={200: OpenApiTypes.STR})
+    def get(self, request):
+        """Return server details and recent warnings and errors as text."""
+        from users.views import export_diagnostics
+
+        return export_diagnostics(request._request)
+
+
 # /api/v1/user/about/
 class AboutSettingsView(drf_views.APIView):
     """About page data: version, release notes, resources, specs, licenses."""

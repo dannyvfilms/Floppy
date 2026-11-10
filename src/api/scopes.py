@@ -349,6 +349,7 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_settings.CacheClearView": {"DELETE": NEVER},
     "api.fork_views_settings.ServerPortView": {"PUT": NEVER, "DELETE": NEVER},
     "api.fork_views_settings.LogsExportView": {"GET": NEVER},
+    "api.fork_views_settings.DiagnosticsExportView": {"GET": NEVER},
     "api.fork_views_settings.AboutSettingsView": {"GET": "user:read"},
     "api.fork_views_settings.WhatsNewView": {"GET": "user:read"},
     "api.fork_views_settings.ExportSchedulesView": {"GET": "exports:read", "POST": NEVER, "DELETE": NEVER},

@@ -58,20 +58,23 @@ the PWA. Evidence:
   server-owned"; the browser mounts only the `header` and `synopsis` parts over the
   server fallback. The page body on web comes from `src/templates/app/media_details.html`
   and ~16 included components (secondary content alone is 624 lines), not from `DetailView`.
-- Native `DetailScreen` renders `DetailView part="full"`: hero, header, actions, score
-  chips, links, synopsis, a rating control, seasons/episodes, cast/crew and related.
-  Several other sections arrive as read-only text lists.
-- These are **not wired into the native screen**: `DetailTrackingSlot`, `NotesSlot`,
-  `DetailChildrenSlot`, `DetailRelatedSlot` have no importer; `ProgressSlot`,
-  `ArtworkSlot`, `DateTimeSlot` are referenced only by `surfaces/inventory.js`. The
-  component register marks TRACKING as `Deferred (blocker)` and NOTES, PROGRESS,
-  ARTWORK, DATE-TIME as `Legacy`.
-- Verification for `DetailView.jsx`: web, iOS and Android all `unverified`.
+- Native `DetailScreen` renders `DetailView part="full"`: hero, header, score chips,
+  links, synopsis, a rating control, seasons/episodes, cast/crew and related. It fills
+  the view's `actionsSlot`, `scoreSlot`, `sectionsSlot` and `childrenSlot` from
+  `native-proof/app/surfaces/DetailFeatures.jsx`: the track dialog and check-in, tags,
+  notes, lists, activity history with remove, the progress card and breakdown,
+  collection copies, cover and Hardcover edition pickers, provider score with series
+  graph, comic issues, anime episodes, Seerr request and metadata sync.
+- The component register still marks TRACKING as `Deferred (blocker)` and NOTES,
+  PROGRESS, ARTWORK, DATE-TIME as `Legacy`: the web pages keep their server forms.
+- Verification for `DetailView.jsx`: web `verified` against the Expo web build at 375px;
+  iOS and Android `unverified`.
 
-Functional gaps against the PWA detail page: add/edit/repeat tracking, check-in, progress
-adjustment, notes editing, cover/edition selection, activity calendar, collection
-entry editing and the popup/dialog host. Visual gaps still need a screenshot pass (see
-"What it takes to finish the audit").
+Remaining gaps against the PWA detail page: the hero and the header facts are the page
+payload's own rather than the web's layout, external links are a section instead of a
+menu, there is no Details card, season pages show no provider score, the episode page
+has no cast, crew or genres, and the activity calendar is not drawn. Visual gaps still
+need a device screenshot pass (see "What it takes to finish the audit").
 
 ## Page-by-page status
 
@@ -93,9 +96,9 @@ data; each needs a manual look.
 | --- | --- | --- | --- | --- | --- | --- |
 | Home | `/` | shared | 139 L / 6 | HomeScreen (506) | 29 (`demoRowDefs`, `/demo/…` hrefs) | web / **iOS parity** / – |
 | Discover | `/discover` | **legacy** | 577 L / 12 | DiscoverScreen (14) | 1 | – / – / – |
-| Library | `/medialist/<type>` | shared | 276 L / 6 | LibraryScreen (472) | 7 | – |
+| Library | `/medialist/<type>` | shared | 276 L / 6 | LibraryScreen (680) | 0 | web (Expo web build, partial) / – / – |
 | Search | `/search` | shared | 398 L / 0 | SearchScreen (29) | 0 | – |
-| Detail | `/details/…` | shared (header + synopsis only on web) | 154 L + 624 L secondary / 15 | DetailScreen (203) | 0 | – |
+| Detail | `/details/…` | shared (header + synopsis only on web) | 154 L + 624 L secondary / 15 | DetailScreen (266) + DetailFeatures (1,038) | 0 | web (Expo web build, partial) / – / – |
 | People / studios | `/people/…` | shared (hero, cast, extras parts) | 275 L / 4 | PeopleScreen (514) | 24 (`DEMO_PERSON`, `DEMO_STUDIO`, `'demo'` mode) | – |
 | Music / podcasts | album, artist, show | shared (albums part) | 398 L / 30 | MusicScreen (800) | 4 (+ `musicDemo.js`, 232 L) | – |
 | Collection | `/collection` | shared | 589 L / 181 | CollectionScreen (662) | 8 (owner demo bar) | – |
@@ -217,9 +220,11 @@ To make "visual parity" a measured claim, someone needs to:
 Follows `docs/plans/expo-web-parity.md` and the gaps above.
 
 1. **Baseline first** (items 1–4 above). Nothing else is measurable without it.
-2. **Detail**: wire tracking, progress, notes, artwork and check-in into
-   `DetailScreen`; unblock TRACKING; decide whether the web detail page adopts the
-   full `DetailView` or the native screen stays a documented adaptation.
+2. **Detail**: tracking, progress, notes, artwork and check-in are wired into
+   `DetailScreen` through `DetailFeatures.jsx`; still open: unblock TRACKING on the web,
+   close the remaining gaps listed in the worked example, and decide whether the web
+   detail page adopts the full `DetailView` or the native screen stays a documented
+   adaptation.
 3. **Remove demo fallbacks** from Home, People, History, Statistics, List detail,
    Collection and Tags, or move them behind an explicit demo mode generated from the
    page model.

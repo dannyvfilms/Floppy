@@ -4,15 +4,12 @@
 import { getActiveAuthSession } from './authSession';
 import { formatUserDate, loadDatePreferences } from './userDate.js';
 import {
-  artworkFromPayload,
-  detailModelFromPayloads,
   episodeActionPath,
   episodesFromPayload,
-  identityFromItem,
   issuesFromPayload,
   mediaPath,
   seasonEpisodesPath,
-  seasonsFromDetail,
+  trackingFromPayloads,
 } from './detailTransportCore';
 
 function call(path, options) {
@@ -33,57 +30,19 @@ function settled(result) {
 }
 
 /**
- * Load everything one detail page shows. The provider detail and the stored
- * metadata are the two primary reads: when both fail the page cannot render
- * more than the tapped card, so the failure is thrown for a Retry. Tracking
- * state and the parent show are secondary and only degrade the page.
+ * What the detail page's write controls need and the page payload leaves out:
+ * the entry ids (to edit a note or remove a play), the stored item id (cover
+ * and edition pickers) and whether the item is tracked. Either read may fail;
+ * the controls that depend on it then stay hidden.
  */
-export async function loadDetailPage(item) {
+export async function loadDetailTracking(identity) {
   await loadDatePreferences(call);
-  const identity = identityFromItem(item);
-  if (!identity) return { identity: null, model: detailModelFromPayloads({ item }) };
   const path = mediaPath(identity);
-  const seasoned = identity.mediaType === 'season' || identity.mediaType === 'episode';
-  const parentIdentity = seasoned
-    ? { mediaType: 'tv', source: identity.source, mediaId: identity.mediaId }
-    : null;
-  const [detail, metadata, state, parent, siblings, recommendations] = await Promise.allSettled([
-    call(`${path}/`),
+  const [metadata, state] = await Promise.allSettled([
     call(`${path}/metadata/`),
     call(`${path}/state/`),
-    parentIdentity ? call(`${mediaPath(parentIdentity)}/`) : Promise.resolve(null),
-    identity.mediaType === 'episode'
-      ? call(seasonEpisodesPath(identity, identity.seasonNumber))
-      : Promise.resolve(null),
-    // The detail payload leaves recommendations to their own endpoint.
-    identity.mediaType === 'episode' ? Promise.resolve(null) : call(`${path}/recommendations/`),
   ]);
-  if (detail.status === 'rejected' && metadata.status === 'rejected') throw detail.reason;
-  const detailPayload = settled(detail);
-  const parentPayload = settled(parent);
-  const model = detailModelFromPayloads({
-    item,
-    identity,
-    detail: detailPayload,
-    metadata: settled(metadata),
-    state: settled(state),
-    recommendations: resultList(settled(recommendations)),
-  });
-  const seasonSource = identity.mediaType === 'tv' ? detailPayload : parentPayload;
-  return {
-    identity,
-    model: {
-      ...model,
-      parent: parentPayload
-        ? { title: parentPayload.title, identity: parentIdentity }
-        : null,
-      parentGenres: Array.isArray(parentPayload?.genres) ? parentPayload.genres : [],
-      seasons: seasonSource ? seasonsFromDetail(seasonSource, parentIdentity || identity) : [],
-      siblingEpisodes: siblings.status === 'fulfilled' && siblings.value
-        ? episodesFromPayload(siblings.value, identity, identity.seasonNumber)
-        : [],
-    },
-  };
+  return trackingFromPayloads({ identity, metadata: settled(metadata), state: settled(state) });
 }
 
 /** One page of a comic volume's issues (the web "Issues" list). */
@@ -205,25 +164,7 @@ export function runCheckIn(identity, action) {
   return call(`${mediaPath(identity)}/checkin/`, { method: 'POST', body: { action } });
 }
 
-const ARTWORK_TYPES = new Set(['movie', 'tv', 'season', 'game']);
 const NO_SCORES = { chips: [], graphs: {}, gameLengths: null };
-
-/** Backdrop hero, title logo, trailer and gallery; null when the source has none. */
-export async function loadArtwork(identity) {
-  if (!identity || !ARTWORK_TYPES.has(identity.mediaType)) return null;
-  try {
-    // The gallery belongs to the show; a season names itself in the query.
-    const { mediaType, source, mediaId, seasonNumber } = identity;
-    const season = mediaType === 'season' && seasonNumber != null;
-    const data = await call(
-      `/api/v1/media/${encodeURIComponent(season ? 'tv' : mediaType)}/${encodeURIComponent(source)}/${encodeURIComponent(mediaId)}/detail/gallery/`,
-      season ? { query: { season_number: seasonNumber } } : undefined,
-    );
-    return artworkFromPayload(data?.gallery ? { available: true, ...data.gallery } : null);
-  } catch {
-    return null;
-  }
-}
 
 /** Stored Trakt, IMDb, MAL and OpenCritic chips plus the series graphs. */
 export async function loadScores(identity) {

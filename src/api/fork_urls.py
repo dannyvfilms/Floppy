@@ -904,6 +904,11 @@ urlpatterns = [
         name="api_settings_server_port",
     ),
     re_path(
+        r"^user/advanced/diagnostics/?$",
+        fork_views_settings.DiagnosticsExportView.as_view(),
+        name="api_settings_diagnostics_export",
+    ),
+    re_path(
         r"^user/advanced/logs/?$",
         fork_views_settings.LogsExportView.as_view(),
         name="api_settings_logs_export",

@@ -417,7 +417,7 @@ Status: `Legacy`
 
 Status: `Partial / coexisting` — Expo uses the shared detail composition; the browser page remains server-owned.
 
-- Shared `DetailPageView`/`DetailEpisodePageView`, `DetailChipCard`, `DetailListCard`, `DetailIssueCards` and `DetailEpisodeCards`: `Partial / coexisting`, `Primitives`; native `DetailScreen` owns navigation, issue-specific dialog targets, studio links, mapped 25-row anime previews with viewer-owned rating-only projection, and field writes through `detailTransport.js`/`mediaCardTransport.js`. TV Details uses optional computed metadata total runtime with the shared server model property and hides API-only episode-season helpers; browser full reload verified AIR DATES→Status→RUNTIME(3SEASONS),7h44min·19episodes and absent technical rows, matching the web. Outlined Genres and anime layouts are native-only props; anime Rate is a sibling of its episode links. Web detail/episode shells below remain until their composition and interactions migrate. Browser provider sections and mapped anime list observed. Native comic Add and the web Track bridge succeeded; new issue/tracker/history were restored to the captured baseline. Anime watched and unwatched Rate save/reopen/clear and Add watch succeeded; unwatched rating retained Unwatched. Test-only mapped parents/history were restored with existing MAL tracking unchanged. Native track datetime-local submission sends an explicit instant; browser save/reopen preserved Nov 10, 2026 04:19:00 exactly. First page25 and Load more were observed; test watches, ratings and new mapped parents/history were restored with existing MAL tracking unchanged. Later-page loading, remaining collection actions and restored comic Source/Notes/No Status fields remain unverified. iOS and Android runtime not verified.
+- Shared `DetailView` slots (`actionsSlot`, `scoreSlot`, `sectionsSlot`, `childrenSlot`, `onOpenPerson`) with `DetailActionBar`, `DetailScoreRow`, `DetailCollectionBlock`, `DetailNotesBlock`, `DetailRelatedGrid`, `DetailIssueCards`, `DetailEpisodeCards` and `DetailEpisodeHeader`: `Partial / coexisting`, `Primitives`; native `DetailScreen` owns the page payload and navigation, and `surfaces/DetailFeatures.jsx` owns the track dialog and check-in, tags, notes, lists, activity history, progress card, collection copies, cover and edition pickers, Seerr and metadata sync through `detailTransport.js`/`mediaCardTransport.js`. Web detail and episode shells below remain until their composition and interactions migrate. Browser: compared with the web pages at 375px through the Expo web build (film, show, season, episode, anime, comic, book); one check-in, note, list membership, tag and track save were written and undone. iOS and Android runtime not verified.
 
 - `src/templates/app/components/detail_action_buttons.html`
 - `src/templates/app/components/detail_activity_subtitle.html`
@@ -434,13 +434,15 @@ Status: `Partial / coexisting` — Expo uses the shared detail composition; the 
 - `src/templates/app/media_details.html`
 - `native-proof/app/screens/DetailScreen.jsx`
 - `native-proof/app/surfaces/DetailSlot.jsx`
+- `native-proof/app/surfaces/DetailFeatures.jsx`
+- `native-proof/app/data/detailTransport.js`
 - `native-proof/app/surfaces/detailIdentity.mjs`
 - `src/api/fork_views_detail.py`
 - `src/api/fork_urls.py`
 - `frontend/pages/DetailView.jsx`
 - `frontend/ui/DetailComposition.jsx`
-- `frontend/ui/DetailPage.jsx` (sections of `DetailPageView` in `frontend/pages/DetailView.jsx`; no screen mounts it)
-- `frontend/ui/DetailEpisode.jsx` (episode header and actions of `DetailEpisodePageView` in `frontend/pages/DetailView.jsx`; no screen mounts it)
+- `frontend/ui/DetailPage.jsx` (action bar, score row, collection, notes, related grid, issue and episode cards; mounted by `native-proof/app/surfaces/DetailFeatures.jsx`)
+- `frontend/ui/DetailEpisode.jsx` (episode title line and picker; mounted by `native-proof/app/surfaces/DetailFeatures.jsx`)
 
 ## CHILDREN
 

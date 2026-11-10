@@ -532,6 +532,14 @@ class AdvancedAboutTests(SettingsTestCase):
         )
         self.assertEqual(response.status_code, HTTP.FORBIDDEN)
 
+    def test_diagnostics_report_for_any_signed_in_user(self):
+        response = self.call_api(
+            "get", "api_settings_diagnostics_export", headers=self.auth_headers
+        )
+        self.assertEqual(response.status_code, HTTP.OK, response.content)
+        self.assertIn("text/plain", response["Content-Type"])
+        self.assertIn("floppy-diagnostics-", response["Content-Disposition"])
+
     def test_superuser_toggles_image_cache(self):
         from app.models import ApplicationSettings
 
