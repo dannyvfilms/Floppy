@@ -968,6 +968,12 @@ def get_saved_suggestions(user, media_type, query, limit=8):
                 "title": _display_title_for_user(item, user),
                 "subtitle": _suggestion_subtitle(item, query, user, statuses.get(item.id)),
                 "labelled": True,
+                "identity": {
+                    "mediaType": getattr(item, "library_media_type", None) or item.media_type,
+                    "source": item.source,
+                    "mediaId": item.media_id,
+                    "title": item.title,
+                },
                 "image": getattr(item, "image", None) or None,
                 "url": url,
             }
@@ -984,6 +990,7 @@ def _suggestion_json(suggestions):
             "subtitle": suggestion["subtitle"],
             "image": image_url(suggestion["image"]) if suggestion["image"] else None,
             "url": suggestion["url"],
+            "identity": suggestion.get("identity"),
         }
         for index, suggestion in enumerate(suggestions)
     ]
