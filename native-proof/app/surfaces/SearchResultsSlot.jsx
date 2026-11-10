@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { shelfCardWidth } from '../../../frontend/ui/HomeShelves';
 import { SearchResults } from '../../../frontend/ui/SearchResults';
-import { mergeSearchRowPage, searchRowParams } from '../../../frontend/ui/searchRows';
+import { mergeSearchRowPage, onlineRowParams, searchRowParams } from '../../../frontend/ui/searchRows';
 import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
 import { useMobileGridLayout } from '../data/useMobileGridLayout';
 import { palette } from '../theme';
@@ -55,6 +55,10 @@ export default function SearchResultsSlot({ query = '', mediaType = 'all', onOpe
     return payload.row ? mergeSearchRowPage(row, payload.row) : null;
   }, [session, query, mediaType]);
 
+  const onLoadOnlineRow = useCallback(source => session.request('/search/results', {
+    query: onlineRowParams(source, { query: String(query).trim(), mediaType }),
+  }), [session, query, mediaType]);
+
   const openCard = useCallback(item => onOpenDetail?.(item?.card), [onOpenDetail]);
 
   return <SearchResults
@@ -66,6 +70,7 @@ export default function SearchResultsSlot({ query = '', mediaType = 'all', onOpe
     onOpenLink={(_href, item) => openCard(item)}
     onAction={(_action, item) => openCard(item)}
     onLoadMore={onLoadMore}
+    onLoadOnlineRow={onLoadOnlineRow}
     onRetry={() => setAttempt(current => current + 1)}
   />;
 }

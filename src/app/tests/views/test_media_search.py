@@ -55,7 +55,23 @@ class MediaSearchViewTests(TestCase):
         return json.loads(match.group(1))
 
     def _rows(self, response):
-        return self._props(response)["rows"]
+        return self._streamed(response)[0]
+
+    def _streamed(self, response):
+        """Rows and notes once the page has asked each provider for its row."""
+        props = self._props(response)
+        rows = list(props["rows"])
+        notes = list(props["notes"])
+        for source in props["onlineSources"]:
+            payload = self.client.get(
+                reverse("search_results_json"),
+                {"q": props["query"], "media_type": props["mediaType"], "row": source["rowId"], "page": 1},
+            ).json()
+            if payload["row"]:
+                rows.append(payload["row"])
+            if payload["unavailable"]:
+                notes.append(f"{payload['unavailable']} is currently unavailable.")
+        return rows, notes
 
     @patch("app.providers.services.search")
     def test_media_search_view(self, mock_search):
@@ -79,6 +95,7 @@ class MediaSearchViewTests(TestCase):
             reverse("search") + "?media_type=movie&q=test",
         )
 
+        self._streamed(response)
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "app/search.html")
 
@@ -105,6 +122,7 @@ class MediaSearchViewTests(TestCase):
         }
         response = self.client.get(reverse("search") + "?q=test")
 
+        self._streamed(response)
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "app/search.html")
         mock_search.assert_called()
@@ -348,6 +366,7 @@ class MediaSearchViewTests(TestCase):
             reverse("search") + "?media_type=anime&q=chainsaw",
         )
 
+        self._streamed(response)
         self.assertEqual(response.status_code, 200)
         # Every provider is searched for its own row; the user's default is one of them.
         mock_search.assert_any_call(
@@ -372,6 +391,7 @@ class MediaSearchViewTests(TestCase):
 
         response = self.client.get(reverse("search") + "?media_type=book&q=quo+vadis")
 
+        self._streamed(response)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(mock_search.call_args.args[3], Sources.OPENLIBRARY.value)
         self.assertNotIn(
@@ -394,6 +414,7 @@ class MediaSearchViewTests(TestCase):
             reverse("search") + "?media_type=book&q=quo+vadis&source=hardcover",
         )
 
+        self._streamed(response)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(mock_search.call_args.args[3], Sources.OPENLIBRARY.value)
 
@@ -416,6 +437,7 @@ class MediaSearchViewTests(TestCase):
             reverse("search") + "?media_type=book&q=test",
         )
 
+        self._streamed(response)
         self.assertEqual(response.status_code, 200)
         mock_search.assert_called()
         self.assertFalse(services._interactive_request.get())
@@ -431,9 +453,10 @@ class MediaSearchViewTests(TestCase):
             reverse("search") + "?media_type=book&q=test",
         )
 
+        self._streamed(response)
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "app/search.html")
-        notes = " ".join(self._props(response)["notes"])
+        notes = " ".join(self._streamed(response)[1])
         self.assertIn("Hardcover", notes)
         self.assertIn("unavailable", notes)
 

@@ -4,7 +4,7 @@ import { SearchResults as SharedSearchResults } from './SearchResults.jsx';
 import { RatingStarIcon } from './RatingStarIcon.web';
 import { RatingStars } from './RatingStars';
 import { useShelfCardWidth } from './webShelfWidth';
-import { mergeSearchRowPage, searchRowUrl } from './searchRows';
+import { mergeSearchRowPage, onlineRowParams, searchRowUrl } from './searchRows';
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;
@@ -86,6 +86,16 @@ export function SearchResults({ props }) {
     return payload.row ? mergeSearchRowPage(row, payload.row) : null;
   }, [props]);
 
+  const onLoadOnlineRow = useCallback(async source => {
+    const params = new URLSearchParams(onlineRowParams(source, props));
+    const response = await window.fetch(`/search/results?${params}`, {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) throw new Error(`Search request failed: ${response.status}`);
+    return response.json();
+  }, [props.query, props.mediaType]);
+
   const renderRating = useCallback(({ value, label, scaleMax, palette: ratingPalette, onSelect }) => (
     <RatingStars
       scaleMax={scaleMax}
@@ -106,5 +116,6 @@ export function SearchResults({ props }) {
     onOpenCard={onOpenCard}
     onOpenLink={onOpenLink}
     onLoadMore={onLoadMore}
+    onLoadOnlineRow={onLoadOnlineRow}
   />;
 }
