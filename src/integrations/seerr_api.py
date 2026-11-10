@@ -15,6 +15,7 @@ from django.utils.dateparse import parse_datetime
 
 from app.log_safety import exception_summary
 from app.models import MediaTypes
+from app.public_errors import PublicMessageError
 from integrations.imports.helpers import decrypt_or_raise
 from integrations.safe_fetch import SelfHostedUrlError, send_to_self_hosted_pinned
 
@@ -32,7 +33,7 @@ USER_NAME_FIELDS = ("username", "email", "plexUsername", "jellyfinUsername")
 ACTIVE_REQUEST_STATUSES = {1, 2}
 
 
-class SeerrError(Exception):
+class SeerrError(PublicMessageError):
     """Seerr could not be reached or refused the call."""
 
 

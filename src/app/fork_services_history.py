@@ -8,6 +8,7 @@ from django.core.exceptions import ObjectDoesNotExist
 
 from app import cache_utils, history_cache, statistics_cache
 from app.models import BasicMedia, MediaTypes, PodcastPlay
+from app.public_errors import PublicMessageError
 from app.services import podcast_plays
 
 logger = logging.getLogger(__name__)
@@ -17,7 +18,7 @@ class HistoryRecordNotFoundError(LookupError):
     """The history record does not exist or belongs to another user."""
 
 
-class HistoryDeletionError(RuntimeError):
+class HistoryDeletionError(PublicMessageError, RuntimeError):
     """The record was found but could not be deleted."""
 
 

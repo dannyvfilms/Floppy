@@ -637,7 +637,13 @@ def backup_directory(user):
     # forbidden in normal usernames, avoiding collisions with this fallback.
     if username in {"", ".", ".."} or Path(username).name != username:
         username = f"user:{user.pk}"
-    directory = Path(settings.BACKUP_DIR) / username
+    root = os.path.normpath(settings.BACKUP_DIR)
+    path = os.path.normpath(f"{root}{os.sep}{username}")
+    # The name check above already allows no separators; this keeps the folder
+    # check explicit for anything that reads the result.
+    if not path.startswith(root.rstrip(os.sep) + os.sep):
+        path = f"{root}{os.sep}user:{user.pk}"
+    directory = Path(path)
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     return directory
 

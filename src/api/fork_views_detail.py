@@ -707,7 +707,7 @@ class MediaSeerrRequestView(drf_views.APIView):
                 return Response({"detail": "Seerr is not available."}, status=HTTP.NOT_FOUND)
             return Response(self._summary(request, client, media_type, media_id))
         except (seerr_api.SeerrError, import_helpers.MediaImportError) as error:
-            return Response({"detail": str(error)}, status=HTTP.BAD_GATEWAY)
+            return Response({"detail": error.message}, status=HTTP.BAD_GATEWAY)
 
     @extend_schema(
         request=OpenApiTypes.OBJECT,
@@ -730,7 +730,7 @@ class MediaSeerrRequestView(drf_views.APIView):
             )
             return Response(self._summary(request, client, media_type, media_id))
         except (seerr_api.SeerrError, import_helpers.MediaImportError) as error:
-            return Response({"detail": str(error)}, status=HTTP.BAD_GATEWAY)
+            return Response({"detail": error.message}, status=HTTP.BAD_GATEWAY)
 
 
 def _collection_stats(request, tracked_type, lookup):

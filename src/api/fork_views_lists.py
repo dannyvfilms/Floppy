@@ -21,7 +21,7 @@ from lists.models import (
     ListActivityType,
     ListRecommendation,
 )
-from lists.tiers import clean_tiers, resolve_tiers
+from lists.tiers import TierError, clean_tiers, resolve_tiers
 from lists.views_add_reorder import apply_full_order, apply_reorder_action
 from lists.views_helpers import list_has_item_identity
 from lists.views_recommendations import get_or_create_recommendation_item
@@ -112,8 +112,8 @@ class ListTiersView(drf_views.APIView):
             return error
         try:
             tiers = clean_tiers(request.data.get("tiers"))
-        except ValueError as exc:
-            return Response({"detail": str(exc)}, status=HTTP.BAD_REQUEST)
+        except TierError as exc:
+            return Response({"detail": exc.message}, status=HTTP.BAD_REQUEST)
         with transaction.atomic():
             custom_list.tiers = tiers
             custom_list.save(update_fields=["tiers"])

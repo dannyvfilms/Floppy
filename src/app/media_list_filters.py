@@ -92,6 +92,7 @@ class MediaListFilterError(ValueError):
         """Store the invalid query parameter alongside the message."""
         super().__init__(message)
         self.parameter = parameter
+        self.message = message
 
 
 @dataclass(frozen=True)

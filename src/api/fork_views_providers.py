@@ -848,6 +848,8 @@ class DeviceApprovalView(drf_views.APIView):
     @extend_schema(request=OpenApiTypes.OBJECT, responses={200: OpenApiTypes.OBJECT})
     def post(self, request):
         """Body: {"user_code", "action": approve | deny}."""
+        from integrations.oauth_models import DeviceAuthorizationStateError
+
         body = _json_body(request)
         authorization = self._authorization(body.get("user_code"))
         problem = self._problem(authorization)
@@ -861,8 +863,8 @@ class DeviceApprovalView(drf_views.APIView):
                 authorization.deny(request.user)
             else:
                 return Response({"detail": "Choose whether to approve or deny this application."}, status=HTTP.BAD_REQUEST)
-        except ValueError as error:
-            return Response({"detail": str(error)}, status=HTTP.BAD_REQUEST)
+        except DeviceAuthorizationStateError as error:
+            return Response({"detail": error.message}, status=HTTP.BAD_REQUEST)
         return Response({"ok": True, "action": action}, status=HTTP.OK)
 
 
@@ -983,7 +985,7 @@ class MetadataMatchCandidatesView(drf_views.APIView):
             try:
                 results = services.search(source_item.media_type, query, 1, source=provider, user=request.user)
             except services.ProviderAPIError as error:
-                return Response({"detail": f"Could not search {provider}: {error}"}, status=HTTP.BAD_GATEWAY)
+                return Response({"detail": f"Could not search {error.provider_label}."}, status=HTTP.BAD_GATEWAY)
             candidates = [
                 {
                     "media_id": row["media_id"],
@@ -1055,7 +1057,7 @@ class MetadataMatchPreviewView(drf_views.APIView):
         try:
             results = services.search(source_item.media_type, query, 1, source=provider, user=request.user)
         except services.ProviderAPIError as error:
-            return Response({"detail": f"Could not search {provider}: {error}"}, status=HTTP.BAD_GATEWAY)
+            return Response({"detail": f"Could not search {error.provider_label}."}, status=HTTP.BAD_GATEWAY)
         chosen = next(
             (
                 row
@@ -1073,7 +1075,7 @@ class MetadataMatchPreviewView(drf_views.APIView):
             preview = preview_match_correction(request.user, source_item, destination)
             return Response(_preview_payload(request, source_item, preview), status=HTTP.OK)
         except _correction_errors() as error:
-            return Response({"detail": str(error)}, status=HTTP.BAD_REQUEST)
+            return Response({"detail": error.message}, status=HTTP.BAD_REQUEST)
 
 
 # /api/v1/metadata-review/items/<item_id>/apply/
@@ -1121,9 +1123,9 @@ class MetadataMatchApplyView(drf_views.APIView):
                 note=str(body.get("note") or ""),
             )
         except stale as error:
-            return Response({"detail": str(error)}, status=HTTP.CONFLICT)
+            return Response({"detail": error.message}, status=HTTP.CONFLICT)
         except (invalid, missing) as error:
-            return Response({"detail": str(error)}, status=HTTP.BAD_REQUEST)
+            return Response({"detail": error.message}, status=HTTP.BAD_REQUEST)
         except PermissionDenied:
             return Response({"detail": "Permission denied."}, status=HTTP.FORBIDDEN)
         return Response({"ok": True, "item": _item_row(corrected)}, status=HTTP.OK)

@@ -86,6 +86,7 @@ class ListTierApiTests(FloppyApiTestCase):
             headers=self.auth_headers,
         )
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+        self.assertEqual(response.json(), {"detail": "Provide between 1 and 12 tiers."})
 
     def test_move_rejects_unknown_tier_and_foreign_item(self):
         """Unknown tier is 400; an item outside the list is 404."""

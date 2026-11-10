@@ -268,6 +268,18 @@ class AppearanceCardsHomeTests(SettingsTestCase):
         )
         self.assertIn(response.status_code, {HTTP.BAD_REQUEST, HTTP.OK})
 
+    def test_invalid_home_sections_return_the_message(self):
+        response = self.call_api(
+            "put",
+            "api_settings_user_home_screen",
+            payload={"sections": "not a list"},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+        self.assertEqual(
+            response.json(), {"detail": "Home Screen settings payload must be a list."}
+        )
+
     def test_filter_fields_unknown_media_type(self):
         response = self.call_api(
             "get",

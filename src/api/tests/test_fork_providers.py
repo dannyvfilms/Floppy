@@ -431,6 +431,23 @@ class MetadataReviewTests(FloppyApiTestCase):
         ).json()
         self.assertEqual(empty["candidates"], [])
 
+    def test_match_search_failure_names_only_the_provider(self):
+        """A provider failure answers with the provider's name, not the error."""
+        from app.providers import services
+
+        item = self.items_by_type["movie"][0]
+        error = services.ProviderAPIError(item.source, RuntimeError("secret-key"), "upstream detail")
+        for method, name, extra in (
+            ("get", "api_metadata_match_candidates", {"params": {"q": "found"}}),
+            ("post", "api_metadata_match_preview", {"payload": {"q": "found"}}),
+        ):
+            with self.subTest(route=name), patch("app.providers.services.search", side_effect=error):
+                response = self.call_api(method, name, headers=self.auth_headers, args=(item.pk,), **extra)
+                self.assertEqual(response.status_code, HTTP.BAD_GATEWAY)
+                self.assertEqual(
+                    response.json(), {"detail": f"Could not search {error.provider_label}."}
+                )
+
     def test_candidates_for_an_untracked_item_is_404(self):
         item = self.items_by_type["movie"][0]
         response = self.call_api(

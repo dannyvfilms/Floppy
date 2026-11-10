@@ -27,19 +27,20 @@ from app.models import (
     WatchStateChange,
 )
 from app.providers import services
+from app.public_errors import PublicMessageError
 from integrations.external_references import save_correction
 from lists.models import CustomListItem, ListRecommendation
 
 
-class InvalidMatchCorrectionError(ValueError):
+class InvalidMatchCorrectionError(PublicMessageError, ValueError):
     """The source and destination cannot be corrected together."""
 
 
-class StaleCorrectionPreviewError(ValueError):
+class StaleCorrectionPreviewError(PublicMessageError, ValueError):
     """The affected user-owned state changed after preview."""
 
 
-class MissingEpisodeMappingError(ValueError):
+class MissingEpisodeMappingError(PublicMessageError, ValueError):
     """At least one source episode has not been mapped."""
 
 

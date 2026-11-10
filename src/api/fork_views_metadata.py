@@ -518,7 +518,7 @@ class ItemCoverView(drf_views.APIView):
         try:
             value = self._stored_cover(request, local_covers)
         except local_covers.CoverError as error:
-            return Response({"detail": str(error)}, status=HTTP.BAD_REQUEST)
+            return Response({"detail": error.message}, status=HTTP.BAD_REQUEST)
         if item.image != value:
             cover_views._set_cover(item, value)
         return Response({"id": item.id, "image": item.image}, status=HTTP.OK)

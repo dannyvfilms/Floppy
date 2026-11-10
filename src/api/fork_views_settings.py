@@ -337,7 +337,7 @@ class UserHomeScreenView(drf_views.APIView):
         try:
             save_home_screen_configuration(user, json.dumps(body.get("sections", [])))
         except HomeScreenValidationError as exc:
-            return Response({"detail": str(exc)}, status=HTTP.BAD_REQUEST)
+            return Response({"detail": " ".join(exc.messages)}, status=HTTP.BAD_REQUEST)
         fields = []
         headers = bool(body.get("show_media_type_headers"))
         if user.home_show_media_type_headers != headers:

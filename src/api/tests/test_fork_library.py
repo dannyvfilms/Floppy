@@ -134,6 +134,25 @@ class GameGroupTests(LibraryEndpointsBase):
         response = self.client.get("/api/v1/media/game/", {"group_by": "series", "group": "id:42", "sort": "score", "direction": "desc"}, **self.auth_headers)
         self.assertEqual([row["id"] for row in response.json()["results"]], [item.pk for item in games[:2]])
 
+    def test_invalid_filter_names_the_parameter_and_message(self):
+        """A rejected filter answers with the parser's own text on each route."""
+        from unittest.mock import patch
+
+        from app.media_list_filters import MediaListFilterError
+
+        for name, args in (
+            ("api_library_filter_options", ("movie",)),
+            ("api_library_item_ids", ("movie",)),
+            ("api_library_game_groups", ()),
+        ):
+            with self.subTest(route=name), patch(
+                "api.fork_views_library.parse_media_list_filters",
+                side_effect=MediaListFilterError("sort", "Unknown sort."),
+            ):
+                response = self.get(name, *args)
+                self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+                self.assertEqual(response.json(), {"detail": "Invalid sort: Unknown sort."})
+
     def test_bad_group_mode_is_rejected(self):
         """An unsupported grouping is a validation error."""
         response = self.client.get("/api/v1/library/game-groups/", {"group_by": "nope"}, **self.auth_headers)

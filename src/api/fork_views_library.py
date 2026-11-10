@@ -162,7 +162,7 @@ class LibraryFilterOptionsView(drf_views.APIView):
             filters = replace(parse_media_list_filters(request), media_type=media_type)
         except MediaListFilterError as exc:
             return Response(
-                {"detail": f"Invalid {exc.parameter}: {exc}"},
+                {"detail": f"Invalid {exc.parameter}: {exc.message}"},
                 status=HTTP.BAD_REQUEST,
             )
         user = request.user
@@ -285,7 +285,7 @@ class LibraryItemIdsView(drf_views.APIView):
             filters = replace(parse_media_list_filters(request), media_type=media_type)
         except MediaListFilterError as exc:
             return Response(
-                {"detail": f"Invalid {exc.parameter}: {exc}"},
+                {"detail": f"Invalid {exc.parameter}: {exc.message}"},
                 status=HTTP.BAD_REQUEST,
             )
         engine = LibraryQueryExecutor(
@@ -650,7 +650,7 @@ class LibraryGameGroupsView(drf_views.APIView):
         try:
             filters = parse_media_list_filters(request)
         except MediaListFilterError as cause:
-            return Response({"detail": f"Invalid {cause.parameter}: {cause}"}, status=HTTP.BAD_REQUEST)
+            return Response({"detail": f"Invalid {cause.parameter}: {cause.message}"}, status=HTTP.BAD_REQUEST)
         if filters.group_by not in {"series", "franchise"}:
             return Response({"detail": "Choose series or franchise grouping."}, status=HTTP.BAD_REQUEST)
         filters = replace(filters, media_type="game", group="", separate_entries=False)

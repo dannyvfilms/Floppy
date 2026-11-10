@@ -45,7 +45,7 @@ class BackupDirectoryTests(SimpleTestCase):
     def test_username_cannot_escape_backup_directory(self):
         with TemporaryDirectory() as temporary, override_settings(BACKUP_DIR=temporary):
             root = Path(temporary)
-            for username in (".", "..", "../outside", "/outside"):
+            for username in ("", ".", "..", "../outside", "/outside", "a/b"):
                 with self.subTest(username=username):
                     user = SimpleNamespace(username=username, pk=42)
                     with patch(
@@ -62,6 +62,19 @@ class BackupDirectoryTests(SimpleTestCase):
             self.assertEqual(
                 exports.backup_directory(user),
                 Path(temporary) / "alice.example",
+            )
+
+    def test_backup_directory_stays_inside_backup_dir(self):
+        """The folder check holds even if the name check were to pass a path."""
+        with (
+            TemporaryDirectory() as temporary,
+            override_settings(BACKUP_DIR=f"{temporary}/"),
+            patch("integrations.exports.Path.name", "../outside"),
+        ):
+            user = SimpleNamespace(username="../outside", pk=42)
+            self.assertEqual(
+                exports.backup_directory(user),
+                Path(temporary) / "user:42",
             )
 
 

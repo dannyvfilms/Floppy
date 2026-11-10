@@ -35,7 +35,6 @@ from django.templatetags.static import static
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
-from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import (
@@ -312,13 +311,9 @@ def _integration_redirect(request, *, connected_slug=None, next_url=None):
         # Back into the native app: only its own scheme, never another URL.
         # Django's redirect() refuses custom schemes, so answer directly.
         return HttpResponse(status=HTTPStatus.FOUND, headers={"Location": destination})
-    if destination and not url_has_allowed_host_and_scheme(
-        destination,
-        allowed_hosts={request.get_host()},
-        require_https=request.is_secure(),
-    ):
-        destination = None
-    return redirect(destination or "import_data")
+    return redirect(
+        app_helpers.safe_return_url(request, destination, reverse("import_data"))
+    )
 
 
 def _consume_oauth_state(request, provider):
@@ -951,7 +946,7 @@ def poll_trakt_device(request):
         result = trakt.poll_device_token(state["device_code"])
     except helpers.MediaImportError as error:
         pending_auth.clear(TRAKT_DEVICE_SESSION_KEY, request.user.pk)
-        return "error", str(error), state
+        return "error", error.message, state
 
     if result is None:
         return "pending", "", state

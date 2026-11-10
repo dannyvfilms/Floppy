@@ -73,7 +73,7 @@ def server_port_context() -> dict[str, object]:
         config_error_source = "saved" if status.saved_error else ""
     except ServerPortError as exc:
         status = None
-        config_error = str(exc)
+        config_error = exc.message
         config_error_source = "environment" if environment_override else "saved"
 
     return {
