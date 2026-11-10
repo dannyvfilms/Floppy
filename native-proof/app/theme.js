@@ -1,32 +1,151 @@
-import { systemColor } from './systemColor';
+import { DARK, LIGHT, PRESETS, getTheme, subscribeTheme, surfaceMutedSoft } from './themeState';
+import { themeColor } from './themeColor';
 
-// Semantic colors follow iOS appearance, including already-created styles.
-export const palette = {
-  background: systemColor('#f8f9fa', '#212529'),
-  surface: systemColor('#ffffff', '#2a2f35'),
-  surfaceStrong: systemColor('#e9ecef', '#39404b'),
-  surfaceMuted: systemColor('#dee2e6', '#3e454d'),
-  border: systemColor('#dee2e6', '#2c3136'),
-  text: systemColor('#212529', '#f3f4f6'),
-  textSecondary: systemColor('#495057', '#d1d5db'),
-  textMuted: systemColor('#6c757d', '#adb5bd'),
-  accent: '#4a9eff',
+// Semantic colours. Every token is a getter that reads the active theme
+// (docs/architecture/theming.md) through the platform's colour strategy:
+// CSS variables on the web, dynamic colours on iOS for system/light/dark, and
+// literals elsewhere (ThemeRoot remounts the tree when those change). Importing
+// `palette` keeps working: `palette.text` always answers for the current theme.
+const TOKEN_KEYS = [
+  'background', 'surface', 'surfaceStrong', 'surfaceMuted', 'border', 'surfaceBorder', 'surfaceDim', 'panel',
+  'text', 'textSecondary', 'textMuted', 'accent', 'accentContrast', 'link', 'dangerText',
+];
+
+// Fixed brand and status colours, identical in every theme (web parity: indigo
+// primary buttons, red destructive buttons).
+const FIXED = {
+  fieldBorder: '#4b5563',
   accentStrong: '#4f46e5',
-  link: '#a5b4fc',
+  accentStrongPressed: '#4338ca',
+  onAccentStrong: '#ffffff',
   success: '#10b981',
+  importRunCompletedText: '#4ade80',
+  importRunCompletedBackground: 'rgba(74, 222, 128, 0.1)',
   warning: '#f59e0b',
   danger: '#ef4444',
+  dangerPressed: '#b91c1c',
+  onDanger: '#ffffff',
+  dangerSoft: 'rgba(239, 68, 68, 0.18)',
+  overlay: 'rgba(0, 0, 0, 0.55)',
 };
+
+// The same diagonal bands as the web appearance swatches; colours stay in the theme source.
+export const themeSwatches = Object.fromEntries([
+  ['system', LIGHT.background, DARK.background, 0.5],
+  ['light', LIGHT.background, '#4f46e5', 0.65],
+  ['dark', DARK.background, DARK.accent, 0.65],
+  ['catppuccin_mocha', PRESETS.catppuccin_mocha.background, PRESETS.catppuccin_mocha.accent, 0.52, PRESETS.catppuccin_mocha.link, 0.76],
+  ['dracula', PRESETS.dracula.background, PRESETS.dracula.accent, 0.52, '#ff79c6', 0.76],
+  ['nord', PRESETS.nord.background, PRESETS.nord.accent, 0.52, PRESETS.nord.text, 0.76],
+  ['gruvbox', PRESETS.gruvbox.background, PRESETS.gruvbox.accent, 0.52, PRESETS.gruvbox.link, 0.76],
+  ['oled', PRESETS.oled.background, PRESETS.oled.accent, 0.65],
+  ['plex', PRESETS.plex.background, PRESETS.plex.accent, 0.65],
+  ['projector', PRESETS.projector.background, PRESETS.projector.accent, 0.65],
+  ['video_store', PRESETS.video_store.background, PRESETS.video_store.accent, 0.5, PRESETS.video_store.link, 0.75],
+].map(([key, base, second, at, third, thirdAt]) => [key, {
+  viewBox: '0 0 44 44', root: { fill: 'none' }, children: [
+    { tag: 'rect', attrs: { width: '44', height: '44', fill: base }, children: [] },
+    ...[[second, at], ...(third ? [[third, thirdAt]] : [])].map(([fill, stop]) => ({
+      tag: 'polygon', attrs: { points: `44,${88 * stop - 44} 44,44 ${88 * stop - 44},44`, fill }, children: [],
+    })),
+  ],
+}]));
+
+themeSwatches.glass = {
+  viewBox: '0 0 44 44', root: { fill: 'none' }, children: [
+    { tag: 'defs', attrs: {}, children: [
+      { tag: 'linearGradient', attrs: { id: 'theme-glass-base', x1: '0%', y1: '0%', x2: '100%', y2: '100%' }, children: [
+        { tag: 'stop', attrs: { offset: '55%', 'stop-color': '#0d1122' }, children: [] },
+        { tag: 'stop', attrs: { offset: '100%', 'stop-color': PRESETS.glass.accent }, children: [] },
+      ] },
+      { tag: 'radialGradient', attrs: { id: 'theme-glass-glow', cx: '30%', cy: '25%', r: '39%' }, children: [
+        { tag: 'stop', attrs: { offset: '0%', 'stop-color': PRESETS.glass.link }, children: [] },
+        { tag: 'stop', attrs: { offset: '100%', 'stop-color': PRESETS.glass.link, 'stop-opacity': '0' }, children: [] },
+      ] },
+    ] },
+    { tag: 'rect', attrs: { width: '44', height: '44', fill: 'url(#theme-glass-base)' }, children: [] },
+    { tag: 'rect', attrs: { width: '44', height: '44', fill: 'url(#theme-glass-glow)' }, children: [] },
+  ],
+};
+
+const customSwatchColors = ['#ff4fa3', '#58e1d4', '#f2a93b', '#4f46e5', '#ff4fa3'];
+themeSwatches.custom = {
+  viewBox: '0 0 44 44', root: { fill: 'none' },
+  // SVG has no conic paint server; small overlapping sectors render the web's hue wheel on every platform.
+  children: Array.from({ length: 120 }, (_, index) => {
+    const position = (index + 0.5) / 30;
+    const segment = Math.floor(position);
+    const fraction = position - segment;
+    const channels = [1, 3, 5].map(start => Math.round(
+      parseInt(customSwatchColors[segment].slice(start, start + 2), 16) * (1 - fraction)
+      + parseInt(customSwatchColors[segment + 1].slice(start, start + 2), 16) * fraction,
+    ));
+    const from = (index * 3 - 90) * Math.PI / 180;
+    const to = (index * 3 - 86.9) * Math.PI / 180;
+    return { tag: 'path', attrs: {
+      d: `M22 22L${22 + Math.cos(from) * 32} ${22 + Math.sin(from) * 32}L${22 + Math.cos(to) * 32} ${22 + Math.sin(to) * 32}Z`,
+      fill: `rgb(${channels.join(',')})`,
+    }, children: [] };
+  }),
+};
+
+let themeVersion = 0;
+subscribeTheme(() => { themeVersion += 1; });
+
+export function getThemeVersion() {
+  return themeVersion;
+}
+
+export const palette = {};
+TOKEN_KEYS.forEach(key => {
+  Object.defineProperty(palette, key, { enumerable: true, get: () => themeColor(key, getTheme()) });
+});
+Object.entries(FIXED).forEach(([key, value]) => {
+  Object.defineProperty(palette, key, { enumerable: true, value });
+});
+
+Object.defineProperty(palette, 'surfaceMutedSoft', { enumerable: true, get: () => surfaceMutedSoft(getTheme()) });
+
+// Palettes derived from `palette` are recomputed when the theme changes, so a
+// consumer holding the object never sees stale colours.
+function liveObject(factory) {
+  let version = -1;
+  let cache = {};
+  const current = () => {
+    if (version !== themeVersion) {
+      cache = factory();
+      version = themeVersion;
+    }
+    return cache;
+  };
+  return new Proxy({}, {
+    get: (_target, key) => current()[key],
+    has: (_target, key) => key in current(),
+    ownKeys: () => Reflect.ownKeys(current()),
+    getOwnPropertyDescriptor: (_target, key) => {
+      const descriptor = Object.getOwnPropertyDescriptor(current(), key);
+      return descriptor ? { ...descriptor, configurable: true } : undefined;
+    },
+  });
+}
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 };
-export const radius = { sm: 6, md: 10, lg: 16, pill: 9999 };
-
-export const badgePalette = {
-  indigo: { color: '#fff', backgroundColor: palette.accentStrong },
-  outline: { color: palette.textSecondary, borderColor: palette.surfaceMuted, borderWidth: 1 },
+// Custom web themes use one radius for all rounded controls. Basic themes keep
+// the existing native sizes; runtime consumers read the current theme.
+export const radius = {
+  get sm() { return getTheme().effects?.radius ?? 6; },
+  get md() { return getTheme().effects?.radius ?? 10; },
+  get lg() { return getTheme().effects?.radius ?? 16; },
+  pill: 9999,
 };
 
-export const progressPalette = {
+const makeBadgePalette = () => ({
+  indigo: { color: '#fff', backgroundColor: palette.accentStrong },
+  outline: { color: palette.textSecondary, borderColor: palette.surfaceMuted, borderWidth: 1 },
+});
+export const badgePalette = liveObject(makeBadgePalette);
+
+const makeProgressPalette = () => ({
   text: palette.textSecondary,
   icon: palette.text,
   disabledIcon: palette.text,
@@ -39,9 +158,10 @@ export const progressPalette = {
   fontSize: 12,
   minWidth: 24,
   showButtons: true,
-};
+});
+export const progressPalette = liveObject(makeProgressPalette);
 
-export const progressDetailPalette = {
+const makeProgressDetailPalette = () => ({
   background: palette.background,
   text: palette.text,
   textSecondary: palette.textSecondary,
@@ -61,9 +181,10 @@ export const progressDetailPalette = {
   droppedBackground: palette.surfaceMuted,
   droppedText: palette.textMuted,
   focusStyle: {},
-};
+});
+export const progressDetailPalette = liveObject(makeProgressDetailPalette);
 
-export const ratingPalette = {
+const makeRatingPalette = () => ({
   lit: palette.warning,
   unlit: palette.surfaceMuted,
   muted: palette.textMuted,
@@ -98,9 +219,10 @@ export const ratingPalette = {
   popupWidth: 250,
   popupRadius: 8,
   popupPadding: 12,
-};
+});
+export const ratingPalette = liveObject(makeRatingPalette);
 
-export const mediaCardPalette = {
+const makeMediaCardPalette = () => ({
   card: palette.surface,
   text: palette.text,
   textSecondary: palette.textSecondary,
@@ -127,9 +249,10 @@ export const mediaCardPalette = {
     Dropped: palette.danger,
   },
   rating: { ...ratingPalette, focusStyle: {} },
-};
+});
+export const mediaCardPalette = liveObject(makeMediaCardPalette);
 
-export const historyPalette = {
+const makeHistoryPalette = () => ({
   background: palette.background,
   surface: palette.surface,
   surfaceStrong: palette.surfaceStrong,
@@ -148,9 +271,10 @@ export const historyPalette = {
   radius: radius.md,
   radiusSmall: radius.sm,
   mediaCard: mediaCardPalette,
-};
+});
+export const historyPalette = liveObject(makeHistoryPalette);
 
-export const railPalette = {
+const makeRailPalette = () => ({
   text: palette.text,
   textSecondary: palette.textSecondary,
   textMuted: palette.textMuted,
@@ -162,9 +286,10 @@ export const railPalette = {
   arrowDisabled: palette.surfaceMuted,
   loading: palette.accent,
   focus: palette.accent,
-};
+});
+export const railPalette = liveObject(makeRailPalette);
 
-export const statisticsPalette = {
+const makeStatisticsPalette = () => ({
   background: palette.background,
   surface: palette.surface,
   surfaceStrong: palette.surfaceStrong,
@@ -176,15 +301,16 @@ export const statisticsPalette = {
   accent: palette.accent,
   accentStrong: palette.accentStrong,
   accentContrast: '#ffffff',
-  link: '#67e8f9',
+  link: palette.link,
   danger: palette.danger,
   warning: palette.warning,
   success: palette.success,
   radius: 18,
   radiusSmall: radius.sm,
-};
+});
+export const statisticsPalette = liveObject(makeStatisticsPalette);
 
-export const dateTimePalette = {
+const makeDateTimePalette = () => ({
   text: palette.text,
   textSecondary: palette.textSecondary,
   textMuted: palette.textMuted,
@@ -200,9 +326,10 @@ export const dateTimePalette = {
   radiusSmall: radius.sm,
   fontSize: 14,
   smallFontSize: 12,
-};
+});
+export const dateTimePalette = liveObject(makeDateTimePalette);
 
-export const playbackPalette = {
+const makePlaybackPalette = () => ({
   surface: palette.surface,
   surfaceStrong: palette.surfaceStrong,
   surfaceHover: palette.surfaceStrong,
@@ -220,4 +347,5 @@ export const playbackPalette = {
   progressFill: palette.accent,
   pausedFill: palette.warning,
   focusStyle: {},
-};
+});
+export const playbackPalette = liveObject(makePlaybackPalette);

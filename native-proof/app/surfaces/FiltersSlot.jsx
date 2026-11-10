@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { FilterBar } from '../../../frontend/ui/FilterBar';
-import { palette, radius, spacing } from '../theme';
+import { Icon } from '../../../frontend/ui/Icon';
+import { Modal } from '../../../frontend/ui/Modal';
+import { actionIcons } from '../../../frontend/ui/actionIcons';
+import { mediaCardPalette, palette, radius, spacing } from '../theme';
 
 export const surface = {
   id: 'FILTERS',
-  title: 'Filter toolbar and saved views',
-  where: 'Library, lists, History and Calendar',
+  title: 'Filter toolbar',
+  where: 'Library',
   status: 'ported',
-  note: 'The shared filter bar renders media type, status, attribute, sort, view, range and saved-view controls with local selection, busy feedback, clear defaults and accessible labels.',
+  note: 'The toolbar is the web row: the filter menu (All), Status and Sort with its direction arrow, over the real library query. The filter menu lists every web section with the real option lists from /api/v1/media/{type}/filter-options/, and the screen owns the filter state and reloads /api/v1/media/ with the same parameters the API media-list contract accepts. The view settings menu (gear) holds the Table/Grid switch and Select Items.',
 };
 
 const filterPalette = {
@@ -22,240 +25,205 @@ const filterPalette = {
   textMuted: palette.textMuted,
   accent: palette.accent,
   accentStrong: palette.accentStrong,
-  accentText: '#ffffff',
+  accentText: mediaCardPalette.chipText,
   danger: palette.danger,
   disabled: palette.textMuted,
-  overlay: 'rgba(24, 24, 27, 0.78)',
+  overlay: mediaCardPalette.chipBackground,
   radius: radius.md,
 };
 
-const options = {
-  mediaTypes: [
-    { value: 'movie', label: 'Movies' },
-    { value: 'tv', label: 'Shows' },
-    { value: 'anime', label: 'Anime' },
-    { value: 'book', label: 'Books' },
-    { value: 'game', label: 'Games' },
-  ],
-  statuses: [
-    { value: 'planning', label: 'Planning' },
-    { value: 'in_progress', label: 'In progress' },
-    { value: 'paused', label: 'Paused' },
-    { value: 'completed', label: 'Completed' },
-    { value: 'dropped', label: 'Dropped' },
-  ],
-  sorts: [
-    { value: 'added', label: 'Date added' },
-    { value: 'title', label: 'Title' },
-    { value: 'release', label: 'Release date' },
-    { value: 'rating', label: 'Rating' },
-    { value: 'last_watched', label: 'Last watched' },
-  ],
-  views: [
-    { value: 'grid', label: 'Grid' },
-    { value: 'table', label: 'Table' },
-  ],
-  savedViews: [
-    { id: 'recent', label: 'Recently added' },
-    { id: 'unrated', label: 'Unrated' },
-    { id: 'continue', label: 'Continue watching' },
-  ],
-  ranges: [
-    { key: 'rating', label: 'Rating', type: 'number', placeholder: '0–10' },
-    {
-      key: 'dateAdded',
-      label: 'Date added',
-      type: 'date',
-      placeholder: 'YYYY-MM-DD',
-      relative: true,
-      units: [
-        { value: 'days', label: 'Days' },
-        { value: 'weeks', label: 'Weeks' },
-        { value: 'months', label: 'Months' },
-        { value: 'years', label: 'Years' },
-      ],
-    },
-  ],
-  sections: [
-    {
-      key: 'genre',
-      label: 'Genre',
-      state: 'genre',
-      type: 'single',
-      clearValue: '',
-      searchable: true,
-      options: [
-        { value: 'Drama', label: 'Drama' },
-        { value: 'Comedy', label: 'Comedy' },
-        { value: 'Science Fiction', label: 'Science Fiction' },
-        { value: 'Documentary', label: 'Documentary' },
-      ],
-    },
-    {
-      key: 'year',
-      label: 'Year',
-      state: 'year',
-      type: 'single',
-      clearValue: '',
-      searchable: true,
-      options: [
-        { value: '2026', label: '2026' },
-        { value: '2025', label: '2025' },
-        { value: '2024', label: '2024' },
-      ],
-    },
-    {
-      key: 'tags',
-      label: 'Tags',
-      state: 'selectedTags',
-      type: 'multi',
-      clearValue: '',
-      searchable: true,
-      modes: [
-        { value: 'or', label: 'Any' },
-        { value: 'and', label: 'All' },
-        { value: 'not', label: 'Not' },
-      ],
-      modeState: 'tagMode',
-      modeValue: 'or',
-      options: [
-        { value: 'favorite', label: 'Favorite' },
-        { value: 'rewatch', label: 'Rewatch' },
-        { value: 'cozy', label: 'Cozy' },
-      ],
-    },
-  ],
+const toolbarLabels = {
+  filters: 'Filters',
+  status: 'Status',
+  allStatuses: 'Status',
+  statuses: 'Statuses',
+  sort: 'Sort',
 };
 
-function defaultFilters() {
-  return {
-    mediaTypes: ['movie', 'tv'],
-    statuses: ['in_progress'],
-    sort: 'added',
-    direction: 'desc',
-    view: 'grid',
-    ranges: {
-      rating: { from: '', to: '', within: '', unit: 'days' },
-      dateAdded: { from: '', to: '', within: '7', unit: 'days' },
-    },
-    fields: { genre: '', year: '', tags: [] },
-    modes: { tags: 'or' },
-  };
-}
-
-export default function FiltersSlot() {
-  const [filters, setFilters] = useState(defaultFilters);
-  const [savedView, setSavedView] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  function markBusy() {
-    setBusy(true);
-    setTimeout(() => setBusy(false), 450);
-  }
-
-  function change(intent) {
-    if (intent.type === 'clear') {
-      setFilters(defaultFilters());
-      setSavedView('');
-      markBusy();
-      return;
-    }
-    if (intent.type === 'toggle') {
-      setFilters((current) => {
-        const values = current[intent.key] || [];
-        return {
-          ...current,
-          [intent.key]: values.includes(intent.value)
-            ? values.filter((value) => value !== intent.value)
-            : [...values, intent.value],
-        };
-      });
-      markBusy();
-      return;
-    }
-    if (intent.type === 'set') {
-      setFilters((current) => ({ ...current, [intent.key]: intent.value }));
-      markBusy();
-      return;
-    }
-    if (intent.type === 'range') {
-      setFilters((current) => ({
-        ...current,
-        ranges: { ...current.ranges, [intent.key]: intent.value },
-      }));
-      markBusy();
-      return;
-    }
-    if (intent.type === 'field' || intent.type === 'clearField') {
-      setFilters((current) => {
-        const section = options.sections.find((item) => item.key === intent.key);
-        if (!section) {
-          return current;
-        }
-        const value = intent.type === 'clearField'
-          ? (section.clearValue === undefined ? '' : section.clearValue)
-          : intent.value;
-        return { ...current, fields: { ...current.fields, [intent.key]: value } };
-      });
-      markBusy();
-      return;
-    }
-    if (intent.type === 'toggleField') {
-      setFilters((current) => {
-        const values = current.fields[intent.key] || [];
-        return {
-          ...current,
-          fields: {
-            ...current.fields,
-            [intent.key]: values.includes(intent.value)
-              ? values.filter((value) => value !== intent.value)
-              : [...values, intent.value],
-          },
-        };
-      });
-      markBusy();
-      return;
-    }
-    if (intent.type === 'fieldMode') {
-      setFilters((current) => ({
-        ...current,
-        modes: { ...current.modes, [intent.key]: intent.value },
-      }));
-      markBusy();
-      return;
-    }
-    if (intent.type === 'savedView') {
-      setSavedView(intent.value);
-      markBusy();
-    }
-  }
-
-  const viewOptions = options.savedViews.map((view) => ({ ...view, active: view.id === savedView }));
-  const currentOptions = { ...options, savedViews: viewOptions };
-
+// Presentational only: the Library screen owns the filter state and the
+// transport call, so every control here changes the real server query.
+export default function FiltersSlot({
+  filters = {},
+  options = {},
+  busy = false,
+  onChange,
+}) {
   return <View style={styles.group}>
     <FilterBar
+      variant="toolbar"
       filters={filters}
-      options={currentOptions}
+      options={options}
       palette={filterPalette}
       busy={busy}
-      resultCount={124}
-      labels={{
-        filters: 'Filters',
-        status: 'Status',
-        sort: 'Sort',
-        view: 'View',
-        range: 'Range',
-        savedViews: 'Saved views',
-      }}
-      onChange={change} />
-    <Text style={styles.caption}>
-      {savedView ? `Saved view: ${viewOptions.find((view) => view.id === savedView)?.label}` : 'Library filters · local proof state'}
-    </Text>
+      labels={toolbarLabels}
+      onChange={onChange} />
+  </View>;
+}
+
+// The gear in the page heading: web's "view settings" menu
+// (media_settings_menu.html): Table/Grid, Share View, Save View and Select
+// Items, the matching-entry preference, then the viewer's saved views.
+export function LibrarySettingsMenu({
+  view,
+  canToggleView = true,
+  canSelect,
+  selectMode,
+  onChangeView,
+  onToggleSelect,
+  onShare,
+  onSave,
+  savedViews = [],
+  onApplySaved,
+  onDeleteSaved,
+  separateEntries,
+  onToggleSeparate,
+}) {
+  const [open, setOpen] = useState(false);
+  const [naming, setNaming] = useState(false);
+  const [name, setName] = useState('');
+  const [sharing, setSharing] = useState(false);
+  const [notice, setNotice] = useState('');
+  const items = [
+    canToggleView ? {
+      key: 'view',
+      label: view === 'grid' ? 'Table View' : 'Grid View',
+      icon: view === 'grid' ? 'table' : 'grid',
+      onPress: () => onChangeView(view === 'grid' ? 'table' : 'grid'),
+    } : null,
+    onToggleSeparate ? {
+      key: 'separate', label: 'Show matching entries separately',
+      icon: 'eye', onPress: onToggleSeparate,
+    } : null,
+    canToggleView || onToggleSeparate ? { key: 'separator' } : null,
+    onShare ? {
+      key: 'share',
+      label: sharing ? 'Sharing…' : 'Share View',
+      icon: 'link',
+      onPress: async () => {
+        setSharing(true);
+        try { await onShare(); } catch (cause) { setNotice(cause?.message || 'The view could not be shared.'); }
+        setSharing(false);
+      },
+    } : null,
+    onSave ? { key: 'save', label: 'Save View', icon: 'save', onPress: () => { setName(''); setNotice(''); setNaming(true); } } : null,
+    canSelect ? {
+      key: 'select',
+      label: selectMode ? 'Cancel Select' : 'Select Items',
+      icon: 'tag',
+      onPress: onToggleSelect,
+    } : null,
+  ].filter(Boolean);
+
+  async function submitName() {
+    const trimmed = name.trim();
+    if (!trimmed) { setNotice('Give the view a name.'); return; }
+    try {
+      await onSave(trimmed);
+      setNaming(false);
+    } catch (cause) {
+      setNotice(cause?.message || 'The view could not be saved.');
+    }
+  }
+
+  return <View>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="View settings"
+      accessibilityState={{ expanded: open }}
+      onPress={() => setOpen(true)}
+      style={({ pressed }) => [styles.gear, pressed && styles.pressed]}>
+      <Icon spec={actionIcons.settings} size={22} color={palette.textSecondary} />
+    </Pressable>
+    <Modal transparent visible={open} animationType="fade" onRequestClose={() => setOpen(false)}>
+      <View style={styles.overlay}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close menu"
+          style={styles.backdrop} onPress={() => setOpen(false)} />
+        <View style={styles.menu}>
+          {items.map(item => item.key === 'separator' ? <View key={item.key} accessibilityRole="separator" style={styles.separator} /> : <Pressable
+            key={item.key}
+            accessibilityRole="button"
+            aria-pressed={item.key === 'separate' ? Boolean(separateEntries) : undefined}
+            onPress={() => { setOpen(false); item.onPress(); }}
+            style={({ pressed }) => [styles.menuItem, pressed && styles.pressed]}>
+            <Icon spec={actionIcons[item.icon]} size={16} color={palette.textSecondary} />
+            <Text style={styles.menuText}>{item.label}</Text>
+            {item.key === 'separate' ? <Text style={{ marginLeft: 'auto', fontSize: 12, color: palette.textMuted }}>{separateEntries ? 'On' : 'Off'}</Text> : null}
+          </Pressable>)}
+          {savedViews.length ? <View style={styles.separator} /> : null}
+          {savedViews.map(saved => <View key={saved.id} style={styles.savedRow}>
+            <Pressable accessibilityRole="button" style={styles.savedName}
+              onPress={() => { setOpen(false); onApplySaved?.(saved); }}>
+              <Text numberOfLines={1} style={styles.menuText}>{saved.name}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${saved.name}`}
+              onPress={() => onDeleteSaved?.(saved)} style={styles.savedDelete}>
+              <Icon spec={actionIcons.x} size={14} color={palette.textMuted} />
+            </Pressable>
+          </View>)}
+        </View>
+      </View>
+    </Modal>
+    <Modal transparent visible={naming || Boolean(notice)} animationType="fade"
+      onRequestClose={() => { setNaming(false); setNotice(''); }}>
+      <View style={styles.center}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close"
+          style={styles.backdrop} onPress={() => { setNaming(false); setNotice(''); }} />
+        <View style={styles.dialog}>
+          {naming ? <>
+            <Text accessibilityRole="header" style={styles.dialogTitle}>Save View</Text>
+            <TextInput accessibilityLabel="View name" autoFocus value={name} onChangeText={setName}
+              onSubmitEditing={submitName} placeholder="Name this view" placeholderTextColor={palette.textMuted}
+              style={styles.input} />
+          </> : null}
+          {notice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text> : null}
+          <View style={styles.dialogActions}>
+            <Pressable accessibilityRole="button" onPress={() => { setNaming(false); setNotice(''); }} style={styles.dialogButton}>
+              <Text style={styles.menuText}>{naming ? 'Cancel' : 'Close'}</Text>
+            </Pressable>
+            {naming ? <Pressable accessibilityRole="button" onPress={submitName} style={[styles.dialogButton, styles.dialogPrimary]}>
+              <Text style={styles.primaryText}>Save</Text>
+            </Pressable> : null}
+          </View>
+        </View>
+      </View>
+    </Modal>
   </View>;
 }
 
 const styles = StyleSheet.create({
   group: { gap: spacing.sm },
-  caption: { color: palette.textMuted, fontSize: 12 },
+  gear: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    backgroundColor: palette.surface,
+  },
+  pressed: { opacity: 0.72 },
+  overlay: { flex: 1, justifyContent: 'flex-start', alignItems: 'flex-end', padding: spacing.lg, paddingTop: 96 },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: mediaCardPalette.chipBackground },
+  menu: {
+    width: 256,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: palette.surfaceStrong,
+  },
+  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  menuText: { color: palette.textSecondary, fontSize: 14, flexShrink: 1 },
+  separator: { height: 1, marginVertical: spacing.xs, backgroundColor: palette.border },
+  savedRow: { flexDirection: 'row', alignItems: 'center', paddingLeft: spacing.lg },
+  savedName: { flex: 1, paddingVertical: spacing.md },
+  savedDelete: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
+  dialog: { width: '100%', maxWidth: 360, gap: spacing.md, padding: spacing.lg, borderRadius: radius.md, borderWidth: 1, borderColor: palette.border, backgroundColor: palette.surfaceStrong },
+  dialogTitle: { color: palette.text, fontSize: 18, fontWeight: '700' },
+  input: { color: palette.text, borderWidth: 1, borderColor: palette.border, borderRadius: radius.md, padding: spacing.md, backgroundColor: palette.surface },
+  notice: { color: palette.textSecondary, fontSize: 14 },
+  dialogActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
+  dialogButton: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.md },
+  dialogPrimary: { backgroundColor: palette.accentStrong },
+  primaryText: { color: mediaCardPalette.chipText, fontSize: 14, fontWeight: '600' },
 });

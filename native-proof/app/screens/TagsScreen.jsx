@@ -1,79 +1,86 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { TagsPageView } from '../../../frontend/pages/TagsPageView';
 import { ConfirmDialog } from '../../../frontend/settings/ConfirmDialog';
+import { createTagsTransport } from '../data/tagsTransport';
+import { sortTags, tagsFromPayload } from '../data/tagsTransportCore';
 import { Screen } from '../components/Screen';
 import { palette } from '../theme';
 
 export const surface = {
   id: 'TAGS',
   status: 'ported',
-  title: 'Tag index with per-media counts and delete',
+  title: 'Tag index with real counts and delete',
   where: 'Tags page; the assignment, bulk-tag and settings filter surfaces stay with TagManagement consumers',
-  note: 'The tag index renders the shared TagsPageView composition, which owns the heading, sort control, tag rows and empty state for web and Expo. Native keeps local demo records until a tags transport exists; ownership and destructive writes remain server-enforced, and iOS/Android runtime verification is separate from the Expo compile check.',
+  note: 'The tag index renders the shared TagsPageView composition. Signed-in loads map GET /api/v1/tags/ (with its per-media-type breakdown) and delete maps DELETE /api/v1/tags/{id}/ through tagsTransport, with loading, empty, error/retry and signed-out states. Type chips open that media library. The web page offers delete only, so rename and merge are not offered here either.',
 };
 
-const MEDIA_TYPES = [
-  { key: 'movie', label: 'Movies' },
-  { key: 'tv', label: 'Shows' },
-  { key: 'anime', label: 'Anime' },
-  { key: 'book', label: 'Books' },
-  { key: 'game', label: 'Games' },
-  { key: 'music', label: 'Music' },
-  { key: 'podcast', label: 'Podcasts' },
-];
+const SIGNED_OUT_ERROR = {
+  title: 'Sign in to see your tags',
+  body: 'Connect your Floppy server to load the tags you created.',
+  retryLabel: 'Sign In',
+};
 
-const MEDIA_TYPE_BY_KEY = Object.fromEntries(MEDIA_TYPES.map(type => [type.key, type]));
-
-const DEMO_TAGS = [
-  { id: 'sci-fi', name: 'Sci-fi', counts: { movie: 10, tv: 9, book: 5, anime: 3 } },
-  { id: 'favorite', name: 'Favorite', counts: { movie: 9, tv: 5, book: 4 } },
-  { id: 'comfort', name: 'Comfort watches', counts: { tv: 7, movie: 4 } },
-  { id: 'family', name: 'Family night', counts: { movie: 4, game: 3 } },
-  { id: 'book-club', name: 'Book club', counts: { book: 6 } },
-  { id: 'listen-again', name: 'Listen again', counts: { music: 4, podcast: 5 } },
-  { id: 'world-cinema', name: 'World cinema', counts: { movie: 5 } },
-  { id: 'cozy-games', name: 'Cozy games', counts: { game: 6 } },
-  { id: 'anime-rewatch', name: 'Anime rewatch', counts: { anime: 4 } },
-];
-
-function totalCount(tag) {
-  return Object.values(tag.counts || {}).reduce((sum, count) => sum + count, 0);
-}
-
-function typeBreakdown(tag) {
-  return Object.entries(tag.counts || {})
-    .filter(([, count]) => count > 0)
-    .map(([key, count]) => ({
-      key,
-      label: MEDIA_TYPE_BY_KEY[key]?.label || key,
-      count,
-    }))
-    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
-}
-
-function indexTag(tag) {
-  return {
-    id: tag.id,
-    name: tag.name,
-    count: totalCount(tag),
-    types: typeBreakdown(tag),
-  };
-}
-
-export default function TagsScreen({ onBack }) {
-  const [tags, setTags] = useState(DEMO_TAGS);
+export default function TagsScreen({ onBack, navigate }) {
+  const [transport] = useState(() => createTagsTransport());
+  const [tags, setTags] = useState([]);
+  const [loading, setLoading] = useState(transport.mode === 'server');
+  const [loadError, setLoadError] = useState('');
+  const [reloadToken, setReloadToken] = useState(0);
   const [sort, setSort] = useState('name');
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
-  const indexedTags = useMemo(() => tags.map(indexTag), [tags]);
-  const visibleTags = useMemo(() => [...indexedTags].sort((left, right) => sort === 'count'
-    ? right.count - left.count || left.name.localeCompare(right.name)
-    : left.name.localeCompare(right.name)), [indexedTags, sort]);
+  const signedOut = transport.mode !== 'server';
 
-  function confirmDelete() {
-    if (!deleteTarget) return;
-    setTags(current => current.filter(tag => tag.id !== deleteTarget.id));
-    setDeleteTarget(null);
+  useEffect(() => {
+    if (!signedOut) {
+      let active = true;
+      setLoading(true);
+      setLoadError('');
+      transport.load()
+        .then(payload => {
+          if (!active) return;
+          setTags(tagsFromPayload(payload));
+          setLoading(false);
+        })
+        .catch(cause => {
+          if (!active) return;
+          setTags([]);
+          setLoadError(cause?.message || 'Tags could not load');
+          setLoading(false);
+        });
+      return () => { active = false; };
+    }
+    setLoading(false);
+    setTags([]);
+    setLoadError('');
+    return undefined;
+  }, [transport, reloadToken, signedOut]);
+
+  const visibleTags = useMemo(() => sortTags(tags, sort), [tags, sort]);
+
+  const state = signedOut
+    ? 'error'
+    : loading
+      ? 'loading'
+      : loadError
+        ? 'error'
+        : 'ready';
+
+  async function confirmDelete() {
+    if (!deleteTarget || deleteBusy) return;
+    setDeleteBusy(true);
+    setDeleteError('');
+    try {
+      await transport.remove({ tagId: deleteTarget.id });
+      setDeleteTarget(null);
+      setReloadToken(current => current + 1);
+    } catch (cause) {
+      setDeleteError(cause?.message || `Could not delete "${deleteTarget.name}".`);
+    } finally {
+      setDeleteBusy(false);
+    }
   }
 
   return <Screen onBack={onBack}>
@@ -81,8 +88,16 @@ export default function TagsScreen({ onBack }) {
       tags={visibleTags}
       sort={sort}
       palette={palette}
+      state={state}
+      error={signedOut
+        ? SIGNED_OUT_ERROR
+        : { title: 'Tags could not load', body: loadError }}
+      onRetry={signedOut
+        ? () => navigate?.('Auth')
+        : () => setReloadToken(current => current + 1)}
       onSortChange={setSort}
-      onDelete={setDeleteTarget} />
+      onDelete={setDeleteTarget}
+      onOpenType={(tag, type) => navigate?.('Library', { mediaType: type.key, tag: tag.name })} />
     <ConfirmDialog
       visible={!!deleteTarget}
       title="Delete tag"
@@ -90,8 +105,10 @@ export default function TagsScreen({ onBack }) {
       warning={deleteTarget ? 'This removes the tag from every item that uses it.' : ''}
       confirmLabel="Delete tag"
       cancelLabel="Keep tag"
+      busy={deleteBusy}
+      error={deleteError}
       palette={palette}
-      onCancel={() => setDeleteTarget(null)}
+      onCancel={() => { if (!deleteBusy) { setDeleteTarget(null); setDeleteError(''); } }}
       onConfirm={confirmDelete} />
   </Screen>;
 }

@@ -1,37 +1,51 @@
-import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Linking, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../../../frontend/ui/Button';
 import { DetailHistoryDialog } from '../../../frontend/ui/DetailChildren';
 import { MarkdownPreview } from '../../../frontend/ui/MarkdownPreview.native';
 import { Screen } from '../components/Screen';
+import { setShellPageType } from '../surfaces/shellContext';
 import {
   AlbumPage,
   ArtistPage,
+  BrowseList,
   DateEntryModal,
-  MusicView,
+  ManageEpisodesModal,
   NotesModal,
+  ReleasePickerModal,
   SectionHeading,
   SheetModal,
   ShowPage,
   TrackPage,
   TrackingModal,
-  listenDate,
-} from '../../../frontend/pages/MusicView';
-import {
-  createMusicLibrary,
-  findAlbum,
-  findTrack,
-  flattenAlbums,
-} from '../data/musicDemo';
+} from '../components/MusicParts';
+import { MusicView } from '../../../frontend/pages/MusicView';
 import { createMusicTransport } from '../data/musicTransport';
+import {
+  endDateStamp,
+  flattenAlbums,
+  mapAlbumPayload,
+  mapArtistPayload,
+  mapBrowseList,
+  mapEpisodesPayload,
+  mapHistoryEntries,
+  mapManagedEpisodes,
+  mapReleases,
+  mapShowPayload,
+  mapTrackIdentity,
+  mapTrackListens,
+  mapTracksPayload,
+  mapTracker,
+  nowDateTimeStr,
+} from '../data/musicTransportCore';
 import { palette, radius, spacing } from '../theme';
 
 export const surface = {
   id: 'MUSIC',
-  status: 'in_progress',
+  status: 'ported',
   title: 'Music and podcasts',
-  where: 'Artist, album, track and podcast detail',
-  note: 'The native transport uses the authenticated session and maps note writes, history deletion, tracker removal, artist membership and discography sync, album metadata sync, mark-all-played, delete-all-plays and the tracking and play endpoints. Artist relations, discography, album tracks, per-track notes, scores and play history, show/episode filtering, pagination, repeats and podcast tracking use the shared React Native presentation, with library actions, confirmations and empty states for every tab. The surface stays in progress because server-mode hydration still renders the seeded demo records (loadArtist, loadAlbum, loadShow, loadEpisodes and loadAlbumTracks payloads are unmapped), tags, links, list membership and artwork changes have no native contract or control, podcast feed/RSS refresh stays server-owned, episode scores have no transport method, and iOS/Android runtime passes are outstanding.',
+  where: 'Artist, album, track and podcast browse and detail',
+  note: 'The screen browses tracked artists, albums and podcast shows (GET /api/v1/music/artists/, /music/albums/, /podcasts/shows/, every page) and opens their detail from the fork music and podcast endpoints through the authenticated session. A song row opened from the Library resolves its artist, album and track from the artist_id, album_id and track_id the media row now carries (GET /api/v1/music/tracks/{id}/ is the fallback). Track pages list every real listen (GET .../tracks/{id}/plays/) and delete one (DELETE .../plays/{history_id}/). Albums offer the MusicBrainz release picker (GET/POST .../albums/{id}/releases/). Manual shows add, edit and delete episodes (.../episodes/manage/ and .../podcasts/episodes/{id}/) and episodes take a score (PATCH .../episodes/{id}/score/). Plays are recorded with the real device date; tracker saves, scores, notes, discography and member syncs, delete-all-plays, remove-tracker and mark-all-played write to the server and reload the affected slice. Per-episode history still matches the show history by title. iOS/Android runtime passes are outstanding.',
 };
 
 const TABS = [
@@ -40,8 +54,11 @@ const TABS = [
   { key: 'podcast', label: 'Podcast' },
 ];
 
+const EPISODE_PAGE_SIZE = 20;
 const EMPTY_DIALOG = null;
-const TODAY = '2026-11-04';
+// run() returns undefined when a server write fails and the raw payload
+// (possibly null for 204 responses) when it succeeds.
+const REQUEST_FAILED = undefined;
 
 function countLabel(count, singular, plural) {
   return count === 1 ? `1 ${singular}` : `${count} ${plural}`;
@@ -55,143 +72,302 @@ function EmptyPanel({ title, copy, actionLabel, onAction }) {
   </View>;
 }
 
+function BrowsePanel({ kind, state, serverMode, title, emptyTitle, emptyCopy, onOpen, onRetry }) {
+  const current = state || { rows: [], loading: serverMode, error: '' };
+  return <View style={styles.section}>
+    <SectionHeading title={title} meta={current.loading || current.error ? '' : String(current.rows.length)} />
+    <BrowseList rows={current.rows} loading={current.loading} error={serverMode ? current.error : 'Sign in to your Floppy server to load music and podcasts.'}
+      emptyTitle={emptyTitle} emptyCopy={emptyCopy} onOpen={onOpen} onRetry={onRetry} />
+  </View>;
+}
+
 function remoteId(value) {
   const number = Number(value);
   return Number.isInteger(number) && number > 0 ? number : null;
 }
 
-function sortDescending(entries) {
-  return [...entries].sort((left, right) => (
-    `${right.date || ''} ${right.time || ''}`.localeCompare(`${left.date || ''} ${left.time || ''}`)
-  ));
-}
-
-function relationModel(relation) {
-  const tracker = relation.tracker || {};
+// Library rows, detail hrefs and the browse lists are the ways into this
+// screen. Song rows carry artist_id, album_id and track_id; a row that lacks
+// the artist and album ids is placed through GET /api/v1/music/tracks/{id}/.
+function resolveEntryParams(params) {
+  const item = params?.item;
+  const identity = item?.identity || {};
+  const row = item?.media || item || {};
+  const prefixedId = prefix => {
+    const raw = String(identity.mediaId || '');
+    return raw.startsWith(prefix) ? remoteId(raw.slice(prefix.length)) : null;
+  };
+  const show = row.show || item?.item?.show || null;
   return {
-    id: relation.id,
-    name: relation.name,
-    role: relation.role || '',
-    current: Boolean(relation.current),
-    image: relation.image || '',
-    status: tracker.status || null,
-    score: tracker.score == null ? null : Number(tracker.score),
+    artistId: remoteId(params?.artistId ?? row.artist_id) ?? prefixedId('artist-'),
+    albumId: remoteId(params?.albumId ?? row.album_id) ?? prefixedId('album-'),
+    showId: remoteId(params?.showId ?? show?.id),
+    trackId: remoteId(params?.trackId ?? row.track_id),
+    entryTitle: row.title || item?.title || '',
   };
 }
 
-function trackHistoryRows(track) {
-  return sortDescending(track.listens).map((entry, index) => ({
-    key: entry.id,
-    dateLabel: listenDate(entry),
-    actionLabel: index === 0 ? 'Latest listen' : 'Repeat listen',
-    note: track.score == null ? '' : `Score ${track.score}/10`,
-  }));
+function relationModel(relation) {
+  const tracker = mapTracker(relation?.tracker);
+  return {
+    id: relation?.id,
+    name: relation?.name || '',
+    role: relation?.role || '',
+    current: Boolean(relation?.current),
+    image: relation?.image || '',
+    status: tracker.status,
+    score: tracker.score,
+  };
 }
 
-function episodeHistoryRows(episode) {
-  return sortDescending(episode.plays).map((entry, index) => ({
-    key: entry.id,
-    dateLabel: listenDate(entry),
-    actionLabel: index === 0 ? 'Latest play' : 'Repeat play',
-    note: entry.progress || (episode.score == null ? '' : `Score ${episode.score}/10`),
-  }));
+// The album endpoint has no runtime; the web sums the tracks ("16m").
+function albumRuntime(tracks) {
+  const minutes = Math.round(tracks.reduce((sum, track) => sum + (Number(track.durationMs) || 0), 0) / 60000);
+  if (!minutes) return null;
+  return minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}min` : `${minutes}m`;
 }
 
-function albumHistoryRows(album) {
-  const rows = album.tracks.flatMap(track => track.listens.map(entry => ({
-    key: `${track.id}-${entry.id}`,
-    date: entry.date,
-    time: entry.time,
-    dateLabel: listenDate(entry),
-    actionLabel: track.title,
-    note: `Track ${track.number}`,
-  })));
-  return sortDescending(rows);
+function sortDescending(rows) {
+  return [...rows].sort((left, right) => `${right.date} ${right.time}`.localeCompare(`${left.date} ${left.time}`));
 }
 
-function artistHistoryRows(albums) {
-  return albums.flatMap(album => album.tracks.flatMap(track => track.listens.map(entry => ({
-    key: `${track.id}-${entry.id}`,
-    date: entry.date,
-    time: entry.time,
-    dateLabel: listenDate(entry),
-    actionLabel: track.title,
-    note: album.title,
-  }))));
-}
-
-function showHistoryRows(episodes) {
-  return episodes.flatMap(episode => episode.plays.map(entry => ({
-    key: `${episode.id}-${entry.id}`,
-    date: entry.date,
-    time: entry.time,
-    dateLabel: listenDate(entry),
-    actionLabel: episode.title,
-    note: `Episode ${episode.number}`,
-  })));
-}
-
-function totalListens(albums) {
-  return albums.reduce((count, album) => (
-    count + album.tracks.reduce((sum, track) => sum + track.listens.length, 0)
-  ), 0);
-}
-
-export default function MusicScreen({ onBack, transport: injectedTransport }) {
+export default function MusicScreen({ params, transport: injectedTransport }) {
   const [transport] = useState(() => injectedTransport || createMusicTransport());
-  const [transportError, setTransportError] = useState('');
-  const [library, setLibrary] = useState(createMusicLibrary);
-  const [tab, setTab] = useState('artist');
-  const [selectedAlbumId, setSelectedAlbumId] = useState(() => (
-    flattenAlbums(createMusicLibrary().artist)[0]?.id ?? null
-  ));
+  const [entry] = useState(() => resolveEntryParams(params));
+  const [serverMode] = useState(() => transport.mode === 'server');
+  const [showId, setShowId] = useState(entry.showId);
+  const [tab, setTab] = useState(entry.showId && !entry.artistId ? 'podcast' : entry.albumId ? 'album' : 'artist');
+  useEffect(() => {
+    setShellPageType(tab === 'podcast' ? 'podcast' : 'music');
+    return () => setShellPageType(null);
+  }, [tab]);
+  const pendingTrack = useRef(entry.trackId);
+  const [browse, setBrowse] = useState({});
+  const [releases, setReleases] = useState({ open: false, loading: false, error: '', releases: [], selectedId: '' });
+  const [manage, setManage] = useState({ open: false, loading: false, saving: false, episodes: [], errors: {} });
+  const [artistId, setArtistId] = useState(entry.artistId);
+  const [albumId, setAlbumId] = useState(entry.albumId);
   const [selectedTrackId, setSelectedTrackId] = useState(null);
+  const [reloadToken, setReloadToken] = useState(0);
+
+  const [artist, setArtist] = useState(null);
+  const [album, setAlbum] = useState(null);
+  const [tracks, setTracks] = useState([]);
+  const [show, setShow] = useState(null);
+  const [episodes, setEpisodes] = useState([]);
+  const [episodeTotal, setEpisodeTotal] = useState(0);
   const [episodeFilter, setEpisodeFilter] = useState('all');
-  const [visibleEpisodes, setVisibleEpisodes] = useState(4);
+
+  const [loadingArtist, setLoadingArtist] = useState(false);
+  const [loadingAlbum, setLoadingAlbum] = useState(false);
+  const [loadingEpisodes, setLoadingEpisodes] = useState(false);
+  const [transportError, setTransportError] = useState(
+    serverMode ? '' : 'Sign in to your Floppy server to load music and podcasts.',
+  );
+  const [notice, setNotice] = useState('');
+
   const [dialog, setDialog] = useState(EMPTY_DIALOG);
   const [confirm, setConfirm] = useState(null);
-  const [notice, setNotice] = useState('');
-  const [dateValue, setDateValue] = useState(TODAY);
+  const [dateValue, setDateValue] = useState(nowDateTimeStr);
+  const [history, setHistory] = useState({ rows: [], loading: false });
 
+  const run = useCallback(async (action, payload, errorLabel) => {
+    if (!serverMode) return null;
+    setTransportError('');
+    try {
+      return await transport[action](payload);
+    } catch (error) {
+      setTransportError(error?.message || errorLabel);
+      return REQUEST_FAILED;
+    }
+  }, [serverMode, transport]);
+
+  // Artist, relations, album and episodes all reload on the retry token.
   useEffect(() => {
-    const artistId = remoteId(library.artist.artistId ?? library.artist.id);
-    if (!artistId || transport.mode !== 'server') return;
+    if (!serverMode || !artistId) return undefined;
     let active = true;
+    setLoadingArtist(true);
+    transport.loadArtist({ artistId }).then(payload => {
+      if (active) setArtist(mapArtistPayload(payload));
+    }).catch(error => {
+      if (active) {
+        setArtist(null);
+        setTransportError(error?.message || 'The artist could not be loaded.');
+      }
+    }).finally(() => {
+      if (active) setLoadingArtist(false);
+    });
     transport.loadArtistRelations({ artistId }).then(payload => {
       if (!active || !payload) return;
-      setLibrary(current => ({
+      setArtist(current => (current ? {
         ...current,
-        artist: {
-          ...current.artist,
-          relations: {
-            members: (payload.members || []).map(relationModel),
-            alsoIn: (payload.also_in || []).map(relationModel),
-          },
+        relations: {
+          members: (payload.members || []).map(relationModel),
+          alsoIn: (payload.also_in || []).map(relationModel),
         },
-      }));
-    }).catch(error => {
-      if (active) setTransportError(error?.message || 'Could not load artist relations.');
+      } : current));
+    }).catch(() => {
+      // Relations stay empty; the sync members action can refill them.
     });
     return () => { active = false; };
-  }, [library.artist.artistId, library.artist.id, transport]);
+  }, [artistId, reloadToken, serverMode, transport]);
 
-  const artist = library.artist;
-  const albums = flattenAlbums(artist);
-
-  function persist(action, payload) {
-    if (transport.mode !== 'server') return Promise.resolve(null);
-    setTransportError('');
-    return Promise.resolve(transport[action](payload)).catch(error => {
-      setTransportError(error?.message || 'The server rejected the music change.');
-      return null;
+  useEffect(() => {
+    if (!serverMode || !albumId) return undefined;
+    let active = true;
+    setLoadingAlbum(true);
+    Promise.all([
+      transport.loadAlbum({ albumId }),
+      transport.loadAlbumTracks({ albumId }),
+    ]).then(([albumPayload, trackPayload]) => {
+      if (!active) return;
+      const mappedTracks = mapTracksPayload(trackPayload);
+      setAlbum(mapAlbumPayload(albumPayload));
+      setTracks(mappedTracks);
+      if (pendingTrack.current) {
+        // A song row opened from the Library lands on that track.
+        const target = mappedTracks.find(track => track.trackId === pendingTrack.current);
+        pendingTrack.current = null;
+        // The web opens a track on its album page, so only the tab changes.
+        if (target) setTab('album');
+      }
+    }).catch(error => {
+      if (active) {
+        setAlbum(null);
+        setTracks([]);
+        setTransportError(error?.message || 'The album could not be loaded.');
+      }
+    }).finally(() => {
+      if (active) setLoadingAlbum(false);
     });
+    return () => { active = false; };
+  }, [albumId, reloadToken, serverMode, transport]);
+
+  useEffect(() => {
+    if (!serverMode || !showId) return undefined;
+    let active = true;
+    setLoadingEpisodes(true);
+    Promise.all([
+      transport.loadShow({ showId: showId }),
+      transport.loadEpisodes({ showId: showId, limit: EPISODE_PAGE_SIZE, offset: 0 }),
+    ]).then(([showPayload, episodePayload]) => {
+      if (!active) return;
+      const page = mapEpisodesPayload(episodePayload);
+      setShow(mapShowPayload(showPayload));
+      setEpisodes(page.episodes);
+      setEpisodeTotal(page.total);
+    }).catch(error => {
+      if (active) {
+        setShow(null);
+        setEpisodes([]);
+        setTransportError(error?.message || 'The podcast could not be loaded.');
+      }
+    }).finally(() => {
+      if (active) setLoadingEpisodes(false);
+    });
+    return () => { active = false; };
+  }, [showId, reloadToken, serverMode, transport]);
+
+  // A song row without artist and album ids is placed through its track id.
+  useEffect(() => {
+    if (!serverMode || artistId || albumId || !entry.trackId) return undefined;
+    let active = true;
+    transport.loadTrack({ trackId: entry.trackId }).then(payload => {
+      const identity = mapTrackIdentity(payload);
+      if (!active || !identity) return;
+      if (identity.artistId) setArtistId(identity.artistId);
+      if (identity.albumId) {
+        setAlbumId(identity.albumId);
+        setTab('album');
+      }
+    }).catch(error => {
+      if (active) setTransportError(error?.message || 'The song could not be placed in your music library.');
+    });
+    return () => { active = false; };
+  }, [serverMode, artistId, albumId, entry.trackId, transport, reloadToken]);
+
+  // Browse lists load for a tab that has nothing selected yet.
+  const browseKind = tab === 'artist' && !artistId ? 'artist'
+    : tab === 'album' && !albumId ? 'album'
+      : tab === 'podcast' && !showId ? 'show' : null;
+  const browseAction = { artist: 'loadArtists', album: 'loadAlbums', show: 'loadShows' }[browseKind];
+  useEffect(() => {
+    if (!serverMode || !browseKind) return undefined;
+    let active = true;
+    setBrowse(current => ({ ...current, [browseKind]: { rows: [], loading: true, error: '' } }));
+    transport[browseAction]().then(payload => {
+      if (active) setBrowse(current => ({ ...current, [browseKind]: { rows: mapBrowseList(payload, browseKind), loading: false, error: '' } }));
+    }).catch(error => {
+      if (active) {
+        setBrowse(current => ({
+          ...current,
+          [browseKind]: { rows: [], loading: false, error: error?.message || 'This list could not be loaded.' },
+        }));
+      }
+    });
+    return () => { active = false; };
+  }, [serverMode, browseKind, browseAction, transport, reloadToken]);
+
+  function openBrowseRow(row) {
+    setSelectedTrackId(null);
+    setNotice('');
+    if (row.kind === 'artist') { setArtistId(row.id); setTab('artist'); }
+    if (row.kind === 'album') { setAlbumId(row.id); setTab('album'); }
+    if (row.kind === 'show') { setShowId(row.id); setTab('podcast'); }
   }
-  const album = findAlbum(library, selectedAlbumId) || albums[0];
-  const selected = selectedTrackId ? findTrack(library, selectedTrackId) : null;
-  const show = library.show;
-  const artistRemoteId = remoteId(artist.artistId ?? artist.id);
-  const albumRemoteId = remoteId(album?.albumId ?? album?.id);
-  const showRemoteId = remoteId(show.showId ?? show.id);
+
+  function browseAgain(kind) {
+    setSelectedTrackId(null);
+    setNotice('');
+    if (kind === 'artist') { setArtistId(null); setArtist(null); }
+    if (kind === 'album') { setAlbumId(null); setAlbum(null); setTracks([]); }
+    if (kind === 'show') { setShowId(null); setShow(null); setEpisodes([]); }
+  }
+
+  const artistRemoteId = artist?.artistId ?? artistId;
+  const albumRemoteId = album?.albumId ?? albumId;
+  const showRemoteId = show?.showId ?? showId;
+
+  function reloadShow() {
+    if (!serverMode || !showRemoteId) return Promise.resolve();
+    return transport.loadShow({ showId: showRemoteId })
+      .then(payload => setShow(mapShowPayload(payload)))
+      .catch(error => setTransportError(error?.message || 'The podcast could not be reloaded.'));
+  }
+
+  function reloadArtist() {
+    if (!serverMode || !artistRemoteId) return Promise.resolve();
+    return transport.loadArtist({ artistId: artistRemoteId })
+      .then(payload => setArtist(mapArtistPayload(payload)))
+      .catch(error => setTransportError(error?.message || 'The artist could not be reloaded.'));
+  }
+
+  function reloadAlbum() {
+    if (!serverMode || !albumRemoteId) return Promise.resolve();
+    return Promise.all([
+      transport.loadAlbum({ albumId: albumRemoteId }),
+      transport.loadAlbumTracks({ albumId: albumRemoteId }),
+    ]).then(([albumPayload, trackPayload]) => {
+      setAlbum(mapAlbumPayload(albumPayload));
+      setTracks(mapTracksPayload(trackPayload));
+    }).catch(error => setTransportError(error?.message || 'The album could not be reloaded.'));
+  }
+
+  function loadEpisodePage(append) {
+    if (!serverMode || !showId) return Promise.resolve();
+    setLoadingEpisodes(true);
+    return transport.loadEpisodes({
+      showId: showId,
+      limit: EPISODE_PAGE_SIZE,
+      offset: append ? episodes.length : 0,
+    }).then(payload => {
+      const page = mapEpisodesPayload(payload);
+      setEpisodes(current => (append ? [...current, ...page.episodes] : page.episodes));
+      setEpisodeTotal(page.total);
+    }).catch(error => {
+      setTransportError(error?.message || 'The episodes could not be loaded.');
+    }).finally(() => setLoadingEpisodes(false));
+  }
 
   function changeTab(next) {
     setTab(next);
@@ -200,58 +376,11 @@ export default function MusicScreen({ onBack, transport: injectedTransport }) {
   }
 
   function openAlbum(next) {
-    setSelectedAlbumId(next.id);
+    const nextId = remoteId(next?.albumId ?? next?.id);
+    if (!nextId) return;
+    setAlbumId(nextId);
     setSelectedTrackId(null);
     setTab('album');
-  }
-
-  function updateArtist(updater) {
-    setLibrary(current => ({ ...current, artist: updater(current.artist) }));
-  }
-
-  function updateAlbum(albumId, updater) {
-    setLibrary(current => ({
-      ...current,
-      artist: {
-        ...current.artist,
-        discography: current.artist.discography.map(group => ({
-          ...group,
-          albums: (group.albums || []).map(item => (item.id === albumId ? updater(item) : item)),
-        })),
-      },
-    }));
-  }
-
-  function updateTrack(trackId, updater) {
-    setLibrary(current => ({
-      ...current,
-      artist: {
-        ...current.artist,
-        discography: current.artist.discography.map(group => ({
-          ...group,
-          albums: (group.albums || []).map(item => ({
-            ...item,
-            tracks: item.tracks.map(entry => (entry.id === trackId ? updater(entry) : entry)),
-          })),
-        })),
-      },
-    }));
-  }
-
-  function updateShow(updater) {
-    setLibrary(current => ({ ...current, show: updater(current.show) }));
-  }
-
-  function updateEpisode(episodeId, updater) {
-    setLibrary(current => ({
-      ...current,
-      show: {
-        ...current.show,
-        episodes: current.show.episodes.map(episode => (
-          episode.id === episodeId ? updater(episode) : episode
-        )),
-      },
-    }));
   }
 
   function askConfirm(config) {
@@ -264,168 +393,165 @@ export default function MusicScreen({ onBack, transport: injectedTransport }) {
     if (action) action();
   }
 
-  function withoutListens(target) {
-    return {
-      ...target,
-      plays: 0,
-      tracks: target.tracks.map(track => ({ ...track, listens: [] })),
-    };
+  function updateTrackRow(trackKey, updater) {
+    setTracks(current => current.map(track => (track.id === trackKey ? updater(track) : track)));
   }
 
   function confirmDeleteArtistPlays() {
-    const total = artist.totalPlays || totalListens(albums);
     askConfirm({
       title: 'Delete all plays?',
-      message: total
-        ? `This removes ${countLabel(total, 'listen', 'listens')} across ${countLabel(albums.length, 'release', 'releases')} and cannot be undone.`
-        : 'No plays are recorded for this artist.',
+      message: 'Are you sure you want to delete all plays for this artist? This cannot be undone.',
       confirmLabel: 'Delete plays',
-      onConfirm() {
-        updateArtist(current => ({
-          ...current,
-          totalPlays: 0,
-          discography: current.discography.map(group => ({
-            ...group,
-            albums: (group.albums || []).map(withoutListens),
-          })),
-        }));
-        setNotice(total
-          ? `Deleted ${countLabel(total, 'listen', 'listens')}.`
-          : 'No plays to delete.');
-        if (artistRemoteId) persist('deleteArtistPlays', { artistId: artistRemoteId });
+      async onConfirm() {
+        const result = await run('deleteArtistPlays', { artistId: artistRemoteId }, 'The plays could not be deleted.');
+        if (result === REQUEST_FAILED) return;
+        setNotice(`Deleted ${countLabel(Number(result?.deleted_plays) || 0, 'listen', 'listens')}.`);
+        await reloadArtist();
       },
     });
   }
 
   function confirmDeleteAlbumPlays() {
-    if (!album) return;
-    const total = album.plays || album.tracks.reduce((sum, track) => sum + track.listens.length, 0);
     askConfirm({
       title: 'Delete all plays?',
-      message: total
-        ? `This removes ${countLabel(total, 'listen', 'listens')} from ${album.title} and cannot be undone.`
-        : `No plays are recorded for ${album.title}.`,
+      message: 'Are you sure you want to delete all plays for this album? This cannot be undone.',
       confirmLabel: 'Delete plays',
-      onConfirm() {
-        updateAlbum(album.id, withoutListens);
-        updateArtist(current => ({
-          ...current,
-          totalPlays: Math.max(0, (current.totalPlays || 0) - (album.plays || 0)),
-        }));
-        setNotice(total
-          ? `Deleted ${countLabel(total, 'listen', 'listens')}.`
-          : 'No plays to delete.');
-        if (albumRemoteId) persist('deleteAlbumPlays', { albumId: albumRemoteId });
+      async onConfirm() {
+        const result = await run('deleteAlbumPlays', { albumId: albumRemoteId }, 'The plays could not be deleted.');
+        if (result === REQUEST_FAILED) return;
+        setNotice(`Deleted ${countLabel(Number(result?.deleted_plays) || 0, 'listen', 'listens')}.`);
+        await reloadAlbum();
+        await reloadArtist();
       },
     });
   }
 
-  function confirmRemoveArtist() {
-    askConfirm({
-      title: 'Remove artist from library?',
-      message: 'The artist tracker is removed. Listening history stays in your account.',
-      confirmLabel: 'Remove artist',
-      onConfirm() {
-        updateArtist(current => ({ ...current, status: null, score: null }));
-        setNotice('Artist removed from your library.');
-        if (artistRemoteId) persist('removeArtist', { artistId: artistRemoteId });
+  function confirmRemoveTracker(kind) {
+    const config = {
+      artist: {
+        title: 'Remove artist from library?',
+        confirmLabel: 'Remove artist',
+        action: 'removeArtist',
+        payload: { artistId: artistRemoteId },
+        done: 'Artist removed from your library.',
       },
-    });
-  }
-
-  function confirmRemoveAlbum() {
-    if (!album) return;
-    askConfirm({
-      title: 'Remove album from library?',
-      message: `The ${album.title} tracker is removed. Listening history stays in your account.`,
-      confirmLabel: 'Remove album',
-      onConfirm() {
-        updateAlbum(album.id, current => ({ ...current, status: null, score: null }));
-        setNotice('Album removed from your library.');
-        if (albumRemoteId) persist('removeAlbum', { albumId: albumRemoteId });
+      album: {
+        title: 'Remove album from library?',
+        confirmLabel: 'Remove album',
+        action: 'removeAlbum',
+        payload: { albumId: albumRemoteId },
+        done: 'Album removed from your library.',
       },
-    });
-  }
-
-  function confirmRemoveShow() {
+      show: {
+        title: 'Remove podcast from library?',
+        confirmLabel: 'Remove podcast',
+        action: 'removeShow',
+        payload: { showId: showRemoteId },
+        done: 'Podcast removed from your library.',
+      },
+    }[kind];
     askConfirm({
-      title: 'Remove podcast from library?',
-      message: 'The show tracker is removed. Episode plays stay in your account.',
-      confirmLabel: 'Remove podcast',
-      onConfirm() {
-        updateShow(current => ({ ...current, status: null, score: null }));
-        setNotice('Podcast removed from your library.');
-        if (showRemoteId) persist('removeShow', { showId: showRemoteId });
+      title: config.title,
+      message: 'The tracker is removed. Listening history stays in your account.',
+      confirmLabel: config.confirmLabel,
+      async onConfirm() {
+        const result = await run(config.action, config.payload, 'The tracker could not be removed.');
+        if (result === REQUEST_FAILED) return;
+        setNotice(config.done);
+        if (kind === 'artist') await reloadArtist();
+        if (kind === 'album') await reloadAlbum();
+        if (kind === 'show') await reloadShow();
       },
     });
   }
 
   function confirmMarkAllPlayed() {
-    const remaining = show.episodes.filter(episode => episode.inProgress || !episode.plays.length);
     askConfirm({
       title: 'Mark all episodes played?',
-      message: remaining.length
-        ? `${countLabel(remaining.length, 'episode', 'episodes')} will be recorded as played today.`
-        : 'Every episode is already played.',
+      message: 'Every unplayed episode is recorded as played, and the show refreshes its feed first.',
       confirmLabel: 'Mark all played',
-      onConfirm() {
-        updateShow(current => ({
-          ...current,
-          episodes: current.episodes.map(episode => {
-            if (!episode.inProgress && episode.plays.length) return episode;
-            return {
-              ...episode,
-              inProgress: false,
-              plays: [{
-                id: `play-${episode.id}-${Date.now()}`,
-                date: TODAY,
-                time: '12:00',
-                minutes: episode.minutes,
-                repeat: episode.plays.length > 0,
-              }, ...episode.plays],
-            };
-          }),
-        }));
-        setNotice(remaining.length
-          ? `Marked ${countLabel(remaining.length, 'episode', 'episodes')} played.`
-          : 'Every episode was already played.');
-        if (showRemoteId) persist('markAllPlayed', { showId: showRemoteId });
+      async onConfirm() {
+        const result = await run('markAllPlayed', { showId: showRemoteId }, 'The episodes could not be marked played.');
+        if (result === REQUEST_FAILED) return;
+        setNotice(`Marked ${countLabel(Number(result?.marked_played) || 0, 'episode', 'episodes')} played.`);
+        await loadEpisodePage(false);
       },
     });
   }
 
   async function syncArtistDiscography() {
-    if (!artistRemoteId) {
-      setNotice('Discography sync needs a signed-in server. The demo discography is already current.');
-      return;
-    }
-    const result = await persist('syncArtistDiscography', { artistId: artistRemoteId });
-    if (result) {
-      setNotice(`Synced ${countLabel(Number(result.synced_albums) || 0, 'release', 'releases')} from MusicBrainz.`);
-    }
+    const result = await run('syncArtistDiscography', { artistId: artistRemoteId }, 'Discography sync failed.');
+    if (result === REQUEST_FAILED) return;
+    setNotice(`Synced ${countLabel(Number(result?.synced_albums) || 0, 'release', 'releases')} from MusicBrainz.`);
+    await reloadArtist();
   }
 
   async function syncArtistMembers() {
-    const result = await persist('syncArtistMembers', { artistId: artistRemoteId });
-    if (result) {
-      setNotice(`Synced ${countLabel(Number(result.synced_members) || 0, 'member', 'members')} from MusicBrainz.`);
+    const result = await run('syncArtistMembers', { artistId: artistRemoteId }, 'Member sync failed.');
+    if (result === REQUEST_FAILED) return;
+    const payload = await run('loadArtistRelations', { artistId: artistRemoteId }, 'The relations could not be reloaded.');
+    if (payload) {
+      setArtist(current => (current ? {
+        ...current,
+        relations: {
+          members: (payload.members || []).map(relationModel),
+          alsoIn: (payload.also_in || []).map(relationModel),
+        },
+      } : current));
     }
+    setNotice(`Synced ${countLabel(Number(result?.synced_members) || 0, 'member', 'members')} from MusicBrainz.`);
   }
 
   async function syncAlbumMetadata() {
-    const result = await persist('syncAlbumMetadata', { albumId: albumRemoteId });
-    if (result) {
-      setNotice(`Synced ${countLabel(Number(result.synced_tracks) || 0, 'track', 'tracks')} from MusicBrainz.`);
-    }
+    const result = await run('syncAlbumMetadata', { albumId: albumRemoteId }, 'Album metadata sync failed.');
+    if (result === REQUEST_FAILED) return;
+    setNotice(`Synced ${countLabel(Number(result?.synced_tracks) || 0, 'track', 'tracks')} from MusicBrainz.`);
+    if (result?.merged_into) setAlbumId(result.merged_into);
+    await reloadAlbum();
+  }
+
+  function saveTracker(target, draft) {
+    const config = {
+      artist: { action: 'saveArtist', payload: { artistId: artistRemoteId }, reload: reloadArtist },
+      album: { action: 'saveAlbum', payload: { albumId: albumRemoteId }, reload: reloadAlbum },
+      show: { action: 'saveShow', payload: { showId: showRemoteId }, reload: reloadShow },
+    }[target];
+    return run(config.action, { ...config.payload, ...draft }, 'The tracker could not be saved.')
+      .then(async result => {
+        if (result === REQUEST_FAILED) return;
+        await config.reload();
+      });
+  }
+
+  function openTracking(target, item) {
+    setDialog({ type: 'tracking', target, title: item.title || item.name });
+  }
+
+  function saveTracking(draft) {
+    if (!dialog) return;
+    saveTracker(dialog.target, draft);
+    setDialog(EMPTY_DIALOG);
+  }
+
+  function rateArtist(score) {
+    saveTracker('artist', { status: artist.status, score, notes: artist.notes || '' });
+  }
+
+  function rateAlbum(score) {
+    saveTracker('album', { status: album.status, score, notes: album.notes || '' });
+  }
+
+  function rateShow(score) {
+    saveTracker('show', { status: show.status, score, notes: show.notes || '' });
   }
 
   function openDateDialog(target, item) {
-    setDateValue(TODAY);
-    const albumName = album ? album.title : artist.name;
+    setDateValue(nowDateTimeStr());
+    const albumName = album ? album.title : artist?.name || '';
     setDialog({
       type: 'date',
       target,
-      id: item.id,
+      item,
       title: item.title,
       subtitle: target === 'track'
         ? (item.duration ? `${albumName} · ${item.duration}` : albumName)
@@ -434,129 +560,89 @@ export default function MusicScreen({ onBack, transport: injectedTransport }) {
     });
   }
 
-  function confirmDate() {
+  async function confirmDate() {
     if (!dialog) return;
-    const [date, time = '12:00'] = dateValue.split('T');
+    const endDate = endDateStamp(dateValue);
     if (dialog.target === 'track') {
-      updateTrack(dialog.id, track => ({
-        ...track,
-        listens: [{
-          id: `listen-${Date.now()}`,
-          date,
-          time,
-          repeat: track.listens.length > 0,
-        }, ...track.listens],
-      }));
-      const found = findTrack(library, dialog.id);
-      const albumId = remoteId(found?.album?.albumId ?? found?.album?.id);
-      const trackId = remoteId(found?.track?.trackId ?? found?.track?.id);
-      if (found?.album) {
-        updateAlbum(found.album.id, current => ({ ...current, plays: (current.plays || 0) + 1 }));
-        updateArtist(current => ({ ...current, totalPlays: (current.totalPlays || 0) + 1 }));
-      }
-      if (albumId) persist('addListen', { albumId, trackId, endDate: `${date}T${time}:00` });
+      const track = dialog.item;
+      const result = await run('addListen', {
+        albumId: albumRemoteId,
+        trackId: track.trackId,
+        endDate,
+      }, 'The listen could not be recorded.');
+      setDialog(EMPTY_DIALOG);
+      if (result === REQUEST_FAILED) return;
+      setNotice('Listen recorded.');
+      await reloadAlbum();
     } else {
-      updateEpisode(dialog.id, episode => ({
-        ...episode,
-        inProgress: false,
-        plays: [{
-          id: `play-${Date.now()}`,
-          date,
-          time,
-          minutes: episode.minutes,
-          repeat: episode.plays.length > 0,
-        }, ...episode.plays],
-      }));
-      const showId = remoteId(show.showId ?? show.id);
-      const episodeId = remoteId(dialog.id);
-      if (showId) persist('addEpisodePlay', { showId, episodeId, endDate: `${date}T${time}:00` });
+      const episode = dialog.item;
+      const result = await run('addEpisodePlay', {
+        showId: showRemoteId,
+        episodeId: episode.episodeId,
+        endDate,
+      }, 'The play could not be recorded.');
+      setDialog(EMPTY_DIALOG);
+      if (result === REQUEST_FAILED) return;
+      setNotice('Play recorded.');
+      await loadEpisodePage(false);
     }
-    setDialog(EMPTY_DIALOG);
   }
 
   function openNotes(target, item) {
     setDialog({
       type: 'notes',
       target,
-      id: item.id,
+      item,
       title: item.title,
       subtitle: target === 'episode'
         ? `Episode ${item.number} · ${show.title}`
-        : (album ? album.title : artist.name),
+        : (album ? album.title : artist?.name || ''),
       value: item.notes || '',
     });
   }
 
-  function openHistory(target, item) {
-    setDialog({ type: 'history', target, id: item.id, title: item.title });
-  }
-
-  function openTracking(target, item) {
-    setDialog({ type: 'tracking', target, id: item.id, title: item.title });
-  }
-
-  function saveTracking(draft) {
-    if (!dialog) return;
-    if (dialog.target === 'artist') {
-      updateArtist(current => ({ ...current, status: draft.status, score: draft.score, notes: draft.notes }));
-      const artistId = remoteId(artist.artistId ?? artist.id);
-      if (artistId) persist('saveArtist', { artistId, ...draft });
-    } else if (dialog.target === 'album' && album) {
-      updateAlbum(dialog.id, current => ({ ...current, status: draft.status, score: draft.score, notes: draft.notes }));
-      const albumId = remoteId(album.albumId ?? album.id);
-      if (albumId) persist('saveAlbum', { albumId, ...draft });
-    } else {
-      updateShow(current => ({ ...current, status: draft.status, score: draft.score, notes: draft.notes }));
-      const showId = remoteId(show.showId ?? show.id);
-      if (showId) persist('saveShow', { showId, ...draft });
+  async function saveTrackNotes(trackKey, value) {
+    const track = tracks.find(candidate => candidate.id === trackKey);
+    if (!track?.trackId) return;
+    updateTrackRow(trackKey, current => ({ ...current, notes: value }));
+    const result = await run('saveTrackNotes', { trackId: track.trackId, notes: value }, 'The notes could not be saved.');
+    if (result === REQUEST_FAILED) {
+      updateTrackRow(trackKey, current => ({ ...current, notes: '' }));
+      return;
     }
-    setDialog(EMPTY_DIALOG);
-  }
-
-  function saveTrackNotes(trackId, value) {
-    updateTrack(trackId, track => ({ ...track, notes: value }));
-    const remoteTrackId = remoteId(trackId);
-    if (remoteTrackId) persist('saveTrackNotes', { trackId: remoteTrackId, notes: value });
+    setNotice('Notes saved.');
   }
 
   function saveNotes(value) {
     if (!dialog) return;
     if (dialog.target === 'track') {
-      saveTrackNotes(dialog.id, value);
+      saveTrackNotes(dialog.item.id, value);
     } else {
-      updateEpisode(dialog.id, episode => ({ ...episode, notes: value }));
-      const episodeId = remoteId(dialog.id);
-      if (episodeId) persist('saveEpisodeNotes', { episodeId, notes: value });
+      const episode = dialog.item;
+      run('saveEpisodeNotes', { episodeId: episode.episodeId, notes: value }, 'The notes could not be saved.')
+        .then(result => {
+          if (result === REQUEST_FAILED) return;
+          setEpisodes(current => current.map(row => (
+            row.id === episode.id ? { ...row, notes: value } : row
+          )));
+          setNotice('Notes saved.');
+        });
     }
     setDialog(EMPTY_DIALOG);
   }
 
-  function rateArtist(score) {
-    updateArtist(current => ({ ...current, score }));
-    if (artistRemoteId && artist.status) persist('saveArtist', { artistId: artistRemoteId, score });
-  }
-
-  function rateAlbum(score) {
-    if (!album) return;
-    updateAlbum(album.id, current => ({ ...current, score }));
-    if (albumRemoteId && album.status) persist('saveAlbum', { albumId: albumRemoteId, score });
-  }
-
-  function rateTrack(track, score) {
-    updateTrack(track.id, current => ({ ...current, score }));
-    const musicId = remoteId(track.musicId);
-    if (musicId) persist('rateTrack', { musicId, score });
-  }
-
-  function rateShow(score) {
-    updateShow(current => ({ ...current, score }));
-    if (showRemoteId && show.status) persist('saveShow', { showId: showRemoteId, score });
-  }
-
-  // Episode scores have no native transport method yet; the shared episode row
-  // still updates its local score so the demo keeps the same interaction.
-  function rateEpisode(episode, score) {
-    updateEpisode(episode.id, current => ({ ...current, score }));
+  async function rateTrack(track, score) {
+    if (track.musicId == null) {
+      setNotice('Record a listen before rating this track.');
+      return;
+    }
+    updateTrackRow(track.id, current => ({ ...current, score }));
+    const result = await run('rateTrack', { musicId: track.musicId, score }, 'The score could not be saved.');
+    if (result === REQUEST_FAILED) {
+      updateTrackRow(track.id, current => ({ ...current, score: null }));
+      return;
+    }
+    setNotice('Score saved.');
   }
 
   function handleTrackAction(key, targetAlbum, track) {
@@ -571,151 +657,326 @@ export default function MusicScreen({ onBack, transport: injectedTransport }) {
     else if (key === 'history') openHistory('episode', episode);
   }
 
-  function deleteListen(trackId, entry) {
-    updateTrack(trackId, track => ({
-      ...track,
-      listens: track.listens.filter(item => item.id !== entry.id),
-    }));
-    const found = findTrack(library, trackId);
-    if (found?.album) {
-      updateAlbum(found.album.id, current => ({
-        ...current,
-        plays: Math.max(0, (current.plays || 0) - 1),
-      }));
-      updateArtist(current => ({
-        ...current,
-        totalPlays: Math.max(0, (current.totalPlays || 0) - 1),
-      }));
+  async function openHistory(target, item) {
+    setDialog({ type: 'history', target, title: item.title || item.name });
+    if (target === 'track') {
+      setHistory({ rows: [], loading: true });
+      try {
+        const listens = mapTrackListens(await transport.loadTrackPlays({ trackId: item.trackId }));
+        setHistory({
+          rows: listens.map(listen => ({
+            key: String(listen.id),
+            date: listen.date,
+            time: listen.time,
+            dateLabel: `${listen.date} ${listen.time}`,
+            actionLabel: 'Listened',
+            note: '',
+          })),
+          loading: false,
+        });
+      } catch (error) {
+        setTransportError(error?.message || 'The activity history could not be loaded.');
+        setHistory({ rows: [], loading: false });
+      }
+      return;
     }
-    const historyId = remoteId(entry.historyId ?? entry.id);
-    if (historyId) persist('deleteHistory', { mediaType: 'music', historyId });
+    const filters = {
+      artist: { mediaType: 'music', artistId: artistRemoteId },
+      album: { mediaType: 'music', albumId: albumRemoteId },
+      episode: { mediaType: 'podcast', showId: showRemoteId },
+      show: { mediaType: 'podcast', showId: showRemoteId },
+    };
+    setHistory({ rows: [], loading: true });
+    const payload = await run('loadHistory', { ...filters[target], limit: 50 }, 'The activity history could not be loaded.');
+    if (payload === REQUEST_FAILED) {
+      setHistory({ rows: [], loading: false });
+      return;
+    }
+    let rows = mapHistoryEntries(payload);
+    if (target === 'episode') {
+      // The history endpoint filters by show only, so this episode's plays
+      // are matched by entry title.
+      rows = rows.filter(row => row.title === item.title);
+    }
+    setHistory({
+      rows: sortDescending(rows.map(row => ({
+        key: row.key,
+        date: row.date,
+        time: row.time,
+        dateLabel: row.dateLabel,
+        actionLabel: row.title,
+        note: row.note,
+      }))),
+      loading: false,
+    });
   }
 
-  function historyRows() {
-    if (!dialog || dialog.type !== 'history') return [];
-    if (dialog.target === 'track') {
-      const found = findTrack(library, dialog.id);
-      return found ? trackHistoryRows(found.track) : [];
+  const selectedTrackKey = selectedTrackId
+    ? tracks.find(track => track.id === selectedTrackId)?.trackId
+    : null;
+
+  const loadListens = useCallback(async trackKey => {
+    if (!serverMode || !trackKey) return;
+    try {
+      const listens = mapTrackListens(await transport.loadTrackPlays({ trackId: trackKey }));
+      setTracks(current => current.map(track => (
+        track.trackId === trackKey ? { ...track, listens, playCount: listens.length } : track
+      )));
+    } catch (error) {
+      setTransportError(error?.message || 'The listens could not be loaded.');
     }
-    if (dialog.target === 'episode') {
-      const episode = show.episodes.find(item => item.id === dialog.id);
-      return episode ? episodeHistoryRows(episode) : [];
-    }
-    if (dialog.target === 'album') {
-      const target = findAlbum(library, dialog.id);
-      return target ? albumHistoryRows(target) : [];
-    }
-    if (dialog.target === 'show') return sortDescending(showHistoryRows(show.episodes));
-    return sortDescending(artistHistoryRows(albums));
+  }, [serverMode, transport]);
+
+  useEffect(() => {
+    loadListens(selectedTrackKey);
+  }, [selectedTrackKey, loadListens, reloadToken]);
+
+  function confirmDeleteListen(track, historyId) {
+    askConfirm({
+      title: 'Delete this listen?',
+      message: 'This removes the recorded listen and cannot be undone.',
+      confirmLabel: 'Delete listen',
+      async onConfirm() {
+        const result = await run('deleteTrackPlay', { trackId: track.trackId, historyId }, 'The listen could not be deleted.');
+        if (result === REQUEST_FAILED) return;
+        setNotice('Listen deleted.');
+        await loadListens(track.trackId);
+        await reloadAlbum();
+      },
+    });
   }
+
+  async function openReleases() {
+    setReleases({ open: true, loading: true, error: '', releases: [], selectedId: '' });
+    try {
+      const mapped = mapReleases(await transport.loadReleases({ albumId: albumRemoteId }));
+      setReleases({ open: true, loading: false, error: '', ...mapped });
+    } catch (error) {
+      setReleases({ open: true, loading: false, error: error?.message || 'Releases could not be loaded.', releases: [], selectedId: '' });
+    }
+  }
+
+  async function chooseRelease(release) {
+    const result = await run('selectRelease', { albumId: albumRemoteId, releaseId: release.id }, 'The release could not be saved.');
+    if (result === REQUEST_FAILED) return;
+    setReleases(current => ({ ...current, open: false }));
+    setNotice(result?.synced === false
+      ? 'Saved your release choice, but the tracklist could not be refreshed from MusicBrainz.'
+      : `Release updated${result?.track_count ? ` - synced ${result.track_count} tracks` : ''}.`);
+    await reloadAlbum();
+  }
+
+  async function reloadManaged() {
+    try {
+      const episodes = mapManagedEpisodes(await transport.loadManagedEpisodes({ showId: showRemoteId }));
+      setManage(current => ({ ...current, loading: false, episodes }));
+    } catch (error) {
+      setManage(current => ({ ...current, loading: false, errors: { form: error?.message || 'Episodes could not be loaded.' } }));
+    }
+  }
+
+  function openManage() {
+    setManage({ open: true, loading: true, saving: false, episodes: [], errors: {} });
+    reloadManaged();
+  }
+
+  async function saveManagedEpisode(editingId, values) {
+    setManage(current => ({ ...current, saving: true, errors: {} }));
+    try {
+      if (editingId) await transport.editManagedEpisode({ episodeId: editingId, values });
+      else await transport.addManagedEpisode({ showId: showRemoteId, values });
+      setManage(current => ({ ...current, saving: false }));
+      await reloadManaged();
+      await loadEpisodePage(false);
+      return true;
+    } catch (error) {
+      setManage(current => ({ ...current, saving: false, errors: { form: error?.message || 'The episode could not be saved.' } }));
+      return false;
+    }
+  }
+
+  function deleteManagedEpisode(episode) {
+    askConfirm({
+      title: 'Delete this episode?',
+      message: `"${episode.title}" and its plays are removed.`,
+      confirmLabel: 'Delete episode',
+      async onConfirm() {
+        const result = await run('deleteManagedEpisode', { episodeId: episode.id }, 'The episode could not be deleted.');
+        if (result === REQUEST_FAILED) return;
+        await reloadManaged();
+        await loadEpisodePage(false);
+      },
+    });
+  }
+
+  async function rateEpisode(episode, score) {
+    setEpisodes(current => current.map(row => (row.id === episode.id ? { ...row, score } : row)));
+    const result = await run('rateEpisode', { episodeId: episode.episodeId, score }, 'The score could not be saved.');
+    if (result === REQUEST_FAILED) {
+      setEpisodes(current => current.map(row => (row.id === episode.id ? { ...row, score: episode.score } : row)));
+      return;
+    }
+    setNotice('Score saved.');
+  }
+
+  const selectedTrack = selectedTrackId
+    ? tracks.find(track => track.id === selectedTrackId)
+    : null;
+  const albums = flattenAlbums(artist);
+
+  const loading = Boolean(
+    (artistId && !artist && loadingArtist)
+    || (showId && !show && loadingEpisodes),
+  );
+
+  const openWebsite = () => {
+    if (!show?.websiteUrl) return;
+    Linking.openURL(show.websiteUrl).catch(() => setNotice('The show website could not be opened.'));
+  };
 
   const tracking = dialog?.type === 'tracking' ? {
-    artist: { status: artist.status, score: artist.score, notes: artist.notes || '' },
+    artist: { status: artist?.status, score: artist?.score, notes: artist?.notes || '' },
     album: { status: album?.status, score: album?.score, notes: album?.notes || '' },
-    show: { status: show.status, score: show.score, notes: show.notes || '' },
+    show: { status: show?.status, score: show?.score, notes: show?.notes || '' },
   }[dialog.target] : null;
 
-  return <Screen onBack={onBack}>
+  return <Screen chrome={false}>
     <MusicView tabs={TABS} active={tab} onChange={changeTab}
-      palette={palette} error={transportError} notice={notice}>
+      palette={palette} error={transportError} notice={notice}
+      loading={loading} onRetry={() => setReloadToken(current => current + 1)}>
 
-    {tab === 'artist'
-      ? <>
-        <ArtistPage artist={artist} albums={albums}
-          onOpenAlbum={openAlbum}
-          onTrack={() => openTracking('artist', artist)}
-          onHistory={() => openHistory('artist', artist)}
-          onRate={rateArtist}
-          onSyncMembers={artistRemoteId ? syncArtistMembers : null} />
-        {artist.relations.members.length || artist.relations.alsoIn.length
-          ? null
-          : <EmptyPanel title="No band relations yet"
-            copy="Sync members from MusicBrainz to show current and former collaborators."
-            actionLabel={artistRemoteId ? 'Sync members' : null}
-            onAction={artistRemoteId ? syncArtistMembers : undefined} />}
-        {albums.length
-          ? null
-          : <EmptyPanel title="No releases collected yet"
-            copy="Sync the discography to pull albums and EPs from MusicBrainz."
-            actionLabel="Sync discography"
-            onAction={syncArtistDiscography} />}
-        <View style={styles.section}>
-          <SectionHeading title="Artist actions"
-            copy="Sync from MusicBrainz, delete this artist's plays or remove the tracker. Removing a tracker keeps your listening history." />
-          <View style={styles.actionRow}>
-            <Button label="Sync discography" tone="surface" onPress={syncArtistDiscography} />
-            <Button label="Delete all plays" tone="ghost-danger" onPress={confirmDeleteArtistPlays} />
-            {artist.status ? <Button label="Remove from library" tone="ghost-danger" onPress={confirmRemoveArtist} /> : null}
-          </View>
-        </View>
-      </>
+    {tab === 'artist' && !artistId
+      ? <BrowsePanel kind="artist" state={browse.artist} serverMode={serverMode}
+        title="Your artists" emptyTitle="No artists yet"
+        emptyCopy="Track an artist from search or a song in your library to see it here."
+        onOpen={openBrowseRow} onRetry={() => setReloadToken(current => current + 1)} />
       : null}
 
-    {tab === 'album' && !selected
+    {tab === 'artist' && artistId
+      ? (artist
+        ? <>
+          <View style={styles.actionRow}><Button label="All artists" tone="surface" onPress={() => browseAgain('artist')} /></View>
+          <ArtistPage artist={artist} albums={albums}
+            onOpenAlbum={openAlbum}
+            onTrack={() => openTracking('artist', artist)}
+            onHistory={() => openHistory('artist', { title: artist.name })}
+            onRate={rateArtist}
+            onSyncMembers={artistRemoteId ? syncArtistMembers : null} />
+          {artist.relations.members.length || artist.relations.alsoIn.length
+            ? null
+            : <EmptyPanel title="No band relations yet"
+              copy="Sync members from MusicBrainz to show current and former collaborators."
+              actionLabel={artistRemoteId ? 'Sync members' : null}
+              onAction={artistRemoteId ? syncArtistMembers : undefined} />}
+          {albums.length
+            ? null
+            : <EmptyPanel title="No releases collected yet"
+              copy="Sync the discography to pull albums and EPs from MusicBrainz."
+              actionLabel={artistRemoteId ? 'Sync discography' : null}
+              onAction={syncArtistDiscography} />}
+          <View style={styles.section}>
+            <SectionHeading title="Artist actions" />
+            <View style={styles.actionRow}>
+              <Button label="Sync discography" tone="surface" onPress={syncArtistDiscography} />
+              <Button label="Delete all plays for this artist" tone="ghost-danger" onPress={confirmDeleteArtistPlays} />
+              {artist.status ? <Button label="Remove from library" tone="ghost-danger" onPress={() => confirmRemoveTracker('artist')} /> : null}
+            </View>
+          </View>
+        </>
+        : <EmptyPanel
+          title="The artist could not be loaded."
+          copy="Check your connection and try again."
+          actionLabel="Try again"
+          onAction={() => setReloadToken(current => current + 1)} />)
+      : null}
+
+    {tab === 'album' && !albumId
+      ? <BrowsePanel kind="album" state={browse.album} serverMode={serverMode}
+        title="Your albums" emptyTitle="No albums yet"
+        emptyCopy="Track an album from an artist page to see it here."
+        onOpen={openBrowseRow} onRetry={() => setReloadToken(current => current + 1)} />
+      : null}
+
+    {tab === 'album' && albumId && !selectedTrack
       ? (album
         ? <>
-          <AlbumPage album={album}
+          <AlbumPage album={{ ...album, tracks, format: album.format || album.releaseType, runtime: albumRuntime(tracks) }}
             onBack={() => setTab('artist')}
             onOpenTrack={track => setSelectedTrackId(track.id)}
             onTrack={() => openTracking('album', album)}
-            onHistory={() => openHistory('album', album)}
+            onHistory={() => openHistory('album', { title: album.title })}
             onRate={rateAlbum}
-            onAction={(key, targetAlbum, track) => handleTrackAction(key, targetAlbum, track)}
+            onAction={handleTrackAction}
             onTrackRate={rateTrack}
-            onSyncMetadata={albumRemoteId ? syncAlbumMetadata : null} />
-          {album.tracks.length
+            onSyncMetadata={albumRemoteId ? syncAlbumMetadata : null}
+            onChooseRelease={albumRemoteId && album.hasReleaseGroup ? openReleases : null} />
+          {tracks.length
             ? null
             : <EmptyPanel title="No tracks yet"
               copy="Sync the album metadata to rebuild the tracklist from MusicBrainz."
               actionLabel={albumRemoteId ? 'Sync metadata' : null}
-              onAction={albumRemoteId ? syncAlbumMetadata : undefined} />}
+              onAction={syncAlbumMetadata} />}
           <View style={styles.section}>
-            <SectionHeading title="Album actions"
-              copy="Delete this album's plays or remove its tracker. Sync metadata stays with the album summary above." />
+            <SectionHeading title="Album actions" />
             <View style={styles.actionRow}>
-              <Button label="Delete all plays" tone="ghost-danger" onPress={confirmDeleteAlbumPlays} />
-              {album.status ? <Button label="Remove album" tone="ghost-danger" onPress={confirmRemoveAlbum} /> : null}
+              <Button label="Delete all plays for this album" tone="ghost-danger" onPress={confirmDeleteAlbumPlays} />
+              {album.status ? <Button label="Remove album" tone="ghost-danger" onPress={() => confirmRemoveTracker('album')} /> : null}
             </View>
           </View>
         </>
-        : <EmptyPanel title="No release selected"
-          copy="Open a release from the artist discography to see its tracks."
-          actionLabel="Back to artist"
-          onAction={() => setTab('artist')} />)
+        : <EmptyPanel title={loadingAlbum ? 'Loading album…' : 'The album could not be loaded.'}
+          copy="Check your connection and try again."
+          actionLabel="Try again"
+          onAction={() => setReloadToken(current => current + 1)} />)
       : null}
 
-    {tab === 'album' && selected
-      ? <TrackPage key={selected.track.id} album={selected.album} track={selected.track}
+    {tab === 'album' && selectedTrack
+      ? <TrackPage key={selectedTrack.id} album={album} track={selectedTrack}
         onBack={() => setSelectedTrackId(null)}
-        onRate={score => rateTrack(selected.track, score)}
-        onAddListen={() => openDateDialog('track', selected.track)}
-        onOpenNotes={() => openNotes('track', selected.track)}
-        onSaveNotes={value => saveTrackNotes(selected.track.id, value)}
-        onDeleteListen={entry => deleteListen(selected.track.id, entry)}
-        onOpenHistory={() => openHistory('track', selected.track)} Preview={MarkdownPreview} />
+        onRate={score => rateTrack(selectedTrack, score)}
+        onAddListen={() => openDateDialog('track', selectedTrack)}
+        onOpenNotes={() => openNotes('track', selectedTrack)}
+        onSaveNotes={value => saveTrackNotes(selectedTrack.id, value)}
+        onDeleteListen={historyId => confirmDeleteListen(selectedTrack, historyId)}
+        onOpenHistory={() => openHistory('track', selectedTrack)} />
       : null}
 
-    {tab === 'podcast'
-      ? <>
-        <ShowPage show={show} episodes={show.episodes}
-          episodeFilter={episodeFilter}
-          onFilter={value => { setEpisodeFilter(value); setVisibleEpisodes(4); setNotice(''); }}
-          visibleCount={visibleEpisodes}
-          onLoadMore={() => setVisibleEpisodes(current => current + 4)}
-          onTrack={() => openTracking('show', show)}
-          onHistory={() => openHistory('show', show)}
-          onRate={rateShow}
-          onAction={handleEpisodeAction}
-          onEpisodeRate={rateEpisode} />
-        <View style={styles.section}>
-          <SectionHeading title="Show actions"
-            copy="Record every unplayed episode in one step or remove the show tracker. Episode plays stay in your history." />
-          <View style={styles.actionRow}>
-            <Button label="Mark all played" tone="surface" onPress={confirmMarkAllPlayed} />
-            {show.status ? <Button label="Remove podcast" tone="ghost-danger" onPress={confirmRemoveShow} /> : null}
+    {tab === 'podcast' && !showId
+      ? <BrowsePanel kind="show" state={browse.show} serverMode={serverMode}
+        title="Your podcasts" emptyTitle="No podcasts yet"
+        emptyCopy="Add a podcast from search to see it here."
+        onOpen={openBrowseRow} onRetry={() => setReloadToken(current => current + 1)} />
+      : null}
+
+    {tab === 'podcast' && showId
+      ? (show
+        ? <>
+          <View style={styles.actionRow}><Button label="All podcasts" tone="surface" onPress={() => browseAgain('show')} /></View>
+          <ShowPage show={show} episodes={episodes} episodeTotal={episodeTotal}
+            episodeFilter={episodeFilter}
+            onFilter={value => { setEpisodeFilter(value); setNotice(''); }}
+            hasMore={episodes.length < episodeTotal}
+            loadingEpisodes={loadingEpisodes}
+            onLoadMore={() => loadEpisodePage(true)}
+            onTrack={() => openTracking('show', show)}
+            onHistory={() => openHistory('show', { title: show.title })}
+            onRate={rateShow}
+            onAction={handleEpisodeAction}
+            onVisitWebsite={show.websiteUrl ? openWebsite : null}
+            onRateEpisode={rateEpisode}
+            onManageEpisodes={show.isManual ? openManage : null} />
+          <View style={styles.section}>
+            <SectionHeading title="Show actions" />
+            <View style={styles.actionRow}>
+              <Button label="Mark all played" tone="surface" onPress={confirmMarkAllPlayed} />
+              {show.status ? <Button label="Remove podcast" tone="ghost-danger" onPress={() => confirmRemoveTracker('show')} /> : null}
+            </View>
           </View>
-        </View>
-      </>
+        </>
+        : <EmptyPanel title={loadingEpisodes ? 'Loading podcast…' : 'The podcast could not be loaded.'}
+          copy="Check your connection and try again."
+          actionLabel="Try again"
+          onAction={() => setReloadToken(current => current + 1)} />)
       : null}
     </MusicView>
 
@@ -728,6 +989,15 @@ export default function MusicScreen({ onBack, transport: injectedTransport }) {
         <Button label={confirm?.confirmLabel || 'Confirm'} tone="danger-solid" onPress={runConfirm} />
       </View>
     </SheetModal>
+
+    <ReleasePickerModal open={releases.open} title={album?.title || 'Releases'} state={releases}
+      onSelect={chooseRelease}
+      onClose={() => setReleases(current => ({ ...current, open: false }))} />
+
+    <ManageEpisodesModal open={manage.open} showTitle={show?.title || ''} state={manage}
+      onSave={saveManagedEpisode}
+      onDelete={deleteManagedEpisode}
+      onClose={() => setManage(current => ({ ...current, open: false }))} />
 
     <DateEntryModal open={dialog?.type === 'date'}
       title={dialog?.target === 'track' ? 'Add listen' : 'Add play'}
@@ -757,32 +1027,14 @@ export default function MusicScreen({ onBack, transport: injectedTransport }) {
 
     <DetailHistoryDialog open={dialog?.type === 'history'}
       title={dialog ? dialog.title : 'Activity history'}
-      rows={historyRows()}
-      labels={{ history: 'Activity history', close: 'Close', noHistory: 'No activity recorded yet.' }}
+      rows={history.rows}
+      labels={{ history: 'Activity history', close: 'Close', noHistory: history.loading ? 'Loading history…' : 'No activity recorded yet.' }}
       palette={palette}
       onClose={() => setDialog(EMPTY_DIALOG)} />
   </Screen>;
 }
 
 const styles = StyleSheet.create({
-  notice: {
-    borderWidth: 1,
-    borderColor: 'rgba(248, 113, 113, 0.4)',
-    borderRadius: 8,
-    backgroundColor: 'rgba(248, 113, 113, 0.1)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  noticeText: { color: palette.danger, fontSize: 13 },
-  successNotice: {
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.4)',
-    borderRadius: 8,
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  successText: { color: palette.success, fontSize: 13 },
   section: { gap: spacing.md },
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   empty: {
