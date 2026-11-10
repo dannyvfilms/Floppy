@@ -367,6 +367,7 @@ Status: `Partial / coexisting`
 - `src/templates/app/components/home_groups.html`
 - `src/templates/app/home.html`
 - Web parity pass against v26.10.29: `frontend/pages/HomeView.jsx` forwards `renderCard` and `renderProgress`; `frontend/ui/HomeShelves.jsx` and `frontend/ui/Rail.jsx` size video and mixed rows per item.
+- Home row title links (#1899): `frontend/ui/HomeShelves.jsx` (`onOpenRowTitle`, `canOpenRowTitle`), `frontend/ui/mountHome.jsx`, `native-proof/app/screens/HomeScreen.jsx`, `native-proof/app/screens/LibraryScreen.jsx` (`filtersFromQuery`, `params.query`) and `native-proof/app/data/homeRowDestinationCore.js`.
 
 ## PLAYBACK
 

@@ -127,6 +127,8 @@ const RailRow = React.memo(function RailRow({
   railComponent,
   onOpenCard,
   onOpenLink,
+  onOpenRowTitle,
+  canOpenRowTitle,
   onAction,
   onRate,
   onSortRow,
@@ -149,6 +151,7 @@ const RailRow = React.memo(function RailRow({
     getItemWidth={item => railItemWidth(row, item, itemWidth)}
     items={items}
     viewAll={row.viewAll ? { label: row.viewAll.label, onPress: () => onOpenLink?.(row.viewAll.href, null, row) } : undefined}
+    onTitlePress={row.url && onOpenRowTitle && (canOpenRowTitle ? canOpenRowTitle(row.url) : true) ? () => onOpenRowTitle(row.url, row) : undefined}
     onSort={onSortRow ? () => onSortRow(row) : undefined}
     sortLabel={sortLabel(row, labels)}
     onLoadMore={onLoadMore ? () => onLoadMore(row) : undefined}
@@ -205,6 +208,8 @@ export function HomeShelves({
   railComponent,
   onOpenCard,
   onOpenLink,
+  onOpenRowTitle,
+  canOpenRowTitle,
   onAction,
   onRate,
   onSortRow,
@@ -418,7 +423,7 @@ export function HomeShelves({
       renderCard={renderCard} renderProgress={renderProgress}
       renderRating={renderRating} renderActionIcon={renderActionIcon}
       RailComponent={railComponent}
-      onOpenCard={onOpenCard} onOpenLink={onOpenLink} onAction={onAction} onRate={onRate}
+      onOpenCard={onOpenCard} onOpenLink={onOpenLink} onOpenRowTitle={onOpenRowTitle} canOpenRowTitle={canOpenRowTitle} onAction={onAction} onRate={onRate}
       onSortRow={onSortRow ? sortRow : undefined}
       onLoadMore={onLoadMore ? loadMore : undefined} />);
   }
