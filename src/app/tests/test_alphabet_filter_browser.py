@@ -135,6 +135,19 @@ class AlphabetBrowserTests(SerialStaticLiveServerTestCase):
                         - Math.max(96, Math.ceil(anchor))) <= 1;
                     }"""
                 )
+                expected_rail_top = page.locator(".media-grid").evaluate(
+                    """grid => {
+                      const poster = grid.querySelector('img')?.getBoundingClientRect();
+                      const anchor = poster?.width && poster?.height
+                        ? poster.top : grid.getBoundingClientRect().top;
+                      return Math.max(96, Math.ceil(anchor));
+                    }"""
+                )
+                self.assertAlmostEqual(
+                    page.locator(".alphabet-rail").bounding_box()["y"],
+                    expected_rail_top,
+                    delta=1,
+                )
                 rail_bounds = page.locator(".alphabet-rail").bounding_box()
                 self.assertAlmostEqual(
                     rail_bounds["y"] + rail_bounds["height"], 984, delta=0.5
