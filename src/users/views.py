@@ -1581,6 +1581,8 @@ def _card_preview_stand_in(media_type):
         "show_title": "Sample Show",
         "image": "",
     }
+    if media_type == "person":
+        item["age_label"] = "Age at release"
     media = SimpleNamespace(
         id=0,
         status="In progress",

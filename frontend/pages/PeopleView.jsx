@@ -94,6 +94,8 @@ export function PeopleView({
   actionPalette,
   actionSize,
   web = false,
+  tapToReveal = false,
+  titleOptions,
   title,
   items = [],
   collapsed,
@@ -184,21 +186,24 @@ export function PeopleView({
       emptyLabel={kind === 'studio' ? copy.noTitles : isAuthor ? copy.noBibliography : copy.noFilmography}
       palette={colors} /> : null}
     {!loading && showCredits && cast.length ? <Rail items={cast}
-      renderItem={member => <PersonCard person={member} labels={labels} palette={colors} onOpen={onOpenPerson} />}
+      renderItem={member => <PersonCard person={member} labels={labels} palette={colors}
+        titleOptions={titleOptions} tapToReveal={tapToReveal} onOpen={onOpenPerson} />}
       title={`${copy.cast}${title ? ` · ${title}` : ''}`}
       summary={countLabel(cast.length, 'person', 'people')}
       itemWidth={castWidth}
       emptyLabel={copy.noCast}
       palette={railPalette} /> : null}
     {!loading && showCredits && crew.length ? <Rail items={crew}
-      renderItem={member => <PersonCard person={member} labels={labels} palette={colors} onOpen={onOpenPerson} />}
+      renderItem={member => <PersonCard person={member} labels={labels} palette={colors}
+        titleOptions={titleOptions} tapToReveal={tapToReveal} onOpen={onOpenPerson} />}
       title={`${copy.crew}${title ? ` · ${title}` : ''}`}
       summary={countLabel(crew.length, 'person', 'people')}
       itemWidth={castWidth}
       emptyLabel={copy.noCrew}
       palette={railPalette} /> : null}
     {!loading && showCast && !showCredits ? <Rail items={items}
-      renderItem={entry => renderPersonCard ? renderPersonCard(entry) : <PersonCard person={entry} web={web} labels={labels} palette={colors}
+      renderItem={entry => renderPersonCard ? renderPersonCard(entry) : <PersonCard person={entry} web={web}
+        tapToReveal={tapToReveal} titleOptions={titleOptions} labels={labels} palette={colors}
         onOpen={onOpenPerson} />}
       title={title || copy.cast}
       itemWidth={castWidth}

@@ -696,9 +696,11 @@ Status: `Partial / coexisting`
 
 ## PEOPLE
 
-Status: `Legacy`
+Status: `Partial / coexisting`
 
 PeopleView's native full-page grid uses canonical MediaCard models and a render-grid slot; web filmography stays server-owned until shared adoption. Pre-fix browser comparison captured person and credits; post-fix verification pending. iOS and Android not verified.
+
+Shared `PeopleView`/`PersonCard` expose event-age labels behind the Cards preference. Episode cast/crew rails retain the shared Home `MediaCard` surface and include the same preference-controlled event-age line; the lazy age lookup stays in the web adapter. Detail cast/crew rows supply event-date metadata while retaining the current season and recommendation card surfaces. Web capture remains pending; iOS and Android runtime are not verified.
 
 - `src/templates/app/components/detail_carousel_fragment.html`
 - `src/templates/app/components/detail_cast_grid.html`
@@ -713,6 +715,8 @@ PeopleView's native full-page grid uses canonical MediaCard models and a render-
 - `src/templates/app/person_detail.html`
 - `src/templates/app/studio_detail.html`
 - `frontend/ui/PeopleToolbar.jsx`
+- `frontend/ui/People.jsx`, `frontend/ui/mountPeople.jsx`, `frontend/pages/PeopleView.jsx`, `frontend/ui/mediaCardBehavior.js`, `frontend/ui/MediaCard.jsx`, `frontend/ui/MediaCard.web.jsx`, `frontend/ui/HomeShelves.jsx`, `src/app/media_card_model.py`, `src/app/people_views.py`, `src/app/detail_builders.py`
+- `frontend/settings/CreditAgeSetting.jsx` (preference control; browser native select remains template-owned)
 
 ## TAGS
 

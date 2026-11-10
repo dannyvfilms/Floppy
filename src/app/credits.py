@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 
 from django.db import transaction
+from django.utils import timezone
 
 from app.models import (
     CREDITS_BACKFILL_VERSION,
@@ -578,6 +579,7 @@ def upsert_person_profile(source, source_person_id, metadata):
             "gender": _coerce_gender(metadata.get("gender")),
             "birth_date": _coerce_iso_date(metadata.get("birth_date")),
             "death_date": _coerce_iso_date(metadata.get("death_date")),
+            "profile_dates_checked_at": timezone.now(),
             "place_of_birth": _as_text(metadata.get("place_of_birth")),
         },
     )

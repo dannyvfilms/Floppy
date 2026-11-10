@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { FormSaveBar } from '../ui/FormSaveBar';
 import { SelectField } from '../ui/SelectField';
+import { CreditAgeSetting } from './CreditAgeSetting';
 
 const defaultPalette = {
   background: '#18181b',
@@ -31,6 +32,9 @@ const defaultLabels = {
   cardActionsHelp: 'Applies to every media type. Desktop hover actions stay available.',
   hoverActions: 'Hover actions on mobile',
   mediaType: 'Media type',
+  showCreditAge: 'Show age at credit event',
+  showCreditAgeValue: 'Show',
+  hideCreditAgeValue: 'Hide',
   copyFrom: 'Copy settings from',
   chooseType: 'Choose a media type',
   settingsActions: 'Settings actions',
@@ -347,6 +351,13 @@ export function CardsEditor({
     setProfile(next);
   }
 
+  function setCreditAge(enabled) {
+    const next = currentProfileBase();
+    ensureTitle(next);
+    next.options.show_credit_age = enabled;
+    setProfile(next);
+  }
+
   function titleLineVisible(count) {
     const lines = profile.options?.title?.lines || 1;
     if (count === 'all') return true;
@@ -537,6 +548,19 @@ export function CardsEditor({
       </View>
 
       <View style={styles.optionGrid}>
+        {currentType === 'person' ? <View style={styles.optionCell}>
+          <CreditAgeSetting
+            enabled={profile.options?.show_credit_age !== false}
+            labels={{
+              label: copy.showCreditAge,
+              show: copy.showCreditAgeValue,
+              hide: copy.hideCreditAgeValue,
+            }}
+            disabled={disabled}
+            palette={colors}
+            onChange={setCreditAge}
+          />
+        </View> : null}
         <View style={styles.optionCell}>
           <SelectField
             id="cards-rating-show"

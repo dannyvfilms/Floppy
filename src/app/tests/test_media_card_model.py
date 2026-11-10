@@ -9,6 +9,7 @@ from django.test import TestCase
 from app.card_surfaces import card_context
 from app.media_card_model import _corner_chips, _progress_bar, card_model, card_shape
 from app.models import Item, MediaTypes, Movie, Sources, Status
+from users.card_metadata import parse_card_metadata
 
 
 class MediaCardModelTest(TestCase):
@@ -42,6 +43,26 @@ class MediaCardModelTest(TestCase):
         self.assertEqual(model["statusChip"]["kind"], "status")
         self.assertEqual(model["statusChip"]["status"], Status.COMPLETED.value)
         self.assertIn("model-1", model["href"])
+
+    def test_credit_age_line_uses_the_person_setting(self):
+        """A credit age is present by default and removable without removing role."""
+        credit = {"age_label": "29 yo at release · died 1993", "role": "Eric Draven"}
+        context = {"user": self.user}
+        values = {"item": self.item, "media": self.movie, "credit": credit}
+        model = card_model(card_context(context, "credit", values))
+        age_line = next(line for line in model["lines"] if line.get("variant") == "credit-age")
+        self.assertEqual(age_line["parts"][0]["text"], credit["age_label"])
+
+        self.user.card_metadata = parse_card_metadata({
+            "types": {
+                "person": {
+                    "fields": ["role"],
+                    "options": {"show_credit_age": False},
+                },
+            },
+        })
+        hidden_model = card_model(card_context(context, "credit", values))
+        self.assertFalse(any(line.get("variant") == "credit-age" for line in hidden_model["lines"]))
 
     def test_hover_actions(self):
         """The hover buttons track, list and link to history, and hide on public pages."""

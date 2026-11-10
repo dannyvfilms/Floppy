@@ -1481,6 +1481,26 @@
         }
       }
     },
+    "frontend/settings/CreditAgeSetting.jsx": {
+      "components": [
+        "CreditAgeSetting"
+      ],
+      "register": "SET-CARDS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "The browser Card settings page retains its server-rendered native select under the documented compatibility exception; this shared component is used only by the native CardsEditor."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "The control is included in the shared CardsEditor; no iOS runtime check was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "The control is included in the shared CardsEditor; no Android runtime check was performed."
+        }
+      }
+    },
     "frontend/settings/HomeScreenEditor.jsx": {
       "components": [
         "HomeScreenEditor"

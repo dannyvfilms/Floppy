@@ -97,6 +97,33 @@ class GameCastRowFromCreditsTests(TestCase):
         rows = _build_detail_person_rows(media_metadata, item=self.item)
         self.assertEqual(rows["cast_row"]["items"][0]["name"], "From Metadata")
 
+    def test_cast_and_crew_rows_carry_the_title_event_date(self):
+        media_metadata = {
+            "media_type": MediaTypes.MOVIE.value,
+            "details": {"release_date": "1994-05-11"},
+            "cast": [{"person_id": "57700", "name": "Brandon Lee", "role": "Eric"}],
+            "crew": [{"person_id": "2", "name": "Director", "role": "Director"}],
+        }
+
+        rows = _build_detail_person_rows(media_metadata)
+
+        self.assertEqual(rows["cast_row"]["credit_event_date"], "1994-05-11")
+        self.assertEqual(rows["cast_row"]["credit_event_label"], "release")
+        self.assertEqual(rows["crew_row"]["credit_event_date"], "1994-05-11")
+
+    def test_filming_date_takes_priority_over_release_date(self):
+        media_metadata = {
+            "media_type": MediaTypes.MOVIE.value,
+            "filming_date": "1993-03-31",
+            "release_date": "1994-05-11",
+            "cast": [{"person_id": "57700", "name": "Brandon Lee", "role": "Eric"}],
+        }
+
+        rows = _build_detail_person_rows(media_metadata)
+
+        self.assertEqual(rows["cast_row"]["credit_event_date"], "1993-03-31")
+        self.assertEqual(rows["cast_row"]["credit_event_label"], "filming")
+
 
 class GameImdbLinkChipTests(TestCase):
     def test_imdb_chip_appears_when_resolved(self):

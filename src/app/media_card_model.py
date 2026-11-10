@@ -229,7 +229,7 @@ def _subtitle_lines(ctx, media_type):
     lines = _item_lines(ctx, media_type)
     credit = ctx.get("credit")
     if credit:
-        from users.card_metadata import card_lines
+        from users.card_metadata import card_lines, show_credit_age
 
         lines.extend(
             {
@@ -242,6 +242,13 @@ def _subtitle_lines(ctx, media_type):
             }
             for line in card_lines(ctx.get("user"), "person", credit, None)
         )
+        if credit.get("age_label") and show_credit_age(ctx.get("user")):
+            lines.append({
+                "variant": "credit-age",
+                "clamp": True,
+                "dormant": False,
+                "parts": [{"text": credit["age_label"]}],
+            })
     return lines
 
 

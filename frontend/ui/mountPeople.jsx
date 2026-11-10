@@ -77,6 +77,37 @@ function readCollapsed(key) {
 
 function CastRail({ props, palette }) {
   const [collapsed, setCollapsed] = useState(() => readCollapsed(props.collapseKey));
+  const [ageLabels, setAgeLabels] = useState({});
+  useEffect(() => {
+    if (!('IntersectionObserver' in window)) return undefined;
+    let active = true;
+    const seen = new Set();
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const person = props.items.find(item => item.cardId === entry.target.id);
+        if (!person?.ageUrl || seen.has(person.id)) continue;
+        seen.add(person.id);
+        observer.unobserve(entry.target);
+        fetch(person.ageUrl, { headers: { Accept: 'application/json' } })
+          .then(response => response.ok ? response.json() : null)
+          .then(data => {
+            if (active) setAgeLabels(current => ({ ...current, [person.id]: data?.ageLabel || '' }));
+          })
+          .catch(() => {
+            if (active) setAgeLabels(current => ({ ...current, [person.id]: '' }));
+          });
+      }
+    }, { rootMargin: '120px' });
+    for (const person of props.items) {
+      const card = person.cardId && document.getElementById(person.cardId);
+      if (card && person.ageUrl && person.showCreditAge !== false) observer.observe(card);
+    }
+    return () => {
+      active = false;
+      observer.disconnect();
+    };
+  }, [props.items]);
   const [width, setWidth] = useState(() => shelfCardWidth(window.innerWidth, document.body.dataset.mobileGrid));
   useEffect(() => {
     const update = () => setWidth(shelfCardWidth(window.innerWidth, document.body.dataset.mobileGrid));
@@ -95,9 +126,13 @@ function CastRail({ props, palette }) {
     label: props.viewAll.label,
     onPress: () => openInternal(props.viewAll.href),
   } : undefined;
+  const items = props.items.map(person => ({
+    ...person,
+    ageLabel: ageLabels[person.id] || '',
+  }));
   return <PeopleView
     part="cast"
-    items={props.items}
+    items={items}
     title={props.title}
     labels={props.labels}
     palette={palette}
@@ -105,8 +140,10 @@ function CastRail({ props, palette }) {
     castWidth={width}
     renderPersonCard={person => <MediaCard variant="grid" model={{ title: person.name, href: person.href, recommend: !person.href,
       shape: 'poster', image: { src: person.imageUrl || person.imageFallback },
-      lines: person.cardLines ? person.cardLines.map(line => ({ parts: [{ text: line.text }], dormant: line.dormant || person.subtitleAlways }))
-        : [person.subtitle || person.role].filter(Boolean).map(text => ({ parts: [{ text }] })) }} />}
+      lines: [...(person.cardLines ? person.cardLines.map(line => ({ parts: [{ text: line.text }], dormant: line.dormant || person.subtitleAlways }))
+        : [person.subtitle || person.role].filter(Boolean).map(text => ({ parts: [{ text }] })),
+      ...(person.showCreditAge !== false && person.ageLabel ? [{ parts: [{ text: person.ageLabel }], dormant: true }] : [])]
+    }} />}
     viewAll={viewAll}
     collapsible={Boolean(props.collapseKey)}
     collapsed={props.collapseKey ? collapsed : undefined}

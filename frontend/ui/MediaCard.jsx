@@ -169,6 +169,10 @@ function ProgressBar({ bar, palette }) {
 
 function Line({ line, palette }) {
   if (!line || !line.parts?.length) return null;
+  if (line.variant === 'credit-age') {
+    return <Text numberOfLines={line.clamp ? 1 : undefined}
+      style={[styles.creditAge, { color: palette.textMuted }]}>{line.parts[0].text}</Text>;
+  }
   if (line.variant === 'provenance') {
     return <Text accessibilityLabel={line.tooltip} numberOfLines={1}
       style={[styles.provenance, { color: palette.textMuted }]}>{line.parts[0].text}</Text>;
@@ -442,6 +446,7 @@ const styles = StyleSheet.create({
   altText: { fontSize: 11, lineHeight: 15, marginTop: 2 },
   line: { fontSize: 11, lineHeight: 15, marginTop: 2 },
   provenance: { fontSize: 10, lineHeight: 14, marginTop: 1 },
+  creditAge: { fontSize: 11, lineHeight: 15, marginTop: 2 },
   matched: { fontSize: 11, lineHeight: 15, marginTop: 2 },
   score: { flexDirection: 'row', alignItems: 'center', gap: 2, flexShrink: 0 },
   chip: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 6,

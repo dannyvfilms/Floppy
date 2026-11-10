@@ -125,6 +125,7 @@
   <form method="post"
         x-data="cardsEditor()"
         x-init="init()"
+        @floppy-credit-age-setting.window="saved.person.options.show_credit_age = $event.detail.enabled; refreshPreview()"
         @submit="writePayload()">
     {% csrf_token %}
     <input type="hidden" name="card_metadata" x-ref="payload">
@@ -193,6 +194,21 @@
           <p class="text-xs text-[var(--color-text-muted)] mb-2">{% translate "Preview" %}</p>
           <div id="card-preview" x-html="previewHtml"></div>
         </div>
+      </div>
+
+      <div x-show="active === 'person'" class="mb-4">
+        <label class="block">
+          <span class="cards-opt-label">{% translate "Show age at credit event" %}</span>
+          <span class="cards-select-wrap">
+            <select class="cards-select"
+                    :value="saved.person.options.show_credit_age === false ? 'hide' : 'show'"
+                    @change="saved.person.options.show_credit_age = $event.target.value === 'show'; refreshPreview()">
+              <option value="show">{% translate "Show" %}</option>
+              <option value="hide">{% translate "Hide" %}</option>
+            </select>
+            {% include "app/icons/chevron-down.svg" with classes="cards-select-arrow" %}
+          </span>
+        </label>
       </div>
 
       <template x-if="current">

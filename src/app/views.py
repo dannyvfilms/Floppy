@@ -289,7 +289,7 @@ from app.music_views import (
     sync_artist_discography_view,
     track_detail,
 )
-from app.people_views import person_detail, studio_detail
+from app.people_views import person_credit_facts, person_detail, studio_detail
 from app.podcast_views import (
     podcast_episode_add,
     podcast_episode_delete,
@@ -2061,6 +2061,7 @@ __all__ = [
     "music_track_notes",
     "openlibrary",
     "parse_date",
+    "person_credit_facts",
     "person_detail",
     "podcast_episode_add",
     "podcast_episode_delete",
