@@ -162,13 +162,7 @@ def delete_history_record(request, media_type, history_id):
         try:
             podcast = Podcast.objects.get(id=podcast_id, user=request.user)
             remaining_history = list(
-                podcast.history.filter(
-                    history_user=request.user,
-                ).order_by("-end_date"),
-            ) or list(
-                podcast.history.filter(
-                    history_user__isnull=True,
-                ).order_by("-end_date"),
+                podcast.plays.filter(end_date__isnull=False).order_by("-end_date"),
             )
 
             remaining_count = len(remaining_history)

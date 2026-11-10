@@ -67,6 +67,22 @@ class ArtistTrackerTests(MusicApiTestCase):
         self.assertEqual(listed.status_code, HTTP.OK)
         self.assertEqual(listed.json()["pagination"]["total"], 1)
 
+    def test_artist_list_uses_library_search_status_and_sort_filters(self):
+        ArtistTracker.objects.create(
+            user=self.user1,
+            artist=self.artist,
+            status=Status.COMPLETED.value,
+            score=8,
+        )
+        response = self.client.get(
+            "/api/v1/music/artists/",
+            {"search": "test", "status": Status.COMPLETED.value, "sort": "title", "direction": "asc"},
+            **self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response.data["pagination"]["total"], 1)
+        self.assertEqual(response.data["results"][0]["name"], "The Testers")
+
     def test_patch_tracker_partial(self):
         """PATCH updates only the provided fields."""
         ArtistTracker.objects.create(
@@ -161,6 +177,17 @@ class AlbumTrackerTests(MusicApiTestCase):
         )
         self.assertEqual(detail.status_code, HTTP.OK)
         self.assertEqual(detail.json()["tracker"]["score"], "9.0")
+
+    def test_album_list_uses_library_search_and_rating_filters(self):
+        AlbumTracker.objects.create(user=self.user1, album=self.album, score=8)
+        response = self.client.get(
+            "/api/v1/music/albums/",
+            {"search": "first", "rating_min": "7", "sort": "release_date", "direction": "desc"},
+            **self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response.data["pagination"]["total"], 1)
+        self.assertEqual(response.data["results"][0]["title"], "First Album")
 
     def test_tracks_listing_includes_play_state(self):
         """GET tracks lists catalog rows with the user's plays."""

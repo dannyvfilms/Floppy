@@ -237,22 +237,23 @@ class BulkTests(LibraryEndpointsBase):
         """One date and a range reach the web option parser (it reads date, start_date, end_date)."""
         missing = self.post(
             "api_library_bulk_plays",
-            {"item_ids": self.ids(), "scope": "aired", "existing": "skip", "date_mode": "one_date"},
+            {"item_ids": self.ids(), "options": {"scope": "aired", "existing": "skip", "date_mode": "one_date"}},
         )
         self.assertEqual(missing.status_code, HTTP.BAD_REQUEST)
         self.assertEqual(missing.json()["detail"], "Pick a date.")
         reversed_range = self.post(
             "api_library_bulk_plays",
-            {"item_ids": self.ids(), "scope": "aired", "existing": "skip", "date_mode": "range",
-             "start_date": "2024-02-01", "end_date": "2024-01-01"},
+            {"item_ids": self.ids(), "options": {"scope": "aired", "existing": "skip", "date_mode": "range",
+                                                 "start_date": "2024-02-01", "end_date": "2024-01-01"}},
         )
         self.assertEqual(reversed_range.json()["detail"], "The start date must not be after the end date.")
         ok = self.post(
             "api_library_bulk_plays",
-            {"item_ids": self.ids(), "scope": "seasons", "season_from": 1, "season_to": 2,
-             "existing": "add", "date_mode": "one_date", "date": "2024-01-01", "dry_run": True},
+            {"item_ids": self.ids(), "dry_run": True,
+             "options": {"scope": "seasons", "season_from": 1, "season_to": 2,
+                         "existing": "add", "date_mode": "one_date", "date": "2024-01-01"}},
         )
-        self.assertEqual(ok.status_code, HTTP.OK, ok.content)
+        self.assertEqual(ok.status_code, HTTP.ACCEPTED, ok.content)
         self.assertTrue(ok.json()["operation_id"])
 
     def test_invalid_status_and_empty_selection(self):
@@ -296,16 +297,12 @@ class BulkTests(LibraryEndpointsBase):
     def test_list_add_and_permissions(self):
         """Items go into an editable list; another user's list is not found."""
         custom = CustomList.objects.create(name="Mine", owner=self.user1)
-        response = self.post(
-            "api_library_bulk_list", {"item_ids": self.ids(), "list_id": custom.id},
-        )
+        response = self.post("api_list_items_bulk_add", {"item_ids": self.ids()}, custom.id)
         self.assertEqual(response.status_code, HTTP.OK, response.content)
         self.assertEqual(response.json()["added"], 3)
         self.assertEqual(CustomListItem.objects.filter(custom_list=custom).count(), 3)
         foreign = CustomList.objects.create(name="Theirs", owner=self.user2)
-        denied = self.post(
-            "api_library_bulk_list", {"item_ids": self.ids(), "list_id": foreign.id},
-        )
+        denied = self.post("api_list_items_bulk_add", {"item_ids": self.ids()}, foreign.id)
         self.assertIn(denied.status_code, (HTTP.NOT_FOUND, HTTP.FORBIDDEN))
 
     def test_plays_status_of_unknown_operation(self):
@@ -366,18 +363,16 @@ class LibraryPreferencesAndViewsTests(FloppyApiTestCase):
         self.assertEqual(self.user1.table_column_prefs, original)
 
     def test_saved_view_create_list_delete(self):
-        """Create spells out all statuses, lists in preferences, and deletes."""
+        """Create stores the query, lists in preferences and the saved views, and deletes."""
         created = self.client.post(
             "/api/v1/library/saved-views/",
-            {"mediaType": "movie", "name": "Best", "query": {"sort": "score", "tag": "a,b", "limit": 30}},
+            {"media_type": "movie", "name": "Best", "query": "sort=score&tag=a&tag=b"},
             content_type="application/json",
         )
         self.assertEqual(created.status_code, HTTP.CREATED)
-        query = created.json()["query"]
-        self.assertIn("tag=a", query)
-        self.assertIn("tag=b", query)
-        self.assertIn("status=", query)
-        self.assertNotIn("limit", query)
+        self.assertEqual(created.json()["query"], "sort=score&tag=a&tag=b")
+        views = self.client.get("/api/v1/library/saved-views/?media_type=movie").json()
+        self.assertEqual([view["name"] for view in views], ["Best"])
         listed = self.client.get("/api/v1/library/preferences/movie/").json()["savedViews"]
         self.assertEqual([view["name"] for view in listed], ["Best"])
         gone = self.client.delete(f"/api/v1/library/saved-views/{created.json()['id']}/")
@@ -386,7 +381,7 @@ class LibraryPreferencesAndViewsTests(FloppyApiTestCase):
     def test_saved_view_requires_a_name(self):
         """A blank name is refused like the web."""
         response = self.client.post(
-            "/api/v1/library/saved-views/", {"mediaType": "movie", "name": " "}, content_type="application/json",
+            "/api/v1/library/saved-views/", {"media_type": "movie", "name": " "}, content_type="application/json",
         )
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
 

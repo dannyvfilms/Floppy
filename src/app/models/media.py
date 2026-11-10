@@ -92,10 +92,16 @@ class Media(models.Model):
             "user",
             "related_tv",
             "created_at",
+            "updated_at",
         ],
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
+    # Moves on any change to the row (status, score, progress, dates, notes, ...)
+    # so API clients can ask for just what changed (`updated_since`). Bulk
+    # writers are stamped by ImportScopedQuerySet; list and tag membership by
+    # the signals in app.library_changes.
+    updated_at = models.DateTimeField(auto_now=True)
     item = models.ForeignKey(Item, on_delete=models.CASCADE)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     import_run = models.ForeignKey(
@@ -150,6 +156,10 @@ class Media(models.Model):
         indexes = [
             models.Index(fields=["user", "status"]),
             models.Index(fields=["user", "created_at"]),
+            models.Index(
+                fields=["user", "updated_at"],
+                name="app_%(class)s_usr_upd_idx",
+            ),
             # Discover's candidate queries filter user+status(+score) and order
             # by recency (end_date, progressed_at, created_at) with a LIMIT.
             models.Index(
@@ -196,6 +206,7 @@ class Media(models.Model):
         if self.tracker.has_changed("status"):
             self.process_status()
 
+        self._include_updated_at(kwargs)
         update_fields = kwargs.get("update_fields")
         if update_fields is not None and "score" in update_fields:
             kwargs["update_fields"] = (*update_fields, "scored_at")
@@ -212,6 +223,12 @@ class Media(models.Model):
                 finalize_completed_entry(planning_entries)
         else:
             super().save(*args, **kwargs)
+
+    def _include_updated_at(self, kwargs):
+        """Make a partial save (``update_fields``) move ``updated_at`` too."""
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None and "updated_at" not in update_fields:
+            kwargs["update_fields"] = (*update_fields, "updated_at")
 
     def _sync_relevant_fields_changed(self):
         """Return whether status, progress or score changed in this save()."""
@@ -1079,13 +1096,21 @@ class Movie(Media):
         if play is None:
             return None
 
+        self.remove_play(play)
+
+        return play
+
+    def remove_play(self, play):
+        """Delete one play and re-derive the tracker's end date from what is left.
+
+        Without the re-derivation the tracker keeps the deleted play's date and
+        history falls back to it, so a deleted watch reappears (#1873).
+        """
         play.delete()
 
         latest = self.plays.order_by("-end_date", "-id").first()
         self.end_date = latest.end_date if latest else None
         self.save(update_fields=["end_date"])
-
-        return play
 
 
 class MoviePlay(models.Model):

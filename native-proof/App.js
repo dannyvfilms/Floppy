@@ -36,6 +36,7 @@ const TAB_SCREENS = {
 const STACK_SCREENS = {
   Settings: SettingsScreen,
   Detail: DetailScreen,
+  Library: LibraryScreen,
   ListDetail: ListDetailScreen,
   Lists: ListsScreen,
   History: HistoryScreen,
@@ -63,8 +64,9 @@ export default function App() {
       setStack(current => [...current, { screen: 'Music', params }]);
       return;
     }
-    // Library is a tab, so stack callers such as Tags open the tab instead.
-    if (screen === 'Library') { openTab('library', params?.mediaType); return; }
+    // Library is a tab, so stack callers such as Tags open the tab instead. A caller that
+    // brings filters (a Home row title) opens that filtered library on top, with a way back.
+    if (screen === 'Library' && !params?.query) { openTab('library', params?.mediaType); return; }
     setStack(current => [...current, { screen, params }]);
   };
   const openTab = (next, mediaType = libraryType) => {
@@ -156,6 +158,7 @@ export default function App() {
     if (person) { navigate('People', { identity: { kind: 'person', source: person[1], personId: person[2] } }); return; }
     const studio = path.match(/^\/studio\/([^/]+)\/([^/?#]+)/);
     if (studio) { navigate('People', { identity: { kind: 'studio', source: studio[1], studioId: studio[2] } }); return; }
+    if (path.startsWith('/podcast/show/')) { navigate('Detail', { href: path }); return; }
     if (path.includes('/details/')) { navigate('Detail', { href: path }); }
   };
 

@@ -99,6 +99,16 @@ def _django_request(request):
     return getattr(request, "_request", request)
 
 
+class _Notices:
+    """Message storage that keeps the web view's notices in a list."""
+
+    def __init__(self, notices):
+        self.notices = notices
+
+    def add(self, _level, message, _extra_tags=""):
+        self.notices.append(str(message))
+
+
 def _search_type(request):
     """Return the requested search type, falling back to the all-library type."""
     requested = request.GET.get("media_type") or ALL_SEARCH_TYPE
@@ -235,25 +245,39 @@ class SearchResultsView(drf_views.APIView):
         responses={200: dict, 400: DetailErrorSerializer},
     )
     def get(self, request):
-        """Return the sections, scope, paging and empty state for a query."""
+        """Return the rows, provider rows to stream and empty state for a query."""
         if _search_type(request) is None:
             return Response(
                 {"detail": "media_type is not a searchable type."},
                 status=HTTP.BAD_REQUEST,
             )
         http_request = _django_request(request)
-        errors = []
         # The web view reads `request.user` on the Django request.
         http_request.user = request.user
-        context = search_views.media_search_context(
-            http_request,
-            notify=errors.append,
-        )
+        if http_request.GET.get("row"):
+            # One row's next page, or one provider's row, as the web page streams them.
+            try:
+                row, unavailable = search_views._search_row_page(http_request)
+            except ValueError:
+                return Response(
+                    {"detail": "offset and page must be numbers."},
+                    status=HTTP.BAD_REQUEST,
+                )
+            return Response({"row": row, "unavailable": unavailable}, status=HTTP.OK)
+        errors = []
+        # The web view reports provider errors as flash messages; collect them
+        # for the payload instead of leaving them for a later page.
+        storage = getattr(http_request, "_messages", None)
+        http_request._messages = _Notices(errors)
+        try:
+            context = search_views._search_context(http_request)
+        finally:
+            http_request._messages = storage
         context["request"] = http_request
         context["user"] = request.user
         props = search_views.build_search_results_props(context)
         props["errors"] = errors
-        if errors and not props["sections"]:
+        if errors and not props["rows"] and not props["onlineSources"]:
             props["state"] = "error"
         return Response(props, status=HTTP.OK)
 

@@ -191,6 +191,8 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
     def _open_lists_from_sidebar(self):
         """Navigate through Explore unless Lists is already visible."""
+        # The server fallback shows Lists until the sidebar mounts, which may file it under Explore.
+        self.page.locator('[data-sidebar-root][data-react-mounted="true"]').first.wait_for(state="attached")
         link = self.page.get_by_role("link", name="Lists", exact=True)
         if not link.is_visible():
             self.page.get_by_role("button", name="Explore").click()

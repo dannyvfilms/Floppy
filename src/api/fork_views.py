@@ -328,6 +328,15 @@ class MediaCollectionView(drf_views.APIView):
             "library are only found with it."
         ),
     )
+    _STRICT_PARAMETER = OpenApiParameter(
+        "strict_library",
+        OpenApiTypes.BOOL,
+        description=(
+            "With `library_media_type`, address only that library: the default "
+            "library is never searched or created in, and a missing item "
+            "returns 404 instead of falling back."
+        ),
+    )
 
     def _identity(self, media_type, source, season_number, episode_number):
         """Return ``(lookup_media_type, error_response)`` for the route."""
@@ -380,7 +389,7 @@ class MediaCollectionView(drf_views.APIView):
             ).first()
 
         item = lookup(library_media_type)
-        if not library_media_type:
+        if not library_media_type or self._strict(request):
             return item
         default_item = lookup(None)
         if item is None or (
@@ -390,6 +399,15 @@ class MediaCollectionView(drf_views.APIView):
         ):
             return default_item
         return item
+
+    @staticmethod
+    def _strict(request):
+        """Whether the caller asked to address only the named library bucket."""
+        return bool(
+            request.query_params.get("library_media_type")
+            and request.query_params.get("strict_library", "").lower()
+            in ("1", "true"),
+        )
 
     def _api_entries(self, user, item):
         """Return the user's copies of the item that this API created."""
@@ -501,7 +519,7 @@ class MediaCollectionView(drf_views.APIView):
 
     @extend_schema(
         request=OpenApiTypes.OBJECT,
-        parameters=[_LIBRARY_PARAMETER],
+        parameters=[_LIBRARY_PARAMETER, _STRICT_PARAMETER],
         responses={
             200: OpenApiTypes.OBJECT,
             201: OpenApiTypes.OBJECT,
@@ -557,6 +575,15 @@ class MediaCollectionView(drf_views.APIView):
             season_number,
             episode_number,
         )
+        if item is None and self._strict(request):
+            return Response(
+                {
+                    "detail": "No item in that library. Track it there first, or "
+                    "drop strict_library to use the default library.",
+                    "code": "LIBRARY_ITEM_NOT_FOUND",
+                },
+                status=HTTP.NOT_FOUND,
+            )
         if item is None:
             item, error = get_or_create_provider_item(
                 lookup_media_type,
@@ -603,6 +630,7 @@ class MediaCollectionView(drf_views.APIView):
                 description="Also remove copies that were not created through the API.",
             ),
             _LIBRARY_PARAMETER,
+            _STRICT_PARAMETER,
         ],
         responses={
             204: None,

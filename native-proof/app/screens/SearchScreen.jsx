@@ -84,19 +84,13 @@ function CreateEntry() {
 }
 
 export default function SearchScreen({ params, navigate }) {
-  const [submitted, setSubmitted] = useState(params?.query || '');
-  const [mediaType, setMediaType] = useState(params?.mediaType || 'all');
-  useEffect(() => {
-    setSubmitted(params?.query || '');
-    setMediaType(params?.mediaType || 'all');
-  }, [params?.query, params?.mediaType]);
   return <Screen chrome={false} contentStyle={pageTop}>
     {params?.createEntry ? <CreateEntry /> : <SearchPageView
       results={<SearchResultsSlot
-        query={submitted}
-        mediaType={mediaType}
+        query={params?.query || ''}
+        mediaType={params?.mediaType || 'all'}
         navigate={navigate}
-        onSelectMediaType={setMediaType}
+        onOpenDetail={card => navigate('Detail', { item: card })}
       />}
     />}
   </Screen>;

@@ -599,13 +599,13 @@ def get_cached_history_window(
     build_media_types = (
         requested_media_types if filters.get("media_type") else None
     )
-    day_media_types, prefetch = {}, None
-    if build_media_types is None:
-        # Same span-wide load the month repair uses: one query per media
-        # family instead of a query bundle per missing day.
-        day_media_types, prefetch = _span_prefetch(
-            user, missing_day_keys, logging_style
-        )
+    # Same span-wide load the month repair uses: one query per media family
+    # instead of a query bundle per missing day. A type-filtered request needs
+    # it as much as an unfiltered one, or every page of a typed scan rebuilds
+    # its days one by one (#1873).
+    day_media_types, prefetch = _span_prefetch(user, missing_day_keys, logging_style)
+    if build_media_types is not None:
+        day_media_types = {}
     for day_key in missing_day_keys:
         # Filter cold builds at the query boundary; only complete days may
         # populate the shared day cache.

@@ -152,13 +152,13 @@ class ListWriteBindingTests(_BindingFixtures):
 
 
 class BulkListAddBindingTests(_BindingFixtures):
-    """Bulk add-to-list names its list in the body; the same rules apply."""
+    """Bulk add-to-list names its list in the path; the same rules apply."""
 
     def bulk_add(self, list_id, headers):
         """Add one movie to a list through the bulk route."""
         return self.client.post(
-            "/api/v1/library/bulk/list/",
-            {"item_ids": [self.items_by_type["movie"][0].id], "list_id": list_id},
+            f"/api/v1/lists/{list_id}/items/bulk/",
+            {"item_ids": [self.items_by_type["movie"][0].id]},
             format="json",
             **headers,
         )

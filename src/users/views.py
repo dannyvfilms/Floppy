@@ -3347,7 +3347,8 @@ def advanced(request):
         "**Describe the issue:**\n\n\n"
         "**Steps to reproduce:**\n\n\n"
         "**Logs:** attach the file downloaded from Settings > Advanced > "
-        "Download Sanitized Logs"
+        "Download Sanitized Logs (administrators) or Download Diagnostic "
+        "Report (everyone else)"
     )
     context = {
         "tmdb_proxy_configured": bool(request.user.tmdb_proxy_url),
@@ -3457,6 +3458,27 @@ def export_logs(request):
 
     filename = f"floppy-logs-{timezone.localtime():%Y%m%d-%H%M%S}.txt"
     response = StreamingHttpResponse(lines(), content_type="text/plain")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+@require_GET
+def export_diagnostics(request):
+    """Return a sanitized diagnostic report any signed-in user may download.
+
+    The full log stays superuser-only; see ``users.diagnostics``.
+    """
+    from users import diagnostics
+
+    log_files = _log_files(Path(settings.LOG_FILE).name)
+    report = diagnostics.build_report(
+        logs_since=_first_log_time(log_files[0]) if log_files else "",
+        last_unclean_exit=parse_datetime(
+            (run_state.read_state() or {}).get("last_unclean_at") or "",
+        ),
+    )
+    filename = f"floppy-diagnostics-{timezone.localtime():%Y%m%d-%H%M%S}.txt"
+    response = HttpResponse(report, content_type="text/plain; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
 

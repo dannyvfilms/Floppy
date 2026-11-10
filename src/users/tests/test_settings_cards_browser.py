@@ -913,7 +913,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.assertEqual(link.evaluate("element => getComputedStyle(element).textDecorationLine"), "none")
         expect(self.page.get_by_text("Your key may avoid shared instance or bundled rate limits.", exact=True)).to_be_visible()
         gap = self.page.get_by_text("Your key may avoid shared instance or bundled rate limits.", exact=True).evaluate("""element => {
-          const field = element.nextElementSibling;
+          const field = element.parentElement.querySelector('[id$="-label"]');
           return field.getBoundingClientRect().top - element.getBoundingClientRect().bottom;
         }""")
         self.assertGreaterEqual(gap, 10)

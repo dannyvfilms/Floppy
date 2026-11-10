@@ -15,11 +15,21 @@ const result = await build({
 });
 const files = new Map(result.outputFiles.map((file) => [basename(file.path), file.contents]));
 if (process.argv.includes('--check')) {
-  const existing = await readdir(outdir);
-  if (existing.length !== files.size) throw new Error('UI assets differ; run npm run build:ui');
+  const existing = new Set(await readdir(outdir));
+  const missing = [...files.keys()].filter((name) => !existing.has(name)).sort();
+  const unexpected = [...existing].filter((name) => !files.has(name)).sort();
+  if (missing.length || unexpected.length) {
+    const differences = [
+      ...missing.map((name) => `Missing: ${name}`),
+      ...unexpected.map((name) => `Unexpected: ${name}`),
+    ];
+    throw new Error(
+      `UI assets differ:\n${differences.join('\n')}\nRun npm run build:ui and commit src/static/ui/`
+    );
+  }
   for (const [name, contents] of files) {
     if (!Buffer.from(await readFile(resolve(outdir, name))).equals(Buffer.from(contents))) {
-      throw new Error(`Stale UI asset ${name}; run npm run build:ui`);
+      throw new Error(`Stale UI asset ${name}; run npm run build:ui and commit src/static/ui/`);
     }
   }
 } else {

@@ -543,7 +543,6 @@ PROFILE_CARDS = (
     "app/components/album_list_grid_items.html",
     "app/components/album_grid.html",
     "app/components/artist_relation_grid.html",
-    "app/search.html",
     "app/components/media_card_list.html",
     "app/components/episode_row.html",
     "app/components/person_card_inline.html",

@@ -2910,7 +2910,7 @@ class PocketCastsImporter:
         # Check for duplicate history entry by comparing end_date (actual play completion time)
         # instead of history_date (when the history record was created)
         latest_history = (
-            podcast.history.filter(end_date__isnull=False).order_by("-end_date").first()
+            podcast.plays.filter(end_date__isnull=False).order_by("-end_date").first()
         )
         if latest_history and latest_history.end_date and import_time:
             # Check if we're trying to record history with the same or very similar end_date

@@ -730,6 +730,19 @@ class HistoryTimelineTests(FloppyApiTestCase):
             any(entry["media_type"] == "movie" for entry in all_entries),
         )
 
+    def test_movie_entry_says_it_is_a_tracker_row(self):
+        """B03: aggregate movie rows are tracker rows, not play rows."""
+        response = self.call_api("get", "api_history", headers=self.auth_headers)
+        entries = [
+            entry
+            for day in response.json()["results"]
+            for entry in day["entries"]
+            if entry["media_type"] == "movie"
+        ]
+        self.assertTrue(entries)
+        self.assertEqual(entries[0]["record_type"], "movie_tracker")
+        self.assertEqual(entries[0]["instance_id"], self.movie_medias[0].id)
+
     def test_history_day_entries_are_capped(self):
         """A day with many plays doesn't blow up the response body (#1004).
 
@@ -1283,3 +1296,41 @@ class EpisodeBulkTests(FloppyApiTestCase):
             headers=self.auth_headers,
         )
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+
+
+class HistoryEpisodeFilterReproTests(FloppyApiTestCase):
+    """Explicit media_type=episode must return the same plays as the tv alias (#1873)."""
+
+    def setUp(self):
+        """Give an episode a concrete end date so it appears in history."""
+        super().setUp()
+        cache.clear()
+        episode = self.episode_medias[0]
+        episode.end_date = datetime.datetime(2024, 5, 10, 12, tzinfo=datetime.UTC)
+        episode.save(update_fields=["end_date"])
+
+    def _episode_entries(self, **params):
+        response = self.call_api(
+            "get",
+            "api_history",
+            params=params or None,
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK, response.content)
+        return [
+            entry
+            for day in response.json()["results"]
+            for entry in day["entries"]
+            if entry["media_type"] == "episode"
+        ]
+
+    def test_unfiltered_and_tv_alias_include_episode(self):
+        self.assertTrue(self._episode_entries())
+        self.assertTrue(self._episode_entries(media_type="tv"))
+
+    def test_explicit_episode_filter_includes_episode(self):
+        self.assertTrue(self._episode_entries(media_type="episode"))
+
+    def test_entry_item_carries_library_bucket(self):
+        entry = self._episode_entries()[0]
+        self.assertEqual(entry["item"]["library_media_type"], "episode")

@@ -852,10 +852,21 @@ class PlaybackProgressView(drf_views.APIView):
                 status=HTTP.NOT_FOUND,
             )
 
+        # A position is bucket-agnostic, but the same provider media can have
+        # an Item row per library bucket and a check-in may have saved against
+        # any of them, so clear every one or the delete can succeed and leave
+        # the position behind (#1873).
+        same_media = Item.objects.filter(
+            source=item.source,
+            media_id=item.media_id,
+            media_type=item.media_type,
+            season_number=item.season_number,
+            episode_number=item.episode_number,
+        )
         with state_transaction(request.user.pk):
             PlaybackProgress.objects.filter(
                 user=request.user,
-                item=item,
+                item__in=same_media,
             ).delete()
         return Response(status=HTTP.NO_CONTENT)
 

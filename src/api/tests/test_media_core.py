@@ -95,6 +95,7 @@ class MediaCoreTests(FloppyApiTestCase):
                     "parent_id",
                     "tracked",
                     "created_at",
+                    "updated_at",
                     "score",
                     "scored_at",
                     "status",
@@ -2212,7 +2213,9 @@ class MediaCoreTests(FloppyApiTestCase):
             headers=self.auth_headers,
         )
 
-        self.assertEqual(patch_response.status_code, 200)
+        # A play stores no notes, so the request is refused rather than
+        # reported as saved (#1873), and the movie's own notes stay untouched.
+        self.assertEqual(patch_response.status_code, 400)
         movie.refresh_from_db()
         self.assertNotEqual(movie.notes, "collision-note")
 
@@ -2951,3 +2954,139 @@ class MediaCoreTests(FloppyApiTestCase):
         )
 
         self.assertEqual(response.status_code, 400)
+
+
+class MoviePlayExactHistoryReproTests(FloppyApiTestCase):
+    """Exact-play delete and edit contracts (#1873, B02 and B04)."""
+
+    def _detail(self, method, play_id, **kwargs):
+        item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        return self.call_api(
+            method,
+            "api_media_consumption_entry_detail",
+            args=(MediaTypes.MOVIE.value, item.source, item.media_id, play_id),
+            headers=self.auth_headers,
+            **kwargs,
+        )
+
+    def _history_total(self):
+        item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        response = self.call_api(
+            "get",
+            "api_media_consumption_history",
+            args=(MediaTypes.MOVIE.value, item.source, item.media_id),
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        return response.json()["pagination"]["total"]
+
+    def test_deleting_the_only_play_leaves_no_watch(self):
+        """B02: the deleted play's date must not stay on the tracker row."""
+        movie = self.movie_medias[0]
+        movie.end_date = None
+        movie.save(update_fields=["end_date"])
+        play, _ = movie.watch(datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC))
+        self.assertEqual(self._history_total(), 1)
+
+        self.assertEqual(self._detail("delete", play.id).status_code, 204)
+
+        item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        response = self.call_api(
+            "get",
+            "api_media_consumption_history",
+            args=(MediaTypes.MOVIE.value, item.source, item.media_id),
+            headers=self.auth_headers,
+        )
+        self.assertEqual(
+            [entry["end_date"] for entry in response.json()["results"]],
+            [None] * response.json()["pagination"]["total"],
+        )
+        movie.refresh_from_db()
+        self.assertIsNone(movie.end_date)
+
+    def test_play_patch_rejects_fields_it_cannot_store(self):
+        """B04: a PATCH naming a field MoviePlay lacks must not report success."""
+        movie = self.movie_medias[0]
+        play, _ = movie.watch(datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC))
+        movie.watch(datetime.datetime(2024, 2, 1, tzinfo=datetime.UTC))
+
+        response = self._detail(
+            "patch",
+            play.id,
+            payload={"notes": "kept?", "end_date": "2024-03-01T00:00:00Z"},
+        )
+
+        self.assertEqual(response.status_code, 400, response.content)
+        play.refresh_from_db()
+        self.assertEqual(play.end_date.year, 2024)
+        self.assertEqual(play.end_date.month, 1)
+
+    def test_play_patch_still_accepts_end_date(self):
+        movie = self.movie_medias[0]
+        play, _ = movie.watch(datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC))
+
+        response = self._detail(
+            "patch",
+            play.id,
+            payload={"end_date": "2024-03-01T00:00:00Z"},
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        play.refresh_from_db()
+        self.assertEqual(play.end_date.month, 3)
+
+
+class MediaListRemovalBucketTests(FloppyApiTestCase):
+    """List removal must not guess between library buckets (#1873, B09)."""
+
+    def setUp(self):
+        """Put the same movie identity in the list in two library buckets."""
+        super().setUp()
+        self.list_id = self.lists_by_name["favorites"].id
+        self.default_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        self.anime_item = Item.objects.create(
+            media_id=self.default_item.media_id,
+            source=self.default_item.source,
+            media_type=MediaTypes.MOVIE.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title=self.default_item.title,
+            image=self.default_item.image,
+        )
+        self.lists_by_name["favorites"].items.add(self.anime_item)
+
+    def _delete(self, **params):
+        return self.call_api(
+            "delete",
+            "api_media_list_detail",
+            args=(
+                MediaTypes.MOVIE.value,
+                self.default_item.source,
+                self.default_item.media_id,
+                self.list_id,
+            ),
+            params=params or None,
+            headers=self.auth_headers,
+        )
+
+    def test_ambiguous_removal_is_refused_before_any_write(self):
+        """Both buckets are in the list and none was named: refuse, delete nothing."""
+        response = self._delete()
+
+        self.assertEqual(response.status_code, 409, response.content)
+        self.assertEqual(
+            self.lists_by_name["favorites"].items.filter(
+                media_id=self.default_item.media_id,
+            ).count(),
+            2,
+        )
+
+    def test_named_bucket_removes_only_that_bucket(self):
+        response = self._delete(library_media_type=MediaTypes.ANIME.value)
+
+        self.assertEqual(response.status_code, 204, response.content)
+        remaining = list(
+            self.lists_by_name["favorites"].items.filter(
+                media_id=self.default_item.media_id,
+            ),
+        )
+        self.assertEqual(remaining, [self.default_item])

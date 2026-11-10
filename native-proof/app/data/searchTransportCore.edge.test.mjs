@@ -11,11 +11,11 @@ test('suggestionsFromPayload maps rows and defaults every optional field', () =>
   assert.deepEqual(suggestionsFromPayload(undefined), []);
   assert.deepEqual(suggestionsFromPayload('nope'), []);
   assert.deepEqual(suggestionsFromPayload({ suggestions: [{ title: 'T' }] }), [
-    { id: '0', title: 'T', subtitle: '', image: null, href: '', url: '' },
+    { id: '0', title: 'T', subtitle: '', image: null, mediaType: '', identity: null, href: '', url: '' },
   ]);
   assert.deepEqual(
     suggestionsFromPayload({ suggestions: [{ id: 7, title: 'T', subtitle: 'S', image: 'i.png', url: '/details/tmdb/movie/5' }] }),
-    [{ id: '7', title: 'T', subtitle: 'S', image: 'i.png', href: '/details/tmdb/movie/5', url: '/details/tmdb/movie/5' }],
+    [{ id: '7', title: 'T', subtitle: 'S', image: 'i.png', mediaType: '', identity: null, href: '/details/tmdb/movie/5', url: '/details/tmdb/movie/5' }],
   );
 });
 
@@ -28,7 +28,7 @@ test('suggestionsFromPayload maps rows and defaults every optional field', () =>
 test('a malformed null suggestion row is skipped instead of crashing the search bar', () => {
   assert.deepEqual(
     suggestionsFromPayload({ suggestions: [null, { id: 7, title: 'T' }] }),
-    [{ id: '7', title: 'T', subtitle: '', image: null, href: '', url: '' }],
+    [{ id: '7', title: 'T', subtitle: '', image: null, mediaType: '', identity: null, href: '', url: '' }],
   );
 });
 

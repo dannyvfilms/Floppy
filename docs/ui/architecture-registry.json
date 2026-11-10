@@ -212,6 +212,9 @@
       "components": [
         "DetailComposition",
         "DetailHeader",
+        "DetailHero",
+        "DetailMobileHero",
+        "DetailChips",
         "DetailSynopsis",
         "DetailActions",
         "DetailSection"
@@ -220,15 +223,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The browser adapter mounts the shared synopsis over the server-rendered detail fallback; build and targeted Django tests only, no browser pass."
+          "evidence": "The browser remains the server-rendered visual reference. Expo-only hero, chip, child-action and section changes compiled through Expo web export; no browser-versus-Expo comparison or browser interaction pass was run."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Not exercised; the iOS pass rendered Home only."
+          "evidence": "Device Hub iPhone Duo on iOS 27.2 loaded the current Expo bundle against the local server. Breaking Bad show metadata, backdrop and logo rendered; a side-by-side comparison with the web season page showed remaining differences in crop, spacing, actions and sections. Season interactions and accessibility remain unverified."
         },
         "android": {
-          "status": "verified",
-          "evidence": "Android 15 Pixel 7 AVD: rendered the shared detail composition on Detail; no action, synopsis or TalkBack interaction; demo images did not load."
+          "status": "unverified",
+          "evidence": "Expo web export compiled the updated view. Android runtime, interactions and TalkBack have not been verified."
         }
       }
     },
@@ -2820,15 +2823,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Expo web at 375x812: Games group overview, drilldown and return controls exercised; separate-entry preference write reflected on the Django web menu and restored. Final menu/layout comparison and populated duplicate-entry table remain incomplete. The web library retains its server composition, filters and pagination."
+          "evidence": "The Expo LibraryScreen consumes this shared composition. The browser library remains server-owned with its server table, Alpine filters and htmx pagination; no browser pass was run."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export on the native Library screen; no simulator run was performed."
+          "evidence": "Expo iOS export compiled this view. Runtime verification is blocked because xcrun simctl reports CoreSimulatorService is unavailable."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export on the native Library screen; no emulator run was performed."
+          "evidence": "Expo Android export compiled this view. Runtime verification is blocked because adb cannot start its local daemon (operation not permitted)."
         }
       }
     },
@@ -2922,15 +2925,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Shared header/synopsis mounts coexist with the server-owned web detail shell; native DetailScreen mounts the full composition. At 375x812 the browser showed provider scores/synopses, mapped anime episodes and an issue-specific Track dialog. Anime pagination/card controls, linked studios and comic write/undo require final re-verification after repairs; no complete parity claim. Native-only outline/layout props preserve web defaults."
+          "evidence": "The browser detail layout remains server-owned. Expo renders the structured projection; browser layout and interaction comparison remains outstanding."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Not verified."
+          "evidence": "Device Hub iPhone Duo on iOS 27.2 loaded a Breaking Bad show detail from the local server. The web reference was a season page on another instance; this was not a same-record interaction or accessibility verification."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Not verified."
+          "evidence": "Expo web export compiled the shared view; Android runtime and TalkBack verification are outstanding."
         }
       }
     },
@@ -3784,6 +3787,70 @@
         "android": {
           "status": "unverified",
           "evidence": "Native playback sizing uses three 110 pt cards plus gaps on compact phone layouts; Android runtime verification remains pending."
+        }
+      }
+    },
+    "frontend/ui/dropdownMetrics.js": {
+      "components": [
+        "DROPDOWN"
+      ],
+      "register": "SEARCH",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium on macOS with the local dev server: Search results, suggestions and the sidebar menus rendered with these values; no other engine."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) showed the Search suggestions and menus sized by these values; no pixel comparison."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised on Android in this change."
+        }
+      }
+    },
+    "frontend/ui/searchRows.js": {
+      "components": [
+        "searchRowParams",
+        "searchRowUrl",
+        "mergeSearchRowPage",
+        "onlineRowParams",
+        "useStreamedRows"
+      ],
+      "register": "SEARCH",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium on macOS: library row first, then provider rows streamed in as each answered."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled through the Expo export; not exercised on a device in this change."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised on Android in this change."
+        }
+      }
+    },
+    "frontend/ui/statusChipIcons.js": {
+      "components": [
+        "STATUS_ICON_SPECS"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium on macOS: status chip icons on Home cards."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) showed the chip icons on Home cards."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised on Android in this change."
         }
       }
     }
@@ -5272,6 +5339,14 @@
     "frontend/ui/mountPodcastEpisodeManager.jsx": {
       "register": "PODCAST-EPISODES",
       "purpose": "Browser adapter for the shared manual podcast episode manager: mount the island, read the current theme palette, load the show's manual episodes as JSON, and POST create/edit/delete through the existing Django forms and CSRF contract."
+    },
+    "frontend/ui/shelfWidth.web.js": {
+      "register": "HOME",
+      "purpose": "Browser adapter that sizes shelf cards from the viewport and the Mobile Grid preference the page carries, so Home and Search results use one width."
+    },
+    "frontend/ui/keyboardOverlap.web.js": {
+      "register": "SEARCH",
+      "purpose": "Browser adapter that reports how far the on-screen keyboard covers the page, from the visual viewport, for the Search suggestion window."
     }
   }
 }

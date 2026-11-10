@@ -212,7 +212,14 @@ const NO_SCORES = { chips: [], graphs: {}, gameLengths: null };
 export async function loadArtwork(identity) {
   if (!identity || !ARTWORK_TYPES.has(identity.mediaType)) return null;
   try {
-    return artworkFromPayload(await call(`${mediaPath(identity)}/artwork/`));
+    // The gallery belongs to the show; a season names itself in the query.
+    const { mediaType, source, mediaId, seasonNumber } = identity;
+    const season = mediaType === 'season' && seasonNumber != null;
+    const data = await call(
+      `/api/v1/media/${encodeURIComponent(season ? 'tv' : mediaType)}/${encodeURIComponent(source)}/${encodeURIComponent(mediaId)}/detail/gallery/`,
+      season ? { query: { season_number: seasonNumber } } : undefined,
+    );
+    return artworkFromPayload(data?.gallery ? { available: true, ...data.gallery } : null);
   } catch {
     return null;
   }

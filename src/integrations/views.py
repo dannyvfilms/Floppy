@@ -2410,6 +2410,12 @@ def import_trakt_export_file(request):
         )
         return _integration_redirect(request, connected_slug="trakt")
 
+    if mode not in helpers.TRAKT_EXPORT_MODES:
+        for path in staged_files:
+            discard_staged_upload(path)
+        messages.error(request, helpers.TRAKT_EXPORT_UNSUPPORTED_MODE_MESSAGE)
+        return _integration_redirect(request, connected_slug="trakt")
+
     if len(payloads) == 1 and staged_payload_is_zip(payloads[0][1]):
         archive_path = payloads[0][1]
     else:

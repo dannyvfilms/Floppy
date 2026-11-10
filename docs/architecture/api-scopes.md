@@ -102,10 +102,22 @@ recheck account activity before processing.
 5. `"*"` grants every mapped ordinary scope. It defeats neither `NEVER` nor
    `SESSION_ONLY`.
 
+`GET /api/v1/media/{media_type}/{source}/{media_id}/detail/` is public metadata
+for anonymous readers. Authenticated requests also receive only that viewer's
+tracking row and require `watchlist:read`; `?public_view=1` suppresses personal
+state and action capabilities even when the request is authenticated.
+
 `ScopeMapCoverageTests` fails the build when a routed view or method is missing
 from the map, when a map entry no longer matches a route, or when a mapped scope
 is not in the vocabulary. Adding an endpoint therefore requires deciding its
 scope; forgetting is not one of the outcomes.
+
+The Expo library uses `user:read`/`user:write` for saved-view CRUD, `lists:write`
+for bulk list membership, and `watchlist:read`/`watchlist:write` for bulk
+collection and its user-owned Add Plays preview/status and write operations.
+Bulk operations validate their inputs, return `400` for invalid input, `404` when
+a saved view or job is not owned by the caller, and `409` when another Add Plays
+write is running.
 
 ## What the map does not cover
 
@@ -141,7 +153,7 @@ Do not describe Floppy as fully scope-gated until those are addressed.
 | `sync:read` / `sync:write` | Read sync connections, the change feed, and conflicts; resolve a conflict |
 | `imports:read` / `imports:write` | Import activity; start imports |
 | `exports:read` | Download exports |
-| `user:read` / `user:write` | Preferences, sidebar, notification settings |
+| `user:read` / `user:write` | Preferences, saved library views, sidebar, notification settings |
 
 ## Creating a token
 
@@ -262,16 +274,18 @@ protected guide/copy URLs for bearer credentials without denying configuration.
 | `/api/v1/home/row/{row_id}/sort/` | POST | `catalog:write` |
 | `/api/v1/imports/activity/` | GET POST | GET `imports:read`; POST NEVER |
 | `/api/v1/imports/{service}/` | POST | `imports:write` |
+| `/api/v1/library/activity/` | GET | `watchlist:read` |
 | `/api/v1/library/bulk/collection/` | POST | `watchlist:write` |
-| `/api/v1/library/bulk/list/` | POST | `lists:write` |
 | `/api/v1/library/bulk/plays/` | POST | `watchlist:write` |
 | `/api/v1/library/bulk/plays/{operation_id}/` | GET | `watchlist:read` |
 | `/api/v1/library/bulk/status/` | POST | `watchlist:write` |
 | `/api/v1/library/bulk/tags/` | POST | `watchlist:write` |
+| `/api/v1/library/deleted/` | GET | `watchlist:read` |
 | `/api/v1/library/game-groups/` | GET | `watchlist:read` |
 | `/api/v1/library/preferences/{media_type}/` | GET PATCH | GET `user:read`; PATCH `user:write` |
-| `/api/v1/library/saved-views/` | POST | `user:write` |
-| `/api/v1/library/saved-views/{view_id}/` | DELETE | `user:write` |
+| `/api/v1/library/saved-views/` | GET POST | GET `user:read`; POST `user:write` |
+| `/api/v1/library/saved-views/reorder/` | POST | `user:write` |
+| `/api/v1/library/saved-views/{view_id}/` | DELETE GET | DELETE `user:write`; GET `user:read` |
 | `/api/v1/library/share-view/` | POST | `lists:write` |
 | `/api/v1/lists/import/` | GET | `imports:read` |
 | `/api/v1/lists/import/csv/` | POST | `imports:write` |
@@ -280,6 +294,7 @@ protected guide/copy URLs for bearer credentials without denying configuration.
 | `/api/v1/lists/{list_id}/activity/` | GET | `lists:read` |
 | `/api/v1/lists/{list_id}/collaborators/` | GET PUT | GET `lists:read`; PUT `lists:write` |
 | `/api/v1/lists/{list_id}/export/` | GET | `lists:read` |
+| `/api/v1/lists/{list_id}/items/bulk/` | POST | `lists:write` |
 | `/api/v1/lists/{list_id}/items/order/` | PUT | `lists:write` |
 | `/api/v1/lists/{list_id}/items/ranks/` | PUT | `lists:write` |
 | `/api/v1/lists/{list_id}/items/reorder/` | POST | `lists:write` |
@@ -296,11 +311,12 @@ protected guide/copy URLs for bearer credentials without denying configuration.
 | `/api/v1/media/{media_type}/filter-options/` | GET | `watchlist:read` |
 | `/api/v1/media/{media_type}/item-ids/` | GET | `watchlist:read` |
 | `/api/v1/media/{media_type}/{source}/{media_id}/activity-timeline/` | GET | `watchlist:read` |
-| `/api/v1/media/{media_type}/{source}/{media_id}/artwork/` | GET | `watchlist:read` |
 | `/api/v1/media/{media_type}/{source}/{media_id}/checkin/` | GET POST | GET `watchlist:read`; POST `watchlist:write` |
 | `/api/v1/media/{media_type}/{source}/{media_id}/collect/` | PUT | `watchlist:write` |
 | `/api/v1/media/{media_type}/{source}/{media_id}/collection/` | DELETE PUT | `watchlist:write` |
 | `/api/v1/media/{media_type}/{source}/{media_id}/collection/entries/` | GET | `watchlist:read` |
+| `/api/v1/media/{media_type}/{source}/{media_id}/detail/` | GET | `watchlist:read` |
+| `/api/v1/media/{media_type}/{source}/{media_id}/detail/gallery/` | GET | `metadata:read` |
 | `/api/v1/media/{media_type}/{source}/{media_id}/episode-preview/` | GET | `watchlist:read` |
 | `/api/v1/media/{media_type}/{source}/{media_id}/episodes/bulk/` | POST | `watchlist:write` |
 | `/api/v1/media/{media_type}/{source}/{media_id}/issues/` | GET | `watchlist:read` |
@@ -315,7 +331,6 @@ protected guide/copy URLs for bearer credentials without denying configuration.
 | `/api/v1/media/{media_type}/{source}/{media_id}/watch/` | DELETE POST | `watchlist:write` |
 | `/api/v1/media/{media_type}/{source}/{media_id}/watched-state/` | GET PUT | GET `watchlist:read`; PUT `watchlist:write` |
 | `/api/v1/media/{media_type}/{source}/{media_id}/{season_number}/activity-timeline/` | GET | `watchlist:read` |
-| `/api/v1/media/{media_type}/{source}/{media_id}/{season_number}/artwork/` | GET | `watchlist:read` |
 | `/api/v1/media/{media_type}/{source}/{media_id}/{season_number}/collect/` | PUT | `watchlist:write` |
 | `/api/v1/media/{media_type}/{source}/{media_id}/{season_number}/collection/entries/` | GET | `watchlist:read` |
 | `/api/v1/media/{media_type}/{source}/{media_id}/{season_number}/episodes/{episode_number}/collection/` | DELETE PUT | `watchlist:write` |
@@ -364,6 +379,7 @@ protected guide/copy URLs for bearer credentials without denying configuration.
 | `/api/v1/playback/now-playing/` | GET | `progress:read` |
 | `/api/v1/playback/progress/` | DELETE GET PUT | DELETE `progress:write`; GET `progress:read`; PUT `progress:write` |
 | `/api/v1/podcasts/episodes/plays/` | POST | `podcasts:write` |
+| `/api/v1/podcasts/episodes/plays/{consumption_id}/` | DELETE GET PATCH | DELETE `podcasts:write`; GET `podcasts:read`; PATCH `podcasts:write` |
 | `/api/v1/podcasts/episodes/{episode_id}/` | DELETE PATCH | `podcasts:write` |
 | `/api/v1/podcasts/episodes/{episode_id}/notes/` | PATCH | `podcasts:write` |
 | `/api/v1/podcasts/episodes/{episode_id}/score/` | PATCH | `podcasts:write` |

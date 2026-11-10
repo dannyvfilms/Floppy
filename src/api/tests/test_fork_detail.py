@@ -460,7 +460,7 @@ class ShowCollectTests(FloppyApiTestCase):
 
 
 class ArtworkAndScoresTests(FloppyApiTestCase):
-    """GET .../artwork/ and .../scores/ expose what the web chip row and carousel read."""
+    """GET .../detail/gallery/ and .../scores/ expose what the web chip row and carousel read."""
 
     def setUp(self):
         """Create a rated anime show and sign in."""
@@ -519,10 +519,10 @@ class ArtworkAndScoresTests(FloppyApiTestCase):
         self.assertEqual((body["chips"], body["graphs"], body["gameLengths"]), ([], {}, None))
 
     def test_artwork_unavailable_for_manual_source(self):
-        """Sources without a gallery answer available=false rather than an error."""
-        response = self.client.get("/api/v1/media/movie/manual/m1/artwork/")
+        """Sources without a gallery answer with no gallery rather than an error."""
+        response = self.client.get("/api/v1/media/movie/manual/m1/detail/gallery/")
         self.assertEqual(response.status_code, HTTP.OK)
-        self.assertFalse(response.json()["available"])
+        self.assertIsNone(response.json()["gallery"])
 
     def test_artwork_maps_carousel_media(self):
         """The carousel payload is passed through for supported sources."""
@@ -530,9 +530,9 @@ class ArtworkAndScoresTests(FloppyApiTestCase):
                 "overview": {"url": "o", "thumb_url": "o", "logo_url": "l"},
                 "hero": {"url": "o", "logo_url": "l"}}
         with patch("app.carousel.resolve_carousel_media", return_value=data):
-            body = self.client.get("/api/v1/media/movie/tmdb/5/artwork/").json()
-        self.assertTrue(body["available"])
-        self.assertEqual(body["overview"]["logo_url"], "l")
+            body = self.client.get("/api/v1/media/movie/tmdb/5/detail/gallery/").json()
+        self.assertEqual(body["gallery"]["overview"]["logo_url"], "l")
+        self.assertEqual(body["gallery"]["photos"][0]["thumb_url"], "t")
 
 
 class ActivityTimelineTests(FloppyApiTestCase):

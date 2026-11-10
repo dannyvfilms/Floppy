@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import re
 from dataclasses import dataclass, replace
 
 from django.apps import apps
@@ -142,6 +143,8 @@ class MediaListFilters:
     pinned_providers: tuple[str, ...] = ()
     tags: tuple[str, ...] = ()
     tag_mode: str = "or"
+    # API-only: ISO 8601 moment (as isoformat); keep entries changed at or after it.
+    updated_since: str = ""
     sort: str = ""
     direction: str = ""
     exclude: tuple[str, ...] = ()
@@ -265,6 +268,30 @@ class _Params:
         if self.strict:
             raise MediaListFilterError(name, message)
         return fallback
+
+
+_OFFSET_SPACE = re.compile(r"(?<=\d) (?=\d{2}:?\d{2}$)")
+
+
+def parse_since(params: _Params, name: str) -> str:
+    """Read query parameter ``name`` as an aware datetime, returned as isoformat.
+
+    An unescaped ``+`` in a query string arrives as a space, so a UTC offset
+    written ``+01:00`` is restored before parsing.
+    """
+    raw = params.text(name)
+    if not raw:
+        return ""
+    try:
+        return helpers.parse_completion_datetime(
+            _OFFSET_SPACE.sub("+", raw),
+        ).isoformat()
+    except (ValueError, TypeError):
+        return params.invalid(
+            name,
+            f"{name} must be an ISO 8601 date or datetime",
+            "",
+        )
 
 
 def _parse_status_values(params: _Params) -> tuple[tuple[str, ...], bool]:
@@ -474,6 +501,7 @@ def parse_media_list_filters(request, *, strict: bool = True) -> MediaListFilter
         sort=sort,
         direction=direction,
         exclude=params.values("exclude"),
+        updated_since=parse_since(params, "updated_since"),
     )
 
 

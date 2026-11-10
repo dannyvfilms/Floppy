@@ -16,7 +16,7 @@ from django.db.models import (
 from django.utils import timezone
 
 from app import config
-from app.models import TV, Item, MediaTypes, Season, Sources, Status
+from app.models import TV, Anime, Item, MediaTypes, Season, Sources, Status
 from app.services.item_merge import dedupe_cross_provider_items
 from integrations.anime_mapping import resolve_provider_series_id
 
@@ -209,10 +209,13 @@ class EventManager(models.Manager):
         """
         return list(
             Item.objects.filter(
-                tv__user=user,
+                # Select from the user's own TV rows: excluding through the
+                # reverse relation would also match other accounts' trackers.
+                id__in=TV.objects.filter(user=user)
+                .exclude(status__in=INACTIVE_TRACKING_STATUSES)
+                .values("item_id"),
                 media_type=MediaTypes.TV.value,
             )
-            .exclude(tv__status__in=INACTIVE_TRACKING_STATUSES)
             .only(*_DEDUPE_ITEM_FIELDS),
         )
 
@@ -333,9 +336,12 @@ class EventManager(models.Manager):
             Item.objects.filter(
                 media_type=MediaTypes.ANIME.value,
                 source=Sources.MAL.value,
-                anime__user=user,
+                # Select from the user's own rows; excluding through the reverse
+                # relation would also match other accounts' paused trackers.
+                id__in=Anime.objects.filter(user=user)
+                .exclude(status__in=INACTIVE_TRACKING_STATUSES)
+                .values("item_id"),
             )
-            .exclude(anime__status__in=INACTIVE_TRACKING_STATUSES)
             .only(*_DEDUPE_ITEM_FIELDS, "title"),
         )
         if not active_anime_items:

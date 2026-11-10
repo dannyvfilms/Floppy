@@ -459,6 +459,8 @@ export function DetailChildren({
   onAction,
   onToggleObfuscation,
   renderRating,
+  onLoadMore,
+  loadMoreLabel,
 }) {
   const copy = { ...DEFAULT_LABELS, ...(labels || {}) };
   const colors = mergePalette(palette);
@@ -506,6 +508,8 @@ export function DetailChildren({
       }) : <Text style={[styles.empty, { color: colors.textMuted, borderColor: colors.surfaceBorder }]}>
         {copy.noChildren}
       </Text>}
+      {onLoadMore ? <Button label={loadMoreLabel || copy.showMore} tone="surface" size="sm"
+        palette={colors.button} onPress={onLoadMore} /> : null}
     </View>
   </View>;
 }

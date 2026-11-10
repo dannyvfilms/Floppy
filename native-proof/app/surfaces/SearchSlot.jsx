@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
 import { GlobalSearch } from '../../../frontend/ui/GlobalSearch.jsx';
+import { useKeyboardOverlap } from '../data/useKeyboardOverlap';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import { createSearchTransport, searchBarFromPayload, suggestionsFromPayload } from '../data/searchTransport';
 import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
@@ -123,12 +124,18 @@ export default function SearchSlot({
 
   const loadSuggestions = useCallback(async ({ query, mediaType }) => {
     if (transport.mode !== 'server') return { suggestions: [] };
+    // A session sign-in uses the web typeahead; a token sign-in reads the same one from the API.
+    if (transport.searchSuggestions) {
+      return { suggestions: await transport.searchSuggestions({ search: query, mediaType }) };
+    }
     const payload = await transport.loadSuggestions({ query, mediaType });
-    return { suggestions: suggestionsFromPayload(payload) };
-  }, [transport]);
+    return { suggestions: suggestionsFromPayload(payload, session?.serverUrl || '') };
+  }, [transport, session]);
 
   function openSuggestion(suggestion) {
-    if (onOpenSuggestion) onOpenSuggestion(suggestion);
+    // Typeahead rows without an item identity (artists, podcast shows) open as a search.
+    const typeaheadWithoutItem = Boolean(suggestion.href) && !suggestion.identity;
+    if (onOpenSuggestion && !(typeaheadWithoutItem && onOpenSearch)) onOpenSuggestion(suggestion);
     else onOpenSearch?.({ query: suggestion.title, mediaType: suggestion.mediaType || initialMediaType });
   }
 
@@ -137,6 +144,7 @@ export default function SearchSlot({
       // The field keeps its own selected type, so it restarts when the page's
       // type changes or the server's type list arrives.
       key={`${selectedType.value}:${mediaTypes.length}`}
+      useKeyboardOverlap={useKeyboardOverlap}
       expanded={expanded}
       dismissSignal={dismissSignal}
       compact={compact}

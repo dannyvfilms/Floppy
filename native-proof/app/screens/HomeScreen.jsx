@@ -4,7 +4,7 @@ import { Button } from '../../../frontend/ui/Button';
 import { HomeView } from '../../../frontend/pages/HomeView';
 import { Icon } from '../../../frontend/ui/Icon';
 import { shelfCardWidth } from '../../../frontend/ui/HomeShelves';
-import { Rail } from '../../../frontend/ui/Rail.jsx';
+import WindowedRail from '../surfaces/WindowedRail';
 import {
   createHomeTransport,
   homeScreenFromPayload,
@@ -12,11 +12,14 @@ import {
 } from '../data/homeTransport';
 import { enrichServerCard, routeCardHref } from '../data/serverCardCore';
 import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
+import { useMobileGridLayout } from '../data/useMobileGridLayout';
 import { palette, radius, spacing } from '../theme';
 import { Screen } from '../components/Screen';
 import HomeProgress from '../surfaces/HomeProgress';
 import MediaCardSlot from '../surfaces/MediaCardSlot';
 import PlaybackSlot from '../surfaces/PlaybackSlot';
+import { playbackDetailItem } from '../data/playbackTransport';
+import { libraryParamsForRowUrl } from '../data/homeRowDestinationCore';
 
 export const surface = {
   id: 'HOME',
@@ -43,7 +46,8 @@ export default function HomeScreen({ navigate, onOpenTab }) {
   const { width } = useWindowDimensions();
   // The same breakpoint helper the web mount uses, so a card is never a
   // different size on one surface.
-  const itemWidth = shelfCardWidth(width);
+  const mobileGridLayout = useMobileGridLayout();
+  const itemWidth = shelfCardWidth(width, mobileGridLayout);
   const [session, setSession] = useState(() => getActiveAuthSession());
   useEffect(() => subscribeAuthSession(setSession), []);
   const transport = useMemo(
@@ -133,16 +137,7 @@ export default function HomeScreen({ navigate, onOpenTab }) {
         <Button label="Connect server" tone="surface" palette={palette}
           onPress={() => navigate?.('Auth')} />
       </View>}
-      playback={serverMode ? <PlaybackSlot onOpenDetail={card => navigate?.('Detail', { item: {
-        identity: {
-          mediaType: card.mediaType,
-          source: card.source,
-          mediaId: card.mediaId,
-        },
-        title: card.episodeTitle || card.title,
-        image: card.image,
-        href: card.href,
-      } })} /> : null}
+      playback={serverMode ? <PlaybackSlot onOpenDetail={card => navigate?.('Detail', { item: playbackDetailItem(card) })} /> : null}
       groups={model.groups}
       deferredGroups={model.deferredGroups}
       showMediaTypeHeaders={model.showMediaTypeHeaders}
@@ -150,7 +145,7 @@ export default function HomeScreen({ navigate, onOpenTab }) {
       palette={palette}
       readOnly={model.readOnly}
       itemWidth={itemWidth}
-      railComponent={Rail}
+      railComponent={WindowedRail}
       renderCard={renderCard}
       renderProgress={renderProgress}
       renderActionIcon={action => action.icon ? <Icon spec={action.icon} color={palette.accentContrast} size={18} /> : null}
@@ -159,6 +154,11 @@ export default function HomeScreen({ navigate, onOpenTab }) {
       onRetry={() => setAttempt(current => current + 1)}
       onOpenCard={(item) => openCard(item?.card)}
       onOpenSettings={onOpenTab ? () => onOpenTab('settings') : undefined}
+      canOpenRowTitle={href => !!libraryParamsForRowUrl(href)}
+      onOpenRowTitle={(href, _row) => {
+        const target = libraryParamsForRowUrl(href);
+        if (target) navigate?.('Library', target);
+      }}
       onLoadRow={loadRow}
       onLoadMore={loadMore}
       onSortRow={sortRow}

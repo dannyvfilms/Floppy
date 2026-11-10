@@ -23,6 +23,7 @@ from app import statistics as stats
 from app.collection_views import build_collection_modal_context
 from app.discover_views import _build_track_modal_discover_tab_context
 from app.forms import BulkEpisodeTrackForm, get_form_class
+from app.icon_specs import file_icon
 from app.models import (
     Anime,
     BasicMedia,
@@ -465,6 +466,9 @@ def _track_form_labels():
         "maximum": str(gettext("Must be at most %s.")),
         "dateOrder": str(gettext("End date must be on or after the start date.")),
         "general": str(gettext("General")),
+        "notesPlaceholder": str(gettext("Add any notes or comments...")),
+        "since": str(gettext("Since")),
+        "sinceHint": str(gettext("Leave empty to start the rewatch today")),
         "dateTime": {},
     }
 
@@ -505,6 +509,9 @@ def _track_tab_labels(context):
     if context.get("status_history_tab_available"):
         labels.update({
             "statusHistory": str(gettext("Status history")),
+            "statusHistoryHelp": str(
+                gettext("Every status change, newest first, with what made it."),
+            ),
             "noStatusChanges": str(gettext("No status changes recorded yet.")),
             "noStatus": str(gettext("No Status")),
             "sourceNotRecorded": str(gettext("source not recorded")),
@@ -512,6 +519,16 @@ def _track_tab_labels(context):
     if context.get("discover_tab_available"):
         labels.update({
             "discover": str(gettext("Discover")),
+            "discoverTitle": str(gettext("Discover Visibility")),
+            "discoverHelp": str(
+                gettext("Control whether this item appears in your Discover recommendations."),
+            ),
+            "discoverStatus": str(gettext("Status")),
+            "discoverVisible": str(gettext("Visible")),
+            "discoverHiddenOption": str(gettext("Hidden")),
+            "currentlyVisible": str(gettext("Currently visible in Discover.")),
+            "currentlyHidden": str(gettext("Currently hidden from Discover.")),
+            "save": str(gettext("Save")),
             "hidden": str(gettext("Hidden from Discover")),
             "shown": str(gettext("Shown in Discover")),
             "hide": str(gettext("Hide from Discover")),
@@ -523,11 +540,17 @@ def _track_tab_labels(context):
 
 def _track_tabs_presentation(context):
     """Serialize the available Track tabs for the shared dialog."""
-    tabs = []
+    tabs = [{
+        "id": "general",
+        "label": str(gettext("General")),
+        "kind": "general",
+        "icon": file_icon("edit"),
+    }]
     tags_data = context.get("tag_assignment_data")
     if context.get("tags_tab_available") and tags_data:
         tabs.append({
             "id": "tags",
+            "icon": file_icon("tag"),
             "label": str(gettext("Tags")),
             "kind": "tags",
             "tags": tags_data.get("tags", []),
@@ -543,12 +566,14 @@ def _track_tabs_presentation(context):
     if context.get("metadata_tab_available"):
         tabs.append({
             "id": "metadata",
+            "icon": file_icon("database"),
             "label": str(gettext("Metadata")),
             "kind": "server",
         })
     if context.get("collection_tab_available"):
         tabs.append({
             "id": "collection",
+            "icon": file_icon("circle-check"),
             "label": str(gettext("Collection")),
             "kind": "server",
         })
@@ -556,12 +581,14 @@ def _track_tabs_presentation(context):
         label = context.get("episode_plays_tab_label") or gettext("Plays")
         tabs.append({
             "id": "episode-plays",
+            "icon": file_icon("history"),
             "label": str(label),
             "kind": "server",
         })
     if context.get("status_history_tab_available"):
         tabs.append({
             "id": "status-history",
+            "icon": file_icon("clock-reversing"),
             "label": str(gettext("Status history")),
             "kind": "status-history",
             "changes": [
@@ -581,6 +608,7 @@ def _track_tabs_presentation(context):
     if context.get("discover_tab_available") and discover_item is not None:
         tabs.append({
             "id": "discover",
+            "icon": file_icon("eye"),
             "label": str(gettext("Discover")),
             "kind": "discover",
             "hidden": bool(context.get("is_hidden_from_discover")),
@@ -1930,11 +1958,7 @@ def track_modal(
                 all_history = []
                 for podcast in all_podcasts:
                     # Only include history records with end_date (completed plays)
-                    history = (
-                        podcast.history.filter(end_date__isnull=False)
-                        if hasattr(podcast.history, "filter")
-                        else [h for h in podcast.history.all() if h.end_date]
-                    )
+                    history = podcast.plays.filter(end_date__isnull=False)
                     # Convert queryset to list if needed to ensure proper evaluation
                     if hasattr(history, "__iter__") and not isinstance(
                         history, (list, tuple)

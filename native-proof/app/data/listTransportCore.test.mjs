@@ -483,10 +483,10 @@ test('bulk actions use the library bulk endpoints with item ids', async () => {
   assert.deepEqual(calls.map(call => call.path), [
     '/api/v1/library/bulk/status/',
     '/api/v1/library/bulk/collection/',
-    '/api/v1/library/bulk/list/',
+    '/api/v1/lists/9/items/bulk/',
     '/api/v1/library/bulk/tags/',
   ]);
-  assert.deepEqual(calls[2].options.json, { item_ids: [42], list_id: 9 });
+  assert.deepEqual(calls[2].options.json, { item_ids: [42] });
   assert.deepEqual(calls[3].options.json, { item_ids: [42], tag_id: 3, action: 'add' });
 });
 
