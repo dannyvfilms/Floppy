@@ -729,6 +729,31 @@ fi
                 f"chown <-R> <-h> <abc:abc> <--> <{directory}>", commands
             )
 
+    def test_sqlite_sidecars_are_repaired(self):
+        """Root-run startup verification publishes these beside the database,
+        so they must be handed to PUID like the database itself (#1901).
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir).resolve()
+            database = root / "database" / "db.sqlite3"
+            database.parent.mkdir()
+            suffixes = (
+                ".verification.json",
+                ".migration-ready.json",
+                ".integrity.status.json",
+                ".integrity.verified.json",
+            )
+            for suffix in suffixes:
+                Path(f"{database}{suffix}").write_text("{}")
+            result, commands = self.run_entrypoint(
+                root, FLOPPY_DB_PATH=str(database)
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for suffix in suffixes:
+            self.assertIn(
+                f"chown <-h> <abc:abc> <--> <{database}{suffix}>", commands
+            )
+
     def test_cache_failure_uses_normal_collection_and_ownership(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             result, commands = self.run_entrypoint(
