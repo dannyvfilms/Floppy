@@ -8,6 +8,8 @@ import {
   TextInput,
   View,
   useWindowDimensions,
+  Keyboard,
+  Platform,
 } from 'react-native';
 import { DROPDOWN } from './dropdownMetrics';
 import { Spinner } from './Spinner';
@@ -34,13 +36,52 @@ const defaultPalette = {
   fontSize: 14,
 };
 
-// The suggestions scroll above a pinned "Search online" row. A short window (the Duo's half
-// screen) shows three rows before it, a roomier one five. A row is its thumbnail plus padding.
+// The suggestions scroll in a window above a pinned "Search online" row. The window is as many
+// rows as fit between the search bar and the bottom of what is visible (the keyboard is not
+// visible), never fewer than two nor more than five. A row is its thumbnail plus padding.
 const THUMB_HEIGHT = 40;
 const SUGGESTION_ROW_HEIGHT = THUMB_HEIGHT + DROPDOWN.itemPaddingVertical * 2;
-const SUGGESTION_ROWS_COMPACT = 3;
-const SUGGESTION_ROWS_ROOMY = 5;
-const ROOMY_WINDOW_HEIGHT = 640;
+const SUGGESTION_FOOTER_HEIGHT = 44;
+const SUGGESTION_PANEL_GAP = 4;
+// Leave one row of air above the keyboard or the window edge.
+const SUGGESTION_BOTTOM_AIR = SUGGESTION_ROW_HEIGHT;
+const SUGGESTION_ROWS_MIN = 2;
+const SUGGESTION_ROWS_MAX = 5;
+
+function useSuggestionRows(open, anchorRef) {
+  const { height: windowHeight } = useWindowDimensions();
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(null);
+  const [anchorBottom, setAnchorBottom] = useState(0);
+
+  useEffect(() => {
+    // Native reports the keyboard; on the web the visual viewport shrinks when it opens.
+    if (Platform.OS === 'web') {
+      const viewport = typeof window !== 'undefined' ? window.visualViewport : null;
+      if (!viewport) return undefined;
+      const update = () => setViewportHeight(viewport.height);
+      update();
+      viewport.addEventListener('resize', update);
+      return () => viewport.removeEventListener('resize', update);
+    }
+    // The keyboard may already be up when the field mounts, so read it as well as listen.
+    const current = Keyboard.metrics?.();
+    if (current?.height) setKeyboardHeight(current.height);
+    const shown = Keyboard.addListener('keyboardDidShow', event => setKeyboardHeight(event.endCoordinates?.height || 0));
+    const hidden = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    return () => { shown.remove(); hidden.remove(); };
+  }, []);
+
+  useEffect(() => {
+    if (!open || !anchorRef.current?.measureInWindow) return;
+    anchorRef.current.measureInWindow((_x, y, _width, height) => setAnchorBottom(y + height));
+  }, [open, windowHeight, keyboardHeight, viewportHeight, anchorRef]);
+
+  const bottom = Platform.OS === 'web' ? (viewportHeight ?? windowHeight) : windowHeight - keyboardHeight;
+  const room = bottom - anchorBottom - SUGGESTION_PANEL_GAP - SUGGESTION_FOOTER_HEIGHT - SUGGESTION_BOTTOM_AIR;
+  const rows = Math.max(SUGGESTION_ROWS_MIN, Math.min(SUGGESTION_ROWS_MAX, Math.floor(room / SUGGESTION_ROW_HEIGHT)));
+  return rows;
+}
 
 const label = (value, fallback) => (
   typeof value === 'string' && value.length ? value : fallback
@@ -118,7 +159,7 @@ export function GlobalSearch({
 }) {
   const palette = { ...defaultPalette, ...paletteOverrides };
   const { height: windowHeight } = useWindowDimensions();
-  const visibleRows = windowHeight >= ROOMY_WINDOW_HEIGHT ? SUGGESTION_ROWS_ROOMY : SUGGESTION_ROWS_COMPACT;
+  const barRef = useRef(null);
   const listRef = useRef(null);
   const listScrollY = useRef(0);
   const [query, setQuery] = useState(initialQuery);
@@ -128,6 +169,7 @@ export function GlobalSearch({
   const [focused, setFocused] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [panel, setPanel] = useState({ status: 'idle', suggestions: [] });
+  const visibleRows = useSuggestionRows(panel.status !== 'idle', barRef);
   const [barcodeBusy, setBarcodeBusy] = useState(false);
   const [barcodeError, setBarcodeError] = useState(null);
   const loader = useRef(onLoadSuggestions);
@@ -294,7 +336,7 @@ export function GlobalSearch({
 
   return <View style={[styles.root, expanded && styles.expanded]}>
     <View style={styles.row}>
-      <View style={styles.inputWrap}>
+      <View ref={barRef} style={styles.inputWrap}>
         <Pressable accessibilityRole="button" accessibilityLabel={label(labels.search, 'Search')}
           onPress={() => submit()} style={[styles.searchButton, palette.searchTouchWidth && {
             left: 0, width: palette.searchTouchWidth, alignItems: 'center',
