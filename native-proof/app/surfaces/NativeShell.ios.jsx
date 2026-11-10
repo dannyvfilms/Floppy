@@ -12,7 +12,7 @@ import { RailModalHost, RailModalProvider, useRailModal } from '../../../fronten
 import { menuGeometry } from './menuGeometry.mjs';
 import { horizontalContentPadding } from '../safeAreaSpacing.mjs';
 
-function MenuLayout({ open, sidebar, search, children, palette, division, reduceMotion }) {
+function MenuLayout({ open, sidebar, search, children, palette, division, reduceMotion, onFull }) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [contentWidth, setContentWidth] = useState(0);
@@ -28,6 +28,7 @@ function MenuLayout({ open, sidebar, search, children, palette, division, reduce
     }
     setGeometry(target);
   }, [geometry, target.full, target.menuWidth, target.gap, hinge?.status, open, reduceMotion]);
+  useEffect(() => { onFull?.(geometry.full); }, [geometry.full, onFull]);
   return <View style={styles.row} onLayout={event => setContentWidth(event.nativeEvent.layout.width)}>
     {Constants.executionEnvironment === ExecutionEnvironment.StoreClient && hinge?.status === 'partiallyOpen'
       ? <Host pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
@@ -99,10 +100,11 @@ function ShellWithRail({ open, onToggle, sidebar, search, children, palette, has
       update: { type: LayoutAnimation.Types.easeOut } });
     onToggle();
   };
-  const menu = { open, sidebar, search, palette, children, reduceMotion };
+  const [menuFull, setMenuFull] = useState(false);
+  const menu = { open, sidebar, search, palette, children, reduceMotion, onFull: setMenuFull };
   return <>
     <Stack.Screen options={{ headerShown: true, headerTransparent: true, headerShadowVisible: false,
-      title: '', headerTitle: '', headerTintColor: palette.text, contentStyle: { backgroundColor: palette.sidebar } }} />
+      title: '', headerTitle: '', headerTintColor: palette.text, contentStyle: { backgroundColor: palette.background } }} />
     <Stack.Toolbar placement="right">
       {hasRail
         ? <Stack.Toolbar.Button icon={modal ? 'xmark' : 'line.3.horizontal'} tintColor={palette.text}
@@ -115,7 +117,9 @@ function ShellWithRail({ open, onToggle, sidebar, search, children, palette, has
         onPress={modal ? modal.onRequestClose : onBack} accessibilityLabel="Back" separateBackground /> : null}
     </Stack.Toolbar>
     <View style={[styles.root, { paddingTop: insets.top, paddingLeft: insets.left,
-      paddingRight: insets.right, paddingBottom: hasRail ? 0 : insets.bottom }]}>
+      paddingRight: insets.right, paddingBottom: hasRail ? 0 : insets.bottom },
+      // A full-width menu runs through the side rail and the other insets, so they take its colour.
+      open && menuFull && { backgroundColor: palette.sidebar }]}>
       <View style={styles.root}
         accessibilityElementsHidden={Boolean(modal)}
         importantForAccessibility={modal ? 'no-hide-descendants' : 'auto'}>

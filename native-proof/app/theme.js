@@ -3,6 +3,8 @@ import { systemColor } from './systemColor';
 // Semantic colors follow iOS appearance, including already-created styles.
 export const palette = {
   background: systemColor('#f8f9fa', '#212529'),
+  // The side menu's own colour: --color-sidebar on the web (light #f1f3f5, dark #1a1d20).
+  sidebar: systemColor('#f1f3f5', '#1a1d20'),
   surface: systemColor('#ffffff', '#2a2f35'),
   surfaceStrong: systemColor('#e9ecef', '#39404b'),
   surfaceMuted: systemColor('#dee2e6', '#3e454d'),
