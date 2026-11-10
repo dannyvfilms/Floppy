@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from django.contrib.auth import get_user_model
 from django.db import connection
 from django.test import TestCase
@@ -151,6 +153,22 @@ class SearchSuggestionsViewTests(TestCase):
         self.assertEqual([row["title"] for row in payload["suggestions"]], ["The Godfather"])
         self.assertIn("/details/", payload["suggestions"][0]["url"])
         self.assertNotIn("<a", response.content.decode())
+
+    def test_suggestion_detail_line_names_the_type_and_year_once(self):
+        """The detail line reads "Type · Year", in a typed scope and under All media."""
+        self.item.release_datetime = datetime(1972, 3, 14, tzinfo=UTC)
+        self.item.save(update_fields=["release_datetime"])
+
+        for scope in (MediaTypes.MOVIE.value, "all"):
+            response = self.client.get(
+                reverse("search_suggestions"),
+                {"q": "godfa", "media_type": scope, "format": "json"},
+            )
+            self.assertEqual(
+                [row["subtitle"] for row in response.json()["suggestions"]],
+                ["Movie · 1972"],
+                scope,
+            )
 
     def test_json_suggestions_short_query_returns_empty_list(self):
         response = self.client.get(
