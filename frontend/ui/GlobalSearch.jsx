@@ -34,7 +34,13 @@ const defaultPalette = {
   fontSize: 14,
 };
 
-const SUGGESTIONS_MAX_HEIGHT = 380;
+// The suggestions scroll above a pinned "Search online" row. A short window (the Duo's half
+// screen) shows three rows before it, a roomier one five. A row is its thumbnail plus padding.
+const THUMB_HEIGHT = 40;
+const SUGGESTION_ROW_HEIGHT = THUMB_HEIGHT + DROPDOWN.itemPaddingVertical * 2;
+const SUGGESTION_ROWS_COMPACT = 3;
+const SUGGESTION_ROWS_ROOMY = 5;
+const ROOMY_WINDOW_HEIGHT = 640;
 
 const label = (value, fallback) => (
   typeof value === 'string' && value.length ? value : fallback
@@ -112,6 +118,9 @@ export function GlobalSearch({
 }) {
   const palette = { ...defaultPalette, ...paletteOverrides };
   const { height: windowHeight } = useWindowDimensions();
+  const visibleRows = windowHeight >= ROOMY_WINDOW_HEIGHT ? SUGGESTION_ROWS_ROOMY : SUGGESTION_ROWS_COMPACT;
+  const listRef = useRef(null);
+  const listScrollY = useRef(0);
   const [query, setQuery] = useState(initialQuery);
   const [userTyped, setUserTyped] = useState(false);
   const [type, setType] = useState(selectedType || mediaTypes[0] || { display: 'All', value: 'all' });
@@ -179,6 +188,17 @@ export function GlobalSearch({
     : [];
   const options = footerOption ? [...suggestionOptions, footerOption] : suggestionOptions;
   const activeOption = activeIndex >= 0 ? options[activeIndex] : null;
+
+  useEffect(() => {
+    // The pinned footer never scrolls; a suggestion row is brought into the visible window.
+    if (!activeOption || activeOption.kind !== 'suggestion' || !listRef.current) return;
+    const top = activeIndex * SUGGESTION_ROW_HEIGHT;
+    const view = visibleRows * SUGGESTION_ROW_HEIGHT;
+    if (top < listScrollY.current) listRef.current.scrollTo({ y: top, animated: false });
+    else if (top + SUGGESTION_ROW_HEIGHT > listScrollY.current + view) {
+      listRef.current.scrollTo({ y: top + SUGGESTION_ROW_HEIGHT - view, animated: false });
+    }
+  }, [activeIndex, activeOption, visibleRows]);
 
   function placeholder() {
     if (type.value === 'all') return label(labels.placeholderAll, 'Search your whole library...');
@@ -337,8 +357,6 @@ export function GlobalSearch({
             right: 0,
             zIndex: 50,
             marginTop: 4,
-            // Rows follow the shared dropdown size, so the panel shows about six of them.
-            maxHeight: Math.min(SUGGESTIONS_MAX_HEIGHT, Math.max(windowHeight - palette.inputHeight - 36, DROPDOWN.itemPaddingVertical * 6)),
             borderWidth: 1,
             borderColor: palette.border,
             borderRadius: DROPDOWN.radius,
@@ -350,7 +368,9 @@ export function GlobalSearch({
             shadowRadius: 12,
             shadowOffset: { width: 0, height: 6 },
           }}>
-          <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+          <ScrollView ref={listRef} keyboardShouldPersistTaps="handled" nestedScrollEnabled
+            style={{ maxHeight: visibleRows * SUGGESTION_ROW_HEIGHT }} scrollEventThrottle={16}
+            onScroll={event => { listScrollY.current = event.nativeEvent.contentOffset.y; }}>
             {panel.status === 'loading' ? <View style={styles.stateRow}>
               <Spinner size={16} color={palette.textMuted} />
               <Text accessibilityLiveRegion="polite" style={[styles.stateText, { color: palette.textMuted }]}>
@@ -371,20 +391,7 @@ export function GlobalSearch({
             </View> : null}
             {options.map((option, index) => {
               const isActive = index === activeIndex;
-              if (option.kind === 'footer') {
-                return <Pressable key={option.key} nativeID={option.id}
-                  role="option" aria-selected={isActive}
-                  accessibilityRole="button"
-                  accessibilityLabel={option.label}
-                  onPress={() => choose(option)}
-                  style={({ hovered }) => [styles.footerRow,
-                    { borderTopColor: palette.border },
-                    (hovered || isActive) && { backgroundColor: palette.surfaceMuted }]}>
-                  <SearchGlyph color={palette.textMuted} size={14} />
-                  <Text numberOfLines={1} style={[styles.footerText, { color: palette.textMuted }]}>{option.label}</Text>
-                  <Text style={[styles.keycap, { color: palette.textMuted, borderColor: palette.border }]}>Enter</Text>
-                </Pressable>;
-              }
+              if (option.kind === 'footer') return null;
               const suggestion = option.suggestion;
               return <Pressable key={option.key} nativeID={option.id}
                 role="option" aria-selected={isActive}
@@ -407,6 +414,18 @@ export function GlobalSearch({
               </Pressable>;
             })}
           </ScrollView>
+          {footerOption ? <Pressable nativeID={footerOption.id}
+            role="option" aria-selected={activeIndex === options.length - 1}
+            accessibilityRole="button"
+            accessibilityLabel={footerOption.label}
+            onPress={() => choose(footerOption)}
+            style={({ hovered }) => [styles.footerRow,
+              { borderTopColor: palette.border },
+              (hovered || activeIndex === options.length - 1) && { backgroundColor: palette.surfaceMuted }]}>
+            <SearchGlyph color={palette.textMuted} size={14} />
+            <Text numberOfLines={1} style={[styles.footerText, { color: palette.textMuted }]}>{footerOption.label}</Text>
+            <Text style={[styles.keycap, { color: palette.textMuted, borderColor: palette.border }]}>Enter</Text>
+          </Pressable> : null}
         </View> : null}
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel={type.display}
@@ -475,7 +494,7 @@ const styles = StyleSheet.create({
   optionText: { flex: 1, minWidth: 0 },
   optionTitle: { fontSize: 14 },
   optionSubtitle: { fontSize: 12, marginTop: 1 },
-  thumb: { width: 32, height: 40, borderRadius: 4, flexShrink: 0 },
+  thumb: { width: 32, height: THUMB_HEIGHT, borderRadius: 4, flexShrink: 0 },
   thumbFallback: { alignItems: 'center', justifyContent: 'center' },
   footerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: DROPDOWN.itemPaddingHorizontal, paddingVertical: DROPDOWN.itemPaddingVertical, borderTopWidth: 1 },
   footerText: { flex: 1, minWidth: 0, fontSize: 12 },
