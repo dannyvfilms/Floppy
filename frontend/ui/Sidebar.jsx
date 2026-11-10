@@ -10,6 +10,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { DROPDOWN } from './dropdownMetrics';
 import { Reveal } from './Reveal';
 
 // The signed-in sidebar as shared React Native presentation. The browser
@@ -584,10 +585,11 @@ const styles = StyleSheet.create({
   bottomLink: { flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 },
   modalRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  menu: { width: 208, borderRadius: 8, borderWidth: 1, paddingVertical: 4 },
+  menu: { width: DROPDOWN.width, borderRadius: DROPDOWN.radius, borderWidth: 1,
+    paddingVertical: DROPDOWN.paddingVertical },
   popover: { position: 'absolute', shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 }, elevation: 8 },
-  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 12, paddingVertical: 10 },
-  menuItemText: { fontSize: 14 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', gap: DROPDOWN.itemGap,
+    paddingHorizontal: DROPDOWN.itemPaddingHorizontal, paddingVertical: DROPDOWN.itemPaddingVertical },
+  menuItemText: { fontSize: DROPDOWN.fontSize },
 });

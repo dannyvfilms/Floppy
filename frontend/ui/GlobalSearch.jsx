@@ -7,7 +7,9 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
+import { DROPDOWN } from './dropdownMetrics';
 import { Spinner } from './Spinner';
 import { SearchIcon as SearchGlyph } from './Icon';
 
@@ -27,7 +29,6 @@ const defaultPalette = {
   errorBorder: '#4b5563',
   focusStyle: {},
   radius: 6,
-  menuWidth: 128,
   inputHeight: 36,
   iconSize: 20,
   fontSize: 14,
@@ -108,6 +109,7 @@ export function GlobalSearch({
   onBarcodeRequest,
 }) {
   const palette = { ...defaultPalette, ...paletteOverrides };
+  const { height: windowHeight } = useWindowDimensions();
   const [query, setQuery] = useState(initialQuery);
   const [userTyped, setUserTyped] = useState(false);
   const [type, setType] = useState(selectedType || mediaTypes[0] || { display: 'All', value: 'all' });
@@ -421,18 +423,22 @@ export function GlobalSearch({
       </Pressable>
       {menuOpen ? <View style={[styles.menu, {
         top: palette.inputHeight + 12,
-        width: palette.menuWidth,
+        // Same size as the sidebar row options; scrolls when the window is too short for every type.
+        width: palette.menuWidth ?? DROPDOWN.width,
+        maxHeight: Math.max(windowHeight - palette.inputHeight - 36, DROPDOWN.itemPaddingVertical * 6),
         backgroundColor: palette.surface,
         borderColor: palette.border,
-        borderRadius: palette.radius,
+        borderRadius: DROPDOWN.radius,
       }]}>
-        {mediaTypes.map(option => <Pressable key={option.value}
-          accessibilityRole="button" accessibilityLabel={option.display}
-          onPress={() => selectType(option)}
-          style={({ hovered, pressed }) => [styles.menuItem,
-            (hovered || pressed || option.value === type.value) && { backgroundColor: palette.surfaceMuted }]}>
-          <Text numberOfLines={1} style={[styles.menuText, { color: palette.textSecondary }]}>{option.display}</Text>
-        </Pressable>)}
+        <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+          {mediaTypes.map(option => <Pressable key={option.value}
+            accessibilityRole="button" accessibilityLabel={option.display}
+            onPress={() => selectType(option)}
+            style={({ hovered, pressed }) => [styles.menuItem,
+              (hovered || pressed || option.value === type.value) && { backgroundColor: palette.surfaceMuted }]}>
+            <Text numberOfLines={1} style={[styles.menuText, { color: palette.textSecondary }]}>{option.display}</Text>
+          </Pressable>)}
+        </ScrollView>
       </View> : null}
     </View>
     {barcodeError ? <View style={[styles.toast, {
@@ -462,8 +468,8 @@ const styles = StyleSheet.create({
   typeButton: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 8 },
   typeText: { fontSize: 14, flexShrink: 1 },
   menu: { position: 'absolute', top: 48, right: 0, zIndex: 60, borderWidth: 1, paddingVertical: 4, elevation: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
-  menuItem: { paddingHorizontal: 16, paddingVertical: 8 },
-  menuText: { fontSize: 14 },
+  menuItem: { paddingHorizontal: DROPDOWN.itemPaddingHorizontal, paddingVertical: DROPDOWN.itemPaddingVertical },
+  menuText: { fontSize: DROPDOWN.fontSize },
   option: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 8 },
   optionText: { flex: 1, minWidth: 0 },
   optionTitle: { fontSize: 14 },
