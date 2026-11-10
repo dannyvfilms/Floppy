@@ -4,7 +4,9 @@ import {
   createPlaybackTransport,
   playbackCardFromPayload,
   playbackCardsFromPayload,
+  playbackDetailItem,
 } from './playbackTransport.js';
+import { detailEndpoint, identityFromDetailItem } from '../surfaces/detailIdentity.mjs';
 
 const cardPayload = (overrides = {}) => ({
   id: 'plex-movie-701',
@@ -21,6 +23,18 @@ const cardPayload = (overrides = {}) => ({
   updated_at: '2026-11-07T10:00:00Z',
   actions: ['pause', 'finish'],
   ...overrides,
+});
+
+test('opens the same season destination as the web playback card', () => {
+  const card = playbackCardFromPayload(cardPayload({
+    media_type: 'episode', source: 'tmdb', media_id: '1396',
+    title: 'Breaking Bad', episode_title: 'Blood Money',
+    url: '/details/tmdb/tv/1396/breaking-bad/season/5',
+  }));
+  const item = playbackDetailItem(card);
+  assert.equal(item.title, 'Breaking Bad');
+  assert.equal(detailEndpoint(identityFromDetailItem(item)),
+    '/api/v1/media/tv/tmdb/1396/detail/?detail_type=season&season_number=5');
 });
 
 test('maps all server cards into shared presentation models without tokens', () => {

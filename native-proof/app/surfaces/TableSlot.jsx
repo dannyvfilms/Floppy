@@ -202,10 +202,13 @@ function QuickTrack({ row, onSave, onDelete, onClose }) {
     onClose={onClose} />;
 }
 
-export default function TableSlot({ rows = [], onOpenDetail, onTrackSave, onTrackDelete }) {
+export default function TableSlot({ rows = [], onOpenDetail, onTrackSave, onTrackDelete,
+  selecting = false, selectedRows = [], onToggleSelect, querySort, queryDirection, onQuerySort }) {
   const [columns, setColumns] = useState(() => COLUMNS.map(column => ({ ...column })));
-  const [sort, setSort] = useState('title');
-  const [direction, setDirection] = useState('asc');
+  const [localSort, setLocalSort] = useState('title');
+  const [localDirection, setLocalDirection] = useState('asc');
+  const sort = querySort || localSort;
+  const direction = queryDirection || localDirection;
   const [overrides, setOverrides] = useState({});
   const [tracking, setTracking] = useState('');
 
@@ -221,8 +224,13 @@ export default function TableSlot({ rows = [], onOpenDetail, onTrackSave, onTrac
   function sortBy(key) {
     const ascendingByDefault = new Set(['author', 'popularity', 'runtime', 'start_date', 'title',
       'next_episode_air_date', 'time_left', 'time_to_beat', 'platform']);
-    setDirection(sort === key ? (direction === 'asc' ? 'desc' : 'asc') : (ascendingByDefault.has(key) ? 'asc' : 'desc'));
-    setSort(key);
+    const nextDirection = sort === key ? (direction === 'asc' ? 'desc' : 'asc')
+      : ascendingByDefault.has(key) ? 'asc' : 'desc';
+    if (onQuerySort) onQuerySort(key, nextDirection);
+    else {
+      setLocalDirection(nextDirection);
+      setLocalSort(key);
+    }
   }
 
   function openDetail(row) {
@@ -314,6 +322,9 @@ export default function TableSlot({ rows = [], onOpenDetail, onTrackSave, onTrac
       onSort={sortBy}
       onOpen={openDetail}
       onOpenLink={follow}
+      selectMode={selecting}
+      selectedIds={selectedRows}
+      onToggleItem={onToggleSelect}
       palette={TABLE_PALETTE}
       caption="Library table" />
     <MediaCardActionHost

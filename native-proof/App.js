@@ -110,6 +110,7 @@ export default function App() {
     if (path.startsWith('/lists')) { navigate('Lists'); return; }
     if (path.startsWith('/statistics')) { navigate('Statistics'); return; }
     if (path.startsWith('/tags')) { navigate('Tags'); return; }
+    if (path.startsWith('/podcast/show/')) { navigate('Detail', { href: path }); return; }
     if (path.startsWith('/details/')) { navigate('Detail', { href: path }); }
   };
 
