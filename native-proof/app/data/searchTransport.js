@@ -12,7 +12,10 @@ export function createSearchTransport(options = {}) {
   }
   const auth = options.auth || getActiveAuthSession();
   if (auth && typeof auth.request === 'function') {
-    return createRemoteSearchActions(auth.request);
+    return createRemoteSearchActions(auth.request, {
+      suggestionsViaWeb: auth.authType === 'session',
+      serverUrl: auth.serverUrl || '',
+    });
   }
   return createLocalSearchActions(
     'Sign in to your Floppy server to search your library.',
