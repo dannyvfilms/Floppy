@@ -933,7 +933,6 @@ Status: `Legacy`
 
 Status: `Legacy`
 
-- `src/templates/users/components/onboarding_banner.html`
 - `src/templates/users/onboarding/_layout.html`
 - `src/templates/users/onboarding/components/connect_form.html`
 - `src/templates/users/onboarding/components/connect_oauth.html`
