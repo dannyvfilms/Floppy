@@ -69,6 +69,8 @@ class ShowTrackerTests(PodcastApiTestCase):
         self.assertEqual(payload["genres"], ["Technology", "News"])
         self.assertEqual(payload["language"], "en")
         self.assertEqual(payload["website_url"], "https://example.com/show")
+        self.assertEqual(payload["listened_count"], 0)
+        self.assertEqual(payload["episode_count"], self.show.episodes.count())
 
     def test_track_list_patch_delete(self):
         """Full tracker lifecycle."""
@@ -80,6 +82,8 @@ class ShowTrackerTests(PodcastApiTestCase):
         )
         self.assertEqual(created.status_code, HTTP.CREATED)
         self.assertEqual(created.json()["tracker"]["score"], "8.0")
+        # The label, like the music endpoints, never the integer status code.
+        self.assertEqual(created.json()["tracker"]["status"], Status.IN_PROGRESS.value)
 
         listed = self.call_api("get", "api_podcast_shows", headers=self.auth_headers)
         self.assertEqual(listed.json()["pagination"]["total"], 1)

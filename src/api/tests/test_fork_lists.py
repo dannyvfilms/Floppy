@@ -40,6 +40,36 @@ class SmartRulesTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, HTTP.OK)
         self.assertTrue(response.json()["is_smart"])
 
+    def test_get_rules_includes_normalized_rules_and_options(self):
+        """GET returns the editor's rules, and the options endpoint its choices."""
+        rules = self.call_api(
+            "get",
+            "api_list_smart_rules",
+            args=(self.smart_list.id,),
+            headers=self.auth_headers,
+        ).json()
+        self.assertEqual(rules["rules"]["media_types"], [MediaTypes.MOVIE.value])
+        options = self.call_api(
+            "get",
+            "api_list_smart_rule_options",
+            args=(self.smart_list.id,),
+            headers=self.auth_headers,
+        )
+        self.assertEqual(options.status_code, HTTP.OK)
+        self.assertIn("genres", options.json()["options"])
+        self.assertTrue(options.json()["media_types"])
+
+    def test_options_rejected_for_regular_list(self):
+        """A list that is not smart has no rule options."""
+        regular = CustomList.objects.create(name="Plain", owner=self.user1)
+        response = self.call_api(
+            "get",
+            "api_list_smart_rule_options",
+            args=(regular.id,),
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+
     def test_put_rules_syncs_membership(self):
         """PUT normalizes rules and syncs items into the list."""
         response = self.call_api(

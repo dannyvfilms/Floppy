@@ -44,6 +44,8 @@ class FilterValues:
     status_match: str = STATUS_MATCH_LATEST
     search: str = ""
     initial: str = ""
+    game_group_by: str = "item"
+    game_group: str = ""
     rating: str = "all"
     rating_min: str = ""
     rating_max: str = ""

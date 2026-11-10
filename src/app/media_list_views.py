@@ -1660,7 +1660,12 @@ def media_list(request, media_type):
     # One parser for the web list and the API, so a filter reaches both.
     initial = normalize_initial(request.GET.get("initial"))
     parsed_filters = replace(
-        parse_media_list_filters(request, strict=False), initial=initial
+        parse_media_list_filters(request, strict=False),
+        initial=initial,
+        # The web grouping path below owns drilldown and ordering. Keep the
+        # shared engine's alphabet scope identical to the ungrouped library.
+        group_by="item",
+        group="",
     )
     rating_filter = parsed_filters.rating
     collection_filter = parsed_filters.collection

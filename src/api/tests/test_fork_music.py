@@ -183,6 +183,34 @@ class AlbumTrackerTests(MusicApiTestCase):
         self.assertGreaterEqual(rows["Opening Song"]["play_count"], 1)
         self.assertIsNone(rows["Closing Song"]["music_id"])
 
+    def test_artist_and_album_detail_report_plays_and_progress(self):
+        """Artist and album detail carry play counts, collection counts, progress."""
+        Music.objects.create(
+            user=self.user1,
+            item=self._make_music_item("play-2"),
+            album=self.album,
+            artist=self.artist,
+            track=self.track1,
+        )
+        artist = self.call_api(
+            "get",
+            "api_music_artist_detail",
+            args=(self.artist.id,),
+            headers=self.auth_headers,
+        ).json()
+        self.assertEqual(artist["total_plays"], 1)
+        self.assertEqual(artist["collection"]["total_albums"], 1)
+        self.assertEqual(artist["collection"]["albums"], 0)
+        album = self.call_api(
+            "get",
+            "api_music_album_detail",
+            args=(self.album.id,),
+            headers=self.auth_headers,
+        ).json()
+        self.assertEqual(album["play_count"], 1)
+        self.assertEqual(album["library_track_count"], 1)
+        self.assertEqual(album["total_tracks"], 2)
+
     def _make_music_item(self, media_id):
         from app.models import Item, MediaTypes, Sources
 

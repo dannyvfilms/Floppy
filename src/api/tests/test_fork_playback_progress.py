@@ -1255,6 +1255,18 @@ class HomePlaybackCardsTests(FloppyApiTestCase):
         )
         self.assertEqual(response.status_code, HTTP.FORBIDDEN)
 
+    def test_scoped_bearer_token_cannot_access_native_home_cards(self):
+        from integrations.models import IntegrationToken
+
+        _token, raw = IntegrationToken.generate(
+            user=self.user1, name="all", scopes=["*"],
+        )
+        response = self.client.get(
+            "/api/v1/playback/home-cards/",
+            HTTP_AUTHORIZATION=f"Bearer {raw}",
+        )
+        self.assertEqual(response.status_code, HTTP.FORBIDDEN)
+
     def test_action_resolves_identity_and_runs_current_stop(self):
         self.client.force_login(self.user1)
         state = {"source": "plex", "media_type": "movie", "media_id": "701"}

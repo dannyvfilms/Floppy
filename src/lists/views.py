@@ -275,6 +275,10 @@ def list_detail(request, list_reference):
     status_filter = tuple(params["status_filter"] or ())
     parsed_filters = replace(
         parse_media_list_filters(request, strict=False),
+        initial="",  # Applied below with the viewer's title preference.
+        # Grouping is an API/library view option, not a custom-list filter.
+        group_by="item",
+        group="",
         statuses=tuple(v for v in status_filter if v != MEDIA_LIST_NO_STATUS),
         include_no_status=MEDIA_LIST_NO_STATUS in status_filter,
         search=params["search_query"],

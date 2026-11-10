@@ -4,16 +4,28 @@ from django.urls import re_path
 
 from . import (
     fork_views,
+    fork_views_calendar,
+    fork_views_collection,
     fork_views_consumption_batch,
+    fork_views_detail,
     fork_views_discover,
+    fork_views_history,
     fork_views_integrations,
+    fork_views_library,
+    fork_views_list_imports,
     fork_views_lists,
     fork_views_metadata,
     fork_views_music,
+    fork_views_onboarding,
+    fork_views_people,
     fork_views_playback,
     fork_views_podcast,
     fork_views_progress_changes,
+    fork_views_provider_connect,
+    fork_views_providers,
     fork_views_scrobble,
+    fork_views_search,
+    fork_views_settings,
     fork_views_statistics,
     fork_views_sync,
     fork_views_tracking,
@@ -22,7 +34,107 @@ from . import (
     fork_views_watched_state,
 )
 
+# FORK: these share the `search/<media_type>/` shape of upstream's provider
+# search route, so urls.py mounts them ahead of it.
+priority_urlpatterns = [
+    re_path(
+        r"^search/sources/?$",
+        fork_views_search.SearchSourcesView.as_view(),
+        name="api_search_sources",
+    ),
+    re_path(
+        r"^search/suggestions/?$",
+        fork_views_search.SearchSuggestionsView.as_view(),
+        name="api_search_suggestions",
+    ),
+    re_path(
+        r"^search/results/?$",
+        fork_views_search.SearchResultsView.as_view(),
+        name="api_search_results",
+    ),
+    re_path(
+        r"^search/music/create/?$",
+        fork_views_search.SearchMusicCreateView.as_view(),
+        name="api_search_music_create",
+    ),
+    re_path(
+        r"^search/parents/?$",
+        fork_views_search.SearchParentsView.as_view(),
+        name="api_search_parents",
+    ),
+    re_path(
+        r"^search/manual-entry/?$",
+        fork_views_search.ManualEntryView.as_view(),
+        name="api_search_manual_entry",
+    ),
+]
+
 urlpatterns = [
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/filter-options/?$",
+        fork_views_library.LibraryFilterOptionsView.as_view(),
+        name="api_library_filter_options",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/item-ids/?$",
+        fork_views_library.LibraryItemIdsView.as_view(),
+        name="api_library_item_ids",
+    ),
+    re_path(
+        r"^library/preferences/(?P<media_type>[^/]+)/?$",
+        fork_views_library.LibraryPreferencesView.as_view(),
+        name="api_library_preferences",
+    ),
+    re_path(
+        r"^library/game-groups/?$",
+        fork_views_library.LibraryGameGroupsView.as_view(),
+        name="api_library_game_groups",
+    ),
+    re_path(
+        r"^library/saved-views/?$",
+        fork_views_library.LibrarySavedViewsView.as_view(),
+        name="api_library_saved_views",
+    ),
+    re_path(
+        r"^library/saved-views/(?P<view_id>\d+)/?$",
+        fork_views_library.LibrarySavedViewDetailView.as_view(),
+        name="api_library_saved_view",
+    ),
+    re_path(
+        r"^library/share-view/?$",
+        fork_views_library.LibraryShareView.as_view(),
+        name="api_library_share_view",
+    ),
+    re_path(
+        r"^library/bulk/status/?$",
+        fork_views_library.LibraryBulkStatusView.as_view(),
+        name="api_library_bulk_status",
+    ),
+    re_path(
+        r"^library/bulk/collection/?$",
+        fork_views_library.LibraryBulkCollectionView.as_view(),
+        name="api_library_bulk_collection",
+    ),
+    re_path(
+        r"^library/bulk/list/?$",
+        fork_views_library.LibraryBulkListView.as_view(),
+        name="api_library_bulk_list",
+    ),
+    re_path(
+        r"^library/bulk/tags/?$",
+        fork_views_library.LibraryBulkTagView.as_view(),
+        name="api_library_bulk_tags",
+    ),
+    re_path(
+        r"^library/bulk/plays/?$",
+        fork_views_library.LibraryBulkPlaysView.as_view(),
+        name="api_library_bulk_plays",
+    ),
+    re_path(
+        r"^library/bulk/plays/(?P<operation_id>[0-9a-f]+)/?$",
+        fork_views_library.LibraryBulkPlaysStatusView.as_view(),
+        name="api_library_bulk_plays_status",
+    ),
     re_path(r"^sync/bootstrap/?$", fork_views_sync.SyncBootstrapView.as_view(), name="api_sync_bootstrap"),
     re_path(r"^sync/snapshot/?$", fork_views_sync.SyncSnapshotView.as_view(), name="api_sync_snapshot"),
     re_path(
@@ -56,9 +168,119 @@ urlpatterns = [
         name="api_media_metadata",
     ),
     re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/metadata/?$",
+        fork_views_metadata.MediaSeasonMetadataView.as_view(),
+        name="api_media_season_metadata",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/(?P<episode_number>\d+)/metadata/?$",
+        fork_views_metadata.MediaEpisodeMetadataView.as_view(),
+        name="api_media_episode_metadata",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/collection/entries/?$",
+        fork_views_detail.MediaCollectionEntriesView.as_view(),
+        name="api_media_collection_entries",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/collection/entries/?$",
+        fork_views_detail.MediaSeasonCollectionEntriesView.as_view(),
+        name="api_media_season_collection_entries",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/(?P<episode_number>\d+)/collection/entries/?$",
+        fork_views_detail.MediaEpisodeCollectionEntriesView.as_view(),
+        name="api_media_episode_collection_entries",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/artwork/?$",
+        fork_views_detail.MediaArtworkView.as_view(),
+        name="api_media_artwork",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/artwork/?$",
+        fork_views_detail.MediaSeasonArtworkView.as_view(),
+        name="api_media_season_artwork",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/issues/?$",
+        fork_views_detail.MediaIssuesView.as_view(),
+        name="api_media_issues",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/episode-preview/?$",
+        fork_views_detail.MediaAnimeEpisodesView.as_view(),
+        name="api_media_anime_episodes",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/scores/?$",
+        fork_views_detail.MediaScoresView.as_view(),
+        name="api_media_scores",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/scores/?$",
+        fork_views_detail.MediaSeasonScoresView.as_view(),
+        name="api_media_season_scores",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/activity-timeline/?$",
+        fork_views_detail.MediaActivityTimelineView.as_view(),
+        name="api_media_activity_timeline",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/activity-timeline/?$",
+        fork_views_detail.MediaSeasonActivityTimelineView.as_view(),
+        name="api_media_season_activity_timeline",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/(?P<episode_number>\d+)/activity-timeline/?$",
+        fork_views_detail.MediaEpisodeActivityTimelineView.as_view(),
+        name="api_media_episode_activity_timeline",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/progress-card/?$",
+        fork_views_detail.MediaProgressCardView.as_view(),
+        name="api_media_progress_card",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/progress-card/?$",
+        fork_views_detail.MediaSeasonProgressCardView.as_view(),
+        name="api_media_season_progress_card",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/collect/?$",
+        fork_views_detail.MediaShowCollectView.as_view(),
+        name="api_media_show_collect",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/collect/?$",
+        fork_views_detail.MediaSeasonCollectView.as_view(),
+        name="api_media_season_collect",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/checkin/?$",
+        fork_views_detail.MediaCheckInView.as_view(),
+        name="api_media_checkin",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/request/?$",
+        fork_views_detail.MediaSeerrRequestView.as_view(),
+        name="api_media_seerr_request",
+    ),
+    re_path(
         r"^metadata/items/(?P<item_id>\d+)/image/?$",
         fork_views_metadata.ItemImageView.as_view(),
         name="api_item_image",
+    ),
+    re_path(
+        r"^metadata/items/(?P<item_id>\d+)/cover/?$",
+        fork_views_metadata.ItemCoverView.as_view(),
+        name="api_item_cover",
+    ),
+    re_path(
+        r"^metadata/items/(?P<item_id>\d+)/hardcover-editions/?$",
+        fork_views_metadata.ItemHardcoverEditionsView.as_view(),
+        name="api_item_hardcover_editions",
     ),
     re_path(
         r"^metadata/items/(?P<item_id>\d+)/?$",
@@ -74,6 +296,46 @@ urlpatterns = [
         r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/tags/?$",
         fork_views_tracking.MediaTagsView.as_view(),
         name="api_media_tags",
+    ),
+    re_path(
+        r"^history/genres/?$",
+        fork_views_history.HistoryGenresView.as_view(),
+        name="api_history_genres",
+    ),
+    re_path(
+        r"^history/sessions/?$",
+        fork_views_history.HistorySessionsView.as_view(),
+        name="api_history_sessions",
+    ),
+    re_path(
+        r"^history/release/?$",
+        fork_views_history.HistoryReleaseDaysView.as_view(),
+        name="api_history_release",
+    ),
+    re_path(
+        r"^history/saved-views/?$",
+        fork_views_history.HistorySavedViewsView.as_view(),
+        name="api_history_saved_views",
+    ),
+    re_path(
+        r"^history/days/(?P<day_key>[^/]+)/?$",
+        fork_views_history.HistoryDayView.as_view(),
+        name="api_history_day",
+    ),
+    re_path(
+        r"^history/entries/(?P<media_type>[^/]+)/(?P<instance_id>\d+)/?$",
+        fork_views_history.HistoryEntryView.as_view(),
+        name="api_history_entry",
+    ),
+    re_path(
+        r"^calendar/links/?$",
+        fork_views_calendar.CalendarLinksView.as_view(),
+        name="api_calendar_links",
+    ),
+    re_path(
+        r"^calendar/statuses/?$",
+        fork_views_calendar.CalendarStatusesView.as_view(),
+        name="api_calendar_statuses",
     ),
     re_path(
         r"^history/?$",
@@ -119,6 +381,11 @@ urlpatterns = [
         r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/collection/?$",
         fork_views.MediaCollectionView.as_view(),
         name="api_media_collection",
+    ),
+    re_path(
+        r"^collection/fields/?$",
+        fork_views_collection.CollectionFieldsView.as_view(),
+        name="api_collection_fields",
     ),
     re_path(
         r"^collection/(?P<entry_id>\d+)/?$",
@@ -201,6 +468,41 @@ urlpatterns = [
         name="api_music_song_play",
     ),
     re_path(
+        r"^music/tracks/(?P<track_id>\d+)/?$",
+        fork_views_music.MusicTrackDetailView.as_view(),
+        name="api_music_track_detail",
+    ),
+    re_path(
+        r"^music/tracks/(?P<track_id>\d+)/plays/?$",
+        fork_views_music.MusicTrackPlaysView.as_view(),
+        name="api_music_track_plays",
+    ),
+    re_path(
+        r"^music/tracks/(?P<track_id>\d+)/plays/(?P<history_id>\d+)/?$",
+        fork_views_music.MusicTrackPlayDetailView.as_view(),
+        name="api_music_track_play_detail",
+    ),
+    re_path(
+        r"^music/albums/(?P<album_id>\d+)/releases/?$",
+        fork_views_music.MusicAlbumReleasesView.as_view(),
+        name="api_music_album_releases",
+    ),
+    re_path(
+        r"^podcasts/shows/(?P<show_id>\d+)/episodes/manage/?$",
+        fork_views_podcast.PodcastShowEpisodeManageView.as_view(),
+        name="api_podcast_show_episode_manage",
+    ),
+    re_path(
+        r"^podcasts/episodes/(?P<episode_id>\d+)/?$",
+        fork_views_podcast.PodcastEpisodeDetailView.as_view(),
+        name="api_podcast_episode_detail",
+    ),
+    re_path(
+        r"^podcasts/episodes/(?P<episode_id>\d+)/score/?$",
+        fork_views_podcast.PodcastEpisodeScoreView.as_view(),
+        name="api_podcast_episode_score",
+    ),
+    re_path(
         r"^music/tracks/(?P<music_id>\d+)/score/?$",
         fork_views_music.MusicTrackScoreView.as_view(),
         name="api_music_track_score",
@@ -271,6 +573,36 @@ urlpatterns = [
         name="api_list_smart_rules",
     ),
     re_path(
+        r"^lists/(?P<list_id>\d+)/smart-rules/options/?$",
+        fork_views_lists.ListSmartRuleOptionsView.as_view(),
+        name="api_list_smart_rule_options",
+    ),
+    re_path(
+        r"^lists/import/?$",
+        fork_views_list_imports.ListImportStatusView.as_view(),
+        name="api_list_import_status",
+    ),
+    re_path(
+        r"^lists/import/csv/?$",
+        fork_views_list_imports.ListImportCsvView.as_view(),
+        name="api_list_import_csv",
+    ),
+    re_path(
+        r"^lists/import/mdblist/?$",
+        fork_views_list_imports.ListImportMdblistView.as_view(),
+        name="api_list_import_mdblist",
+    ),
+    re_path(
+        r"^lists/import/trakt/?$",
+        fork_views_list_imports.ListImportTraktView.as_view(),
+        name="api_list_import_trakt",
+    ),
+    re_path(
+        r"^lists/(?P<list_id>\d+)/export/?$",
+        fork_views_list_imports.ListExportCsvView.as_view(),
+        name="api_list_export_csv",
+    ),
+    re_path(
         r"^lists/(?P<list_id>\d+)/smart-sync/?$",
         fork_views_lists.ListSmartSyncView.as_view(),
         name="api_list_smart_sync",
@@ -279,6 +611,31 @@ urlpatterns = [
         r"^lists/(?P<list_id>\d+)/collaborators/?$",
         fork_views_lists.ListCollaboratorsView.as_view(),
         name="api_list_collaborators",
+    ),
+    re_path(
+        r"^lists/(?P<list_id>\d+)/viewers/?$",
+        fork_views_lists.ListViewersView.as_view(),
+        name="api_list_viewers",
+    ),
+    re_path(
+        r"^lists/(?P<list_id>\d+)/tiers/?$",
+        fork_views_lists.ListTiersView.as_view(),
+        name="api_list_tiers",
+    ),
+    re_path(
+        r"^lists/(?P<list_id>\d+)/tiers/move/?$",
+        fork_views_lists.ListTierMoveView.as_view(),
+        name="api_list_tier_move",
+    ),
+    re_path(
+        r"^lists/(?P<list_id>\d+)/tiers/fill/?$",
+        fork_views_lists.ListTierFillView.as_view(),
+        name="api_list_tier_fill",
+    ),
+    re_path(
+        r"^lists/(?P<list_id>\d+)/tiers/fill/undo/?$",
+        fork_views_lists.ListTierFillUndoView.as_view(),
+        name="api_list_tier_fill_undo",
     ),
     re_path(
         r"^lists/(?P<list_id>\d+)/items/reorder/?$",
@@ -331,6 +688,21 @@ urlpatterns = [
         name="api_recommendations",
     ),
     re_path(
+        r"^people/(?P<source>[^/]+)/(?P<person_id>[^/]+)/?$",
+        fork_views_people.PersonView.as_view(),
+        name="api_person",
+    ),
+    re_path(
+        r"^studios/(?P<source>[^/]+)/(?P<studio_id>[^/]+)/?$",
+        fork_views_people.StudioView.as_view(),
+        name="api_studio",
+    ),
+    re_path(
+        r"^discover/status/?$",
+        fork_views_discover.DiscoverStatusView.as_view(),
+        name="api_discover_status",
+    ),
+    re_path(
         r"^discover/refresh/?$",
         fork_views_discover.DiscoverRefreshView.as_view(),
         name="api_discover_refresh",
@@ -371,6 +743,11 @@ urlpatterns = [
         name="api_user_navigation",
     ),
     re_path(
+        r"^user/onboarding/?$",
+        fork_views_onboarding.UserOnboardingView.as_view(),
+        name="api_user_onboarding",
+    ),
+    re_path(
         r"^user/sidebar/?$",
         fork_views_users.UserSidebarView.as_view(),
         name="api_user_sidebar",
@@ -394,6 +771,176 @@ urlpatterns = [
         r"^user/token/regenerate/?$",
         fork_views_users.UserTokenRegenerateView.as_view(),
         name="api_user_token_regenerate",
+    ),
+    re_path(
+        r"^user/preferences/choices/?$",
+        fork_views_settings.UserPreferencesChoicesView.as_view(),
+        name="api_settings_user_preferences_choices",
+    ),
+    re_path(
+        r"^user/appearance/?$",
+        fork_views_settings.UserAppearanceView.as_view(),
+        name="api_settings_user_appearance",
+    ),
+    re_path(
+        r"^user/cards/?$",
+        fork_views_settings.UserCardsView.as_view(),
+        name="api_settings_user_cards",
+    ),
+    re_path(
+        r"^user/cards/preview/?$",
+        fork_views_settings.UserCardPreviewView.as_view(),
+        name="api_settings_user_card_preview",
+    ),
+    re_path(
+        r"^user/home-screen/?$",
+        fork_views_settings.UserHomeScreenView.as_view(),
+        name="api_settings_user_home_screen",
+    ),
+    re_path(
+        r"^user/home-screen/lists/?$",
+        fork_views_settings.UserHomeScreenListsView.as_view(),
+        name="api_settings_user_home_screen_lists",
+    ),
+    re_path(
+        r"^user/home-screen/filter-fields/?$",
+        fork_views_settings.UserHomeScreenFilterFieldsView.as_view(),
+        name="api_settings_user_home_screen_filter_fields",
+    ),
+    re_path(
+        r"^user/token/?$",
+        fork_views_settings.UserTokenView.as_view(),
+        name="api_settings_user_token",
+    ),
+    re_path(
+        r"^user/account/?$",
+        fork_views_settings.UserAccountView.as_view(),
+        name="api_settings_user_account",
+    ),
+    re_path(
+        r"^user/tokens/?$",
+        fork_views_settings.UserIntegrationTokensView.as_view(),
+        name="api_settings_user_integration_tokens",
+    ),
+    re_path(
+        r"^user/tokens/(?P<token_id>\d+)/?$",
+        fork_views_settings.UserIntegrationTokenDetailView.as_view(),
+        name="api_settings_user_integration_token_detail",
+    ),
+    re_path(
+        r"^user/catalog-grants/?$",
+        fork_views_settings.UserCatalogGrantsView.as_view(),
+        name="api_settings_user_catalog_grants",
+    ),
+    re_path(
+        r"^user/catalog-grants/(?P<grant_id>\d+)/?$",
+        fork_views_settings.UserCatalogGrantDetailView.as_view(),
+        name="api_settings_user_catalog_grant_detail",
+    ),
+    re_path(
+        r"^user/oauth-applications/?$",
+        fork_views_settings.UserOAuthApplicationsView.as_view(),
+        name="api_settings_user_o_auth_applications",
+    ),
+    re_path(
+        r"^user/oauth-applications/(?P<client_id>[^/]+)/?$",
+        fork_views_settings.UserOAuthApplicationDetailView.as_view(),
+        name="api_settings_user_o_auth_application_detail",
+    ),
+    re_path(
+        r"^admin/users/?$",
+        fork_views_settings.ManagedUsersView.as_view(),
+        name="api_settings_managed_users",
+    ),
+    re_path(
+        r"^admin/users/(?P<user_id>\d+)/?$",
+        fork_views_settings.ManagedUserDetailView.as_view(),
+        name="api_settings_managed_user_detail",
+    ),
+    re_path(
+        r"^admin/users/(?P<user_id>\d+)/password/?$",
+        fork_views_settings.ManagedUserPasswordView.as_view(),
+        name="api_settings_managed_user_password",
+    ),
+    re_path(
+        r"^user/advanced/?$",
+        fork_views_settings.AdvancedSettingsView.as_view(),
+        name="api_settings_advanced_settings",
+    ),
+    re_path(
+        r"^user/advanced/image-cache/?$",
+        fork_views_settings.ImageCacheView.as_view(),
+        name="api_settings_image_cache",
+    ),
+    re_path(
+        r"^user/advanced/caches/(?P<kind>[a-z]+)/?$",
+        fork_views_settings.CacheClearView.as_view(),
+        name="api_settings_cache_clear",
+    ),
+    re_path(
+        r"^user/advanced/server-port/?$",
+        fork_views_settings.ServerPortView.as_view(),
+        name="api_settings_server_port",
+    ),
+    re_path(
+        r"^user/advanced/logs/?$",
+        fork_views_settings.LogsExportView.as_view(),
+        name="api_settings_logs_export",
+    ),
+    re_path(
+        r"^user/about/?$",
+        fork_views_settings.AboutSettingsView.as_view(),
+        name="api_settings_about_settings",
+    ),
+    re_path(
+        r"^user/about/whats-new/?$",
+        fork_views_settings.WhatsNewView.as_view(),
+        name="api_settings_whats_new",
+    ),
+    re_path(
+        r"^exports/schedules/?$",
+        fork_views_settings.ExportSchedulesView.as_view(),
+        name="api_settings_export_schedules",
+    ),
+    re_path(
+        r"^exports/backup-status/?$",
+        fork_views_settings.ExportBackupStatusView.as_view(),
+        name="api_settings_export_backup_status",
+    ),
+    re_path(
+        r"^export/letterboxd/?$",
+        fork_views_settings.LetterboxdExportView.as_view(),
+        name="api_export_letterboxd",
+    ),
+    re_path(
+        r"^user/import-settings/?$",
+        fork_views_settings.UserImportSettingsView.as_view(),
+        name="api_settings_import_settings",
+    ),
+    re_path(
+        r"^exports/history/?$",
+        fork_views_settings.ExportHistoryView.as_view(),
+        name="api_settings_export_history",
+    ),
+    re_path(
+        r"^user/restore/?$",
+        fork_views_settings.RestoreBackupView.as_view(),
+        name="api_settings_restore_backup",
+    ),
+    re_path(
+        r"^user/rss/?$",
+        fork_views_settings.UserRssView.as_view(),
+        name="api_settings_user_rss",
+    ),
+    re_path(
+        r"^user/rss/preview/?$",
+        fork_views_settings.UserRssPreviewView.as_view(),
+        name="api_settings_user_rss_preview",
+    ),
+    re_path(
+        r"^user/library-maintenance/?$",
+        fork_views_settings.LibraryMaintenanceView.as_view(),
+        name="api_settings_library_maintenance",
     ),
     re_path(
         r"^imports/activity/?$",
@@ -439,6 +986,21 @@ urlpatterns = [
         r"^statistics/overview/?$",
         fork_views_statistics.StatisticsOverviewView.as_view(),
         name="api_statistics_overview",
+    ),
+    re_path(
+        r"^statistics/preferences/?$",
+        fork_views_statistics.StatisticsPreferencesView.as_view(),
+        name="api_statistics_preferences",
+    ),
+    re_path(
+        r"^statistics/talent/?$",
+        fork_views_statistics.StatisticsTalentView.as_view(),
+        name="api_statistics_talent",
+    ),
+    re_path(
+        r"^statistics/featured-person/?$",
+        fork_views_statistics.StatisticsFeaturedPersonView.as_view(),
+        name="api_statistics_featured_person",
     ),
     re_path(
         r"^statistics/refresh/?$",
@@ -490,5 +1052,130 @@ urlpatterns = [
         r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/(?P<episode_number>\d+)/state/?$",
         fork_views_tracking.MediaEpisodeStateView.as_view(),
         name="api_media_episode_state",
+    ),
+    re_path(
+        r"^providers/?$",
+        fork_views_providers.ProvidersView.as_view(),
+        name="api_providers",
+    ),
+    re_path(
+        r"^providers/pin/?$",
+        fork_views_providers.ProviderPinView.as_view(),
+        name="api_providers_pin",
+    ),
+    re_path(
+        r"^providers/(?P<slug>[a-z0-9_-]+)/?$",
+        fork_views_providers.ProviderDetailView.as_view(),
+        name="api_provider_detail",
+    ),
+    re_path(
+        r"^providers/(?P<slug>[a-z0-9_-]+)/connect/?$",
+        fork_views_providers.ProviderConnectView.as_view(),
+        name="api_provider_connect",
+    ),
+    re_path(
+        r"^providers/(?P<slug>[a-z0-9_-]+)/connect/start/?$",
+        fork_views_provider_connect.ProviderConnectStartView.as_view(),
+        name="api_provider_connect_start",
+    ),
+    re_path(
+        r"^providers/(?P<slug>[a-z0-9_-]+)/connect/poll/?$",
+        fork_views_provider_connect.ProviderConnectPollView.as_view(),
+        name="api_provider_connect_poll",
+    ),
+    re_path(
+        r"^providers/(?P<slug>[a-z0-9_-]+)/connect/cancel/?$",
+        fork_views_provider_connect.ProviderConnectCancelView.as_view(),
+        name="api_provider_connect_cancel",
+    ),
+    re_path(
+        r"^providers/(?P<slug>[a-z0-9_-]+)/forms/(?P<form_key>[a-z0-9_]+)/?$",
+        fork_views_providers.ProviderFormView.as_view(),
+        name="api_provider_form",
+    ),
+    re_path(
+        r"^providers/(?P<slug>[a-z0-9_-]+)/file-import/?$",
+        fork_views_providers.ProviderFileImportView.as_view(),
+        name="api_provider_file_import",
+    ),
+    re_path(
+        r"^providers/(?P<slug>[a-z0-9_-]+)/metadata/?$",
+        fork_views_providers.ProviderMetadataActionView.as_view(),
+        name="api_provider_metadata",
+    ),
+    re_path(
+        r"^providers/(?P<slug>[a-z0-9_-]+)/disconnect/?$",
+        fork_views_providers.ProviderDisconnectView.as_view(),
+        name="api_provider_disconnect",
+    ),
+    re_path(
+        r"^providers/(?P<slug>[a-z0-9_-]+)/credentials/?$",
+        fork_views_providers.ProviderCredentialsView.as_view(),
+        name="api_provider_credentials",
+    ),
+    re_path(
+        r"^providers/(?P<slug>[a-z0-9_-]+)/test/?$",
+        fork_views_providers.ProviderTestView.as_view(),
+        name="api_provider_test",
+    ),
+    re_path(
+        r"^providers/(?P<slug>[a-z0-9_-]+)/sync/?$",
+        fork_views_providers.ProviderSyncView.as_view(),
+        name="api_provider_sync",
+    ),
+    re_path(
+        r"^providers/(?P<slug>[a-z0-9_-]+)/import/?$",
+        fork_views_providers.ProviderImportView.as_view(),
+        name="api_provider_import",
+    ),
+    re_path(
+        r"^providers/(?P<slug>[a-z0-9_-]+)/schedules/?$",
+        fork_views_providers.ProviderSchedulesView.as_view(),
+        name="api_provider_schedules",
+    ),
+    re_path(
+        r"^connections/?$",
+        fork_views_providers.ConnectionsView.as_view(),
+        name="api_connections",
+    ),
+    re_path(
+        r"^connections/device/?$",
+        fork_views_providers.DeviceApprovalView.as_view(),
+        name="api_connection_device",
+    ),
+    re_path(
+        r"^connections/(?P<binding_id>\d+)/direction/?$",
+        fork_views_providers.ConnectionDirectionView.as_view(),
+        name="api_connection_direction",
+    ),
+    re_path(
+        r"^connections/(?P<binding_id>\d+)/pause/?$",
+        fork_views_providers.ConnectionPauseView.as_view(),
+        name="api_connection_pause",
+    ),
+    re_path(
+        r"^metadata-review/?$",
+        fork_views_providers.MetadataReviewQueueView.as_view(),
+        name="api_metadata_review",
+    ),
+    re_path(
+        r"^metadata-review/references/(?P<reference_id>\d+)/?$",
+        fork_views_providers.MetadataReviewReferenceView.as_view(),
+        name="api_metadata_review_reference",
+    ),
+    re_path(
+        r"^metadata-review/items/(?P<item_id>\d+)/candidates/?$",
+        fork_views_providers.MetadataMatchCandidatesView.as_view(),
+        name="api_metadata_match_candidates",
+    ),
+    re_path(
+        r"^metadata-review/items/(?P<item_id>\d+)/preview/?$",
+        fork_views_providers.MetadataMatchPreviewView.as_view(),
+        name="api_metadata_match_preview",
+    ),
+    re_path(
+        r"^metadata-review/items/(?P<item_id>\d+)/apply/?$",
+        fork_views_providers.MetadataMatchApplyView.as_view(),
+        name="api_metadata_match_apply",
     ),
 ]

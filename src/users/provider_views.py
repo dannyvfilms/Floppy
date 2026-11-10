@@ -406,6 +406,9 @@ def provider_detail(request, slug):
         context["account_connection"]["title"] = _("MyAnimeList account")
         context["account_connection"]["submitLabel"] = _("Authorize and enable MyAnimeList sync")
     context["provider_page"] = provider_ui.provider_page(request, provider, tab, credential_context=context)
+    if getattr(request, "provider_context_only", False):
+        # The native JSON API reuses this view model instead of rebuilding it.
+        return context
     return render(request, "users/provider_detail.html", context)
 
 

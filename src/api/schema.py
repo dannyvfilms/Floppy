@@ -147,6 +147,18 @@ MEDIA_LIST_FILTER_PARAMS = [
         enum=["all", "caught_up", "not_caught_up"],
         description="Currently meaningful for TV and anime lists.",
     ),
+    OpenApiParameter(
+        name="initial",
+        type=str,
+        location=OpenApiParameter.QUERY,
+        description="A to Z rail: `a`-`z`, `0-9` or `other`; anything else means all titles.",
+    ),
+    OpenApiParameter(
+        name="separate_entries", type=str, enum=["0", "1"], location=OpenApiParameter.QUERY,
+        description="Show each matching tracking entry separately for movies, anime, manga, games and books.",
+    ),
+    OpenApiParameter(name="group_by", type=str, enum=["item", "series", "franchise"], location=OpenApiParameter.QUERY),
+    OpenApiParameter(name="group", type=str, location=OpenApiParameter.QUERY, description="Games group key from the library groups response."),
     OpenApiParameter(name="genre", type=str, location=OpenApiParameter.QUERY),
     OpenApiParameter(
         name="implied_genre",

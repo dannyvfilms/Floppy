@@ -111,6 +111,8 @@ class MediaCoreTests(FloppyApiTestCase):
                     "lists",
                     "next_episode",
                     "show",
+                    # The library table's Tags column (viewer's tag names).
+                    "tags",
                 },
             )
 
@@ -979,9 +981,11 @@ class MediaCoreTests(FloppyApiTestCase):
                 "consumptions",
                 "lists",
                 "media_type_status",
+                "studios",
             },
         )
         self.assertEqual(payload["episodes_left"], 2)
+        self.assertEqual(payload["studios"], [])
         self.assertEqual(payload["total_episodes_left"], 10)
         self.assertEqual(payload["cast"], mock_metadata.return_value["cast"])
         self.assertEqual(payload["crew"], mock_metadata.return_value["crew"])

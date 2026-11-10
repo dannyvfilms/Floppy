@@ -2,7 +2,9 @@
 # the web podcast views. URL wiring lives in fork_urls.py.
 import json
 import logging
+from decimal import Decimal, InvalidOperation
 from http import HTTPStatus as HTTP  # noqa: N814
+from uuid import uuid4
 
 from django.core.cache import cache
 from drf_spectacular.types import OpenApiTypes
@@ -11,22 +13,39 @@ from rest_framework import views as drf_views
 from rest_framework.response import Response
 
 from app import fork_services_podcast, helpers
-from app.forms import PodcastShowTrackerForm
+from app.forms import PodcastEpisodeForm, PodcastShowTrackerForm
 from app.log_safety import safe_url
-from app.models import PodcastEpisode, PodcastShow, PodcastShowTracker, Status
-from app.podcast_views import podcast_episodes_api
+from app.models import (
+    Podcast,
+    PodcastEpisode,
+    PodcastShow,
+    PodcastShowTracker,
+    Status,
+)
+from app.podcast_views import (
+    episode_payload,
+    manual_episode_for_user_or_404,
+    manual_show_for_user_or_404,
+    podcast_episodes_api,
+)
 from app.providers import pocketcasts, services
 from app.services import podcast_import
 from integrations import podcast_rss
 
 from .helpers import (
-    get_media_status,
     make_page_url,
     paginate_data,
     parse_limit_offset,
     try_parse_datetime_input,
 )
 from .serializers import serialize_data
+
+_OBJ_READ = extend_schema(responses={200: OpenApiTypes.OBJECT})
+_OBJ_WRITE = extend_schema(
+    request=OpenApiTypes.OBJECT,
+    responses={200: OpenApiTypes.OBJECT, 201: OpenApiTypes.OBJECT, 204: None},
+)
+_OBJ_DELETE = extend_schema(responses={204: None})
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +57,7 @@ def _serialize_show(show, tracker=None):
     tracker_payload = None
     if tracker is not None:
         tracker_payload = {
-            "status": get_media_status(tracker.status),
+            "status": tracker.status,
             "score": str(tracker.score) if tracker.score is not None else None,
             "start_date": tracker.start_date,
             "end_date": tracker.end_date,
@@ -279,7 +298,14 @@ class PodcastShowDetailView(drf_views.APIView):
             user=request.user,
             show=show,
         ).first()
-        return Response(_serialize_show(show, tracker), status=HTTP.OK)
+        payload = _serialize_show(show, tracker)
+        # Same counts as the web page's "Progress: N/M".
+        payload["listened_count"] = Podcast.objects.filter(
+            user=request.user,
+            show=show,
+        ).count()
+        payload["episode_count"] = show.episodes.count()
+        return Response(payload, status=HTTP.OK)
 
     def patch(self, request, show_id):
         """Update the caller's tracker (creates one if missing)."""
@@ -522,4 +548,108 @@ class PodcastEpisodePlayView(drf_views.APIView):
         return Response(
             payload,
             status=HTTP.OK if duplicate else HTTP.CREATED,
+        )
+
+
+def _episode_form_errors(form):
+    return {
+        field: [entry["message"] for entry in entries]
+        for field, entries in form.errors.get_json_data().items()
+    }
+
+
+# /api/v1/podcasts/shows/[show_id]/episodes/manage/
+class PodcastShowEpisodeManageView(drf_views.APIView):
+    """Manually managed episodes of a manual show the caller tracks."""
+
+    @_OBJ_READ
+    def get(self, request, show_id):
+        """Return every episode in manager shape, newest first."""
+        show = manual_show_for_user_or_404(request, show_id)
+        episodes = PodcastEpisode.objects.filter(show=show).order_by(
+            "-published",
+            "-episode_number",
+            "id",
+        )
+        return Response(
+            {"results": [episode_payload(episode) for episode in episodes]},
+            status=HTTP.OK,
+        )
+
+    @_OBJ_WRITE
+    def post(self, request, show_id):
+        """Add an episode (mirrors podcast_episode_add)."""
+        show = manual_show_for_user_or_404(request, show_id)
+        form = PodcastEpisodeForm(request.data)
+        if not form.is_valid():
+            return Response(
+                {"detail": "Could not add the episode.", "errors": _episode_form_errors(form)},
+                status=HTTP.BAD_REQUEST,
+            )
+        episode = form.save(commit=False)
+        episode.show = show
+        episode.episode_uuid = f"manual-{uuid4()}"
+        episode.save()
+        return Response(episode_payload(episode), status=HTTP.CREATED)
+
+
+# /api/v1/podcasts/episodes/[episode_id]/
+class PodcastEpisodeDetailView(drf_views.APIView):
+    """Edit or delete a manually managed episode."""
+
+    @_OBJ_WRITE
+    def patch(self, request, episode_id):
+        """Update an episode (mirrors podcast_episode_edit)."""
+        episode = manual_episode_for_user_or_404(request, episode_id)
+        form = PodcastEpisodeForm(request.data, instance=episode)
+        if not form.is_valid():
+            return Response(
+                {"detail": "Could not update the episode.", "errors": _episode_form_errors(form)},
+                status=HTTP.BAD_REQUEST,
+            )
+        form.save()
+        return Response(episode_payload(episode), status=HTTP.OK)
+
+    @_OBJ_DELETE
+    def delete(self, request, episode_id):
+        """Delete an episode (mirrors podcast_episode_delete)."""
+        manual_episode_for_user_or_404(request, episode_id).delete()
+        return Response(status=HTTP.NO_CONTENT)
+
+
+# /api/v1/podcasts/episodes/[episode_id]/score/
+class PodcastEpisodeScoreView(drf_views.APIView):
+    """Set or clear the caller's score on an episode they have tracked."""
+
+    @_OBJ_WRITE
+    def patch(self, request, episode_id):
+        """Update the score (raw 0-10 scale; null clears)."""
+        podcast = Podcast.objects.filter(
+            user=request.user,
+            episode_id=episode_id,
+        ).first()
+        if podcast is None:
+            return Response({"detail": "Episode entry not found."}, status=HTTP.NOT_FOUND)
+        if "score" not in request.data:
+            return Response(
+                {"detail": "'score' is required (number or null)."},
+                status=HTTP.BAD_REQUEST,
+            )
+        raw_score = request.data.get("score")
+        score = None
+        if raw_score is not None:
+            try:
+                score = Decimal(str(raw_score))
+            except (InvalidOperation, TypeError, ValueError):
+                return Response({"detail": "Invalid score."}, status=HTTP.BAD_REQUEST)
+            if not (Decimal(0) <= score <= Decimal(10)):
+                return Response(
+                    {"detail": "Score must be between 0 and 10."},
+                    status=HTTP.BAD_REQUEST,
+                )
+        podcast.score = score
+        podcast.save()
+        return Response(
+            {"score": str(score) if score is not None else None},
+            status=HTTP.OK,
         )

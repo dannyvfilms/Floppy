@@ -472,9 +472,12 @@ def _local_library_groups(user, query, limit):
     return groups
 
 
-@require_GET
-def media_search(request):
-    """Return the media search page."""
+def media_search_context(request, notify=None):
+    """Build the search page context (also served to the native API).
+
+    ``notify`` receives provider error messages; the web view turns them into
+    flash messages, the API returns them in the payload.
+    """
     requested_media_type = request.GET.get("media_type", "")
     if request.user.is_authenticated:
         media_type = request.user.update_preference(
@@ -500,17 +503,13 @@ def media_search(request):
                 )
             except Exception as exc:  # pragma: no cover - defensive
                 logger.debug("Local search failed: %s", exception_summary(exc))
-        return render(
-            request,
-            "app/search.html",
-            {
-                "user": request.user,
-                "media_type": media_type,
-                "layout": layout,
-                "local_groups": local_groups,
-                "local_group_limit": LOCAL_GROUP_LIMIT,
-            },
-        )
+        return {
+            "user": request.user,
+            "media_type": media_type,
+            "layout": layout,
+            "local_groups": local_groups,
+            "local_group_limit": LOCAL_GROUP_LIMIT,
+        }
 
     local_results = []
     local_results_total = 0
@@ -601,7 +600,8 @@ def media_search(request):
             query,
             exception_summary(exc),
         )
-        messages.error(request, str(exc))
+        if notify:
+            notify(str(exc))
         data = {"page": 1, "total_results": 0, "total_pages": 0, "results": []}
     except services.ProviderAPIError as exc:
         logger.warning(
@@ -610,15 +610,17 @@ def media_search(request):
             query,
             exception_summary(exc),
         )
-        messages.error(
-            request,
-            gettext("%(value_1)s is currently unavailable. Please try again shortly.")
-            % {"value_1": exc.provider_label},
-        )
+        if notify:
+            notify(
+                gettext(
+                    "%(value_1)s is currently unavailable. Please try again shortly.",
+                )
+                % {"value_1": exc.provider_label},
+            )
         data = {"page": 1, "total_results": 0, "total_pages": 0, "results": []}
 
     if media_type == MediaTypes.MUSIC.value:
-        context = {
+        return {
             "user": request.user,
             "data": data,
             "music_online_artists": data.get("artists", []),
@@ -636,7 +638,6 @@ def media_search(request):
             "local_music_albums": local_music_albums,
             "local_music_albums_total": local_music_albums_total,
         }
-        return render(request, "app/search.html", context)
 
     # Enrich search results with user tracking data
     if data.get("results"):
@@ -651,7 +652,7 @@ def media_search(request):
             )
 
     fallback_source = data.get("fallback_source")
-    context = {
+    return {
         "user": request.user,
         "data": data,
         "source": source,
@@ -670,6 +671,14 @@ def media_search(request):
         "local_results_kind": local_results_kind,
     }
 
+
+@require_GET
+def media_search(request):
+    """Return the media search page."""
+    context = media_search_context(
+        request,
+        notify=lambda message: messages.error(request, message),
+    )
     return render(request, "app/search.html", context)
 
 

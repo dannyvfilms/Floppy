@@ -48,7 +48,7 @@ FILE_IMPORTS = {
                 "Select File", {"fields": ("mode",), "multiple": True}),
     "hardcover": ("import_hardcover", "hardcover_csv", ".csv", "Import from Hardcover export (Account -> Export Data)", "Select CSV File", {
         "auto": False, "submit": "Save",
-        "text_fields": (("hardcover_api_key", "Hardcover API Key", "password", "Optional — also settable in Providers > Hardcover > Connection", False),)}),
+        "text_fields": (("hardcover_api_key", "Hardcover API Key", "password", "Optional: also settable in Providers > Hardcover > Connection", False),)}),
     "mdblist": ("import_mdblist", "", "", "Import watched history, watchlist, ratings, dropped shows and collection. Lists sync separately from the Lists page.",
                 "", {"auto": False, "submit": "Import", "files": (),
                      "text_fields": (("api_key", "MDBList API key", "password", "MDBList API key", True),)}),
@@ -418,17 +418,23 @@ def metadata_page(user, provider, context):
     }
 
 
-def anilist_activity(user, page=1):
+def anilist_activity(user, page=1, *, all_sources=False, activity=None):
     """Serialize existing activity controls with owned rows and bounded history pages."""
-    activity = user.get_import_tasks(sources={"anilist"}, result_limit=ACTIVITY_PAGE_SIZE + 1,
-                                   result_offset=(page - 1) * ACTIVITY_PAGE_SIZE)
-    runs = list(ImportRun.objects.filter(user=user, source="anilist").defer(
+    sources = None if all_sources else {"anilist"}
+    if activity is None:
+        activity = user.get_import_tasks(sources=sources, result_limit=ACTIVITY_PAGE_SIZE + 1,
+                                        result_offset=(page - 1) * ACTIVITY_PAGE_SIZE)
+    runs_query = ImportRun.objects.filter(user=user)
+    if sources is not None:
+        runs_query = runs_query.filter(source__in=sources)
+    runs = list(runs_query.defer(
         "prepared_state", "terminal_error",
     ).order_by("-started_at", "-id")[:10])
-    active_tasks = TaskResult.objects.filter(task_name="Import from AniList", status__in=[states.PENDING, states.STARTED],
+    active_tasks = TaskResult.objects.filter(status__in=[states.PENDING, states.STARTED],
         task_kwargs__regex=rf"[\"']user_id[\"']:\s*{user.pk}\s*[,}}]",
     ).exclude(Q(status=states.PENDING) & Q(date_created__lt=timezone.now() - timedelta(minutes=30)))
-    active = ImportRun.objects.filter(user=user, source="anilist", status="running").exists() or any(
+    active_tasks = active_tasks.filter(Q(task_name__startswith="Import ") | Q(task_name="integrations.tasks.import_goodreads")) if all_sources else active_tasks.filter(task_name="Import from AniList")
+    active = any(row["status"] in {states.PENDING, states.STARTED} for row in activity["results"]) or runs_query.filter(status="running").exists() or any(
         helpers.task_kwargs_belong_to_user(kwargs, user.pk) for kwargs in active_tasks.values_list("task_kwargs", flat=True).iterator()
     )
     return {
@@ -436,6 +442,8 @@ def anilist_activity(user, page=1):
         "hasMore": len(activity["results"]) > ACTIVITY_PAGE_SIZE and page < MAX_ACTIVITY_PAGES,
         "active": active,
         "schedules": [{
+            "source": row["source"], "sourceLabel": SOURCES_CONFIG.get(row["source"], {}).get("name", row["source"]),
+            "sourceLogo": SOURCES_CONFIG.get(row["source"], {}).get("logo", ""),
             "id": row["task"].pk, "name": row["task"].name, "schedule": _(row["schedule"]),
             "username": row["username"], "mode": _(row["mode"]),
             "lastRun": user_datetime_format(row["last_run"], user),
@@ -443,6 +451,8 @@ def anilist_activity(user, page=1):
             "action": reverse("delete_import_schedule"),
         } for row in activity["schedules"]],
         "results": [{
+            "source": row["source"], "sourceLabel": SOURCES_CONFIG.get(row["source"], {}).get("name", row["source"]),
+            "sourceLogo": SOURCES_CONFIG.get(row["source"], {}).get("logo", ""),
             "id": row["task_id"], "status": row["status"], "statusLabel": _status(row["status"]),
             "date": user_datetime_format(row["date"], user),
             "summary": redact_secrets(str(translate_import_summary(row["summary"]) or "")),
@@ -452,6 +462,8 @@ def anilist_activity(user, page=1):
             "cancelAction": reverse("cancel_pending_import", args=[row["task_id"]]) if row["status"] == states.PENDING else "",
         } for row in activity["results"][:ACTIVITY_PAGE_SIZE]],
         "runs": [{
+            "source": run.source, "sourceLabel": SOURCES_CONFIG.get(run.source, {}).get("name", run.source),
+            "sourceLogo": SOURCES_CONFIG.get(run.source, {}).get("logo", ""),
             "id": run.pk, "status": run.status, "statusLabel": _status(run.status),
             "date": user_datetime_format(run.started_at, user), "created": run.created_count,
             "updated": run.updated_count, "skipped": run.skipped_count, "failed": run.failed_count,
@@ -459,9 +471,14 @@ def anilist_activity(user, page=1):
             "action": reverse("cancel_import_run" if run.status == "running" else "rollback_import_run", args=[run.pk]),
         } for run in runs],
         "cleanup": [{
+            "source": row["source"], "sourceLabel": SOURCES_CONFIG.get(row["source"], {}).get("name", row["source"]),
+            "sourceLogo": SOURCES_CONFIG.get(row["source"], {}).get("logo", ""),
+            "confirm": (_("Permanently delete all %(media)s items imported from this source?") % {"media": row["media_type"]}
+                + (" " + _("Artists and albums left with no tracks are removed from your library too.") if row["media_type"] == "music" else "")
+                + " " + _("This cannot be undone.")) if all_sources else "",
             "mediaType": row["media_type"], "mediaLabel": str(media_type_readable(row["media_type"])), "count": row["count"],
-            "action": reverse("bulk_delete_by_import_source", args=[row["media_type"], "anilist"]),
-        } for row in views._import_source_media_summary(user, sources={"anilist"})],
+            "action": reverse("bulk_delete_by_import_source", args=[row["media_type"], row["source"]]),
+        } for row in views._import_source_media_summary(user, sources=sources)],
     }
 
 
@@ -620,7 +637,7 @@ def _labels():
         "Save personal key": _("Save personal key"),
         "Your key may avoid shared instance or bundled rate limits.": _("Your key may avoid shared instance or bundled rate limits."),
         "Leave a field blank to keep the current fallback.": _("Leave a field blank to keep the current fallback."),
-        "Saved — enter a new value to replace": _("Saved — enter a new value to replace"),
+        "Saved: enter a new value to replace": _("Saved: enter a new value to replace"),
         "Only superusers can change instance-wide credentials. Values set in the environment are read-only here and take precedence over stored credentials.": _("Only superusers can change instance-wide credentials. Values set in the environment are read-only here and take precedence over stored credentials."),
         "You are not a superuser": _("You are not a superuser"),
         "Ask an administrator, or promote your own account": _("Ask an administrator, or promote your own account"),

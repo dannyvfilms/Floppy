@@ -106,6 +106,25 @@ class ItemMetadataTests(FloppyApiTestCase):
 class MediaMetadataReadTests(FloppyApiTestCase):
     """GET /media/{type}/{source}/{id}/metadata returns a tracked item."""
 
+    def test_tv_runtime_reuses_stored_episode_total_without_provider_fetch(self):
+        """Both tracked and untracked detail reads use the web runtime property."""
+        item = Item.objects.create(source="tmdb", media_type="tv", media_id="runtime-metadata", title="Runtime show")
+        for number, minutes in ((1, 30), (2, 45)):
+            Item.objects.create(
+                source="tmdb", media_type="episode", media_id=item.media_id, title=f"Episode {number}",
+                season_number=1, episode_number=number, runtime_minutes=minutes,
+                release_datetime=datetime.datetime(2020, 1, number, tzinfo=datetime.UTC),
+            )
+        self.client.force_login(self.user1)
+        with patch("app.providers.services.get_media_metadata", side_effect=AssertionError("must not fetch")):
+            response = self.client.get(f"/api/v1/media/tv/tmdb/{item.media_id}/metadata/")
+            self.assertEqual(response.status_code, HTTP.OK, response.content)
+            self.assertEqual(response.json()["total_runtime"], "1h 15min")
+            TV.objects.create(user=self.user1, item=item, status="Planning")
+            response = self.client.get(f"/api/v1/media/tv/tmdb/{item.media_id}/metadata/")
+            self.assertEqual(response.status_code, HTTP.OK, response.content)
+            self.assertEqual(response.json()["total_runtime"], "1h 15min")
+
     def test_tracked_item_is_projected_by_identity(self):
         """The native detail page resolves the same item the card names."""
         item = self.items_by_type[MediaTypes.MOVIE.value][0]
@@ -119,8 +138,25 @@ class MediaMetadataReadTests(FloppyApiTestCase):
         self.assertEqual(body["identity"]["media_id"], item.media_id)
         self.assertEqual(body["fields"]["title"], item.title)
 
-    def test_untracked_item_is_not_found(self):
-        """Another user's item is not readable through this endpoint."""
+    def test_untracked_item_is_served(self):
+        """A catalog item outside the caller's library still projects metadata."""
+        Item.objects.create(
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            media_id="untracked-metadata",
+            title="Untracked film",
+        )
+        self.client.force_login(self.user1)
+        response = self.client.get(
+            f"/api/v1/media/{MediaTypes.MOVIE.value}/{Sources.TMDB.value}"
+            "/untracked-metadata/metadata/"
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        body = response.json()
+        self.assertEqual(body["fields"]["title"], "Untracked film")
+
+    def test_unknown_item_is_not_found(self):
+        """An identity no catalog item carries is a 404."""
         item = self.items_by_type[MediaTypes.MOVIE.value][0]
         self.client.force_login(self.user1)
         response = self.client.get(

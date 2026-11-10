@@ -256,6 +256,32 @@ class SidebarTests(FloppyApiTestCase):
         listed = self.call_api("get", "api_user_sidebar", headers=self.auth_headers)
         self.assertFalse(listed.json()["media_types"][MediaTypes.MOVIE.value])
 
+    def test_order_and_discover_round_trip(self):
+        """The sidebar order and the Discover switch are read and saved."""
+        listed = self.call_api("get", "api_user_sidebar", headers=self.auth_headers).json()
+        self.assertEqual(set(listed["order"]), set(listed["media_types"]))
+        self.assertEqual(listed["labels"][MediaTypes.MOVIE.value], "Movies")
+        reordered = [MediaTypes.MOVIE.value] + [
+            m for m in listed["order"] if m != MediaTypes.MOVIE.value
+        ]
+        response = self.call_api(
+            "put",
+            "api_user_sidebar",
+            payload={"media_types": {}, "order": reordered, "show_discover": False},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        saved = self.call_api("get", "api_user_sidebar", headers=self.auth_headers).json()
+        self.assertEqual(saved["order"], reordered)
+        self.assertFalse(saved["show_discover"])
+        bad = self.call_api(
+            "put",
+            "api_user_sidebar",
+            payload={"media_types": {}, "order": ["vinyl"]},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(bad.status_code, HTTP.BAD_REQUEST)
+
     def test_unknown_media_type_rejected(self):
         """Unknown media types return 400."""
         response = self.call_api(
@@ -353,6 +379,8 @@ class NotificationsTests(FloppyApiTestCase):
             headers=self.auth_headers,
         )
         self.assertEqual(len(listed.json()["results"]), 1)
+        self.assertEqual(listed.json()["results"][0]["media_type_label"], "Movie")
+        self.assertIn("image", listed.json()["results"][0])
 
         removed = self.call_api(
             "delete",
@@ -398,11 +426,12 @@ class TokenRegenerateTests(FloppyApiTestCase):
     def test_regenerate_rotates_token(self):
         """The new token is returned and the old credential stops working."""
         old_token = self.user1.token
+        self.client.force_login(self.user1)
         response = self.call_api(
             "post",
             "api_user_token_regenerate",
             payload={},
-            headers=self.auth_headers,
+            headers={},
         )
         self.assertEqual(response.status_code, HTTP.OK)
         new_token = response.json()["token"]

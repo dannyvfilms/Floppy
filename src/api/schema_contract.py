@@ -54,7 +54,8 @@ It is called `source` everywhere in this API, including search; there is no \
 `provider` field on the wire.
 - `media_id`: the provider's id for the item, always a string in paths.
 - Statuses are written as an integer code (0 Planning, 1 In progress, \
-2 Paused, 3 Completed, 4 Dropped) or its case-insensitive label.
+2 Paused, 3 Completed, 4 Dropped) or its case-insensitive label. Comic issues \
+also accept `null` or an empty string for no status.
 - `start_date` and `end_date` take an ISO 8601 date or date-time. A date \
 alone means midnight, and a value without an offset is read in the server's \
 active timezone, so send an offset (`2026-03-01T20:00:00Z`) to be exact.
@@ -85,7 +86,7 @@ or a manual item does not exist). Do not retry. |
 track it first. |
 | `CONSUMPTION_NOT_FOUND` | 404 | `consumption_id` is not one of this item's \
 entries; re-read `state`. |
-| `INVALID_STATUS` | 400 | `status` is not a code 0-4 or a known label. |
+| `INVALID_STATUS` | 400 | `status` is not a code 0-4 or a known label (comic issues also allow no status). |
 | `PROVIDER_UNAVAILABLE` | 503 | The metadata provider failed; \
 `retryable: true`. |
 | `DATABASE_BUSY` | 503 | The database was locked; retry GET requests after \
@@ -184,6 +185,24 @@ _LIST_SCHEMA = {
         "is_unlisted": {"type": "boolean"},
         "public_slug": {"type": "string", "nullable": True},
         "allow_recommendations": {"type": "boolean"},
+        "is_smart": {"type": "boolean"},
+        "tags": {"type": "array", "items": {"type": "string"}},
+        "include_notes": {"type": "boolean"},
+        "completed_count": {"type": "integer"},
+        "completion_percent": {"type": "integer", "nullable": True},
+        "media_type_breakdown": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "value": {"type": "string"},
+                    "label": {"type": "string"},
+                    "count": {"type": "integer"},
+                    "percent": {"type": "integer"},
+                    "color": {"type": "string"},
+                },
+            },
+        },
         "items": {"oneOf": [_ARRAY_SCHEMA, _PAGINATED_SCHEMA]},
     },
 }
@@ -455,7 +474,6 @@ EXPECTED_SCHEMA_ERRORS: frozenset[SchemaFinding] = frozenset(
         ("api.fork_views_discover.HomeView", "serializer-unresolved"),
         ("api.fork_views_integrations.ExportCsvView", "serializer-unresolved"),
         ("api.fork_views_integrations.ExportTemplateView", "serializer-unresolved"),
-        ("api.fork_views_integrations.ImportActivityView", "serializer-unresolved"),
         ("api.fork_views_integrations.ImportDispatchView", "serializer-unresolved"),
         ("api.fork_views_lists.ListActivityView", "serializer-unresolved"),
         ("api.fork_views_lists.ListCollaboratorsView", "serializer-unresolved"),
@@ -496,10 +514,6 @@ EXPECTED_SCHEMA_ERRORS: frozenset[SchemaFinding] = frozenset(
             "serializer-unresolved",
         ),
         ("api.fork_views_podcast.PodcastShowsView", "serializer-unresolved"),
-        (
-            "api.fork_views_statistics.StatisticsOverviewView",
-            "serializer-unresolved",
-        ),
         (
             "api.fork_views_statistics.StatisticsRefreshView",
             "serializer-unresolved",
