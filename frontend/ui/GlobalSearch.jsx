@@ -43,8 +43,8 @@ const THUMB_HEIGHT = 40;
 const SUGGESTION_ROW_HEIGHT = THUMB_HEIGHT + DROPDOWN.itemPaddingVertical * 2;
 const SUGGESTION_FOOTER_HEIGHT = 44;
 const SUGGESTION_PANEL_GAP = 4;
-// Leave one row of air above the keyboard or the window edge.
-const SUGGESTION_BOTTOM_AIR = SUGGESTION_ROW_HEIGHT;
+// A little air above the keyboard or the window edge; the window takes every whole row that fits.
+const SUGGESTION_BOTTOM_AIR = 8;
 const SUGGESTION_ROWS_MIN = 2;
 const SUGGESTION_ROWS_MAX = 5;
 
