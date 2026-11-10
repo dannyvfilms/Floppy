@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { MediaCard } from './MediaCard.jsx';
 import { Rail } from './Rail';
+import { createFetchGate } from './fetchGate.js';
 
 // Web and native shelves must pick the same card width. Web computes it from
 // the phone breakpoint in mountHome; native passes the same value from here.
@@ -67,6 +68,11 @@ function mergeLabels(labels) {
 }
 
 const ROW_LOAD_RETRIES = 3;
+// A page asks for every row at once; the server has a handful of threads shared
+// with every other request, so only a few row loads run at a time and the rest
+// start as those finish. Shared component: web and native behave the same.
+const ROW_FETCH_CONCURRENCY = 3;
+
 // Image loading is first-come on every platform, so prefetches queue ahead of the
 // covers a person is waiting for (measured on both web and Expo). A card loads
 // its own cover when it is shown; the only early fetch is a small budget of the
@@ -228,6 +234,8 @@ export function HomeShelves({
   const sortStateRef = useRef({ sorting: {}, rowPatches: {} });
   const flipBudget = useRef({ left: FLIP_PREFETCH_BUDGET });
   const startedRows = useRef(new Set());
+  const rowGate = useRef(null);
+  if (!rowGate.current) rowGate.current = createFetchGate(ROW_FETCH_CONCURRENCY);
   const firstPoll = useRef(true);
   const loadRowRef = useRef(null);
   const pollRowsRef = useRef([]);
@@ -282,7 +290,7 @@ export function HomeShelves({
       let row;
       for (let attempt = 0; ; attempt += 1) {
         try {
-          row = await onLoadRow(id);
+          row = await rowGate.current(() => onLoadRow(id));
           break;
         } catch (error) {
           if (attempt >= ROW_LOAD_RETRIES) throw error;
