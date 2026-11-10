@@ -155,6 +155,7 @@ function Adapter({ host, props }) {
     renderProgress={renderProgress}
     onOpenCard={item => assign(item.card.href)}
     onOpenLink={href => assign(href)}
+    onOpenRowTitle={href => assign(href)}
     onLoadRow={id => loadRow(id)}
     onLoadMore={loadMore}
     onSortRow={sortRow}
