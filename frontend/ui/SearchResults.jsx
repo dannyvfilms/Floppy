@@ -57,6 +57,7 @@ export function SearchResults({
   rows: baseRows = [],
   onlineSources = [],
   onLoadOnlineRow,
+  railComponent,
   empty,
   itemWidth,
   renderCard,
@@ -97,6 +98,7 @@ export function SearchResults({
     {state === 'empty' || (state === 'ready' && !rows.length && !pending)
       ? <EmptyState empty={empty} palette={palette} labels={copy} /> : null}
     {state === 'ready' && rows.length ? <HomeShelves
+      railComponent={railComponent}
       groups={groups}
       labels={labels}
       palette={palette}

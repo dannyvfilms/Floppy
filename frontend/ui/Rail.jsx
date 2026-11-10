@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Spinner } from './Spinner';
 
 // Native loads every mounted image at once, a few at a time in order, so a row
 // of 14 covers keeps the ones a person is waiting for in a queue. Mount only the
 // cards near the visible window; the rest fill in as the row scrolls. Carve-out:
 // web mounts every card because its <img loading="lazy"> already loads only nearby covers.
-const WINDOWED_CARDS = Platform.OS !== 'web';
+// The native app passes `windowCards`; the web leaves it off.
 const WINDOW_BUFFER = 3;
 const INITIAL_WINDOW = 7;
 
@@ -39,6 +39,7 @@ export function Rail({
   hasMore,
   loadingMore = false,
   sorting = false,
+  windowCards = false,
   loadMoreThreshold = 1152,
   itemWidth = 176,
   getItemWidth,
@@ -158,7 +159,7 @@ export function Rail({
   const atEnd = metrics.content > 0 && metrics.x + metrics.width >= metrics.content - 4;
   const canScrollPrev = !atStart;
   const canScrollNext = canLoadMore || (metrics.content > metrics.width + 1 && !atEnd);
-  const mountedCards = !WINDOWED_CARDS ? items.length
+  const mountedCards = !windowCards ? items.length
     : metrics.width > 0
       ? Math.ceil((metrics.x + metrics.width) / (itemWidth + itemGap)) + WINDOW_BUFFER
       : INITIAL_WINDOW;

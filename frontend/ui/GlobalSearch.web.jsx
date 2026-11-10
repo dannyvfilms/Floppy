@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { GlobalSearch as SharedGlobalSearch } from './GlobalSearch.jsx';
+import { useKeyboardOverlap } from './keyboardOverlap.web';
 import { requestBarcode } from './barcodeEntry.web';
 
 const canvas = document.createElement('canvas');
@@ -126,6 +127,7 @@ export function GlobalSearch({ host, props }) {
   );
 
   return <SharedGlobalSearch
+    useKeyboardOverlap={useKeyboardOverlap}
     query={props.query}
     selectedType={props.selectedType}
     mediaTypes={props.mediaTypes}

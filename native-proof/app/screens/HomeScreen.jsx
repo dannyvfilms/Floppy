@@ -4,7 +4,7 @@ import { Button } from '../../../frontend/ui/Button';
 import { HomeView } from '../../../frontend/pages/HomeView';
 import { Icon } from '../../../frontend/ui/Icon';
 import { shelfCardWidth } from '../../../frontend/ui/HomeShelves';
-import { Rail } from '../../../frontend/ui/Rail.jsx';
+import WindowedRail from '../surfaces/WindowedRail';
 import {
   createHomeTransport,
   homeScreenFromPayload,
@@ -460,7 +460,7 @@ export default function HomeScreen({ navigate }) {
       palette={palette}
       readOnly={model.readOnly}
       itemWidth={itemWidth}
-      railComponent={Rail}
+      railComponent={WindowedRail}
       renderActionIcon={action => action.icon ? <Icon spec={action.icon} color="#ffffff" size={18} /> : null}
       loading={loading}
       error={error}

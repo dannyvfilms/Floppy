@@ -172,6 +172,9 @@ function readPins() {
   } catch { return { nav: [], lists: [] }; }
 }
 
+// Lets sidebar.css lift the row-options layer above the phone drawer.
+const MENU_LAYER_PROPS = { dataSet: { menuDropdown: '1' } };
+
 function SidebarView({ host, props }) {
   const palette = usePalette();
   const finePointer = useFinePointer();
@@ -269,7 +272,7 @@ function SidebarView({ host, props }) {
       renderIcon={renderIcon} rowActions={finePointer ? 'hover' : 'always'} enableSortable={enableSortable}
       onNavigate={onNavigate} onToggleGroup={writeOpen} onToggleLists={open => writeOpen('lists', open)}
       onUnpinList={unpinList} onDeleteView={onDeleteView} onFinishReorder={onFinishReorder}
-      onLogout={onLogout} />
+      onLogout={onLogout} menuLayerProps={MENU_LAYER_PROPS} />
   </React.Fragment>;
 }
 

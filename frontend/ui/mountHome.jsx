@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
 import { HomeView } from '../pages/HomeView';
-import { useShelfCardWidth } from './webShelfWidth';
+import { useShelfCardWidth } from './shelfWidth.web';
 import { MediaCard } from './MediaCard.web';
 import { ProgressChanger } from './ProgressChangerTheme.web';
 

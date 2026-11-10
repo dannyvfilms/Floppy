@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { shelfCardWidth } from '../../../frontend/ui/HomeShelves';
+import WindowedRail from './WindowedRail';
 import { SearchResults } from '../../../frontend/ui/SearchResults';
 import { mergeSearchRowPage, onlineRowParams, searchRowParams } from '../../../frontend/ui/searchRows';
 import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
@@ -69,6 +70,7 @@ export default function SearchResultsSlot({ query = '', mediaType = 'all', onOpe
     onOpenCard={openCard}
     onOpenLink={(_href, item) => openCard(item)}
     onAction={(_action, item) => openCard(item)}
+    railComponent={WindowedRail}
     onLoadMore={onLoadMore}
     onLoadOnlineRow={onLoadOnlineRow}
     onRetry={() => setAttempt(current => current + 1)}

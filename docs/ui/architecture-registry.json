@@ -3441,6 +3441,70 @@
           "evidence": "Native playback sizing uses three 110 pt cards plus gaps on compact phone layouts; Android runtime verification remains pending."
         }
       }
+    },
+    "frontend/ui/dropdownMetrics.js": {
+      "components": [
+        "DROPDOWN"
+      ],
+      "register": "SEARCH",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium on macOS with the local dev server: Search results, suggestions and the sidebar menus rendered with these values; no other engine."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) showed the Search suggestions and menus sized by these values; no pixel comparison."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised on Android in this change."
+        }
+      }
+    },
+    "frontend/ui/searchRows.js": {
+      "components": [
+        "searchRowParams",
+        "searchRowUrl",
+        "mergeSearchRowPage",
+        "onlineRowParams",
+        "useStreamedRows"
+      ],
+      "register": "SEARCH",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium on macOS: library row first, then provider rows streamed in as each answered."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled through the Expo export; not exercised on a device in this change."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised on Android in this change."
+        }
+      }
+    },
+    "frontend/ui/statusChipIcons.js": {
+      "components": [
+        "STATUS_ICON_SPECS"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium on macOS: status chip icons on Home cards."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) showed the chip icons on Home cards."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised on Android in this change."
+        }
+      }
     }
   },
   "platform": {
@@ -4923,6 +4987,14 @@
     "frontend/ui/mountPodcastEpisodeManager.jsx": {
       "register": "PODCAST-EPISODES",
       "purpose": "Browser adapter for the shared manual podcast episode manager: mount the island, read the current theme palette, load the show's manual episodes as JSON, and POST create/edit/delete through the existing Django forms and CSRF contract."
+    },
+    "frontend/ui/shelfWidth.web.js": {
+      "register": "HOME",
+      "purpose": "Browser adapter that sizes shelf cards from the viewport and the Mobile Grid preference the page carries, so Home and Search results use one width."
+    },
+    "frontend/ui/keyboardOverlap.web.js": {
+      "register": "SEARCH",
+      "purpose": "Browser adapter that reports how far the on-screen keyboard covers the page, from the visual viewport, for the Search suggestion window."
     }
   }
 }

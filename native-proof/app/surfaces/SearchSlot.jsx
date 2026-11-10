@@ -1,6 +1,7 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
 import { GlobalSearch } from '../../../frontend/ui/GlobalSearch.jsx';
+import { useKeyboardOverlap } from '../data/useKeyboardOverlap';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import { createSearchTransport, localResultsFromPayload } from '../data/searchTransport';
 import { palette, radius } from '../theme';
@@ -167,6 +168,7 @@ export default function SearchSlot({
 
   return <>
     <GlobalSearch
+      useKeyboardOverlap={useKeyboardOverlap}
       expanded={expanded}
       compact={compact}
       query={initialQuery}

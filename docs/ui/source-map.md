@@ -1145,7 +1145,10 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `native-proof/app/data/useMobileGridLayout.js`
 - `frontend/ui/SearchResults.web.jsx`
 - `frontend/ui/searchRows.js`
-- `frontend/ui/webShelfWidth.js`
+- `frontend/ui/shelfWidth.web.js`
+- `frontend/ui/keyboardOverlap.web.js`
+- `native-proof/app/data/useKeyboardOverlap.js`
+- `native-proof/app/surfaces/WindowedRail.jsx`
 - `frontend/ui/SelectField.jsx`
 - `frontend/ui/SetupGuide.jsx`
 - `frontend/ui/Shell.jsx`
