@@ -107,6 +107,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
         self.context = self.browser.new_context()
         self.page = self.context.new_page()
+
+    def login(self):
+        """Sign in after test fixtures are ready for the live server."""
         self.page.goto(f"{self.live_server_url}/")
         self.page.get_by_placeholder("Enter your username").fill(
             self.credentials["username"],
@@ -175,6 +178,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
     def test_blank_modal(self):
         """Test the blank modal for creating a list."""
+        self.login()
         # The universal search control exposes a labelled media-type menu.
         self.page.locator('[data-global-search-root][data-react-mounted="true"]').wait_for(state="attached")
         self.page.locator('[data-global-search-root] [data-testid="search-media-type-menu"]').click()
@@ -194,6 +198,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
     def test_flow(self):
         """Test the flow of adding an item to a list and editing the list."""
+        self.login()
         # Create list
         self._open_lists_from_sidebar()
         self.page.get_by_role("button", name="New List").click()
@@ -241,22 +246,18 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             title="Perfect Blue",
             image=PERFECT_BLUE_SEARCH_RESULT["image"],
         )
-
         viewports = (
             {"width": 1280, "height": 800},
             {"width": 390, "height": 844},
         )
-        # The live server shares the test's one in-memory SQLite connection, so
-        # every write happens before any page opens; a write from this thread
-        # while a page is requesting raised "database table is locked".
         custom_lists = []
         for index in range(len(viewports)):
             custom_list = CustomList.objects.create(
-                name=f"count-test-{index}",
-                owner=self.user,
+                name=f"count-test-{index}", owner=self.user,
             )
             CustomListItem.objects.create(custom_list=custom_list, item=item)
             custom_lists.append(custom_list)
+        self.login()
 
         for index, viewport in enumerate(viewports):
             custom_list = custom_lists[index]
@@ -355,6 +356,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         )
         custom_list = CustomList.objects.create(name="Select test", owner=self.user)
         CustomListItem.objects.create(custom_list=custom_list, item=item)
+        self.login()
         list_url = (
             f"{self.live_server_url}"
             f"{reverse('list_detail', args=[custom_list.public_reference])}"

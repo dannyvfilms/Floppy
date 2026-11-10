@@ -14,6 +14,8 @@ export function LibraryPageView({
   subtitle,
   count,
   countLabel,
+  titleStyle,
+  countStyle,
   labels = {},
   palette = {},
   search,
@@ -41,6 +43,8 @@ export function LibraryPageView({
       subtitle={subtitle}
       count={count}
       countLabel={countLabel}
+      titleStyle={titleStyle}
+      countStyle={countStyle}
       actions={headerActions}
       palette={palette} />}
     {filterForm || null}

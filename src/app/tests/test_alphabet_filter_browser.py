@@ -120,14 +120,6 @@ class AlphabetBrowserTests(SerialStaticLiveServerTestCase):
                 # The mounted rail follows the first poster, which can sit a
                 # few pixels below the grid box. Do not compare it with the
                 # grid's outer edge: that is only the fallback position.
-                expected_rail_top = page.locator(".media-grid").evaluate(
-                    """grid => {
-                      const poster = grid.querySelector('img')?.getBoundingClientRect();
-                      const anchor = poster?.width && poster?.height
-                        ? poster.top : grid.getBoundingClientRect().top;
-                      return Math.max(96, Math.ceil(anchor));
-                    }"""
-                )
                 # Mounting and poster layout can settle in separate frames.
                 # Wait for the rail's live position observer rather than
                 # comparing against the CSS fallback before it has run.
@@ -142,11 +134,6 @@ class AlphabetBrowserTests(SerialStaticLiveServerTestCase):
                       return Math.abs(rail.getBoundingClientRect().top
                         - Math.max(96, Math.ceil(anchor))) <= 1;
                     }"""
-                )
-                self.assertAlmostEqual(
-                    page.locator(".alphabet-rail").bounding_box()["y"],
-                    expected_rail_top,
-                    delta=1,
                 )
                 rail_bounds = page.locator(".alphabet-rail").bounding_box()
                 self.assertAlmostEqual(
@@ -319,10 +306,11 @@ class AlphabetBrowserTests(SerialStaticLiveServerTestCase):
                 )
                 rail = page.locator(".alphabet-rail")
                 self.assertEqual(rail.bounding_box()["width"], 32)
-                self.assertTrue(
-                    rail.evaluate(
-                        "element => element.scrollHeight <= element.clientHeight + 1"
-                    )
+                page.wait_for_function(
+                    """() => {
+                      const rail = document.querySelector('.alphabet-rail');
+                      return rail.scrollHeight <= rail.clientHeight + 1;
+                    }"""
                 )
                 # Verify the actual link hit areas, not only the clipped rail.
                 # Include the offending letter and measured viewport position

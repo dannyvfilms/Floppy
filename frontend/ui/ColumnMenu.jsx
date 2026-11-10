@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Icon } from './Icon';
+import { actionIcons } from './actionIcons';
 
 const FALLBACK_PALETTE = {
   surface: '#27272a',
@@ -46,6 +48,7 @@ export function MediaColumnMenu({
   labels,
   onSave,
   disabled = false,
+  compact = false,
   open: controlledOpen,
   onOpenChange,
 }) {
@@ -110,9 +113,13 @@ export function MediaColumnMenu({
       accessibilityState={{ expanded: isOpen, disabled }}
       disabled={disabled}
       onPress={() => changeOpen(!isOpen)}
-      style={[styles.trigger, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
-      <Text style={[styles.triggerGlyph, { color: colors.textSecondary }]}>☰</Text>
-      <Text style={[styles.triggerText, { color: colors.textSecondary }]}>{copy.columns}</Text>
+      style={[styles.trigger, compact && styles.triggerCompact, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
+      {compact
+        ? <Icon spec={actionIcons.horizontalSliders} size={20} color={colors.textSecondary} />
+        : <>
+          <Text style={[styles.triggerGlyph, { color: colors.textSecondary }]}>☰</Text>
+          <Text style={[styles.triggerText, { color: colors.textSecondary }]}>{copy.columns}</Text>
+        </>}
     </Pressable>
     {isOpen ? <View style={[styles.menu, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
       <Text style={[styles.menuTitle, { color: colors.textMuted }]}>{copy.columns}</Text>
@@ -167,6 +174,7 @@ export function MediaColumnMenu({
 const styles = StyleSheet.create({
   root: { position: 'relative', zIndex: 20 },
   trigger: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 7 },
+  triggerCompact: { width: 40, height: 40, padding: 0, justifyContent: 'center' },
   triggerGlyph: { fontSize: 14 },
   triggerText: { fontSize: 12, fontWeight: '600' },
   menu: { position: 'absolute', top: 40, right: 0, width: 260, borderWidth: 1, borderRadius: 8, overflow: 'hidden', zIndex: 30 },

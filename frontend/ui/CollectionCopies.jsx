@@ -2,7 +2,9 @@ import { Modal } from './Modal';
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Badge } from './Badge';
+import { actionIcons } from './actionIcons';
 import { Button } from './Button';
+import { Icon } from './Icon';
 import { FormError, FormField, FormHeader, FormSelect, FormTextField } from './MediaCardFormControls';
 
 const DEFAULT_PALETTE = {
@@ -27,7 +29,7 @@ const DEFAULT_PALETTE = {
 
 const DEFAULT_LABELS = {
   title: 'Collection Entry',
-  existing: 'Existing copies',
+  existing: 'Existing Entries',
   addCopy: 'Add Copy',
   addAnother: 'Add Another Copy',
   editCopy: 'Edit Copy',
@@ -91,17 +93,17 @@ function CopyRow({ copy, labels, palette, canMutate, onEdit, onRemove }) {
         {[copy.purchasePrice, copy.purchaseLocation].filter(Boolean).join(' · ')}
       </Text> : null}
       {copy.collectedAt ? <Text style={[styles.copyMeta, { color: palette.textMuted }]}>
-        {labels.collected}: {copy.collectedAt}
+        {labels.collected}: {copy.collectedAtLabel || copy.collectedAt}
       </Text> : null}
     </View>
     {canMutate ? <View style={styles.copyActions}>
       {onEdit ? <Pressable accessibilityRole="button" accessibilityLabel={`${labels.edit} ${copy.label || labels.copyLabel}`}
         onPress={() => onEdit(copy)} style={styles.iconButton}>
-        <Text style={[styles.iconText, { color: palette.accent }]}>✎</Text>
+        <Icon spec={actionIcons.edit} color={palette.accent} size={16} style={[styles.iconText, { color: palette.accent }]}>{'✎'}</Icon>
       </Pressable> : null}
       {onRemove ? <Pressable accessibilityRole="button" accessibilityLabel={`${labels.remove} ${copy.label || labels.copyLabel}`}
         onPress={() => onRemove(copy)} style={styles.iconButton}>
-        <Text style={[styles.iconText, { color: palette.danger }]}>⌫</Text>
+        <Icon spec={actionIcons.trash} color={palette.danger} size={16} style={[styles.iconText, { color: palette.danger }]}>{'⌫'}</Icon>
       </Pressable> : null}
     </View> : null}
   </View>;
@@ -271,7 +273,7 @@ export function CollectionCopyDialog({
           </View>
 
           <Text style={[styles.sectionTitle, { color: palette.textMuted }]}>
-            {labels.existing} · {copies.length}
+            {labels.existing}
           </Text>
           <CollectionCopySummary copies={copies} labels={labels} palette={palette}
             canMutate={canMutate} onEdit={onEdit} onRemove={onRemove} />

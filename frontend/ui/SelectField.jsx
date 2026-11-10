@@ -1,3 +1,5 @@
+import { actionIcons } from './actionIcons';
+import { Icon } from './Icon';
 import { Modal } from './Modal';
 import React, { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -44,7 +46,11 @@ export function SelectField({
   palette = {},
   filter = false,
   leadingIcon,
+  iconChevron = false,
   testID,
+  triggerStyle,
+  triggerTextStyle,
+  labelStyle,
 }) {
   const [open, setOpen] = useState(false);
   const colors = useMemo(() => ({ ...defaultPalette, ...palette }), [palette]);
@@ -59,7 +65,7 @@ export function SelectField({
   }
 
   return <View style={styles.field} testID={testID}>
-    {!labelHidden && <Text nativeID={labelId} style={[styles.label, { color: colors.textMuted }]}>{label}</Text>}
+    {!labelHidden && <Text nativeID={labelId} style={[styles.label, { color: colors.textMuted }, colors.preferenceCards && { fontSize: 14, lineHeight: 19 }, labelStyle]}>{label}</Text>}
     {help ? <Text style={[styles.help, { color: colors.textMuted }]}>{help}</Text> : null}
     <Pressable
       accessibilityRole="button"
@@ -73,14 +79,17 @@ export function SelectField({
         filter && styles.filterTrigger,
         {
           backgroundColor: filter ? colors.surfaceStrong : colors.surface,
-          borderColor: error ? colors.danger : colors.border,
+          borderColor: error ? colors.danger : colors.fieldBorder || colors.border,
           opacity: disabled ? 0.5 : 1,
         },
         pressed && !disabled && { backgroundColor: filter ? colors.surfaceMuted : colors.surfaceStrong },
+        triggerStyle,
       ]}>
       {filter && leadingIcon ? <View style={styles.filterIcon}>{leadingIcon}</View> : null}
-      <Text numberOfLines={1} style={[styles.triggerText, { color: filter ? colors.text : colors.textSecondary }]}>{selected?.label ?? placeholder}</Text>
-      <Text style={[styles.chevron, filter && styles.filterChevron, { color: colors.textMuted }]}>▾</Text>
+      <Text numberOfLines={colors.preferenceCards ? undefined : 1} style={[styles.triggerText, { color: filter ? colors.text : colors.textSecondary }, colors.preferenceCards && { lineHeight: 20, textAlign: 'center' }, triggerTextStyle]}>{selected?.label ?? placeholder}</Text>
+      {iconChevron
+        ? <View style={[styles.chevron, filter && styles.filterChevron]}><Icon spec={actionIcons.chevronDown} color={colors.textMuted} size={16} style={{ color: colors.textMuted, fontSize: 14 }}>{'▾'}</Icon></View>
+        : <Text style={[styles.chevron, filter && styles.filterChevron, { color: colors.textMuted }]}>▾</Text>}
     </Pressable>
     {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}
     <Modal transparent visible={open} animationType="fade" onRequestClose={() => setOpen(false)}>
@@ -100,6 +109,7 @@ export function SelectField({
               return <Pressable
                 key={option.value}
                 accessibilityRole="radio"
+                  aria-checked={active}
                 accessibilityLabel={option.label}
                 accessibilityState={{ checked: active, disabled: option.disabled || disabled }}
                 disabled={option.disabled || disabled}

@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Icon } from '../ui/Icon';
+import { actionIcons } from '../ui/actionIcons';
+import { ArtworkImage } from '../ui/ArtworkImage';
 import { Button } from '../ui/Button';
 import { FormSaveBar } from '../ui/FormSaveBar';
 import { Spinner } from '../ui/Spinner';
@@ -77,10 +80,10 @@ const defaultLabels = {
   emptySearch: 'Type at least two characters to search.',
 };
 
-function MultiLineField({ id, label, help, value, placeholder, disabled, palette, onChangeText }) {
+function MultiLineField({ id, label, labelHidden, help, value, placeholder, disabled, palette, onChangeText }) {
   return <View style={styles.field}>
-    <Text nativeID={id ? `${id}-label` : undefined} style={[styles.label, { color: palette.textMuted }]}>{label}</Text>
-    {help ? <Text style={[styles.copy, { color: palette.textMuted }]}>{help}</Text> : null}
+    {!labelHidden ? <Text nativeID={id ? `${id}-label` : undefined} style={[styles.label, { color: palette.textMuted }]}>{label}</Text> : null}
+    {help && !palette.pageCards ? <Text style={[styles.copy, { color: palette.textMuted }]}>{help}</Text> : null}
     <TextInput
       accessibilityLabel={label}
       autoCapitalize="none"
@@ -93,16 +96,21 @@ function MultiLineField({ id, label, help, value, placeholder, disabled, palette
       placeholderTextColor={palette.textMuted}
       value={value ?? ''}
       style={[styles.multiline, {
-        backgroundColor: palette.surface,
+        ...(palette.pageCards ? { minHeight: 150, fontSize: 14, borderRadius: 6 } : {}),
+        backgroundColor: palette.pageCards ? palette.surfaceStrong : palette.surface,
         borderColor: palette.border,
         color: palette.textSecondary,
         opacity: disabled ? 0.5 : 1,
       }]}
     />
+    {help && palette.pageCards ? <Text style={[styles.copy, { color: palette.textMuted }]}>{help}</Text> : null}
   </View>;
 }
 
 export function NotificationPreferencesCard({
+  icon,
+  testIcon,
+  onOpenLink,
   model = {},
   busy = false,
   error,
@@ -120,6 +128,7 @@ export function NotificationPreferencesCard({
   const stored = model.stored || {};
   const dirty = model.dirty ?? false;
   const [testing, setTesting] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
   const update = changes => onChange?.({ ...values, ...changes });
 
   async function test() {
@@ -135,41 +144,71 @@ export function NotificationPreferencesCard({
     ? `Leave blank to keep the ${stored.notificationUrlCount || 1} ${labels.storedUrls}.`
     : labels.appriseHelp;
 
-  return <SettingsCard title={labels.title} palette={colors}>
-    <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.description}</Text>
-    <MultiLineField id="notification-urls" label={labels.apprise} help={savedDescription}
+  return <SettingsCard title={labels.title} icon={icon} palette={colors}>
+    <Text style={[styles.copy, colors.pageCards && { fontSize: 14, lineHeight: 20, marginBottom: 4 }, { color: colors.textMuted }]}>{labels.description}</Text>
+    {colors.pageCards ? <View style={{ gap: 12, marginBottom: -8 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={{ fontSize: 14, fontWeight: '500', color: colors.textSecondary }}>{labels.apprise}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="About Apprise URLs" accessibilityState={{ expanded: showInfo }}
+          onPress={() => setShowInfo(value => !value)} hitSlop={8}>
+          <Icon spec={actionIcons.info} color={colors.textMuted} size={16} />
+        </Pressable>
+      </View>
+      {showInfo ? <View style={{ padding: 12, borderRadius: 6, backgroundColor: colors.surfaceStrong, gap: 8 }}>
+        <Text style={{ color: colors.textSecondary, fontSize: 14, lineHeight: 20 }}>
+          <Text accessibilityRole="link" onPress={() => onOpenLink?.('https://github.com/caronc/apprise')} style={{ color: colors.link }}>Apprise</Text>
+          {' is a notification service that supports '}
+          <Text accessibilityRole="link" onPress={() => onOpenLink?.('https://github.com/caronc/apprise/wiki')} style={{ color: colors.link }}>many platforms</Text>
+          {' including:'}
+        </Text>
+        {['Discord', 'Notifiarr', 'Telegram', 'Slack', 'Email', 'Pushover', 'ntfy', 'And many more...'].map(platform => <Text key={platform} style={{ color: colors.textMuted, fontSize: 14, lineHeight: 20 }}>{`• ${platform}`}</Text>)}
+        <Text style={{ color: colors.textSecondary, fontSize: 14, lineHeight: 20 }}>Enter one URL per line. Examples: discord://webhook_id/webhook_token or notifiarr://api_key/#channel_id</Text>
+      </View> : null}
+    </View> : null}
+    <MultiLineField id="notification-urls" label={labels.apprise} labelHidden={colors.pageCards} help={savedDescription}
       value={values.notificationUrls} placeholder={labels.apprisePlaceholder}
       disabled={busy} palette={colors} onChangeText={value => update({ notificationUrls: value })} />
-    <View style={[styles.group, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
+    {colors.pageCards ? <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>{labels.playbackWebhook}</Text> : null}
+    <View style={[styles.group, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }, colors.pageCards && { borderWidth: 0, padding: 16, gap: 4 }]}>
+      {!colors.pageCards ? <>
       <Text style={[styles.sectionTitle, { color: colors.text }]}>{labels.playbackWebhook}</Text>
       <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.playbackWebhookHelp}</Text>
+      </> : null}
       <TextField label={labels.playbackWebhookUrl} name="playback_webhook_url" type="url"
+        labelHidden={colors.pageCards} help={colors.pageCards ? labels.playbackWebhookHelp : undefined} helpAfter={colors.pageCards}
         value={values.playbackWebhookUrl} placeholder={stored.playbackWebhookUrl ? 'Leave blank to keep the saved URL' : 'https://example.com/playback'}
         disabled={busy} palette={colors} onChangeText={value => update({ playbackWebhookUrl: value })} />
       <TextField label={labels.playbackWebhookSecret} name="playback_webhook_secret" type="password"
+        labelHidden={colors.pageCards} helpAfter={colors.pageCards}
         value={values.playbackWebhookSecret} maskedPreview={stored.playbackWebhookSecret ? '••••••••' : undefined}
-        placeholder={stored.playbackWebhookSecret ? 'Leave blank to keep the current secret' : 'Optional shared secret'}
+        placeholder={stored.playbackWebhookSecret || colors.pageCards ? 'Leave blank to keep the current secret' : 'Optional shared secret'}
         help={labels.secretHelp} disabled={busy} palette={colors}
         onChangeText={value => update({ playbackWebhookSecret: value })} />
     </View>
-    <View style={[styles.group, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
-      <Text style={[styles.sectionTitle, { color: colors.text }]}>{labels.settings}</Text>
+    {colors.pageCards ? <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>{labels.settings}</Text> : null}
+    <View style={[styles.group, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }, colors.pageCards && { borderWidth: 0, padding: 16, gap: 16 }]}>
+      {!colors.pageCards ? <Text style={[styles.sectionTitle, { color: colors.text }]}>{labels.settings}</Text> : null}
       <ToggleChip label={labels.dailyDigest} help={labels.dailyDigestHelp} value={Boolean(values.dailyDigestEnabled)}
+        icon={model.icons?.dailyDigest}
         offLabel="Off" onLabel="On" palette={colors} disabled={busy}
         onChange={value => update({ dailyDigestEnabled: value })} />
       <ToggleChip label={labels.releaseNotifications} help={labels.releaseNotificationsHelp}
+        icon={model.icons?.releaseNotifications}
         value={Boolean(values.releaseNotificationsEnabled)} offLabel="Off" onLabel="On"
         palette={colors} disabled={busy} onChange={value => update({ releaseNotificationsEnabled: value })} />
       <ToggleChip label={labels.premiereNotifications} help={labels.premiereNotificationsHelp}
+        icon={model.icons?.premiereNotifications}
         value={Boolean(values.premiereNotificationsEnabled)} offLabel="Off" onLabel="On"
         palette={colors} disabled={busy} onChange={value => update({ premiereNotificationsEnabled: value })} />
     </View>
     {success ? <Text accessibilityLiveRegion="polite" style={[styles.status, { color: colors.success }]}>{success}</Text> : null}
-    <View style={styles.actions}>
-      <Button label={testing ? labels.testing : labels.test} tone="surface" busy={testing}
+    {error && colors.pageCards ? <Text accessibilityRole="alert" style={[styles.status, { color: colors.danger }]}>{error}</Text> : null}
+    <View style={[styles.actions, colors.pageCards && { justifyContent: 'space-between', borderTopWidth: 1, borderColor: colors.border, paddingTop: 16 }]}>
+      <Button label={testing ? labels.testing : labels.test} tone="surface" busy={testing} icon={testIcon}
         disabled={testing || busy} onPress={test} palette={buttons} />
+      {colors.pageCards ? <Button label={labels.save} busy={busy && !testing} disabled={busy} onPress={onSave} palette={buttons} /> : null}
     </View>
-    <FormSaveBar dirty={dirty} saving={busy && !testing} error={error} onSave={onSave} saveLabel={labels.save}
+    {!colors.pageCards ? <FormSaveBar dirty={dirty} saving={busy && !testing} error={error} onSave={onSave} saveLabel={labels.save}
       labels={{
         savedTitle: labels.savedTitle,
         dirtyTitle: labels.dirtyTitle,
@@ -179,11 +218,12 @@ export function NotificationPreferencesCard({
         save: labels.save,
         saving: 'Saving…',
       }}
-      palette={colors} buttonPalette={buttons} />
+      palette={colors} buttonPalette={buttons} /> : null}
   </SettingsCard>;
 }
 
 export function ExcludedMediaCard({
+  icon,
   model = {},
   busyId,
   error,
@@ -201,15 +241,16 @@ export function ExcludedMediaCard({
   const excluded = model.excluded || [];
   const query = model.query || '';
 
-  return <SettingsCard title={labels.excludedTitle} palette={colors}>
+  return <SettingsCard title={labels.excludedTitle} icon={icon} palette={colors}>
     <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.excludedDescription}</Text>
     <TextField label={labels.search} labelHidden name="notification_search" value={query}
       placeholder={labels.searchPlaceholder} palette={colors}
       onChangeText={value => onSearchChange?.(value)} />
-    <View style={[styles.resultsBox, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
+    {query || !colors.pageCards ? <View style={[styles.resultsBox, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
       {model.searching ? <View style={styles.searchingRow}><Spinner size={16} color={colors.accent} />
         <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.searching}</Text></View>
         : results.length ? results.map(item => <View key={item.id} style={[styles.itemRow, { borderColor: colors.border }]}>
+          {colors.pageCards ? <ArtworkImage src={item.image} title={item.title} style={{ width: 32, height: 40, borderRadius: 4 }} /> : null}
           <View style={styles.itemBody}>
             <Text style={[styles.rowTitle, { color: colors.text }]}>{item.title}</Text>
             <Text style={[styles.copy, { color: colors.textMuted }]}>{item.mediaType}</Text>
@@ -217,16 +258,20 @@ export function ExcludedMediaCard({
           <Button label={labels.exclude} tone="surface" busy={busyId === item.id}
             disabled={Boolean(busyId)} onPress={() => onExclude?.(item)} palette={buttons} />
         </View>) : <Text style={[styles.copy, { color: colors.textMuted }]}>{query ? labels.noResults : labels.emptySearch}</Text>}
-    </View>
-    <Text style={[styles.sectionTitle, { color: colors.text }]}>Currently excluded</Text>
-    {excluded.length ? excluded.map(item => <View key={item.id} style={[styles.itemRow, { borderColor: colors.border }]}>
-      <View style={styles.itemBody}>
+    </View> : null}
+    <Text style={[styles.sectionTitle, { color: colors.text }]}>{colors.pageCards ? 'Currently Excluded:' : 'Currently excluded'}</Text>
+    {excluded.length ? excluded.map(item => <View key={item.id} style={[styles.itemRow, { borderColor: colors.border }, colors.pageCards && { backgroundColor: colors.surfaceStrong, borderBottomWidth: 0, borderRadius: 6, padding: 8, gap: 8 }]}>
+      {colors.pageCards ? <ArtworkImage src={item.image} title={item.title} style={{ width: 32, height: 40, borderRadius: 4 }} /> : null}
+      <View style={[styles.itemBody, colors.pageCards && { flex: 1 }]}>
         <Text style={[styles.rowTitle, { color: colors.text }]}>{item.title}</Text>
         <Text style={[styles.copy, { color: colors.textMuted }]}>{item.mediaType}</Text>
       </View>
-      <Button label={labels.remove} tone="ghost-danger" busy={busyId === item.id}
-        disabled={Boolean(busyId)} onPress={() => onInclude?.(item)} palette={buttons} />
-    </View>) : <View style={[styles.empty, { borderColor: colors.border }]}>
+      {colors.pageCards ? <Pressable accessibilityRole="button" accessibilityLabel={`${labels.remove}: ${item.title}`}
+        disabled={Boolean(busyId)} onPress={() => onInclude?.(item)} hitSlop={8} style={{ marginRight: 8 }}>
+        <Icon spec={actionIcons.close} color={colors.dangerText || colors.danger} size={16} />
+      </Pressable> : <Button label={labels.remove} tone="ghost-danger" busy={busyId === item.id}
+        disabled={Boolean(busyId)} onPress={() => onInclude?.(item)} palette={buttons} />}
+    </View>) : <View style={[styles.empty, { borderColor: colors.border }, colors.pageCards && { borderWidth: 0, padding: 8, backgroundColor: colors.surfaceStrong, borderRadius: 6 }]}>
       <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.noExcluded}</Text>
     </View>}
     {error ? <Text accessibilityRole="alert" style={[styles.status, { color: colors.danger }]}>{error}</Text> : null}

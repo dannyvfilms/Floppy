@@ -432,6 +432,7 @@ export function Sidebar({
         : <Text style={[styles.logoText, { color: palette.text }]}>{logo.text || labels.logo}</Text>}
     </View> : null}
     <ScrollView style={styles.primary}
+      aria-hidden={navOpen}
       accessibilityElementsHidden={navOpen}
       importantForAccessibility={navOpen ? 'no-hide-descendants' : 'auto'}
       contentContainerStyle={[styles.navContent, {
@@ -444,7 +445,9 @@ export function Sidebar({
         <View style={styles.navGroup}>{pinned.map(renderItem)}</View>
       </View>
     </ScrollView>
-    <View pointerEvents="box-none" style={[styles.exploreViewport, {
+    <View pointerEvents="box-none" aria-hidden={!navOpen}
+      accessibilityElementsHidden={!navOpen}
+      importantForAccessibility={navOpen ? 'auto' : 'no-hide-descendants'} style={[styles.exploreViewport, {
       top: overlayTop,
       bottom: bottomHeight,
     }]}>
@@ -466,6 +469,7 @@ export function Sidebar({
       <View>{onboarding}</View>
       <View style={[styles.bottom, { borderTopColor: palette.border }]}>
         <Pressable accessibilityRole="button" accessibilityLabel={labels.explore}
+          aria-expanded={navOpen}
           accessibilityState={{ expanded: navOpen, disabled: !hasUnpinned }}
           onPress={hasUnpinned ? toggleNav : undefined}
           style={({ pressed, hovered, focused }) => [styles.explore, { borderTopLeftRadius: palette.radius, borderTopRightRadius: palette.radius,

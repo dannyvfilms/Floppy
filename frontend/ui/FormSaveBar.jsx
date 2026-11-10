@@ -33,6 +33,7 @@ const defaultLabels = {
 
 /** Dirty/saving/error save bar with a polite status announcement. */
 export function FormSaveBar({
+  appearance = false,
   dirty = false,
   saving = false,
   disabled = false,
@@ -45,25 +46,26 @@ export function FormSaveBar({
 }) {
   const copy = { ...defaultLabels, ...labels };
   const colors = { ...defaultPalette, ...palette };
-  const title = error ? copy.errorTitle : saving ? copy.savingTitle : dirty ? copy.dirtyTitle : copy.savedTitle;
-  const description = error || (saving ? copy.savingCopy : dirty ? copy.dirtyCopy : copy.savedCopy);
+  const title = error ? copy.errorTitle : appearance ? 'Appearance' : saving ? copy.savingTitle : dirty ? copy.dirtyTitle : copy.savedTitle;
+  const description = error || (appearance ? 'Changes apply after saving.' : saving ? copy.savingCopy : dirty ? copy.dirtyCopy : copy.savedCopy);
   const dot = error ? colors.danger : dirty ? colors.warning : colors.success;
-  return <View style={[styles.bar, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+  return <View style={[styles.bar, { borderColor: colors.surfaceBorder || colors.border, backgroundColor: colors.surface }, appearance && { paddingHorizontal: 16, paddingVertical: 12.8, gap: 16, borderRadius: 8 }]}>
     <View style={styles.statusRow}>
-      <View accessible={false} style={[styles.dot, { backgroundColor: dot }]} />
+      {!appearance ? <View accessible={false} style={[styles.dot, { backgroundColor: dot }]} /> : null}
       <View accessibilityLiveRegion="polite" aria-atomic style={styles.statusCopy}>
-        <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
-        <Text style={[styles.copy, { color: colors.textMuted }]}>{description}</Text>
+        <Text style={[styles.title, { color: colors.text }, appearance && { fontSize: 16, lineHeight: 24, fontWeight: '500' }]}>{title}</Text>
+        <Text style={[styles.copy, { color: colors.textMuted }, appearance && { fontSize: 14, lineHeight: 20 }]}>{description}</Text>
       </View>
     </View>
     <Button
       label={saving ? copy.saving : (saveLabel || copy.save)}
       busy={saving}
+      size={appearance ? 'lg' : 'sm'}
       disabled={disabled || saving}
       onPress={onSave}
       width="full"
       palette={{ ...defaultButtonPalette, ...buttonPalette }}
-    />
+    >{appearance ? <Text style={{ color: buttonPalette.primary?.text || colors.text, fontSize: 16, lineHeight: 20, fontWeight: '500' }}>{saving ? copy.saving : (saveLabel || copy.save)}</Text> : undefined}</Button>
   </View>;
 }
 

@@ -10,6 +10,8 @@ import {
   View,
 } from 'react-native';
 import { Badge } from './Badge';
+import { Icon } from './Icon';
+import { actionIcons } from './actionIcons';
 
 const DEFAULT_PALETTE = {
   background: '#18181b',
@@ -137,6 +139,8 @@ export function ReleaseCalendar({
   initialFilters,
   regionUnset = false,
   regionNotice = '',
+  showRegionNotice = false,
+  onOpenPreferences,
   preferencesUrl = '',
   navigation = {},
   menu,
@@ -463,6 +467,16 @@ export function ReleaseCalendar({
     ));
 
   return <View style={styles.root}>
+    {showRegionNotice && regionUnset && regionNotice ? <View style={styles.regionNotice}>
+      <Text style={styles.regionNoticeText}>{regionNotice}</Text>
+      {onOpenPreferences ? <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={copy.preferences || 'Preferences'}
+        onPress={onOpenPreferences}
+        style={styles.regionNoticeLink}>
+        <Text style={styles.regionNoticeLinkText}>{copy.preferences || 'Preferences'}</Text>
+      </Pressable> : null}
+    </View> : null}
     <View style={styles.toolbar}>
       <View style={styles.monthNavigation}>
         <Pressable
@@ -497,7 +511,7 @@ export function ReleaseCalendar({
           accessibilityState={{ expanded: menuOpen }}
           onPress={() => setMenuOpen(true)}
           style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}>
-          <Text style={styles.menuGlyph}>⚙</Text>
+          <Icon spec={actionIcons.settings} size={20} color={colors.textSecondary} />
         </Pressable>
       </View>
     </View>

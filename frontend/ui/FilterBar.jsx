@@ -152,7 +152,7 @@ function sectionSummary(section, filters) {
 
 function sectionCount(filters, sections) {
   return (sections || []).filter((section) =>
-    sectionIsActive(section, sectionValue(filters, section))).length;
+    section.countAsFilter !== false && sectionIsActive(section, sectionValue(filters, section))).length;
 }
 
 function sectionSummaryText(filters, sections) {
@@ -217,9 +217,12 @@ export function FilterBar({
   busy = false,
   disabled = false,
   resultCount,
+  variant = 'full',
+  trailing = null,
   onChange,
   onClear,
 }) {
+  const toolbar = variant === 'toolbar';
   const { width } = useWindowDimensions();
   const compact = width < 720;
   const copy = mergeLabels(labels);
@@ -232,7 +235,7 @@ export function FilterBar({
   const sections = options.sections || [];
   const views = options.views || [];
   const count = activeFilterCount(filters, options);
-  const isDisabled = disabled || busy;
+  const isDisabled = disabled || (busy && !toolbar);
   const directionLabel = filters.direction === 'asc' ? '↑' : '↓';
   const sortValue = `${optionLabel(options.sorts, filters.sort)} ${directionLabel}`;
   const viewValue = optionLabel(options.views, filters.view);
@@ -315,6 +318,7 @@ export function FilterBar({
         label={`${copy.filters}: ${filterSummary(filters, options, copy)}`}
         value={filterSummary(filters, options, copy)}
         expanded={openSheet === 'filters'}
+        plain={toolbar}
         disabled={isDisabled}
         onPress={() => setOpenSheet(openSheet === 'filters' ? null : 'filters')}
         styles={styles} />
@@ -323,19 +327,21 @@ export function FilterBar({
         label={`${copy.status}: ${statusSummary(filters, options, copy)}`}
         value={statusSummary(filters, options, copy)}
         expanded={openSheet === 'status'}
+        plain={toolbar}
         disabled={isDisabled}
         onPress={() => setOpenSheet(openSheet === 'status' ? null : 'status')}
         styles={styles} />
 
       <Trigger
         label={`${copy.sort}: ${optionLabel(options.sorts, filters.sort)} ${filters.direction === 'asc' ? copy.ascending : copy.descending}`}
-        value={sortValue}
+        value={toolbar ? optionLabel(options.sorts, filters.sort) : sortValue}
         expanded={openSheet === 'sort'}
+        plain={toolbar}
         disabled={isDisabled}
         onPress={() => setOpenSheet(openSheet === 'sort' ? null : 'sort')}
         styles={styles} />
 
-      {views.length || savedViews.length ? <Trigger
+      {!toolbar && (views.length || savedViews.length) ? <Trigger
         label={`${copy.view}: ${viewValue || copy.savedViews}`}
         value={viewValue || copy.savedViews}
         expanded={openSheet === 'view'}
@@ -343,7 +349,7 @@ export function FilterBar({
         onPress={() => setOpenSheet(openSheet === 'view' ? null : 'view')}
         styles={styles} /> : null}
 
-      {ranges.length > 0 ? <Trigger
+      {!toolbar && ranges.length > 0 ? <Trigger
         label={`${copy.range}: ${ranges.map((range) => `${range.label} ${rangeSummary(range, (filters.ranges || {})[range.key])}`).join(', ')}`}
         value={copy.range}
         expanded={Boolean(activeRange)}
@@ -360,15 +366,17 @@ export function FilterBar({
         style={({ pressed }) => [styles.clear, pressed && styles.pressed]}>
         <Text style={styles.clearText}>{copy.clear}</Text>
       </Pressable> : null}
+
+      {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
     </View>
 
-    <View style={styles.meta} accessibilityLiveRegion="polite">
+    {toolbar ? null : <View style={styles.meta} accessibilityLiveRegion="polite">
       {busy ? <><ActivityIndicator size="small" color={colors.accent} />
         <Text style={styles.metaText}>{copy.updating}</Text></> : null}
       {typeof resultCount === 'number' && !busy ? <Text style={styles.metaText}>
         {resultCount} {copy.items}
       </Text> : null}
-    </View>
+    </View>}
 
     <Modal
       visible={Boolean(openSheet)}
@@ -461,16 +469,16 @@ export function FilterBar({
   </View>;
 }
 
-function Trigger({ label, value, expanded, disabled, onPress, styles }) {
+function Trigger({ label, value, expanded, disabled, onPress, styles, plain = false }) {
   return <Pressable
     accessibilityRole="button"
     accessibilityLabel={label}
     accessibilityState={{ expanded, disabled }}
     disabled={disabled}
     onPress={onPress}
-    style={({ pressed }) => [styles.trigger, expanded && styles.triggerOpen, pressed && styles.pressed]}>
-    <Text numberOfLines={1} style={styles.triggerText}>{value}</Text>
-    <Text style={styles.chevron}>▾</Text>
+    style={({ pressed }) => [styles.trigger, plain && styles.triggerPlain, expanded && !plain && styles.triggerOpen, pressed && styles.pressed]}>
+    <Text numberOfLines={1} style={[styles.triggerText, plain && styles.triggerTextPlain]}>{value}</Text>
+    {plain ? <View style={styles.caret} /> : <Text style={styles.chevron}>▾</Text>}
   </Pressable>;
 }
 
@@ -513,11 +521,11 @@ function FiltersSheet({ filters, options, copy, styles, sections, onToggleType, 
         return <Pressable
           key={section.key}
           accessibilityRole="button"
-          accessibilityLabel={`${section.label}: ${summary || copy.any}`}
+          accessibilityLabel={`${section.label}: ${summary || section.idleLabel || copy.any}`}
           onPress={() => onOpenSection(section)}
           style={({ pressed }) => [styles.option, pressed && styles.pressed]}>
           <Text style={styles.optionText}>{section.label}</Text>
-          <Text style={styles.optionValue}>{summary || copy.any}</Text>
+          <Text style={styles.optionValue}>{summary || section.idleLabel || copy.any}</Text>
           <Text style={styles.chevron}>›</Text>
         </Pressable>;
       })}
@@ -764,6 +772,7 @@ function createStyles(colors, compact) {
   return StyleSheet.create({
     bar: { gap: 8 },
     triggers: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+    trailing: { marginLeft: 'auto' },
     trigger: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -775,6 +784,19 @@ function createStyles(colors, compact) {
       borderColor: colors.border,
       backgroundColor: colors.surface,
       maxWidth: compact ? '100%' : 240,
+    },
+    // Toolbar variant: the web's bare text dropdowns, a label and a small triangle.
+    triggerPlain: { borderWidth: 0, backgroundColor: 'transparent', paddingHorizontal: 8, gap: 8 },
+    triggerTextPlain: { fontSize: 16, fontWeight: '400' },
+    caret: {
+      width: 0,
+      height: 0,
+      borderLeftWidth: 5,
+      borderRightWidth: 5,
+      borderTopWidth: 6,
+      borderLeftColor: 'transparent',
+      borderRightColor: 'transparent',
+      borderTopColor: colors.textSecondary,
     },
     triggerOpen: { borderColor: colors.accent, backgroundColor: colors.surfaceStrong },
     triggerText: { color: colors.textSecondary, fontSize: 13, fontWeight: '600' },

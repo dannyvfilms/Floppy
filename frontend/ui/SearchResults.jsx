@@ -7,6 +7,8 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { actionIcons } from './actionIcons';
+import { Icon } from './Icon';
 import { MediaCard } from './MediaCard';
 import { ParentPicker } from './ParentPicker';
 import { SearchResultCard } from './SearchResultCard';
@@ -69,7 +71,11 @@ function ResultCard({
   onRate,
   renderRating,
   renderActionIcon,
+  renderCard,
 }) {
+  // An adapter that owns card actions (Track, Lists, ratings) supplies the
+  // whole card; the shared cards below are the presentation-only default.
+  if (renderCard) return renderCard(item, { layout, width, onOpenResult, onOpenLink });
   const model = layout === 'row' ? { ...item, layout: 'row' } : item;
   if (layout === 'row') {
     return <MediaCard
@@ -77,7 +83,7 @@ function ResultCard({
       width={width}
       labels={labels}
       palette={palette}
-      onOpen={() => onOpenResult?.(item.href)}
+      onOpen={() => onOpenResult?.(item.href, item)}
       onOpenLink={href => onOpenLink?.(href)}
       onAction={onAction}
       onReorder={onReorder}
@@ -111,6 +117,7 @@ function ResultGroup({
   onRate,
   renderRating,
   renderActionIcon,
+  renderCard,
 }) {
   const { width } = useWindowDimensions();
   const [gridWidth, setGridWidth] = useState(0);
@@ -133,6 +140,7 @@ function ResultGroup({
           onRate={onRate}
           renderRating={renderRating}
           renderActionIcon={renderActionIcon}
+          renderCard={renderCard}
         />
       </View>)}
     </View>;
@@ -162,6 +170,7 @@ function ResultGroup({
         onRate={onRate}
         renderRating={renderRating}
         renderActionIcon={renderActionIcon}
+        renderCard={renderCard}
       />
     </View>)}
   </View>;
@@ -293,7 +302,9 @@ function ScrollPills({ scope, palette, onSelectScope }) {
   </View>;
 }
 
-function LayoutToggle({ options, palette, onSelectLayout }) {
+const LAYOUT_ICONS = { grid: actionIcons.fourSquare, list: actionIcons.list };
+
+function LayoutToggle({ options, palette, onSelectLayout, iconToggle }) {
   if (!options?.length) return null;
   return <View style={[styles.layoutToggle, { borderColor: palette.border }]}>
     {options.map(option => <Pressable key={option.value}
@@ -303,9 +314,12 @@ function LayoutToggle({ options, palette, onSelectLayout }) {
       style={[styles.layoutButton, {
         backgroundColor: option.active ? palette.accent : palette.surfaceStrong,
       }]}>
-      <Text style={[styles.layoutGlyph, { color: option.active ? palette.accentText : palette.textSecondary }]}>
-        {option.glyph || option.label}
-      </Text>
+      {iconToggle && LAYOUT_ICONS[option.value]
+        ? <Icon spec={LAYOUT_ICONS[option.value]} size={20}
+          color={option.active ? palette.accentText : palette.textSecondary} />
+        : <Text style={[styles.layoutGlyph, { color: option.active ? palette.accentText : palette.textSecondary }]}>
+          {option.glyph || option.label}
+        </Text>}
     </Pressable>)}
   </View>;
 }
@@ -364,6 +378,8 @@ export function SearchResults({
   onSelectParent,
   renderRating,
   renderActionIcon,
+  renderCard,
+  iconToggle = false,
   testID,
 }) {
   const palette = { ...defaultPalette, ...paletteOverrides };
@@ -375,7 +391,7 @@ export function SearchResults({
       <Text role="heading" aria-level={1} style={[styles.title, { color: palette.text }]}>{title || copy.title}</Text>
       <View style={styles.controls}>
         <ScrollPills scope={scope} palette={palette} onSelectScope={onSelectScope} />
-        <LayoutToggle options={layoutOptions} palette={palette} onSelectLayout={onSelectLayout} />
+        <LayoutToggle options={layoutOptions} palette={palette} onSelectLayout={onSelectLayout} iconToggle={iconToggle} />
       </View>
     </View>
     {notes.map((note, index) => <Text key={index} style={[styles.note, { color: palette.textMuted }]}>{note}</Text>)}
@@ -406,6 +422,7 @@ export function SearchResults({
         onRate={onRate}
         renderRating={renderRating}
         renderActionIcon={renderActionIcon}
+        renderCard={renderCard}
       />)}
       {!sections.length ? <EmptyState empty={empty} palette={palette} labels={copy} /> : null}
     </View> : null}

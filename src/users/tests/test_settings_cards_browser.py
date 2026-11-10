@@ -3,9 +3,11 @@
 import json
 import os
 import re
+from unittest import skipUnless
 from unittest.mock import patch
 from urllib.parse import urlsplit
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import override_settings, tag
@@ -87,8 +89,16 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
 
     def open_cards(self, tab="import"):
         """Wait for the single owner of the entire AniList provider region."""
-        self.page.goto(f"{self.live_server_url}/settings/providers/anilist?tab={tab}")
-        expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
+        response = self.page.goto(f"{self.live_server_url}/settings/providers/anilist?tab={tab}")
+        try:
+            expect(self.page.locator(MOUNTED_ISLANDS)).to_have_count(1)
+        except AssertionError as error:
+            error.add_note(
+                f"HTTP status: {response.status if response else None}; URL: {self.page.url}; "
+                f"provider hosts: {self.page.locator('[data-provider-root]').count()}; "
+                f"page errors: {self.errors[-5:]}; failed requests: {self.failed_requests[-5:]}"
+            )
+            raise
 
     def select_trigger(self, label):
         """SelectField exposes the field label and current value as a button."""
@@ -100,6 +110,18 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         """Exercise the native SelectField dialog and accessible radio choices."""
         self.select_trigger(label).click()
         self.page.get_by_role("radio", name=option, exact=True).click()
+
+    @skipUnless("debug_toolbar" in settings.INSTALLED_APPS, "debug toolbar is disabled")
+    @override_settings(DEBUG=True, INTERNAL_IPS=["127.0.0.1"])
+    def test_debug_toolbar_initializes_when_present(self):
+        """A permitted debug toolbar initializes without breaking boosted navigation."""
+        self.open_cards()
+        expect(self.page.locator("#djDebug")).to_have_count(1)
+        self.page.get_by_role("navigation", name="Provider sections").get_by_role(
+            "tab", name="Connection", exact=True,
+        ).click()
+        expect(self.page.locator("#djDebug")).to_have_count(1)
+        self.assertEqual(self.errors, [])
 
     def test_shared_dropdown_menu_keyboard_dismissal_and_connection_status(self):
         """Universal select sheets filter the directory and remain usable on phones."""
@@ -891,7 +913,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.assertEqual(link.evaluate("element => getComputedStyle(element).textDecorationLine"), "none")
         expect(self.page.get_by_text("Your key may avoid shared instance or bundled rate limits.", exact=True)).to_be_visible()
         gap = self.page.get_by_text("Your key may avoid shared instance or bundled rate limits.", exact=True).evaluate("""element => {
-          const field = element.parentElement.querySelector('form label');
+          const field = element.nextElementSibling;
           return field.getBoundingClientRect().top - element.getBoundingClientRect().bottom;
         }""")
         self.assertGreaterEqual(gap, 10)
@@ -955,6 +977,37 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.import_mode, "overwrite")
         self.assertEqual(self.errors, [])
+
+    def test_sidebar_controller_registers_after_alpine_started(self):
+        """A late-loaded sidebar script still registers its Alpine controller."""
+        self.block_renderer = True
+        self.page.goto(f"{self.live_server_url}/settings/providers/anilist?tab=overview")
+        script_order = self.page.evaluate("""() => [...document.head.querySelectorAll('script[src]')]
+          .filter(script => script.src.includes('savedViews.js') || script.src.includes('alpinejs-3.14.9'))
+          .map(script => ({src: script.src, defer: script.defer}))""")
+        self.assertEqual(len(script_order), 2)
+        self.assertIn("savedViews.js", script_order[0]["src"])
+        self.assertIn("alpinejs-3.14.9", script_order[1]["src"])
+        self.assertTrue(all(script["defer"] for script in script_order))
+        sidebar_html = self.page.locator("aside[x-data^='sidebarNavigation']").evaluate(
+            "element => element.outerHTML"
+        )
+        page = self.context.new_page()
+        self.addCleanup(page.close)
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.set_content('<div x-data="{isMobileMenuOpen: false, ready: true}"><span x-text="ready"></span></div>')
+        page.add_script_tag(url=f"{self.live_server_url}/static/js/libraries/alpinejs-3.14.9.min.js")
+        expect(page.locator("span")).to_have_text("true")
+        page.add_script_tag(url=f"{self.live_server_url}/static/js/savedViews.js")
+        page.evaluate("""html => {
+          document.querySelector('[x-data]').insertAdjacentHTML('beforeend', html);
+        }""", sidebar_html)
+        button = page.locator("aside").get_by_role("button", name="Explore", exact=True)
+        expect(button).to_have_attribute("aria-expanded", "false")
+        button.click()
+        expect(button).to_have_attribute("aria-expanded", "true")
+        self.assertEqual(errors, [])
 
     def test_overview_chips_stay_inside_clickable_cards_at_narrow_breakpoints(self):
         """Contain badges inside narrow grid cards and make the whole card a link."""

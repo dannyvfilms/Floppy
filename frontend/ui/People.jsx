@@ -12,6 +12,8 @@ import {
 import { ArtworkImage } from './ArtworkImage';
 import { Badge } from './Badge';
 import { Button } from './Button';
+import { Icon } from './Icon';
+import { actionIcons } from './actionIcons';
 
 // Shared person, studio, credit, gallery and medium-extra presentation. Values
 // arrive already shaped by the server or feature adapter; these components
@@ -142,6 +144,7 @@ export function PersonHero({
   biographyLines = 5,
   headingLevel = 2,
   actionPalette,
+  actionSize,
   showBiography = true,
 }) {
   const copy = mergeLabels(labels);
@@ -161,7 +164,7 @@ export function PersonHero({
       <Artwork uri={person.imageUrl} title={person.name} palette={colors} />
       {onViewHistory && canViewHistory ? <View style={[styles.heroAction, { backgroundColor: colors.surface }]}>
         <Button label={person.isAuthor ? copy.viewReads : copy.viewPlays} width="full"
-          onPress={onViewHistory} palette={actionPalette || { radius: colors.radiusSmall }} />
+          size={actionSize} onPress={onViewHistory} palette={actionPalette || { radius: colors.radiusSmall }} />
       </View> : null}
     </View>
     <View style={[styles.heroBody, wide && styles.heroBodyWide]}>
@@ -416,7 +419,7 @@ export function LightboxDialog({
         <Text style={[styles.lightboxCount, { color: colors.chipText }]}>{bounded + 1} / {items.length}</Text>
         <ModalCloseButton accessibilityRole="button" accessibilityLabel={copy.close} onPress={onClose}
           style={[styles.roundButton, { backgroundColor: colors.chipBackground }]}>
-          <Text style={[styles.roundGlyph, { color: colors.chipText }]}>✕</Text>
+          <Icon spec={actionIcons.x} size={18} color={colors.chipText} />
         </ModalCloseButton>
       </View>
       <View style={styles.lightboxBody}>
