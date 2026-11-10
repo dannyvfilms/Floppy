@@ -2,6 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { HomeShelves } from './HomeShelves';
 import { Spinner } from './Spinner';
+import { useStreamedRows } from './searchRows';
 
 const defaultPalette = {
   text: '#fafafa',
@@ -24,6 +25,8 @@ const defaultLabels = {
   emptyTitle: 'No results found',
   emptyBody: 'Try checking your spelling or using different keywords.',
   loading: 'Loading results…',
+  searchingOnline: 'Searching online…',
+  unavailable: 'is currently unavailable. Please try again shortly.',
   errorTitle: 'Search could not load',
   errorBody: 'Please try again.',
   retry: 'Try again',
@@ -51,7 +54,9 @@ export function SearchResults({
   labels = {},
   palette: paletteOverrides,
   notes = [],
-  rows = [],
+  rows: baseRows = [],
+  onlineSources = [],
+  onLoadOnlineRow,
   empty,
   itemWidth,
   renderCard,
@@ -70,8 +75,12 @@ export function SearchResults({
   const { width } = useWindowDimensions();
   // The same heading size as a Home row's title.
   const compact = width < 640;
+  const { rows, failed, pending } = useStreamedRows({
+    rows: baseRows, onlineSources, loadOnlineRow: onLoadOnlineRow, resetKey: String(testID || ''),
+  });
   const groups = rows.length ? [{ mediaType: 'search', label: '', rows }] : [];
   return <View style={styles.wrapper} testID={testID}>
+    {failed.map(label => <Text key={label} style={[styles.note, { color: palette.textMuted }]}>{`${label} ${copy.unavailable}`}</Text>)}
     {notes.map((note, index) => <Text key={index} style={[styles.note, { color: palette.textMuted }]}>{note}</Text>)}
     {state === 'loading' ? <View style={styles.state}>
       <Spinner size={20} color={palette.accent} />
@@ -85,7 +94,7 @@ export function SearchResults({
         <Text style={[styles.retryText, { color: palette.accentText }]}>{copy.retry}</Text>
       </Pressable>
     </View> : null}
-    {state === 'empty' || (state === 'ready' && !rows.length)
+    {state === 'empty' || (state === 'ready' && !rows.length && !pending)
       ? <EmptyState empty={empty} palette={palette} labels={copy} /> : null}
     {state === 'ready' && rows.length ? <HomeShelves
       groups={groups}
@@ -100,6 +109,10 @@ export function SearchResults({
       onAction={onAction}
       onRate={onRate}
       onLoadMore={onLoadMore} /> : null}
+    {state === 'ready' && pending ? <View style={styles.searching}>
+      <Spinner size={16} color={palette.accent} />
+      <Text accessibilityLiveRegion="polite" style={[styles.stateText, { color: palette.textMuted }]}>{copy.searchingOnline}</Text>
+    </View> : null}
   </View>;
 }
 
@@ -108,6 +121,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '600', lineHeight: 18 },
   titleCompact: { fontSize: 16, lineHeight: 21.6 },
   note: { fontSize: 14, lineHeight: 20 },
+  searching: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 },
   state: { alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 48 },
   stateTitle: { fontSize: 18, fontWeight: '600' },
   stateText: { fontSize: 14, lineHeight: 20, textAlign: 'center' },

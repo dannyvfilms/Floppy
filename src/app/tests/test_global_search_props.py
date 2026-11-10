@@ -84,7 +84,13 @@ class GlobalSearchPropsTest(TestCase):
         self.assertEqual(props["state"], "ready")
         for retired in ("layout", "layoutOptions", "scope", "paging", "sections"):
             self.assertNotIn(retired, props)
-        row = props["rows"][0]
+        # Provider rows stream in: the page lists them and each loads from the row endpoint.
+        self.assertEqual(props["rows"], [])
+        self.assertIn("online:tmdb", [source["rowId"] for source in props["onlineSources"]])
+        row = self.client.get(
+            reverse("search_results_json"),
+            {"q": "dune", "media_type": MediaTypes.MOVIE.value, "row": "online:tmdb", "page": 1},
+        ).json()["row"]
         self.assertEqual(row["rowId"], "online:tmdb")
         self.assertEqual(row["titleMain"], "Online Results")
         self.assertEqual(row["titleDetail"], "The Movie Database")
@@ -118,13 +124,15 @@ class GlobalSearchPropsTest(TestCase):
 
         mock_search.side_effect = answer
 
-        response = self.client.get(
-            reverse("search"),
-            {"q": "task", "media_type": MediaTypes.TV.value},
-        )
-
-        rows = self._search_props(response)["rows"]
-        self.assertEqual([row["rowId"] for row in rows], ["online:tmdb"])
+        rows = {}
+        for row_id in ("online:tmdb", "online:tvdb"):
+            payload = self.client.get(
+                reverse("search_results_json"),
+                {"q": "task", "media_type": MediaTypes.TV.value, "row": row_id, "page": 1},
+            ).json()
+            rows[row_id] = payload["row"]
+        self.assertIsNotNone(rows["online:tmdb"])
+        self.assertIsNone(rows["online:tvdb"])
 
     @patch("app.providers.services.search")
     def test_search_row_pages_come_from_the_json_endpoint(self, mock_search):

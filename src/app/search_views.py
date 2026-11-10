@@ -679,6 +679,7 @@ def _search_context(request):
 
     search_page = 1 if media_type == MediaTypes.MUSIC.value else page
     online_sets = []
+    online_sources = []
     unavailable_providers = []
     data = {"page": 1, "total_results": 0, "total_pages": 0, "results": []}
     if media_type == MediaTypes.VIDEO.value:
@@ -707,18 +708,12 @@ def _search_context(request):
                 % {"value_1": exc.provider_label},
             )
     else:
-        # One row per provider; a provider that is not set up, is down or has
-        # nothing for this search simply has no row.
-        online_sets, unavailable_providers = _provider_result_sets(
-            request,
-            media_type,
-            query,
-            [option.value for option in source_options],
-            search_page,
-        )
-        if online_sets:
-            data = online_sets[0]["data"]
-            source = online_sets[0]["source"]
+        # One row per provider, streamed in by the page after it loads (the row
+        # endpoint searches one provider); a provider that is not set up, is down
+        # or has nothing for this search simply ends up with no row.
+        online_sources = [
+            {"source": option.value, "label": option.label} for option in source_options
+        ]
 
     if media_type == MediaTypes.MUSIC.value:
         return {
@@ -745,6 +740,7 @@ def _search_context(request):
         "user": request.user,
         "data": data,
         "online_sets": online_sets,
+        "online_sources": online_sources,
         "unavailable_providers": unavailable_providers,
         "source": source,
         "source_options": source_options,
@@ -1781,6 +1777,7 @@ def build_search_results_props(context):
     else:
         rows = _typed_rows(context, user=user, request=request)
 
+    online_sources = context.get("online_sources") or []
     notes = []
     if media_type == MediaTypes.PODCAST.value:
         notes.append(
@@ -1807,13 +1804,17 @@ def build_search_results_props(context):
         "title": gettext("Search results"),
         "query": query,
         "mediaType": media_type,
-        "state": "ready" if rows else "empty",
+        "state": "ready" if rows or online_sources else "empty",
         "rows": rows,
+        "onlineSources": [
+            {"rowId": f"online:{item['source']}", "label": item["label"]} for item in online_sources
+        ],
         "notes": notes,
         "empty": _build_empty_state({**context, "query": query}),
         "labels": {
             "emptyTitle": gettext("No results found"),
             "loading": gettext("Loading results…"),
+            "searchingOnline": gettext("Searching online…"),
             "errorTitle": gettext("Search could not load"),
             "errorBody": gettext("Please try again."),
             "retry": gettext("Try again"),
@@ -1850,13 +1851,13 @@ def _search_row_page(request):
             gettext("In Your Library"),
             _card_items("library", cards, page=offset),
             total=total,
-        )
+        ), None
     if row_id.startswith("online:"):
         source = row_id.split(":", 1)[1]
-        page = max(int(request.GET.get("page") or 2), 1)
-        sets, _unavailable = _provider_result_sets(request, media_type, query, [source], page)
+        page = max(int(request.GET.get("page") or 1), 1)
+        sets, unavailable = _provider_result_sets(request, media_type, query, [source], page)
         if not sets:
-            return None
+            return None, unavailable[0] if unavailable else None
         data = sets[0]["data"]
         cards = _search_cards(data.get("results"), user=user, request=request, layout="grid")
         return _search_row(
@@ -1866,14 +1867,15 @@ def _search_row_page(request):
             total=data.get("total_results") or len(cards),
             title_detail=sets[0]["label"],
             page=data.get("page") or page,
-        )
-    return None
+        ), None
+    return None, None
 
 
 @require_GET
 def search_results_json(request):
     """Return the search rows (or one row's next page) for the native app."""
     if request.GET.get("row"):
-        return JsonResponse({"row": _search_row_page(request)})
+        row, unavailable = _search_row_page(request)
+        return JsonResponse({"row": row, "unavailable": unavailable})
     context = _search_context(request)
     return JsonResponse(build_search_results_props({**context, "request": request}))
