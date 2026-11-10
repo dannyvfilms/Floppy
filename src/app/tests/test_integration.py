@@ -210,7 +210,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             search = touch_page.locator('[data-global-search-root][data-react-mounted="true"]')
             search.locator("#global-search").fill("breaking bad")
             search.get_by_role("button", name="Search", exact=True).click()
-            expect(touch_page.get_by_role("heading", name="Search Results")).to_be_visible()
+            expect(touch_page.get_by_role("heading", name="Online Results")).to_be_visible()
 
             card = touch_page.locator(".media-card").filter(has_text="Breaking Bad").first
             overlay = card.locator(".media-card-overlay")
@@ -242,7 +242,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                     card_box["x"] + card_box["width"],
                 )
 
-            touch_page.get_by_role("heading", name="Search Results").click()
+            touch_page.get_by_role("heading", name="Online Results").click()
             self.assertNotIn(
                 "media-card-revealed",
                 card.get_attribute("class") or "",
@@ -661,7 +661,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
     def test_season_progress_edit(self):
         """Test the progress edit of a season."""
         self.search_and_submit("breaking bad")
-        expect(self.page.get_by_role("heading", name="Search Results")).to_be_visible()
+        expect(self.page.get_by_role("heading", name="Online Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
         season_href = self.page.locator(
@@ -712,7 +712,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
     def test_tv_completed(self):
         """Test the completed status of a TV show."""
         self.search_and_submit("breaking bad")
-        expect(self.page.get_by_role("heading", name="Search Results")).to_be_visible()
+        expect(self.page.get_by_role("heading", name="Online Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
         self.page.locator("button").filter(has_text="Add to tracker").click()
@@ -733,7 +733,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
     def test_season_completed(self):
         """Test the completed status of a season."""
         self.search_and_submit("breaking bad")
-        expect(self.page.get_by_role("heading", name="Search Results")).to_be_visible()
+        expect(self.page.get_by_role("heading", name="Online Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
         season_href = self.page.locator(
