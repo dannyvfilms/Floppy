@@ -11,6 +11,7 @@ import {
   mergeHomeRowPage,
 } from '../data/homeTransport';
 import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
+import { useMobileGridLayout } from '../data/useMobileGridLayout';
 import { palette, radius, spacing } from '../theme';
 import { Screen } from '../components/Screen';
 import MediaCardSlot from '../surfaces/MediaCardSlot';
@@ -335,7 +336,8 @@ export default function HomeScreen({ navigate }) {
   const { width } = useWindowDimensions();
   // The same breakpoint helper the web mount uses, so a card is never a
   // different size on one surface.
-  const itemWidth = shelfCardWidth(width);
+  const mobileGridLayout = useMobileGridLayout();
+  const itemWidth = shelfCardWidth(width, mobileGridLayout);
   const [session, setSession] = useState(() => getActiveAuthSession());
   useEffect(() => subscribeAuthSession(setSession), []);
   const transport = useMemo(

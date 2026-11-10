@@ -1,9 +1,11 @@
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 
 from django.conf import settings
 from django.contrib import messages
+from django.db import connection
 from django.db.models import Exists, F, OuterRef, Q
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
@@ -570,9 +572,8 @@ def _all_scope_barcode_groups(request, query, groups):
     return sorted(by_type.values(), key=lambda g: order.get(g["media_type"], 99))
 
 
-@require_GET
-def media_search(request):
-    """Return the media search page."""
+def _search_context(request):
+    """Return the template context for a search request, whatever its media type."""
     requested_media_type = request.GET.get("media_type", "")
     if request.user.is_authenticated:
         media_type = request.user.update_preference(
@@ -602,18 +603,14 @@ def media_search(request):
         if request.user.is_authenticated and query:
             local_groups = _all_scope_barcode_groups(request, query, local_groups)
             isbn_search = bool(services._normalize_isbn_candidate(query))
-        return render(
-            request,
-            "app/search.html",
-            {
-                "user": request.user,
-                "media_type": media_type,
-                "layout": layout,
-                "local_groups": local_groups,
-                "isbn_search": isbn_search,
-                "local_group_limit": LOCAL_GROUP_LIMIT,
-            },
-        )
+        return {
+            "user": request.user,
+            "media_type": media_type,
+            "layout": layout,
+            "local_groups": local_groups,
+            "isbn_search": isbn_search,
+            "local_group_limit": LOCAL_GROUP_LIMIT,
+        }
 
     local_results = []
     local_results_total = 0
@@ -682,12 +679,15 @@ def media_search(request):
         source = source_options[0].value
 
     search_page = 1 if media_type == MediaTypes.MUSIC.value else page
-    try:
-        if media_type == MediaTypes.VIDEO.value:
-            # No provider to search: videos arrive from clients, so only the
-            # local library results above apply.
-            data = {"page": 1, "total_results": 0, "total_pages": 0, "results": []}
-        else:
+    online_sets = []
+    unavailable_providers = []
+    data = {"page": 1, "total_results": 0, "total_pages": 0, "results": []}
+    if media_type == MediaTypes.VIDEO.value:
+        # No provider to search: videos arrive from clients, so only the
+        # local library results above apply.
+        pass
+    elif media_type == MediaTypes.MUSIC.value:
+        try:
             with services.interactive_request_scope():
                 data = services.search(
                     media_type,
@@ -697,31 +697,32 @@ def media_search(request):
                     user=request.user,
                     language=metadata_resolution.metadata_language_default(request.user),
                 )
-    except services.ProviderNotConfiguredError as exc:
-        logger.warning(
-            "Search skipped for media_type=%s query=%s: %s",
-            media_type,
-            query,
-            exception_summary(exc),
-        )
-        messages.error(request, str(exc))
-        data = {"page": 1, "total_results": 0, "total_pages": 0, "results": []}
-    except services.ProviderAPIError as exc:
-        logger.warning(
-            "Search failed for media_type=%s query=%s: %s",
-            media_type,
-            query,
-            exception_summary(exc),
-        )
-        messages.error(
+        except services.ProviderNotConfiguredError as exc:
+            logger.warning("Search skipped for media_type=%s: %s", media_type, exception_summary(exc))
+            messages.error(request, str(exc))
+        except services.ProviderAPIError as exc:
+            logger.warning("Search failed for media_type=%s: %s", media_type, exception_summary(exc))
+            messages.error(
+                request,
+                gettext("%(value_1)s is currently unavailable. Please try again shortly.")
+                % {"value_1": exc.provider_label},
+            )
+    else:
+        # One row per provider; a provider that is not set up, is down or has
+        # nothing for this search simply has no row.
+        online_sets, unavailable_providers = _provider_result_sets(
             request,
-            gettext("%(value_1)s is currently unavailable. Please try again shortly.")
-            % {"value_1": exc.provider_label},
+            media_type,
+            query,
+            [option.value for option in source_options],
+            search_page,
         )
-        data = {"page": 1, "total_results": 0, "total_pages": 0, "results": []}
+        if online_sets:
+            data = online_sets[0]["data"]
+            source = online_sets[0]["source"]
 
     if media_type == MediaTypes.MUSIC.value:
-        context = {
+        return {
             "user": request.user,
             "data": data,
             "music_online_artists": data.get("artists", []),
@@ -739,24 +740,13 @@ def media_search(request):
             "local_music_albums": local_music_albums,
             "local_music_albums_total": local_music_albums_total,
         }
-        return render(request, "app/search.html", context)
-
-    # Enrich search results with user tracking data
-    if data.get("results"):
-        data["results"] = helpers.enrich_items_with_user_data(
-            request,
-            data["results"],
-            section_name="search",
-        )
-        for result in data["results"]:
-            result["matched_title"] = _matched_title(
-                result.get("item"), query, request.user
-            )
 
     fallback_source = data.get("fallback_source")
-    context = {
+    return {
         "user": request.user,
         "data": data,
+        "online_sets": online_sets,
+        "unavailable_providers": unavailable_providers,
         "source": source,
         "source_options": source_options,
         "source_label": metadata_resolution.metadata_provider_label(source),
@@ -773,7 +763,76 @@ def media_search(request):
         "local_results_kind": local_results_kind,
     }
 
-    return render(request, "app/search.html", context)
+
+def _provider_result_sets(request, media_type, query, sources, page):
+    """Search every listed provider and return the ones that have results.
+
+    Each set is ``{"source", "label", "data"}`` with the results enriched with the
+    user's tracking data, as the search page always did for its one provider. Also
+    returns the labels of providers that failed (a missing key is not a failure).
+    """
+    sets = []
+    unavailable = []
+    language = metadata_resolution.metadata_language_default(request.user)
+
+    def fetch(source, in_thread=False):
+        # Each provider is its own network call, so they run side by side.
+        try:
+            with services.interactive_request_scope():
+                return services.search(
+                    media_type, query, page, source, user=request.user, language=language
+                )
+        except Exception as exc:  # returned and handled by the caller
+            return exc
+        finally:
+            if in_thread:
+                connection.close()
+
+    if len(sources) > 1:
+        with ThreadPoolExecutor(max_workers=len(sources)) as pool:
+            fetched = list(pool.map(lambda source: fetch(source, True), sources))
+    else:
+        fetched = [fetch(source) for source in sources]
+    for source, data in zip(sources, fetched, strict=True):
+        if isinstance(data, services.ProviderNotConfiguredError):
+            continue
+        if isinstance(data, services.ProviderAPIError):
+            logger.warning(
+                "Search failed for media_type=%s source=%s: %s",
+                media_type,
+                source,
+                exception_summary(data),
+            )
+            unavailable.append(metadata_resolution.metadata_provider_label(source))
+            continue
+        if isinstance(data, Exception):
+            raise data
+        if not data.get("results"):
+            continue
+        if data.get("fallback_source") and data["fallback_source"] != source:
+            # These are another provider's results, which has its own row.
+            continue
+        data["results"] = helpers.enrich_items_with_user_data(
+            request,
+            data["results"],
+            section_name="search",
+        )
+        for result in data["results"]:
+            result["matched_title"] = _matched_title(result.get("item"), query, request.user)
+        sets.append(
+            {
+                "source": source,
+                "label": metadata_resolution.metadata_provider_label(source),
+                "data": data,
+            },
+        )
+    return sets, unavailable
+
+
+@require_GET
+def media_search(request):
+    """Return the media search page."""
+    return render(request, "app/search.html", _search_context(request))
 
 
 def _safe_url(builder, target):
@@ -1611,71 +1670,119 @@ def _build_empty_state(context):
     return empty
 
 
+def _search_row(row_id, title, items, *, total, title_detail=None, page=None, view_all=None):
+    """Return one search row in the shape Home's shelves render."""
+    row = {
+        "rowId": row_id,
+        "rowType": "search",
+        "title": title,
+        "titleMain": title,
+        "titleDetail": title_detail,
+        "summaryInline": None,
+        "direction": None,
+        "items": items,
+        "total": total,
+        "loadedCount": len(items),
+        "seed": 0,
+        "page": page,
+        "pollForCovers": False,
+    }
+    if view_all:
+        row["viewAll"] = view_all
+    return row
+
+
+def _card_items(row_id, cards, page=0):
+    """Wrap cards as row items; ``page`` keeps fallback ids unique across a row's pages."""
+    return [
+        {"id": card.get("cardKey") or f"{row_id}:{page}:{index}", "card": card}
+        for index, card in enumerate(cards)
+    ]
+
+
+def _section_rows(section):
+    """Turn a grouped section (All media, music) into rows of cards."""
+    subsections = [
+        sub for sub in section.get("subsections") or [] if sub.get("items")
+    ]
+    rows = []
+    for sub in subsections:
+        many = len(subsections) > 1
+        row_id = f"{section['key']}:{sub['key']}" if many else str(section["key"])
+        title = (
+            f"{section['title']} • {sub['title']}"
+            if many and sub.get("title")
+            else section["title"]
+        )
+        items = _card_items(row_id, sub["items"])
+        rows.append(
+            _search_row(
+                row_id,
+                title,
+                items,
+                total=len(items),
+                view_all=section.get("searchOnline"),
+            ),
+        )
+    return rows
+
+
+def _typed_rows(context, *, user, request):
+    """Rows for one media type: your library, then one row per provider."""
+    rows = []
+    local_results = context.get("local_results") or []
+    if local_results:
+        cards = _search_cards(local_results, user=user, request=request, layout="grid")
+        rows.append(
+            _search_row(
+                "library",
+                gettext("In Your Library"),
+                _card_items("library", cards),
+                total=context.get("local_results_total") or len(cards),
+            ),
+        )
+    for online in context.get("online_sets") or []:
+        data = online["data"]
+        row_id = f"online:{online['source']}"
+        cards = _search_cards(data.get("results"), user=user, request=request, layout="grid")
+        rows.append(
+            _search_row(
+                row_id,
+                gettext("Online Results"),
+                _card_items(row_id, cards),
+                total=data.get("total_results") or len(cards),
+                title_detail=online["label"],
+                page=data.get("page") or 1,
+            ),
+        )
+    return rows
+
+
 def build_search_results_props(context):
     """Build the serialisable props for the shared React search results."""
     request = context.get("request")
     user = context.get("user")
     media_type = context.get("media_type")
-    layout = context.get("layout") or "grid"
-    layout = "list" if layout == "list" else "grid"
     query = request.GET.get("q", "") if request else ""
 
-    sections = []
     if media_type == ALL_SEARCH_TYPE:
-        sections = [
-            _build_local_group_section(
-                group,
-                user=user,
-                request=request,
-                layout=layout,
-            )
+        rows = [
+            row
             for group in context.get("local_groups") or []
+            for row in _section_rows(
+                _build_local_group_section(group, user=user, request=request, layout="grid"),
+            )
+        ]
+    elif media_type == MediaTypes.MUSIC.value:
+        rows = [
+            row
+            for section in _build_typed_music_sections(
+                context, user=user, request=request, layout="grid",
+            )
+            for row in _section_rows(section)
         ]
     else:
-        sections = _build_typed_sections(
-            context,
-            user=user,
-            request=request,
-            layout=layout,
-        )
-
-    source_options = context.get("source_options") or []
-    source = context.get("source")
-    scope = {
-        "label": gettext("Source:"),
-        "options": [
-            {
-                "value": option.value,
-                "label": option.label,
-                "active": option.value == source,
-                "href": _search_url(
-                    request,
-                    media_type=media_type,
-                    source=option.value,
-                ),
-            }
-            for option in source_options
-        ],
-    }
-
-    layout_options = [
-        {
-            "value": "grid",
-            "label": gettext("Grid View"),
-            "glyph": "▦",
-            "icon": file_icon("grid"),
-            "active": layout == "grid",
-            "href": _search_url(request, layout="grid"),
-        },
-        {
-            "value": "list",
-            "label": gettext("List View"),
-            "glyph": "☰",
-            "icon": file_icon("list"),
-            "active": layout == "list",
-            "href": _search_url(request, layout="list"),
-        },
-    ]
+        rows = _typed_rows(context, user=user, request=request)
 
     notes = []
     if media_type == MediaTypes.PODCAST.value:
@@ -1692,47 +1799,22 @@ def build_search_results_props(context):
                 "Pick a media type to search online.",
             ),
         )
-
-    paging = None
-    data = context.get("data") or {}
-    page = data.get("page") or 1
-    total_pages = data.get("total_pages") or 1
-    if media_type != MediaTypes.MUSIC.value and total_pages > 1:
-        paging = {
-            "page": page,
-            "totalPages": total_pages,
-            "totalResults": data.get("total_results") or 0,
-            "previous": {"href": _page_url(request, page - 1)} if page > 1 else None,
-            "next": {"href": _page_url(request, page + 1)}
-            if page < total_pages
-            else None,
-            "pages": _pagination_pages(request, page, total_pages),
-            "summary": gettext("Page %(page)s of %(total)s (%(results)s results)")
-            % {
-                "page": page,
-                "total": total_pages,
-                "results": data.get("total_results") or 0,
-            },
-        }
+    # A provider that is not set up is skipped quietly; one that failed is named.
+    notes.extend(
+        gettext("%(value_1)s is currently unavailable. Please try again shortly.")
+        % {"value_1": label}
+        for label in context.get("unavailable_providers") or []
+    )
 
     return {
-        "title": gettext("Search Results"),
+        "title": gettext("Search results"),
         "query": query,
         "mediaType": media_type,
-        "layout": layout,
-        "state": "ready" if sections else "empty",
-        "sections": sections,
+        "state": "ready" if rows else "empty",
+        "rows": rows,
         "notes": notes,
-        "scope": scope if media_type != ALL_SEARCH_TYPE else {
-            "label": "",
-            "options": [],
-        },
-        "layoutOptions": layout_options,
-        "paging": paging,
         "empty": _build_empty_state({**context, "query": query}),
         "labels": {
-            "source": gettext("Source:"),
-            "searchOnline": gettext("Search online"),
             "emptyTitle": gettext("No results found"),
             "loading": gettext("Loading results…"),
             "errorTitle": gettext("Search could not load"),
@@ -1740,8 +1822,6 @@ def build_search_results_props(context):
             "retry": gettext("Try again"),
             "loadMore": gettext("Load more"),
             "loadingMore": gettext("Loading more…"),
-            "previous": gettext("Previous page"),
-            "next": gettext("Next page"),
             "rate": gettext("Rate"),
             "close": gettext("Close"),
             "open": gettext("Open"),
@@ -1750,3 +1830,53 @@ def build_search_results_props(context):
             "noStatus": gettext("No Status"),
         },
     }
+
+
+SEARCH_ROW_PAGE = 24
+
+
+def _search_row_page(request):
+    """Return the next page of one row: more of your library or the next provider page."""
+    user = request.user
+    media_type = request.GET.get("media_type", "")
+    query = request.GET.get("q", "")
+    row_id = request.GET.get("row", "")
+    if row_id == "library":
+        offset = max(int(request.GET.get("offset") or 0), 0)
+        if media_type == MediaTypes.PODCAST.value:
+            results, total = _local_podcast_results(user, query, offset + SEARCH_ROW_PAGE)
+        else:
+            results, total = _local_media_results(user, media_type, query, offset + SEARCH_ROW_PAGE)
+        cards = _search_cards(results[offset:], user=user, request=request, layout="grid")
+        return _search_row(
+            "library",
+            gettext("In Your Library"),
+            _card_items("library", cards, page=offset),
+            total=total,
+        )
+    if row_id.startswith("online:"):
+        source = row_id.split(":", 1)[1]
+        page = max(int(request.GET.get("page") or 2), 1)
+        sets, _unavailable = _provider_result_sets(request, media_type, query, [source], page)
+        if not sets:
+            return None
+        data = sets[0]["data"]
+        cards = _search_cards(data.get("results"), user=user, request=request, layout="grid")
+        return _search_row(
+            row_id,
+            gettext("Online Results"),
+            _card_items(row_id, cards, page=page),
+            total=data.get("total_results") or len(cards),
+            title_detail=sets[0]["label"],
+            page=data.get("page") or page,
+        )
+    return None
+
+
+@require_GET
+def search_results_json(request):
+    """Return the search rows (or one row's next page) for the native app."""
+    if request.GET.get("row"):
+        return JsonResponse({"row": _search_row_page(request)})
+    context = _search_context(request)
+    return JsonResponse(build_search_results_props({**context, "request": request}))

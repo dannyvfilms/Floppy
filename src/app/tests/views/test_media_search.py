@@ -1,3 +1,5 @@
+import json
+import re
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -41,6 +43,19 @@ class MediaSearchViewTests(TestCase):
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
+
+    def _props(self, response):
+        """Return the shared search results props the page embeds."""
+        match = re.search(
+            r'<script id="search-results-[0-9a-f]+" type="application/json">(.*?)</script>',
+            response.content.decode(),
+            re.DOTALL,
+        )
+        self.assertIsNotNone(match)
+        return json.loads(match.group(1))
+
+    def _rows(self, response):
+        return self._props(response)["rows"]
 
     @patch("app.providers.services.search")
     def test_media_search_view(self, mock_search):
@@ -92,7 +107,7 @@ class MediaSearchViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "app/search.html")
-        mock_search.assert_called_once()
+        mock_search.assert_called()
 
     @patch("app.providers.services.search")
     def test_video_search_lists_local_videos_without_a_provider_call(self, mock_search):
@@ -139,15 +154,12 @@ class MediaSearchViewTests(TestCase):
             ],
         }
 
-        for layout in ("grid", "list"):
-            response = self.client.get(
-                reverse("search") + f"?media_type=movie&q=test&layout={layout}",
-            )
+        response = self.client.get(reverse("search") + "?media_type=movie&q=test")
 
-            self.assertEqual(response.status_code, 200)
-            html = response.content.decode()
-            self.assertIn("data-media-card-root", html)
-            self.assertNotIn('x-show="trackOpen"', html)
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('x-show="trackOpen"', response.content.decode())
+        card = self._rows(response)[0]["items"][0]["card"]
+        self.assertEqual(card["title"], "Test Movie")
 
     @patch("app.providers.services.search")
     def test_podcast_local_result_keeps_show_source(self, mock_search):
@@ -177,46 +189,33 @@ class MediaSearchViewTests(TestCase):
         self.assertEqual(local_results[0]["item"].source, Sources.GPODDER.value)
 
     @patch("app.providers.services.search")
-    def test_podcast_online_results_name_the_source_that_answered(self, mock_search):
-        """The heading names the source the results came from, with an info tip."""
-        result = {
-            "media_id": "https://example.com/feed.xml",
-            "source": Sources.GPODDER.value,
-            "media_type": MediaTypes.PODCAST.value,
-            "title": "Das Portal",
-            "image": "https://example.com/portal.jpg",
-        }
-        mock_search.return_value = {
-            "page": 1,
-            "total_results": 1,
-            "total_pages": 1,
-            "results": [dict(result)],
-            "fallback_source": Sources.PODCASTINDEX.value,
-        }
+    def test_podcast_provider_that_answered_for_another_has_no_row(self, mock_search):
+        """A fallback answer is another provider's, which has its own row."""
+        def answer(media_type, query, page, source, **_kwargs):
+            result = {
+                "media_id": f"https://example.com/{source}.xml",
+                "source": source,
+                "media_type": MediaTypes.PODCAST.value,
+                "title": "Das Portal",
+                "image": "https://example.com/portal.jpg",
+            }
+            data = {
+                "page": 1,
+                "total_results": 1,
+                "total_pages": 1,
+                "results": [result],
+            }
+            if source == Sources.POCKETCASTS.value:
+                data["fallback_source"] = Sources.GPODDER.value
+            return data
 
-        response = self.client.get(
-            reverse("search")
-            + f"?media_type=podcast&q=portal&source={Sources.POCKETCASTS.value}",
-        )
+        mock_search.side_effect = answer
 
-        content = response.content.decode()
-        self.assertContains(response, "Online Results (Podcast Index)")
-        self.assertContains(response, "Pocket Casts had no match for this search")
-        self.assertNotIn("Online Results (Pocket Casts)", content)
+        response = self.client.get(reverse("search") + "?media_type=podcast&q=portal")
 
-        # The view rewrites result dicts in place, so give the second search its own.
-        mock_search.return_value = {
-            "page": 1,
-            "total_results": 1,
-            "total_pages": 1,
-            "results": [dict(result)],
-        }
-        response = self.client.get(
-            reverse("search")
-            + f"?media_type=podcast&q=portal&source={Sources.POCKETCASTS.value}",
-        )
-        self.assertContains(response, "Online Results (Pocket Casts)")
-        self.assertContains(response, "These results come from Pocket Casts")
+        row_ids = [row["rowId"] for row in self._rows(response)]
+        self.assertNotIn(f"online:{Sources.POCKETCASTS.value}", row_ids)
+        self.assertIn(f"online:{Sources.GPODDER.value}", row_ids)
 
     @patch("app.providers.services.search")
     def test_music_search_view_uses_shared_template(
@@ -350,7 +349,8 @@ class MediaSearchViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        mock_search.assert_called_once_with(
+        # Every provider is searched for its own row; the user's default is one of them.
+        mock_search.assert_any_call(
             MediaTypes.ANIME.value,
             "chainsaw",
             1,
@@ -417,7 +417,7 @@ class MediaSearchViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        mock_search.assert_called_once()
+        mock_search.assert_called()
         self.assertFalse(services._interactive_request.get())
 
     @patch("app.providers.services.search")
@@ -433,10 +433,9 @@ class MediaSearchViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "app/search.html")
-        messages = list(response.context["messages"])
-        self.assertEqual(len(messages), 1)
-        self.assertIn("Hardcover", str(messages[0]))
-        self.assertIn("unavailable", str(messages[0]))
+        notes = " ".join(self._props(response)["notes"])
+        self.assertIn("Hardcover", notes)
+        self.assertIn("unavailable", notes)
 
     @patch("app.providers.services.search")
     def test_search_not_configured_provider_explains_setup(self, mock_search):
@@ -452,11 +451,11 @@ class MediaSearchViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        messages = list(response.context["messages"])
-        self.assertEqual(len(messages), 1)
-        self.assertIn("not configured", str(messages[0]))
-        self.assertIn("Settings", str(messages[0]))
-        self.assertNotIn("unavailable", str(messages[0]))
+        # A provider that is not set up is skipped without a message, and has no row.
+        self.assertEqual(list(response.context["messages"]), [])
+        props = self._props(response)
+        self.assertEqual(props["rows"], [])
+        self.assertNotIn("unavailable", " ".join(props["notes"]))
 
 
 class CollectedItemSearchTests(TestCase):

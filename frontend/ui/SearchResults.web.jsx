@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { MediaCard } from './MediaCard.web';
 import { SearchResults as SharedSearchResults } from './SearchResults.jsx';
 import { RatingStarIcon } from './RatingStarIcon.web';
 import { RatingStars } from './RatingStars';
+import { useShelfCardWidth } from './webShelfWidth';
+import { mergeSearchRowPage, searchRowUrl } from './searchRows';
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;
@@ -64,43 +67,24 @@ function navigate(href) {
 
 export function SearchResults({ props }) {
   const palette = usePalette();
+  const itemWidth = useShelfCardWidth();
 
-  const onSelectScope = useCallback(option => navigate(option?.href), []);
-  const onSelectLayout = useCallback(option => navigate(option?.href), []);
-  const onSearchOnline = useCallback(target => navigate(target?.href), []);
-  const onPage = useCallback(page => navigate(page?.href), []);
-  const onOpenResult = useCallback(href => navigate(href), []);
+  const onOpenCard = useCallback(item => navigate(item?.card?.href), []);
   const onOpenLink = useCallback(href => navigate(href), []);
 
-  const onAction = useCallback(action => {
-    if (!action) return;
-    if (action.kind === 'modal') {
-      window.dispatchEvent(new CustomEvent('floppy-open-modal', { detail: action }));
-      return;
-    }
-    if (action.kind === 'link') {
-      navigate(action.href);
-      return;
-    }
-    if (action.kind === 'post') {
-      window.htmx?.ajax('POST', action.url, {
-        target: action.target,
-        swap: action.swap,
-        values: action.vals,
-        headers: { 'X-CSRFToken': action.csrfToken || '' },
-      });
-    }
-  }, []);
+  // Home's cards render themselves on the web: links, tracking modals and htmx posts.
+  const renderCard = useCallback(item => <MediaCard model={item.card} labels={props.labels}
+    standalone variant={item.card?.shape === 'square' ? 'grid-square' : 'grid'} />, [props.labels]);
 
-  const onRate = useCallback((item, score) => {
-    const rating = item?.rating;
-    if (!rating?.rateUrl) return;
-    window.htmx?.ajax('POST', rating.rateUrl, {
-      swap: 'none',
-      headers: { 'X-CSRFToken': item.csrfToken || '' },
-      values: { score: score ?? rating.value, toggle: true },
+  const onLoadMore = useCallback(async row => {
+    const response = await window.fetch(searchRowUrl(row, props), {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
     });
-  }, []);
+    if (!response.ok) throw new Error(`Search request failed: ${response.status}`);
+    const payload = await response.json();
+    return payload.row ? mergeSearchRowPage(row, payload.row) : null;
+  }, [props]);
 
   const renderRating = useCallback(({ value, label, scaleMax, palette: ratingPalette, onSelect }) => (
     <RatingStars
@@ -116,14 +100,11 @@ export function SearchResults({ props }) {
   return <SharedSearchResults
     {...props}
     palette={{ ...palette, ...(props.palette || {}) }}
-    onSelectScope={onSelectScope}
-    onSelectLayout={onSelectLayout}
-    onSearchOnline={onSearchOnline}
-    onPage={onPage}
-    onOpenResult={onOpenResult}
-    onOpenLink={onOpenLink}
-    onAction={onAction}
-    onRate={onRate}
+    itemWidth={itemWidth}
+    renderCard={renderCard}
     renderRating={renderRating}
+    onOpenCard={onOpenCard}
+    onOpenLink={onOpenLink}
+    onLoadMore={onLoadMore}
   />;
 }

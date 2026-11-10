@@ -1142,7 +1142,10 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/SearchResultCard.native.jsx`
 - `frontend/ui/SearchResultCard.web.jsx`
 - `frontend/ui/SearchResults.jsx`
+- `native-proof/app/data/useMobileGridLayout.js`
 - `frontend/ui/SearchResults.web.jsx`
+- `frontend/ui/searchRows.js`
+- `frontend/ui/webShelfWidth.js`
 - `frontend/ui/SelectField.jsx`
 - `frontend/ui/SetupGuide.jsx`
 - `frontend/ui/Shell.jsx`
