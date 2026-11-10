@@ -770,7 +770,7 @@ class AllTypeSearchTests(TestCase):
         )
         self.assertEqual(
             {s["title"]: s["subtitle"] for s in suggestions}["Dune Movie"],
-            "Movie",
+            "Movie · Completed",
         )
         self.assertContains(response, "See all library results")
 

@@ -4,7 +4,7 @@ from dataclasses import replace
 
 from django.conf import settings
 from django.contrib import messages
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Exists, F, OuterRef, Q
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import render
@@ -16,6 +16,7 @@ from app import helpers
 from app.library_query import LibraryQueryExecutor
 from app.library_query.adapters import from_media_list_filters
 from app.library_query.filters import shows_with_collected_episodes
+from app.library_query.spec import ROUTING_LIBRARY
 from app.library_query.trackers import tracker_sources
 from app.log_safety import exception_summary
 from app.media_list_filters import (
@@ -789,7 +790,7 @@ def _all_saved_suggestions(user, query, limit):
     for media_type in user.get_enabled_media_types():
         if media_type == MediaTypes.SEASON.value:
             continue
-        label = media_type_readable(media_type)
+        label = _suggestion_type_label(media_type)
         for suggestion in get_saved_suggestions(
             user,
             media_type,
@@ -807,14 +808,48 @@ def _all_saved_suggestions(user, query, limit):
     return suggestions[:limit]
 
 
-def _suggestion_subtitle(item, query, user):
-    """Return "Type · Year · matched title", matching the detail line the native app shows."""
+def _suggestion_type_label(kind):
+    """Return the short type name a suggestion shows ("TV", not "TV Show")."""
+    return gettext("TV") if kind == MediaTypes.TV.value else media_type_readable(kind)
+
+
+def _suggestion_statuses(user, media_type, items):
+    """Return ``{item_id: status}`` for the few suggested items, in one query per tracker model.
+
+    Reads only the stored status column. The media list's richer status loads every
+    season and episode of a show, which a typeahead must not do.
+    """
+    item_ids = [item.id for item in items if item is not None]
+    if not item_ids:
+        return {}
+    try:
+        sources = tracker_sources(user, media_type, ROUTING_LIBRARY)
+    except LookupError:
+        return {}
+    statuses = {}
+    for source in sources:
+        # Match the owner as ``owner + 0`` so the lookup goes through item_id (see TrackerSource.item_rows).
+        rows = (
+            source.model.objects.filter(item_id__in=item_ids)
+            .alias(_owner=F(source.user_lookup) + 0)
+            .filter(_owner=user.pk)
+            .order_by("-created_at")
+            .values_list("item_id", source.status_field)
+        )
+        for item_id, status in rows:
+            statuses.setdefault(item_id, status)
+    return statuses
+
+
+def _suggestion_subtitle(item, query, user, status=None):
+    """Return "Type · Year · Status · matched title", the detail line the native app shows."""
     kind = getattr(item, "library_media_type", None) or item.media_type
     released = getattr(item, "release_datetime", None)
     year = released.year if released and released.year > MIN_SUGGESTION_YEAR else None
     parts = [
-        media_type_readable(kind),
+        _suggestion_type_label(kind),
         str(year) if year else None,
+        gettext(status) if status else None,
         _matched_title(item, query, user),
     ]
     return " · ".join(part for part in parts if part)
@@ -920,6 +955,7 @@ def get_saved_suggestions(user, media_type, query, limit=8):
     )
     local_items = [result["item"] for result in results]
 
+    statuses = _suggestion_statuses(user, media_type, local_items)
     for item in local_items:
         if item is None:
             continue
@@ -929,7 +965,7 @@ def get_saved_suggestions(user, media_type, query, limit=8):
         suggestions.append(
             {
                 "title": _display_title_for_user(item, user),
-                "subtitle": _suggestion_subtitle(item, query, user),
+                "subtitle": _suggestion_subtitle(item, query, user, statuses.get(item.id)),
                 "labelled": True,
                 "image": getattr(item, "image", None) or None,
                 "url": url,
