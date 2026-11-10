@@ -68,7 +68,15 @@ from app.models import (
 from app.providers import credentials, tmdb
 from app.templatetags import app_tags
 from config import run_state
-from integrations import exports, mal_sync, plex, seerr_api, stremio_catalog, tasks
+from integrations import (
+    exports,
+    mal_sync,
+    pending_auth,
+    plex,
+    seerr_api,
+    stremio_catalog,
+    tasks,
+)
 from integrations.imports import plex as plex_import
 from integrations.imports import psn as psn_import
 from integrations.imports import trakt as trakt_imports
@@ -575,7 +583,7 @@ def account(request):
         authenticator_secret = ""
         authenticator_uri = ""
         authenticator_qr_data_uri = ""
-        if show_authenticator_setup:
+        if show_authenticator_setup and getattr(request, "account_credentials_allowed", True):
             authenticator_secret = request.user.get_or_create_authenticator_secret()
             authenticator_uri = request.user.build_totp_uri()
             authenticator_qr_data_uri = _build_qr_data_uri(authenticator_uri)
@@ -716,8 +724,8 @@ def account(request):
                 fresh_recovery_codes = request.user.generate_recovery_codes()
                 show_authenticator_setup = False
                 message = (
-                    "Authenticator app enabled. Save your recovery codes now"
-                    "—if you lose both, you cannot self-recover."
+                    "Authenticator app enabled. Save your recovery codes now. "
+                    "If you lose both, you cannot self-recover."
                 )
                 if native:
                     return native_response(message=message, tone="success")
@@ -2380,7 +2388,7 @@ def import_data_context(request):
 
     # Get Storyteller account and any in-progress device login
     storyteller_account = getattr(user, "storyteller_account", None)
-    storyteller_pending = request.session.get("storyteller_pending_auth")
+    storyteller_pending = pending_auth.get("storyteller_pending_auth", request.user.pk)
     koreader_account = getattr(user, "koreader_account", None)
     koreader_link_count = 0
     if koreader_account:
