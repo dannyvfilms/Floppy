@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { Reveal } from './Reveal';
 
@@ -92,16 +93,58 @@ function IconSlot({ spec, glyph, renderIcon, size = 20, color, rotate }) {
   </Text>;
 }
 
-function MenuModal({ open, onClose, children, palette, labels }) {
-  return <Modal transparent visible={open} animationType="fade" onRequestClose={onClose}>
-    <View style={styles.modalRoot}>
+// Where a dropdown sits under its trigger: right edges aligned, flipped above
+// when it would run off the bottom. `anchor` is the trigger's window rectangle.
+const POPOVER_GAP = 4;
+const POPOVER_EDGE = 8;
+const POPOVER_HEIGHT_ESTIMATE = 112;
+
+function popoverPlacement(anchor, windowWidth, windowHeight) {
+  const right = Math.max(POPOVER_EDGE, windowWidth - (anchor.x + anchor.width));
+  const below = anchor.y + anchor.height + POPOVER_GAP;
+  return below + POPOVER_HEIGHT_ESTIMATE > windowHeight - POPOVER_EDGE
+    ? { right, bottom: windowHeight - anchor.y + POPOVER_GAP }
+    : { right, top: below };
+}
+
+// The row's options open as a dropdown under their button, like the preference
+// dropdowns: no scrim, and a tap outside closes it. Without a measured button
+// (no window position available) it falls back to a centred, dimmed menu.
+function MenuModal({ open, onClose, children, palette, labels, anchor }) {
+  const { width, height } = useWindowDimensions();
+  const dropdown = Boolean(anchor);
+  return <Modal transparent visible={open} animationType={dropdown ? 'none' : 'fade'} onRequestClose={onClose}>
+    <View style={dropdown ? StyleSheet.absoluteFill : styles.modalRoot}>
       <Pressable accessibilityRole="button" accessibilityLabel={labels.closeMenu}
-        onPress={onClose} style={[StyleSheet.absoluteFill, { backgroundColor: palette.overlay }]} />
-      <View accessibilityViewIsModal style={[styles.menu, {
-        backgroundColor: palette.surfaceStrong, borderColor: palette.border,
-      }]}>{children}</View>
+        onPress={onClose}
+        style={[StyleSheet.absoluteFill, dropdown ? null : { backgroundColor: palette.overlay }]} />
+      <View accessibilityViewIsModal style={[styles.menu,
+        dropdown && [styles.popover, popoverPlacement(anchor, width, height)], {
+          backgroundColor: dropdown ? palette.surface : palette.surfaceStrong,
+          borderColor: palette.border,
+        }]}>{children}</View>
     </View>
   </Modal>;
+}
+
+// The ellipsis button of a row. It reports its window rectangle so the menu can open under it.
+function EllipsisButton({ label, expanded, onOpen, palette, icons, renderIcon }) {
+  const ref = useRef(null);
+  const press = () => {
+    const node = ref.current;
+    if (node && typeof node.measureInWindow === 'function') {
+      node.measureInWindow((x, y, width, height) => onOpen({ x, y, width, height }));
+    } else {
+      onOpen(null);
+    }
+  };
+  return <Pressable ref={ref} accessibilityRole="button" accessibilityLabel={label}
+    accessibilityState={{ expanded: Boolean(expanded) }} onPress={press}
+    style={({ pressed }) => [styles.iconButton, { borderRadius: palette.radius },
+      pressed && { backgroundColor: palette.hoverDim }]}>
+    <IconSlot spec={icons?.ellipsis} glyph={controlGlyphs.ellipsis} renderIcon={renderIcon}
+      size={16} color={palette.textMuted} />
+  </Pressable>;
 }
 
 function MenuButton({ label, onPress, palette, danger = false, icon, glyph, renderIcon }) {
@@ -117,16 +160,12 @@ function MenuButton({ label, onPress, palette, danger = false, icon, glyph, rend
 
 function PinMenu({ pinKey, pins, palette, labels, icons, renderIcon }) {
   const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState(null);
   const pinned = pins.isPinned(pinKey);
   return <View style={styles.action}>
-    <Pressable accessibilityRole="button" accessibilityLabel={labels.navOptions}
-      accessibilityState={{ expanded: open }} onPress={() => setOpen(value => !value)}
-      style={({ pressed }) => [styles.iconButton, { borderRadius: palette.radius },
-        pressed && { backgroundColor: palette.hoverDim }]}>
-      <IconSlot spec={icons?.ellipsis} glyph={controlGlyphs.ellipsis} renderIcon={renderIcon}
-        size={16} color={palette.textMuted} />
-    </Pressable>
-    <MenuModal open={open} onClose={() => setOpen(false)} palette={palette} labels={labels}>
+    <EllipsisButton label={labels.navOptions} expanded={open} palette={palette} icons={icons}
+      renderIcon={renderIcon} onOpen={rect => { setAnchor(rect); setOpen(value => !value); }} />
+    <MenuModal open={open} onClose={() => setOpen(false)} anchor={anchor} palette={palette} labels={labels}>
       <MenuButton label={pinned ? labels.unpin : labels.pin} palette={palette}
         onPress={() => { pins.toggle(pinKey); setOpen(false); }} />
     </MenuModal>
@@ -183,6 +222,7 @@ function SavedViewGroup({
   const [reordering, setReordering] = useState(false);
   const [views, setViews] = useState(item.views);
   const [menuFor, setMenuFor] = useState(null);
+  const [menuAnchor, setMenuAnchor] = useState(null);
   const list = useRef(null);
 
   const toggle = () => {
@@ -236,7 +276,8 @@ function SavedViewGroup({
     {open ? <View ref={list} style={styles.savedViewList}>
       {views.map(view => <SavedViewRow key={view.id} view={view} reordering={reordering}
         palette={palette} labels={labels} rowActions={rowActions} icons={icons}
-        renderIcon={renderIcon} onNavigate={onNavigate} onMenu={() => setMenuFor(view.id)} />)}
+        renderIcon={renderIcon} onNavigate={onNavigate}
+        onMenu={rect => { setMenuAnchor(rect); setMenuFor(view.id); }} />)}
       {reordering ? <Pressable accessibilityRole="button" accessibilityLabel={labels.done}
         onPress={finish} style={({ pressed }) => [styles.doneButton,
           { borderRadius: palette.radius }, pressed && { backgroundColor: palette.hoverDim }]}>
@@ -245,7 +286,7 @@ function SavedViewGroup({
         <Text style={[styles.doneText, { color: palette.link }]}>{labels.done}</Text>
       </Pressable> : null}
     </View> : null}
-    <MenuModal open={Boolean(menuView)} onClose={() => setMenuFor(null)}
+    <MenuModal open={Boolean(menuView)} onClose={() => setMenuFor(null)} anchor={menuAnchor}
       palette={palette} labels={labels}>
       {menuView ? <React.Fragment>
         <MenuButton label={labels.reorder} palette={palette} icon={icons?.reorder}
@@ -260,13 +301,8 @@ function SavedViewGroup({
 }
 
 function SavedViewRow({ view, reordering, palette, labels, rowActions, icons, renderIcon, onNavigate, onMenu }) {
-  const actions = reordering ? null : <Pressable accessibilityRole="button"
-    accessibilityLabel={format(labels.viewOptions, view.name)}
-    onPress={onMenu} style={({ pressed }) => [styles.iconButton, { borderRadius: palette.radius },
-      pressed && { backgroundColor: palette.hoverDim }]}>
-    <IconSlot spec={icons?.ellipsis} glyph={controlGlyphs.ellipsis} renderIcon={renderIcon}
-      size={16} color={palette.textMuted} />
-  </Pressable>;
+  const actions = reordering ? null : <EllipsisButton label={format(labels.viewOptions, view.name)}
+    palette={palette} icons={icons} renderIcon={renderIcon} onOpen={onMenu} />;
   return <HoverRow testID={`saved-view-row-${view.id}`} active={view.current} palette={palette}
     rowActions={rowActions} actions={actions}
     style={[styles.savedViewRow, { minHeight: palette.navRowHeight }]}>
@@ -294,6 +330,7 @@ function ListsItem({
   const initial = Boolean(item.open);
   const [open, setOpen] = useState(initial);
   const [menuFor, setMenuFor] = useState(null);
+  const [menuAnchor, setMenuAnchor] = useState(null);
   const count = useRef(pins.pinnedLists.length);
   const current = pins.pinnedLists.some(entry => entry.url === model.currentUrl);
   const expanded = open || current;
@@ -346,16 +383,11 @@ function ListsItem({
           <Text numberOfLines={1} style={[styles.savedViewText,
             { color: palette.textMuted, fontSize: palette.navFontSize }]}>{entry.name}</Text>
         </Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={labels.listOptions}
-          onPress={() => setMenuFor(entry.id)}
-          style={({ pressed }) => [styles.iconButton, { borderRadius: palette.radius },
-            pressed && { backgroundColor: palette.hoverDim }]}>
-          <IconSlot spec={icons?.ellipsis} glyph={controlGlyphs.ellipsis} renderIcon={renderIcon}
-            size={16} color={palette.textMuted} />
-        </Pressable>
+        <EllipsisButton label={labels.listOptions} palette={palette} icons={icons} renderIcon={renderIcon}
+          onOpen={rect => { setMenuAnchor(rect); setMenuFor(entry.id); }} />
       </View>)}
     </View> : null}
-    <MenuModal open={Boolean(menuEntry)} onClose={() => setMenuFor(null)}
+    <MenuModal open={Boolean(menuEntry)} onClose={() => setMenuFor(null)} anchor={menuAnchor}
       palette={palette} labels={labels}>
       {menuEntry ? <MenuButton label={labels.unpin} palette={palette}
         onPress={() => { setMenuFor(null); onUnpinList?.(menuEntry.id); }} /> : null}
@@ -552,6 +584,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 },
   modalRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   menu: { width: 208, borderRadius: 8, borderWidth: 1, paddingVertical: 4 },
+  popover: { position: 'absolute', shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 }, elevation: 8 },
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingHorizontal: 12, paddingVertical: 10 },
   menuItemText: { fontSize: 14, lineHeight: 20 },
