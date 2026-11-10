@@ -63,6 +63,20 @@ const controlGlyphs = {
   close: '\u00d7',
 };
 
+// Saved views run full width like the main links. Their bullet sits in the icon
+// column, so the text lines up with the media type labels above it.
+const LINK_PADDING = 16;
+const LINK_GAP = 12;
+const BULLET_SIZE = 5;
+
+function Bullet({ palette, color }) {
+  return <View style={{ width: palette.navIconSize, height: palette.navIconSize,
+    alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: BULLET_SIZE, height: BULLET_SIZE, borderRadius: BULLET_SIZE / 2,
+      backgroundColor: color }} />
+  </View>;
+}
+
 const format = (template, name) => template.replace('%(name)s', name);
 
 function IconSlot({ spec, glyph, renderIcon, size = 20, color, rotate }) {
@@ -254,7 +268,8 @@ function SavedViewRow({ view, reordering, palette, labels, rowActions, icons, re
       size={16} color={palette.textMuted} />
   </Pressable>;
   return <HoverRow testID={`saved-view-row-${view.id}`} active={view.current} palette={palette}
-    rowActions={rowActions} actions={actions} style={styles.savedViewRow}>
+    rowActions={rowActions} actions={actions}
+    style={[styles.savedViewRow, { minHeight: palette.navRowHeight }]}>
     {reordering ? <View testID="saved-view-handle" style={styles.dragHandle}>
       <IconSlot spec={icons?.drag} glyph={controlGlyphs.drag} renderIcon={renderIcon}
         size={16} color={palette.textMuted} />
@@ -265,8 +280,9 @@ function SavedViewRow({ view, reordering, palette, labels, rowActions, icons, re
       disabled={reordering}
       onPress={view.platformProps?.href ? undefined : () => onNavigate?.(view)}
       style={({ focused }) => [styles.savedViewLink, focused && palette.focusStyle]}>
+      <Bullet palette={palette} color={view.current ? palette.link : palette.textMuted} />
       <Text numberOfLines={1} style={[styles.savedViewText,
-        { color: view.current ? palette.text : palette.textMuted }]}>{view.name}</Text>
+        { color: view.current ? palette.text : palette.textMuted, fontSize: palette.navFontSize }]}>{view.name}</Text>
     </Pressable>
   </HoverRow>;
 }
@@ -321,13 +337,14 @@ function ListsItem({
     </HoverRow>
     {expanded ? <View style={styles.savedViewList}>
       {pins.pinnedLists.map(entry => <View key={entry.id}
-        style={[styles.savedViewRow, { backgroundColor: 'transparent' }]}>
+        style={[styles.savedViewRow, { backgroundColor: 'transparent', minHeight: palette.navRowHeight }]}>
         <Pressable {...(entry.platformProps || {})} accessibilityRole="link"
           accessibilityLabel={entry.name}
           onPress={entry.platformProps?.href ? undefined : () => onNavigate?.({ ...entry, href: entry.url })}
           style={styles.savedViewLink}>
+          <Bullet palette={palette} color={palette.textMuted} />
           <Text numberOfLines={1} style={[styles.savedViewText,
-            { color: palette.textMuted }]}>{entry.name}</Text>
+            { color: palette.textMuted, fontSize: palette.navFontSize }]}>{entry.name}</Text>
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel={labels.listOptions}
           onPress={() => setMenuFor(entry.id)}
@@ -518,11 +535,11 @@ const styles = StyleSheet.create({
   linkText: { flexShrink: 1, fontSize: 14, lineHeight: 20 },
   action: { flexShrink: 0, marginRight: 8 },
   iconButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
-  savedViewList: { marginTop: 4, marginLeft: 32, gap: 4 },
+  savedViewList: { marginTop: 4, gap: 4 },
   savedViewRow: { minHeight: 32, flexDirection: 'row', alignItems: 'center',
-    paddingLeft: 12, paddingRight: 4 },
-  savedViewLink: { flex: 1, minWidth: 0, paddingVertical: 6 },
-  savedViewText: { flexShrink: 1, fontSize: 14, lineHeight: 20 },
+    paddingLeft: LINK_PADDING, paddingRight: 4 },
+  savedViewLink: { flex: 1, minWidth: 0, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: LINK_GAP },
+  savedViewText: { flexShrink: 1, fontSize: 14 },
   dragHandle: { width: 24, alignItems: 'center', justifyContent: 'center' },
   doneButton: { flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingLeft: 12, paddingRight: 4, paddingVertical: 6 },
