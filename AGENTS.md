@@ -35,6 +35,17 @@ change lands on every applicable surface in the same PR. Never ship web-only or
 native-only by accident; a deliberate carve-out is stated in the PR with its reason.
 "Implemented on all platforms" and "verified on all platforms" are separate claims.
 
+Parity is the default for behaviour, performance and bug fixes, not only for UI. Web
+and native apps operate at parity unless the user asks for a device-specific
+carve-out or a real platform limit forces one. When a problem is found or fixed on
+one platform (a slow flip, a failing request, late artwork, a layout bug), ask the
+same question of the other before calling it done: does it have the same problem,
+and does the same improvement apply? Then apply it, or measure and report why it does
+not. A platform-tuned fix (for example native-only image windowing) must name the
+other platform's status in the summary: same change applied, different change
+applied, or no change needed with evidence. Do not leave the other platform unmeasured
+and silent. Shared components and server changes are the default route to parity.
+
 - Before editing, trace which component each surface (web adapter, `native-proof/`,
   and any platform-specific file) actually imports. Do not assume a shared component is
   active everywhere. `npm run check:page-parity` shows the registry state.
