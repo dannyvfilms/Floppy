@@ -12,7 +12,7 @@ import { RailModalHost, RailModalProvider, useRailModal } from '../../../fronten
 import { menuGeometry } from './menuGeometry.mjs';
 import { horizontalContentPadding } from '../safeAreaSpacing.mjs';
 
-function MenuLayout({ open, sidebar, search, children, palette, division, reduceMotion, onFull }) {
+function MenuLayout({ open, sidebar, search, children, palette, division, reduceMotion }) {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [contentWidth, setContentWidth] = useState(0);
@@ -21,6 +21,10 @@ function MenuLayout({ open, sidebar, search, children, palette, division, reduce
   const measuredDivision = division?.frame || (arrangement?.containerWidth === contentWidth ? arrangement : null);
   const target = menuGeometry(contentWidth || width, hinge?.status, measuredDivision);
   const [geometry, setGeometry] = useState(target);
+  // The panel is part of one shape with the side rail: it reaches the screen edge through the
+  // safe-area insets (the rail on a full-width menu) and slides in with the panel, so the rail
+  // colour is never a separate jump or fade.
+  const bleed = { top: insets.top, left: insets.left, right: geometry.full ? insets.right : 0 };
   useLayoutEffect(() => {
     if (geometry.full === target.full && geometry.menuWidth === target.menuWidth && geometry.gap === target.gap) return;
     if (open && !reduceMotion && (hinge?.status === 'fullyOpen' || hinge?.status === 'partiallyOpen')) {
@@ -28,7 +32,6 @@ function MenuLayout({ open, sidebar, search, children, palette, division, reduce
     }
     setGeometry(target);
   }, [geometry, target.full, target.menuWidth, target.gap, hinge?.status, open, reduceMotion]);
-  useEffect(() => { onFull?.(geometry.full); }, [geometry.full, onFull]);
   return <View style={styles.row} onLayout={event => setContentWidth(event.nativeEvent.layout.width)}>
     {Constants.executionEnvironment === ExecutionEnvironment.StoreClient && hinge?.status === 'partiallyOpen'
       ? <Host pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
@@ -46,9 +49,11 @@ function MenuLayout({ open, sidebar, search, children, palette, division, reduce
       </Host> : null}
     <View accessibilityElementsHidden={!open} importantForAccessibility={open ? 'auto' : 'no-hide-descendants'}
       pointerEvents={open ? 'auto' : 'none'}
-      style={[styles.sidebar, { backgroundColor: palette.sidebar, width: geometry.menuWidth,
-        left: open ? 0 : -geometry.menuWidth }]}>
-      {sidebar}
+      style={[styles.sidebar, { backgroundColor: palette.sidebar, top: -bleed.top, width: geometry.menuWidth + bleed.left + bleed.right,
+        left: open ? -bleed.left : -(geometry.menuWidth + bleed.left + bleed.right) }]}>
+      <View style={{ flex: 1, paddingTop: bleed.top, paddingLeft: bleed.left, paddingRight: bleed.right }}>
+        {sidebar}
+      </View>
     </View>
     <View style={[styles.content, { marginLeft: open && !geometry.full ? geometry.menuWidth + geometry.gap : 0 }]} accessibilityElementsHidden={open && geometry.full}
       importantForAccessibility={open && geometry.full ? 'no-hide-descendants' : 'auto'}>
@@ -100,8 +105,7 @@ function ShellWithRail({ open, onToggle, sidebar, search, children, palette, has
       update: { type: LayoutAnimation.Types.easeOut } });
     onToggle();
   };
-  const [menuFull, setMenuFull] = useState(false);
-  const menu = { open, sidebar, search, palette, children, reduceMotion, onFull: setMenuFull };
+  const menu = { open, sidebar, search, palette, children, reduceMotion };
   return <>
     <Stack.Screen options={{ headerShown: true, headerTransparent: true, headerShadowVisible: false,
       title: '', headerTitle: '', headerTintColor: palette.text, contentStyle: { backgroundColor: palette.background } }} />
@@ -117,9 +121,7 @@ function ShellWithRail({ open, onToggle, sidebar, search, children, palette, has
         onPress={modal ? modal.onRequestClose : onBack} accessibilityLabel="Back" separateBackground /> : null}
     </Stack.Toolbar>
     <View style={[styles.root, { paddingTop: insets.top, paddingLeft: insets.left,
-      paddingRight: insets.right, paddingBottom: hasRail ? 0 : insets.bottom },
-      // A full-width menu runs through the side rail and the other insets, so they take its colour.
-      open && menuFull && { backgroundColor: palette.sidebar }]}>
+      paddingRight: insets.right, paddingBottom: hasRail ? 0 : insets.bottom }]}>
       <View style={styles.root}
         accessibilityElementsHidden={Boolean(modal)}
         importantForAccessibility={modal ? 'no-hide-descendants' : 'auto'}>
@@ -136,7 +138,8 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   search: { zIndex: 2, width: '100%', minHeight: 44,
     justifyContent: 'center', paddingTop: 25, paddingBottom: 27 },
-  row: { flex: 1, flexDirection: 'row', minHeight: 0, overflow: 'hidden' },
+  // Not clipped: the menu panel extends through the safe-area insets.
+  row: { flex: 1, flexDirection: 'row', minHeight: 0 },
   sidebar: { position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 3, overflow: 'hidden' },
   content: { flex: 1, minWidth: 0, zIndex: 0 },
 });
