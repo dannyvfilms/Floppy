@@ -353,6 +353,11 @@ urlpatterns = [
     ),
     path("api/history-genres/", views.history_genres, name="history_genres"),
     path(
+        "person/<source:source>/<str:person_id>/credit-facts/",
+        views.person_credit_facts,
+        name="person_credit_facts",
+    ),
+    path(
         "person/<source:source>/<str:person_id>/<slug:name>",
         views.person_detail,
         name="person_detail",

@@ -1,4 +1,8 @@
 {% load app_tags %}
 <div style="width: 100%; max-width: 16rem">
-  {% media_card "library" item=item media=media card_media_type=preview_type %}
+  {% if preview_type == "person" %}
+    {% media_card "credit" item=item media=media title=item.title card_media_type="movie" credit=item %}
+  {% else %}
+    {% media_card "library" item=item media=media card_media_type=preview_type %}
+  {% endif %}
 </div>

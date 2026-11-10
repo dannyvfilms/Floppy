@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -314,6 +314,148 @@ class PersonDetailViewTests(TestCase):
         self.assertEqual(sum(1 for m in models if m["actions"]), 3)
         self.assertEqual(sum(1 for m in models if m["statusChip"]), 2)
         self.assertNotContains(response, "Tracked Titles")
+
+    @patch("app.providers.tmdb.person")
+    def test_person_detail_shows_release_age_for_posthumous_credit(self, mock_person):
+        """A posthumous release shows release age and the death year."""
+        mock_person.return_value = {
+            "person_id": "123",
+            "source": Sources.TMDB.value,
+            "name": "Jane Star",
+            "birth_date": "1930-01-01",
+            "death_date": "2010-05-01",
+            "filmography": [
+                {
+                    "media_id": "900",
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "title": "Posthumous Release",
+                    "year": 2015,
+                    "release_date": timezone.make_aware(datetime(2015, 7, 1)),
+                    "credit_type": "cast",
+                    "role": "Lead",
+                },
+                {
+                    "media_id": "901",
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "title": "Earlier Show",
+                    "year": 2008,
+                    "release_date": "2008-01-01",
+                    "credit_type": "cast",
+                    "role": "Guest",
+                },
+            ],
+        }
+        response = self.client.get(
+            reverse(
+                "person_detail",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "person_id": "123",
+                    "name": "jane-star",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["filmography"][0]["age_label"],
+            "85 yo at release · died 2010",
+        )
+        self.assertEqual(
+            response.context["filmography"][1]["age_label"],
+            "78 yo at first air",
+        )
+        credit_models = card_models(response.content)
+        self.assertTrue(
+            any(
+                part.get("text") == "85 yo at release · died 2010"
+                and not line.get("dormant")
+                for model in credit_models
+                for line in model["lines"]
+                for part in line.get("parts", [])
+            )
+        )
+        json_response = self.client.get(
+            reverse(
+                "person_detail",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "person_id": "123",
+                    "name": "jane-star",
+                },
+            ),
+            {"format": "json"},
+        )
+        self.assertEqual(
+            json_response.json()["filmography"][0]["ageLabel"],
+            "85 yo at release · died 2010",
+        )
+
+    @patch(
+        "app.providers.tmdb.person_dates",
+        return_value={"birth_date": "1965-02-01", "death_date": "1993-03-31"},
+    )
+    def test_cast_card_facts_use_release_age_and_retain_death_year(self, mock_person_dates):
+        """A posthumous release shows the release age and death year."""
+        response = self.client.get(
+            reverse(
+                "person_credit_facts",
+                kwargs={"source": Sources.TMDB.value, "person_id": "57700"},
+            ),
+            {"event_date": "1994-05-11", "event_label": "release"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"ageLabel": "29 yo at release · died 1993"})
+        mock_person_dates.assert_called_once_with("57700")
+        person = Person.objects.get(
+            source=Sources.TMDB.value,
+            source_person_id="57700",
+        )
+        self.assertEqual(person.birth_date.isoformat(), "1965-02-01")
+        self.assertEqual(person.death_date.isoformat(), "1993-03-31")
+        self.assertIsNotNone(person.profile_dates_checked_at)
+
+    @patch(
+        "app.providers.tmdb.person_dates",
+        return_value={"birth_date": "1965-02-01", "death_date": "1993-03-31"},
+    )
+    def test_cast_card_uses_filming_age_before_death(self, _mock_person_dates):
+        """A credit before death shows its event age without future death info."""
+        response = self.client.get(
+            reverse(
+                "person_credit_facts",
+                kwargs={"source": Sources.TMDB.value, "person_id": "57700"},
+            ),
+            {
+                "event_date": "1990-01-01",
+                "event_label": "filming",
+                "media_type": MediaTypes.MOVIE.value,
+            },
+        )
+
+        self.assertEqual(response.json(), {"ageLabel": "24 yo at filming"})
+
+    @patch("app.providers.tmdb.person_dates")
+    def test_durable_empty_person_dates_result_is_not_refetched(self, mock_person_dates):
+        Person.objects.create(
+            source=Sources.TMDB.value,
+            source_person_id="57701",
+            name="Unknown Dates",
+            profile_dates_checked_at=timezone.now(),
+        )
+
+        response = self.client.get(
+            reverse(
+                "person_credit_facts",
+                kwargs={"source": Sources.TMDB.value, "person_id": "57701"},
+            ),
+        )
+
+        self.assertEqual(response.json(), {"ageLabel": ""})
+        mock_person_dates.assert_not_called()
 
     @patch("app.providers.tmdb.person")
     def test_watched_content_includes_completed_titles_without_end_date(

@@ -1,5 +1,6 @@
 """Server-owned content slots for the incremental React settings-card pilot."""
 
+from urllib.parse import urlencode
 from uuid import uuid4
 
 from django import template
@@ -854,13 +855,16 @@ def _people_cast_props(context, row, source, collapse_key):
         DISPLAY_HOVER,
         card_lines,
         resolve_profile,
+        show_credit_age,
         subtitle_display,
+        title_options,
     )
 
     # The release person card followed the user's card settings: which lines
     # show, and whether they wait for hover or stay visible at rest.
     user = context.get("user") or getattr(context.get("request"), "user", None)
     profile_lines = resolve_profile(user, "person").get("lines") or []
+    age_enabled = show_credit_age(user)
     subtitle_always = subtitle_display(user, "person") == DISPLAY_ALWAYS and not any(
         line.get("display") == DISPLAY_HOVER for line in profile_lines
     )
@@ -872,6 +876,7 @@ def _people_cast_props(context, row, source, collapse_key):
         role = person.get("role") or ""
         department = person.get("department") or ""
         href = ""
+        age_url = ""
         if person_id and source:
             href = reverse(
                 "person_detail",
@@ -881,8 +886,23 @@ def _people_cast_props(context, row, source, collapse_key):
                     "name": slug_value(name),
                 },
             )
+            if age_enabled:
+                age_url = reverse(
+                    "person_credit_facts",
+                    kwargs={"source": source, "person_id": person_id},
+                )
+                age_query = {}
+                if row.get("credit_event_media_type"):
+                    age_query["media_type"] = row["credit_event_media_type"]
+                if row.get("credit_event_label"):
+                    age_query["event_label"] = row["credit_event_label"]
+                if row.get("credit_event_date"):
+                    age_query["event_date"] = row["credit_event_date"]
+                if age_query:
+                    age_url = f"{age_url}?{urlencode(age_query)}"
         items.append({
             "id": f"{source}:{person_id}" if person_id else name,
+            "cardId": f"people-card-{source}-{person_id}" if person_id else "",
             "name": name,
             "subtitle": role,
             "lines": [department] if department and department != role else [],
@@ -894,6 +914,9 @@ def _people_cast_props(context, row, source, collapse_key):
             "imageUrl": image_url(person.get("image") or settings.IMG_NONE),
             "imageFallback": image_url(settings.IMG_NONE),
             "personId": str(person_id) if person_id else "",
+            "ageUrl": age_url,
+            "agePending": bool(age_url),
+            "showCreditAge": age_enabled,
             "source": source or "",
             "slug": slug_value(name),
             "href": href,
@@ -908,6 +931,7 @@ def _people_cast_props(context, row, source, collapse_key):
         "kind": "cast",
         "title": str(row.get("title") or ""),
         "items": items,
+        "titleOptions": title_options(resolve_profile(user, "person")),
         "viewAll": view_all,
         "collapseKey": collapse_key or "",
         "labels": _people_labels(),

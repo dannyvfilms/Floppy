@@ -34,6 +34,43 @@ class MediaCardsSettingsTests(TestCase):
         self.assertContains(response, "Always show")
         self.assertNotContains(response, 'class="cards-seg"')
 
+    def test_person_profile_has_a_separate_age_setting(self):
+        """Age visibility is a separate Person setting, not a role-line replacement."""
+        url = reverse("cards_type", kwargs={"media_type": "person"})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        soup = BeautifulSoup(response.content, "html.parser")
+        age_labels = [
+            label for label in soup.select("label")
+            if (copy := label.select_one(".cards-opt-label"))
+            and copy.get_text(strip=True) == "Show age at credit event"
+        ]
+        self.assertEqual(len(age_labels), 1)
+        age_setting = age_labels[0].select_one("select.cards-select")
+        self.assertIsNotNone(age_setting)
+        self.assertEqual({option["value"] for option in age_setting.select("option")}, {"show", "hide"})
+        saved = json.loads(soup.select_one("#card-saved").string)
+        self.assertTrue(saved["person"]["options"]["show_credit_age"])
+
+    def test_person_age_setting_saves_without_replacing_role(self):
+        """Hiding credit age preserves the Person role configuration."""
+        url = reverse("cards_type", kwargs={"media_type": "person"})
+        profile = {
+            "version": 1,
+            "types": {
+                "person": {
+                    "fields": ["role"],
+                    "options": {"show_credit_age": False},
+                },
+            },
+        }
+        response = self.client.post(url, {"card_metadata": json.dumps(profile)})
+        self.assertRedirects(response, url)
+        self.user.refresh_from_db()
+        saved = self.user.card_metadata["types"]["person"]
+        self.assertEqual(saved["fields"], ["role"])
+        self.assertFalse(saved["options"]["show_credit_age"])
+
     def test_save_updates_mobile_behavior_and_preserves_per_type_options(self):
         response = self.client.post(self.url, {
             "card_metadata": json.dumps(self.profile), "clickable_media_cards": "on",
@@ -76,6 +113,36 @@ class MediaCardsSettingsTests(TestCase):
 
     def test_preview_get_still_works(self):
         self.assertEqual(self.client.get(reverse("cards_preview")).status_code, 200)
+
+    def test_person_preview_obeys_age_visibility_without_changing_role(self):
+        """The age option changes credit metadata while Role remains configured."""
+        profile = {
+            "version": 1,
+            "types": {
+                "person": {
+                    "fields": ["role"],
+                    "options": {"show_credit_age": True},
+                },
+            },
+        }
+        response = self.client.post(
+            reverse("cards_preview"),
+            {"type": "person", "draft": profile},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sample Person")
+        self.assertContains(response, "Age at release")
+
+        profile["types"]["person"]["options"]["show_credit_age"] = False
+        response = self.client.post(
+            reverse("cards_preview"),
+            {"type": "person", "draft": profile},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sample Person")
+        self.assertNotContains(response, "Age at release")
 
     def test_demo_account_cannot_save_card_behavior(self):
         self.user.is_demo = True
