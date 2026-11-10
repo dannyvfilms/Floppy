@@ -612,6 +612,7 @@ class DemoAccountGuardMiddleware:
             "revoke_integration_token",
             "create_catalog_grant",
             "revoke_catalog_grant",
+            "oauth_revoke_application",
             "save_provider_credential",
             "save_personal_credential",
             "clear_provider_credential",
