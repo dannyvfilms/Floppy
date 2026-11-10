@@ -3,17 +3,12 @@ import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ArtworkImage } from './ArtworkImage';
 import { CardScrim } from './CardScrim';
+import { Icon } from './Icon';
+import { STATUS_ICON_SPECS } from './statusChipIcons';
 import { MediaCardActionRow, MediaCardActions } from './MediaCardActions';
 import { shouldRevealMediaCardActions } from './mediaCardBehavior';
 
 const ASPECT = { poster: 2 / 3, square: 1, landscape: 16 / 9 };
-const STATUS_GLYPHS = {
-  Completed: '✓',
-  'In progress': '▶',
-  Paused: '❚❚',
-  Planning: '＋',
-  Dropped: '✕',
-};
 const DEFAULT_PALETTE = {
   card: '#27272a',
   text: '#fafafa',
@@ -127,7 +122,9 @@ function StatusChip({ chip, palette, labels }) {
   const color = palette.statusColors[status] || palette.accent || palette.link;
   return <View style={[styles.chip, styles.statusChip, { backgroundColor: palette.chipBackground }]}
     accessible accessibilityLabel={chip.label || status}>
-    <Text style={[styles.chipGlyph, { color }]}>{STATUS_GLYPHS[status] || '•'}</Text>
+    {STATUS_ICON_SPECS[status]
+      ? <Icon spec={STATUS_ICON_SPECS[status]} color={color} size={16} />
+      : <Text style={[styles.chipGlyph, { color }]}>•</Text>}
   </View>;
 }
 

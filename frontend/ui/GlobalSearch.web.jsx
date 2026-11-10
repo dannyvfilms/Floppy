@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { GlobalSearch as SharedGlobalSearch } from './GlobalSearch.jsx';
+import { useKeyboardOverlap } from './keyboardOverlap.web';
 import { requestBarcode } from './barcodeEntry.web';
 
 const canvas = document.createElement('canvas');
@@ -34,12 +35,7 @@ function readPalette() {
     accent: color('--color-accent', '#4a9eff'),
     errorSurface: color('--color-surface', '#2a2f35'),
     errorBorder: color('--color-surface-muted', '#343a40'),
-    focusStyle: {
-      outlineStyle: 'solid',
-      outlineWidth: 2,
-      outlineColor: color('--color-accent', '#4a9eff'),
-      outlineOffset: -2,
-    },
+    focusStyle: {},
   };
 }
 
@@ -131,6 +127,7 @@ export function GlobalSearch({ host, props }) {
   );
 
   return <SharedGlobalSearch
+    useKeyboardOverlap={useKeyboardOverlap}
     query={props.query}
     selectedType={props.selectedType}
     mediaTypes={props.mediaTypes}

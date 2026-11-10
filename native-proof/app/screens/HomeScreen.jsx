@@ -4,13 +4,14 @@ import { Button } from '../../../frontend/ui/Button';
 import { HomeView } from '../../../frontend/pages/HomeView';
 import { Icon } from '../../../frontend/ui/Icon';
 import { shelfCardWidth } from '../../../frontend/ui/HomeShelves';
-import { Rail } from '../../../frontend/ui/Rail.jsx';
+import WindowedRail from '../surfaces/WindowedRail';
 import {
   createHomeTransport,
   homeScreenFromPayload,
   mergeHomeRowPage,
 } from '../data/homeTransport';
 import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
+import { useMobileGridLayout } from '../data/useMobileGridLayout';
 import { palette, radius, spacing } from '../theme';
 import { Screen } from '../components/Screen';
 import MediaCardSlot from '../surfaces/MediaCardSlot';
@@ -335,7 +336,8 @@ export default function HomeScreen({ navigate }) {
   const { width } = useWindowDimensions();
   // The same breakpoint helper the web mount uses, so a card is never a
   // different size on one surface.
-  const itemWidth = shelfCardWidth(width);
+  const mobileGridLayout = useMobileGridLayout();
+  const itemWidth = shelfCardWidth(width, mobileGridLayout);
   const [session, setSession] = useState(() => getActiveAuthSession());
   useEffect(() => subscribeAuthSession(setSession), []);
   const transport = useMemo(
@@ -458,7 +460,7 @@ export default function HomeScreen({ navigate }) {
       palette={palette}
       readOnly={model.readOnly}
       itemWidth={itemWidth}
-      railComponent={Rail}
+      railComponent={WindowedRail}
       renderActionIcon={action => action.icon ? <Icon spec={action.icon} color="#ffffff" size={18} /> : null}
       loading={loading}
       error={error}

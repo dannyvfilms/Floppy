@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import random
@@ -3149,18 +3150,32 @@ def _row_items(user, row, executor, offset, limit, *, seed):
         return page.items, page.total
 
     updated = int(row.updated_at.timestamp()) if row.updated_at else 0
-    order_key = f"{cache_utils.HOME_ROW_CACHE_PREFIX}_order_{user.id}_{row.id}_{updated}_{seed}"
+
+    def order_key_for(direction):
+        return (
+            f"{cache_utils.HOME_ROW_CACHE_PREFIX}_order_{user.id}_{row.id}"
+            f"_{updated}_{direction}_{seed}"
+        )
+
+    saved_direction = resolve_home_row_direction(row.sort_by, row.direction)
+    order_key = order_key_for(saved_direction)
     ranked_ids = cache.get(order_key)
     if ranked_ids is None:
-        with boundary("home_rank"):
-            ranked_ids = executor.ranked_ids()
-        ttl = (
-            cache_utils.HOME_ROW_CACHE_TTL
-            if row.sort_by == HomeSortChoices.RANDOM
-            else cache_utils.HOME_ROW_ORDER_CACHE_TTL
-        )
-        cache.set(order_key, ranked_ids, ttl)
-        cache_utils.register_home_row_cache_key(user.id, order_key)
+        if row.sort_by == HomeSortChoices.RANDOM:
+            with boundary("home_rank"):
+                ranked_ids = executor.ranked_ids()
+            cache.set(order_key, ranked_ids, cache_utils.HOME_ROW_CACHE_TTL)
+            cache_utils.register_home_row_cache_key(user.id, order_key)
+        else:
+            # One scan serves both directions, so the first flip is as fast as later ones.
+            with boundary("home_rank"):
+                by_direction = executor.ranked_ids_both_directions()
+            for saved in (DirectionChoices.ASC, DirectionChoices.DESC):
+                key = order_key_for(saved)
+                engine = home_engine_direction(row.sort_by, saved)
+                cache.set(key, by_direction[engine], cache_utils.HOME_ROW_ORDER_CACHE_TTL)
+                cache_utils.register_home_row_cache_key(user.id, key)
+            ranked_ids = by_direction[executor.direction]
     window = ranked_ids[offset : offset + limit]
     by_id = Item.objects.defer(*HOME_CARD_UNREAD_ITEM_FIELDS).in_bulk(window)
     return [by_id[item_id] for item_id in window if item_id in by_id], len(ranked_ids)
@@ -3188,6 +3203,10 @@ def _row_entries(
             subtitle = f"{show_title} • {identity}" if show_title else identity
             if not item.image or item.image == settings.IMG_NONE:
                 item.image = season.item.image or getattr(show_item, "image", "") or settings.IMG_NONE
+        elif podcast_episodes and item.media_type == MediaTypes.PODCAST.value:
+            show_image = getattr(getattr(media, "show", None), "image", "")
+            if show_image and (not item.image or item.image == settings.IMG_NONE):
+                item.image = show_image
         entries.append(HomeRowEntry(
             item=item, media=media,
             use_podcast_show=bool(getattr(media, "use_podcast_show", False)) and not podcast_episodes,
@@ -3519,7 +3538,48 @@ def _build_row_section(
         if media_type in SQUARE_HOME_MEDIA_TYPES
         else "media-grid",
         "poll_for_covers": poll_for_covers,
+        "opposite_artwork": _opposite_direction_artwork(user, row) if batch_start == 0 else [],
     }
+
+
+OPPOSITE_ARTWORK_MEDIA_TYPES = frozenset({
+    MediaTypes.TV.value,
+    MediaTypes.MOVIE.value,
+    MediaTypes.ANIME.value,
+    MediaTypes.GAME.value,
+    MediaTypes.MANGA.value,
+    MediaTypes.BOOK.value,
+    MediaTypes.COMIC.value,
+    MediaTypes.BOARDGAME.value,
+})
+
+
+def _opposite_direction_artwork(user, row, limit: int = 8) -> list[str]:
+    """Return the first covers a direction flip would show, for the client to prefetch.
+
+    The first flip otherwise waits for covers it could not know about. Only
+    plain library shelves qualify; the opposite order is cheap because a
+    Python-ordered shelf caches both directions together.
+    """
+    if (
+        row.row_type != HomeScreenRowTypeChoices.LIBRARY_QUERY
+        or row.media_type not in OPPOSITE_ARTWORK_MEDIA_TYPES
+        or row.sort_by == HomeSortChoices.RANDOM
+    ):
+        return []
+    flipped = copy.copy(row)
+    current = resolve_home_row_direction(row.sort_by, row.direction)
+    flipped.direction = (
+        DirectionChoices.ASC if current == DirectionChoices.DESC else DirectionChoices.DESC
+    )
+    normalized = _normalized_filter_payload(row.filters or {}, row.media_type)
+    executor = _library_row_executor(user, flipped, normalized, seed=0)
+    items, _total = _row_items(user, flipped, executor, 0, limit, seed=0)
+    return [
+        item.image
+        for item in items
+        if item.image and item.image != settings.IMG_NONE and item.image.startswith("http")
+    ]
 
 
 def _cached_row_section(

@@ -1,6 +1,7 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
 import { GlobalSearch } from '../../../frontend/ui/GlobalSearch.jsx';
+import { useKeyboardOverlap } from '../data/useKeyboardOverlap';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import { createSearchTransport, localResultsFromPayload } from '../data/searchTransport';
 import { palette, radius } from '../theme';
@@ -128,6 +129,9 @@ export default function SearchSlot({
 
   const loadSuggestions = useCallback(async ({ query, mediaType }) => {
     await wait(180);
+    if (transport.mode === 'server' && transport.searchSuggestions) {
+      return { suggestions: await transport.searchSuggestions({ search: query, mediaType }) };
+    }
     if (transport.mode === 'server') {
       const payload = await transport.searchLocal({ search: query, mediaType, limit: 8, offset: 0 });
       return {
@@ -156,12 +160,15 @@ export default function SearchSlot({
   }, [transport]);
 
   function openSuggestion(suggestion) {
-    if (onOpenSuggestion) onOpenSuggestion(suggestion);
+    // Typeahead rows without an item identity (artists, podcast shows) open as a search.
+    const typeaheadWithoutItem = Boolean(suggestion.href) && !suggestion.identity;
+    if (onOpenSuggestion && !(typeaheadWithoutItem && onOpenSearch)) onOpenSuggestion(suggestion);
     else onOpenSearch?.({ query: suggestion.title, mediaType: suggestion.mediaType || initialMediaType });
   }
 
   return <>
     <GlobalSearch
+      useKeyboardOverlap={useKeyboardOverlap}
       expanded={expanded}
       compact={compact}
       query={initialQuery}

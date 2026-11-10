@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { mountRoot } from '../settings/root';
 import { HomeView } from '../pages/HomeView';
-import { SHELF_BREAKPOINTS, shelfCardWidth } from './HomeShelves';
+import { useShelfCardWidth } from './shelfWidth.web';
 import { MediaCard } from './MediaCard.web';
 import { ProgressChanger } from './ProgressChangerTheme.web';
 
@@ -59,21 +59,6 @@ function readPalette() {
 
 function assign(url) {
   if (url) window.location.assign(url);
-}
-
-// Release shelf cards are 11rem wide, dropping to the phone card size
-// (--card-cap: 6.75rem) below 600px so a rail shows three cards, not two.
-const PHONE_RAIL = window.matchMedia('(max-width: 600px)');
-
-function useShelfCardWidth() {
-  const current = () => shelfCardWidth(PHONE_RAIL.matches ? 0 : SHELF_BREAKPOINTS.phone);
-  const [width, setWidth] = useState(current);
-  useEffect(() => {
-    const update = () => setWidth(current());
-    PHONE_RAIL.addEventListener('change', update);
-    return () => PHONE_RAIL.removeEventListener('change', update);
-  }, []);
-  return width;
 }
 
 function mergeRowPage(row, page) {

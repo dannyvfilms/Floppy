@@ -96,6 +96,7 @@ def row_presentation(row, user, request=None):
         "mixedMedia": bool(row.get("mixed_media")),
         "videoLandscape": bool(row.get("video_landscape")),
         "pollForCovers": bool(row.get("poll_for_covers")),
+        "oppositeArtwork": row.get("opposite_artwork") or [],
     }
 
 
