@@ -824,6 +824,8 @@ PR #1878: The browser file-import mount now supplies a DOM chooser to the univer
 - `src/templates/users/components/file_import_island.html`
 - `src/templates/users/components/settings_form_island.html`
 
+YouTube Takeout accepts `.tgz`/`.tar.gz` in the shared `ProviderFileImportView.jsx` upload model and the retained Django fallback. A focused Chromium browser check verifies the React-mounted provider picker accept list and description; React owns the provider-page import card, while the server fallback serves legacy import surfaces. Retire the fallback when those surfaces are removed. iOS/Android remain unverified.
+
 ## SET-ACTIVITY
 
 Status: `Partial / coexisting`

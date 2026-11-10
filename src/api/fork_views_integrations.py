@@ -55,7 +55,7 @@ _FILE_IMPORTS = {
     "storygraph": ("import_storygraph", "StoryGraph CSV"),
     "youtube-takeout": (
         "import_youtube_takeout",
-        "YouTube Takeout watch history (JSON or zip)",
+        "YouTube Takeout watch history (JSON, HTML, zip or tgz)",
     ),
 }
 

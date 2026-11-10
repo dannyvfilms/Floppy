@@ -370,6 +370,9 @@ class ImportDataViewTests(TestCase):
                 start = html.index(action)
                 form_start = html.rindex("<form", 0, start)
                 form = html[form_start : html.index("</form>", start)]
+                if route == "import_youtube_takeout":
+                    self.assertIn(".tgz", form)
+                    self.assertIn(".tar.gz", form)
                 if route == "import_clz":
                     self.assertIn("One Time Import", html[:form_start])
                 else:

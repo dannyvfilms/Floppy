@@ -81,10 +81,17 @@ STREMIO_IMPORT_TIME_LIMIT = 30 * 60
 WETRAKR_IMPORT_SOFT_TIME_LIMIT = 90 * 60
 WETRAKR_IMPORT_TIME_LIMIT = 120 * 60
 
+# YouTube Takeout can contain a large history that takes hours to parse and
+# write. Keep this exception task-specific so other imports retain the global
+# worker bound.
+YOUTUBE_TAKEOUT_IMPORT_SOFT_TIME_LIMIT = 4 * 60 * 60
+YOUTUBE_TAKEOUT_IMPORT_TIME_LIMIT = YOUTUBE_TAKEOUT_IMPORT_SOFT_TIME_LIMIT + 5 * 60
+
 # ImportRun.source -> hard limit, for sources that outlive the global one.
 SOURCE_TIME_LIMITS = {
     "stremio": STREMIO_IMPORT_TIME_LIMIT,
     "wetrakr": WETRAKR_IMPORT_TIME_LIMIT,
+    "youtube_takeout": YOUTUBE_TAKEOUT_IMPORT_TIME_LIMIT,
 }
 
 

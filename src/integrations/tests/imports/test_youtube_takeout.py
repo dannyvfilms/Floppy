@@ -1,9 +1,11 @@
 import io
 import json
+import tarfile
 import zipfile
 from io import BytesIO
 from unittest.mock import patch
 
+from bs4 import BeautifulSoup
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
@@ -41,6 +43,12 @@ class YouTubeTakeoutParsingTests(TestCase):
         from integrations import tasks
 
         self.assertTrue(_is_tracked_task(tasks.import_youtube_takeout.name))
+
+    def test_youtube_task_has_a_long_but_bounded_runtime(self):
+        from integrations import tasks
+
+        self.assertEqual(tasks.import_youtube_takeout.soft_time_limit, 4 * 60 * 60)
+        self.assertEqual(tasks.import_youtube_takeout.time_limit, 4 * 60 * 60 + 300)
 
     def test_video_id_from_the_url_shapes_takeout_uses(self):
         """Watch, shorts and youtu.be URLs give the id. Posts and junk give none."""
@@ -94,6 +102,45 @@ class YouTubeTakeoutParsingTests(TestCase):
         )
         self.assertEqual(entry["title"], "Rick Roll")
         self.assertEqual(entry["channel"], "A Channel")
+
+    def test_html_parses_one_outer_cell_at_a_time(self):
+        """Large Takeout HTML should not be materialized as one BeautifulSoup tree."""
+        cards = []
+        for video_id, title in (
+            ("vidAAAAAAAA", "First video"),
+            ("vidBBBBBBBB", "Second video"),
+        ):
+            cards.append(
+                f"""<div class="outer-cell"><div class="header-cell">YouTube</div>
+                <div class="content-cell mdl-typography--body-1">Watched
+                <a href="https://www.youtube.com/watch?v={video_id}">{title}</a><br>
+                Jan 9, 2023, 11:45:14 AM CDT<br></div></div>"""
+            )
+        html = "<html><body>" + "".join(cards) + "</body></html>"
+
+        original_init = BeautifulSoup.__init__
+        parsed_fragments = []
+
+        def track_parse(instance, markup="", *args, **kwargs):
+            parsed_fragments.append(markup)
+            original_init(instance, markup, *args, **kwargs)
+
+        with (
+            patch.object(BeautifulSoup, "__init__", track_parse),
+            patch.object(youtube_takeout, "HTML_STREAM_CHUNK_SIZE", 17, create=True),
+        ):
+            records = youtube_takeout._records_from_html(html)
+
+        self.assertEqual(
+            [record["title"] for record in records], ["First video", "Second video"]
+        )
+        self.assertEqual(len(parsed_fragments), 2)
+        self.assertTrue(
+            all(
+                "outer-cell" in fragment and len(fragment) < len(html)
+                for fragment in parsed_fragments
+            )
+        )
 
 
 class YouTubeTakeoutImportTests(TestCase):
@@ -225,6 +272,80 @@ class YouTubeTakeoutImportTests(TestCase):
         counts, _ = youtube_takeout.importer(buffer, self.user, "new")
         self.assertEqual(counts["created"], 1)
 
+    def test_accepts_takeout_tgz(self):
+        """watch-history.json inside a gzip-compressed tar is imported."""
+        payload = json.dumps([watch("vidAAAAAAAA", "2026-03-01T10:00:00Z")]).encode()
+        buffer = BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+            info = tarfile.TarInfo("Takeout/YouTube/history/watch-history.json")
+            info.size = len(payload)
+            archive.addfile(info, BytesIO(payload))
+        buffer.seek(0)
+        counts, _ = youtube_takeout.importer(buffer, self.user, "new")
+        self.assertEqual(counts["created"], 1)
+        self.assertEqual(VideoPlay.objects.count(), 1)
+
+    def test_tgz_prefers_json_to_html_even_when_html_appears_first(self):
+        buffer = BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+            for name, payload in (
+                ("Takeout/YouTube/history/watch-history.html", b"<html></html>"),
+                ("watch-history.json", b"[]"),
+            ):
+                info = tarfile.TarInfo(name)
+                info.size = len(payload)
+                archive.addfile(info, BytesIO(payload))
+        buffer.seek(0)
+
+        self.assertEqual(youtube_takeout.load_records(buffer), [])
+
+    def test_rejects_oversized_tgz_before_parsing(self):
+        """A small compressed archive cannot expand past the scan budget."""
+        buffer = BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+            payload = b"x" * 4096
+            info = tarfile.TarInfo("unrelated.bin")
+            info.size = len(payload)
+            archive.addfile(info, BytesIO(payload))
+        buffer.seek(0)
+
+        with patch.object(
+            youtube_takeout, "MAX_TGZ_UNCOMPRESSED_BYTES", 1024, create=True
+        ):
+            with self.assertRaisesMessage(MediaImportError, "too large"):
+                youtube_takeout.load_records(buffer)
+
+    def test_rejects_tgz_over_compressed_archive_limit(self):
+        """The uploaded compressed container is capped before decompression."""
+        buffer = BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+            payload = json.dumps(
+                [watch("vidAAAAAAAA", "2026-03-01T10:00:00Z")]
+            ).encode()
+            info = tarfile.TarInfo("watch-history.json")
+            info.size = len(payload)
+            archive.addfile(info, BytesIO(payload))
+        buffer.seek(0)
+
+        with patch.object(youtube_takeout, "MAX_TGZ_ARCHIVE_BYTES", 8, create=True):
+            with self.assertRaisesMessage(MediaImportError, "archive is too large"):
+                youtube_takeout.load_records(buffer)
+
+    def test_rejects_tgz_with_too_many_members(self):
+        """Tar metadata scanning stops at the configured member bound."""
+        buffer = BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+            for name in ("first.txt", "second.txt"):
+                payload = b"x"
+                info = tarfile.TarInfo(name)
+                info.size = len(payload)
+                archive.addfile(info, BytesIO(payload))
+        buffer.seek(0)
+
+        with patch.object(youtube_takeout, "MAX_TGZ_MEMBERS", 1, create=True):
+            with self.assertRaisesMessage(MediaImportError, "too many files"):
+                youtube_takeout.load_records(buffer)
+
     def test_html_skips_google_ads_by_caption_details_only(self):
         def card(vid, details):
             return f"""<div class="outer-cell"><div class="mdl-grid">
@@ -336,6 +457,12 @@ class YouTubeTakeoutImportTests(TestCase):
             youtube_takeout.importer(buffer, self.user, "new")
         with self.assertRaises(MediaImportError):
             youtube_takeout.importer(BytesIO(b"PK\x03\x04junk"), self.user, "new")
+
+    def test_rejects_oversized_direct_history_upload(self):
+        """Direct JSON/HTML uploads obey the same selected-history size cap."""
+        with patch.object(youtube_takeout, "MAX_HISTORY_FILE_BYTES", 8):
+            with self.assertRaisesMessage(MediaImportError, "too large"):
+                youtube_takeout.load_records(BytesIO(b"[123456789]"))
 
     def test_empty_history_imports_nothing(self):
         """An empty list is a valid file with nothing to add."""

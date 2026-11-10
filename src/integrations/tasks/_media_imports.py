@@ -68,6 +68,8 @@ from integrations.tasks._import_helpers import (
     STREMIO_IMPORT_TIME_LIMIT,
     WETRAKR_IMPORT_SOFT_TIME_LIMIT,
     WETRAKR_IMPORT_TIME_LIMIT,
+    YOUTUBE_TAKEOUT_IMPORT_SOFT_TIME_LIMIT,
+    YOUTUBE_TAKEOUT_IMPORT_TIME_LIMIT,
     _run_file_import,
     format_import_message,
     format_watchlist_sync_message,
@@ -565,7 +567,11 @@ def import_hardcover_account(user_id, mode="new", username=None):
     return import_media(hardcover.sync_importer, None, user_id, mode)
 
 
-@shared_task(name="Import from YouTube Takeout")
+@shared_task(
+    name="Import from YouTube Takeout",
+    soft_time_limit=YOUTUBE_TAKEOUT_IMPORT_SOFT_TIME_LIMIT,
+    time_limit=YOUTUBE_TAKEOUT_IMPORT_TIME_LIMIT,
+)
 def import_youtube_takeout(file, user_id, mode):
     """Celery task for importing YouTube watch history from Google Takeout."""
     return _run_file_import(youtube_takeout.importer, file, user_id, mode)

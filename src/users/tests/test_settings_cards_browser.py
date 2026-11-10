@@ -349,6 +349,19 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(frequency).to_contain_text("Every Day")
         self.assertEqual(self.errors, [])
 
+    def test_youtube_takeout_accepts_tgz_archives(self):
+        """The React upload picker advertises both gzip tar suffixes."""
+        self.page.goto(f"{self.live_server_url}/settings/providers/youtube?tab=import")
+        root = self.page.locator('[data-file-import-root][data-react-mounted="true"]')
+        expect(root).to_be_visible()
+        upload = root.locator('input[type="file"]')
+        expect(upload).to_have_attribute("accept", ".json,.html,.zip,.tgz,.tar.gz")
+        expect(root).to_contain_text("the .tgz archive")
+        screenshot_path = os.environ.get("FLOPPY_TAKEOUT_SCREENSHOT")
+        if screenshot_path:
+            self.page.screenshot(path=screenshot_path, full_page=True)
+        self.assertEqual(self.errors, [])
+
     @patch("integrations.views._queue_staged_task_or_message")
     @patch("integrations.views._stage_upload_or_message", return_value="staged-clz.csv")
     def test_clz_preferences_drive_shared_file_import(self, mock_stage, mock_queue):
