@@ -82,10 +82,7 @@ def _person_credit_age_label(birth_date, death_date, event_date, event_label):
         "event": event_label,
     }
     if death_day and event_day > death_day:
-        return _("%(age)s · died %(year)s") % {
-            "age": label,
-            "year": death_day.year,
-        }
+        return f"{label}\n{_('Died')} {death_day.year}"
     return label
 
 
@@ -102,10 +99,7 @@ def _person_cast_age_label(birth_date, death_date, event_date, event_label):
     if event_day <= death_day:
         return label
     if label:
-        return _("%(age)s · died %(year)s") % {
-            "age": label,
-            "year": death_day.year,
-        }
+        return f"{label}\n{_('Died')} {death_day.year}"
     return _("Died %(year)s") % {"year": death_day.year}
 
 

@@ -46,7 +46,7 @@ class MediaCardModelTest(TestCase):
 
     def test_credit_age_line_uses_the_person_setting(self):
         """A credit age is present by default and removable without removing role."""
-        credit = {"age_label": "29 yo at release · died 1993", "role": "Eric Draven"}
+        credit = {"age_label": "29 yo at release\nDied 1993", "role": "Eric Draven"}
         context = {"user": self.user}
         values = {"item": self.item, "media": self.movie, "credit": credit}
         model = card_model(card_context(context, "credit", values))

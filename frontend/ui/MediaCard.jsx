@@ -184,7 +184,7 @@ function Line({ line, palette }) {
   const [expanded, setExpanded] = useState(false);
   if (!line || !line.parts?.length) return null;
   if (line.variant === 'credit-age') {
-    return <Text numberOfLines={line.clamp ? 1 : undefined}
+    return <Text numberOfLines={line.clamp ? 2 : undefined}
       style={[styles.creditAge, { color: palette.textMuted }]}>{line.parts[0].text}</Text>;
   }
   if (line.variant === 'provenance') {

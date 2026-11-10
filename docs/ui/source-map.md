@@ -761,6 +761,8 @@ Shared `PeopleView`/`PersonCard` expose event-age labels behind the Cards prefer
 
 - `src/templates/app/components/detail_carousel_fragment.html` (also the detail-page title logo; on a season page it links to the show because it hides the title link; `Legacy` until the web detail hero migrates)
 - `src/templates/app/components/detail_cast_grid.html` (iterates `people_cast_cards` supplied by `{% people_cast %}`)
+
+Posthumous labels show event age and `Died YYYY` on separate lines without a separator; both card variants allow two lines. Provider birth/death dates and successful-empty lookup state are persisted on `Person`.
 - `src/templates/app/components/game_lengths_section.html`
 - `src/templates/app/components/person_card_inline.html` (pre-mount fallback for the cast/crew `PeopleView` rail on media detail and episode pages; links come from `_people_cast_props`, #1953)
 - `src/templates/app/components/person_filmography_card.html`
