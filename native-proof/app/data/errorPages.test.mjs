@@ -16,6 +16,16 @@ test('a plain server message replaces generic copy but not the offline state', (
   assert.equal(errorPageWithMessage({ code: 'server_unreachable', message: 'x' }).message, ERROR_PAGES.offline.message);
 });
 
-test('no error page points at an example host', () => {
-  assert.equal(JSON.stringify(ERROR_PAGES).includes('example.com'), false);
+test('no error page links to a placeholder host', () => {
+  const placeholderHosts = new Set(['example.com', 'www.example.com', 'floppy.example', 'app.floppy.example']);
+  const hosts = [];
+  const collect = value => {
+    if (typeof value === 'string') {
+      for (const match of value.matchAll(/https?:\/\/[^\s"'<>)]+/gi)) hosts.push(new URL(match[0]).hostname);
+    } else if (value && typeof value === 'object') {
+      Object.values(value).forEach(collect);
+    }
+  };
+  collect(ERROR_PAGES);
+  assert.deepEqual(hosts.filter(host => placeholderHosts.has(host)), []);
 });
