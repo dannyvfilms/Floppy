@@ -150,10 +150,16 @@ function cookieName(raw) {
   return pair.slice(0, index).trim();
 }
 
+// iOS joins repeated Set-Cookie headers with a comma, so one value can arrive
+// as "A,csrftoken=B". Django cookie values never hold a comma: keep the newest.
+function cleanCookieValue(value) {
+  return String(value || '').split(/,\s*[^;,=\s]+=/).pop().trim();
+}
+
 function cookieValue(raw) {
   const pair = String(raw || '').split(';')[0];
   const index = pair.indexOf('=');
-  return index >= 0 ? pair.slice(index + 1).trim() : '';
+  return index >= 0 ? cleanCookieValue(pair.slice(index + 1)) : '';
 }
 
 function mergeCookies(cookies, response) {
@@ -171,10 +177,21 @@ function mergeCookies(cookies, response) {
   return next;
 }
 
+function cleanCookieText(text) {
+  return String(text || '').split(';')
+    .map(part => part.trim())
+    .filter(Boolean)
+    .map(part => {
+      const index = part.indexOf('=');
+      return index > 0 ? `${part.slice(0, index)}=${cleanCookieValue(part.slice(index + 1))}` : part;
+    })
+    .join('; ');
+}
+
 function cookieHeader(cookies) {
   return Object.entries(cookies)
     .filter(([name]) => name === 'sessionid' || name === 'csrftoken')
-    .map(([name, value]) => `${name}=${value}`)
+    .map(([name, value]) => `${name}=${cleanCookieValue(value)}`)
     .join('; ');
 }
 
@@ -350,8 +367,8 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, now =
     if (current.authType === 'token') {
       headers.Authorization = `Bearer ${current.token}`;
     } else if (current.cookieText) {
-      headers.Cookie = current.cookieText;
-      if (current.csrfToken) headers['X-CSRFToken'] = current.csrfToken;
+      headers.Cookie = cleanCookieText(current.cookieText);
+      if (current.csrfToken) headers['X-CSRFToken'] = cleanCookieValue(current.csrfToken);
       if (!SAFE_METHODS.has(method)) {
         headers.Origin = target;
         headers.Referer = `${target}/`;
@@ -406,7 +423,8 @@ export function createAuthTransport({ storage, fetchImpl, onSessionChange, now =
       method,
       headers,
       body,
-      credentials: current.authType === 'token' ? 'omit' : 'include',
+      // Cookies are sent by hand above; let iOS add none of its own, which it joins with a comma.
+      credentials: 'omit',
     });
     if (current.authType === 'session') {
       const cookies = mergeCookies(current.cookies || {}, response);
