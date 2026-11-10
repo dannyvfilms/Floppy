@@ -15,7 +15,6 @@ from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_GET
 
 from app import helpers
-from app.icon_specs import file_icon
 from app.library_query import LibraryQueryExecutor
 from app.library_query.adapters import from_media_list_filters
 from app.library_query.filters import shows_with_collected_episodes
