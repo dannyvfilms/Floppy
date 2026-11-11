@@ -365,8 +365,8 @@ kills it, with no one needing to remember a flag.
 
 CI accepts workflow changes through the normal PR checks. Hosted run
 `38993407779` took almost 69 minutes, so the test job now allows 120 minutes,
-with `FLOPPY_TEST_TIMEOUT=6600` and `FLOPPY_TEST_WATCHDOG=6300`. Both PR and
-coverage runs have the same bounded test budget, with time left for setup and
+with `FLOPPY_TEST_TIMEOUT=6600` and `FLOPPY_TEST_WATCHDOG=6300`. PR, publish
+and coverage runs have the same bounded test budget, with time left for setup and
 reporting. The watchdog leaves thread stacks before the runner times out:
 
 ```yaml
@@ -539,6 +539,30 @@ is the result of fixing it.
   that would confirm the timing-race reading.
 * Until then, treat a suite run that produces no output well past its usual
   wall time as this bug, not as a slow test.
+
+## Coverage runs beside the publish gate, not in front of it
+
+Until November 2026 a push to `latest` ran the three shards under
+`coverage run` with one context per test, inside the Docker publish gate. The
+tracer is needed for the affected-test map (`ctrace`, because `sysmon` on
+3.12 keeps only the first test per line), but nothing it produces decides
+whether an image is safe, and it slowed every shard on the critical path.
+
+Now:
+
+- The publish gate (`docker-image.yml` calling `app-tests.yml` with
+  `release_quality_gates`) runs the same tests through `scripts/test.sh`,
+  with no tracer. The exclusions are unchanged: `network` and `playwright`.
+  The timeout and watchdog come from `scripts/test.sh`.
+- `coverage.yml` runs on every push to `latest`: the same three shards under
+  coverage, then the combine step, the `affected-map` artifact and the
+  Codecov upload. Its job summary records the number of measured files and
+  test contexts. A newer push cancels a run still in flight, so only the
+  newest commit's map is built.
+- A red coverage run does not block or unpublish an image. It shows as a red
+  run on `latest`.
+
+The two workflows list the shards separately. Change them together.
 
 ## How to run tests quickly now
 
