@@ -13,6 +13,7 @@ from rest_framework.authentication import SessionAuthentication
 from rest_framework.response import Response
 
 from api.authentication import APIKeyAuthentication, BearerAuthentication
+from api.errors import failure_response
 from app import cache_utils, history_cache, statistics_cache
 from app.models import Item
 from users.forms import NotificationSettingsForm
@@ -664,9 +665,13 @@ class UserNotificationTestView(drf_views.APIView):
                 body_format=apprise.NotifyFormat.HTML,
             )
         except Exception as e:
-            return Response(
-                {"detail": "Failed to send test notification.", "errors": str(e)},
+            # Apprise errors can name the notification URL, which holds the
+            # service token: keep the text out of the response and the log.
+            return failure_response(
+                "Failed to send test notification.",
+                e,
                 status=HTTP.BAD_GATEWAY,
+                traceback=False,
             )
         if not result:
             return Response(

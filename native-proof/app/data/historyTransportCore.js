@@ -56,8 +56,15 @@ function payloadDays(payload) {
   return [];
 }
 
+// Strip until nothing changes, so no removal can leave a tag behind.
 function entryNote(value) {
-  return String(value || '').replace(/<[^>]*>/g, '').trim();
+  let text = String(value || '');
+  let previous;
+  do {
+    previous = text;
+    text = text.replace(/<[^>]*>/g, '');
+  } while (text !== previous);
+  return text.trim();
 }
 
 function monthKey(date = new Date()) {

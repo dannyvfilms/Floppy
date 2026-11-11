@@ -33,6 +33,7 @@ from .contract_serializers import (
     ListItemsRanksRequestSerializer,
     ListItemsReorderRequestSerializer,
 )
+from .errors import failure_response
 
 logger = logging.getLogger(__name__)
 
@@ -722,9 +723,8 @@ class ListRecommendationsView(drf_views.APIView):
                 ),
             )
         except Exception as e:
-            return Response(
-                {"detail": "Could not resolve item.", "errors": str(e)},
-                status=HTTP.BAD_GATEWAY,
+            return failure_response(
+                "Could not resolve item.", e, status=HTTP.BAD_GATEWAY
             )
 
         if list_has_item_identity(custom_list, item):

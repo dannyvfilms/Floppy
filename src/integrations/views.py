@@ -3987,7 +3987,9 @@ def storyteller_poll(request):
     try:
         data, status_code = client.poll_device_token(pending["device_code"])
     except Exception as exc:
-        return JsonResponse({"status": "pending", "detail": str(exc)})
+        # requests errors carry the server URL: log the class, answer plainly.
+        logger.warning("Storyteller device poll failed: %s", exception_summary(exc))
+        return JsonResponse({"status": "pending"})
 
     access_token = data.get("access_token") if isinstance(data, dict) else None
     if access_token:
@@ -6203,8 +6205,8 @@ def stremio_addon_catalog(
 
     try:
         skip = stremio_catalog.parse_skip(extra)
-    except ValueError as error:
-        return _stremio_addon_response({"error": str(error)}, status=400)
+    except stremio_catalog.CatalogSkipError as error:
+        return _stremio_addon_response({"error": error.message}, status=400)
 
     metas, unresolved_count = stremio_catalog.project_catalog(user, spec, skip)
     logger.info(

@@ -156,7 +156,7 @@ class PodcastShowsView(drf_views.APIView):
             try:
                 show = podcast_import.import_show_from_itunes_id(itunes_id)
             except podcast_import.PodcastImportError as e:
-                return Response({"detail": str(e)}, status=HTTP.BAD_REQUEST)
+                return Response({"detail": e.message}, status=HTTP.BAD_REQUEST)
 
         tracker = PodcastShowTracker.objects.filter(
             user=request.user,

@@ -459,6 +459,16 @@ class EpisodeScoreTests(FloppyApiTestCase):
             headers=self.auth_headers,
         )
 
+    def test_resolution_failure_does_not_return_exception_text(self):
+        """A failed episode lookup answers with the fixed detail only."""
+        with patch(
+            "api.fork_views_metadata.resolve_episode_coordinate_for_request",
+            side_effect=RuntimeError("secret /srv/private/path"),
+        ):
+            response = self._score_untracked({"score": 8})
+        self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+        self.assertEqual(response.json(), {"detail": "Could not resolve episode."})
+
     def _rating_rows(self, media_id="424242"):
         return Episode.ratings.filter(related_season__item__media_id=media_id)
 

@@ -29,6 +29,7 @@ from app.services.metadata_projection import project_item_metadata
 from integrations.state.ratings import rating_edit
 
 from .contract_serializers import DetailErrorSerializer
+from .errors import failure_response
 from .helpers import (
     apply_episode_score,
     body_too_large_response,
@@ -381,9 +382,8 @@ class MediaEpisodeScoreView(drf_views.APIView):
                 language=metadata_resolution.metadata_language_default(request.user),
             )
         except Exception as error:
-            return Response(
-                {"detail": "Could not resolve episode.", "errors": str(error)},
-                status=HTTP.NOT_FOUND,
+            return failure_response(
+                "Could not resolve episode.", error, status=HTTP.NOT_FOUND
             )
         if coordinate_error:
             return coordinate_error

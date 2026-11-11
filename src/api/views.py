@@ -96,7 +96,11 @@ from .contract_serializers import (
     TrackedMediaUpdateRequestSerializer,
     TrackMediaRequestSerializer,
 )
-from .errors import database_busy_response, validation_error_code
+from .errors import (
+    database_busy_response,
+    failure_response,
+    validation_error_code,
+)
 from .helpers import (
     apply_image_url,
     apply_list_sort,
@@ -1017,7 +1021,7 @@ def _media_list_response(request, media_type=None):
         )
     except MediaListFilterError as error:
         return Response(
-            {"detail": f"Invalid {error.parameter}: {error}"},
+            {"detail": f"Invalid {error.parameter}: {error.message}"},
             status=HTTP.BAD_REQUEST,
         )
 
@@ -1375,7 +1379,6 @@ class MediaDetailView(drf_views.APIView):
             return Response(
                 {
                     "detail": HTTP.INTERNAL_SERVER_ERROR.phrase,
-                    "errors": str(error),
                 },
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
@@ -4522,8 +4525,9 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
                 library_media_type=request.query_params.get("library_media_type"),
             )
         except Exception as e:
-            return Response(
-                {"detail": f"{e!s}"},
+            return failure_response(
+                HTTP.INTERNAL_SERVER_ERROR.phrase,
+                e,
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
 
@@ -4600,8 +4604,9 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
                 library_media_type=request.query_params.get("library_media_type"),
             )
         except Exception as e:
-            return Response(
-                {"detail": f"{e!s}"},
+            return failure_response(
+                HTTP.INTERNAL_SERVER_ERROR.phrase,
+                e,
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
 
@@ -4681,8 +4686,9 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
                 library_media_type=request.query_params.get("library_media_type"),
             )
         except Exception as e:
-            return Response(
-                {"detail": f"{e!s}"},
+            return failure_response(
+                HTTP.INTERNAL_SERVER_ERROR.phrase,
+                e,
                 status=HTTP.INTERNAL_SERVER_ERROR,
             )
 

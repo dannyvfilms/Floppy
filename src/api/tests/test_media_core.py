@@ -1413,6 +1413,35 @@ class MediaCoreTests(FloppyApiTestCase):
         self.assertEqual(payload["media_type"], MediaTypes.MUSIC.value)
         self.assertEqual(payload["title"], "API Song - API Artist")
 
+    def test_media_detail_provider_error_does_not_return_its_text(self):
+        """A provider failure other than 404 answers with the fixed detail only."""
+        error = provider_services.ProviderAPIError(
+            Sources.MUSICBRAINZ.value,
+            Mock(response=Mock(status_code=503, headers={})),
+            "upstream secret detail",
+        )
+        with patch("api.views.services.get_media_metadata", side_effect=error):
+            response = self.call_api(
+                "get",
+                "api_media_detail",
+                args=(MediaTypes.MUSIC.value, Sources.MUSICBRAINZ.value, "valid-looking-id"),
+                headers=self.auth_headers,
+            )
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json(), {"detail": "Internal Server Error"})
+
+    def test_media_list_invalid_filter_names_the_parameter_and_message(self):
+        """A rejected list filter answers with the parser's own text."""
+        from app.media_list_filters import MediaListFilterError
+
+        with patch(
+            "api.views.parse_media_list_filters",
+            side_effect=MediaListFilterError("sort", "Unknown sort."),
+        ):
+            response = self.call_api("get", "api_media_list", headers=self.auth_headers)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"detail": "Invalid sort: Unknown sort."})
+
     @patch("api.views.services.get_media_metadata", side_effect=RuntimeError("boom"))
     def test_media_detail_get_provider_failure_remains_internal_server_error(
         self,

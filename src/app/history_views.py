@@ -88,7 +88,7 @@ def delete_history_record(request, media_type, history_id):
         )
         return HttpResponse("Record not found", status=404)
     except fork_services_history.HistoryDeletionError as e:
-        return HttpResponse(str(e), status=500)
+        return HttpResponse(e.message, status=500)
 
     if music_id and media_type.lower() == "music":
         from app.models import Music
@@ -126,7 +126,7 @@ def delete_history_record(request, media_type, history_id):
 
                 response = HttpResponse()
                 response.write(
-                    f'<p id="track-history-{music_id}" hx-swap-oob="true" '
+                    f'<p id="track-history-{music.id}" hx-swap-oob="true" '
                     'class="text-xs text-gray-400 mt-2 px-4">'
                     f"{history_text}</p>",
                 )
@@ -136,18 +136,18 @@ def delete_history_record(request, media_type, history_id):
                     else f"Listened {remaining_count} times"
                 )
                 response.write(
-                    f'<p id="modal-listen-count-{music_id}" hx-swap-oob="true" '
+                    f'<p id="modal-listen-count-{music.id}" hx-swap-oob="true" '
                     'class="text-sm text-gray-400 mt-1">'
                     f"{modal_text}</p>",
                 )
                 return response
             response = HttpResponse()
             response.write(
-                f'<p id="track-history-{music_id}" hx-swap-oob="true" '
+                f'<p id="track-history-{music.id}" hx-swap-oob="true" '
                 'class="text-xs text-gray-400 mt-2 px-4" style="display: none;"></p>',
             )
             response.write(
-                f'<p id="modal-listen-count-{music_id}" hx-swap-oob="true" '
+                f'<p id="modal-listen-count-{music.id}" hx-swap-oob="true" '
                 'class="text-sm text-gray-400 mt-1">Not listened yet</p>',
             )
         except Music.DoesNotExist:
@@ -190,7 +190,7 @@ def delete_history_record(request, media_type, history_id):
                     else f"Played {remaining_count} times"
                 )
                 response.write(
-                    f'<p id="modal-listen-count-{podcast_id}" hx-swap-oob="true" '
+                    f'<p id="modal-listen-count-{podcast.id}" hx-swap-oob="true" '
                     'class="text-sm text-gray-400 mt-1">'
                     f"{modal_text}</p>",
                 )
@@ -198,7 +198,7 @@ def delete_history_record(request, media_type, history_id):
                 return response
             response = HttpResponse()
             response.write(
-                f'<p id="modal-listen-count-{podcast_id}" hx-swap-oob="true" '
+                f'<p id="modal-listen-count-{podcast.id}" hx-swap-oob="true" '
                 'class="text-sm text-gray-400 mt-1">Not played yet</p>',
             )
             response["HX-Trigger"] = "history-refresh-start"
