@@ -3407,7 +3407,7 @@
 {% else %}
         <div class="{% if provider_tab != 'import' %}bg-[var(--color-surface-strong)] p-4 rounded-lg{% endif %}">
           <div class="flex items-center mb-3">{% if provider_tab != 'import' %}{% source_display "youtube" %}{% endif %}{% include "users/components/import_upload_badge.html" %}</div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Export YouTube history from Google Takeout. Upload watch-history.json, watch-history.html, or the zip." %}</p>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Export YouTube history from Google Takeout. Upload watch-history.json, watch-history.html, the zip, or the .tgz archive." %}</p>
           <form method="post"
                 action="{% url 'import_youtube_takeout' %}"
                 enctype="multipart/form-data">
@@ -3418,7 +3418,7 @@
                    :class="!standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
                    :disabled="standardImportsDisabled()">
               <input name="youtube_takeout"
-                     accept=".json,.html,.zip"
+                     accept=".json,.html,.zip,.tgz,.tar.gz"
                      class="hidden"
                      type="file"
                      :disabled="standardImportsDisabled()"

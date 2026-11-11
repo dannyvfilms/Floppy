@@ -846,14 +846,14 @@ templates are compatibility/composition sources, not equally active parallel pag
   states); Stremio addon catalog grants (htmx status); the same-tab modal copies of upload and connection forms used outside provider pages. Retire each by moving it to a `provider_forms` or
   `provider_guides` entry. Masked credential previews are not serialized to React; the fallback still
   shows them.
-- Implementation: provider-import/schedule/game-sync/Plex-selector/upload-badge components, `users/_reading_server_card.html`, `_reading_server_modal.html`; retained import page.
+- Implementation: provider-import/schedule/game-sync/Plex-selector/upload-badge components, `users/_reading_server_card.html`, `_reading_server_modal.html`; retained import page. YouTube's `ProviderFileImportView.jsx` upload model and legacy server fallback both advertise `.tgz`/`.tar.gz` alongside the existing formats.
 - Contract: connect/disconnect/import/upload/schedule, provider-specific fields/library/content kinds, errors/busy state.
 - Data: import context/settings in `src/users/views.py`, `src/integrations/views.py`, account/task records.
 - Reuse/blockers: field/status/schedule primitives; keep distinct provider flows/server-required jobs.
-- Validation targets: `src/users/tests/views/test_import_data.py`, `src/integrations/tests/test_plex_import_views.py`.
+- Validation targets: `src/users/tests/views/test_import_data.py`, `src/integrations/tests/test_plex_import_views.py`, `src/integrations/tests/imports/test_youtube_takeout.py`, `src/users/tests/test_settings_cards_browser.py`.
 - Status: `Partial / coexisting`. `Web Migrated` for AniList preferences, serialized auto-save, public username import and credential-gated private OAuth form. Uses app-wide fields/selects/buttons/card grid and a reusable Public/Private `ToggleChip`; provider code retains authentication semantics. Other providers share the React import-preferences island while their provider-specific forms remain Django-owned; data management retains its restore dialog. Activity lists use bounded scrolling and provider pins are persisted per user. Native verification remains pending.
 - Native readiness: `DOM`. Its presentation (`AccountConnection.jsx`, `Credentials.jsx`, `FileImport.jsx`, `SettingsForm.jsx`, `SetupGuide.jsx`, 333 lines) is React DOM with CSS classes and has 8 browser-API references; a rewrite to `react-native` primitives is owed before native.
-- Verification: targeted provider catalog and import tests cover scheduling, credentials, uploads and scoped activity; Chromium on macOS checked AniList, Pocket Casts and Playnite at desktop and phone widths in dark mode. Native not tested.
+- Verification: targeted provider catalog and import tests cover scheduling, credentials, uploads and scoped activity; Chromium on macOS checked AniList, Pocket Casts and Playnite at desktop and phone widths in dark mode. A focused Chromium browser test now checks the YouTube upload model's `.tgz`/`.tar.gz` accept list and copy at desktop width. Native not tested.
 - Related work: [#1793](https://github.com/dannyvfilms/Floppy/issues/1793). Deferral: native upload, scheduling and server-job adapters await the foundation proof and separately authorized client work.
 
 ### SET-ACTIVITY — Import and operational activity
