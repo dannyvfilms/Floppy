@@ -132,7 +132,7 @@ large, which is a responsiveness problem rather than a memory one.
 | `/medialist/movie` | process-anonymous | structurally bounded |
 | Pocket Casts recurring poll | process-anonymous + duration | convergence fixed, counters added |
 | Statistics restart thrash | duration / worker occupancy | settling window added |
-| Statistics FINISH | process-anonymous | **unfixed**, documented below |
+| Statistics FINISH | process-anonymous | **profiled, partly reduced**, documented below |
 | History day-cache warming | process-anonymous | **uninvestigated** |
 | Interactive worker first-webhook growth | process-anonymous | measured, **not** imports; see below |
 
@@ -434,21 +434,46 @@ allocation, not RSS. Validation A is what turns it into a memory claim.
 structurally smaller. Whether the request stops approaching the 400 MiB
 recycle ceiling is a Docker measurement.
 
-**Statistics FINISH, 30–53 s.** `_aggregate_statistics_from_days` is a single
-~1800-line function with about thirty nested accumulators that grow with the
-number of *distinct items* in the range, not with days. Its 50-day
-`get_many` loop is already batched; the cost is after it — per-media-type
-undated-row sweeps, four separate `_fetch_media_objects` passes, the top-talent
-credit rollup, and `_get_history_day_payload` falling through to a full inline
-`history_cache.build_history_day` twice per active media type. Deliberately not
-touched: #1200's own design document already names FINISH as the unbounded
-remainder, and reshaping it without a profile would be guessing. **Profile it
-first**, with the per-phase timings the aggregator does not currently emit.
+**Statistics FINISH: profiled, partly reduced.** `_aggregate_statistics_from_days`
+now times its phases and `stats_range_summary` logs them as `phases_ms`, so a
+slow range names its own cause. The profile was taken on a synthetic library
+(one user, 3,414 active days, about 15,000 items; production is about 9,570
+days and 250,000 items), with day payloads warm:
 
-**The next largest target.** With the Trakt reconcile bounded and the history
-day-cache repair loop fixed (above), the largest known *unfixed*
-process-anonymous source is Statistics FINISH. It needs a profile before a
-design.
+- The finish is most of the cost for every bounded range (85% or more) and
+  about 60% for All Time. The walk over the day payloads is the rest.
+- All Time held about 74 MB of Python allocations at peak and grew the process
+  by about 90 to 110 MB. Both scale with the distinct items in the range.
+- A snapshot's cache copy holds full tracker and `Item` instances, wide columns
+  included: about 900 `Item` rows in the All Time snapshot.
+
+Removed, with every range's payload unchanged: the day payloads were decoded
+twice (once to look for missing days, once to merge them); top-rated rows were
+re-read and annotated once for the overall list and again for each media type;
+every completed reading row was loaded as two models to read six scalars; and
+each range, and each media type inside it, re-read the History index and the
+same History days. That is about a third of the CPU of a hot pass and a fifth
+of a heavy one on the profiled library.
+
+Still open, largest first for All Time:
+
+- **The day walk** (fetch and merge, about a third). Nested ranges repeat it
+  from scratch. Sharing one walk between ranges needs the thirty accumulators
+  to be snapshotted at range boundaries; that is a design decision, not a
+  patch.
+- **Top-rated annotation.** `MediaManager.annotate_max_progress` is called per
+  row for seasons and re-reads rows the aggregate has just fetched.
+- **Reading items.** `_fetch_reading_items_with_authors` loads a full `Item`
+  for every reading title in the range to read its release date and authors.
+- **Top talent**, and the wide `Item` columns loaded by `_fetch_media_objects`
+  and `statistics_sync._fetch_instances`, which have their own owners.
+- The sparse activity scan that resolves All Time's day list runs once per
+  All Time aggregate.
+
+**The next largest target.** With the Trakt reconcile bounded, the history
+day-cache repair loop fixed (above) and Statistics FINISH profiled, the largest
+known *unfixed* process-anonymous source is still the All Time aggregate: its
+day walk and the model instances its snapshot carries.
 
 **History day-cache warming, remaining questions.** Whether thousands of
 historical days need eager warming at all (the reader builds missing days on
