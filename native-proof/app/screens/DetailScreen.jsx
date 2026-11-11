@@ -1,9 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Linking } from 'react-native';
 import { DetailView } from '../../../frontend/pages/DetailView';
 import { Screen } from '../components/Screen';
 import { createDetailModelForItem, loadDetailModel } from '../surfaces/DetailSlot';
+import { useDetailFeatures } from '../surfaces/DetailFeatures';
+import { setShellPageType } from '../surfaces/shellContext';
 import { getActiveAuthSession } from '../data/authSession';
+import { formatUserDate } from '../data/userDate';
 import { palette } from '../theme';
 
 export default function DetailScreen({ params, onBack, navigate }) {
@@ -17,6 +20,7 @@ export default function DetailScreen({ params, onBack, navigate }) {
   const [loadFailed, setLoadFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [actionBusy, setActionBusy] = useState(false);
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     if (!item) {
@@ -41,6 +45,14 @@ export default function DetailScreen({ params, onBack, navigate }) {
     });
     return () => { cancelled = true; };
   }, [item, attempt, params?.publicView]);
+
+  // A write from one of the page's own controls reloads the page payload in place.
+  const refresh = useCallback(() => {
+    if (!item) return;
+    loadDetailModel(item, { publicView: params?.publicView })
+      .then(next => { setModel(next); setVersion(value => value + 1); })
+      .catch(cause => setError(cause?.message || 'The detail could not be loaded from the server.'));
+  }, [item, params?.publicView]);
 
   const wrapAction = action => ({
     ...action,
@@ -181,9 +193,54 @@ export default function DetailScreen({ params, onBack, navigate }) {
     }
   }
 
+  const features = useDetailFeatures({
+    model,
+    ready: !loading && !loadFailed,
+    version,
+    refresh,
+    navigate,
+    onOpenItem: openDetail,
+    onOpenExternal: openExternal,
+  });
+
+  // The header search follows the page like the web header: a film page searches Movies.
+  const pageType = features.enabled ? features.pageType : null;
+  useEffect(() => {
+    setShellPageType(pageType);
+    return () => setShellPageType(null);
+  }, [pageType]);
+
+  const children = actionableModel?.children;
+  const hasChildren = Boolean(children?.seasons?.length || children?.episodes?.length || children?.issues?.length);
+  const viewModel = {
+    ...actionableModel,
+    // A film has no seasons, episodes or issues: the web page shows no such section.
+    children: hasChildren && !features.replacesChildren ? {
+      ...children,
+      // A season page switches season from its title, like the web; it does not list them again.
+      seasons: model?.identity?.media_type === 'season' ? [] : children.seasons,
+      episodes: (children.episodes || []).map(episode => ({
+        ...episode, dateLabel: formatUserDate(episode.dateLabel) || episode.dateLabel,
+      })),
+    } : null,
+    // The score row already shows each stored source: keep the viewer's score and the tag chips.
+    scoreChips: features.scoreSlot
+      ? (actionableModel.scoreChips || []).filter(chip => chip.kind === 'viewer' || chip.text)
+      : actionableModel.scoreChips,
+    sections: features.enabled
+      ? (actionableModel.sections || []).filter(section => !features.replacedSections.includes(section.id))
+      : actionableModel.sections,
+  };
+
+  function openPerson(person) {
+    navigate?.('People', {
+      identity: { kind: 'person', source: model?.identity?.source, personId: person.person_id },
+    });
+  }
+
   return <Screen onBack={onBack} chrome={false}>
     <DetailView
-      model={actionableModel}
+      model={viewModel}
       labels={model.labels}
       palette={palette}
       loading={loading}
@@ -198,6 +255,12 @@ export default function DetailScreen({ params, onBack, navigate }) {
       onRate={rateRelatedItem}
       onRateChild={rateChild}
       onRateMain={rateMain}
-    />
+      onOpenPerson={model?.identity?.source ? openPerson : undefined}
+      actionsSlot={features.actionsSlot}
+      scoreSlot={features.headerSlot || features.scoreSlot
+        ? <>{features.headerSlot}{features.scoreSlot}</> : null}
+      sectionsSlot={features.sectionsSlot}
+      childrenSlot={features.childrenSlot}
+    >{features.overlays}</DetailView>
   </Screen>;
 }

@@ -238,6 +238,8 @@ export function GlobalSearch({
   }
 
   function clearPanel() {
+    // A request still in flight must not reopen the panel after Enter.
+    setUserTyped(false);
     setPanel({ status: 'idle', suggestions: [] });
     setActiveIndex(-1);
   }

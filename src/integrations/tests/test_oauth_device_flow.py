@@ -662,3 +662,41 @@ class OAuthDeviceFlowTests(TestCase):
         self.assertFalse(
             OAuthRefreshToken.objects.filter(revoked_at__isnull=True).exists()
         )
+
+
+class DeviceApprovalPropsTests(OAuthDeviceFlowTests):
+    """The approval page hands the shared card its state as JSON props."""
+
+    def test_approval_rejects_unsupported_methods(self):
+        """The view rejects unsupported methods before rendering props."""
+        self.client.force_login(self.user)
+        self.assertEqual(
+            self.client.put(reverse("oauth_device")).status_code,
+            HTTP.METHOD_NOT_ALLOWED,
+        )
+
+    def test_approval_requires_a_signed_in_user(self):
+        """Approval remains an interactive signed-in browser action."""
+        response = self.client.get(reverse("oauth_device"))
+        self.assertEqual(response.status_code, HTTP.FOUND)
+        self.assertIn("/accounts/login/", response.url)
+
+    def test_pending_authorization_exposes_card_props(self):
+        """A pending code renders the island root with client and scopes."""
+        device = self.issue_device_code()
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("oauth_device"), {"user_code": device["user_code"]})
+        props = response.context["device_approval_props"]
+        self.assertContains(response, "data-device-approval-root")
+        self.assertEqual(props["authorization"]["state"], "pending")
+        self.assertEqual(props["authorization"]["clientName"], "Kodi Living Room")
+        self.assertFalse(props["authorization"]["fullAccount"])
+        self.assertEqual(len(props["authorization"]["scopes"]), 2)
+
+    def test_unknown_code_exposes_error_without_authorization(self):
+        """An invalid code carries the error and no authorization."""
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("oauth_device"), {"user_code": "NOPE-NOPE"})
+        props = response.context["device_approval_props"]
+        self.assertIsNone(props["authorization"])
+        self.assertEqual(props["error"], "That device code is not valid.")

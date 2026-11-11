@@ -4,6 +4,7 @@ import { Button } from '../ui/Button';
 import { SelectField } from '../ui/SelectField';
 import { TextField } from '../ui/TextField';
 import { ToggleChip } from '../ui/ToggleChip';
+import { BackupStatus } from './BackupStatus';
 import { ConfirmDialog } from './ConfirmDialog';
 import { SettingsCard } from './SettingsCard';
 
@@ -39,27 +40,29 @@ const defaultButtonPalette = {
 };
 
 const defaultLabels = {
-  title: 'Export data',
-  description: 'Export media, ratings and lists as CSV, or create a recurring export schedule.',
-  frequency: 'Export frequency',
-  time: 'Export time',
-  content: 'Export content',
-  contentHelp: 'Keep at least one media type, Custom Lists, or Collection enabled.',
+  title: 'Export Data',
+  description: 'Export your media, ratings, and lists as CSV, or create a recurring export schedule and download the initial CSV immediately. This is a data export, not a database backup. It does not restore your account, integrations, or preferences, and it cannot replace a damaged database file.',
+  frequency: 'Export Frequency',
+  time: 'Export Time',
+  content: 'Export Content',
+  contentHelp: 'Keep at least one media type, Custom Lists, or Collection enabled. Keep every media type and both additional content options enabled for a full export; turn off all media types and leave Lists or Collection enabled for a subset export.',
   lists: 'Custom Lists',
   collection: 'Collection',
   submitOnce: 'Export as CSV',
   submitScheduled: 'Export as CSV and Save Schedule',
   submitBusy: 'Preparing export…',
   noneSelected: 'Choose at least one media type, Custom Lists, or Collection.',
-  scheduledTitle: 'Active scheduled exports',
-  scheduledDescription: 'Automated exports that run until you delete the schedule.',
-  scheduledEmpty: 'No scheduled exports configured.',
+  scheduledTitle: 'Active Scheduled Exports',
+  scheduledDescription: 'Automated exports that run on a schedule. These will continue until disabled.',
+  scheduledEmpty: 'No scheduled exports configured',
+  scheduledEmptyHint: 'Set up a schedule above to automatically export your data',
   deleteSchedule: 'Delete schedule',
   deleteScheduleTitle: 'Delete export schedule?',
   deleteScheduleCopy: 'This stops the recurring CSV export. Files already written stay on the server.',
-  historyTitle: 'Export history',
-  historyDescription: 'Export activity from the last seven days.',
-  historyEmpty: 'No exports in the last seven days.',
+  historyTitle: 'Export History',
+  historyDescription: 'Showing export activity from the last 7 days.',
+  historyEmpty: 'No exports in the last 7 days',
+  historyEmptyHint: 'Set up a schedule to see the history here',
   restoreTitle: 'Restore a Floppy backup',
   restoreDescription: 'Restore replaces tracked media, progress and history from a Floppy backup file.',
   restoreWarning: 'Restoring is destructive. Entries created after the backup may be lost.',
@@ -112,12 +115,14 @@ function Meta({ label, value, palette }) {
 }
 
 export function ExportScheduleCard({
+  icon,
   model = {},
   busy = false,
   error,
   success,
   palette = {},
   buttonPalette = {},
+  backup = [],
   onChange,
   onSubmit,
 }) {
@@ -134,8 +139,11 @@ export function ExportScheduleCard({
     update({ selectedMediaTypes: active ? [...selected, value] : selected.filter(item => item !== value) });
   }
 
-  return <SettingsCard title={labels.title} palette={colors}>
-    <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.description}</Text>
+  return <SettingsCard title={labels.title} icon={icon} palette={colors}>
+    <View style={{ gap: colors.pageCards ? 0 : 12 }}>
+      <Text style={[styles.copy, { color: colors.textMuted }, colors.pageCards && [styles.pageCopy, { marginBottom: 8 }]]}>{labels.description}</Text>
+      <BackupStatus sections={backup} palette={colors} />
+    </View>
     <View style={styles.grid}>
       <View style={styles.column}>
         <SelectField label={labels.frequency} name="frequency" value={model.frequency}
@@ -167,7 +175,47 @@ export function ExportScheduleCard({
   </SettingsCard>;
 }
 
+export function ExportOtherSitesCard({ icon, busy = false, error, success, palette = {}, buttonPalette = {}, onLetterboxd }) {
+  const colors = { ...defaultPalette, ...palette };
+  const buttons = { ...defaultButtonPalette, ...buttonPalette };
+  return <SettingsCard title="Export for Other Websites" icon={icon} palette={colors}>
+    <Text style={[styles.copy, { color: colors.textMuted }]}>Unlike the export above, these exports are trimmed and reshaped to match what a specific external site expects.</Text>
+    <View style={[styles.rowCard, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }]}>
+      <Text style={[styles.rowTitle, { color: colors.text }]}>Letterboxd</Text>
+      <Text style={[styles.rowCopy, { color: colors.textMuted }]}>Watched movies with ratings and diary dates, ready for Letterboxd's CSV import.</Text>
+      <Button label={busy ? 'Preparing export\u2026' : 'Export for Letterboxd'} tone="surface" busy={busy} disabled={busy}
+        onPress={onLetterboxd} palette={buttons} />
+    </View>
+    <StatusLine busy={false} error={error} success={success} palette={colors} />
+  </SettingsCard>;
+}
+
+export function ImportSettingsCard({
+  values = {}, frequencies = [], modes = [], busy = false, error, success, palette = {}, onChange,
+}) {
+  const colors = { ...defaultPalette, ...palette };
+  const update = changes => onChange?.({ ...values, ...changes });
+  return <SettingsCard title="Import Settings" palette={colors}>
+    <Text style={[styles.copy, { color: colors.textMuted }]}>These preferences are shared across imports that support them.</Text>
+    <View style={styles.grid}>
+      <View style={styles.column}>
+        <SelectField label="Import Frequency" name="frequency" value={values.frequency}
+          options={frequencies} palette={colors} onChange={event => update({ frequency: event.target.value })} />
+      </View>
+      <View style={styles.column}>
+        <SelectField label="Import Mode" name="mode" value={values.mode}
+          options={modes} palette={colors} onChange={event => update({ mode: event.target.value })} />
+      </View>
+    </View>
+    {values.frequency && values.frequency !== 'once' ? <TextField label="Import Time" name="time"
+      value={values.time} type="text" placeholder="03:00" palette={colors}
+      onChangeText={value => update({ time: value })} /> : null}
+    <StatusLine busy={busy ? 'Saving\u2026' : false} error={error} success={success} palette={colors} />
+  </SettingsCard>;
+}
+
 export function ScheduledExportsCard({
+  icon,
   schedules = [],
   busyId,
   error,
@@ -193,7 +241,7 @@ export function ScheduledExportsCard({
     }
   }
 
-  return <SettingsCard title={labels.scheduledTitle} palette={colors}>
+  return <SettingsCard title={labels.scheduledTitle} icon={icon} palette={colors}>
     <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.scheduledDescription}</Text>
     <StatusLine busy={false} error={error} success={success} palette={colors} />
     {schedules.length ? schedules.map(schedule => <View key={schedule.id}
@@ -208,7 +256,8 @@ export function ScheduledExportsCard({
       <Button label={labels.deleteSchedule} tone="ghost-danger" busy={busyId === schedule.id}
         disabled={busy} onPress={() => { setConfirmError(''); setPending(schedule); }} palette={buttons} />
     </View>) : <View style={[styles.empty, { borderColor: colors.border }]}>
-      <Text style={[styles.rowCopy, { color: colors.textMuted }]}>{labels.scheduledEmpty}</Text>
+      <Text style={[styles.rowCopy, { color: colors.textSecondary }]}>{labels.scheduledEmpty}</Text>
+      <Text style={[styles.rowCopy, { color: colors.textMuted }]}>{labels.scheduledEmptyHint}</Text>
     </View>}
     <ConfirmDialog visible={Boolean(pending)} title={labels.deleteScheduleTitle} message={labels.deleteScheduleCopy}
       warning={pending ? `${pending.schedule} stops running immediately.` : undefined}
@@ -218,11 +267,11 @@ export function ScheduledExportsCard({
   </SettingsCard>;
 }
 
-export function ExportHistoryCard({ results = [], palette = {} }) {
+export function ExportHistoryCard({ icon, results = [], palette = {} }) {
   const colors = { ...defaultPalette, ...palette };
   const labels = defaultLabels;
   const [openId, setOpenId] = useState(null);
-  return <SettingsCard title={labels.historyTitle} palette={colors}>
+  return <SettingsCard title={labels.historyTitle} icon={icon} palette={colors}>
     <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.historyDescription}</Text>
     {results.length ? results.map(result => {
       const tone = statusTones[result.status] || statusTones.PENDING;
@@ -242,7 +291,8 @@ export function ExportHistoryCard({ results = [], palette = {} }) {
         </> : null}
       </View>;
     }) : <View style={[styles.empty, { borderColor: colors.border }]}>
-      <Text style={[styles.rowCopy, { color: colors.textMuted }]}>{labels.historyEmpty}</Text>
+      <Text style={[styles.rowCopy, { color: colors.textSecondary }]}>{labels.historyEmpty}</Text>
+      <Text style={[styles.rowCopy, { color: colors.textMuted }]}>{labels.historyEmptyHint}</Text>
     </View>}
   </SettingsCard>;
 }
@@ -311,6 +361,10 @@ export function RssFeedCard({
   const preview = model.preview || {};
   const update = changes => onChange?.({ ...values, ...changes });
 
+  if (model.sessionRequired) return <SettingsCard title={labels.rssTitle} palette={colors}>
+    <Text style={[styles.copy, { color: colors.textMuted }]}>Sign in with your username and password to manage this.</Text>
+  </SettingsCard>;
+
   return <SettingsCard title={labels.rssTitle} palette={colors}>
     <Text style={[styles.copy, { color: colors.textMuted }]}>{labels.rssDescription}</Text>
     <View style={styles.grid}>
@@ -356,7 +410,97 @@ export function RssFeedCard({
   </SettingsCard>;
 }
 
+const maintenanceLabels = {
+  title: 'Library maintenance',
+  templateCopy: 'Download a CSV template for importing your own data.',
+  template: 'Download an import template',
+  repairCopy: 'Fold duplicated Anime and TV tracking rows back together, or move tracked TV shows to your default TV provider. These run in the background.',
+  repair: 'Repair duplicate anime libraries',
+  convert: 'Move TV shows to default provider',
+  dangerTitle: 'Danger Zone',
+  dangerCopy: 'Permanently delete every tracked entry for one media type in your account, including its progress, ratings, notes, and history. This cannot be undone.',
+  mediaTypeToDelete: 'Media type to delete',
+  choose: 'Choose a media type...',
+  deleteMetadata: 'Also remove metadata no one else uses',
+  deleteType: 'Delete Selected Type',
+  confirmTitle: 'Are you sure?',
+};
+
+// Import template, library repair and the media-type danger zone from the web
+// Data page. The adapter supplies the deletable media types and the actions;
+// every action resolves with a message or rejects with an Error.
+export function LibraryMaintenanceCard({
+  mediaTypes = [],
+  duplicateAnimeCount,
+  busy = false,
+  error,
+  success,
+  palette = {},
+  buttonPalette = {},
+  labels = {},
+  onDownloadTemplate,
+  onRepairAnime,
+  onConvertTv,
+  onDelete,
+}) {
+  const colors = { ...defaultPalette, ...palette };
+  const buttons = { ...defaultButtonPalette, ...buttonPalette };
+  const copy = { ...maintenanceLabels, ...labels };
+  const [mediaType, setMediaType] = useState('');
+  const [deleteMetadata, setDeleteMetadata] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState('');
+  const options = [{ value: '', label: copy.choose }, ...mediaTypes];
+
+  async function confirmDelete() {
+    setConfirmError('');
+    try {
+      await onDelete?.({ mediaType, deleteMetadata });
+      setConfirming(false);
+      setMediaType('');
+      setDeleteMetadata(false);
+    } catch (failure) {
+      setConfirmError(failure?.message || 'Could not delete the library.');
+    }
+  }
+
+  const label = mediaTypes.find(option => option.value === mediaType)?.label || mediaType;
+  return <SettingsCard title={colors.pageCards ? undefined : copy.title} framed={!colors.pageCards} palette={colors}>
+    {!colors.pageCards ? <>
+      <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.templateCopy}</Text>
+      <Button label={copy.template} tone="surface" disabled={busy} onPress={onDownloadTemplate} palette={buttons} />
+    </> : null}
+    {duplicateAnimeCount == null || duplicateAnimeCount > 0 ? <>
+      <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.repairCopy}</Text>
+      <View style={styles.toggleRow}>
+        <Button label={copy.repair} tone="surface" disabled={busy} onPress={onRepairAnime} palette={buttons} />
+        {onConvertTv ? <Button label={copy.convert} tone="surface" disabled={busy} onPress={onConvertTv} palette={buttons} /> : null}
+      </View>
+    </> : null}
+    <View style={[styles.previewBox, { backgroundColor: colors.surfaceStrong, borderColor: colors.danger }, colors.pageCards && { padding: 20, borderWidth: 0, gap: 16 }]}>
+      <Text style={[styles.sectionTitle, { color: colors.danger }, colors.pageCards && { fontSize: 16, lineHeight: 24, fontWeight: '500' }]}>{copy.dangerTitle}</Text>
+      <Text style={[styles.copy, { color: colors.textMuted }, colors.pageCards && styles.pageCopy]}>{copy.dangerCopy}</Text>
+      <SelectField label={copy.mediaTypeToDelete} name="mediaType" value={mediaType} options={options}
+        palette={colors} onChange={event => setMediaType(event.target.value)} />
+      {!colors.pageCards ? <ToggleChip label={copy.deleteMetadata} value={deleteMetadata} offLabel="Keep" onLabel="Remove"
+        palette={colors} onChange={setDeleteMetadata} /> : null}
+      <Button label={copy.deleteType} tone="danger-solid" disabled={!mediaType || busy}
+        onPress={() => { setConfirmError(''); setConfirming(true); }} palette={buttons} />
+    </View>
+    <StatusLine busy={busy} error={error} success={success} palette={colors} />
+    <ConfirmDialog visible={confirming} title={copy.confirmTitle}
+      message={`This permanently deletes every ${label} entry in your account.`}
+      warning="This cannot be undone." requirePhrase="DELETE" phraseLabel="Type DELETE to confirm."
+      confirmLabel={copy.deleteType} busy={busy} error={confirmError} palette={colors}
+      buttonPalette={buttons} onCancel={() => setConfirming(false)} onConfirm={confirmDelete}>
+      {colors.pageCards ? <ToggleChip label={copy.deleteMetadata} value={deleteMetadata} offLabel="Keep" onLabel="Remove"
+        palette={colors} onChange={setDeleteMetadata} /> : null}
+    </ConfirmDialog>
+  </SettingsCard>;
+}
+
 const styles = StyleSheet.create({
+  pageCopy: { fontSize: 14, lineHeight: 20 },
   copy: { fontSize: 12, lineHeight: 18 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   column: { flexGrow: 1, flexShrink: 1, flexBasis: 180, minWidth: 0 },

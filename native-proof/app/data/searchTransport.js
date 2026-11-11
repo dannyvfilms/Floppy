@@ -2,8 +2,8 @@ import { getActiveAuthSession } from './authSession.js';
 import {
   createLocalSearchActions,
   createRemoteSearchActions,
-  localResultsFromPayload,
-  onlineResultsFromPayload,
+  searchBarFromPayload,
+  suggestionsFromPayload,
 } from './searchTransportCore.js';
 
 export function createSearchTransport(options = {}) {
@@ -18,8 +18,8 @@ export function createSearchTransport(options = {}) {
     });
   }
   return createLocalSearchActions(
-    'Sign in to your Floppy server to search your library.',
+    'Sign in to your Floppy server to search.',
   );
 }
 
-export { localResultsFromPayload, onlineResultsFromPayload };
+export { searchBarFromPayload, suggestionsFromPayload };

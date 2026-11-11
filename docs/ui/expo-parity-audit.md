@@ -1,7 +1,84 @@
 # Expo ↔ PWA parity audit
 
-Audit date: 2026-11-08 · Scope: `native-proof/` (Expo) versus the Django/React PWA ·
-Method: static analysis of the repository (no simulator or device pass in this audit).
+Scope: `native-proof/` (Expo) versus the Django/React PWA.
+
+## Current readiness
+
+Expo is a working development baseline, but is **not ready for PWA parity acceptance**.
+Shared imports, a successful bundle and a page opening do not establish feature or
+visual parity. The following are known gaps from the owner's manual Expo review;
+the closed iPhone Duo is the reported viewport for the Library grid issue.
+
+| Surface | Observed behavior | Remaining work |
+| --- | --- | --- |
+| Discover | Layout could plausibly match the PWA, but no content feeds through. | Investigate content loading, then compare the populated layout. |
+| Library / media lists | Lists load. Grid stops at two columns on the closed Duo, where three are expected. | Match the PWA's three-column grid at that viewport and check other widths. |
+| Calendar | Loads the correct layout. | Detailed interaction and state parity remain unverified. |
+| Collection | Loads, but needs work; Custom does little. | Compare Collection and Custom behavior with the PWA before defining the fixes. |
+| History | Loads. | Detailed visual and interaction parity remain unverified. |
+| Lists | Overview loads but needs work. Individual list layouts also load but need tweaks. | Compare overview and detail layouts and behavior with the PWA. |
+| Statistics | Loads and is a useful starting point, but needs tweaks. | Identify specific differences in a PWA comparison. |
+| Tags | Close, but needs tweaks. | Identify specific differences in a PWA comparison. |
+| Settings | Appearance, Media Cards, Home Screen, Providers, Data Management, Access & Tokens, Advanced and About do not load. | Diagnose each destination and restore loading before assessing parity. |
+
+Other Settings destinations are not established as working by the native report.
+
+### Accepted direction
+
+- Home, Sidebar, Search and the Track modal must retain the current `latest`
+  presentation and behavior. Similar screenshots do not prove all underlying
+  changes have been retained.
+- History is accepted by the owner on web, and functions in Expo.
+- Statistics is accepted as a starting point, with polish remaining.
+- Neither web Collection implementation is the accepted visual target. Both put
+  titles below posters, unlike Library's overlaid titles. At a 390px browser width,
+  both PWAs show two Collection columns versus three Library columns. This is an
+  existing inconsistency, not a newly observed branch regression. The owner's
+  observation that native Collection looks closer still needs a matched native
+  comparison.
+
+Matched browser captures show close initial-view layouts on the two working
+checkouts. The Track dialog differs slightly in its status chevron, and opening
+it raises a `fallbackId` browser exception on both checkouts even though the form
+renders. Saving, date shortcuts and keyboard behavior are not established by those
+captures. Data Management's backup paths and recorded backup history differ with
+the preview environment; those differences are not evidence of a design change.
+
+Home, Sidebar, Search and Track preservation is integrated, including the Home
+loading improvements. Home retains its existing quick progress actions on web and
+Expo; their absence in earlier captures was not an instruction to remove them.
+Historical acceptance below is not full native parity acceptance.
+
+### Evidence and acceptance limits
+
+- **Web:** Runtime evidence from inspected Chromium captures of the working PWA
+  and candidate PWA, at desktop and 390px phone widths in the current theme.
+  Captures cover initial views and selected menus/dialogs, not every state or
+  theme. Both checkouts' generated browser bundles match their source. Previous
+  Expo Web spot-checks opened Home, Search, Media Details, Statistics and Calendar.
+  A complete PWA-versus-native screenshot comparison remains outstanding.
+- **iOS:** Runtime smoke evidence: the real shared Search preview rendered in Expo
+  Go on an iPhone Duo simulator and its frame was inspected. This adds to the
+  owner's earlier reports, including the closed Duo grid issue. It does not verify
+  full pages, picker/error interactions or visual parity across the app.
+- **Android:** Runtime smoke evidence: the real shared Search preview cold-started
+  and its frame was inspected after correcting the system-theme Appearance value
+  from null to `auto`. Platform bundles and transport/theme logic also pass. Full
+  page, picker/error, layout and interaction verification remains outstanding.
+
+The owner accepted integration as a baseline for continued Expo development, with
+native polish remaining. Prioritize the Settings loading failures
+and Discover's missing content, then the Library grid and the remaining page
+comparisons. Causes of the reported failures are not yet diagnosed. No platform
+carve-out or feature loss is accepted by documenting these gaps.
+
+## Historical structural baseline
+
+The sections below retain the 2026-11-08 static audit and its subsequently recorded
+acceptances. Counts, source footprints and implementation-gap descriptions have
+**not been refreshed against the merged branch**. Use Current readiness above for
+known runtime gaps, and rerun the existing inventory checks before quoting counts.
+The original audit used static analysis without a simulator or device pass.
 
 This document is the contributor-facing answer to two questions:
 

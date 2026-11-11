@@ -30,6 +30,16 @@ const DEFAULT_PALETTE = {
   success: '#10b981',
   radius: 18,
   radiusSmall: 6,
+  // Role, era and menu colours: themes may override these palette keys.
+  roleActors: '#60a5fa',
+  roleActresses: '#c084fc',
+  roleDirectors: '#fb923c',
+  roleWriters: '#34d399',
+  eraAccent: '#f59e0b',
+  eraIcon: '#fbbf24',
+  ratingStar: '#facc15',
+  menuSurface: '#11162a',
+  menuBorder: '#4b5563',
 };
 
 const DEFAULT_LABELS = {
@@ -76,7 +86,7 @@ function plural(count, one, many) {
   return Number(count) === 1 ? one : many;
 }
 
-function SortMenu({ options = [], selected, palette, onChange, label }) {
+export function SortMenu({ options = [], selected, palette, onChange, label, bare = false }) {
   const [open, setOpen] = useState(false);
   if (!options.length) return null;
   const current = options.find(option => option.value === selected) || options[0];
@@ -85,12 +95,12 @@ function SortMenu({ options = [], selected, palette, onChange, label }) {
       accessibilityLabel={`${label}: ${current.label}`}
       accessibilityState={{ expanded: open }}
       onPress={() => setOpen(true)}
-      style={({ pressed }) => [styles.sortTrigger, {
-        backgroundColor: '#11162a',
-        borderColor: '#4b5563',
+      style={({ pressed }) => [styles.sortTrigger, bare ? styles.sortBare : {
+        backgroundColor: palette.menuSurface,
+        borderColor: palette.menuBorder,
         borderRadius: palette.radius,
       }, pressed && styles.pressed]}>
-      <Text style={[styles.sortTriggerText, { color: palette.textSecondary }]}>{current.label}</Text>
+      <Text style={[styles.sortTriggerText, { color: bare ? palette.text : palette.textSecondary }, bare && styles.sortBareText]}>{current.label}</Text>
       <Text style={[styles.sortChevron, { color: palette.textMuted }]}>{'\u25BE'}</Text>
     </Pressable>
     <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
@@ -98,7 +108,7 @@ function SortMenu({ options = [], selected, palette, onChange, label }) {
         <Pressable accessibilityRole="button" accessibilityLabel={label}
           onPress={() => setOpen(false)} style={styles.modalBackdrop} />
         <View style={[styles.menuPanel, {
-          backgroundColor: '#11162a', borderColor: '#4b5563', borderRadius: 8,
+          backgroundColor: palette.menuSurface, borderColor: palette.menuBorder, borderRadius: 8,
         }]}>
           {options.map(option => <Pressable key={option.value}
             accessibilityRole="button"
@@ -193,7 +203,7 @@ export function StatisticsComparison({
     {!rows.length
       ? <Text style={[styles.emptyCopy, { color: colors.textMuted }]}>{model.emptyCopy || copy.comparisonEmpty}</Text>
       : <View accessible accessibilityLabel={summary} style={styles.comparisonRows}>
-        {rows.map(row => <View key={row.key || row.label} style={[styles.comparisonRow, { borderBottomColor: '#4b5563' }]}>
+        {rows.map(row => <View key={row.key || row.label} style={[styles.comparisonRow, { borderBottomColor: colors.menuBorder }]}>
           <View style={styles.comparisonLabelWrap}>
             <View style={[styles.comparisonDot, { backgroundColor: row.color || colors.accent }]} />
             <Text numberOfLines={1} style={[styles.comparisonLabel, { color: colors.text }]}>{row.label}</Text>
@@ -208,12 +218,13 @@ export function StatisticsComparison({
   </SectionCard>;
 }
 
-const ROLE_COLORS = {
-  actors: '#60a5fa',
-  actresses: '#c084fc',
-  directors: '#fb923c',
-  writers: '#34d399',
-};
+// Role colours come from the palette so every theme keeps them readable.
+const roleColor = (palette, bucket) => ({
+  actors: palette.roleActors,
+  actresses: palette.roleActresses,
+  directors: palette.roleDirectors,
+  writers: palette.roleWriters,
+}[bucket]);
 const ROLE_ICONS = {
   actors: '\u25C9',
   actresses: '\u25CE',
@@ -248,10 +259,10 @@ export function StatisticsRoleLeaders({
       : <View style={styles.leaderColumns}>
         {columns.map(column => <View key={column.bucket || column.label} style={[styles.leaderColumn, { width: columnWidth }]}>
           <View style={styles.leaderTitleRow}>
-            <Text style={[styles.leaderIcon, { color: column.color || ROLE_COLORS[column.bucket] || colors.textSecondary }]}>
+            <Text style={[styles.leaderIcon, { color: column.color || roleColor(colors, column.bucket) || colors.textSecondary }]}>
               {ROLE_ICONS[column.bucket] || '\u25C9'}
             </Text>
-            <Text style={[styles.leaderTitle, { color: column.color || ROLE_COLORS[column.bucket] || colors.textSecondary }]}>
+            <Text style={[styles.leaderTitle, { color: column.color || roleColor(colors, column.bucket) || colors.textSecondary }]}>
               {column.label}
             </Text>
           </View>
@@ -334,7 +345,7 @@ function TastePanel({ title, icon, iconColor, rows, palette, emptyCopy, emptyCen
             label={row.name || row.label}
             labelWidth={88}
             percent={row.pct}
-            color={row.color || (title === DEFAULT_LABELS.erasTitle ? '#f59e0b' : palette.accent)}
+            color={row.color || (title === DEFAULT_LABELS.erasTitle ? palette.eraAccent : palette.accent)}
             value={row.formattedDuration || `${row.plays} ${plural(row.plays, 'play', 'plays')}`}
             valueWidth={60}
             palette={palette} />)}
@@ -374,7 +385,7 @@ export function StatisticsTasteSignals({
           rows={model.genres} palette={colors} emptyCopy={model.genresEmpty || copy.genresEmpty} />
       </View>
       <View style={styles.tasteColumn}>
-        <TastePanel title={model.erasTitle || copy.erasTitle} icon={'\u25D4'} iconColor="#fbbf24"
+        <TastePanel title={model.erasTitle || copy.erasTitle} icon={'\u25D4'} iconColor={colors.eraIcon}
           rows={model.eras} palette={colors} emptyCopy={model.erasEmpty || copy.erasEmpty} />
       </View>
     </View>
@@ -441,7 +452,7 @@ function OverviewPanel({ panel, palette, onSelectItem }) {
                 <Text numberOfLines={1} style={[styles.overviewTitle, { color: palette.text }]}>{item.title}</Text>
                 {item.value
                   ? <Text style={[styles.overviewMeta, { color: palette.textMuted }]}>
-                    <Text style={{ color: '#facc15' }}>{'\u2605'} </Text>{item.value}
+                    <Text style={{ color: palette.ratingStar }}>{'\u2605'} </Text>{item.value}
                   </Text>
                   : item.subtitle
                     ? <Text numberOfLines={1} style={[styles.overviewMeta, { color: palette.textMuted }]}>{item.subtitle}</Text>
@@ -449,7 +460,7 @@ function OverviewPanel({ panel, palette, onSelectItem }) {
               </View>
             </View>;
             if (onSelectItem && (item.href || item.onPress)) {
-              return <Pressable key={item.key || item.title}
+              return <Pressable key={`${item.key || item.title}:${index}`}
                 accessibilityRole={item.href ? 'link' : 'button'}
                 accessibilityLabel={`${item.title}, ${item.subtitle || item.value || ''}`.trim()}
                 onPress={() => onSelectItem(item)}
@@ -457,7 +468,7 @@ function OverviewPanel({ panel, palette, onSelectItem }) {
                 {body}
               </Pressable>;
             }
-            return <View key={item.key || item.title} accessible
+            return <View key={`${item.key || item.title}:${index}`} accessible
               accessibilityLabel={`${item.title}, ${item.subtitle || item.value || ''}`.trim()}>
               {body}
             </View>;
@@ -570,6 +581,8 @@ const styles = StyleSheet.create({
   sectionHeaderCopy: { flexShrink: 1, minWidth: 0, gap: 4 },
   sectionTitle: { fontSize: 20, lineHeight: 28, fontWeight: '600' },
   sectionCopy: { fontSize: 14, lineHeight: 20 },
+  sortBare: { borderWidth: 0, backgroundColor: 'transparent', paddingHorizontal: 0 },
+  sortBareText: { fontSize: 16, fontWeight: '700' },
   sortWrap: { flexShrink: 0 },
   sortTrigger: {
     flexDirection: 'row',

@@ -37,9 +37,9 @@ const defaultButtonPalette = {
 
 const defaultLabels = {
   loginTitle: 'Sign in to your account',
-  firstRunLoginTitle: 'Welcome to Floppy — set up your account to get started',
+  firstRunLoginTitle: 'Welcome to Floppy: set up your account to get started',
   signupTitle: 'Create your account',
-  firstRunSignupTitle: 'Welcome to Floppy — create your first account',
+  firstRunSignupTitle: 'Welcome to Floppy: create your first account',
   recoveryTitle: 'Recover your password',
   username: 'Username',
   login: 'Username',
@@ -214,6 +214,7 @@ export function AuthEntrance({
   onServerChange,
   onContinueServer,
   onChangeServer,
+  serverLocked = false,
   onClearServerAddress,
   onCheckServer,
   onServerModeChange,
@@ -316,13 +317,13 @@ export function AuthEntrance({
     <Button label={copy.continueToSignIn} tone="primary" size="lg" width="full"
       busy={serverBusy} disabled={busy || serverBusy || !serverUrl.trim()} onPress={onContinueServer} palette={buttons} />
     </View> : <>
-    <View style={styles.serverSummary}>
+    {serverLocked ? null : <View style={styles.serverSummary}>
       <View style={styles.serverSummaryText}>
         <Text style={[styles.serverLabel, { color: colors.textMuted }]}>{copy.serverAddress}</Text>
         <Text numberOfLines={1} style={[styles.serverSummaryAddress, { color: colors.text }]}>{serverUrl}</Text>
       </View>
       <LinkButton label={copy.changeServer} onPress={onChangeServer} palette={colors} />
-    </View>
+    </View>}
     {mode === 'recovery' ? <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.recoveryNotice}</Text> : null}
     {mode === 'signup' ? <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.authenticatorWarning}</Text> : null}
 
@@ -342,7 +343,8 @@ export function AuthEntrance({
       <TextField size="lg" id="auth-password" name="password" label={copy.password} type="password"
         value={values.password} placeholder="Enter your password" autoComplete="current-password"
         required disabled={busy} error={errors.password} palette={colors}
-        onChangeText={value => update('password', value)} />
+        onChangeText={value => update('password', value)}
+        onSubmitEditing={() => { if (!busy) submit(); }} />
       <Button label={busy ? busyLabel : copy.signIn} tone="primary" size="lg" width="full" icon={loginIcon}
         busy={busy} disabled={busy} onPress={() => submit()} palette={buttons} />
       {registrationEnabled

@@ -1,140 +1,118 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Linking } from 'react-native';
 import { CalendarView } from '../../../frontend/pages/CalendarView';
 import { CalendarLinks } from '../../../frontend/ui/CalendarLinks';
+import { copyText } from '../../../frontend/ui/clipboard';
 import { Screen } from '../components/Screen';
 import { readCalendarPreferences, writeCalendarPreferences } from '../data/calendarPreferences';
 import {
   calendarModelFromPayload,
+  calendarOptionsFromEvents,
+  calendarOptionsFromLinks,
   createCalendarTransport,
 } from '../data/calendarTransport';
 import CalendarSlot from '../surfaces/CalendarSlot';
+import { useAccountDisplay } from '../data/accountDisplay';
+import { getDatePreferences } from '../data/userDate';
 import { palette } from '../theme';
 
-const defaultWeekStart = 'monday';
-
-const releaseMediaTypes = [
-  { value: 'tv', label: 'TV Shows' },
-  { value: 'season', label: 'TV Seasons' },
-  { value: 'movie', label: 'Movies' },
-  { value: 'anime', label: 'Anime' },
-  { value: 'book', label: 'Books' },
-  { value: 'game', label: 'Games' },
-  { value: 'podcast', label: 'Podcasts' },
-];
-
-const historyMediaTypes = [
-  { value: 'tv', label: 'TV Shows' },
-  { value: 'movie', label: 'Movies' },
-  { value: 'anime', label: 'Anime' },
-  { value: 'manga', label: 'Manga' },
-  { value: 'game', label: 'Games' },
-  { value: 'book', label: 'Books' },
-  { value: 'comic', label: 'Comics' },
-  { value: 'boardgame', label: 'Board Games' },
-  { value: 'music', label: 'Music' },
-  { value: 'podcast', label: 'Podcasts' },
-  { value: 'video', label: 'Videos' },
-];
-
-const historyDefaultTypes = historyMediaTypes
-  .filter((item) => !['music', 'podcast', 'video'].includes(item.value))
-  .map((item) => item.value);
-
-const statuses = [
-  { value: 'Planning', label: 'Planning' },
-  { value: 'In progress', label: 'In Progress' },
-  { value: 'Paused', label: 'Paused' },
-  { value: 'Completed', label: 'Completed' },
-  { value: 'Dropped', label: 'Dropped' },
-];
-
-const releaseTypes = [
-  { value: 'digital', label: 'Digital' },
-  { value: 'physical', label: 'Physical' },
-];
-
-const calendarLinkPalette = {
-  ...palette,
-  surfaceDim: palette.surfaceStrong,
-  accentText: '#ffffff',
-  link: '#818cf8',
-};
+// The web calendar's "today" is the server's calendar day, not the device's.
+function serverToday() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: getDatePreferences().timeZone || 'UTC', year: 'numeric', month: 'numeric', day: 'numeric',
+  }).formatToParts(new Date());
+  const pick = type => Number(parts.find(part => part.type === type)?.value);
+  return new Date(pick('year'), pick('month') - 1, pick('day'));
+}
 
 function currentMonth() {
-  const now = new Date();
+  const now = serverToday();
   return { month: now.getMonth() + 1, year: now.getFullYear() };
 }
 
+function openUrl(url) {
+  return Linking.openURL(url);
+}
+
 export default function CalendarScreen({ navigate }) {
+  const display = useAccountDisplay();
   const [transport] = useState(() => createCalendarTransport());
-  const preferences = useRef({ filters: null, weekStart: defaultWeekStart });
+  const server = transport.mode === 'server';
+  const userId = useRef(null);
+  const preferences = useRef({ filters: null });
+  const [links, setLinks] = useState(null);
+  const [linksSessionRequired, setLinksSessionRequired] = useState(false);
+  const [linksReady, setLinksReady] = useState(!server);
   const [filters, setFilters] = useState(null);
-  const [weekStart, setWeekStart] = useState(defaultWeekStart);
-  const [hydrated, setHydrated] = useState(false);
+  const [weekStart, setWeekStart] = useState('monday');
+  const [hydrated, setHydrated] = useState(!server);
   const [actionNote, setActionNote] = useState('');
   const [period, setPeriod] = useState(currentMonth);
-  const [model, setModel] = useState(null);
-  const [loading, setLoading] = useState(transport.mode === 'server');
+  const [payload, setPayload] = useState(null);
+  const [loading, setLoading] = useState(server);
   const [loadError, setLoadError] = useState('');
   const [reloadToken, setReloadToken] = useState(0);
 
+  // The links payload is the server's vocabulary (types, statuses, release
+  // types, week start) plus the account's real subscription URLs.
   useEffect(() => {
+    if (!server) return undefined;
     let active = true;
-    readCalendarPreferences().then((stored) => {
-      if (!active) {
-        return;
-      }
-      const next = {
-        filters: stored?.filters || null,
-        weekStart: stored?.weekStart === 'sunday' ? 'sunday' : defaultWeekStart,
-      };
-      preferences.current = next;
-      setFilters(next.filters);
-      setWeekStart(next.weekStart);
-      setHydrated(true);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
+    transport.readLinks()
+      .then(next => {
+        if (!active) return null;
+        userId.current = next?.user_id ?? null;
+        setLinks(next);
+        setWeekStart(next?.week_start_day === 'sunday' ? 'sunday' : 'monday');
+        return readCalendarPreferences(userId.current);
+      })
+      .catch(error => {
+        if (active && error?.status === 403) setLinksSessionRequired(true);
+        return null;
+      })
+      .then(stored => {
+        if (!active) return;
+        preferences.current = { filters: stored?.filters || null };
+        setFilters(stored?.filters || null);
+        setLinksReady(true);
+        setHydrated(true);
+      });
+    return () => { active = false; };
+  }, [transport, server]);
 
   useEffect(() => {
-    if (transport.mode !== 'server' || !hydrated) {
-      return undefined;
-    }
+    if (!server || !hydrated) return undefined;
     let active = true;
     setLoading(true);
     setLoadError('');
     transport.readAll({ month: period.month, year: period.year })
-      .then(payload => {
+      .then(result => {
         if (!active) return;
-        setModel(calendarModelFromPayload(payload, {
-          month: period.month,
-          year: period.year,
-          weekStart,
-        }));
+        setPayload(result);
         setLoading(false);
       })
       .catch(error => {
         if (!active) return;
-        setModel(null);
+        setPayload(null);
         setLoadError(error?.message || 'Calendar could not be loaded from the server.');
         setLoading(false);
       });
-    return () => {
-      active = false;
-    };
-  }, [transport, hydrated, period, weekStart, reloadToken]);
+    return () => { active = false; };
+  }, [transport, server, hydrated, period, reloadToken]);
+
+  const model = useMemo(() => (payload
+    ? calendarModelFromPayload(payload, { month: period.month, year: period.year, weekStart, today: serverToday() })
+    : null), [payload, period, weekStart, display.loaded]);
+  const options = useMemo(() => {
+    if (!model) return null;
+    return (links && calendarOptionsFromLinks(links, model.releases))
+      || calendarOptionsFromEvents(model.releases);
+  }, [links, model]);
 
   function savePreferences(patch) {
     const next = { ...preferences.current, ...patch };
     preferences.current = next;
-    writeCalendarPreferences(next);
-  }
-
-  function handleFiltersChange(next) {
-    setFilters(next);
-    savePreferences({ filters: next });
+    writeCalendarPreferences(next, userId.current);
   }
 
   function moveMonth(delta) {
@@ -149,15 +127,9 @@ export default function CalendarScreen({ navigate }) {
   }
 
   function handleNavigate(target) {
-    if (target === 'previous') {
-      moveMonth(-1);
-      return;
-    }
-    if (target === 'next') {
-      moveMonth(1);
-      return;
-    }
-    if (target === 'today') {
+    if (target === 'previous') moveMonth(-1);
+    else if (target === 'next') moveMonth(1);
+    else if (target === 'today') {
       setPeriod(currentMonth());
       setActionNote('');
     }
@@ -165,9 +137,12 @@ export default function CalendarScreen({ navigate }) {
 
   function handleMenuAction({ key, value }) {
     if (key === 'weekStart') {
+      const previous = weekStart;
       setWeekStart(value);
-      savePreferences({ weekStart: value });
-      setActionNote(`Week starts on ${value === 'sunday' ? 'Sunday' : 'Monday'}.`);
+      transport.saveWeekStart(value).catch(error => {
+        setWeekStart(previous);
+        setActionNote(error?.message || 'Could not save the week start.');
+      });
       return;
     }
     if (key === 'today') {
@@ -176,52 +151,65 @@ export default function CalendarScreen({ navigate }) {
       return;
     }
     if (key === 'fetch') {
-      if (transport.mode !== 'server') {
+      if (!server) {
         setActionNote('Sign in to your Floppy server to fetch new releases.');
         return;
       }
       setActionNote('Fetching new releases…');
       transport.fetchReleases()
         .then(() => {
-          setActionNote('Release fetch queued on the Django server.');
+          setActionNote('The task to refresh upcoming releases has been queued.');
           setReloadToken(current => current + 1);
         })
-        .catch(error => setActionNote(error.message || 'Could not fetch new releases.'));
+        .catch(error => setActionNote(error?.message || 'Could not fetch new releases.'));
       return;
     }
     if (key === 'download') {
-      setActionNote('Calendar downloads use the subscription link below.');
+      if (links?.release_base_url) {
+        openUrl(links.release_base_url).catch(() => setActionNote('Could not open the calendar download.'));
+      } else {
+        setActionNote(linksSessionRequired ? 'Sign in with your username and password to manage this.' : 'No calendar link is available.');
+      }
     }
   }
 
-  const localNotice = transport.mode === 'local'
-    ? 'Sign in to your Floppy server to see the calendar.'
-    : '';
+  const localNotice = server ? '' : 'Sign in to your Floppy server to see the calendar.';
   const notice = loadError || actionNote || localNotice;
-  const empty = transport.mode === 'server' && !loading && Boolean(model?.empty);
+  const empty = server && !loading && Boolean(model?.empty);
+  const linksProps = options?.linksProps;
 
-  return <Screen chrome={false}>
+  return <Screen chrome={false} contentStyle={{ paddingTop: 24 }}>
     <CalendarView
+      subtitle={null}
       palette={palette}
-      loading={transport.mode === 'server' && (!hydrated || loading)}
+      loading={server && (!hydrated || !linksReady || loading)}
       empty={empty}
       notice={notice}
-      calendar={model ? <CalendarSlot
+      onRetry={loadError ? () => setReloadToken(current => current + 1) : undefined}
+      calendar={model && options ? <CalendarSlot
         model={model}
+        options={options}
+        regionUnset={options.regionUnset}
         initialFilters={filters || undefined}
         weekStart={weekStart}
         onNavigate={handleNavigate}
-        onOpenRelease={() => navigate('Detail')}
-        onFiltersChange={handleFiltersChange}
+        onOpenRelease={release => navigate('Detail', { item: release })}
+        onFiltersChange={next => {
+          setFilters(next);
+          savePreferences({ filters: next });
+        }}
         onMenuAction={handleMenuAction} /> : null}
-      links={<CalendarLinks
-        releaseMediaTypes={releaseMediaTypes}
-        historyMediaTypes={historyMediaTypes}
-        statuses={statuses}
-        releaseTypes={releaseTypes}
-        initialHistoryMediaTypes={historyDefaultTypes}
-        releaseBaseUrl="https://app.floppy.example/calendar/demo-token.ics"
-        historyBaseUrl="https://app.floppy.example/calendar/history/demo-token.ics"
-        palette={calendarLinkPalette} />} />
+      links={linksProps || linksSessionRequired ? <CalendarLinks
+        {...linksProps}
+        sessionRequired={linksSessionRequired}
+        palette={{
+          ...palette,
+          surfaceDim: palette.surfaceStrong,
+          accentText: palette.accentContrast,
+        }}
+        onCopyLink={async url => {
+          if (!(await copyText(url))) throw new Error('Could not copy the link.');
+        }}
+        onDownload={url => openUrl(url).catch(() => setActionNote('Could not open the calendar link.'))} /> : null} />
   </Screen>;
 }

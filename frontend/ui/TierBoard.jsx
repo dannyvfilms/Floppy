@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { actionIcons } from './actionIcons';
 import { Button } from './Button';
+import { Icon } from './Icon';
 import { MediaCardActionHost } from './MediaCardActionHost';
 import { MediaCard } from './MediaCard';
 import { FormError, FormField, FormTextField } from './MediaCardFormControls';
@@ -410,7 +412,8 @@ export function TierBoard({
             backgroundColor: column.tier.color,
           }, pressed && { opacity: 0.85 }]}>
           <Text style={[styles.labelText, { color: column.tier.ink || inkFor(column.tier.color) }]}>{column.tier.name}</Text>
-          <Text style={[styles.labelGlyph, { color: column.tier.ink || inkFor(column.tier.color) }]}>✎</Text>
+          <Icon spec={actionIcons.edit} color={column.tier.ink || inkFor(column.tier.color)} size={14}
+            style={[styles.labelGlyph, { color: column.tier.ink || inkFor(column.tier.color) }]}>{'✎'}</Icon>
         </Pressable> : <View style={[styles.label, { backgroundColor: column.tier.color }]}>
           <Text style={[styles.labelText, { color: column.tier.ink || inkFor(column.tier.color) }]}>{column.tier.name}</Text>
         </View>}

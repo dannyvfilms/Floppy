@@ -5,12 +5,15 @@ import { SettingsPage } from './SettingsView';
 
 export const settingsAppearanceCopy = {
   title: 'Appearance',
-  copy: 'Choose a theme and arrange detail-page sections. Changes apply after saving.',
+  copy: '',
 };
 
 // Theme presets, custom palette and detail-page ordering stay in one shared
 // editor; the adapter owns current values and the save transport.
 export function SettingsAppearanceView({
+  swatches,
+  themeIcon,
+  SaveBar,
   presets = {},
   colors = {},
   effects = {},
@@ -30,7 +33,7 @@ export function SettingsAppearanceView({
   const copy = { ...settingsAppearanceCopy, ...(labels || {}) };
   return <View><SettingsPage title={copy.title} copy={copy.copy} palette={palette} heading={heading}>
     {content || <>
-    <AppearanceEditor presets={presets} colors={colors} effects={effects} families={families}
+    <AppearanceEditor SaveBar={SaveBar} swatches={swatches} themeIcon={themeIcon} presets={presets} colors={colors} effects={effects} families={families}
       values={values} initialValues={initialValues} onChange={onChange} onSave={onSave}
       validate={validate} labels={labels} palette={palette} buttonPalette={buttonPalette}
       disabled={disabled} />

@@ -34,7 +34,6 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.formats import date_format
-from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.timesince import timesince
 from django.utils.translation import gettext
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -53,6 +52,7 @@ from app import (
 from app import helpers as app_helpers
 from app.discover.feeds import get_external_row_definitions
 from app.discover.registry import DISCOVER_MEDIA_TYPES
+from app.log_safety import exception_summary
 from app.models import (
     Album,
     AlbumTracker,
@@ -68,7 +68,15 @@ from app.models import (
 from app.providers import credentials, tmdb
 from app.templatetags import app_tags
 from config import run_state
-from integrations import exports, mal_sync, plex, seerr_api, stremio_catalog, tasks
+from integrations import (
+    exports,
+    mal_sync,
+    pending_auth,
+    plex,
+    seerr_api,
+    stremio_catalog,
+    tasks,
+)
 from integrations.imports import plex as plex_import
 from integrations.imports import psn as psn_import
 from integrations.imports import trakt as trakt_imports
@@ -346,8 +354,9 @@ def _refresh_cached_plex_sections(
         )
     except plex.PlexAuthError:
         return cached_sections, "Plex token expired or revoked. Please reconnect."
-    except Exception as exc:  # pragma: no cover - defensive
-        return cached_sections, f"Could not refresh Plex libraries: {exc}"
+    except Exception as exc:
+        logger.warning("Plex section refresh failed: %s", exception_summary(exc))
+        return cached_sections, "Could not refresh Plex libraries."
 
     return account.sections or [], None
 
@@ -575,7 +584,7 @@ def account(request):
         authenticator_secret = ""
         authenticator_uri = ""
         authenticator_qr_data_uri = ""
-        if show_authenticator_setup:
+        if show_authenticator_setup and getattr(request, "account_credentials_allowed", True):
             authenticator_secret = request.user.get_or_create_authenticator_secret()
             authenticator_uri = request.user.build_totp_uri()
             authenticator_qr_data_uri = _build_qr_data_uri(authenticator_uri)
@@ -716,8 +725,8 @@ def account(request):
                 fresh_recovery_codes = request.user.generate_recovery_codes()
                 show_authenticator_setup = False
                 message = (
-                    "Authenticator app enabled. Save your recovery codes now"
-                    "—if you lose both, you cannot self-recover."
+                    "Authenticator app enabled. Save your recovery codes now. "
+                    "If you lose both, you cannot self-recover."
                 )
                 if native:
                     return native_response(message=message, tone="success")
@@ -2380,7 +2389,7 @@ def import_data_context(request):
 
     # Get Storyteller account and any in-progress device login
     storyteller_account = getattr(user, "storyteller_account", None)
-    storyteller_pending = request.session.get("storyteller_pending_auth")
+    storyteller_pending = pending_auth.get("storyteller_pending_auth", request.user.pk)
     koreader_account = getattr(user, "koreader_account", None)
     koreader_link_count = 0
     if koreader_account:
@@ -2672,11 +2681,12 @@ def import_data_plex_status(request):
                 "error": "Plex token expired or revoked. Please reconnect.",
             },
         )
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:
+        logger.warning("Plex account check failed: %s", exception_summary(exc))
         return JsonResponse(
             {
                 "state": "error",
-                "error": str(exc),
+                "error": "Could not verify the Plex account.",
             },
         )
 
@@ -5078,14 +5088,13 @@ def saved_view_delete(request, view_id: int):
     if not request.user.is_demo:
         saved_view.delete()
 
-    next_url = request.POST.get("next", "")
-    if not url_has_allowed_host_and_scheme(
-        next_url,
-        allowed_hosts={request.get_host()},
-        require_https=request.is_secure(),
-    ):
-        next_url = saved_view.get_absolute_url().split("?")[0]
-    return redirect(next_url)
+    return redirect(
+        app_helpers.safe_return_url(
+            request,
+            request.POST.get("next", ""),
+            saved_view.get_absolute_url().split("?")[0],
+        ),
+    )
 
 
 @login_required

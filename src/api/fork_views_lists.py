@@ -6,11 +6,12 @@ from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
-from app.models import Item
+from app.models import Item, MediaTypes
 from app.services import metadata_resolution
 from lists import smart_rules
 from lists.models import (
@@ -20,9 +21,11 @@ from lists.models import (
     ListActivityType,
     ListRecommendation,
 )
+from lists.tiers import TierError, clean_tiers, resolve_tiers
 from lists.views_add_reorder import apply_full_order, apply_reorder_action
 from lists.views_helpers import list_has_item_identity
 from lists.views_recommendations import get_or_create_recommendation_item
+from lists.views_tiers import apply_fill, apply_undo
 
 from .contract_serializers import (
     DetailErrorSerializer,
@@ -30,11 +33,19 @@ from .contract_serializers import (
     ListItemsRanksRequestSerializer,
     ListItemsReorderRequestSerializer,
 )
+from .errors import failure_response
 
 logger = logging.getLogger(__name__)
 
 MAX_BULK_LIST_ITEM_IDS = 500
 
+
+_OBJ_READ = extend_schema(responses={200: OpenApiTypes.OBJECT})
+_OBJ_WRITE = extend_schema(
+    request=OpenApiTypes.OBJECT,
+    responses={200: OpenApiTypes.OBJECT, 201: OpenApiTypes.OBJECT, 204: None},
+)
+_OBJ_DELETE = extend_schema(responses={204: None})
 
 def _get_editable_list(request, list_id):
     """Return (custom_list, error_response) enforcing edit permission."""
@@ -54,14 +65,155 @@ def _get_editable_list(request, list_id):
     return custom_list, None
 
 
+def _get_tier_list(request, list_id, *, write):
+    """Return (custom_list, error_response) for the Tiers view of a list."""
+    custom_list = CustomList.objects.select_related("owner").filter(id=list_id).first()
+    if custom_list is None or not custom_list.user_can_view(request.user):
+        return None, Response({"detail": "List not found."}, status=HTTP.NOT_FOUND)
+    if write and not custom_list.user_can_edit(request.user):
+        return None, Response(
+            {"detail": "You do not have permission to edit this list."},
+            status=HTTP.FORBIDDEN,
+        )
+    if write and custom_list.is_smart:
+        return None, Response(
+            {"detail": "Smart lists do not have editable tiers."},
+            status=HTTP.BAD_REQUEST,
+        )
+    return custom_list, None
+
+
+def _serialize_tiers(custom_list):
+    placements = [
+        {"item_id": item_id, "tier": tier}
+        for item_id, tier in CustomListItem.objects.filter(custom_list=custom_list)
+        .order_by("date_added", "id")
+        .values_list("item_id", "tier")
+    ]
+    return {"tiers": resolve_tiers(custom_list), "placements": placements}
+
+
+# /api/v1/lists/[list_id]/tiers/
+class ListTiersView(drf_views.APIView):
+    """Read or replace a list's tier definitions and item placements."""
+
+    @_OBJ_READ
+    def get(self, request, list_id):
+        """Return the tiers and the tier each item sits in ("" is Unranked)."""
+        custom_list, error = _get_tier_list(request, list_id, write=False)
+        if error:
+            return error
+        return Response(_serialize_tiers(custom_list), status=HTTP.OK)
+
+    @_OBJ_WRITE
+    def put(self, request, list_id):
+        """Replace the tiers; items in a removed tier become Unranked."""
+        custom_list, error = _get_tier_list(request, list_id, write=True)
+        if error:
+            return error
+        try:
+            tiers = clean_tiers(request.data.get("tiers"))
+        except TierError as exc:
+            return Response({"detail": exc.message}, status=HTTP.BAD_REQUEST)
+        with transaction.atomic():
+            custom_list.tiers = tiers
+            custom_list.save(update_fields=["tiers"])
+            CustomListItem.objects.filter(custom_list=custom_list).exclude(
+                tier__in=[entry["id"] for entry in tiers],
+            ).update(tier="")
+        return Response(_serialize_tiers(custom_list), status=HTTP.OK)
+
+
+# /api/v1/lists/[list_id]/tiers/move/
+class ListTierMoveView(drf_views.APIView):
+    """Put one item in a tier and keep the tier's order as dropped."""
+
+    @_OBJ_WRITE
+    def post(self, request, list_id):
+        """Move `item_id` to `tier` ("" is Unranked); `item_ids` sets its order."""
+        custom_list, error = _get_tier_list(request, list_id, write=True)
+        if error:
+            return error
+        tier = str(request.data.get("tier") or "")
+        if tier and tier not in {entry["id"] for entry in resolve_tiers(custom_list)}:
+            return Response({"detail": "Unknown tier."}, status=HTTP.BAD_REQUEST)
+        item_ids = request.data.get("item_ids") or []
+        if not isinstance(item_ids, list):
+            return Response(
+                {"detail": "'item_ids' must be a list."},
+                status=HTTP.BAD_REQUEST,
+            )
+        with transaction.atomic():
+            moved = CustomListItem.objects.filter(
+                custom_list=custom_list,
+                item_id=request.data.get("item_id") or 0,
+            ).update(tier=tier)
+            if not moved:
+                return Response(
+                    {"detail": "Item is not in this list."},
+                    status=HTTP.NOT_FOUND,
+                )
+            if item_ids and apply_full_order(custom_list, item_ids) != HTTP.NO_CONTENT:
+                # Rejected order (duplicate or foreign ids): undo the tier move.
+                transaction.set_rollback(True)
+                return Response(
+                    {"detail": "'item_ids' must list this list's items once each."},
+                    status=HTTP.BAD_REQUEST,
+                )
+        return Response(status=HTTP.NO_CONTENT)
+
+
+# /api/v1/lists/[list_id]/tiers/fill/
+class ListTierFillView(drf_views.APIView):
+    """Place unranked items by the requester's rating."""
+
+    @_OBJ_WRITE
+    def post(self, request, list_id):
+        """Fill the Unranked pool from ratings; return placements and order."""
+        custom_list, error = _get_tier_list(request, list_id, write=True)
+        if error:
+            return error
+        if not request.user.ratings_enabled:
+            return Response(
+                {"detail": "Ratings are turned off for this account."},
+                status=HTTP.BAD_REQUEST,
+            )
+        placements, order = apply_fill(custom_list, request.user)
+        return Response({"placements": placements, "order": order}, status=HTTP.OK)
+
+
+# /api/v1/lists/[list_id]/tiers/fill/undo/
+class ListTierFillUndoView(drf_views.APIView):
+    """Put the items from a fill back in Unranked."""
+
+    @_OBJ_WRITE
+    def post(self, request, list_id):
+        """Undo `placements` unless the items have since moved."""
+        custom_list, error = _get_tier_list(request, list_id, write=True)
+        if error:
+            return error
+        try:
+            pairs = [
+                (int(entry["item_id"]), str(entry["tier"]))
+                for entry in request.data["placements"]
+            ]
+        except (KeyError, TypeError, ValueError):
+            return Response({"detail": "Invalid placements."}, status=HTTP.BAD_REQUEST)
+        return Response({"order": apply_undo(custom_list, pairs)}, status=HTTP.OK)
+
+
 def _serialize_smart_rules(custom_list):
-    return {
+    payload = {
         "is_smart": custom_list.is_smart,
         "smart_media_types": custom_list.smart_media_types,
         "smart_excluded_media_types": custom_list.smart_excluded_media_types,
         "smart_filters": custom_list.smart_filters,
         "items_count": custom_list.items.count(),
     }
+    if custom_list.is_smart:
+        # The normalized rules the editor works with (same as the web page).
+        payload["rules"] = smart_rules.normalize_list_rules(custom_list)
+    return payload
 
 
 class ListItemsBulkAddView(drf_views.APIView):
@@ -151,6 +303,42 @@ class ListSmartRulesView(drf_views.APIView):
         )
 
 
+# /api/v1/lists/[list_id]/smart-rules/options/
+class ListSmartRuleOptionsView(drf_views.APIView):
+    """The choices the smart-rule editor offers for a list."""
+
+    @_OBJ_READ
+    def get(self, request, list_id):
+        """Return genre, year, platform... options for the list's current rules."""
+        custom_list, error = _get_editable_list(request, list_id)
+        if error:
+            return error
+        if not custom_list.is_smart:
+            return Response(
+                {"detail": "This list is not a smart list."},
+                status=HTTP.BAD_REQUEST,
+            )
+        rules = smart_rules.normalize_list_rules(custom_list)
+        options = smart_rules.build_rule_filter_data(
+            owner=custom_list.owner,
+            media_types=rules["media_types"],
+            status=rules["status"],
+            search=rules["search"],
+            include_list_options=True,
+        )
+        available = smart_rules.get_available_media_types(custom_list.owner)
+        return Response(
+            {
+                "options": options,
+                "media_types": [
+                    {"value": value, "label": MediaTypes(value).label}
+                    for value in available
+                ],
+            },
+            status=HTTP.OK,
+        )
+
+
 # /api/v1/lists/[list_id]/smart-sync/
 class ListSmartSyncView(drf_views.APIView):
     """Re-sync a smart list's membership from its rules."""
@@ -234,6 +422,49 @@ class ListCollaboratorsView(drf_views.APIView):
 
         return Response(
             {"collaborators": [user.username for user in users]},
+            status=HTTP.OK,
+        )
+
+
+# /api/v1/lists/[list_id]/viewers/
+class ListViewersView(drf_views.APIView):
+    """Read or replace the users a list is shared with (view only)."""
+
+    @_OBJ_READ
+    def get(self, request, list_id):
+        """Return viewer usernames."""
+        custom_list, error = _get_editable_list(request, list_id)
+        if error:
+            return error
+        return Response(
+            {"viewers": [user.username for user in custom_list.viewers.all()]},
+            status=HTTP.OK,
+        )
+
+    @_OBJ_WRITE
+    def put(self, request, list_id):
+        """Replace the viewer set with the given usernames."""
+        custom_list, error = _get_editable_list(request, list_id)
+        if error:
+            return error
+        usernames = request.data.get("usernames")
+        if not isinstance(usernames, list):
+            return Response(
+                {"detail": "'usernames' must be a list."},
+                status=HTTP.BAD_REQUEST,
+            )
+        users = list(get_user_model().objects.filter(username__in=usernames))
+        found = {user.username for user in users}
+        missing = [name for name in usernames if name not in found]
+        if missing:
+            return Response(
+                {"detail": "Unknown usernames.", "missing": missing},
+                status=HTTP.NOT_FOUND,
+            )
+        users = [user for user in users if user != custom_list.owner]
+        custom_list.viewers.set(users)
+        return Response(
+            {"viewers": [user.username for user in users]},
             status=HTTP.OK,
         )
 
@@ -418,6 +649,11 @@ def _serialize_recommendation(recommendation):
         "item_id": recommendation.item_id,
         "title": recommendation.item.title,
         "media_type": recommendation.item.media_type,
+        "source": recommendation.item.source,
+        "media_id": recommendation.item.media_id,
+        "season_number": recommendation.item.season_number,
+        "episode_number": recommendation.item.episode_number,
+        "image": recommendation.item.image,
         "recommended_by": recommendation.recommender_display_name,
         "note": recommendation.note,
         "date_recommended": recommendation.date_recommended,
@@ -487,9 +723,8 @@ class ListRecommendationsView(drf_views.APIView):
                 ),
             )
         except Exception as e:
-            return Response(
-                {"detail": "Could not resolve item.", "errors": str(e)},
-                status=HTTP.BAD_GATEWAY,
+            return failure_response(
+                "Could not resolve item.", e, status=HTTP.BAD_GATEWAY
             )
 
         if list_has_item_identity(custom_list, item):

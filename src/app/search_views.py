@@ -776,9 +776,9 @@ def _provider_result_sets(request, media_type, query, sources, page):
             with services.interactive_request_scope():
                 return services.search(
                     media_type, query, page, source, user=request.user, language=language
-                )
-        except Exception as exc:  # returned and handled by the caller
-            return exc
+                ), None
+        except Exception as exc:  # returned apart from the data, handled by the caller
+            return None, exc
         finally:
             if in_thread:
                 connection.close()
@@ -788,20 +788,20 @@ def _provider_result_sets(request, media_type, query, sources, page):
             fetched = list(pool.map(lambda source: fetch(source, True), sources))
     else:
         fetched = [fetch(source) for source in sources]
-    for source, data in zip(sources, fetched, strict=True):
-        if isinstance(data, services.ProviderNotConfiguredError):
+    for source, (data, error) in zip(sources, fetched, strict=True):
+        if isinstance(error, services.ProviderNotConfiguredError):
             continue
-        if isinstance(data, services.ProviderAPIError):
+        if isinstance(error, services.ProviderAPIError):
             logger.warning(
                 "Search failed for media_type=%s source=%s: %s",
                 media_type,
                 source,
-                exception_summary(data),
+                exception_summary(error),
             )
             unavailable.append(metadata_resolution.metadata_provider_label(source))
             continue
-        if isinstance(data, Exception):
-            raise data
+        if error is not None:
+            raise error
         if not data.get("results"):
             continue
         if data.get("fallback_source") and data["fallback_source"] != source:

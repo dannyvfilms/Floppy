@@ -571,7 +571,22 @@ def _text(key: str):
     return lambda values: bool(_norm(getattr(values, key)))
 
 
+def _game_group_sql(values, ctx):
+    if ctx.media_type != MediaTypes.GAME.value:
+        return None
+    stem = "provider_collection" if values.game_group_by == "series" else "provider_franchise"
+    if values.game_group == "__ungrouped__":
+        return Q(**{f"{stem}_id": "", f"{stem}_name": ""})
+    kind, _, value = values.game_group.partition(":")
+    if kind == "id":
+        return Q(**{f"{stem}_id": value})
+    if kind == "name":
+        return Q(**{f"{stem}_id": "", f"{stem}_name__iexact": value})
+    return Q(pk__in=[])
+
+
 FILTERS: tuple[FilterDef, ...] = (
+    FilterDef("game_group", lambda v: v.game_group_by in {"series", "franchise"} and bool(v.game_group), sql=_game_group_sql),
     FilterDef("status", _status_active, row=_status_row, sql=_status_sql),
     FilterDef(
         "season_status",

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ParentPicker as SharedParentPicker } from './ParentPicker';
+import { ParentPicker as SharedParentPicker } from './ParentPicker.jsx';
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;
@@ -152,6 +152,8 @@ export function ParentPicker({ props }) {
   };
 
   return <SharedParentPicker
+    plain
+    resultsID={`parent-${props.kind}-results`}
     query={query}
     placeholder={props.placeholder}
     results={rows}

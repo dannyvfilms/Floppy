@@ -143,7 +143,7 @@ export function DetailHero({ model, palette, onOpenVideo }) {
   </View>;
 }
 
-export function DetailMobileHero({ model, palette, onOpenItem }) {
+export function DetailMobileHero({ model, palette, onOpenItem, actions }) {
   const colors = resolvePalette(palette);
   const [seasonsOpen, setSeasonsOpen] = useState(false);
   const { width } = useWindowDimensions();
@@ -176,7 +176,7 @@ export function DetailMobileHero({ model, palette, onOpenItem }) {
       </View> : null}
       {model.activityText ? <Text style={styles.mobileHeroMeta}>{model.activityText}</Text> : null}
       {model.mobileMeta ? <Text style={styles.mobileHeroMeta}>{model.mobileMeta}</Text> : null}
-      <DetailActions model={model} palette={colors} />
+      {actions ? <View style={styles.mobileHeroActions}>{actions}</View> : <DetailActions model={model} palette={colors} />}
     </View>
   </View>;
 }
@@ -207,12 +207,14 @@ export function DetailSynopsis({ model, labels, palette, hideWhenEmpty = false }
   const body = synopsis.text || '';
   const previewLines = synopsis.previewLines ?? 3;
   const [expanded, setExpanded] = useState(false);
-  const [clamped, setClamped] = useState(Boolean(synopsis.clamped));
   if (!body) return hideWhenEmpty ? null : <Text style={[styles.emptySynopsis, { color: colors.textMuted }]}>{text.noSynopsis}</Text>;
-  const showToggle = synopsis.clamped === undefined ? clamped : Boolean(synopsis.clamped);
+  // A phone line holds about 42 characters: offer "Read more" past the preview
+  // without a hidden measuring copy (text layout events are not portable, and a
+  // second copy would be read twice by assistive technology).
+  const showToggle = synopsis.clamped === undefined
+    ? body.length > previewLines * 42 || body.split('\n').length > previewLines
+    : Boolean(synopsis.clamped);
   return <View style={styles.synopsis}>
-    {synopsis.clamped === undefined ? <Text style={[styles.synopsisText, styles.measure, { color: colors.textSecondary }]}
-      onTextLayout={event => setClamped(event.nativeEvent.lines.length > previewLines)}>{body}</Text> : null}
     <Text numberOfLines={expanded ? undefined : previewLines}
       style={[styles.synopsisText, { color: colors.textSecondary }]}>{body}</Text>
     {showToggle || expanded ? <Pressable accessibilityRole="button"
@@ -286,6 +288,7 @@ const styles = StyleSheet.create({
   mobileHero: { overflow: 'hidden', marginHorizontal: -22, backgroundColor: '#18181b' },
   mobileHeroImage: { position: 'absolute', top: 0, left: 0, right: 0, width: '100%' },
   mobileHeroContent: { alignItems: 'center', gap: 16, paddingHorizontal: 22, paddingBottom: 22 },
+  mobileHeroActions: { alignSelf: 'stretch' },
   mobileHeroLogo: { width: '66%', height: 96 },
   mobileHeroTitle: { color: '#fff', fontSize: 32, fontWeight: '800', textAlign: 'center' },
   mobileHeroMeta: { color: '#fff', fontSize: 14, textAlign: 'center', textShadowColor: '#000', textShadowRadius: 4 },
@@ -329,7 +332,6 @@ const styles = StyleSheet.create({
   factValue: { fontSize: 13, fontWeight: '500' },
   synopsis: { gap: 8, width: '100%' },
   synopsisText: { fontSize: 16, lineHeight: 24 },
-  measure: { position: 'absolute', left: 0, right: 0, opacity: 0 },
   emptySynopsis: { fontSize: 16, lineHeight: 24 },
   synopsisToggle: { alignSelf: 'flex-start', paddingVertical: 2 },
   synopsisToggleText: { fontSize: 14, fontWeight: '500', lineHeight: 20 },

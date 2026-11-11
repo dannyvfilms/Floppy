@@ -73,7 +73,7 @@ def server_port_context() -> dict[str, object]:
         config_error_source = "saved" if status.saved_error else ""
     except ServerPortError as exc:
         status = None
-        config_error = str(exc)
+        config_error = exc.message
         config_error_source = "environment" if environment_override else "saved"
 
     return {
@@ -104,7 +104,7 @@ def update_server_port(request):
         try:
             removed = clear_saved_port()
         except ServerPortError as exc:
-            message = str(exc)
+            message = exc.message
             messages.error(request, message)
             if _wants_json(request):
                 return _json_port_result(request, message, ok=False)
@@ -136,7 +136,7 @@ def update_server_port(request):
         try:
             saved_port = save_server_port(request.POST.get("port", ""))
         except ServerPortError as exc:
-            message = str(exc)
+            message = exc.message
             messages.error(request, message)
             if _wants_json(request):
                 return _json_port_result(request, message, ok=False)

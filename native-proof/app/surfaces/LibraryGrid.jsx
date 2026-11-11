@@ -2,10 +2,29 @@ import React from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { MediaCard } from '../../../frontend/ui/MediaCard';
 import { mediaCardPalette, spacing } from '../theme';
-import { mediaCardModelFromRow } from '../data/libraryTransportCore';
+import { cardActionsFor, mediaCardModelFromRow } from '../data/libraryTransportCore';
+import MediaCardSlot from './MediaCardSlot';
+import { useMobileGridLayout } from '../data/useMobileGridLayout';
 
-export default function LibraryGrid({ rows = [], onOpen, onRate, selected = [], selecting = false, onToggle, groupBy = 'item' }) {
+export default function LibraryGrid({ rows = [], onOpen, onOpenHistory, onRate, selected = [], selecting = false, onToggle, groupBy = 'item' }) {
   const { width } = useWindowDimensions();
+  const mobileGridLayout = useMobileGridLayout();
+  // Tracked items carry the web card's own actions (tracking, lists, history, rating),
+  // so they are handled in place. Artists, albums and shows keep the plain card.
+  if (groupBy === 'item' && !rows.some(row => row.identity?.entityType)) {
+    return <MediaCardSlot
+      items={rows.map(row => {
+        const model = mediaCardModelFromRow(row.media || row);
+        return { key: String(row.id), row, model: { ...model, identity: row.identity, actions: cardActionsFor(model.title, row.identity) } };
+      })}
+      gridLayout="library"
+      mobileGridLayout={mobileGridLayout}
+      selectionMode={selecting}
+      selectedKeys={selected}
+      onToggleSelection={onToggle}
+      onOpenDetail={onOpen}
+      onOpenLink={href => { if (String(href) === '/history') onOpenHistory?.(); }} />;
+  }
   const columns = width < 560 ? 2 : Math.min(5, Math.max(3, Math.floor((width + spacing.md) / 196)));
   const horizontalPadding = spacing.lg * 2;
   const cardWidth = (width - horizontalPadding - (columns - 1) * spacing.md) / columns;
@@ -25,7 +44,8 @@ export default function LibraryGrid({ rows = [], onOpen, onRate, selected = [], 
     {groups.map(([groupName, groupRows]) => <View key={groupName} style={styles.section}>
       {groupBy !== 'item' ? <Text style={styles.groupTitle}>{groupName}</Text> : null}
       <View style={styles.grid}>{groupRows.map(row => {
-      const model = { ...mediaCardModelFromRow(row.media || row), identity: row.identity };
+      const model = { ...mediaCardModelFromRow(row.media || row), identity: row.identity,
+        ...(row.identity?.entityType === 'show' ? { ratingEditable: false } : {}) };
       const key = String(row.id);
       return <View key={key} style={{ width: cardWidth }}>
         <MediaCard

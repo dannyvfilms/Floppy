@@ -93,7 +93,10 @@ function cardLines(item) {
   return lines;
 }
 
+// The API rewrites a season item that has an episode number to media type
+// "episode"; the calendar filters and labels know it as the season it airs in.
 function mediaTypeFor(item) {
+  if (item.media_type === 'episode') return 'season';
   return item.library_media_type || item.media_type || '';
 }
 
@@ -131,7 +134,7 @@ export function releaseFromEvent(event) {
     mediaLabel: MEDIA_LABELS[mediaType] || mediaType,
     releaseType,
     releaseTypeLabel,
-    status: '',
+    status: event.viewer_status || '',
     title: item.title || '',
     href: item.url || '',
     image: item.image || null,
@@ -214,6 +217,19 @@ export function createRemoteCalendarActions(request) {
     read(params = {}) {
       return request('/api/v1/calendar/', { query: calendarQuery(params) });
     },
+    readLinks() {
+      return request('/api/v1/calendar/links/');
+    },
+    saveWeekStart(value) {
+      return request('/api/v1/user/preferences/', {
+        method: 'PATCH',
+        body: { week_start_day: value },
+      });
+    },
+    async readStatuses(params = {}) {
+      const payload = await request('/api/v1/calendar/statuses/', { query: calendarQuery(params) });
+      return payload?.statuses || {};
+    },
     async readAll(params = {}) {
       const query = { ...calendarQuery(params), limit: 200, offset: 0 };
       const results = [];
@@ -231,7 +247,12 @@ export function createRemoteCalendarActions(request) {
         if (offset == null) break;
         query.offset = Number(offset);
       }
-      return { results, pagination: { total: total ?? results.length } };
+      // Events do not carry the viewer's status; the status filter needs it.
+      const statuses = await this.readStatuses(params).catch(() => ({}));
+      const withStatus = results.map(event => (statuses[event.id]
+        ? { ...event, viewer_status: statuses[event.id] }
+        : event));
+      return { results: withStatus, pagination: { total: total ?? results.length } };
     },
   };
 }
@@ -244,5 +265,88 @@ export function createLocalCalendarActions(reason) {
     fetchReleases: local,
     read: local,
     readAll: local,
+    readLinks: local,
+    saveWeekStart: local,
+    readStatuses: local,
+  };
+}
+
+// The links endpoint is the server's vocabulary for the links panel and the
+// calendar filters; nothing here is invented on the device.
+export function calendarOptionsFromLinks(links, releases = {}) {
+  if (!links || typeof links !== 'object') return null;
+  const labelFor = Object.fromEntries((links.statuses || []).map(item => [item.value, item.label]));
+  const present = {};
+  Object.values(releases).flat().forEach(release => {
+    if (!release.status) return;
+    (present[release.mediaType] ||= new Set()).add(release.status);
+  });
+  const statusesByType = Object.fromEntries(
+    Object.entries(links.filter_statuses_by_type || {}).map(([type, values]) => [
+      type,
+      values.map(value => ({
+        value,
+        label: labelFor[value] || value,
+        inMonth: Boolean(present[type]?.has(value)),
+      })),
+    ]),
+  );
+  const mediaTypes = (links.filter_media_types || []).map(item => ({
+    value: item.value,
+    label: item.label,
+    shortLabel: MEDIA_LABELS[item.value] || item.label,
+  }));
+  return {
+    mediaTypes,
+    releaseTypes: links.release_types || [],
+    statusesByType,
+    initialFilters: {
+      selectedTypes: mediaTypes.map(item => item.value),
+      selectedStatusesByType: Object.fromEntries(
+        Object.entries(statusesByType).map(([type, list]) => [type, list.map(item => item.value)]),
+      ),
+      selectedReleaseTypes: (links.release_types || []).map(item => item.value),
+    },
+    regionUnset: Boolean(links.region_unset),
+    weekStartDay: links.week_start_day === 'sunday' ? 'sunday' : 'monday',
+    linksProps: {
+      releaseMediaTypes: links.release_media_types || [],
+      historyMediaTypes: links.history_media_types || [],
+      statuses: links.statuses || [],
+      releaseTypes: links.release_types || [],
+      releaseBaseUrl: links.release_base_url || '',
+      historyBaseUrl: links.history_base_url || '',
+      initialReleaseMediaTypes: links.initial_release_media_types,
+      initialHistoryMediaTypes: links.initial_history_media_types,
+      initialStatuses: links.initial_statuses,
+      initialReleaseTypes: links.initial_release_types,
+    },
+  };
+}
+
+// Fallback when the links endpoint is refused (a scoped token): offer only the
+// types, release types and statuses the loaded events actually use.
+export function calendarOptionsFromEvents(releases = {}) {
+  const all = Object.values(releases).flat();
+  const types = [...new Set(all.map(release => release.mediaType).filter(Boolean))];
+  const releaseTypes = [...new Set(all.map(release => release.releaseType).filter(Boolean))]
+    .map(value => ({ value, label: RELEASE_TYPE_LABELS[value] || value }));
+  const mediaTypes = types.map(value => ({
+    value,
+    label: MEDIA_LABELS[value] || value,
+    shortLabel: MEDIA_LABELS[value] || value,
+  }));
+  return {
+    mediaTypes,
+    releaseTypes,
+    statusesByType: {},
+    initialFilters: {
+      selectedTypes: types,
+      selectedStatusesByType: {},
+      selectedReleaseTypes: releaseTypes.map(item => item.value),
+    },
+    regionUnset: false,
+    weekStartDay: null,
+    linksProps: null,
   };
 }
