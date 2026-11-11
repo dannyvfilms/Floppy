@@ -29,6 +29,39 @@ class PreferencesViewTests(TestCase):
         self.assertEqual(self.user.date_format, "m_d_yyyy")
         self.assertEqual(self.user.time_format, "hh_mm")
 
+    @patch("users.views.tmdb.watch_provider_regions", return_value=[])
+    @patch("users.views.tmdb.metadata_languages", return_value=[])
+    def test_preferences_post_persists_default_edit_entry_date(
+        self, _mock_languages, _mock_regions,
+    ):
+        """The no-date setting survives a browser preferences save."""
+        response = self.client.post(
+            reverse("preferences"),
+            {"default_edit_entry_date": "no_date"},
+        )
+
+        self.assertRedirects(response, reverse("preferences"))
+        self.user.refresh_from_db()
+        self.assertEqual(getattr(self.user, "default_edit_entry_date", None), "no_date")
+
+    @patch("users.views.tmdb.watch_provider_regions", return_value=[])
+    @patch("users.views.tmdb.metadata_languages", return_value=[])
+    def test_preferences_post_ignores_invalid_default_edit_entry_date(
+        self, _mock_languages, _mock_regions,
+    ):
+        """Unsupported values cannot replace the last valid setting."""
+        self.user.default_edit_entry_date = "no_date"
+        self.user.save(update_fields=["default_edit_entry_date"])
+
+        response = self.client.post(
+            reverse("preferences"),
+            {"default_edit_entry_date": "not-a-choice"},
+        )
+
+        self.assertRedirects(response, reverse("preferences"))
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.default_edit_entry_date, "no_date")
+
     @patch("users.views.tmdb.metadata_languages")
     @patch("app.tasks.backfill_item_metadata_task.apply_async")
     def test_language_changes_restart_and_schedule_automatic_metadata_repair(
