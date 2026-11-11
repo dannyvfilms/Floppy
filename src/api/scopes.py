@@ -45,8 +45,8 @@ SCOPE_DESCRIPTIONS = {
     "exports:read": "Download exports.",
     "sync:read": "Read sync connections, change feeds, and conflicts.",
     "sync:write": "Resolve sync conflicts.",
-    "user:read": "Read preferences, sidebar, and notification settings.",
-    "user:write": "Change preferences, sidebar, and notification settings.",
+    "user:read": "Read preferences, saved views, sidebar, and notification settings.",
+    "user:write": "Change preferences, saved views, sidebar, and notification settings.",
 }
 
 ALL_SCOPES = frozenset(SCOPE_DESCRIPTIONS)
@@ -123,6 +123,7 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_lists.ListTierFillView": {"POST": "lists:write"},
     "api.fork_views_lists.ListTierFillUndoView": {"POST": "lists:write"},
     "api.fork_views_lists.ListItemsReorderView": {"POST": "lists:write"},
+    "api.fork_views_lists.ListItemsBulkAddView": {"POST": "lists:write"},
     "api.fork_views_lists.ListItemsOrderView": {"PUT": "lists:write"},
     "api.fork_views_lists.ListItemsRanksView": {"PUT": "lists:write"},
     "api.fork_views_lists.ListRecommendationsView": {
@@ -241,8 +242,6 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_library.LibraryFilterOptionsView": {"GET": _R},
     "api.fork_views_library.LibraryItemIdsView": {"GET": _R},
     "api.fork_views_library.LibraryPreferencesView": {"GET": "user:read", "PATCH": "user:write"},
-    "api.fork_views_library.LibrarySavedViewsView": {"POST": "user:write"},
-    "api.fork_views_library.LibrarySavedViewDetailView": {"DELETE": "user:write"},
     "api.fork_views_library.LibraryShareView": {"POST": "lists:write"},
     "api.fork_views_library.LibraryBulkStatusView": {"POST": _W},
     "api.fork_views_library.LibraryBulkCollectionView": {"POST": _W},
@@ -300,6 +299,8 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
         "GET": "catalog:read",
         "POST": "catalog:write",
     },
+    "api.fork_views_detail.DetailPageView": {"GET": "watchlist:read"},
+    "api.fork_views_detail.DetailGalleryView": {"GET": "metadata:read"},
     "api.fork_views_users.UserNavigationView": {"GET": "user:read"},
     "api.fork_views_users.UserPreferencesView": {
         "GET": "user:read",
@@ -403,6 +404,9 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.views.StatisticsView": {"GET": "statistics:read"},
     "api.views.MediaListView": {"GET": _R},
     "api.views.MediaTypeListView": {"GET": _R, "POST": _W},
+    "api.fork_views_library.LibrarySavedViewsView": {"GET": "user:read", "POST": "user:write"},
+    "api.fork_views_library.LibrarySavedViewDetailView": {"GET": "user:read", "DELETE": "user:write"},
+    "api.fork_views_library.LibrarySavedViewsReorderView": {"POST": "user:write"},
     "api.views.MediaDetailView": {"GET": _R, "PATCH": _W, "DELETE": _W},
     "api.views.MediaSeasonsView": {"GET": _R},
     "api.views.MediaSeasonDetailView": {"GET": _R, "PATCH": _W, "DELETE": _W},

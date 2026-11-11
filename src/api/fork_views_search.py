@@ -253,7 +253,8 @@ class SearchResultsView(drf_views.APIView):
         context["user"] = request.user
         props = search_views.build_search_results_props(context)
         props["errors"] = errors
-        if errors and not props["sections"]:
+        # Search results now use the Home-shelf row contract (`rows`), not the PR's `sections`.
+        if errors and not (props.get("sections") or props.get("rows")):
             props["state"] = "error"
         return Response(props, status=HTTP.OK)
 

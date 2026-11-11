@@ -60,3 +60,15 @@ GitHub has no public API for attaching images to a PR. The script uses the undoc
 - Pages are full-page screenshots after `networkidle`. Hover states and open dialogs are not captured.
 - Each PR takes about two minutes (two servers). Run several PRs in one invocation and let it work through them.
 - The seed relies on Manual-source items, so nothing needs the network.
+
+## Review screenshots for web and Expo
+
+`scripts/review_screenshots.py` is the repeatable capture for a UI change that touches search or the shared header, on both surfaces:
+
+```bash
+uv run --no-sync python scripts/review_screenshots.py            # export Expo, capture web and Expo
+uv run --no-sync python scripts/review_screenshots.py --no-export # reuse the last Expo export
+uv run --no-sync python scripts/review_screenshots.py --ios      # also record a booted iOS Simulator frame
+```
+
+It picks free ports (never reuses another session's server), seeds a throwaway user and one saved book with a Barcode field, then writes `.floppy/review-shots/<timestamp>/` with PNGs, `manifest.json` (each check, expected versus actual) and a self-contained `report.html`. Web cases run at desktop and phone widths; each search scope asserts the camera and spinner state. The Expo web build cannot sign in, so Expo cases use the no-auth `search-preview` route (`EXPO_PUBLIC_SEARCH_PREVIEW=1`, `npm run export:search-preview` in `native-proof/`), which renders the real `SearchSlot` and also runs in Expo Go. Expo web is react-native-web in Chromium: it is not iOS or Android runtime evidence. `--ios` only records the Simulator's current frame; launch Expo Go and drive it yourself.

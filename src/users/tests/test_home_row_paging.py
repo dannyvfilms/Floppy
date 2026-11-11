@@ -195,9 +195,12 @@ class HomeRowPagingTests(ShelfFixtures, TestCase):
         order_calls = [
             call for call in cache_set.call_args_list if "_order_" in call.args[0]
         ]
-        self.assertEqual(len(order_calls), 1)
+        # One scan caches both directions; the flipped-direction cover preview
+        # then reuses them instead of ranking the shelf a second time.
+        self.assertEqual(len(order_calls), 2)
         self.assertEqual(
-            order_calls[0].args[2], cache_utils.HOME_ROW_ORDER_CACHE_TTL,
+            {call.args[2] for call in order_calls},
+            {cache_utils.HOME_ROW_ORDER_CACHE_TTL},
         )
 
     def test_recent_sql_order_matches_the_scan(self):

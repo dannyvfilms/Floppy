@@ -212,6 +212,9 @@
       "components": [
         "DetailComposition",
         "DetailHeader",
+        "DetailHero",
+        "DetailMobileHero",
+        "DetailChips",
         "DetailSynopsis",
         "DetailActions",
         "DetailSection"
@@ -224,11 +227,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Not exercised; the iOS pass rendered Home only."
+          "evidence": "Device Hub iPhone Duo on iOS 27.2 loaded the current Expo bundle against the local server. Breaking Bad show metadata, backdrop and logo rendered; a side-by-side comparison with the web season page showed remaining differences in crop, spacing, actions and sections. Season interactions and accessibility remain unverified."
         },
         "android": {
-          "status": "verified",
-          "evidence": "Android 15 Pixel 7 AVD: rendered the shared detail composition on Detail; no action, synopsis or TalkBack interaction; demo images did not load."
+          "status": "unverified",
+          "evidence": "Expo web export compiled the updated view. Android runtime, interactions and TalkBack have not been verified."
         }
       }
     },
@@ -2824,11 +2827,11 @@
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export on the native Library screen; no simulator run was performed."
+          "evidence": "Expo iOS export compiled this view. Runtime verification is blocked because xcrun simctl reports CoreSimulatorService is unavailable."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export on the native Library screen; no emulator run was performed."
+          "evidence": "Expo Android export compiled this view. Runtime verification is blocked because adb cannot start its local daemon (operation not permitted)."
         }
       }
     },

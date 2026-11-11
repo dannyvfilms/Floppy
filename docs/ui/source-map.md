@@ -194,7 +194,7 @@ PeopleScreen now consumes canonical credit card models with an opt-in hover meta
 
 - `src/templates/app/components/card_lines.html`
 - `src/templates/app/components/media_card.html` (shell: wrapper classes, props script and first-paint poster and title; React replaces it on mount)
-- `frontend/ui/MediaCard.jsx`, `frontend/ui/MediaCard.web.jsx`, `frontend/ui/mediaCardBehavior.js`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/media-card.css`, `frontend/ui/CardScrim.jsx`, `frontend/ui/CardScrim.native.jsx`, `frontend/ui/CardScrim.web.jsx`, `src/app/media_card_model.py`, `src/app/card_surfaces.py` (React Native primitives on native surfaces; native poster action reveal follows server `actions.clickable`; native scrim uses an SVG gradient; the browser adapter retains DOM links, htmx integration and web-only slots; compact Up Next cards use the localized short label)
+- `frontend/ui/MediaCard.jsx`, `frontend/ui/MediaCard.web.jsx`, `frontend/ui/mediaCardBehavior.js`, `frontend/ui/statusChipIcons.js`, `frontend/ui/mountMediaCard.jsx`, `frontend/ui/media-card.css`, `frontend/ui/CardScrim.jsx`, `frontend/ui/CardScrim.native.jsx`, `frontend/ui/CardScrim.web.jsx`, `src/app/media_card_model.py`, `src/app/card_surfaces.py` (React Native primitives on native surfaces; native poster action reveal follows server `actions.clickable`; native scrim uses an SVG gradient; the browser adapter retains DOM links, htmx integration and web-only slots; compact Up Next cards use the localized short label)
 - `src/templates/app/components/media_card_list.html`
 - `src/templates/app/components/media_card_status_chip.html` (out-of-band save fragment only; no card renders it)
 
@@ -228,7 +228,15 @@ Status: `Partial / coexisting`
 
 ## LIBRARY
 
-Status: `Legacy`
+Status: `Partial / coexisting`
+
+- `native-proof/app/screens/LibraryScreen.jsx`
+- `native-proof/app/surfaces/LibraryGrid.jsx`
+- `native-proof/app/surfaces/LibraryBulkActions.jsx`
+- `native-proof/app/data/libraryTransport.js`
+- `native-proof/app/data/libraryTransportCore.js`
+- `src/api/fork_views_library.py`
+- `src/api/fork_views_lists.py`
 
 - Native `LibraryPageView` passes optional `PageHeading` title/count styles for library typography and mobile badge padding; other page compositions preserve defaults. Shared presentation remains `Partial / coexisting`, `Primitives`; final browser spacing comparison and iOS/Android runtime verification remain outstanding.
 
@@ -272,7 +280,11 @@ Status: `Legacy`
 
 ## TABLES
 
-Status: `Legacy`
+Status: `Partial / coexisting`
+
+- `frontend/ui/MediaTable.jsx`
+- `native-proof/app/screens/LibraryScreen.jsx`
+- `native-proof/app/surfaces/TableSlot.jsx`
 
 - Shared `frontend/ui/MediaTable.jsx` distinguishes item/entry React keys while keeping item-based bulk selection. Consumer: native `LibraryScreen` through `TableSlot`; `Partial / coexisting`, `Primitives`. Legacy server tables below retire with their page migrations. Browser duplicate-entry table comparison not yet verified; iOS and Android runtime not verified.
 
@@ -326,6 +338,10 @@ Status: `Legacy`
 
 Status: `Partial / coexisting`
 
+- `frontend/ui/BulkActions.jsx`
+- `native-proof/app/surfaces/LibraryBulkActions.jsx`
+- `native-proof/app/data/libraryTransportCore.js`
+
 - `src/static/js/bulkSelection.js`
 - `src/templates/app/components/bulk_selection_toolbar.html`
 - `src/templates/lists/components/bulk_select_button.html`
@@ -341,7 +357,8 @@ ParentPicker's native manual-entry consumer opts into an unframed search field. 
 
 Status: `Partial / coexisting`
 
-- `native-proof/app/surfaces/SearchSlot.jsx` (Expo search transport, scanner and iOS focus presentation; the shared `GlobalSearch` is mapped under SHELL)
+- `native-proof/app/surfaces/SearchSlot.jsx` (Expo search transport, scanner and iOS focus presentation; suggestion identity and destination are retained when opening detail; the shared `GlobalSearch` is mapped under SHELL)
+- `src/app/search_views.py` (`_all_scope_barcode_groups`: All-scope ISBN fan-out and saved Barcode matches)
 - `src/static/js/barcode-scanner.js`
 - `src/static/js/barcode-scanner.selfcheck.mjs`
 - `src/static/js/libraries/zxing-library-0.21.3.min.js`
@@ -377,7 +394,7 @@ Status: `Partial / coexisting`
 Status: `Partial / coexisting`
 
 - `frontend/ui/PlaybackCard.jsx`, `frontend/ui/PlaybackTheme.web.jsx`, `frontend/ui/mountPlaybackCard.jsx` (shared presentation, browser adapter and server-fragment fallback; Now Playing renders a 16:9 MediaCard with its section heading and controls above it, using the standard MediaCard indigo for both playing and paused/stale progress fills)
-- `native-proof/app/surfaces/PlaybackSlot.jsx`, `native-proof/app/data/playbackTransport.js`, `native-proof/app/data/settingsTransport.js`, `frontend/ui/mediaCardSizing.js` (native Now Playing spans up to three 110 pt cards plus two 16 pt gaps on compact mobile, two 168 pt cards plus a 12 pt gap on comfortable mobile, and two on desktop; narrow layouts shrink to fit)
+- `native-proof/app/surfaces/PlaybackSlot.jsx`, `native-proof/app/data/playbackTransport.js`, `native-proof/app/data/settingsTransport.js`, `frontend/ui/mediaCardSizing.js` (native Now Playing follows the server's web detail destination; cards span up to three 110 pt cards plus two 16 pt gaps on compact mobile, two 168 pt cards plus a 12 pt gap on comfortable mobile, and two on desktop; narrow layouts shrink to fit)
 - `src/api/fork_views_playback.py` (`/api/v1/playback/home-cards/`, session-only cards and server-resolved Pause/Stop or Stop/Cancel actions)
 - `src/templates/app/components/_scrollable_row_js.html` (browser playback width measures an ordinary Home media-grid card and spans three on compact mobile, two on comfortable mobile, or two on desktop)
 - `src/templates/app/components/active_playback_card.html`
@@ -396,7 +413,7 @@ Status: `Legacy`
 
 ## DETAIL
 
-Status: `Legacy`
+Status: `Partial / coexisting` — Expo uses the shared detail composition; the browser page remains server-owned.
 
 - Shared `DetailPageView`/`DetailEpisodePageView`, `DetailChipCard`, `DetailListCard`, `DetailIssueCards` and `DetailEpisodeCards`: `Partial / coexisting`, `Primitives`; native `DetailScreen` owns navigation, issue-specific dialog targets, studio links, mapped 25-row anime previews with viewer-owned rating-only projection, and field writes through `detailTransport.js`/`mediaCardTransport.js`. TV Details uses optional computed metadata total runtime with the shared server model property and hides API-only episode-season helpers; browser full reload verified AIR DATES→Status→RUNTIME(3SEASONS),7h44min·19episodes and absent technical rows, matching the web. Outlined Genres and anime layouts are native-only props; anime Rate is a sibling of its episode links. Web detail/episode shells below remain until their composition and interactions migrate. Browser provider sections and mapped anime list observed. Native comic Add and the web Track bridge succeeded; new issue/tracker/history were restored to the captured baseline. Anime watched and unwatched Rate save/reopen/clear and Add watch succeeded; unwatched rating retained Unwatched. Test-only mapped parents/history were restored with existing MAL tracking unchanged. Native track datetime-local submission sends an explicit instant; browser save/reopen preserved Nov 10, 2026 04:19:00 exactly. First page25 and Load more were observed; test watches, ratings and new mapped parents/history were restored with existing MAL tracking unchanged. Later-page loading, remaining collection actions and restored comic Source/Notes/No Status fields remain unverified. iOS and Android runtime not verified.
 
@@ -419,7 +436,7 @@ Status: `Legacy`
 
 ## CHILDREN
 
-Status: `Legacy`
+Status: `Partial / coexisting` — browser rows remain server-owned; Expo renders the shared child composition.
 
 - `DetailChildrenTheme.web.jsx` bridges shared `DetailChildren` Track actions to the shared web modal host using a target outside hidden fallback rows. Native `DetailEpisodeCards`/`DetailIssueCards` adapt tracking/collection/history to JSON APIs with provider identity intact. Shared presentation: `Partial / coexisting`, `Primitives`; server row/form fallbacks remain until full interaction ownership migrates. Browser web Track bridge and native issue Add verified; new rows/history removed against baseline. Final native anime controls and restored comic fields pending; iOS and Android runtime not verified.
 
@@ -436,6 +453,7 @@ Status: `Legacy`
 - `src/templates/app/components/issue_row.html`
 - `src/templates/app/components/seasons_grid.html`
 - `src/templates/app/episode_details.html`
+- `frontend/ui/DetailChildren.jsx`
 
 ## TRACKING
 
@@ -603,9 +621,10 @@ Status: `Legacy`
 
 ## DETAIL-RELATED
 
-Status: `Legacy`
+Status: `Partial / coexisting` — Expo uses shared related cards; browser section chrome and Steam DLC cards remain server-owned.
 
 - `src/templates/app/components/detail_secondary_content.html` (related and DLC sections, the Book "Format" and "Narrator" facts, and the manual podcast manager trigger)
+- `frontend/ui/DetailRelated.jsx`
 
 ## HISTORY
 
@@ -1117,7 +1136,6 @@ PR #1878: the Track dialog adapter (`mountTrackForm.jsx`) posts its payload, mir
 - `frontend/pages/AuthView.jsx`
 - `frontend/pages/CalendarView.jsx`
 - `frontend/pages/CollectionView.jsx`
-- `frontend/pages/DetailView.jsx`
 - `frontend/pages/DiscoverView.jsx`
 - `frontend/pages/ErrorsView.jsx`
 - `frontend/pages/HistoryView.jsx`
@@ -1176,7 +1194,6 @@ PR #1878: the Track dialog adapter (`mountTrackForm.jsx`) posts its payload, mir
 - `frontend/ui/BadgeTheme.web.jsx`
 - `frontend/ui/BulkActionBar.native.jsx`
 - `frontend/ui/BulkActionBar.web.jsx`
-- `frontend/ui/BulkActions.jsx`
 - `frontend/ui/BulkEpisodeForm.jsx`
 - `frontend/ui/BulkJobDock.native.jsx`
 - `frontend/ui/BulkJobDock.web.jsx`
@@ -1191,17 +1208,13 @@ PR #1878: the Track dialog adapter (`mountTrackForm.jsx`) posts its payload, mir
 - `frontend/ui/CopyBlock.jsx`
 - `frontend/ui/CopyField.jsx`
 - `frontend/ui/DateTimePicker.jsx`
-- `frontend/ui/DetailChildren.jsx`
 - `frontend/ui/DetailChildrenTheme.web.jsx`
-- `frontend/ui/DetailComposition.jsx`
 - `frontend/ui/DetailCompositionTheme.native.jsx`
 - `frontend/ui/DetailCompositionTheme.web.jsx`
-- `frontend/ui/DetailRelated.jsx`
 - `frontend/ui/DetailRelatedTheme.native.jsx`
 - `frontend/ui/DetailRelatedTheme.web.jsx`
 - `frontend/ui/DeviceApproval.jsx`
 - `frontend/ui/DeviceConnect.jsx`
-- `frontend/ui/FilterBar.jsx`
 - `frontend/ui/FormSaveBar.jsx`
 - `frontend/ui/GlobalSearch.web.jsx`
 - `frontend/ui/HistoryFeed.jsx`
@@ -1228,7 +1241,6 @@ PR #1878: the Track dialog adapter (`mountTrackForm.jsx`) posts its payload, mir
 - `frontend/ui/MediaCardActionHost.jsx`
 - `frontend/ui/MediaCardActions.jsx`
 - `frontend/ui/MediaCardFormControls.jsx`
-- `frontend/ui/MediaTable.jsx`
 - `frontend/ui/MetadataReview.jsx`
 - `frontend/ui/ModalHost.native.jsx`
 - `frontend/ui/PageSlot.web.jsx`
@@ -1260,7 +1272,10 @@ PR #1878: the Track dialog adapter (`mountTrackForm.jsx`) posts its payload, mir
 - `frontend/ui/SearchResultCard.native.jsx`
 - `frontend/ui/SearchResultCard.web.jsx`
 - `frontend/ui/SearchResults.jsx`
+- `native-proof/app/data/useMobileGridLayout.js`
 - `frontend/ui/SearchResults.web.jsx`
+- `frontend/ui/searchRows.js`
+- `frontend/ui/webShelfWidth.js`
 - `frontend/ui/SelectField.jsx`
 - `frontend/ui/SetupGuide.jsx`
 - `frontend/ui/Shell.jsx`

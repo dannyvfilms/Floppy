@@ -156,6 +156,7 @@ export default function App() {
     if (person) { navigate('People', { identity: { kind: 'person', source: person[1], personId: person[2] } }); return; }
     const studio = path.match(/^\/studio\/([^/]+)\/([^/?#]+)/);
     if (studio) { navigate('People', { identity: { kind: 'studio', source: studio[1], studioId: studio[2] } }); return; }
+    if (path.startsWith('/podcast/show/')) { navigate('Detail', { href: path }); return; }
     if (path.includes('/details/')) { navigate('Detail', { href: path }); }
   };
 

@@ -32,6 +32,10 @@ function readPalette() {
     textSecondary: color('--color-text-secondary', '#d4d4d8'),
     textMuted: color('--color-text-muted', '#a1a1aa'),
     surface: color('--color-surface', '#27272a'),
+    surfaceDim: color('--color-surface-dim', '#262a2f'),
+    tabActive: color('--color-border', '#2c3136'),
+    hoverDim: color('--color-hover-dim', '#23272b'),
+    inputBorder: '#4b5563',
     surfaceStrong: color('--color-surface-strong', '#3f3f46'),
     surfaceMuted: color('--color-surface-muted', '#52525b'),
     border: color('--color-surface-border', '#3f3f46'),
@@ -166,6 +170,7 @@ function TagsTab({ tab, itemTitle, palette, labels, onChange }) {
   return <TagAssignmentDialog
     open
     embedded
+    plain
     showClose={false}
     item={{ id: tab.itemId, title: itemTitle }}
     tags={tab.tags}
@@ -177,11 +182,19 @@ function TagsTab({ tab, itemTitle, palette, labels, onChange }) {
     onDelete={remove} />;
 }
 
+// The popup's open state is the Alpine `x-show` overlay around the React root. The server
+// modal root inside it is hidden on purpose once React takes over, so it can't be observed.
+function findPopup(host) {
+  return host.closest('[data-track-popup]')?.closest('[x-show]')
+    || host.closest('[data-track-modal-root]')
+    || null;
+}
+
 function useLegacyPopupOpen(host) {
   // The server wrapper owns the popup's open state through Alpine (`x-show`).
   // React renders the dialog in a portal, so without mirroring that state the
   // dialog escapes the hidden wrapper and covers the page from first paint.
-  const popup = host.closest('[data-track-modal-root]');
+  const popup = findPopup(host);
   const [open, setOpen] = useState(() => !popup || getComputedStyle(popup).display !== 'none');
   useLayoutEffect(() => {
     if (!popup) return undefined;
@@ -341,7 +354,7 @@ function Adapter({ host, props }) {
     onDiscoverToggle={toggleDiscover}
     onSecondaryAction={(action, next) => send(action.url, action.body || {}, next)}
     onRetry={() => setServerError('')}
-    onClose={() => window.closeTrackModal?.(legacyForm() || host)} />;
+    onClose={() => window.closeTrackModal?.(findPopup(host) || legacyForm() || host)} />;
 }
 
 export function mountTrackForm(host, props) {

@@ -1,8 +1,14 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Button } from '../ui/Button';
+import { DetailChildren } from '../ui/DetailChildren';
+import { DetailRelated } from '../ui/DetailRelated';
+import { RatingStars } from '../ui/RatingStars';
 import {
   DetailActions,
+  DetailChips,
+  DetailHero,
+  DetailMobileHero,
   DetailHeader,
   DetailSection,
   DetailSynopsis,
@@ -52,6 +58,11 @@ export const detailSectionPlan = [
   { id: 'artwork', title: 'Artwork and editions' },
   { id: 'children', title: 'Seasons, episodes and issues' },
   { id: 'related', title: 'Related media' },
+  { id: 'activity', title: 'Your activity' },
+  { id: 'collection', title: 'Collection' },
+  { id: 'youtube-watch', title: 'Watched on YouTube' },
+  { id: 'history', title: 'Recent history' },
+  { id: 'notes', title: 'Your notes' },
 ];
 
 export const detailLabels = {
@@ -59,6 +70,38 @@ export const detailLabels = {
   retry: 'Try again',
   error: 'The detail could not be loaded.',
 };
+
+function PeopleSection({ title, people = [], palette }) {
+  if (!people.length) return null;
+  return <View style={styles.contentSection}>
+    <Text accessibilityRole="header" style={[styles.contentTitle, { color: palette.text }]}>{title}</Text>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.peopleGrid} accessibilityLabel={title}>
+      {people.map((person, index) => <View key={`${person.name}-${index}`} style={[styles.personCard, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+        {person.image ? <Image source={{ uri: person.image }} resizeMode="cover" style={styles.personImage}
+          accessibilityLabel={person.name} /> : <View style={[styles.personImage, styles.personPlaceholder, { backgroundColor: palette.surfaceStrong }]} />}
+        <Text numberOfLines={2} style={[styles.personName, { color: palette.text }]}>{person.name}</Text>
+        {person.role ? <Text numberOfLines={2} style={[styles.personRole, { color: palette.textMuted }]}>{person.role}</Text> : null}
+      </View>)}
+    </ScrollView>
+  </View>;
+}
+
+function DetailLinks({ groups = [], palette, onOpen }) {
+  const rows = groups.flatMap(group => group.entries || []);
+  if (!rows.length) return null;
+  return <View style={styles.contentSection}>
+    <Text accessibilityRole="header" style={[styles.contentTitle, { color: palette.text }]}>Links</Text>
+    <View style={styles.linkGrid}>
+      {rows.map((entry, index) => <Pressable key={`${entry.url}-${index}`} accessibilityRole="link"
+        accessibilityLabel={entry.label} onPress={() => onOpen?.(entry.url)}
+        style={[styles.linkChip, { borderColor: palette.border, backgroundColor: palette.surface }]}>
+        {entry.logo_src ? <Image source={{ uri: entry.logo_src }} resizeMode="contain" style={styles.linkLogo}
+          accessibilityLabel={`${entry.label} logo`} /> : null}
+        <Text style={{ color: palette.text }}>{entry.label}</Text>
+      </Pressable>)}
+    </View>
+  </View>;
+}
 
 function orderedSections(model) {
   const supplied = new Map((model?.sections || []).map(section => [section.id, section]));
@@ -81,9 +124,19 @@ export function DetailView({
   loading = false,
   error = '',
   onRetry,
+  onOpenItem,
+  onOpenExternal,
+  onOpenVideo,
+  onLoadMore,
+  onChildAction,
+  onRate,
+  onRateChild,
+  onRateMain,
+  hideContent = false,
   children,
 }) {
   const copy = { ...detailLabels, ...(labels || {}) };
+  const { width } = useWindowDimensions();
 
   if (part === 'header') {
     return <DetailHeader model={model} labels={labels} palette={palette} showArtwork={showArtwork} />;
@@ -97,6 +150,7 @@ export function DetailView({
 
   const sections = orderedSections(model);
   const hasSections = sections.some(section => section.body || sectionBodies[section.id]);
+  const immersive = width < 768 && Boolean(model?.artwork?.backdrop);
 
   return <View style={styles.root}>
     {error ? <View style={[styles.notice, { borderColor: palette.danger }]}>
@@ -104,15 +158,27 @@ export function DetailView({
       {onRetry ? <Button label={copy.retry} tone="surface" palette={palette} onPress={onRetry} /> : null}
     </View> : null}
     {loading ? <View accessibilityLiveRegion="polite" style={styles.loading}>
-      <ActivityIndicator color={palette.accent} />
-      <Text style={[styles.loadingText, { color: palette.textMuted }]}>{copy.loading}</Text>
-    </View> : <>
+      <ActivityIndicator color={palette.accent || '#6366f1'} />
+      <Text style={[styles.loadingText, { color: palette.textMuted || '#a1a1aa' }]}>{copy.loading}</Text>
+    </View> : !hideContent ? <>
       {part !== 'sections' ? <>
-        <DetailHeader model={model} labels={labels} palette={palette} showArtwork={showArtwork} />
+        {immersive ? <DetailMobileHero model={model} palette={palette} onOpenItem={onOpenItem} /> : <>
+          <DetailHero model={model} palette={palette} onOpenVideo={onOpenVideo} />
+          <DetailHeader model={model} labels={labels} palette={palette} showArtwork={showArtwork} />
+          <DetailActions model={model} labels={labels} palette={palette} />
+        </>}
+        <DetailChips chips={model.scoreChips || []} palette={palette} onOpen={onOpenExternal} />
+        <DetailLinks groups={model.linkSections} palette={palette} onOpen={onOpenExternal} />
         {renderSynopsis
           ? renderSynopsis({ model, labels, palette })
           : <DetailSynopsis model={model} labels={labels} palette={palette} />}
-        <DetailActions model={model} labels={labels} palette={palette} />
+        {model.viewerRating?.editable ? <View style={[styles.contentSection, styles.viewerRating, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+          <Text accessibilityRole="header" style={[styles.contentTitle, { color: palette.text }]}>Your rating</Text>
+          <RatingStars scaleMax={model.viewerRating.scaleMax || 10} value={model.viewerRating.value}
+            label="Your rating" palette={{ lit: '#facc15', unlit: palette.surfaceStrong, muted: palette.textMuted, focusStyle: {} }}
+            renderStar={lit => <Text style={{ color: lit ? '#facc15' : palette.surfaceStrong, fontSize: 22 }}>★</Text>}
+            onSelect={onRateMain} />
+        </View> : null}
       </> : null}
       {hasSections ? sections.map(section => {
         const body = sectionBodies[section.id] || section.body;
@@ -120,7 +186,31 @@ export function DetailView({
         return <DetailSection key={section.id || section.title}
           section={{ ...section, body }} palette={palette} />;
       }) : null}
-    </>}
+      {model.children ? <DetailChildren
+        model={model.children}
+        labels={model.childLabels || labels}
+        palette={palette}
+        variant="detail"
+        onOpenSeason={season => onOpenItem?.(season.identity)}
+        onOpenChild={item => onOpenItem?.(item.identity)}
+        onAction={(key, item) => onChildAction?.(key, item)}
+        onRate={(item, score) => onRateChild?.(item, score)}
+        onLoadMore={model.children.nextPage ? onLoadMore : undefined}
+        loadMoreLabel={model.children.nextLabel}
+      /> : null}
+      {model.people?.cast?.length ? <PeopleSection title="Cast" people={model.people.cast} palette={palette} /> : null}
+      {model.people?.crew?.length ? <PeopleSection title="Crew" people={model.people.crew} palette={palette} /> : null}
+      {model.relatedSections?.length ? <DetailRelated
+        model={{ sections: model.relatedSections, steamDlcs: model.steamDlcs || [] }}
+        labels={model.relatedLabels || labels}
+        palette={palette.mediaCard || palette}
+        onOpen={onOpenItem}
+        onOpenLink={onOpenExternal}
+        onOpenExternal={onOpenExternal}
+        onRate={onRate}
+        web={false}
+      /> : null}
+    </> : null}
     {children || null}
   </View>;
 }
@@ -132,6 +222,18 @@ const styles = StyleSheet.create({
   noticeText: { fontSize: 13, lineHeight: 18 },
   loading: { alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 48 },
   loadingText: { fontSize: 13 },
+  contentSection: { gap: 12, width: '100%' },
+  viewerRating: { borderWidth: 1, borderRadius: 10, padding: 12, maxWidth: 360 },
+  contentTitle: { fontSize: 20, lineHeight: 26, fontWeight: '700' },
+  peopleGrid: { gap: 10 },
+  personCard: { width: 104, borderWidth: 1, borderRadius: 8, overflow: 'hidden', paddingBottom: 8 },
+  personImage: { width: '100%', aspectRatio: 2 / 3 },
+  personPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  personName: { paddingHorizontal: 7, paddingTop: 7, fontSize: 12, fontWeight: '600' },
+  personRole: { paddingHorizontal: 7, paddingTop: 2, fontSize: 10, lineHeight: 14 },
+  linkGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  linkChip: { minHeight: 36, borderWidth: 1, borderRadius: 18, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12 },
+  linkLogo: { width: 16, height: 16 },
 });
 
 export const detailPageLabels = {

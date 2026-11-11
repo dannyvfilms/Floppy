@@ -7,7 +7,7 @@ import { themeColor } from './themeColor';
 // literals elsewhere (ThemeRoot remounts the tree when those change). Importing
 // `palette` keeps working: `palette.text` always answers for the current theme.
 const TOKEN_KEYS = [
-  'background', 'surface', 'surfaceStrong', 'surfaceMuted', 'border', 'surfaceBorder', 'surfaceDim', 'panel',
+  'background', 'sidebar', 'surface', 'surfaceStrong', 'surfaceMuted', 'border', 'surfaceBorder', 'surfaceDim', 'panel',
   'text', 'textSecondary', 'textMuted', 'accent', 'accentContrast', 'link', 'dangerText',
 ];
 

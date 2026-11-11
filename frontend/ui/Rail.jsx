@@ -1,6 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Spinner } from './Spinner';
+
+// Native loads every mounted image at once, a few at a time in order, so a row
+// of 14 covers keeps the ones a person is waiting for in a queue. Mount only the
+// cards near the visible window; the rest fill in as the row scrolls. Carve-out:
+// web mounts every card because its <img loading="lazy"> already loads only nearby covers.
+const WINDOWED_CARDS = Platform.OS !== 'web';
+const WINDOW_BUFFER = 3;
+const INITIAL_WINDOW = 7;
+
+const sortHitSlop = { top: 14, bottom: 14, left: 10, right: 12 };
 
 const defaultPalette = {
   text: '#fafafa',
@@ -28,6 +38,7 @@ export function Rail({
   loadedCount,
   hasMore,
   loadingMore = false,
+  sorting = false,
   loadMoreThreshold = 1152,
   itemWidth = 176,
   itemGap = 16,
@@ -59,6 +70,13 @@ export function Rail({
   const metricsRef = useRef({ x: 0, width: 0, content: 0 });
   const loadGuard = useRef(false);
   const [metrics, setMetrics] = useState({ x: 0, width: 0, content: 0 });
+  // One-line header: when the sort label cannot sit beside the title it
+  // collapses to its arrow, so at most the title detail ever truncates.
+  const [rowWidth, setRowWidth] = useState(0);
+  const [groupWidth, setGroupWidth] = useState(0);
+  const [sortFullWidth, setSortFullWidth] = useState(0);
+  const collapseSort = Boolean(summaryInline) && rowWidth > 0 && groupWidth > 0 && sortFullWidth > 0
+    && groupWidth + sortFullWidth + 14 > rowWidth;
   const [uncontrolledCollapsed, setUncontrolledCollapsed] = useState(defaultCollapsed);
   const isCollapsed = collapsed === undefined ? uncontrolledCollapsed : collapsed;
 
@@ -139,27 +157,37 @@ export function Rail({
   const atEnd = metrics.content > 0 && metrics.x + metrics.width >= metrics.content - 4;
   const canScrollPrev = !atStart;
   const canScrollNext = canLoadMore || (metrics.content > metrics.width + 1 && !atEnd);
+  const mountedCards = !WINDOWED_CARDS ? items.length
+    : metrics.width > 0
+      ? Math.ceil((metrics.x + metrics.width) / (itemWidth + itemGap)) + WINDOW_BUFFER
+      : INITIAL_WINDOW;
+  const onGroupLayout = event => setGroupWidth(event.nativeEvent.layout.width);
+  const groupStyle = [styles.titleLink, { maxWidth: collapseSort && rowWidth > 0 ? Math.max(rowWidth - 32, 0) : '100%' }];
   const titleContent = <>
-    <Text role="heading" aria-level={3} style={[styles.title, compact && styles.titleCompact, { color: palette.text }]}>{title}</Text>
+    <Text role="heading" aria-level={3} numberOfLines={1} style={[styles.title, compact && styles.titleCompact, { color: palette.text }]}>{title}</Text>
     {titleDetail ? <>
-      <Text aria-hidden style={[styles.detail, compact && styles.titleCompact, { color: palette.text }]}>•</Text>
-      <Text role="heading" aria-level={3} style={[styles.detail, compact && styles.titleCompact, { color: palette.text }]}>{titleDetail}</Text>
+      <Text aria-hidden style={[styles.bullet, compact && styles.titleCompact, { color: palette.text }]}>•</Text>
+      <Text role="heading" aria-level={3} numberOfLines={1} style={[styles.detail, compact && styles.titleCompact, { color: palette.text }]}>{titleDetail}</Text>
     </> : null}
   </>;
 
   return <View style={styles.wrapper} testID={testID}>
     {(title || summaryInline || viewAll || collapsible) ? <View style={styles.headingRow}>
       <View style={styles.headingText}>
-        <View style={styles.titleRow}>
+        <View style={styles.titleRow} onLayout={event => setRowWidth(event.nativeEvent.layout.width)}>
           {onTitlePress ? <Pressable accessibilityRole="link" accessibilityLabel={label}
-            onPress={onTitlePress} style={styles.titleLink}>{titleContent}</Pressable> : titleContent}
+            onPress={onTitlePress} onLayout={onGroupLayout} style={groupStyle}>{titleContent}</Pressable>
+            : <View onLayout={onGroupLayout} style={groupStyle}>{titleContent}</View>}
           {summaryInline ? (onSort
             ? <Pressable accessibilityRole="button" accessibilityLabel={sortLabel || summaryInline}
-              onPress={onSort} style={styles.sortButton}>
-              <Text style={[styles.summaryInline, { color: palette.textMuted }]}>{summaryInline}</Text>
+              onPress={onSort} hitSlop={sortHitSlop}
+              style={({ pressed }) => [styles.sortButton, pressed && styles.pressed]}
+              onLayout={event => { if (!collapseSort && !sorting) setSortFullWidth(event.nativeEvent.layout.width); }}>
+              {collapseSort ? null : <Text numberOfLines={1} style={[styles.summaryInline, { color: palette.textMuted }]}>{summaryInline}</Text>}
               <Text aria-hidden style={[styles.sortIcon, { color: palette.textMuted }]}>{direction === 'asc' ? '▲' : '▼'}</Text>
+              {sorting ? <Spinner size={14} color={palette.loading} /> : null}
             </Pressable>
-            : <Text style={[styles.summaryInline, { color: palette.textMuted }]}>{summaryInline}</Text>) : null}
+            : <Text numberOfLines={1} style={[styles.summaryInline, { color: palette.textMuted }]}>{summaryInline}</Text>) : null}
           {viewAll ? <Pressable accessibilityRole="link" accessibilityLabel={viewAll.accessibilityLabel || viewAll.label}
             onPress={viewAll.onPress} style={styles.sortButton}>
             <Text style={[styles.summaryInline, { color: palette.link || palette.accent }]}>{viewAll.label}</Text>
@@ -185,7 +213,8 @@ export function Rail({
         </Pressable> : null}
       </View>
     </View> : null}
-    {!isCollapsed ? <View accessibilityRole="list" accessibilityLabel={label}>
+    {!isCollapsed ? <View accessibilityRole="list" accessibilityLabel={label} accessibilityState={{ busy: sorting }}
+      pointerEvents={sorting ? 'none' : 'auto'} style={sorting ? styles.sorting : undefined}>
       <ScrollView ref={resolvedScrollRef} horizontal nestedScrollEnabled
         showsHorizontalScrollIndicator={false}
         scrollEventThrottle={16}
@@ -194,7 +223,7 @@ export function Rail({
         onLayout={handleLayout}
         contentContainerStyle={[styles.scroller, { gap: itemGap }]}>
         {items.map((item, index) => <View key={item?.id ?? index} style={[styles.item, { width: itemWidth }]}>
-          {renderItem?.(item, index)}
+          {index < mountedCards ? renderItem?.(item, index) : null}
         </View>)}
         {loadingMore ? <View style={styles.loading}>
           <Spinner size={16} color={palette.loading} />
@@ -212,15 +241,18 @@ const styles = StyleSheet.create({
   wrapper: { gap: 8 },
   headingRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
   headingText: { flex: 1, minWidth: 0, gap: 2 },
-  titleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, rowGap: 4 },
-  titleLink: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, rowGap: 4 },
-  title: { fontSize: 18, fontWeight: '600', lineHeight: 18 },
+  titleRow: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'baseline', columnGap: 8, minWidth: 0 },
+  titleLink: { flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'baseline', columnGap: 8, flexShrink: 0, minWidth: 0 },
+  title: { fontSize: 18, fontWeight: '600', lineHeight: 18, flexShrink: 0.2, minWidth: 0 },
   titleCompact: { fontSize: 16, lineHeight: 21.6 },
-  detail: { fontSize: 18, fontWeight: '600', lineHeight: 18 },
+  bullet: { fontSize: 18, fontWeight: '600', lineHeight: 18, flexShrink: 0 },
+  detail: { fontSize: 18, fontWeight: '600', lineHeight: 18, flexShrink: 1, minWidth: 0 },
   summary: { fontSize: 13, lineHeight: 18 },
   summaryInline: { fontSize: 14, fontWeight: '500', lineHeight: 14 },
-  sortButton: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 6 },
+  sortButton: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginLeft: 6, flexShrink: 0 },
   sortIcon: { fontSize: 16, lineHeight: 16 },
+  sorting: { opacity: 0.45 },
+  pressed: { opacity: 0.55 },
   controls: { flexDirection: 'row', alignItems: 'center', gap: 2, flexShrink: 0 },
   iconButton: { padding: 4, borderRadius: 4 },
   toggleButton: { marginLeft: 4 },

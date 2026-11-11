@@ -1,4 +1,5 @@
 import React from 'react';
+// The explicit extension matters: './HistoryFeed' would resolve back to this native file and loop.
 // Native presentation marker for the architecture contract; the shared
 // component below owns layout, so no wrapper View is rendered here.
 import { View } from 'react-native';

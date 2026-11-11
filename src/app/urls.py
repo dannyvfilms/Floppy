@@ -82,6 +82,11 @@ urlpatterns = [
         name="search_suggestions",
     ),
     path(
+        "search/results",
+        views.search_results_json,
+        name="search_results_json",
+    ),
+    path(
         "details/music/artist/<int:artist_id>/<slug:artist_slug>/",
         views.music_artist_details,
         name="music_artist_details",

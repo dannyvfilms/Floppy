@@ -1,18 +1,8 @@
-import React, { useState } from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from 'react-native';
-import { actionIcons } from './actionIcons';
-import { Icon } from './Icon';
-import { MediaCard } from './MediaCard';
-import { ParentPicker } from './ParentPicker';
-import { SearchResultCard } from './SearchResultCard';
+import React from 'react';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { HomeShelves } from './HomeShelves';
 import { Spinner } from './Spinner';
+import { useStreamedRows } from './searchRows';
 
 const defaultPalette = {
   text: '#fafafa',
@@ -23,6 +13,7 @@ const defaultPalette = {
   surfaceMuted: '#52525b',
   border: '#3f3f46',
   accent: '#6366f1',
+  accentStrong: '#4f46e5',
   accentText: '#ffffff',
   link: '#818cf8',
   danger: '#ef4444',
@@ -30,213 +21,19 @@ const defaultPalette = {
 };
 
 const defaultLabels = {
-  title: 'Search Results',
-  source: 'Source:',
-  searchOnline: 'Search online',
+  title: 'Search results',
   emptyTitle: 'No results found',
   emptyBody: 'Try checking your spelling or using different keywords.',
   loading: 'Loading results…',
+  searchingOnline: 'Searching online…',
+  unavailable: 'is currently unavailable. Please try again shortly.',
   errorTitle: 'Search could not load',
   errorBody: 'Please try again.',
   retry: 'Try again',
-  loadMore: 'Load more',
-  loadingMore: 'Loading more…',
-  previous: 'Previous page',
-  next: 'Next page',
-  rate: 'Rate',
-  close: 'Close',
-  open: 'Open',
-  altTitle: 'Show alternative title',
-  nextEpisode: 'Jump to next episode',
-  noStatus: 'No Status',
-  parentTitle: 'Pick a parent',
-  parentPlaceholder: 'Search for a parent…',
-  parentEmpty: 'No matches found.',
-  parentLoading: 'Loading matches…',
-  parentErrorTitle: 'Parent search could not load',
-  parentErrorBody: 'Please try again.',
-  parentSelected: 'Selected',
 };
-
-function ResultCard({
-  item,
-  layout,
-  width,
-  labels,
-  palette,
-  onOpenResult,
-  onOpenLink,
-  onAction,
-  onReorder,
-  onRate,
-  renderRating,
-  renderActionIcon,
-  renderCard,
-}) {
-  // An adapter that owns card actions (Track, Lists, ratings) supplies the
-  // whole card; the shared cards below are the presentation-only default.
-  if (renderCard) return renderCard(item, { layout, width, onOpenResult, onOpenLink });
-  const model = layout === 'row' ? { ...item, layout: 'row' } : item;
-  if (layout === 'row') {
-    return <MediaCard
-      model={model}
-      width={width}
-      labels={labels}
-      palette={palette}
-      onOpen={() => onOpenResult?.(item.href, item)}
-      onOpenLink={href => onOpenLink?.(href)}
-      onAction={onAction}
-      onReorder={onReorder}
-      onRate={score => onRate?.(item, score)}
-      renderRating={renderRating}
-      renderActionIcon={renderActionIcon}
-    />;
-  }
-  return <SearchResultCard
-    model={model}
-    width={width}
-    labels={labels}
-    palette={palette}
-    onAction={onAction}
-    onReorder={onReorder}
-    onRate={onRate}
-    renderRating={renderRating}
-    renderActionIcon={renderActionIcon}
-  />;
-}
-
-function ResultGroup({
-  items = [],
-  layout = 'grid',
-  labels,
-  palette,
-  onOpenResult,
-  onOpenLink,
-  onAction,
-  onReorder,
-  onRate,
-  renderRating,
-  renderActionIcon,
-  renderCard,
-}) {
-  const { width } = useWindowDimensions();
-  const [gridWidth, setGridWidth] = useState(0);
-  if (!items.length) return null;
-  if (layout === 'list') {
-    return <View style={styles.list}>
-      {items.map((item, index) => <View
-        key={item.cardKey || item.key || `${item.title}-${index}`}
-        style={[styles.listRow, { backgroundColor: palette.surface }]}>
-        <ResultCard
-          item={item}
-          layout="row"
-          width={width}
-          labels={labels}
-          palette={palette}
-          onOpenResult={onOpenResult}
-          onOpenLink={onOpenLink}
-          onAction={onAction}
-          onReorder={onReorder}
-          onRate={onRate}
-          renderRating={renderRating}
-          renderActionIcon={renderActionIcon}
-          renderCard={renderCard}
-        />
-      </View>)}
-    </View>;
-  }
-  // The release page lists cards in `repeat(auto-fill, minmax(150px, 1fr))`.
-  // Measuring the wrapper keeps the same column count at every sidebar width.
-  const available = gridWidth || Math.max(width - 40, 240);
-  const gap = 16;
-  const columns = Math.max(1, Math.floor((available + gap) / (150 + gap)));
-  const cardWidth = (available - gap * (columns - 1)) / columns;
-  return <View style={styles.grid} onLayout={event => {
-    const next = Math.round(event?.nativeEvent?.layout?.width || 0);
-    if (next && Math.abs(next - gridWidth) > 1) setGridWidth(next);
-  }}>
-    {items.map((item, index) => <View key={item.cardKey || item.key || `${item.title}-${index}`}
-      style={{ width: cardWidth }}>
-      <ResultCard
-        item={item}
-        layout="grid"
-        width={cardWidth}
-        labels={labels}
-        palette={palette}
-        onOpenResult={onOpenResult}
-        onOpenLink={onOpenLink}
-        onAction={onAction}
-        onReorder={onReorder}
-        onRate={onRate}
-        renderRating={renderRating}
-        renderActionIcon={renderActionIcon}
-        renderCard={renderCard}
-      />
-    </View>)}
-  </View>;
-}
-
-function SectionHeading({ section, palette, labels, onSearchOnline }) {
-  const hasMeta = section.totalLabel || section.shownLabel;
-  return <View style={styles.sectionHeading}>
-    <View style={styles.sectionHeadingText}>
-      <Text role="heading" aria-level={3} style={[styles.sectionTitle, { color: palette.textSecondary }]}>{section.title}</Text>
-      {section.tip?.text ? <Text style={[styles.tip, { color: palette.textMuted }]}>{section.tip.text}</Text> : null}
-    </View>
-    <View style={styles.sectionMeta}>
-      {hasMeta ? <Text style={[styles.meta, { color: palette.textMuted }]}>
-        {section.totalLabel || ''}{section.shownLabel ? ` ${section.shownLabel}` : ''}
-      </Text> : null}
-      {section.searchOnline ? <Pressable
-        accessibilityRole="link"
-        accessibilityLabel={section.searchOnline.label || labels.searchOnline}
-        onPress={() => onSearchOnline?.(section.searchOnline)}
-        style={styles.linkButton}>
-        <Text style={[styles.link, { color: palette.link }]}>{section.searchOnline.label || labels.searchOnline}</Text>
-      </Pressable> : null}
-    </View>
-  </View>;
-}
-
-function SearchSection({
-  section,
-  palette,
-  labels,
-  onSearchOnline,
-  ...cardProps
-}) {
-  return <View style={styles.section}>
-    <SectionHeading section={section} palette={palette} labels={labels} onSearchOnline={onSearchOnline} />
-    {(section.subsections || []).map((subsection, index) => <View key={subsection.key || index} style={styles.subsection}>
-      {subsection.title ? <View style={styles.subsectionHeading}>
-        <Text role="heading" aria-level={4} style={[styles.subsectionTitle, { color: palette.textSecondary }]}>{subsection.title}</Text>
-        {subsection.totalLabel || subsection.shownLabel ? <Text style={[styles.meta, { color: palette.textMuted }]}>
-          {subsection.totalLabel || ''}{subsection.shownLabel ? ` ${subsection.shownLabel}` : ''}
-        </Text> : null}
-      </View> : null}
-      <ResultGroup
-        items={subsection.items || []}
-        layout={subsection.layout || 'grid'}
-        palette={palette}
-        labels={labels}
-        {...cardProps}
-      />
-    </View>)}
-  </View>;
-}
-
-function EmptyGlyph({ palette }) {
-  return <View aria-hidden style={styles.emptyGlyph}>
-    <View style={[styles.emptyGlyphRing, { borderColor: palette.textMuted }]} />
-    <View style={[styles.emptyGlyphHandle, { backgroundColor: palette.textMuted }]} />
-  </View>;
-}
 
 function EmptyState({ empty, palette, labels }) {
   return <View style={[styles.empty, { backgroundColor: palette.surface }]}>
-    <View style={[styles.emptyIcon, { backgroundColor: palette.surfaceStrong }]}>
-      <EmptyGlyph palette={palette} />
-    </View>
     <Text role="heading" aria-level={2} style={[styles.emptyTitle, { color: palette.text }]}>
       {empty?.title || labels.emptyTitle}
     </Text>
@@ -245,155 +42,45 @@ function EmptyState({ empty, palette, labels }) {
   </View>;
 }
 
-function Pager({ paging, palette, labels, onPage }) {
-  if (!paging || !(paging.totalPages > 1)) return null;
-  return <View style={styles.pager}>
-    <View style={styles.pagerRow}>
-      <Pressable accessibilityRole="button" accessibilityLabel={labels.previous}
-        accessibilityState={{ disabled: !paging.previous }} disabled={!paging.previous}
-        onPress={() => onPage?.(paging.previous)}
-        style={[styles.pageButton, {
-          backgroundColor: paging.previous ? palette.surface : palette.surfaceMuted,
-          opacity: paging.previous ? 1 : 0.55,
-        }]}>
-        <Text style={[styles.pageArrow, { color: palette.text }]}>‹</Text>
-      </Pressable>
-      {(paging.pages || []).map((page, index) => page.ellipsis
-        ? <Text key={`gap-${index}`} style={[styles.ellipsis, { color: palette.textMuted }]}>…</Text>
-        : <Pressable key={page.number} accessibilityRole="button"
-          accessibilityLabel={`${page.number}`} accessibilityState={{ selected: page.current }}
-          onPress={() => onPage?.(page)}
-          style={[styles.pageButton, {
-            backgroundColor: page.current ? palette.accent : palette.surface,
-          }]}>
-          <Text style={[styles.pageNumber, { color: page.current ? palette.accentText : palette.text }]}>{page.number}</Text>
-        </Pressable>)}
-      <Pressable accessibilityRole="button" accessibilityLabel={labels.next}
-        accessibilityState={{ disabled: !paging.next }} disabled={!paging.next}
-        onPress={() => onPage?.(paging.next)}
-        style={[styles.pageButton, {
-          backgroundColor: paging.next ? palette.surface : palette.surfaceMuted,
-          opacity: paging.next ? 1 : 0.55,
-        }]}>
-        <Text style={[styles.pageArrow, { color: palette.text }]}>›</Text>
-      </Pressable>
-    </View>
-    {paging.summary ? <Text style={[styles.pageSummary, { color: palette.textMuted }]}>{paging.summary}</Text> : null}
-  </View>;
-}
-
-function ScrollPills({ scope, palette, onSelectScope }) {
-  if (!scope?.options?.length) return null;
-  return <View style={styles.scope}>
-    {scope.label ? <Text style={[styles.scopeLabel, { color: palette.textMuted }]}>{scope.label}</Text> : null}
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.pills}>
-      {scope.options.map(option => <Pressable key={option.value}
-        accessibilityRole="button" accessibilityLabel={option.label}
-        accessibilityState={{ selected: !!option.active }}
-        onPress={() => onSelectScope?.(option)}
-        style={[styles.pill, {
-          backgroundColor: option.active ? palette.accent : palette.surfaceStrong,
-          borderColor: option.active ? palette.accent : palette.border,
-        }]}>
-        <Text style={[styles.pillText, { color: option.active ? palette.accentText : palette.textSecondary }]}>{option.label}</Text>
-      </Pressable>)}
-    </ScrollView>
-  </View>;
-}
-
-const LAYOUT_ICONS = { grid: actionIcons.fourSquare, list: actionIcons.list };
-
-function LayoutToggle({ options, palette, onSelectLayout, iconToggle }) {
-  if (!options?.length) return null;
-  return <View style={[styles.layoutToggle, { borderColor: palette.border }]}>
-    {options.map(option => <Pressable key={option.value}
-      accessibilityRole="button" accessibilityLabel={option.label}
-      accessibilityState={{ selected: !!option.active }}
-      onPress={() => onSelectLayout?.(option)}
-      style={[styles.layoutButton, {
-        backgroundColor: option.active ? palette.accent : palette.surfaceStrong,
-      }]}>
-      {iconToggle && LAYOUT_ICONS[option.value]
-        ? <Icon spec={LAYOUT_ICONS[option.value]} size={20}
-          color={option.active ? palette.accentText : palette.textSecondary} />
-        : <Text style={[styles.layoutGlyph, { color: option.active ? palette.accentText : palette.textSecondary }]}>
-          {option.glyph || option.label}
-        </Text>}
-    </Pressable>)}
-  </View>;
-}
-
-function ParentPickerPanel({ parentPicker, palette, labels, onSelectParent }) {
-  if (!parentPicker) return null;
-  return <ParentPicker
-    title={parentPicker.title || labels.parentTitle}
-    description={parentPicker.description}
-    query={parentPicker.query}
-    placeholder={parentPicker.placeholder}
-    results={parentPicker.results || []}
-    selectedId={parentPicker.selectedId}
-    state={parentPicker.state || 'ready'}
-    labels={{
-      placeholder: parentPicker.placeholder || labels.parentPlaceholder,
-      empty: parentPicker.emptyLabel || labels.parentEmpty,
-      loading: labels.parentLoading,
-      errorTitle: labels.parentErrorTitle,
-      errorBody: labels.parentErrorBody,
-      retry: labels.retry,
-      selected: labels.parentSelected,
-    }}
-    palette={palette}
-    onQueryChange={parentPicker.onQueryChange}
-    onSelect={onSelectParent}
-    onRetry={parentPicker.onRetry}
-  />;
-}
-
+/**
+ * Search results as Home's shelves: your library first, then one row per provider
+ * that has something. The rows arrive in the shape Home's rows have, so the same
+ * rail, card, card size and load-more drive both pages. Web and native supply the
+ * card renderer, the width and the handlers, exactly as they do for Home.
+ */
 export function SearchResults({
   title,
   state = 'ready',
   labels = {},
   palette: paletteOverrides,
-  scope,
-  layoutOptions,
   notes = [],
-  sections = [],
-  paging,
+  rows: baseRows = [],
+  onlineSources = [],
+  onLoadOnlineRow,
   empty,
-  hasMore = false,
-  loadingMore = false,
-  parentPicker,
-  onSelectScope,
-  onSelectLayout,
-  onSearchOnline,
-  onOpenResult,
-  onOpenLink,
-  onAction,
-  onReorder,
-  onRate,
-  onPage,
-  onLoadMore,
-  onRetry,
-  onSelectParent,
+  itemWidth,
+  renderCard,
   renderRating,
   renderActionIcon,
-  renderCard,
-  iconToggle = false,
+  onOpenCard,
+  onOpenLink,
+  onAction,
+  onRate,
+  onLoadMore,
+  onRetry,
   testID,
 }) {
   const palette = { ...defaultPalette, ...paletteOverrides };
   const copy = { ...defaultLabels, ...labels };
   const { width } = useWindowDimensions();
+  // The same heading size as a Home row's title.
   const compact = width < 640;
+  const { rows, failed, pending } = useStreamedRows({
+    rows: baseRows, onlineSources, loadOnlineRow: onLoadOnlineRow, resetKey: String(testID || ''),
+  });
+  const groups = rows.length ? [{ mediaType: 'search', label: '', rows }] : [];
   return <View style={styles.wrapper} testID={testID}>
-    <View style={[styles.header, compact && styles.headerStack]}>
-      <Text role="heading" aria-level={1} style={[styles.title, { color: palette.text }]}>{title || copy.title}</Text>
-      <View style={styles.controls}>
-        <ScrollPills scope={scope} palette={palette} onSelectScope={onSelectScope} />
-        <LayoutToggle options={layoutOptions} palette={palette} onSelectLayout={onSelectLayout} iconToggle={iconToggle} />
-      </View>
-    </View>
+    {failed.map(label => <Text key={label} style={[styles.note, { color: palette.textMuted }]}>{`${label} ${copy.unavailable}`}</Text>)}
     {notes.map((note, index) => <Text key={index} style={[styles.note, { color: palette.textMuted }]}>{note}</Text>)}
     {state === 'loading' ? <View style={styles.state}>
       <Spinner size={20} color={palette.accent} />
@@ -407,99 +94,40 @@ export function SearchResults({
         <Text style={[styles.retryText, { color: palette.accentText }]}>{copy.retry}</Text>
       </Pressable>
     </View> : null}
-    {state === 'empty' ? <EmptyState empty={empty} palette={palette} labels={copy} /> : null}
-    {state === 'ready' ? <View style={styles.sections}>
-      {sections.map((section, index) => <SearchSection
-        key={section.key || index}
-        section={section}
-        palette={palette}
-        labels={copy}
-        onSearchOnline={onSearchOnline}
-        onOpenResult={onOpenResult}
-        onOpenLink={onOpenLink}
-        onAction={onAction}
-        onReorder={onReorder}
-        onRate={onRate}
-        renderRating={renderRating}
-        renderActionIcon={renderActionIcon}
-        renderCard={renderCard}
-      />)}
-      {!sections.length ? <EmptyState empty={empty} palette={palette} labels={copy} /> : null}
+    {state === 'empty' || (state === 'ready' && !rows.length && !pending)
+      ? <EmptyState empty={empty} palette={palette} labels={copy} /> : null}
+    {state === 'ready' && rows.length ? <HomeShelves
+      groups={groups}
+      labels={labels}
+      palette={palette}
+      itemWidth={itemWidth}
+      renderCard={renderCard}
+      renderRating={renderRating}
+      renderActionIcon={renderActionIcon}
+      onOpenCard={onOpenCard}
+      onOpenLink={onOpenLink}
+      onAction={onAction}
+      onRate={onRate}
+      onLoadMore={onLoadMore} /> : null}
+    {state === 'ready' && pending ? <View style={styles.searching}>
+      <Spinner size={16} color={palette.accent} />
+      <Text accessibilityLiveRegion="polite" style={[styles.stateText, { color: palette.textMuted }]}>{copy.searchingOnline}</Text>
     </View> : null}
-    <Pager paging={paging} palette={palette} labels={copy} onPage={onPage} />
-    {hasMore && onLoadMore ? <Pressable accessibilityRole="button"
-      accessibilityState={{ busy: loadingMore }} disabled={loadingMore}
-      onPress={onLoadMore}
-      style={[styles.loadMore, { backgroundColor: palette.surfaceStrong, borderColor: palette.border }]}>
-      <Text style={[styles.loadMoreText, { color: palette.text }]}>{loadingMore ? copy.loadingMore : copy.loadMore}</Text>
-    </Pressable> : null}
-    <ParentPickerPanel parentPicker={parentPicker} palette={palette} labels={copy} onSelectParent={onSelectParent} />
   </View>;
 }
 
 const styles = StyleSheet.create({
-  wrapper: { gap: 0 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 32,
-  },
-  headerStack: { flexDirection: 'column', alignItems: 'flex-start', gap: 16 },
-  title: { fontSize: 24, fontWeight: '700', lineHeight: 32 },
-  controls: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 16 },
-  scope: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, flexShrink: 1, minWidth: 0 },
-  scopeLabel: { fontSize: 14 },
-  pills: { flexDirection: 'row', gap: 8, paddingRight: 4 },
-  pill: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6 },
-  pillText: { fontSize: 13, fontWeight: '600' },
-  layoutToggle: { flexDirection: 'row', overflow: 'hidden', borderWidth: 1, borderRadius: 6 },
-  layoutButton: { width: 36, height: 34, alignItems: 'center', justifyContent: 'center' },
-  layoutGlyph: { fontSize: 16, lineHeight: 18 },
-  note: { fontSize: 14, lineHeight: 20, marginBottom: 24 },
-  sections: { gap: 32, paddingBottom: 32 },
-  section: { gap: 16 },
-  sectionHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 },
-  sectionHeadingText: { flex: 1, minWidth: 0, gap: 4 },
-  sectionMeta: { flexDirection: 'row', alignItems: 'center', gap: 16, flexShrink: 0 },
-  sectionTitle: { fontSize: 18, fontWeight: '600', lineHeight: 28 },
-  meta: { fontSize: 14, lineHeight: 20 },
-  tip: { fontSize: 14, lineHeight: 20 },
-  linkButton: { paddingVertical: 2 },
-  link: { fontSize: 14, fontWeight: '400' },
-  subsection: { gap: 16 },
-  subsectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  subsectionTitle: { fontSize: 16, fontWeight: '600', lineHeight: 22 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
-  list: { gap: 16 },
-  listRow: { borderRadius: 8, overflow: 'hidden' },
-  state: { alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 56, paddingHorizontal: 16 },
-  stateTitle: { fontSize: 20, fontWeight: '600' },
-  stateText: { fontSize: 14, textAlign: 'center' },
-  retry: { borderRadius: 6, paddingHorizontal: 14, paddingVertical: 8, marginTop: 4 },
-  retryText: { fontSize: 13, fontWeight: '600' },
-  empty: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 0,
-    paddingVertical: 128,
-    paddingHorizontal: 16,
-    borderRadius: 18,
-  },
-  emptyIcon: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  emptyGlyph: { width: 32, height: 32 },
-  emptyGlyphRing: { width: 24, height: 24, borderRadius: 12, borderWidth: 2 },
-  emptyGlyphHandle: { position: 'absolute', right: 2, bottom: 3, width: 12, height: 2, transform: [{ rotate: '45deg' }] },
-  emptyTitle: { fontSize: 20, fontWeight: '600', lineHeight: 28, marginBottom: 8 },
-  emptyBody: { fontSize: 16, lineHeight: 24, textAlign: 'center', maxWidth: 448, marginBottom: 32 },
-  pager: { alignItems: 'center', gap: 6, marginTop: 8 },
-  pagerRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  pageButton: { minWidth: 36, height: 36, borderRadius: 6, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
-  pageArrow: { fontSize: 20, lineHeight: 22 },
-  pageNumber: { fontSize: 13, fontWeight: '600' },
-  ellipsis: { fontSize: 15, width: 24, textAlign: 'center' },
-  pageSummary: { fontSize: 13 },
-  loadMore: { alignSelf: 'center', borderWidth: 1, borderRadius: 6, paddingHorizontal: 18, paddingVertical: 10 },
-  loadMoreText: { fontSize: 13, fontWeight: '600' },
+  wrapper: { gap: 16, minWidth: 0 },
+  title: { fontSize: 18, fontWeight: '600', lineHeight: 18 },
+  titleCompact: { fontSize: 16, lineHeight: 21.6 },
+  note: { fontSize: 14, lineHeight: 20 },
+  searching: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 },
+  state: { alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 48 },
+  stateTitle: { fontSize: 18, fontWeight: '600' },
+  stateText: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  retry: { borderRadius: 8, paddingHorizontal: 16, paddingVertical: 10 },
+  retryText: { fontSize: 14, fontWeight: '600' },
+  empty: { borderRadius: 12, alignItems: 'center', gap: 8, paddingVertical: 40, paddingHorizontal: 24 },
+  emptyTitle: { fontSize: 18, fontWeight: '600', textAlign: 'center' },
+  emptyBody: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
 });

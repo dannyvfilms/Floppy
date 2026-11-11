@@ -29,11 +29,14 @@ def _advanced_labels() -> dict[str, object]:
             "title": _("Logs & Bug Reports"),
             "intro": _(
                 "Logs may contain private activity. Administrators can download "
-                "redacted logs and should review them before sharing."
+                "redacted logs and should review them before sharing. Everyone "
+                "can download a diagnostic report with only server details and "
+                "recent warnings and errors."
             ),
             "covers": _("Covers {when} onward."),
             "lastUnclean": _("Last unclean shutdown: {when}"),
             "download": _("Download Sanitized Logs"),
+            "downloadDiagnostics": _("Download Diagnostic Report"),
             "bugReport": _("File a Bug Report"),
         },
         "imageCache": {
@@ -315,6 +318,7 @@ def advanced_props(request, context: dict[str, object]) -> dict[str, object]:
 def _advanced_urls(is_superuser: bool) -> dict[str, object]:
     """Return only the action URLs the account can actually reach."""
     urls: dict[str, object] = {
+        "diagnostics": reverse("export_diagnostics"),
         "clearCaches": {
             "search": reverse("clear_search_cache"),
             "history": reverse("clear_history_cache"),

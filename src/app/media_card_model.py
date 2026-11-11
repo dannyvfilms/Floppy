@@ -123,7 +123,12 @@ def _status_chip(ctx):
         if has_event:
             return {"kind": "event", "label": event_label, "icon": file_icon("clock"), "hideOnMobile": hide_on_mobile}
         status = _safe(media, "aggregated_status") or _safe(media, "status")
-        return {"kind": "status", "status": status, "hideOnMobile": hide_on_mobile}
+        return {
+            "kind": "status",
+            "status": status,
+            "colorClass": app_tags.status_color(status),
+            "hideOnMobile": hide_on_mobile,
+        }
     if has_event:
         return {"kind": "event", "label": event_label, "icon": file_icon("clock"), "hideOnMobile": hide_on_mobile}
     return None
@@ -137,14 +142,15 @@ def _progress_bar(ctx, media_type):
     status = _safe(media, "aggregated_status") or _safe(media, "status")
     if status not in {Status.IN_PROGRESS.value, Status.PAUSED.value}:
         return None
+    dormant = ctx.get("card_progress_display") == "dormant"
     percent = _safe(media, "progress_percentage")
     if media_type == MediaTypes.PODCAST.value:
-        return None if percent is None else {"percent": percent, "paused": status == Status.PAUSED.value}
+        return None if percent is None else {"percent": percent, "paused": status == Status.PAUSED.value, "dormant": dormant}
     if media_type == MediaTypes.MOVIE.value or not (_safe(media, "max_progress") and _safe(media, "progress")):
         return None
     if percent is None:
         percent = int(_safe(media, "progress") * 100 / _safe(media, "max_progress"))
-    return {"percent": percent, "paused": status == Status.PAUSED.value}
+    return {"percent": percent, "paused": status == Status.PAUSED.value, "dormant": dormant}
 
 
 def _plays(count):

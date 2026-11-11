@@ -7,7 +7,11 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
+  Keyboard,
+  Platform,
 } from 'react-native';
+import { DROPDOWN } from './dropdownMetrics';
 import { Spinner } from './Spinner';
 import { SearchIcon as SearchGlyph } from './Icon';
 
@@ -27,11 +31,58 @@ const defaultPalette = {
   errorBorder: '#4b5563',
   focusStyle: {},
   radius: 6,
-  menuWidth: 128,
   inputHeight: 36,
   iconSize: 20,
   fontSize: 14,
 };
+
+// The suggestions scroll in a window above a pinned "Search online" row. The window is as many
+// rows as fit between the search bar and the bottom of what is visible (the keyboard is not
+// visible), never fewer than two nor more than five. A row is its thumbnail plus padding.
+const THUMB_HEIGHT = 40;
+const SUGGESTION_ROW_HEIGHT = THUMB_HEIGHT + DROPDOWN.itemPaddingVertical * 2;
+const SUGGESTION_FOOTER_HEIGHT = 44;
+const SUGGESTION_PANEL_GAP = 4;
+// A little air above the keyboard or the window edge; the window takes every whole row that fits.
+const SUGGESTION_BOTTOM_AIR = 8;
+const BLUR_CLOSE_MS = 250;
+const SUGGESTION_ROWS_MIN = 2;
+const SUGGESTION_ROWS_MAX = 5;
+
+function useSuggestionRows(open, anchorRef) {
+  const { height: windowHeight } = useWindowDimensions();
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(null);
+  const [anchorBottom, setAnchorBottom] = useState(0);
+
+  useEffect(() => {
+    // Native reports the keyboard; on the web the visual viewport shrinks when it opens.
+    if (Platform.OS === 'web') {
+      const viewport = typeof window !== 'undefined' ? window.visualViewport : null;
+      if (!viewport) return undefined;
+      const update = () => setViewportHeight(viewport.height);
+      update();
+      viewport.addEventListener('resize', update);
+      return () => viewport.removeEventListener('resize', update);
+    }
+    // The keyboard may already be up when the field mounts, so read it as well as listen.
+    const current = Keyboard.metrics?.();
+    if (current?.height) setKeyboardHeight(current.height);
+    const shown = Keyboard.addListener('keyboardDidShow', event => setKeyboardHeight(event.endCoordinates?.height || 0));
+    const hidden = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    return () => { shown.remove(); hidden.remove(); };
+  }, []);
+
+  useEffect(() => {
+    if (!open || !anchorRef.current?.measureInWindow) return;
+    anchorRef.current.measureInWindow((_x, y, _width, height) => setAnchorBottom(y + height));
+  }, [open, windowHeight, keyboardHeight, viewportHeight, anchorRef]);
+
+  const bottom = Platform.OS === 'web' ? (viewportHeight ?? windowHeight) : windowHeight - keyboardHeight;
+  const room = bottom - anchorBottom - SUGGESTION_PANEL_GAP - SUGGESTION_FOOTER_HEIGHT - SUGGESTION_BOTTOM_AIR;
+  const rows = Math.max(SUGGESTION_ROWS_MIN, Math.min(SUGGESTION_ROWS_MAX, Math.floor(room / SUGGESTION_ROW_HEIGHT)));
+  return rows;
+}
 
 const label = (value, fallback) => (
   typeof value === 'string' && value.length ? value : fallback
@@ -108,13 +159,20 @@ export function GlobalSearch({
   onBarcodeRequest,
 }) {
   const palette = { ...defaultPalette, ...paletteOverrides };
+  const { height: windowHeight } = useWindowDimensions();
+  const barRef = useRef(null);
+  const listRef = useRef(null);
+  const listScrollY = useRef(0);
   const [query, setQuery] = useState(initialQuery);
   const [userTyped, setUserTyped] = useState(false);
   const [type, setType] = useState(selectedType || mediaTypes[0] || { display: 'All', value: 'all' });
   const [menuOpen, setMenuOpen] = useState(false);
   const [focused, setFocused] = useState(false);
+  const blurTimer = useRef(null);
+  useEffect(() => () => clearTimeout(blurTimer.current), []);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [panel, setPanel] = useState({ status: 'idle', suggestions: [] });
+  const visibleRows = useSuggestionRows(panel.status !== 'idle', barRef);
   const [barcodeBusy, setBarcodeBusy] = useState(false);
   const [barcodeError, setBarcodeError] = useState(null);
   const loader = useRef(onLoadSuggestions);
@@ -176,6 +234,17 @@ export function GlobalSearch({
   const options = footerOption ? [...suggestionOptions, footerOption] : suggestionOptions;
   const activeOption = activeIndex >= 0 ? options[activeIndex] : null;
 
+  useEffect(() => {
+    // The pinned footer never scrolls; a suggestion row is brought into the visible window.
+    if (!activeOption || activeOption.kind !== 'suggestion' || !listRef.current) return;
+    const top = activeIndex * SUGGESTION_ROW_HEIGHT;
+    const view = visibleRows * SUGGESTION_ROW_HEIGHT;
+    if (top < listScrollY.current) listRef.current.scrollTo({ y: top, animated: false });
+    else if (top + SUGGESTION_ROW_HEIGHT > listScrollY.current + view) {
+      listRef.current.scrollTo({ y: top + SUGGESTION_ROW_HEIGHT - view, animated: false });
+    }
+  }, [activeIndex, activeOption, visibleRows]);
+
   function placeholder() {
     if (type.value === 'all') return label(labels.placeholderAll, 'Search your whole library...');
     const template = compact
@@ -194,6 +263,8 @@ export function GlobalSearch({
   function submit(value = query, mediaType = type.value) {
     const next = String(value || '').trim();
     if (!next) return;
+    // Cancel any pending suggestion request so it cannot reopen the panel after the search runs.
+    setUserTyped(false);
     clearPanel();
     onSubmit?.({ query: next, mediaType });
   }
@@ -204,6 +275,7 @@ export function GlobalSearch({
       submit();
       return;
     }
+    setUserTyped(false);
     clearPanel();
     onSelectSuggestion?.(option.suggestion);
   }
@@ -272,7 +344,7 @@ export function GlobalSearch({
 
   return <View style={[styles.root, expanded && styles.expanded]}>
     <View style={styles.row}>
-      <View style={styles.inputWrap}>
+      <View ref={barRef} style={styles.inputWrap}>
         <Pressable accessibilityRole="button" accessibilityLabel={label(labels.search, 'Search')}
           onPress={() => submit()} style={[styles.searchButton, palette.searchTouchWidth && {
             left: 0, width: palette.searchTouchWidth, alignItems: 'center',
@@ -295,8 +367,12 @@ export function GlobalSearch({
           aria-controls="global-search-suggestions"
           aria-activedescendant={activeOption?.id}
           returnKeyType="search"
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          onFocus={() => { clearTimeout(blurTimer.current); setFocused(true); }}
+          onBlur={() => {
+            setFocused(false);
+            // Leaving the field closes the suggestions, after a beat so a tap on one still lands.
+            blurTimer.current = setTimeout(clearPanel, BLUR_CLOSE_MS);
+          }}
           onKeyPress={handleKeyPress}
           onSubmitEditing={handleSubmitEditing}
           style={[
@@ -311,12 +387,9 @@ export function GlobalSearch({
               borderTopRightRadius: 0,
               borderBottomRightRadius: 0,
               paddingRight: isBarcodeType ? 40 : 16,
-              outlineStyle: focused ? 'solid' : 'none',
-              outlineWidth: focused ? 2 : 0,
-              outlineColor: palette.accent,
-              outlineOffset: -2,
+              // No focus ring: the caret and the open suggestions show where typing goes.
+              outlineStyle: 'none',
             },
-            focused && palette.focusStyle,
           ]}
         />
         {isBarcodeType ? <Pressable accessibilityRole="button"
@@ -338,10 +411,10 @@ export function GlobalSearch({
             right: 0,
             zIndex: 50,
             marginTop: 4,
-            maxHeight: 240,
             borderWidth: 1,
             borderColor: palette.border,
-            borderRadius: palette.radius,
+            borderRadius: DROPDOWN.radius,
+            paddingVertical: DROPDOWN.paddingVertical,
             backgroundColor: palette.surface,
             elevation: 8,
             shadowColor: '#000',
@@ -349,7 +422,9 @@ export function GlobalSearch({
             shadowRadius: 12,
             shadowOffset: { width: 0, height: 6 },
           }}>
-          <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+          <ScrollView ref={listRef} keyboardShouldPersistTaps="handled" nestedScrollEnabled
+            style={{ maxHeight: visibleRows * SUGGESTION_ROW_HEIGHT }} scrollEventThrottle={16}
+            onScroll={event => { listScrollY.current = event.nativeEvent.contentOffset.y; }}>
             {panel.status === 'loading' ? <View style={styles.stateRow}>
               <Spinner size={16} color={palette.textMuted} />
               <Text accessibilityLiveRegion="polite" style={[styles.stateText, { color: palette.textMuted }]}>
@@ -370,20 +445,7 @@ export function GlobalSearch({
             </View> : null}
             {options.map((option, index) => {
               const isActive = index === activeIndex;
-              if (option.kind === 'footer') {
-                return <Pressable key={option.key} nativeID={option.id}
-                  role="option" aria-selected={isActive}
-                  accessibilityRole="button"
-                  accessibilityLabel={option.label}
-                  onPress={() => choose(option)}
-                  style={({ hovered }) => [styles.footerRow,
-                    { borderTopColor: palette.border },
-                    (hovered || isActive) && { backgroundColor: palette.surfaceMuted }]}>
-                  <SearchGlyph color={palette.textMuted} size={14} />
-                  <Text numberOfLines={1} style={[styles.footerText, { color: palette.textMuted }]}>{option.label}</Text>
-                  <Text style={[styles.keycap, { color: palette.textMuted, borderColor: palette.border }]}>Enter</Text>
-                </Pressable>;
-              }
+              if (option.kind === 'footer') return null;
               const suggestion = option.suggestion;
               return <Pressable key={option.key} nativeID={option.id}
                 role="option" aria-selected={isActive}
@@ -406,6 +468,18 @@ export function GlobalSearch({
               </Pressable>;
             })}
           </ScrollView>
+          {footerOption ? <Pressable nativeID={footerOption.id}
+            role="option" aria-selected={activeIndex === options.length - 1}
+            accessibilityRole="button"
+            accessibilityLabel={footerOption.label}
+            onPress={() => choose(footerOption)}
+            style={({ hovered }) => [styles.footerRow,
+              { borderTopColor: palette.border },
+              (hovered || activeIndex === options.length - 1) && { backgroundColor: palette.surfaceMuted }]}>
+            <SearchGlyph color={palette.textMuted} size={14} />
+            <Text numberOfLines={1} style={[styles.footerText, { color: palette.textMuted }]}>{footerOption.label}</Text>
+            <Text style={[styles.keycap, { color: palette.textMuted, borderColor: palette.border }]}>Enter</Text>
+          </Pressable> : null}
         </View> : null}
       </View>
       <Pressable testID="search-media-type-menu" accessibilityRole="button" accessibilityLabel={type.display}
@@ -423,18 +497,22 @@ export function GlobalSearch({
       </Pressable>
       {menuOpen ? <View style={[styles.menu, {
         top: palette.inputHeight + 12,
-        width: palette.menuWidth,
+        // Same size as the sidebar row options; scrolls when the window is too short for every type.
+        width: palette.menuWidth ?? DROPDOWN.width,
+        maxHeight: Math.max(windowHeight - palette.inputHeight - 36, DROPDOWN.itemPaddingVertical * 6),
         backgroundColor: palette.surface,
         borderColor: palette.border,
-        borderRadius: palette.radius,
+        borderRadius: DROPDOWN.radius,
       }]}>
-        {mediaTypes.map(option => <Pressable key={option.value}
-          accessibilityRole="button" accessibilityLabel={option.display}
-          onPress={() => selectType(option)}
-          style={({ hovered, pressed }) => [styles.menuItem,
-            (hovered || pressed || option.value === type.value) && { backgroundColor: palette.surfaceMuted }]}>
-          <Text numberOfLines={1} style={[styles.menuText, { color: palette.textSecondary }]}>{option.display}</Text>
-        </Pressable>)}
+        <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+          {mediaTypes.map(option => <Pressable key={option.value}
+            accessibilityRole="button" accessibilityLabel={option.display}
+            onPress={() => selectType(option)}
+            style={({ hovered, pressed }) => [styles.menuItem,
+              (hovered || pressed || option.value === type.value) && { backgroundColor: palette.surfaceMuted }]}>
+            <Text numberOfLines={1} style={[styles.menuText, { color: palette.textSecondary }]}>{option.display}</Text>
+          </Pressable>)}
+        </ScrollView>
       </View> : null}
     </View>
     {barcodeError ? <View style={[styles.toast, {
@@ -464,15 +542,15 @@ const styles = StyleSheet.create({
   typeButton: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 8 },
   typeText: { fontSize: 14, flexShrink: 1 },
   menu: { position: 'absolute', top: 48, right: 0, zIndex: 60, borderWidth: 1, paddingVertical: 4, elevation: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
-  menuItem: { paddingHorizontal: 16, paddingVertical: 8 },
-  menuText: { fontSize: 14 },
-  option: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 8 },
+  menuItem: { paddingHorizontal: DROPDOWN.itemPaddingHorizontal, paddingVertical: DROPDOWN.itemPaddingVertical },
+  menuText: { fontSize: DROPDOWN.fontSize },
+  option: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: DROPDOWN.itemPaddingHorizontal, paddingVertical: DROPDOWN.itemPaddingVertical },
   optionText: { flex: 1, minWidth: 0 },
   optionTitle: { fontSize: 14 },
   optionSubtitle: { fontSize: 12, marginTop: 1 },
-  thumb: { width: 32, height: 40, borderRadius: 4, flexShrink: 0 },
+  thumb: { width: 32, height: THUMB_HEIGHT, borderRadius: 4, flexShrink: 0 },
   thumbFallback: { alignItems: 'center', justifyContent: 'center' },
-  footerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 1 },
+  footerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: DROPDOWN.itemPaddingHorizontal, paddingVertical: DROPDOWN.itemPaddingVertical, borderTopWidth: 1 },
   footerText: { flex: 1, minWidth: 0, fontSize: 12 },
   keycap: { fontSize: 11, borderWidth: 1, borderRadius: 3, paddingHorizontal: 6, paddingVertical: 1 },
   stateRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 12 },

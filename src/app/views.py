@@ -336,6 +336,7 @@ from app.score_views import (
 from app.search_views import (
     _mark_grouped_anime_route,
     media_search,
+    search_results_json,
     search_suggestions,
 )
 from app.season_details_views import season_details
@@ -2420,6 +2421,7 @@ __all__ = [
     "sanitize_column_prefs",
     "search_library_move_candidates",
     "search_remap_candidates",
+    "search_results_json",
     "search_suggestions",
     "season_details",
     "select_featured_person",

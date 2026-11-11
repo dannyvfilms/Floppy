@@ -135,6 +135,26 @@ urlpatterns = [
         fork_views_library.LibraryBulkPlaysStatusView.as_view(),
         name="api_library_bulk_plays_status",
     ),
+    re_path(
+        r"^library/saved-views/reorder/?$",
+        fork_views_library.LibrarySavedViewsReorderView.as_view(),
+        name="api_library_saved_views_reorder",
+    ),
+    re_path(
+        r"^lists/(?P<list_id>\d+)/items/bulk/?$",
+        fork_views_lists.ListItemsBulkAddView.as_view(),
+        name="api_list_items_bulk_add",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/detail/gallery/?$",
+        fork_views_detail.DetailGalleryView.as_view(),
+        name="api_media_detail_gallery",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/detail/?$",
+        fork_views_detail.DetailPageView.as_view(),
+        name="api_media_detail_page",
+    ),
     re_path(r"^sync/bootstrap/?$", fork_views_sync.SyncBootstrapView.as_view(), name="api_sync_bootstrap"),
     re_path(r"^sync/snapshot/?$", fork_views_sync.SyncSnapshotView.as_view(), name="api_sync_snapshot"),
     re_path(

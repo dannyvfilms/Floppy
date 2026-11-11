@@ -11,7 +11,7 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
-from app.models import MediaTypes
+from app.models import Item, MediaTypes
 from app.services import metadata_resolution
 from lists import smart_rules
 from lists.models import (
@@ -35,6 +35,8 @@ from .contract_serializers import (
 )
 
 logger = logging.getLogger(__name__)
+
+MAX_BULK_LIST_ITEM_IDS = 500
 
 
 _OBJ_READ = extend_schema(responses={200: OpenApiTypes.OBJECT})
@@ -211,6 +213,43 @@ def _serialize_smart_rules(custom_list):
         # The normalized rules the editor works with (same as the web page).
         payload["rules"] = smart_rules.normalize_list_rules(custom_list)
     return payload
+
+
+class ListItemsBulkAddView(drf_views.APIView):
+    """Add a bounded set of library items to an editable manual list."""
+
+    @_OBJ_WRITE
+    def post(self, request, list_id):
+        """Add owned-catalog item ids, skipping missing or existing entries."""
+        custom_list, error = _get_editable_list(request, list_id)
+        if error:
+            return error
+        if custom_list.is_smart:
+            return Response({"detail": "Smart lists cannot be edited directly."}, status=HTTP.BAD_REQUEST)
+        item_ids = request.data.get("item_ids")
+        if not isinstance(item_ids, list) or not item_ids:
+            return Response({"detail": "'item_ids' must be a non-empty array."}, status=HTTP.BAD_REQUEST)
+        if len(item_ids) > MAX_BULK_LIST_ITEM_IDS or any(not str(value).isdigit() for value in item_ids):
+            return Response({"detail": "'item_ids' must contain at most 500 item ids."}, status=HTTP.BAD_REQUEST)
+        with transaction.atomic():
+            CustomListItem.objects.lock_custom_lists([custom_list.id])
+            items = Item.objects.in_bulk({int(value) for value in item_ids})
+            existing = set(CustomListItem.objects.filter(custom_list=custom_list, item_id__in=items).values_list("item_id", flat=True))
+            new_items = [item for item_id, item in items.items() if item_id not in existing]
+            created = CustomListItem.objects.bulk_create([
+                CustomListItem(custom_list=custom_list, item=item, added_by=request.user)
+                for item in new_items
+            ])
+            ListActivity.objects.bulk_create([
+                ListActivity(
+                    custom_list=custom_list,
+                    user=request.user,
+                    activity_type=ListActivityType.ITEM_ADDED,
+                    item=item,
+                )
+                for item in new_items
+            ])
+        return Response({"added": len(created), "skipped": len(item_ids) - len(created)}, status=HTTP.OK)
 
 
 # /api/v1/lists/[list_id]/smart-rules/

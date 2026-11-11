@@ -90,6 +90,17 @@ function AdvancedAdapter({ props }) {
     }, 1500);
   }
 
+  function downloadDiagnostics() {
+    if (!props.urls.diagnostics) return;
+    setLogs({ busy: true, error: '', success: '' });
+    window.location.assign(props.urls.diagnostics);
+    window.setTimeout(() => {
+      setLogs(current => (current.busy
+        ? { busy: false, error: '', success: '' }
+        : current));
+    }, 1500);
+  }
+
   async function saveImage(enabled) {
     setImage(current => ({ ...current, busy: true, error: '', success: '' }));
     try {
@@ -147,6 +158,7 @@ function AdvancedAdapter({ props }) {
       bugReportUrl={props.bugReportUrl}
       busy={logs.busy} error={logs.error} success={logs.success}
       onDownloadLogs={downloadLogs}
+      onDownloadDiagnostics={downloadDiagnostics}
       onOpenUrl={openUrl}
       palette={systemPalette}
       labels={labels.logs} icons={props.icons} />

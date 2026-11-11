@@ -9,6 +9,8 @@
 
 export const DARK = {
   background: '#212529',
+  // The side menu's own colour: --color-sidebar on the web.
+  sidebar: '#1a1d20',
   surface: '#2a2f35',
   surfaceStrong: '#39404b',
   surfaceDim: '#262a2f',
@@ -27,6 +29,7 @@ export const DARK = {
 
 export const LIGHT = {
   background: '#f8f9fa',
+  sidebar: '#f1f3f5',
   surface: '#ffffff',
   surfaceStrong: '#e9ecef',
   surfaceDim: '#dee2e6',
@@ -44,7 +47,7 @@ export const LIGHT = {
 };
 
 function preset(background, surface, surfaceStrong, surfaceMuted, border, text, textSecondary, textMuted, accent, accentContrast, link) {
-  return { background, surface, surfaceStrong, surfaceMuted, border, text, textSecondary, textMuted, accent, accentContrast, link };
+  return { background, sidebar: background, surface, surfaceStrong, surfaceMuted, border, text, textSecondary, textMuted, accent, accentContrast, link };
 }
 
 export const PRESETS = {
@@ -77,7 +80,7 @@ const PRESET_SURFACES = Object.fromEntries([
 // web, dynamic colours on iOS). `accent` stays out: shared code appends alpha
 // digits to it, which only works on a literal colour.
 export const LIVE_KEYS = [
-  'background', 'surface', 'surfaceStrong', 'surfaceMuted', 'border', 'surfaceBorder', 'surfaceDim', 'panel',
+  'background', 'sidebar', 'surface', 'surfaceStrong', 'surfaceMuted', 'border', 'surfaceBorder', 'surfaceDim', 'panel',
   'text', 'textSecondary', 'textMuted', 'link', 'accentContrast', 'dangerText',
 ];
 

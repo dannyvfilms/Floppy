@@ -3,11 +3,14 @@
 # the same builders and bulk handlers so a Bearer-token client gets the same
 # option lists and the same bulk semantics, with no second implementation.
 import json
+import uuid
 from collections import defaultdict
 from dataclasses import replace
 from http import HTTPStatus as HTTP  # noqa: N814
 from urllib.parse import urlencode
 
+from django.core.cache import cache
+from django.db import transaction
 from django.db.models import Count
 from django.http import Http404, HttpRequest, QueryDict
 from drf_spectacular.types import OpenApiTypes
@@ -37,6 +40,7 @@ from app.media_list_views import (
 from app.models import BasicMedia, CollectionEntry, Item, ItemTag, MediaTypes, Tag
 from app.services import bulk_show_plays
 from lists import views_list_actions
+from users.models import SavedView
 
 from .helpers import check_valid_type
 from .schema import MEDIA_LIST_FILTER_PARAMS, MEDIA_TYPE_COMPLETE_PARAM
@@ -472,6 +476,8 @@ class LibraryBulkPlaysView(_BulkView):
     )
     def post(self, request):
         """Queue the job and return its operation id."""
+        if "options" in request.data:
+            return self._post_with_options(request)
         data = self.validated(request)
         form = {"item_ids": _ids_field(data)}
         for key in ("scope", "season_from", "season_to", "existing", "date_mode",
@@ -484,6 +490,35 @@ class LibraryBulkPlaysView(_BulkView):
             *_call_web_view(bulk_action_views.bulk_show_plays_start, request, form),
         )
 
+    def _post_with_options(self, request):
+        """Queue the job for the {item_ids, options, dry_run} shape that API clients send."""
+        from app.services import bulk_show_plays
+        from app.tasks import bulk_show_plays_task
+
+        item_ids = request.data.get("item_ids")
+        if not isinstance(item_ids, list) or not item_ids:
+            return Response({"detail": "'item_ids' must be a non-empty array."}, status=HTTP.BAD_REQUEST)
+        if len(item_ids) > MAX_BULK_SHOWS or any(not str(value).isdigit() for value in item_ids):
+            return Response({"detail": f"'item_ids' must contain at most {MAX_BULK_SHOWS} show ids."}, status=HTTP.BAD_REQUEST)
+        options_data = QueryDict("", mutable=True)
+        options_data.update(request.data.get("options") or {})
+        options, error = bulk_show_plays.parse_options(options_data)
+        if options is None:
+            return Response({"detail": error}, status=HTTP.BAD_REQUEST)
+        dry_run = request.data.get("dry_run") is True
+        operation_id = uuid.uuid4().hex
+        if not dry_run and not cache.add(
+            bulk_show_plays.lock_key(request.user.id), operation_id, bulk_show_plays.LOCK_TTL,
+        ):
+            return Response({"detail": "Another history job is still running. Try again soon."}, status=HTTP.CONFLICT)
+        cache.set(bulk_show_plays.status_key(request.user.id, operation_id), {
+            "state": "running", "dry_run": dry_run, "total": len(item_ids), "done": 0,
+        }, bulk_show_plays.STATUS_TTL)
+        bulk_show_plays_task.delay(
+            request.user.id, [int(value) for value in item_ids], options.as_task_kwargs(), operation_id, dry_run,
+        )
+        return Response({"success": True, "operation_id": operation_id}, status=HTTP.ACCEPTED)
+
 
 class LibraryBulkPlaysStatusView(drf_views.APIView):
     """Progress and results of a bulk plays preview or run."""
@@ -495,8 +530,6 @@ class LibraryBulkPlaysStatusView(drf_views.APIView):
     )
     def get(self, request, operation_id):
         """Return the cached state of an operation the user started."""
-        from django.core.cache import cache
-
         state = cache.get(bulk_show_plays.status_key(request.user.id, operation_id))
         if state is None:
             return Response({"detail": "This job has expired."}, status=HTTP.NOT_FOUND)
@@ -758,8 +791,45 @@ def _web_query_pairs(query):
     return pairs
 
 
+class SavedViewInputSerializer(serializers.Serializer):
+    """Input for creating a native library saved view."""
+
+    media_type = serializers.CharField()
+    name = serializers.CharField(max_length=100)
+    query = serializers.CharField(required=False, allow_blank=True, max_length=4000)
+
+
+class SavedViewOutputSerializer(serializers.Serializer):
+    """Public saved view fields returned to the native library."""
+
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    media_type = serializers.CharField()
+    query = serializers.CharField(allow_blank=True)
+    position = serializers.IntegerField()
+
+
+def _saved_view_data(view):
+    return {
+        "id": view.id,
+        "name": view.name,
+        "media_type": view.media_type,
+        "query": view.query,
+        "position": view.position,
+    }
+
+
 class LibrarySavedViewsView(drf_views.APIView):
     """Named media-list views (the sidebar's saved views)."""
+
+    @extend_schema(parameters=[OpenApiParameter("media_type", str)], responses=SavedViewOutputSerializer(many=True))
+    def get(self, request):
+        """Return the caller's saved views for a media type."""
+        media_type = request.query_params.get("media_type", "")
+        if media_type not in request.user.get_sidebar_media_types():
+            return Response({"detail": "Invalid media type."}, status=HTTP.BAD_REQUEST)
+        views = SavedView.objects.filter(user=request.user, media_type=media_type)
+        return Response([_saved_view_data(view) for view in views], status=HTTP.OK)
 
     @extend_schema(operation_id="createLibrarySavedView", request=OpenApiTypes.OBJECT, responses={201: OpenApiTypes.OBJECT})
     def post(self, request):
@@ -769,7 +839,8 @@ class LibrarySavedViewsView(drf_views.APIView):
 
         if request.user.is_demo:
             return Response({"detail": "This section is view-only for demo accounts."}, status=HTTP.FORBIDDEN)
-        media_type = str(request.data.get("mediaType") or "")
+        # Both spellings: the Expo library sends mediaType, API clients send media_type.
+        media_type = str(request.data.get("mediaType") or request.data.get("media_type") or "")
         if media_type not in request.user.get_sidebar_media_types():
             return Response({"detail": "Invalid media type."}, status=HTTP.BAD_REQUEST)
         name = str(request.data.get("name") or "").strip()[:100]
@@ -780,14 +851,24 @@ class LibrarySavedViewsView(drf_views.APIView):
             user=request.user,
             media_type=media_type,
             name=name,
-            query=_saved_view_query(QueryDict(urlencode(_web_query_pairs(request.data.get("query"))))),
+            # A string is stored as sent (API clients); an object is normalised like the web Save View.
+            query=request.data["query"] if isinstance(request.data.get("query"), str)
+            else _saved_view_query(QueryDict(urlencode(_web_query_pairs(request.data.get("query"))))),
             position=last.position + 1 if last else 0,
         )
-        return Response(_saved_view_payload(saved), status=HTTP.CREATED)
+        return Response({**_saved_view_payload(saved), **_saved_view_data(saved)}, status=HTTP.CREATED)
 
 
 class LibrarySavedViewDetailView(drf_views.APIView):
-    """Delete one saved view."""
+    """Read or delete one saved view."""
+
+    @extend_schema(responses=SavedViewOutputSerializer)
+    def get(self, request, view_id):
+        """Return one saved view only when it belongs to the caller."""
+        view = SavedView.objects.filter(user=request.user, pk=view_id).first()
+        if view is None:
+            return Response({"detail": "Saved view not found."}, status=HTTP.NOT_FOUND)
+        return Response(_saved_view_data(view), status=HTTP.OK)
 
     @extend_schema(operation_id="deleteLibrarySavedView", responses={204: None})
     def delete(self, request, view_id):
@@ -818,3 +899,37 @@ class LibraryShareView(drf_views.APIView):
         if status_code >= HTTP.BAD_REQUEST or not body.get("url"):
             return Response({"detail": "The view could not be shared."}, status=HTTP.BAD_REQUEST)
         return Response({"url": body["url"]})
+
+
+MAX_SAVED_VIEW_QUERY_LENGTH = 4000
+
+
+MAX_BULK_SHOWS = 1000
+
+
+MAX_BULK_COLLECTION_ITEMS = 500
+
+
+class LibrarySavedViewsReorderView(drf_views.APIView):
+    """Persist an ordered list of the caller's saved views for one media type."""
+
+    @extend_schema(request={"application/json": {"type": "object", "properties": {
+        "media_type": {"type": "string"}, "ids": {"type": "array", "items": {"type": "integer"}},
+    }}}, responses={204: None})
+    def post(self, request):
+        """Save the submitted order for the caller's views of one media type."""
+        media_type = str(request.data.get("media_type", ""))
+        ids = request.data.get("ids", [])
+        if media_type not in request.user.get_sidebar_media_types() or not isinstance(ids, list):
+            return Response({"detail": "Invalid media type or view order."}, status=HTTP.BAD_REQUEST)
+        if request.user.is_demo:
+            return Response({"detail": "This section is view-only for demo accounts."}, status=HTTP.FORBIDDEN)
+        with transaction.atomic():
+            views = list(SavedView.objects.select_for_update().filter(user=request.user, media_type=media_type))
+            by_id = {str(view.id): view for view in views}
+            order = [str(value) for value in ids if str(value) in by_id]
+            order.extend(key for key in by_id if key not in order)
+            for position, key in enumerate(order):
+                by_id[key].position = position
+            SavedView.objects.bulk_update(by_id.values(), ["position"])
+        return Response(status=HTTP.NO_CONTENT)

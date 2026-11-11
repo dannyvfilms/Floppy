@@ -87,10 +87,11 @@ const defaultLabels = {
   working: 'Working…',
   logs: {
     title: 'Logs & Bug Reports',
-    intro: 'Logs may contain private activity. Administrators can download redacted logs and should review them before sharing.',
+    intro: 'Logs may contain private activity. Administrators can download redacted logs and should review them before sharing. Everyone can download a diagnostic report with only server details and recent warnings and errors.',
     covers: 'Covers {when} onward.',
     lastUnclean: 'Last unclean shutdown: {when}',
     download: 'Download Sanitized Logs',
+    downloadDiagnostics: 'Download Diagnostic Report',
     bugReport: 'File a Bug Report',
   },
   imageCache: {
@@ -232,6 +233,7 @@ export function LogsCard({
   error,
   success,
   onDownloadLogs,
+  onDownloadDiagnostics,
   onOpenUrl,
   palette = {},
   buttonPalette = {},
@@ -252,6 +254,9 @@ export function LogsCard({
     <View style={styles.actions}>
       {isSuperuser ? <Button label={copy.download} busy={busy} icon={icons.download}
         onPress={onDownloadLogs} palette={buttons} width="auto" /> : null}
+      {onDownloadDiagnostics ? <Button label={copy.downloadDiagnostics} busy={busy}
+        icon={icons.download} tone={isSuperuser ? 'surface' : undefined}
+        onPress={onDownloadDiagnostics} palette={buttons} width="auto" /> : null}
       <Button label={copy.bugReport} tone="surface" disabled={!onOpenUrl}
         onPress={() => onOpenUrl?.(bugReportUrl)} palette={buttons} width="auto" />
     </View>

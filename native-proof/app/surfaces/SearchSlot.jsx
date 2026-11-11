@@ -1,9 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
 import { GlobalSearch } from '../../../frontend/ui/GlobalSearch.jsx';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
-import { createSearchTransport, searchBarFromPayload, suggestionsFromPayload } from '../data/searchTransport';
-import { getActiveAuthSession, subscribeAuthSession } from '../data/authSession';
+import { createSearchTransport, localResultsFromPayload } from '../data/searchTransport';
 import { palette, radius } from '../theme';
 
 export const surface = {
@@ -11,10 +10,38 @@ export const surface = {
   title: 'Global search and suggestions',
   where: 'Header on Home, Discover and Library, and the Search screen',
   status: 'in_progress',
-  note: 'The shared React Native search field renders here with the media-type menu, barcode types and copy from /api/v1/search/sources/, two-character suggestions from /api/v1/search/suggestions/ (saved titles, collected and tagged items, matched titles), the search-all/search-online footer, loading/empty/error rows and the search, suggestion and barcode callbacks. Book, Manga, Comic and Comic Issue scopes open the Expo camera/photo/manual-ISBN sheet. Signed out, the menu offers All only and suggestions are empty; there is no sample content. Camera, photo, permission, manual-ISBN, suggestion, menu and screen-reader interaction were not exercised on iOS or Android.',
+  note: 'The shared React Native search field renders here with the media-type menu, two-character suggestions, the search-all/search-online footer, loading/empty/error rows and the search, suggestion and barcode callbacks. Book, Manga, Comic and Comic Issue scopes open the Expo camera/photo/manual-ISBN sheet. Signed-in suggestions query /api/v1/media/?search= through the session facade; signed-out keeps the sample rows. The web adapter keeps the GET search action and JSON suggestion endpoint. Expo export is compile-only evidence: camera, photo, permission, manual-ISBN, suggestion, menu and screen-reader interaction were not exercised on iOS or Android.',
 };
 
-const ALL_TYPE = { display: 'All', value: 'all' };
+const mediaTypes = [
+  { display: 'All', value: 'all' },
+  { display: 'TV Shows', value: 'tv' },
+  { display: 'Movies', value: 'movie' },
+  { display: 'Anime', value: 'anime' },
+  { display: 'Manga', value: 'manga' },
+  { display: 'Games', value: 'game' },
+  { display: 'Books', value: 'book' },
+  { display: 'Comics', value: 'comic' },
+  { display: 'Board Games', value: 'boardgame' },
+  { display: 'Music', value: 'music' },
+  { display: 'Podcasts', value: 'podcast' },
+  { display: 'Videos', value: 'video' },
+];
+
+const library = [
+  { title: 'Dune', subtitle: 'Movie · 2021', type: 'movie' },
+  { title: 'Dune: Part Two', subtitle: 'Movie · 2024', type: 'movie' },
+  { title: 'Dune Messiah', subtitle: 'Book · Frank Herbert', type: 'book' },
+  { title: 'The Bear', subtitle: 'TV Show · In progress', type: 'tv' },
+  { title: 'Blue Eye Samurai', subtitle: 'Anime · Completed', type: 'anime' },
+  { title: 'Vinland Saga', subtitle: 'Manga · Makoto Yukimura', type: 'manga' },
+  { title: 'Hades', subtitle: 'Game · 12 hours played', type: 'game' },
+  { title: 'Saga #1', subtitle: 'Comic Issue · Brian K. Vaughan', type: 'comicissue' },
+  { title: 'Wingspan', subtitle: 'Board Game · 4 plays', type: 'boardgame' },
+  { title: 'Piranesi', subtitle: 'Book · Susanna Clarke', type: 'book' },
+  { title: 'The Last of Us', subtitle: 'TV Show · Planning', type: 'tv' },
+  { title: 'Every Frame a Painting', subtitle: 'Video · Essay', type: 'video' },
+];
 
 const labels = {
   inputLabel: 'Search your library or online',
@@ -32,7 +59,7 @@ const labels = {
   suggestionsEmptyAll: 'Nothing in your library matches “%(query)s”. Pick a media type to search online.',
   suggestionsEmptyType: 'Nothing saved matches “%(query)s”. Keep typing and press Enter to search online.',
   barcodeUnavailable: 'Barcode scanning is not available on this device. Enter an ISBN instead.',
-  barcodeUnreadable: 'Could not read barcode from image. Please try again or enter ISBN manually.',
+  barcodeUnreadable: 'Could not read a barcode from that image. Try again or type the ISBN.',
   barcodeFailed: 'Error scanning barcode: ',
   tryAgain: 'Please try again.',
   barcodeTitle: 'Scan a book barcode',
@@ -49,7 +76,7 @@ const labels = {
   barcodeChecking: 'Reading barcode…',
   barcodeInvalidManual: 'Enter a valid ISBN-10 or ISBN-13.',
   barcodeNotIsbn: 'That barcode is not an ISBN. Try a book barcode.',
-  barcodePhotoUnreadable: 'Could not read barcode from image. Please try again or enter ISBN manually.',
+  barcodePhotoUnreadable: 'Could not read a barcode from that photo. Try again or type the ISBN.',
   barcodeCameraError: 'The camera could not start. Choose a photo or type the ISBN.',
 };
 
@@ -70,6 +97,8 @@ const searchPalette = {
   ...(Platform.OS === 'ios' ? { inputHeight: 44, searchTouchWidth: 44 } : {}),
 };
 
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 export default function SearchSlot({
   expanded = false,
   initialQuery = '',
@@ -77,37 +106,13 @@ export default function SearchSlot({
   onOpenSearch,
   onOpenSuggestion,
   onSubmit,
-  dismissSignal = 0,
 }) {
   const { width } = useWindowDimensions();
-  const [session, setSession] = useState(() => getActiveAuthSession());
-  useEffect(() => subscribeAuthSession(setSession), []);
-  const transport = useMemo(
-    () => createSearchTransport(session ? { auth: session } : {}),
-    [session],
-  );
+  const [transport] = useState(() => createSearchTransport());
   const compact = width < 640;
-  const [bar, setBar] = useState({ mediaTypes: [ALL_TYPE], barcodeTypes: [], labels: {} });
+  const selectedType = mediaTypes.find(option => option.value === initialMediaType) || mediaTypes[0];
   const [scannerVisible, setScannerVisible] = useState(false);
   const pendingBarcode = useRef(null);
-
-  // The type menu, barcode types and field copy come from the server, so the
-  // user's enabled media types decide what is offered.
-  useEffect(() => {
-    if (transport.mode !== 'server') {
-      setBar({ mediaTypes: [ALL_TYPE], barcodeTypes: [], labels: {} });
-      return undefined;
-    }
-    let active = true;
-    transport.loadSources({ mediaType: initialMediaType }).then(payload => {
-      if (active) setBar(searchBarFromPayload(payload));
-    }).catch(() => {});
-    return () => { active = false; };
-  }, [transport, initialMediaType]);
-
-  const mediaTypes = bar.mediaTypes.length ? bar.mediaTypes : [ALL_TYPE];
-  const selectedType = mediaTypes.find(option => option.value === initialMediaType) || mediaTypes[0];
-  const fieldLabels = { ...labels, ...bar.labels };
 
   const requestBarcode = useCallback(() => new Promise(resolve => {
     pendingBarcode.current = resolve;
@@ -122,29 +127,53 @@ export default function SearchSlot({
   }, []);
 
   const loadSuggestions = useCallback(async ({ query, mediaType }) => {
-    if (transport.mode !== 'server') return { suggestions: [] };
-    const payload = await transport.loadSuggestions({ query, mediaType });
-    return { suggestions: suggestionsFromPayload(payload) };
+    await wait(180);
+    if (transport.mode === 'server' && transport.searchSuggestions) {
+      return { suggestions: await transport.searchSuggestions({ search: query, mediaType }) };
+    }
+    if (transport.mode === 'server') {
+      const payload = await transport.searchLocal({ search: query, mediaType, limit: 8, offset: 0 });
+      return {
+        suggestions: localResultsFromPayload(payload).slice(0, 8).map((item, index) => ({
+          ...item,
+          id: `${item.type}-${index}`,
+          title: item.title,
+          subtitle: [item.note, item.year, item.status].filter(Boolean).join(' · '),
+          mediaType: item.type,
+        })),
+      };
+    }
+    const needle = query.toLowerCase();
+    return {
+      suggestions: library
+        .filter(item => mediaType === 'all' || item.type === mediaType)
+        .filter(item => item.title.toLowerCase().includes(needle))
+        .slice(0, 8)
+        .map((item, index) => ({
+          id: `${item.type}-${index}`,
+          title: item.title,
+          subtitle: item.subtitle,
+          mediaType: item.type,
+        })),
+    };
   }, [transport]);
 
   function openSuggestion(suggestion) {
-    if (onOpenSuggestion) onOpenSuggestion(suggestion);
+    // Typeahead rows without an item identity (artists, podcast shows) open as a search.
+    const typeaheadWithoutItem = Boolean(suggestion.href) && !suggestion.identity;
+    if (onOpenSuggestion && !(typeaheadWithoutItem && onOpenSearch)) onOpenSuggestion(suggestion);
     else onOpenSearch?.({ query: suggestion.title, mediaType: suggestion.mediaType || initialMediaType });
   }
 
   return <>
     <GlobalSearch
-      // The field keeps its own selected type, so it restarts when the page's
-      // type changes or the server's type list arrives.
-      key={`${selectedType.value}:${mediaTypes.length}`}
       expanded={expanded}
-      dismissSignal={dismissSignal}
       compact={compact}
       query={initialQuery}
       selectedType={selectedType}
       mediaTypes={mediaTypes}
-      barcodeTypes={bar.barcodeTypes}
-      labels={fieldLabels}
+      barcodeTypes={['all', 'book', 'manga', 'comic', 'comicissue']}
+      labels={labels}
       palette={searchPalette}
       onLoadSuggestions={loadSuggestions}
       onSubmit={onSubmit || onOpenSearch}
