@@ -11,6 +11,7 @@ from pathlib import Path
 
 from django.apps import apps
 from django.conf import settings
+from django.core.exceptions import SuspiciousFileOperation
 from django.db.models import Field
 from django.utils import timezone
 
@@ -639,10 +640,11 @@ def backup_directory(user):
         username = f"user:{user.pk}"
     root = os.path.normpath(settings.BACKUP_DIR)
     path = os.path.normpath(f"{root}{os.sep}{username}")
-    # The name check above already allows no separators; this keeps the folder
-    # check explicit for anything that reads the result.
+    # The name check above already allows no separators. Refusing anything
+    # outside the backup directory keeps that explicit at the point of use.
     if not path.startswith(root.rstrip(os.sep) + os.sep):
-        path = f"{root}{os.sep}user:{user.pk}"
+        message = "Backup directory is outside the configured backup location."
+        raise SuspiciousFileOperation(message)
     directory = Path(path)
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     return directory
