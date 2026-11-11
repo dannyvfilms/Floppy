@@ -365,8 +365,8 @@ kills it, with no one needing to remember a flag.
 
 CI accepts workflow changes through the normal PR checks. Hosted run
 `38993407779` took almost 69 minutes, so the test job now allows 120 minutes,
-with `FLOPPY_TEST_TIMEOUT=6600` and `FLOPPY_TEST_WATCHDOG=6300`. Both PR and
-coverage runs have the same bounded test budget, with time left for setup and
+with `FLOPPY_TEST_TIMEOUT=6600` and `FLOPPY_TEST_WATCHDOG=6300`. PR, publish
+and coverage runs have the same bounded test budget, with time left for setup and
 reporting. The watchdog leaves thread stacks before the runner times out:
 
 ```yaml
@@ -539,6 +539,100 @@ is the result of fixing it.
   that would confirm the timing-race reading.
 * Until then, treat a suite run that produces no output well past its usual
   wall time as this bug, not as a slow test.
+
+## Coverage runs beside the publish gate, not in front of it
+
+Until November 2026 a push to `latest` ran the three shards under
+`coverage run` with one context per test, inside the Docker publish gate. The
+tracer is needed for the affected-test map (`ctrace`, because `sysmon` on
+3.12 keeps only the first test per line), but nothing it produces decides
+whether an image is safe, and it slowed every shard on the critical path.
+
+Now:
+
+- The publish gate (`docker-image.yml` calling `app-tests.yml` with
+  `release_quality_gates`) runs the same tests through `scripts/test.sh`,
+  with no tracer. The exclusions are unchanged: `network` and `playwright`.
+  The timeout and watchdog come from `scripts/test.sh`.
+- `coverage.yml` runs on every push to `latest`: the same three shards under
+  coverage, then the combine step, the `affected-map` artifact and the
+  Codecov upload. Its job summary records the number of measured files and
+  test contexts. A newer push cancels a run still in flight, so only the
+  newest commit's map is built.
+- A red coverage run does not block or unpublish an image. It shows as a red
+  run on `latest`.
+
+The two workflows list the shards separately. Change them together.
+
+## Reusing a pull request's test result on the publish gate
+
+A push to `latest` runs the Docker publish gate, which runs the three test
+shards. When that push is a pull request merge and the branch was up to date,
+the pull request's own `App Tests` run already executed on a commit with the
+same Git tree. The first job of the gate, `Reuse PR test result?`
+(`scripts/reuse_pr_tests.py`), decides whether that is so, and the shards are
+skipped only when it is.
+
+It is off unless the repository variable `REUSE_PR_TEST_RESULTS` is `true`.
+Without it the job still evaluates every push and writes what it would have
+decided to its job summary (shadow mode), and the full gate runs. To turn the
+feature off, delete the variable.
+
+What is compared is the tree, not the commit. A merge commit is never the
+pull request head, but a tree hash names every file in the checkout: source,
+tests, `uv.lock`, the workflows and the test tooling. Equal trees give a test
+run identical input files.
+
+The tested tree is read from GitHub's record of the run, not inferred from
+the pull request head. A `pull_request` run executes on GitHub's test merge
+commit (`refs/pull/N/merge`). The run's `head_sha` is the pull request head,
+whose tree differs whenever the branch was behind. The test merge commit is
+reported in the run's `referenced_workflows` (as `sha`, with
+`ref: refs/pull/N/merge`), which is present because `App Tests` references
+the local lint workflow. If that reference is ever removed, runs stop
+reporting a tested commit and nothing is reused.
+
+Reuse needs all of these. Anything else, including any API error, runs the
+full gate:
+
+1. The event is a push to `refs/heads/latest`. Tags, `release` and manual
+   runs are never reused.
+2. The pushed commit is associated with exactly one pull request, merged into
+   `latest` in this repository, with the pushed commit as its merge commit.
+3. The newest `App Tests` `pull_request` run for that pull request's head is
+   completed and successful, and ran on that pull request's merge ref.
+4. The commit that run executed merges the pull request head, and its tree
+   equals the pushed tree.
+5. That run's `test (3.12)` job succeeded on its latest attempt.
+6. The run started no more than 72 hours ago, so a result does not outlive
+   the runner image, Python patch release and browser build it ran on.
+
+What this means in practice:
+
+| Push to `latest` | Result |
+| --- | --- |
+| Up-to-date green pull request, merge commit or squash | Reused |
+| Pull request merged while behind `latest` (bypass) | Full gate: trees differ |
+| Pull request whose run failed, merged by bypass | Full gate |
+| Docs-only pull request (no `App Tests` run) | Full gate |
+| Direct push | Full gate: no pull request |
+| Tag, `release`, manual run | Full gate: not applicable |
+
+Still run on the pushed commit every time: migration hygiene and
+`makemigrations --check` (the `Migration checks` job, because hygiene reads
+the upstream baseline at run time), OAuth on PostgreSQL, both upgrade
+replays, release lint and the image smoke. MCP and script tests run in the
+`app` shard and are reused with it.
+
+The `test (3.12)` job passes when the shards succeeded, or when the decision
+job succeeded, said `reuse`, and the shards were skipped. A pull request run
+can never take the second path: the decision output is forced to `run` for
+every event except the publish-gate push to `latest`. That also means a
+reused result can never become the evidence for another reuse, because
+evidence is only ever a `pull_request` run.
+
+Coverage is unaffected: `coverage.yml` runs its own shards on every push to
+`latest`, whether or not the publish gate reused a result.
 
 ## How to run tests quickly now
 
