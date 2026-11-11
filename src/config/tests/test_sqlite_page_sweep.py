@@ -6,6 +6,7 @@ import random
 import shutil
 import sqlite3
 import tempfile
+import unittest
 from contextlib import suppress
 from pathlib import Path
 from unittest import TestCase
@@ -47,6 +48,15 @@ def build(page_size, auto_vacuum):
     return path
 
 
+def _has_dbstat() -> bool:
+    """Return whether this SQLite build has the dbstat table the test reads."""
+    try:
+        sqlite3.connect(":memory:").execute("SELECT 1 FROM dbstat LIMIT 1")
+    except sqlite3.OperationalError:
+        return False
+    return True
+
+
 class PageSweepTests(TestCase):
     def test_healthy_churned_databases_have_no_findings(self):
         for page_size in (512, 4096, 65536):
@@ -56,6 +66,7 @@ class PageSweepTests(TestCase):
                     self.addCleanup(shutil.rmtree, path.parent, True)
                     self.assertEqual(sweep.sweep(str(path))["problems"], [])
 
+    @unittest.skipUnless(_has_dbstat(), "This SQLite build has no dbstat table.")
     def test_truncation_zeroed_and_clobbered_pages_are_found(self):
         path = build(4096, 0)
         self.addCleanup(shutil.rmtree, path.parent, True)

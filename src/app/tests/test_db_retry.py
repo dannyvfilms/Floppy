@@ -1,6 +1,18 @@
-from django.test import TestCase
+from unittest import skipUnless
+from unittest.mock import Mock, patch
 
-from app.db_retry import _describe_conflicting_row, update_or_create_race_safe
+from django.db import OperationalError, connection
+from django.test import SimpleTestCase, TestCase
+
+from app.db_retry import (
+    BRIEF_WRITER_WAIT_MS,
+    _describe_conflicting_row,
+    brief_writer_wait,
+    in_read_request,
+    optional_save,
+    read_request,
+    update_or_create_race_safe,
+)
 from app.models import Item, ItemProviderLink, MediaTypes, Sources
 
 
@@ -176,3 +188,77 @@ class DescribeConflictingRowTests(TestCase):
             result,
             "unknown (no existing row matches the attempted lookup/defaults)",
         )
+
+
+def _busy_timeout_ms():
+    with connection.cursor() as cursor:
+        cursor.execute("PRAGMA busy_timeout")
+        return int(cursor.fetchone()[0])
+
+
+@skipUnless(connection.vendor == "sqlite", "busy_timeout is a SQLite setting.")
+class BriefWriterWaitTests(TestCase):
+    """The short wait must never outlive its block: connections are reused."""
+
+    def setUp(self):
+        """Give the connection a recognisable timeout to restore."""
+        with connection.cursor() as cursor:
+            cursor.execute("PRAGMA busy_timeout=4321")
+
+    def test_lowers_the_timeout_and_restores_it(self):
+        with brief_writer_wait():
+            self.assertEqual(_busy_timeout_ms(), BRIEF_WRITER_WAIT_MS)
+        self.assertEqual(_busy_timeout_ms(), 4321)
+
+    def test_restores_the_timeout_when_the_block_raises(self):
+        with self.assertRaises(OperationalError), brief_writer_wait():
+            msg = "database is locked"
+            raise OperationalError(msg)
+        self.assertEqual(_busy_timeout_ms(), 4321)
+
+    def test_nested_blocks_restore_in_order(self):
+        with brief_writer_wait(200):
+            with brief_writer_wait(0):
+                self.assertEqual(_busy_timeout_ms(), 0)
+            self.assertEqual(_busy_timeout_ms(), 200)
+        self.assertEqual(_busy_timeout_ms(), 4321)
+
+    def test_optional_save_changes_nothing_outside_a_page_load(self):
+        self.assertFalse(in_read_request())
+        with optional_save():
+            self.assertEqual(_busy_timeout_ms(), 4321)
+
+    def test_optional_save_waits_briefly_once_per_page_load(self):
+        with read_request():
+            self.assertTrue(in_read_request())
+            with self.assertRaises(OperationalError), optional_save():
+                self.assertEqual(_busy_timeout_ms(), BRIEF_WRITER_WAIT_MS)
+                msg = "database is locked"
+                raise OperationalError(msg)
+            # The writer was busy: later saves in this page load do not wait.
+            with optional_save():
+                self.assertEqual(_busy_timeout_ms(), 0)
+            self.assertEqual(_busy_timeout_ms(), 4321)
+        self.assertFalse(in_read_request())
+
+    def test_an_unrelated_error_does_not_mark_the_writer_busy(self):
+        with read_request():
+            with self.assertRaises(OperationalError), optional_save():
+                msg = "no such table: nothing"
+                raise OperationalError(msg)
+            with optional_save():
+                self.assertEqual(_busy_timeout_ms(), BRIEF_WRITER_WAIT_MS)
+
+
+class BriefWriterWaitOtherDatabasesTests(SimpleTestCase):
+    """PostgreSQL has no single writer to wait for: the block does nothing."""
+
+    def test_no_statement_is_issued_on_postgresql(self):
+        postgres = Mock(vendor="postgresql")
+        with (
+            patch("app.db_retry.connections", {"default": postgres}),
+            read_request(),
+            optional_save(),
+        ):
+            pass
+        postgres.cursor.assert_not_called()
