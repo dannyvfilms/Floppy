@@ -149,6 +149,22 @@ class TvProviderSwitchTests(TestCase):
             2,
         )
 
+    def test_move_reloads_the_calendar_of_the_target_show(self):
+        """Next episode and Check-in read release events the new seasons lack."""
+        show, _tv = self._tracked_show(Sources.TVDB.value, "81189", {"tmdb_id": "1396"})
+
+        with (
+            self._metadata_mock(Sources.TMDB.value, "1396", (1, 2)),
+            patch("events.tasks.reload_calendar.apply_async") as reload_calendar,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            target = switch_tv_provider(self.user, show)
+
+        reload_calendar.assert_called_once_with(
+            kwargs={"item_ids": [target.pk]},
+            countdown=3,
+        )
+
     def test_missing_episode_blocks_the_move_and_changes_nothing(self):
         show, tv = self._tracked_show(Sources.TMDB.value, "1396", {"tvdb_id": "81189"})
 
