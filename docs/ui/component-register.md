@@ -447,6 +447,7 @@ can inform a focused completion pass.
 - Update 2026-11-10 (shared `HomeShelves.jsx`, new `fetchGate.js` exporting `createFetchGate`): deferred row loads run through a gate of three, so a page of many rows no longer occupies every server thread. Same change on web and native (shared component, no carve-out). Verified by `node --test scripts/fetchGate.test.mjs`; browser load verified below; no iOS or Android runtime verification.
 - Validation targets: `src/app/tests/views/test_home.py`, `test_home_screen_season_status.py`.
 - Web parity pass against v26.10.29: `HomeView` forwards `renderCard` and `renderProgress` to `HomeShelves` (they were dropped, so the quick progress controls and the web card never rendered). Video and mixed-media shelves keep the release widths through `railItemWidth`. Browser verified against v26.10.29; iOS and Android not verified.
+- Home row title links (#1899): `HomeShelves` takes `onOpenRowTitle` and an optional `canOpenRowTitle`, and sets the rail's `onTitlePress` only for rows with a server `url` that the host can open. Web (`mountHome`) navigates to the url. Expo opens `Library` with the row's media type and filters (`homeRowDestinationCore.js`, `LibraryScreen` `params.query` through the shared `filtersFromQuery`); custom-list and mixed rows stay plain text on Expo because no native list-by-reference route exists yet. Evidence: web checked in a browser; Expo covered by `homeRowDestinationCore.test.mjs` only, device run pending; Android unverified.
 
 ### PLAYBACK — Now Playing and check-in
 

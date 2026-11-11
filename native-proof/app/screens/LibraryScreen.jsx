@@ -70,22 +70,57 @@ const labels = {
   emptyAction: 'Browse Discover',
 };
 
+const BASE_FILTERS = mediaType => ({
+  mediaTypes: mediaType && mediaType !== 'all' ? [mediaType] : [],
+  statuses: [], sort: 'date_added', direction: 'desc', view: 'grid',
+  ranges: {
+    rating: { from: '', to: '', within: '', unit: 'days' },
+    dateAdded: { from: '', to: '', within: '', unit: 'days' },
+    releaseDate: { from: '', to: '', within: '', unit: 'days' },
+    completedDate: { from: '', to: '', within: '', unit: 'days' },
+  },
+  fields: { genre: '', year: '', tags: [] },
+  modes: { tags: 'or' },
+});
+
+// One query-string-to-filters mapping for saved views and for rows that open
+// Library from Home, so both land on the same filters the web media list shows.
+export function filtersFromQuery(params, current) {
+  return {
+    ...current,
+    statuses: params.getAll('status'),
+    sort: params.get('sort') || 'date_added',
+    direction: params.get('direction') || 'desc',
+    view: params.get('layout') || current.view,
+    rating: params.get('rating') || 'all',
+    collection: params.get('collection') || 'all',
+    progress: params.get('progress') || 'all',
+    fields: { ...current.fields, genre: params.get('genre') || '', year: params.get('year') || '',
+      tags: params.getAll('tags') },
+    modes: { ...current.modes, tags: params.get('tag_mode') || 'or' },
+    ranges: {
+      ...current.ranges,
+      rating: { ...current.ranges.rating, from: params.get('rating_min') || '', to: params.get('rating_max') || '' },
+      dateAdded: { ...current.ranges.dateAdded, from: params.get('date_added_from') || '',
+        to: params.get('date_added_to') || '', within: params.get('date_added_within') || '',
+        unit: params.get('date_added_within_unit') || 'days' },
+      releaseDate: { ...current.ranges.releaseDate, from: params.get('release_date_from') || '',
+        to: params.get('release_date_to') || '', within: params.get('release_date_within') || '',
+        unit: params.get('release_date_within_unit') || 'days' },
+      completedDate: { ...current.ranges.completedDate, from: params.get('completed_date_from') || '',
+        to: params.get('completed_date_to') || '', within: params.get('completed_date_within') || '',
+        unit: params.get('completed_date_within_unit') || 'days' },
+    },
+  };
+}
+
 export default function LibraryScreen({ params, navigate }) {
   const mediaType = params?.mediaType;
   const title = MEDIA_TYPE_LABELS[mediaType] || 'Library';
   const [transport] = useState(() => createLibraryTransport());
-  const [filters, setFilters] = useState(() => ({
-    mediaTypes: mediaType && mediaType !== 'all' ? [mediaType] : [],
-    statuses: [], sort: 'date_added', direction: 'desc', view: 'grid',
-    ranges: {
-      rating: { from: '', to: '', within: '', unit: 'days' },
-      dateAdded: { from: '', to: '', within: '', unit: 'days' },
-      releaseDate: { from: '', to: '', within: '', unit: 'days' },
-      completedDate: { from: '', to: '', within: '', unit: 'days' },
-    },
-    fields: { genre: '', year: '', tags: [] },
-    modes: { tags: 'or' },
-  }));
+  const [filters, setFilters] = useState(() => (params?.query
+    ? filtersFromQuery(new URLSearchParams(params.query), BASE_FILTERS(mediaType))
+    : BASE_FILTERS(mediaType)));
   const [search, setSearch] = useState('');
   const [querySearch, setQuerySearch] = useState('');
   const [rows, setRows] = useState([]);
@@ -211,32 +246,7 @@ export default function LibraryScreen({ params, navigate }) {
       transport.applySavedView?.({ id: intent.value }).then(saved => {
         const params = new URLSearchParams(saved?.query || '');
         setSearch(params.get('search') || '');
-        setFilters(current => ({
-          ...current,
-          statuses: params.getAll('status'),
-          sort: params.get('sort') || 'date_added',
-          direction: params.get('direction') || 'desc',
-          view: params.get('layout') || current.view,
-          rating: params.get('rating') || 'all',
-          collection: params.get('collection') || 'all',
-          progress: params.get('progress') || 'all',
-          fields: { ...current.fields, genre: params.get('genre') || '', year: params.get('year') || '',
-            tags: params.getAll('tags') },
-          modes: { ...current.modes, tags: params.get('tag_mode') || 'or' },
-          ranges: {
-            ...current.ranges,
-            rating: { ...current.ranges.rating, from: params.get('rating_min') || '', to: params.get('rating_max') || '' },
-            dateAdded: { ...current.ranges.dateAdded, from: params.get('date_added_from') || '',
-              to: params.get('date_added_to') || '', within: params.get('date_added_within') || '',
-              unit: params.get('date_added_within_unit') || 'days' },
-            releaseDate: { ...current.ranges.releaseDate, from: params.get('release_date_from') || '',
-              to: params.get('release_date_to') || '', within: params.get('release_date_within') || '',
-              unit: params.get('release_date_within_unit') || 'days' },
-            completedDate: { ...current.ranges.completedDate, from: params.get('completed_date_from') || '',
-              to: params.get('completed_date_to') || '', within: params.get('completed_date_within') || '',
-              unit: params.get('completed_date_within_unit') || 'days' },
-          },
-        }));
+        setFilters(current => filtersFromQuery(params, current));
       }).catch(cause => setError(cause?.message || 'Saved view could not be loaded.'));
     }
   }

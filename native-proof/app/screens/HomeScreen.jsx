@@ -17,6 +17,7 @@ import { Screen } from '../components/Screen';
 import MediaCardSlot from '../surfaces/MediaCardSlot';
 import PlaybackSlot from '../surfaces/PlaybackSlot';
 import { playbackDetailItem } from '../data/playbackTransport';
+import { libraryParamsForRowUrl } from '../data/homeRowDestinationCore';
 
 export const surface = {
   id: 'HOME',
@@ -467,6 +468,11 @@ export default function HomeScreen({ navigate }) {
       onRetry={() => setAttempt(current => current + 1)}
       onOpenCard={item => navigate?.('Detail', { item: item?.card })}
       onOpenLink={(_href, item) => navigate?.('Detail', { item: item?.card })}
+      canOpenRowTitle={href => !!libraryParamsForRowUrl(href)}
+      onOpenRowTitle={(href, _row) => {
+        const target = libraryParamsForRowUrl(href);
+        if (target) navigate?.('Library', target);
+      }}
       onAction={(_action, item) => navigate?.('Detail', { item: item?.card })}
       onLoadRow={loadRow}
       onLoadMore={loadMore}
