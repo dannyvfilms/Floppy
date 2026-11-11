@@ -28,7 +28,7 @@ jobs:
   # The job runs on every event and reports "not applicable" for anything but
   # a publish-gate push to latest. It is deliberately never skipped: a skipped
   # job makes GitHub skip every later job in the chain that has no explicit
-  # status check, which would silently drop coverage on tags. The output below
+  # status check, so a job added after the shards could vanish. The output below
   # can only be "reuse" for a publish-gate push to latest, whatever the script
   # printed, so pull request, tag, release and manual runs always get the
   # shards. A failure here is not a failure of the gate; it means "run".
