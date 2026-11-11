@@ -190,6 +190,10 @@ Status: `Partial / coexisting`
 
 Interactive/native recovery uses shared ErrorRecovery and ErrorReportPanel. The native traceback wrapper explicitly selects the shared module; web keeps its existing adapter. Root error documents and API docs remain server-owned fallbacks. Native-priority dependency tests pass; native error-screen appearance remains unverified.
 
+- `frontend/errors/ErrorReportPanel.jsx`
+- `frontend/errors/ErrorReportPanel.native.jsx`
+- `frontend/errors/ErrorReportPanel.web.jsx`
+
 ## MEDIA-CARD
 
 Shared MediaCard preserves the accepted status-specific icon shapes and colors, with provider icons as a fallback for unknown statuses. Native action hosts and progress renderers remain supplied by adapters. Ownership and remaining server consumers are unchanged; browser and native verification are recorded independently.
@@ -1164,9 +1168,6 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/discover/mountDiscover.jsx`
 - `frontend/errors/ApiDocs.jsx`
 - `frontend/errors/ErrorRecovery.jsx`
-- `frontend/errors/ErrorReportPanel.jsx`
-- `frontend/errors/ErrorReportPanel.native.jsx`
-- `frontend/errors/ErrorReportPanel.web.jsx`
 - `frontend/errors/mountErrorRecovery.jsx`
 - `frontend/pages/AuthView.jsx`
 - `frontend/pages/CalendarView.jsx`

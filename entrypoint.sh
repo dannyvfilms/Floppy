@@ -133,6 +133,29 @@ fi
 # a specific container instance when HOSTNAME/HOST_CONTAINERNAME diverge.
 echo "[entrypoint] Floppy runtime: version=${VERSION:-unknown} commit=${COMMIT_SHA:-unknown} hostname=${HOSTNAME:-unknown} container_name=${HOST_CONTAINERNAME:-floppy}" >&2
 
+# Hold the public port with a fast 503 while the database is prepared. The
+# snapshot and migrations below can take minutes on a release that migrates, and
+# Nginx does not exist until they finish, so a proxy in front would otherwise
+# time out (Cloudflare 522) instead of getting an answer it can retry. Only the
+# packaged launcher supplies the port; a direct entrypoint run skips this.
+STARTING_SERVER_PID=
+start_starting_server() {
+    if [ -n "$RUNTIME_SERVER_PORT" ]; then
+        python -m config.startup_server "$RUNTIME_SERVER_PORT" &
+        STARTING_SERVER_PID=$!
+    fi
+}
+# Release the port for the recovery page or Nginx. Waits so the socket is closed
+# before the next listener binds.
+stop_starting_server() {
+    if [ -n "$STARTING_SERVER_PID" ]; then
+        kill "$STARTING_SERVER_PID" 2>/dev/null || :
+        wait "$STARTING_SERVER_PID" 2>/dev/null || :
+        STARTING_SERVER_PID=
+    fi
+}
+start_starting_server
+
 SKIP_SQLITE_MIGRATIONS=false
 if [ -z "$DB_HOST" ]; then
     SQLITE_ADMISSION_TIMEOUT=${FLOPPY_SQLITE_ADMISSION_TIMEOUT:-30}
@@ -248,6 +271,7 @@ if [ -z "$DB_HOST" ]; then
             # Show the recovery page. It writes a copy beside the database, then
             # serves it. If a choice is submitted, the server exits cleanly so
             # the loop can apply the decision before migrations run.
+            stop_starting_server
             if [ -n "$RUNTIME_SERVER_PORT" ]; then
                 python -m config.sqlite_recovery_server "$DB_FILE" "$RUNTIME_SERVER_PORT" &
             else
@@ -487,6 +511,7 @@ if [ -d "$LOG_DIR_PATH" ] && [ -w "$LOG_DIR_PATH" ]; then
 fi
 export FLOPPY_SUPERVISORD_LOG
 
+stop_starting_server
 echo "[entrypoint] Starting services" >&2
 SUPERVISOR_CONFIG=/etc/supervisord.conf
 if [ "$RUNNING_AS_ROOT" = false ]; then

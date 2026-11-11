@@ -59,6 +59,7 @@ const ROW_LOAD_RETRIES = 3;
 // with every other request, so only a few row loads run at a time and the rest
 // start as those finish. Shared component: web and native behave the same.
 const ROW_FETCH_CONCURRENCY = 3;
+
 // Image loading is first-come on every platform, so prefetches queue ahead of the
 // covers a person is waiting for (measured on both web and Expo). A card loads
 // its own cover when it is shown; the only early fetch is a small budget of the

@@ -3871,16 +3871,16 @@
       "register": "HOME",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "Pure shared FIFO concurrency gate covered by scripts/fetchGate.test.mjs; Home limits row requests to three on web and native. Runtime rendering is recorded separately for HomeShelves."
+          "status": "verified",
+          "evidence": "node --test scripts/fetchGate.test.mjs (limit, ordering, failure frees the slot); Chromium Home load via scripts/benchmark_browser.py."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Same pure shared concurrency gate and unit tests; no native rendering evidence is implied."
+          "evidence": "Pure JavaScript with no platform API; shared with the Expo Home screen through HomeShelves but not run on a simulator or device."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Same pure shared concurrency gate and unit tests; no native rendering evidence is implied."
+          "evidence": "Pure JavaScript with no platform API; not run on an emulator or device."
         }
       }
     }
