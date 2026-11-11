@@ -88,9 +88,34 @@ export function searchQuery({ search, limit = 20, offset = 0, source } = {}) {
   return query;
 }
 
-export function createRemoteSearchActions(request) {
+// The saved-library typeahead the web search bar uses, mapped for the shared search field.
+// Images may be server-relative; the app needs absolute addresses.
+export function suggestionsFromPayload(payload, serverUrl = '') {
+  const rows = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
+  return rows.map((row, index) => ({
+    id: row.id ?? String(index),
+    title: row.title || '',
+    subtitle: row.subtitle || '',
+    image: row.image && row.image.startsWith('/') ? `${serverUrl}${row.image}` : row.image || null,
+    mediaType: row.identity?.mediaType || '',
+    identity: row.identity || null,
+    href: row.url || '',
+  }));
+}
+
+export function createRemoteSearchActions(request, { suggestionsViaWeb = false, serverUrl = '' } = {}) {
   return {
     mode: 'server',
+    // One typeahead for both apps, so the same query gives the same results in the same order.
+    // It is the Django view, which reads the session, so a token sign-in keeps the media list.
+    ...(suggestionsViaWeb ? {
+      async searchSuggestions({ search, mediaType } = {}) {
+        const payload = await request('/search/suggestions', {
+          query: { q: search, media_type: mediaType || 'all', format: 'json' },
+        });
+        return suggestionsFromPayload(payload, serverUrl);
+      },
+    } : {}),
     searchLocal({ search, mediaType, limit = 20, offset = 0 } = {}) {
       const path = mediaType && mediaType !== 'all'
         ? `/api/v1/media/${encodeURIComponent(mediaType)}/`

@@ -329,6 +329,9 @@ HOME_ROW_CACHE_TTL = 60  # seconds — matches the media-list cache horizon
 # one page instead of re-ranking the shelf. Media writes invalidate it through
 # the same registry; only provider/event refreshes can lag.
 HOME_ROW_ORDER_CACHE_TTL = 1800
+# Up Next's membership scan depends on air dates, which move without a user
+# write, so it expires sooner than a shelf's order. Media writes still clear it.
+HOME_ROW_RELEASED_CACHE_TTL = 300
 _HOME_ROW_REGISTRY_TEMPLATE = f"{HOME_ROW_CACHE_PREFIX}_registry_{{user_id}}"
 
 

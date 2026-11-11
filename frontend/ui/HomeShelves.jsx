@@ -1,16 +1,35 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { MediaCard } from './MediaCard.jsx';
 import { Rail } from './Rail';
+import { createFetchGate } from './fetchGate.js';
 
 // Web and native shelves must pick the same card width. Web computes it from
 // the phone breakpoint in mountHome; native passes the same value from here.
 export const SHELF_BREAKPOINTS = { phone: 640 };
 export const SHELF_CARD_WIDTHS = { phone: 110, default: 176 };
-export function shelfCardWidth(viewportWidth) {
-  return viewportWidth < SHELF_BREAKPOINTS.phone
-    ? SHELF_CARD_WIDTHS.phone
-    : SHELF_CARD_WIDTHS.default;
+// `mobileGridLayout` is the person's Comfortable (two across) or Compact (three across)
+// preference. It only changes phone-width shelves, and Compact keeps the width Home always had.
+export const SHELF_COMFORTABLE_MAX_WIDTH = 168;
+export function shelfCardWidth(viewportWidth, mobileGridLayout = 'compact') {
+  if (viewportWidth >= SHELF_BREAKPOINTS.phone) return SHELF_CARD_WIDTHS.default;
+  if (mobileGridLayout === 'comfortable') {
+    return Math.min(SHELF_COMFORTABLE_MAX_WIDTH, Math.floor((viewportWidth - 32 - 12) / 2));
+  }
+  return SHELF_CARD_WIDTHS.phone;
+}
+
+// Video and mixed-media shelves keep the release card widths: landscape video
+// rows are 17rem, mixed rows give square artwork 16.5rem and video 29.33rem.
+// On phones they scale from the poster width the way the release CSS did.
+export function railItemWidth(row, item, baseWidth) {
+  const phone = baseWidth <= SHELF_CARD_WIDTHS.phone;
+  if (row?.videoLandscape) return phone ? 168 : 272;
+  if (row?.mixedMedia) {
+    if (item?.card?.video) return phone ? Math.round((baseWidth * 8) / 3) : 469;
+    if (item?.card?.shape === 'square') return phone ? Math.round(baseWidth * 1.5) : 264;
+  }
+  return baseWidth;
 }
 
 const DEFAULT_PALETTE = {
@@ -48,6 +67,40 @@ function mergeLabels(labels) {
   return { ...DEFAULT_LABELS, ...(labels || {}) };
 }
 
+const ROW_LOAD_RETRIES = 3;
+// A page asks for every row at once; the server has a handful of threads shared
+// with every other request, so only a few row loads run at a time and the rest
+// start as those finish. Shared component: web and native behave the same.
+const ROW_FETCH_CONCURRENCY = 3;
+
+// Image loading is first-come on every platform, so prefetches queue ahead of the
+// covers a person is waiting for (measured on both web and Expo). A card loads
+// its own cover when it is shown; the only early fetch is a small budget of the
+// covers a sort flip will show, started after the visible ones have had their turn.
+const FLIP_PREFETCH_BUDGET = 16;
+const FLIP_PREFETCH_PER_ROW = 4;
+const FLIP_PREFETCH_DELAY_MS = 3000;
+
+function prefetchUrl(src) {
+  if (!src) return;
+  try {
+    Promise.resolve(Image.prefetch?.(src)).catch(() => {});
+  } catch (error) {
+    // Prefetching is only an optimisation.
+  }
+}
+
+// `budget` is { left } shared by one Home screen; `flip` is false for a row that
+// just came back from a sort, whose flipped covers are the ones already shown.
+function prefetchRowArtwork(row, budget, { flip = true } = {}) {
+  if (!flip) return;
+  const flipped = (row?.oppositeArtwork || []).slice(0, Math.min(FLIP_PREFETCH_PER_ROW, budget.left));
+  budget.left -= flipped.length;
+  if (flipped.length) {
+    setTimeout(() => flipped.forEach(prefetchUrl), FLIP_PREFETCH_DELAY_MS);
+  }
+}
+
 function rowKey(row) {
   return String(row?.rowId ?? row?.row_id ?? '');
 }
@@ -65,13 +118,14 @@ function sortLabel(row, labels) {
   return `${labels.toggleSort || 'Toggle sort direction for'} ${title}${detail}`;
 }
 
-function RailRow({
+const RailRow = React.memo(function RailRow({
   row,
   labels,
   palette,
   readOnly,
   itemWidth,
   loadingMore,
+  sorting,
   renderCard,
   renderProgress,
   renderRating,
@@ -79,6 +133,8 @@ function RailRow({
   railComponent,
   onOpenCard,
   onOpenLink,
+  onOpenRowTitle,
+  canOpenRowTitle,
   onAction,
   onRate,
   onSortRow,
@@ -96,8 +152,12 @@ function RailRow({
     loadedCount={row.loadedCount}
     hasMore={hasMore}
     loadingMore={loadingMore}
+    sorting={sorting}
     itemWidth={itemWidth}
+    getItemWidth={item => railItemWidth(row, item, itemWidth)}
     items={items}
+    viewAll={row.viewAll ? { label: row.viewAll.label, onPress: () => onOpenLink?.(row.viewAll.href, null, row) } : undefined}
+    onTitlePress={row.url && onOpenRowTitle && (canOpenRowTitle ? canOpenRowTitle(row.url) : true) ? () => onOpenRowTitle(row.url, row) : undefined}
     onSort={onSortRow ? () => onSortRow(row) : undefined}
     sortLabel={sortLabel(row, labels)}
     onLoadMore={onLoadMore ? () => onLoadMore(row) : undefined}
@@ -123,7 +183,7 @@ function RailRow({
         {renderProgress(item.progress, item, row)}
       </View> : null}
     </View>} />;
-}
+});
 
 function DeferredRow({ labels, palette, itemWidth = 176 }) {
   return <View style={styles.skeleton}
@@ -154,6 +214,8 @@ export function HomeShelves({
   railComponent,
   onOpenCard,
   onOpenLink,
+  onOpenRowTitle,
+  canOpenRowTitle,
   onAction,
   onRate,
   onSortRow,
@@ -174,7 +236,11 @@ export function HomeShelves({
   const [rowErrors, setRowErrors] = useState({});
   const [loadingMore, setLoadingMore] = useState({});
   const [sorting, setSorting] = useState({});
+  const sortStateRef = useRef({ sorting: {}, rowPatches: {} });
+  const flipBudget = useRef({ left: FLIP_PREFETCH_BUDGET });
   const startedRows = useRef(new Set());
+  const rowGate = useRef(null);
+  if (!rowGate.current) rowGate.current = createFetchGate(ROW_FETCH_CONCURRENCY);
   const firstPoll = useRef(true);
   const loadRowRef = useRef(null);
   const pollRowsRef = useRef([]);
@@ -187,6 +253,10 @@ export function HomeShelves({
   useEffect(() => {
     startedRows.current = new Set();
   }, [deferredKey]);
+
+  useEffect(() => {
+    groups.forEach(group => (group.rows || []).forEach(row => prefetchRowArtwork(row, flipBudget.current)));
+  }, [groups]);
 
   const effectiveRow = useCallback(row => {
     const key = rowKey(row);
@@ -221,7 +291,18 @@ export function HomeShelves({
       return next;
     });
     try {
-      const row = await onLoadRow(id);
+      // A busy or briefly unreachable server should not leave a row asking for a tap.
+      let row;
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          row = await rowGate.current(() => onLoadRow(id));
+          break;
+        } catch (error) {
+          if (attempt >= ROW_LOAD_RETRIES) throw error;
+          await new Promise(resolve => setTimeout(resolve, 800 * (attempt + 1)));
+        }
+      }
+      prefetchRowArtwork(row, flipBudget.current);
       setLoadedRows(current => ({ ...current, [key]: row || null }));
     } catch (error) {
       startedRows.current.delete(key);
@@ -275,13 +356,27 @@ export function HomeShelves({
     }
   }, [applyRow, loadingMore, onLoadMore]);
 
+  sortStateRef.current = { sorting, rowPatches };
+
+  // Stable identity: a sort tap updates state several times and must not re-render every row.
   const sortRow = useCallback(async row => {
     const key = rowKey(row);
-    if (!onSortRow || sorting[key]) return;
+    if (!onSortRow || sortStateRef.current.sorting[key]) return;
+    // Flip the arrow now; the row dims until the server's reordered row arrives.
+    const before = sortStateRef.current.rowPatches[key] || row;
     setSorting(current => ({ ...current, [key]: true }));
+    setRowPatches(current => ({
+      ...current,
+      [key]: { ...before, direction: before.direction === 'asc' ? 'desc' : 'asc' },
+    }));
     try {
       const next = await onSortRow(row);
-      if (next) applyRow(next);
+      if (next) {
+        prefetchRowArtwork(next, flipBudget.current, { flip: false });
+        applyRow(next);
+      } else setRowPatches(current => ({ ...current, [key]: before }));
+    } catch (error) {
+      setRowPatches(current => ({ ...current, [key]: before }));
     } finally {
       setSorting(current => {
         const next = { ...current };
@@ -289,7 +384,7 @@ export function HomeShelves({
         return next;
       });
     }
-  }, [applyRow, onSortRow, sorting]);
+  }, [applyRow, onSortRow]);
 
   const pollReady = pollRows.length > 0 || unresolved > 0;
   useEffect(() => {
@@ -332,10 +427,11 @@ export function HomeShelves({
     return (rows || []).map(row => <RailRow key={rowKey(row)} row={effectiveRow(row)}
       labels={labels} palette={palette} readOnly={readOnly} itemWidth={itemWidth}
       loadingMore={!!loadingMore[rowKey(row)]}
+      sorting={!!sorting[rowKey(row)]}
       renderCard={renderCard} renderProgress={renderProgress}
       renderRating={renderRating} renderActionIcon={renderActionIcon}
       RailComponent={railComponent}
-      onOpenCard={onOpenCard} onOpenLink={onOpenLink} onAction={onAction} onRate={onRate}
+      onOpenCard={onOpenCard} onOpenLink={onOpenLink} onOpenRowTitle={onOpenRowTitle} canOpenRowTitle={canOpenRowTitle} onAction={onAction} onRate={onRate}
       onSortRow={onSortRow ? sortRow : undefined}
       onLoadMore={onLoadMore ? loadMore : undefined} />);
   }

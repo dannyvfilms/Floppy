@@ -46,6 +46,7 @@ if TYPE_CHECKING:
     from app.library_query.spec import LibraryQuery
 
 DEFAULT_BATCH_SIZE = 256
+ASC = "asc"
 DESC = "desc"
 
 
@@ -366,6 +367,19 @@ class LibraryQueryExecutor:
         if self.uses_sql:
             return list(self._ordered(self.filtered).values_list("pk", flat=True))
         return [row[-1] for row in self._scan_ranked]
+
+    def ranked_ids_both_directions(self) -> dict[str, list[int]]:
+        """Return the ranked ids for both directions from one scan.
+
+        The scan is the expensive part of a Python-ordered shelf; ordering its
+        rows either way is cheap, so flipping a shelf's direction can be served
+        from the order cached with the first one.
+        """
+        rows = self._scan(self.filtered, with_sort=True)
+        return {
+            direction: [row[-1] for row in order_rows(rows, descending=direction == DESC)]
+            for direction in (ASC, DESC)
+        }
 
     def rank_rows(self) -> list[tuple]:
         """Return compact sort values and item identities for a composed shelf.

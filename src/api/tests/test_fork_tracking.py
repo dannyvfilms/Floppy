@@ -730,6 +730,19 @@ class HistoryTimelineTests(FloppyApiTestCase):
             any(entry["media_type"] == "movie" for entry in all_entries),
         )
 
+    def test_movie_entry_says_it_is_a_tracker_row(self):
+        """B03: aggregate movie rows are tracker rows, not play rows."""
+        response = self.call_api("get", "api_history", headers=self.auth_headers)
+        entries = [
+            entry
+            for day in response.json()["results"]
+            for entry in day["entries"]
+            if entry["media_type"] == "movie"
+        ]
+        self.assertTrue(entries)
+        self.assertEqual(entries[0]["record_type"], "movie_tracker")
+        self.assertEqual(entries[0]["instance_id"], self.movie_medias[0].id)
+
     def test_history_day_entries_are_capped(self):
         """A day with many plays doesn't blow up the response body (#1004).
 

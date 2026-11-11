@@ -432,7 +432,7 @@ const styles = StyleSheet.create({
   tabs: { gap: 4 },
   tabRow: { gap: 8, paddingVertical: 0, paddingRight: 8 },
   tab: { borderRadius: 9999, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 6 },
-  tabText: { fontSize: 14, lineHeight: 20, fontWeight: '500' },
+  tabText: { fontSize: 14, lineHeight: 20, fontWeight: '400' },
   toolbar: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   toolbarButton: { minHeight: 36, borderRadius: 6, borderWidth: 1, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
   toolbarText: { fontSize: 13, fontWeight: '600' },

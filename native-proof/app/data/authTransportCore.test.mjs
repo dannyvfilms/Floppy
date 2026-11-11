@@ -157,12 +157,40 @@ test('session sign-in sends CSRF and stores only the session cookies', async () 
   assert.match(requestCall.options.headers.Cookie, /sessionid=session-1/);
   assert.match(requestCall.options.headers.Cookie, /csrftoken=csrf-2/);
   assert.equal(requestCall.options.headers['X-CSRFToken'], 'csrf-2');
-  assert.equal(requestCall.options.credentials, 'include');
+  assert.equal(requestCall.options.credentials, 'omit', 'cookies are sent by hand, not by the iOS jar');
 });
 
 function callbody(call) {
   return call.options.body;
 }
+
+test('a comma-joined csrftoken from iOS keeps only the newest value', async () => {
+  const storage = createStorage();
+  const routes = sessionRoutes();
+  routes.unshift({
+    match: (url, options) => url.endsWith('/accounts/login/') && options.method === 'POST',
+    respond: () => ({
+      ...response({ status: 302 }),
+      headers: {
+        get: name => (String(name).toLowerCase() === 'set-cookie'
+          ? 'csrftoken=csrf-1,csrftoken=csrf-2; Path=/; SameSite=Lax, sessionid=session-1; Path=/; HttpOnly'
+          : ''),
+      },
+    }),
+  }, {
+    match: url => url.endsWith('/api/v1/media/movie/'),
+    respond: () => response({ body: { id: 1 } }),
+  });
+  const { fetchImpl, calls } = createFetch(routes);
+  const auth = createAuthTransport({ storage, fetchImpl });
+
+  await auth.signIn({ serverUrl: 'https://floppy.example', username: 'nova', password: 'pw' });
+  await auth.request('/api/v1/media/movie/', { method: 'POST', body: {} });
+  const headers = calls.at(-1).options.headers;
+  assert.match(headers.Cookie, /(^|; )csrftoken=csrf-2(;|$)/);
+  assert.equal(headers.Cookie.includes(','), false);
+  assert.equal(headers['X-CSRFToken'], 'csrf-2');
+});
 
 test('expired CSRF is refreshed once and the write is retried', async () => {
   const storage = createStorage();

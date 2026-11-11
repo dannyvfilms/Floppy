@@ -179,7 +179,8 @@ function Adapter({ host, props }) {
     onOpenCopy={item => assign(item.href)}
     onLoadMore={loadMore}
     onLoadMoreGroup={loadMoreGroup}
-    renderCard={item => <MediaCard model={item.card} labels={props.labels} host={host} standalone />} />;
+    renderCard={item => <MediaCard model={item.card} labels={props.labels} host={host} standalone
+      variant={item.card?.shape === 'square' ? 'grid-square' : 'grid'} />} />;
 }
 
 export function mountCollectionBrowser(host, props) {

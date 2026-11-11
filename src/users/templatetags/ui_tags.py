@@ -849,6 +849,21 @@ def _people_cast_props(context, row, source, collapse_key):
 
     from app.templatetags.app_tags import image_url
     from app.templatetags.app_tags import slug as slug_value
+    from users.card_metadata import (
+        DISPLAY_ALWAYS,
+        DISPLAY_HOVER,
+        card_lines,
+        resolve_profile,
+        subtitle_display,
+    )
+
+    # The release person card followed the user's card settings: which lines
+    # show, and whether they wait for hover or stay visible at rest.
+    user = context.get("user") or getattr(context.get("request"), "user", None)
+    profile_lines = resolve_profile(user, "person").get("lines") or []
+    subtitle_always = subtitle_display(user, "person") == DISPLAY_ALWAYS and not any(
+        line.get("display") == DISPLAY_HOVER for line in profile_lines
+    )
 
     items = []
     for person in row.get("items") or []:
@@ -871,6 +886,11 @@ def _people_cast_props(context, row, source, collapse_key):
             "name": name,
             "subtitle": role,
             "lines": [department] if department and department != role else [],
+            "cardLines": [
+                {"text": line["text"], "dormant": bool(line.get("dormant"))}
+                for line in card_lines(user, "person", person, None)
+            ],
+            "subtitleAlways": subtitle_always,
             "imageUrl": image_url(person.get("image") or settings.IMG_NONE),
             "imageFallback": image_url(settings.IMG_NONE),
             "personId": str(person_id) if person_id else "",

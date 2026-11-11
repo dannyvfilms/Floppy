@@ -688,12 +688,8 @@ main > .container:has(img[data-artwork-ready="true"]),
    * still hovered (see issue #1205). The poster is a leaf node with no
    * modal markup inside it, so it can't cause that.
    */
-  :where(.media-card, .search-result-card, .search-result-card-square):hover .media-card-poster {
-    transform: translateY(calc(var(--motion-distance) * -1));
-  }
-
   html.plex :where(.media-card, .search-result-card, .search-result-card-square):hover .media-card-poster {
-    transform: translateY(calc(var(--motion-distance) * -1)) scale(1.018);
+    transform: scale(1.018);
   }
 
   html.oled :where(.media-card, .search-result-card, .search-result-card-square):hover {

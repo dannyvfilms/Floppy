@@ -2311,6 +2311,7 @@ class MediaSeasonsView(drf_views.APIView):
                         "item": item,
                         "lists": lists,
                         "created_at": None,
+                        "updated_at": None,
                         "score": None,
                         "status": None,
                         "progress": None,

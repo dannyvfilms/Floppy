@@ -365,6 +365,7 @@ class CompleteMediaSerializer(serializers.Serializer):
                         "id": None,
                         "item": item,
                         "created_at": None,
+                        "updated_at": None,
                         "score": None,
             "scored_at": None,
                         "status": None,
@@ -585,6 +586,7 @@ class EpisodeSerializer(serializers.ModelSerializer):
                 else None,
                 "tracked": True,
                 "created_at": instance.created_at,
+                "updated_at": getattr(instance, "updated_at", None),
                 # FORK: episodes expose the same tracking details as other media.
                 "score": float(instance.score)
                 if getattr(instance, "score", None) is not None
@@ -988,6 +990,7 @@ class MediaSerializer(serializers.ModelSerializer):
             else None,
             "tracked": getattr(instance, "id", None) is not None,
             "created_at": instance.created_at,
+            "updated_at": getattr(instance, "updated_at", None),
             "score": float(instance.score)
             if hasattr(instance, "score") and instance.score is not None
             else None,
@@ -1065,6 +1068,7 @@ class UntrackedMediaSerializer(serializers.Serializer):
             "parent_id": ParentIdField().to_representation(instance),
             "tracked": False,
             "created_at": None,
+            "updated_at": None,
             "score": None,
             "scored_at": None,
             "status": None,

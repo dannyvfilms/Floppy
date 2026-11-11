@@ -33,7 +33,8 @@ const shellPalette = {
   text: palette.text,
   textSecondary: palette.textSecondary,
   textMuted: palette.textMuted,
-  sidebar: palette.background,
+  background: palette.background,
+  sidebar: palette.sidebar,
   surface: palette.surface,
   surfaceStrong: palette.surfaceStrong,
   surfaceMuted: palette.surfaceStrong,
@@ -177,11 +178,12 @@ export default function ShellSlot({
       return undefined;
     }
     let cancelled = false;
+    // Saved views change on other devices, so read them again each time the menu opens.
     auth.request('/api/v1/user/navigation/')
       .then(model => { if (!cancelled) setServerModel(absoluteLogo(model, auth.serverUrl)); })
       .catch(() => { if (!cancelled) setServerModel(null); });
     return () => { cancelled = true; };
-  }, [session]);
+  }, [session, open]);
 
   const base = serverModel || DEMO_MODEL;
   const model = markActive(withGlyphs(base), activeHref);
@@ -213,6 +215,9 @@ export default function ShellSlot({
     labels={SIDEBAR_LABELS}
     renderIcon={renderNativeIcon}
     onNavigate={openItem}
+    // Carve-out: web reveals the saved-views arrow on hover or on the current library; touch has no
+    // hover, so native always shows it.
+    rowActions="always"
     onLogout={() => { setOpen(false); signOut().catch(() => {}); }}
     showLogo={false} />;
   const search = <SearchSlot

@@ -8,7 +8,7 @@ from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.conf import settings
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
@@ -41,6 +41,15 @@ from .serializers import serialize_data
 logger = logging.getLogger(__name__)
 
 _TRACKER_FIELDS = ("score", "status", "start_date", "end_date", "notes")
+_MUSIC_LIBRARY_FILTER_PARAMS = [
+    OpenApiParameter("search", OpenApiTypes.STR, description="Filter tracked names."),
+    OpenApiParameter("status", OpenApiTypes.STR, many=True, description="Filter tracker status."),
+    OpenApiParameter("rating", OpenApiTypes.STR, enum=["all", "rated", "unrated"]),
+    OpenApiParameter("rating_min", OpenApiTypes.NUMBER),
+    OpenApiParameter("rating_max", OpenApiTypes.NUMBER),
+    OpenApiParameter("sort", OpenApiTypes.STR, enum=["title", "score", "date_added", "start_date", "end_date", "release_date"]),
+    OpenApiParameter("direction", OpenApiTypes.STR, enum=["asc", "desc"]),
+]
 
 
 def _serialize_tracker(tracker):
@@ -56,6 +65,42 @@ def _serialize_tracker(tracker):
         "created_at": tracker.created_at,
         "updated_at": tracker.updated_at,
     }
+
+
+def _filtered_music_trackers(request, queryset, *, title_field, release_field=None):
+    """Apply the shared library search, status, rating and sort controls."""
+    query = request.query_params.get("search", "").strip()
+    if query:
+        queryset = queryset.filter(**{f"{title_field}__icontains": query})
+    statuses = request.query_params.getlist("status")
+    if statuses and "no_status" not in statuses:
+        queryset = queryset.filter(status__in=statuses)
+    elif "no_status" in statuses and len(statuses) == 1:
+        queryset = queryset.none()
+    rating = request.query_params.get("rating")
+    if rating == "rated":
+        queryset = queryset.filter(score__isnull=False)
+    elif rating == "unrated":
+        queryset = queryset.filter(score__isnull=True)
+    minimum = request.query_params.get("rating_min")
+    maximum = request.query_params.get("rating_max")
+    if minimum:
+        queryset = queryset.filter(score__gte=minimum)
+    if maximum:
+        queryset = queryset.filter(score__lte=maximum)
+    sort_fields = {
+        "title": title_field,
+        "score": "score",
+        "date_added": "created_at",
+        "start_date": "start_date",
+        "end_date": "end_date",
+    }
+    if release_field:
+        sort_fields["release_date"] = release_field
+    sort = request.query_params.get("sort", "date_added")
+    sort_field = sort_fields.get(sort, "created_at")
+    direction = "-" if request.query_params.get("direction") == "desc" else ""
+    return queryset.order_by(f"{direction}{sort_field}", "pk")
 
 
 def _serialize_relation(relation):
@@ -140,13 +185,16 @@ def _invalidate_music_score_days(user, day_keys, reason):
 class MusicArtistsView(drf_views.APIView):
     """List tracked artists or start tracking one."""
 
+    @extend_schema(parameters=_MUSIC_LIBRARY_FILTER_PARAMS)
     def get(self, request):
         """Return the caller's artist trackers."""
         limit, offset, err = parse_limit_offset(request)
         if err:
             return err
-        trackers = ArtistTracker.objects.filter(user=request.user).select_related(
-            "artist",
+        trackers = _filtered_music_trackers(
+            request,
+            ArtistTracker.objects.filter(user=request.user).select_related("artist"),
+            title_field="artist__name",
         )
         results = [_serialize_artist(tracker.artist, tracker) for tracker in trackers]
         return Response(
@@ -359,14 +407,17 @@ class MusicArtistMembersSyncView(drf_views.APIView):
 class MusicAlbumsView(drf_views.APIView):
     """List tracked albums or start tracking one."""
 
+    @extend_schema(parameters=_MUSIC_LIBRARY_FILTER_PARAMS)
     def get(self, request):
         """Return the caller's album trackers."""
         limit, offset, err = parse_limit_offset(request)
         if err:
             return err
-        trackers = AlbumTracker.objects.filter(user=request.user).select_related(
-            "album",
-            "album__artist",
+        trackers = _filtered_music_trackers(
+            request,
+            AlbumTracker.objects.filter(user=request.user).select_related("album", "album__artist"),
+            title_field="album__title",
+            release_field="album__release_date",
         )
         results = [_serialize_album(tracker.album, tracker) for tracker in trackers]
         return Response(

@@ -6758,11 +6758,8 @@ main > .container:has(img[data-artwork-ready="true"]), :is(.media-grid, .detail-
   .media-card-hover-outline:hover::after {
     border-color: rgb(99 102 241);
   }
-  :where(.media-card, .search-result-card, .search-result-card-square):hover .media-card-poster {
-    transform: translateY(calc(var(--motion-distance) * -1));
-  }
   html.plex :where(.media-card, .search-result-card, .search-result-card-square):hover .media-card-poster {
-    transform: translateY(calc(var(--motion-distance) * -1)) scale(1.018);
+    transform: scale(1.018);
   }
   html.oled :where(.media-card, .search-result-card, .search-result-card-square):hover {
     box-shadow: 0 0 0 1px var(--color-accent);

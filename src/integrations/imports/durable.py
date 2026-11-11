@@ -358,6 +358,17 @@ def hydrate(entries, user):
     return rows
 
 
+def _fingerprint_fields(row):
+    """Serialize a row for the overwrite fingerprint, minus bookkeeping stamps.
+
+    ``updated_at`` moves on list/tag/episode changes that are not edits of the
+    row, so it cannot tell whether the row itself changed since the snapshot.
+    """
+    fields = serialize(row)["fields"]
+    fields.pop("updated_at", None)
+    return fields
+
+
 def snapshot_overwrite(run, owner, scopes, user):
     """Retain original deletion identities, including dependent tracking rows."""
     # A pre-seal retry may have left only a partial snapshot. None of these
@@ -398,7 +409,7 @@ def snapshot_overwrite(run, owner, scopes, user):
     batch = []
     for model, rows in ordered:
         for row in rows:
-            fields = serialize(row)["fields"]
+            fields = _fingerprint_fields(row)
             batch.append(ImportOverwriteTarget(run=run, ordinal=ordinal, model_label=model._meta.label_lower,
                                                original_pk=row.pk, fingerprint=digest(fields)))
             ordinal += 1
@@ -434,7 +445,7 @@ def delete_overwrite(run, owner):
                 metrics["rows_deleted"] = len(rows)
                 fingerprints = {target.original_pk: target.fingerprint for target in targets}
                 for row in rows:
-                    fields = serialize(row)["fields"]
+                    fields = _fingerprint_fields(row)
                     if digest(fields) != fingerprints[row.pk]:
                         message = "Overwrite target changed after preparation; import stopped without deleting the changed row."
                         raise helpers.MediaImportError(message)

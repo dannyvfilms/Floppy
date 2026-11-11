@@ -3,6 +3,16 @@ import { getActiveAuthSession } from './authSession.js';
 const HOME_CARDS_PATH = '/api/v1/playback/home-cards/';
 const LEGACY_NOW_PLAYING_PATH = '/api/v1/playback/now-playing/';
 
+export function playbackDetailItem(card) {
+  return {
+    ...(card.href ? { href: card.href } : { identity: {
+      mediaType: card.mediaType, source: card.source, mediaId: card.mediaId,
+    } }),
+    title: card.title,
+    image: card.image,
+  };
+}
+
 // Web Home hides its Now Playing row unless the server reports an active
 // session. Native reads the same server state instead of seeding fixtures, so
 // demo playback can never be mistaken for a real Floppy session.
