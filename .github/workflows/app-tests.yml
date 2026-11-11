@@ -20,8 +20,57 @@ permissions:
   actions: read
 
 jobs:
+  # On a push to latest that is a pull request merge, the pull request's own
+  # App Tests run may already have executed on a commit with exactly this tree.
+  # This job decides whether that is so. The rules and the reasoning are in
+  # scripts/reuse_pr_tests.py and docs/architecture/test-suite-cost.md.
+  #
+  # The job runs on every event and reports "not applicable" for anything but
+  # a publish-gate push to latest. It is deliberately never skipped: a skipped
+  # job makes GitHub skip every later job in the chain that has no explicit
+  # status check, which would silently drop coverage on tags. The output below
+  # can only be "reuse" for a publish-gate push to latest, whatever the script
+  # printed, so pull request, tag, release and manual runs always get the
+  # shards. A failure here is not a failure of the gate; it means "run".
+  #
+  # Without the REUSE_PR_TEST_RESULTS repository variable set to "true" the
+  # script only reports what it would have decided.
+  # Rollback: delete that variable.
+  reuse_decision:
+    name: Reuse PR test result?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    # Read-only, and no secret other than this token reaches the script.
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    outputs:
+      decision: >-
+        ${{ (inputs.release_quality_gates && github.event_name == 'push' &&
+        github.ref == 'refs/heads/latest' &&
+        steps.decide.outputs.decision == 'reuse') && 'reuse' || 'run' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Compare the pushed tree with the tree the pull request tested
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REUSE_PR_TEST_RESULTS: ${{ vars.REUSE_PR_TEST_RESULTS }}
+        run: python3 scripts/reuse_pr_tests.py
+
   test_shards:
     name: test (${{ matrix.suite }}, ${{ matrix.python-version }})
+    needs: reuse_decision
+    # Skipped only when the decision job succeeded and said "reuse". A decision
+    # job that failed, timed out or wrote nothing runs the shards.
+    if: >-
+      ${{ !cancelled() && !(needs.reuse_decision.result == 'success' &&
+      needs.reuse_decision.outputs.decision == 'reuse') }}
     # A single non-app shard grew past the 105-minute watchdog on a slow
     # hosted runner. Keep each shard near half the old workload; the timeout
     # still leaves setup margin beyond the test budget.
@@ -82,14 +131,6 @@ jobs:
 
       - name: Fetch migration baseline
         run: git fetch --no-tags https://github.com/FuzzyGrim/Yamtrack.git dev:refs/remotes/upstream/dev
-
-      - name: Migration hygiene
-        if: matrix.suite == 'app'
-        run: uv run --no-sync python src/manage.py check_migration_hygiene --strict
-
-      - name: Check for missing migrations
-        if: matrix.suite == 'app'
-        run: uv run --no-sync python src/manage.py makemigrations --check --dry-run
 
       - name: MCP tests
         if: matrix.suite == 'app'
@@ -208,18 +249,68 @@ jobs:
           app.tests.test_reliable_sync_migration
           app.tests.views.test_collection_custom_field_list
 
-  # Preserve the existing required-check name while requiring every shard and OAuth.
+  # These two checks read more than the tree: hygiene compares against the
+  # upstream baseline fetched at run time. They run on every commit, in their
+  # own job, so they still run on the pushed commit when the shards are reused.
+  migration_checks:
+    name: Migration checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SECRET: ci-tests-only-not-a-production-secret
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.3"
+      - name: Install dependencies
+        run: uv sync --locked --all-packages --all-extras
+      - name: Fetch migration baseline
+        run: git fetch --no-tags https://github.com/FuzzyGrim/Yamtrack.git dev:refs/remotes/upstream/dev
+      - name: Migration hygiene
+        run: uv run --no-sync python src/manage.py check_migration_hygiene --strict
+      - name: Check for missing migrations
+        run: uv run --no-sync python src/manage.py makemigrations --check --dry-run
+
+  # Preserve the existing required-check name while requiring every shard,
+  # the migration checks and OAuth.
   test:
     name: test (3.12)
-    needs: [test_shards, oauth_postgres]
+    needs: [reuse_decision, test_shards, migration_checks, oauth_postgres]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - run: test "$SHARD_RESULT" = success && test "$OAUTH_RESULT" = success
-        env:
+      - env:
+          DECISION_RESULT: ${{ needs.reuse_decision.result }}
+          DECISION: ${{ needs.reuse_decision.outputs.decision }}
           SHARD_RESULT: ${{ needs.test_shards.result }}
+          MIGRATION_RESULT: ${{ needs.migration_checks.result }}
           OAUTH_RESULT: ${{ needs.oauth_postgres.result }}
+        run: |
+          set -eu
+          test "$MIGRATION_RESULT" = success
+          test "$OAUTH_RESULT" = success
+          if [ "$SHARD_RESULT" = success ]; then
+            exit 0
+          fi
+          # The only other passing state: the decision job itself succeeded,
+          # said "reuse", and the shards were skipped for that reason. A shard
+          # that failed, was cancelled, or was skipped for any other reason
+          # fails this check.
+          test "$DECISION_RESULT" = success
+          test "$DECISION" = reuse
+          test "$SHARD_RESULT" = skipped
+          echo "::notice::Test shards reused from the pull request run; see the 'Reuse PR test result?' job summary."
 
   release_lint:
     name: release lint
