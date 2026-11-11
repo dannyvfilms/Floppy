@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import html
 import json
 import os
 import socket
@@ -36,6 +37,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime
+from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -307,6 +309,116 @@ def write_report(out, results):
         + "".join(rows))
 
 
+
+def compare_existing(config_path):
+    """Capture matched states from running previews without seeding or saving forms.
+
+    The private Playwright storage-state file is supplied separately and never
+    copied into the report. The configuration and manifest contain no cookies.
+    """
+    config = json.loads(Path(config_path).read_text())
+    out = Path(config["output"])
+    out.mkdir(parents=True, exist_ok=True)
+    results = []
+    previous = []
+    if config.get("reuse_captures") and (out / "manifest.json").exists():
+        previous = json.loads((out / "manifest.json").read_text())
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            for size, viewport in config["viewports"].items():
+                context = browser.new_context(storage_state=config["storage_state"], viewport=viewport)
+                for case in config["cases"]:
+                    for side, base in config["bases"].items():
+                        prior = next((r for r in previous if r["case"] == case["name"]
+                                      and r["viewport"] == size and r["side"] == side), None)
+                        if (prior and prior.get("file") and (out / prior["file"]).is_file()
+                                and prior.get("signed_in") and prior.get("status") == HTTPStatus.OK
+                                and case["id"] not in config.get("recapture", [])):
+                            results.append(prior)
+                            continue
+                        page = context.new_page()
+                        errors = []
+                        page.on("pageerror", lambda error, errors=errors: errors.append(str(error)[:350]))
+                        result = {"case": case["name"], "viewport": size, "side": side,
+                                  "path": case["path"], "file": None, "errors": errors}
+                        try:
+                            response = page.goto(base + case["path"], wait_until="domcontentloaded", timeout=45000)
+                            result["status"] = response.status
+                            result["signed_in"] = "/accounts/login" not in page.url
+                            page.wait_for_timeout(config.get("settle_ms", 1800))
+                            if case.get("hover"):
+                                page.locator(case["hover"]).first.hover(timeout=12000)
+                            clicks = case.get("click", [])
+                            if isinstance(clicks, dict):
+                                clicks = clicks.get(size, [])
+                            if isinstance(clicks, str):
+                                clicks = [clicks]
+                            for selector in clicks:
+                                page.locator(selector).first.click(timeout=12000)
+                                page.wait_for_timeout(1800)
+                            try:
+                                page.wait_for_function("() => [...document.images].filter(i => { const r = i.getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; }).every(i => i.complete)", timeout=6000)
+                            except Exception:
+                                result["artwork_pending"] = True
+                            result["state"] = page.evaluate("""() => ({
+                              title: document.title,
+                              horizontalOverflow: document.documentElement.scrollWidth > innerWidth + 1,
+                              theme: document.documentElement.dataset.theme || null,
+                              headings: [...document.querySelectorAll('h1,h2,h3')].filter(e => e.getBoundingClientRect().height).slice(0,15).map(e => e.textContent.trim()),
+                              mountedIslands: document.querySelectorAll('[data-react-mounted="true"]').length
+                            })""")
+                            file = f'{case["id"]}-{size}-{side}.png'
+                            masks = [page.locator("input[type=password], #token")]
+                            masks.extend(page.locator(selector) for selector in case.get("mask", []))
+                            page.screenshot(path=str(out / file), full_page=False,
+                                            animations="disabled", mask=masks, mask_color="#465365")
+                            result["file"] = file
+                        except Exception as error:
+                            result["capture_error"] = str(error)[:500]
+                        finally:
+                            page.close()
+                        results.append(result)
+                        print(f'{case["id"]} {size} {side}: {result.get("status", "error")} {"captured" if result["file"] else "FAILED"}', flush=True)
+                context.close()
+        finally:
+            browser.close()
+    (out / "manifest.json").write_text(json.dumps(results, indent=2))
+    esc = html.escape
+    sections = []
+    for case in config["cases"]:
+        rows = []
+        for size in config["viewports"]:
+            panels = []
+            for side in config["bases"]:
+                item = next(r for r in results if r["case"] == case["name"] and r["viewport"] == size and r["side"] == side)
+                picture = "<p>Capture failed. See manifest.</p>"
+                if item["file"]:
+                    data = base64.b64encode((out / item["file"]).read_bytes()).decode()
+                    picture = f'<a href="{esc(item["file"])}" target="_blank"><img loading="lazy" src="data:image/png;base64,{data}" alt="{esc(case["name"])}: {esc(side)} {size}"></a>'
+                flags = []
+                if item.get("status") != HTTPStatus.OK:
+                    flags.append(f'HTTP {item.get("status")}')
+                if item.get("state", {}).get("horizontalOverflow"):
+                    flags.append("Horizontal overflow")
+                if item.get("errors"):
+                    flags.append(f'{len(item["errors"])} browser errors')
+                panels.append(f'<figure><figcaption>{esc(config["labels"][side])} <small>{size}</small></figcaption>{picture}<p class="flags">{esc(" · ".join(flags))}</p></figure>')
+            rows.append(f'<div class="pair" data-size="{size}">{"".join(panels)}</div>')
+        choices = "".join(f'<option value="{v}" {"selected" if v == case.get("decision", "review") else ""}>{label}</option>' for v, label in [("review","Needs your decision"),("latest","Keep latest"),("branch","Keep branch"),("polish","Accept, polish later"),("neither","Neither / needs repair")])
+        sections.append(f'<section id="{case["id"]}"><div class="section-head"><h2>{esc(case["name"])}</h2><select aria-label="Decision for {esc(case["name"])}" data-case="{case["id"]}">{choices}</select></div><p>{esc(case.get("note", ""))}</p><textarea aria-label="Notes for {esc(case["name"])}" data-notes="{case["id"]}" placeholder="Your notes"></textarea>{"".join(rows)}</section>')
+    nav = "".join(f'<a href="#{case["id"]}">{esc(case["name"])}</a>' for case in config["cases"])
+    summary = "".join(f"<li>{esc(line)}</li>" for line in config.get("summary", []))
+    (out / "report.html").write_text("""<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PWA branch review</title>
+<style>:root{color-scheme:dark}*{box-sizing:border-box}body{font:15px/1.5 system-ui;background:#111418;color:#e6eaf0;margin:0}header,main{max-width:1700px;margin:auto;padding:24px}header{border-bottom:1px solid #36404d}h1{margin:0;font-size:30px}h2{font-size:23px}p,li{max-width:1100px;color:#bac6d5}.toolbar{position:sticky;top:0;background:#1a2029;padding:12px 24px;display:flex;gap:12px;z-index:2;align-items:center;flex-wrap:wrap}button,select,textarea{font:inherit;color:inherit;background:#242e3b;border:1px solid #52647c;border-radius:7px;padding:8px}button{cursor:pointer}nav{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:20px}a{color:#8ac4ff}section{padding:24px 0;border-bottom:1px solid #36404d;scroll-margin-top:80px}.section-head{display:flex;gap:20px;align-items:center;justify-content:space-between}textarea{width:100%;height:55px;margin:0 0 14px}.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}.pair[data-size=phone]{max-width:850px;margin:0 auto}.pair[hidden]{display:none}figure{margin:0;min-width:0}figcaption{font-weight:600;margin:0 0 8px}small{color:#aab8c9;margin-left:12px}img{width:100%;height:auto;display:block;border:1px solid #465365}a:has(img){display:block}.flags{color:#ffbd80;font-size:13px}footer{padding:30px} @media(max-width:700px){header,main{padding:16px}.pair{grid-template-columns:1fr}.section-head{align-items:start;flex-direction:column;gap:0}}
+</style><header><h1>PWA: working latest vs Expo parity branch</h1><p>Visual decision review. Same signed-in account and database, matched viewport and route. Screenshots show the first viewport, not complete page or interaction coverage.</p><ul>""" + summary + "</ul><nav>" + nav + '</nav></header><div class="toolbar"><label>Viewport <select id="viewport"><option value="desktop">Desktop</option><option value="phone">Phone</option></select></label><button id="export">Download decisions</button><small>Choices stay in this browser. Screenshot links open full size.</small></div><main>' + "".join(sections) + """</main><footer>Browser runtime evidence only. These images do not verify native iOS or Android appearance or performance. See manifest.json for capture errors and states.</footer><script>
+const key='floppy-parity-review-v1:'+location.pathname;let state={};try{state=JSON.parse(localStorage.getItem(key)||'{}')}catch{};const controls=[...document.querySelectorAll('[data-case],[data-notes]')];for(const control of controls){const id=control.dataset.case||control.dataset.notes;const field=control.dataset.case?'decision':'notes';if(state[id]?.[field]!==undefined)control.value=state[id][field];control.addEventListener('input',()=>{state[id]??={};state[id][field]=control.value;try{localStorage.setItem(key,JSON.stringify(state))}catch{}})}function sizes(){document.querySelectorAll('.pair').forEach(e=>e.hidden=e.dataset.size!==document.getElementById('viewport').value)}document.getElementById('viewport').addEventListener('change',sizes);sizes();document.getElementById('export').onclick=()=>{const decisions={};for(const c of controls){const id=c.dataset.case||c.dataset.notes;decisions[id]??={};decisions[id][c.dataset.case?'decision':'notes']=c.value}const url=URL.createObjectURL(new Blob([JSON.stringify(decisions,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='pwa-review-decisions.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
+</script></html>""")
+    failed = [r for r in results if not r["file"] or r.get("status") != HTTPStatus.OK or not r.get("signed_in")]
+    print(f'{len(results)} captures, {len(failed)} failed -> {out / "report.html"}')
+    return bool(failed)
+
+
 def main():
     """Run the capture."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
@@ -315,7 +427,10 @@ def main():
     parser.add_argument("--no-export", action="store_true", help="reuse the last Expo export")
     parser.add_argument("--no-expo", action="store_true")
     parser.add_argument("--ios", action="store_true")
+    parser.add_argument("--comparison-config", help="capture running previews using a private session and matched cases")
     args = parser.parse_args()
+    if args.comparison_config:
+        return compare_existing(args.comparison_config)
 
     args.port = args.port or free_port()
     args.proxy_port = args.proxy_port or free_port()

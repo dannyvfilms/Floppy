@@ -72,3 +72,48 @@ uv run --no-sync python scripts/review_screenshots.py --ios      # also record a
 ```
 
 It picks free ports (never reuses another session's server), seeds a throwaway user and one saved book with a Barcode field, then writes `.floppy/review-shots/<timestamp>/` with PNGs, `manifest.json` (each check, expected versus actual) and a self-contained `report.html`. Web cases run at desktop and phone widths; each search scope asserts the camera and spinner state. The Expo web build cannot sign in, so Expo cases use the no-auth `search-preview` route (`EXPO_PUBLIC_SEARCH_PREVIEW=1`, `npm run export:search-preview` in `native-proof/`), which renders the real `SearchSlot` and also runs in Expo Go. Expo web is react-native-web in Chromium: it is not iOS or Android runtime evidence. `--ios` only records the Simulator's current frame; launch Expo Go and drive it yourself.
+
+## Compare two running PWA checkouts
+
+The same review tool can capture matched routes and open controls on two existing
+servers, without migrations, seeding, static collection or form submission:
+
+```bash
+uv run --no-sync python scripts/review_screenshots.py --comparison-config .floppy/review-comparison.json
+```
+
+The configuration supplies `output`, a private Playwright `storage_state` file,
+`bases` and `labels` dictionaries with matching keys, `viewports`, and `cases`:
+
+```json
+{
+  "output": ".floppy/review-shots/comparison",
+  "storage_state": ".floppy/private-browser-state.json",
+  "bases": {"latest": "http://localhost:8000", "branch": "http://localhost:8010"},
+  "labels": {"latest": "Latest working checkout", "branch": "Candidate PWA"},
+  "viewports": {"desktop": {"width": 1280, "height": 900}, "phone": {"width": 390, "height": 844}},
+  "summary": ["Record both commit IDs, dirty checkout state and data provenance here."],
+  "cases": [{"id": "collection", "name": "Collection", "path": "/collection/?layout=grid", "note": "Compare against Library.", "decision": "review"}]
+}
+```
+
+Each case may provide a `hover` selector and a `click` selector or ordered list to
+open a menu or modal. `click` may also be a dictionary keyed by viewport name,
+for example to open the phone drawer before Explore. Password fields and `#token`
+are masked automatically; `mask` may list additional sensitive selectors.
+`reuse_captures: true` reuses successful captures from the existing manifest;
+`recapture` lists case IDs that should be refreshed anyway.
+Use only read-only controls; the runner does not distinguish a destructive button
+from an ordinary one. `decision` may be `review`, `latest`, `branch`, `polish` or
+`neither`. Captures cover the first viewport in the account's current theme, not
+all page content or all six theme states. The manifest records HTTP status,
+redirects to sign-in, browser exceptions and horizontal overflow. A captured page
+is not automatically a parity pass.
+
+Output includes paired PNGs, `manifest.json` and a self-contained `report.html`
+with desktop/phone selection, per-case decisions and notes, and a JSON decision
+download. Browser-local choices are convenience state; export them for a durable
+handoff. Images and report stay outside git. The browser-state file contains login
+credentials: keep it private and delete it after capture; it is never embedded in
+the report. Normal GET navigation can still update the account's last-view
+preferences. Use throwaway data if those changes must be isolated.
