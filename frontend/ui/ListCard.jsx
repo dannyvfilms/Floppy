@@ -1,11 +1,12 @@
 import React from 'react';
 import { View } from 'react-native';
+import { actionIcons } from './actionIcons';
 import { MediaCard } from './MediaCard';
 
 // Maps a list hub record onto the shared media-card model. The card keeps the
 // shared artwork, badge and action behaviour; the list-specific metadata arrives
 // as corner chips and a metadata line so the presentation stays in one place.
-export function ListCard({ list, palette, width = 240, onOpen, onAction }) {
+export function ListCard({ list, palette, width = 240, onOpen, onAction, hideMetadata = false }) {
   const model = {
     title: list.name,
     image: { src: list.coverUrl, fallback: '', source: 'primary' },
@@ -14,13 +15,13 @@ export function ListCard({ list, palette, width = 240, onOpen, onAction }) {
     href: list.href,
     statusChip: null,
     cornerChips: [],
-    lines: [
+    lines: hideMetadata ? [] : [
       {
         join: 'plain',
         parts: [
           { text: `${list.itemsCount} ${list.itemsCount === 1 ? 'item' : 'items'}` },
           ...(list.completionPercent != null
-            ? [{ text: ` • ${list.completionPercent}% completed`, muted: true }]
+            ? [{ text: ` · ${list.completionPercent}% completed`, muted: true }]
             : []),
         ],
       },
@@ -46,7 +47,7 @@ export function ListCard({ list, palette, width = 240, onOpen, onAction }) {
       ? {
           href: null,
           items: [
-            { kind: 'link', tone: 'indigo', title: 'Settings', glyph: '⚙', href: `${list.href}/edit` },
+            { kind: 'link', tone: 'indigo', title: 'Settings', glyph: '⋯', icon: actionIcons.ellipsis, href: `${list.href}/edit` },
           ],
           ordering: null,
           modals: {},

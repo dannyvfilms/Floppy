@@ -10,8 +10,11 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { actionIcons } from './actionIcons';
 import { Button } from './Button';
+import { Icon } from './Icon';
 import { DateTimePicker } from './DateTimePicker';
+import { SortMenu } from './StatisticsSections';
 
 const DEFAULT_PALETTE = {
   background: '#18181b',
@@ -31,11 +34,17 @@ const DEFAULT_PALETTE = {
   success: '#10b981',
   radius: 18,
   radiusSmall: 6,
+  menuSurface: '#1f1f23',
+  menuBorder: '#3f3f46',
+  ratingStar: '#facc15',
+  activeDay: '#34d399',
+  streak: '#fb7185',
 };
 
 const DEFAULT_LABELS = {
   range: 'Range',
   mediaType: 'Media type',
+  compareTo: 'Compare to:',
   refresh: 'Refresh statistics',
   refreshing: 'Refreshing statistics',
   close: 'Close',
@@ -450,13 +459,13 @@ export function StatisticsSummaryCards({ model, labels, palette }) {
     <SummaryCard key="completed" icon="completed" color={colors.link}
       iconBackground="rgba(79, 70, 229, 0.2)" label={copy.completed}
       value={completedValue} valueSuffix={completedSuffix} palette={colors} layout={layout} />,
-    <SummaryCard key="rating" icon="rating" color="#facc15"
+    <SummaryCard key="rating" icon="rating" color={colors.ratingStar}
       iconBackground="rgba(202, 138, 4, 0.2)" label={copy.averageRating}
       value={ratingValue} valueSuffix={ratingSuffix} palette={colors} layout={layout} />,
-    <SummaryCard key="active" icon="calendar" color="#34d399"
+    <SummaryCard key="active" icon="calendar" color={colors.activeDay}
       iconBackground="rgba(5, 150, 105, 0.2)" label={copy.mostActiveDay}
       value={mostActiveValue} caption={mostActiveCaption} palette={colors} layout={layout} />,
-    <SummaryCard key="streak" icon="flame" color="#fb7185"
+    <SummaryCard key="streak" icon="flame" color={colors.streak}
       iconBackground="rgba(220, 38, 38, 0.2)" label={copy.currentStreak}
       value={streakValue} caption={streakCaption} palette={colors} layout={layout}
       info={summary.longestStreakStart ? {
@@ -533,6 +542,8 @@ export function StatisticsToolbar({
   onChangeRange,
   onChangeMediaTypes,
   onRefresh,
+  comparison,
+  onCompareMode,
 }) {
   const copy = mergeLabels(labels);
   const colors = mergePalette(palette);
@@ -594,22 +605,32 @@ export function StatisticsToolbar({
         accessibilityState={{ expanded: open === 'range' }}
         onPress={() => setOpen(open === 'range' ? null : 'range')}
         style={({ pressed }) => [styles.trigger, { backgroundColor: colors.surface, borderColor: colors.border }, open === 'range' && { borderColor: colors.accent }, pressed && styles.pressed]}>
-        <Text style={[styles.triggerGlyph, { color: colors.link }]}>{'\u25A6'}</Text>
-        <Text style={[styles.triggerText, { color: colors.textSecondary }]} numberOfLines={1}>{rangeLabel}</Text>
-        <Text style={[styles.chevron, { color: colors.textMuted }]}>{'\u25BE'}</Text>
+        <Icon spec={actionIcons.calendar} color={colors.link} size={20} />
+        <Text style={[styles.triggerText, { color: colors.text }]} numberOfLines={1}>{rangeLabel}</Text>
+        <Icon spec={actionIcons.chevronDown} color={colors.textMuted} size={16} />
       </Pressable>
       <Pressable accessibilityRole="button"
         accessibilityLabel={`${copy.mediaType}: ${mediaLabel}`}
         accessibilityState={{ expanded: open === 'media' }}
         onPress={() => setOpen(open === 'media' ? null : 'media')}
         style={({ pressed }) => [styles.trigger, { backgroundColor: colors.surface, borderColor: colors.border }, open === 'media' && { borderColor: colors.accent }, pressed && styles.pressed]}>
-        <Text style={[styles.triggerGlyph, { color: colors.link }]}>{'\u2304'}</Text>
-        <Text style={[styles.triggerText, { color: colors.textSecondary }]} numberOfLines={1}>{mediaLabel}</Text>
-        <Text style={[styles.chevron, { color: colors.textMuted }]}>{'\u25BE'}</Text>
+        <Icon spec={actionIcons.funnel} color={colors.link} size={20} />
+        <Text style={[styles.triggerText, { color: colors.text }]} numberOfLines={1}>{mediaLabel}</Text>
+        <Icon spec={actionIcons.chevronDown} color={colors.textMuted} size={16} />
       </Pressable>
-      <Button label={refreshing ? copy.refreshing : copy.refresh} tone="surface"
-        busy={refreshing} onPress={() => onRefresh?.()}
-        palette={buttonPalette(colors)} />
+      <View style={styles.compareRow}>
+        {comparison?.options?.length ? <View style={[styles.compareBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.compareLabel, { color: colors.textMuted }]}>{copy.compareTo}</Text>
+          <SortMenu bare options={comparison.options} selected={comparison.selected}
+            palette={colors} onChange={onCompareMode} label={copy.compareTo} />
+        </View> : <View style={styles.compareFill} />}
+        <Pressable accessibilityRole="button" accessibilityLabel={refreshing ? copy.refreshing : copy.refresh}
+          accessibilityState={{ busy: refreshing, disabled: refreshing }}
+          disabled={refreshing} onPress={() => onRefresh?.()}
+          style={({ pressed }) => [styles.refreshButton, { backgroundColor: colors.surface, borderColor: colors.border, opacity: refreshing ? 0.5 : 1 }, pressed && styles.pressed]}>
+          <Icon spec={actionIcons.refresh} color={colors.link} size={20} />
+        </Pressable>
+      </View>
     </View>
     {model.updatedLabel ? <Text style={[styles.updated, { color: colors.textMuted }]}>
       {copy.updated} {model.updatedLabel}
@@ -725,6 +746,8 @@ export function StatisticsSummary({
   onRefresh,
   onSelectHighlight,
   onRetry,
+  comparison,
+  onCompareMode,
 }) {
   const colors = mergePalette(palette);
   const loading = Boolean(model.loading);
@@ -734,6 +757,8 @@ export function StatisticsSummary({
     <StatisticsToolbar model={model} labels={labels} palette={colors}
       onChangeRange={onChangeRange}
       onChangeMediaTypes={onChangeMediaTypes}
+      comparison={comparison}
+      onCompareMode={onCompareMode}
       onRefresh={onRefresh} />
     {error ? <StatisticsState kind="error" labels={labels} palette={colors} onRetry={onRetry} />
       : loading ? <StatisticsState kind="loading" labels={labels} palette={colors} />
@@ -747,19 +772,24 @@ const styles = StyleSheet.create({
   root: { gap: 16, width: '100%' },
   toolbar: { gap: 8, width: '100%' },
   toolbarCompact: { gap: 6 },
-  toolbarButtons: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  toolbarButtons: { gap: 12, width: '100%' },
   trigger: {
-    minHeight: 40,
-    maxWidth: 240,
+    minHeight: 52,
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
+    gap: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
     borderWidth: 1,
   },
+  compareRow: { width: '100%', flexDirection: 'row', alignItems: 'center', gap: 10 },
+  compareBox: { flex: 1, minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1 },
+  compareFill: { flex: 1 },
+  compareLabel: { fontSize: 14 },
+  refreshButton: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1 },
   triggerGlyph: { fontSize: 14, fontWeight: '700' },
-  triggerText: { flexShrink: 1, fontSize: 13, fontWeight: '600' },
+  triggerText: { flex: 1, fontSize: 16, fontWeight: '600' },
   chevron: { fontSize: 12 },
   updated: { fontSize: 11 },
   hero: { gap: 0, justifyContent: 'center' },

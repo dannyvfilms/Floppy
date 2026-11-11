@@ -18,4 +18,21 @@ export function createCollectionTransport(options = {}) {
   );
 }
 
-export { collectionItemsFromPayload } from './collectionTransportCore.js';
+export {
+  ADD_COPY_UNAVAILABLE,
+  COLLECTION_PAGE_SIZE,
+  collectionAddressFor,
+  collectionEntriesFromPayload,
+  collectionItemsFromPayload,
+  collectionQuery,
+  copyFieldsFor,
+  copyValuesFromCopy,
+  customFieldGroupsFromPayload,
+  customFilterFromGroups,
+  customValuesPayload,
+  emptyCopyValues,
+  entryPayload,
+  hasMoreFromPayload,
+  mediaTypeColorsFromPayload,
+  totalFromPayload,
+} from './collectionTransportCore.js';

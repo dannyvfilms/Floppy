@@ -16,15 +16,16 @@ from app.models import (
     CollectionFieldType,
     MediaTypes,
 )
+from app.public_errors import PublicMessageError
 
 MAX_NAME_LENGTH = 100
 
 
-class CollectionFieldValidationError(Exception):
+class CollectionFieldValidationError(PublicMessageError):
     """Raised when a submitted custom-field schema payload is invalid."""
 
 
-class CollectionFieldNotFoundError(Exception):
+class CollectionFieldNotFoundError(PublicMessageError):
     """Raised when a payload references a group/field id the user doesn't own."""
 
 

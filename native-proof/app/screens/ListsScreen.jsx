@@ -1,212 +1,34 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Linking, Modal, Pressable, StyleSheet, TextInput, Text, View } from 'react-native';
+import { Icon, SearchIcon } from '../../../frontend/ui/Icon';
 import { Screen } from '../components/Screen';
 import { getActiveAuthSession } from '../data/authSession';
 import { createListTransport } from '../data/listTransport';
+import { LIST_SORT_OPTIONS, LIST_TYPE_OPTIONS, listSummaryFromPayload, listsFromPayload, memberUsernames } from '../data/listTransportCore';
 import { ListsPageView } from '../../../frontend/pages/ListsPageView';
 import { Button } from '../../../frontend/ui/Button';
+import { actionIcons } from '../../../frontend/ui/actionIcons';
+import { SelectField } from '../../../frontend/ui/SelectField';
+import { settingsNavIcons } from '../settingsNavIcons';
 import { ListForm } from '../../../frontend/ui/ListFormView';
-import { ListItemPreview, ListItemSearch } from '../../../frontend/ui/ListSearchView';
-import { ListRecommendations } from '../../../frontend/ui/ListRecommendationsView';
-import { palette, spacing } from '../theme';
+import { ListImportDialog } from '../components/ListImportDialog';
+import { palette, radius, spacing } from '../theme';
 
 export const surface = {
   id: 'LISTS',
   status: 'ported',
-  title: 'Lists hub, list forms, add/recommend flows and smart summaries',
-  where: 'Lists screen cards, create/edit list form, item search/preview, recommendations approval and deny, saved smart-rule summary',
-  note: 'The lists page renders the shared ListsPageView composition (heading, actions, search, tag filter, card grid, empty/loading/error states). Signed-in loads map /api/v1/lists/ and creates, edits and deletes manual lists through the same route. Tags, completion percentages and public slugs are not exposed by the list serializer, so tag chips and completion stay empty; smart lists still have no create/list mapping and add-item, preview and recommendation approval remain local.',
+  title: 'Lists hub on real data',
+  where: 'Lists screen: heading, actions, search and sort controls, list card grid, create and edit form',
+  note: 'The hub renders the shared ListsPageView composition and loads every page of GET /api/v1/lists/ through listTransport with the server search and sort query params the web toolbar posts. Create maps POST /api/v1/lists/ (including smart lists, tags and the public-notes flag) and edit maps PATCH /api/v1/lists/{id}/; collaborators and viewers are added by username through PUT .../collaborators/ and .../viewers/. A new smart list opens its rule editor. Delete maps DELETE with the form confirm step. The list serializer now carries is_smart, tags and include_notes. Trakt (device-code flow), MDBList and CSV imports run through the JSON endpoints under /api/v1/lists/import/ (the CSV text is read on the device), and the hub filters by media type through the media_type query param of the lists endpoint, like the All Types control on the web. Public profile opens the server user page through the platform browser.',
 };
 
-const URL_PREFIX = 'https://floppy.example/lists/';
+const SIGNED_OUT_ERROR = {
+  title: 'Sign in to see your lists',
+  body: 'Connect your Floppy server to load your lists.',
+  retryLabel: 'Sign In',
+};
+
 const RESERVED_SLUGS = ['create', 'edit', 'delete'];
-
-const MEDIA_TYPES = [
-  { value: 'movie', label: 'Movies' },
-  { value: 'tv', label: 'Shows' },
-  { value: 'book', label: 'Books' },
-  { value: 'game', label: 'Games' },
-  { value: 'anime', label: 'Anime' },
-];
-
-const PEOPLE = [
-  { id: 'avery', name: 'Avery', handle: '@avery' },
-  { id: 'morgan', name: 'Morgan', handle: '@morgan' },
-  { id: 'sam', name: 'Sam', handle: '@sam' },
-  { id: 'riley', name: 'Riley', handle: '@riley' },
-  { id: 'jordan', name: 'Jordan', handle: '@jordan' },
-];
-
-const CATALOG = [
-  {
-    id: 'dune-2',
-    mediaType: 'movie',
-    title: 'Dune: Part Two',
-    mediaTypeLabel: 'Movie',
-    year: 2024,
-    score: 8.6,
-    scoreCount: 6124,
-    image: 'https://picsum.photos/seed/floppy-add-dune/400/600',
-    genres: ['Science Fiction', 'Adventure'],
-    synopsis: 'Paul Atreides unites with the Fremen while seeking revenge against the conspirators who destroyed his family.',
-    details: { status: 'Released', format: 'Movie', runtime: '2h 46m', studios: ['Legendary Pictures'] },
-  },
-  {
-    id: 'wild-robot',
-    mediaType: 'movie',
-    title: 'The Wild Robot',
-    mediaTypeLabel: 'Movie',
-    year: 2024,
-    score: 8.2,
-    scoreCount: 2841,
-    image: 'https://picsum.photos/seed/floppy-add-robot/400/600',
-    genres: ['Animation', 'Family'],
-    synopsis: 'A shipwrecked robot learns to survive on a wild island and becomes the adoptive parent of an orphaned gosling.',
-    details: { status: 'Released', format: 'Movie', runtime: '1h 42m', studios: ['DreamWorks Animation'] },
-  },
-  {
-    id: 'shogun',
-    mediaType: 'tv',
-    title: 'Shōgun',
-    mediaTypeLabel: 'Show',
-    year: 2024,
-    score: 8.9,
-    scoreCount: 5120,
-    image: 'https://picsum.photos/seed/floppy-add-shogun/400/600',
-    genres: ['Drama', 'History'],
-    synopsis: 'In feudal Japan, a shipwrecked English sailor becomes entangled in a struggle for power.',
-    details: { status: 'Ended', format: 'TV', seasons: 1, episodes: 10, studios: ['FX Productions'] },
-  },
-  {
-    id: 'severance',
-    mediaType: 'tv',
-    title: 'Severance',
-    mediaTypeLabel: 'Show',
-    year: 2022,
-    score: 8.8,
-    scoreCount: 4380,
-    image: 'https://picsum.photos/seed/floppy-add-severance/400/600',
-    genres: ['Drama', 'Mystery'],
-    synopsis: 'Employees at Lumon Industries have their work memories surgically divided from their personal lives.',
-    details: { status: 'Returning Series', format: 'TV', seasons: 2, episodes: 19, studios: ['Red Hour Films'] },
-  },
-  {
-    id: 'ministry-of-time',
-    mediaType: 'book',
-    title: 'The Ministry of Time',
-    mediaTypeLabel: 'Book',
-    year: 2024,
-    score: 8.1,
-    scoreCount: 980,
-    image: 'https://picsum.photos/seed/floppy-add-ministry/400/600',
-    genres: ['Science Fiction', 'Romance'],
-    synopsis: 'A civil servant is assigned to a new colleague rescued from the past, and finds the present shifting around them.',
-    details: { format: 'Novel', pages: 352, studios: ['Avid Reader Press'] },
-  },
-  {
-    id: 'piranesi',
-    mediaType: 'book',
-    title: 'Piranesi',
-    mediaTypeLabel: 'Book',
-    year: 2020,
-    score: 8.7,
-    scoreCount: 1540,
-    image: 'https://picsum.photos/seed/floppy-add-piranesi/400/600',
-    genres: ['Fantasy', 'Mystery'],
-    synopsis: 'Piranesi lives in a house with infinite halls, where the tides reveal the only truths he knows.',
-    details: { format: 'Novel', pages: 245, studios: ['Bloomsbury'] },
-  },
-  {
-    id: 'balatro',
-    mediaType: 'game',
-    title: 'Balatro',
-    mediaTypeLabel: 'Game',
-    year: 2024,
-    score: 9.0,
-    scoreCount: 3260,
-    image: 'https://picsum.photos/seed/floppy-add-balatro/400/400',
-    genres: ['Roguelike', 'Card'],
-    synopsis: 'A poker-inspired roguelike about building wildly synergistic hands across escalating blinds.',
-    details: { format: 'PC', studios: ['LocalThunk'] },
-  },
-  {
-    id: 'hades-2',
-    mediaType: 'game',
-    title: 'Hades II',
-    mediaTypeLabel: 'Game',
-    year: 2024,
-    score: 9.1,
-    scoreCount: 2890,
-    image: 'https://picsum.photos/seed/floppy-add-hades/400/400',
-    genres: ['Roguelike', 'Action'],
-    synopsis: 'Melinoë battles through the underworld to confront the Titan of Time.',
-    details: { format: 'PC', studios: ['Supergiant Games'] },
-  },
-  {
-    id: 'frieren',
-    mediaType: 'anime',
-    title: 'Frieren: Beyond Journey\'s End',
-    mediaTypeLabel: 'Anime',
-    year: 2023,
-    score: 9.0,
-    scoreCount: 1760,
-    image: 'https://picsum.photos/seed/floppy-add-frieren/400/600',
-    genres: ['Adventure', 'Fantasy'],
-    synopsis: 'An elf mage retraces a hero\'s journey long after the party has disbanded.',
-    details: { status: 'Finished', format: 'TV', seasons: 1, episodes: 28, studios: ['Madhouse'] },
-  },
-  {
-    id: 'blue-eye',
-    mediaType: 'anime',
-    title: 'Blue Eye Samurai',
-    mediaTypeLabel: 'Anime',
-    year: 2023,
-    score: 8.8,
-    scoreCount: 1320,
-    image: 'https://picsum.photos/seed/floppy-add-samurai/400/600',
-    genres: ['Action', 'Drama'],
-    synopsis: 'A mixed-race swordmaster carves a path of revenge through Edo-period Japan.',
-    details: { status: 'Returning Series', format: 'TV', seasons: 1, episodes: 8, studios: ['Blue Spirit'] },
-  },
-];
-
-function cardFor(item) {
-  return {
-    title: item.title,
-    image: { src: item.image, fallback: '', source: 'primary' },
-    shape: item.mediaType === 'game' ? 'square' : 'poster',
-    statusChip: null,
-    cornerChips: [],
-    href: null,
-    actions: null,
-    lines: [{ join: 'plain', parts: [{ text: String(item.year), muted: true }] }],
-    rating: item.score == null ? null : { label: String(item.score), value: item.score, scaleMax: 10 },
-  };
-}
-
-function previewFor(item) {
-  return {
-    title: item.title,
-    mediaTypeLabel: item.mediaTypeLabel,
-    year: item.year,
-    score: item.score,
-    scoreCount: item.scoreCount,
-    genres: item.genres,
-    synopsis: item.synopsis,
-    image: { src: item.image },
-    details: item.details,
-  };
-}
-
-const SEARCH_RESULTS = CATALOG.map(item => ({
-  id: item.id,
-  mediaType: item.mediaType,
-  title: item.title,
-  media: cardFor(item),
-  preview: previewFor(item),
-}));
-
-const SEARCH_IDLE = { query: '', mediaType: 'movie', page: 1 };
 
 function normalizeSlug(value) {
   return String(value || '')
@@ -217,112 +39,86 @@ function normalizeSlug(value) {
     .replace(/^-+|-+$/g, '');
 }
 
-function currentUrlFor(list) {
-  if (!list || !['public', 'unlisted'].includes(list.visibility)) {
-    return '';
+function serverUrlPrefix() {
+  const serverUrl = String(getActiveAuthSession()?.serverUrl || '').replace(/\/$/, '');
+  return serverUrl ? `${serverUrl}/lists/` : '';
+}
+
+const LIST_MENU_ROWS = [
+  { key: 'smart', label: 'Create Smart List' },
+  { key: 'trakt', label: 'Import from Trakt' },
+  { key: 'mdblist', label: 'Import from MDBList' },
+  { key: 'csv', label: 'Import from CSV' },
+];
+
+// The web's New List dropdown; the import rows open the import dialog.
+function ListActionsMenu({ open, onClose, onSmart, onImport }) {
+  if (!open) return null;
+  return <Modal transparent visible animationType="fade" onRequestClose={onClose}>
+    <Pressable accessibilityRole="button" accessibilityLabel="Close menu" style={styles.menuBackdrop} onPress={onClose}>
+      <View style={styles.menu}>
+        {LIST_MENU_ROWS.map(row => <Pressable key={row.key} accessibilityRole="menuitem"
+          onPress={() => (row.key === 'smart' ? onSmart() : (onClose(), onImport(row.key)))}
+          style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}>
+          <Text style={styles.menuText}>{row.label}</Text>
+        </Pressable>)}
+      </View>
+    </Pressable>
+  </Modal>;
+}
+
+function openProfile() {
+  const session = getActiveAuthSession();
+  const username = session?.user?.username;
+  const serverUrl = String(session?.serverUrl || '').replace(/\/$/, '');
+  if (!username || !serverUrl) {
+    return;
   }
-  return `${URL_PREFIX}${list.publicSlug || list.id}`;
+  Linking.openURL(`${serverUrl}/user/${encodeURIComponent(username)}/`);
 }
 
-function visibilityLabel(visibility) {
-  if (visibility === 'public') return 'Public';
-  if (visibility === 'unlisted') return 'Unlisted';
-  return 'Private';
-}
-
-function memberFromUser(user, role) {
-  if (!user) return null;
-  return {
-    id: String(user.id),
-    name: user.username,
-    handle: `@${user.username}`,
-    role,
-  };
-}
-
-function listFromApi(list, currentUsername) {
-  const owner = list.owner || {};
-  const collaborators = list.collaborators || [];
-  const viewers = list.viewers || [];
-  const isOwner = owner.username === currentUsername;
-  const isCollaborator = collaborators.some(member => member.username === currentUsername);
-  const members = [
-    memberFromUser(owner, 'owner'),
-    ...collaborators.map(member => memberFromUser(member, 'collaborator')),
-    ...viewers.map(member => memberFromUser(member, 'viewer')),
-  ].filter(Boolean);
-  const role = isOwner ? 'Owner' : isCollaborator ? 'Collaborator' : 'Viewer';
-  return {
-    id: String(list.id),
-    name: list.name || '',
-    description: list.description || '',
-    coverUrl: list.image || null,
-    isSmart: false,
-    source: 'local',
-    visibility: list.visibility || (list.is_public ? 'public' : 'private'),
-    visibilityLabel: visibilityLabel(list.visibility || (list.is_public ? 'public' : 'private')),
-    role,
-    isOwner,
-    memberCount: members.length,
-    members,
-    itemsCount: Number(list.items_count) || 0,
-    completionPercent: null,
-    canEdit: isOwner || isCollaborator,
-    canDelete: isOwner,
-    allowRecommendations: Boolean(list.allow_recommendations),
-    includeNotes: false,
-    publicSlug: list.public_slug || '',
-    tags: [],
-    href: `/lists/${list.id}`,
-  };
-}
-
-function ListTools({ list, approvals, onEdit, onAdd, onRecommend, onApprovals }) {
-  const canAdd = list.canEdit && !list.isSmart;
-  if (!list.canEdit && !list.allowRecommendations) {
-    return null;
-  }
-  return <View style={styles.cardActions}>
-    {list.canEdit ? <Button label="Edit" tone="surface" onPress={onEdit} /> : null}
-    {canAdd ? <Button label="Add item" tone="surface" onPress={onAdd} /> : null}
-    {list.allowRecommendations ? <Button label="Recommend" tone="surface" onPress={onRecommend} /> : null}
-    {list.canEdit ? <Button label={approvals ? `Approvals (${approvals})` : 'Approvals'}
-      tone="surface" onPress={onApprovals} /> : null}
-  </View>;
-}
-
-export default function ListsScreen({ onBack, navigate }) {
+export default function ListsScreen({ navigate }) {
   const [transport] = useState(() => createListTransport());
   const [lists, setLists] = useState([]);
   const [loading, setLoading] = useState(transport.mode === 'server');
   const [loadError, setLoadError] = useState('');
   const [reloadToken, setReloadToken] = useState(0);
+  const [searchText, setSearchText] = useState('');
   const [search, setSearch] = useState('');
-  const [selectedTag, setSelectedTag] = useState('All');
-  const [notice, setNotice] = useState(null);
+  const [mediaType, setMediaType] = useState('all');
+  const [sortValue, setSortValue] = useState('update');
+  const [sortDirection, setSortDirection] = useState('desc');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [importKind, setImportKind] = useState(null);
+  const [notice, setNotice] = useState('');
   const [form, setForm] = useState(null);
   const [formErrors, setFormErrors] = useState({});
-  const [addFor, setAddFor] = useState(null);
-  const [recommendFor, setRecommendFor] = useState(null);
-  const [approvalsFor, setApprovalsFor] = useState(null);
-  const [searchState, setSearchState] = useState(SEARCH_IDLE);
-  const [preview, setPreview] = useState(null);
-  const [recommendations, setRecommendations] = useState({});
-  const [addedItems, setAddedItems] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  const signedOut = transport.mode !== 'server';
 
   useEffect(() => {
-    if (transport.mode !== 'server') {
+    const timer = setTimeout(() => setSearch(searchText.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchText]);
+
+  useEffect(() => {
+    if (signedOut) {
+      setLists([]);
       setLoading(false);
+      setLoadError('');
       return undefined;
     }
     let active = true;
     setLoading(true);
     setLoadError('');
     const username = getActiveAuthSession()?.user?.username || '';
-    transport.load()
+    const sortOption = LIST_SORT_OPTIONS.find(option => option.value === sortValue);
+    const sort = `${sortValue}_${sortDirection || sortOption?.direction || 'desc'}`;
+    transport.load({ search, sort, mediaType })
       .then(payload => {
         if (!active) return;
-        setLists((payload?.results || []).map(list => listFromApi(list, username)));
+        setLists(listsFromPayload(payload, username));
         setLoading(false);
       })
       .catch(cause => {
@@ -332,135 +128,25 @@ export default function ListsScreen({ onBack, navigate }) {
         setLoading(false);
       });
     return () => { active = false; };
-  }, [transport, reloadToken]);
+  }, [transport, signedOut, search, mediaType, sortValue, sortDirection, reloadToken]);
 
-  const tags = useMemo(() => {
-    const values = new Set(['All']);
-    lists.forEach(list => (list.tags || []).forEach(tag => values.add(tag)));
-    return [...values];
-  }, [lists]);
+  const urlPrefix = useMemo(() => serverUrlPrefix(), [signedOut, reloadToken]);
 
-  const filtered = lists.filter(list => {
-    const matchesSearch = list.name.toLowerCase().includes(search.toLowerCase());
-    const matchesTag = selectedTag === 'All' || list.tags?.includes(selectedTag);
-    return matchesSearch && matchesTag;
-  });
+  function chooseSort(option) {
+    if (!option || option.value === sortValue) return;
+    setSortValue(option.value);
+    setSortDirection(option.direction);
+  }
 
-  const activeList = form
-    ? (form.mode === 'edit' ? lists.find(list => list.id === form.listId) : null)
-    : null;
-
-  const tagSuggestions = useMemo(() => {
-    const values = [];
-    lists.forEach(list => (list.tags || []).forEach(tag => values.push(tag)));
-    return values;
-  }, [lists]);
-
-  const collaboratorSuggestions = useMemo(() => PEOPLE.filter(person => {
-    const members = activeList?.members || [];
-    return !members.some(member => member.id === person.id);
-  }), [activeList]);
-
-  const searchResults = useMemo(() => {
-    const query = searchState.query.trim().toLowerCase();
-    if (query.length < 2) {
-      return [];
-    }
-    return SEARCH_RESULTS.filter(result =>
-      result.mediaType === searchState.mediaType
-      && result.title.toLowerCase().includes(query));
-  }, [searchState]);
-
-  const searchStatus = useMemo(() => {
-    if (!searchState.query.trim()) {
-      return 'idle';
-    }
-    return searchState.query.trim().length < 2 ? 'short' : 'ready';
-  }, [searchState]);
-
-  function openForm(mode, listId = null) {
-    setForm({ mode, listId });
+  function openForm(mode, listId = null, smart = false) {
+    setForm({ mode, listId, smart });
     setFormErrors({});
+    setNotice('');
   }
 
   function closeForm() {
     setForm(null);
     setFormErrors({});
-  }
-
-  function openAdd(list) {
-    if (!list.canEdit || list.isSmart) {
-      setNotice('Only manual lists you can edit support adding items.');
-      return;
-    }
-    setSearchState(SEARCH_IDLE);
-    setPreview(null);
-    setAddFor(list.id);
-  }
-
-  function openRecommend(list) {
-    if (!list.allowRecommendations) {
-      setNotice('Recommendations are not enabled for this list.');
-      return;
-    }
-    setSearchState(SEARCH_IDLE);
-    setPreview(null);
-    setRecommendFor(list.id);
-  }
-
-  function closeSearch() {
-    setAddFor(null);
-    setRecommendFor(null);
-    setPreview(null);
-  }
-
-  function updateSearch(patch) {
-    setSearchState(current => ({ ...current, ...patch, page: 1 }));
-  }
-
-  function selectResult(result) {
-    const listId = addFor || recommendFor;
-    const mode = addFor ? 'add' : 'recommend';
-    const added = addedItems[listId] || [];
-    setPreview({
-      mode,
-      listId,
-      result,
-      alreadyInList: added.includes(result.id),
-      alreadyRecommended: (recommendations[listId] || []).some(rec => rec.catalogId === result.id),
-    });
-  }
-
-  function confirmPreview() {
-    if (!preview) {
-      return;
-    }
-    const { mode, listId, result } = preview;
-    if (mode === 'add') {
-      setAddedItems(current => ({
-        ...current,
-        [listId]: [...(current[listId] || []), result.id],
-      }));
-      setLists(current => current.map(list => list.id === listId
-        ? { ...list, itemsCount: list.itemsCount + 1 }
-        : list));
-      setNotice(`"${result.title}" has been added to the list in this demo.`);
-    } else {
-      setRecommendations(current => ({
-        ...current,
-        [listId]: [...(current[listId] || []), {
-          id: `demo-${Date.now()}`,
-          catalogId: result.id,
-          title: result.title,
-          recommender: 'Danny',
-          dateLabel: 'Just now',
-          note: '',
-          media: result.media,
-        }],
-      }));
-      setNotice(`Your recommendation for "${result.title}" has been submitted in this demo.`);
-    }
-    closeSearch();
   }
 
   function validate(values) {
@@ -475,114 +161,102 @@ export default function ListsScreen({ onBack, navigate }) {
         errors.publicSlug = 'Custom list URLs cannot be only numbers.';
       } else if (RESERVED_SLUGS.includes(slug)) {
         errors.publicSlug = 'That URL is reserved.';
-      } else if (lists.some(list => list.id !== form?.listId && normalizeSlug(list.publicSlug) === slug)) {
-        errors.publicSlug = 'That URL is already in use.';
       }
     }
     return { errors, name, slug };
   }
 
+  async function saveMembers(listId, values, before) {
+    const collaborators = memberUsernames(values.members, 'collaborator');
+    const viewers = memberUsernames(values.members, 'viewer');
+    const same = (left, right) => left.length === right.length && left.every(name => right.includes(name));
+    const change = {};
+    if (!before || !same(collaborators, memberUsernames(before.members, 'collaborator'))) {
+      change.collaborators = collaborators;
+    }
+    if (!before || !same(viewers, memberUsernames(before.members, 'viewer'))) change.viewers = viewers;
+    if (change.collaborators === undefined && change.viewers === undefined) return;
+    if (before === null && !collaborators.length && !viewers.length) return;
+    await transport.setMembers({ listId, ...change });
+  }
+
   async function submitForm(values) {
-    const { errors, name } = validate(values);
+    const { errors, name, slug } = validate(values);
     if (Object.keys(errors).length) {
       setFormErrors(errors);
       return;
     }
-    const isPublic = values.visibility === 'public';
-    const allowRecommendations = isPublic && values.allowRecommendations;
-    const numeric = member => /^\d+$/.test(String(member.id));
-    const collaborators = (values.members || [])
-      .filter(member => numeric(member) && member.role === 'collaborator')
-      .map(member => Number(member.id));
-    const viewers = (values.members || [])
-      .filter(member => numeric(member) && member.role === 'viewer')
-      .map(member => Number(member.id));
-    if (transport.mode !== 'server') {
+    if (signedOut) {
       setNotice('Sign in to create or edit lists.');
       return;
     }
-    if (values.isSmart) {
-      setNotice('Smart-list creation is not exposed by the list API.');
-      return;
-    }
+    setSaving(true);
     try {
+      const fields = {
+        name,
+        description: values.description || '',
+        visibility: values.visibility,
+        allowRecommendations: values.allowRecommendations,
+        publicSlug: slug,
+        tags: values.tags || [],
+        includeNotes: values.includeNotes,
+        isSmart: Boolean(values.isSmart),
+      };
+      let savedNote = '';
+      let created = null;
       if (form.mode === 'edit') {
-        await transport.update({
-          listId: form.listId,
-          name,
-          description: values.description,
-          visibility: values.visibility,
-          isPublic,
-          allowRecommendations,
-        });
-        setNotice(`"${name}" was saved.`);
+        await transport.update({ listId: form.listId, ...fields });
+        await saveMembers(form.listId, values, activeList);
+        savedNote = `"${name}" was saved.`;
       } else {
-        await transport.create({
-          name,
-          description: values.description,
-          visibility: values.visibility,
-          isPublic,
-          allowRecommendations,
-          collaborators,
-          viewers,
-        });
-        setNotice(`"${name}" was created.`);
+        created = await transport.create({ ...fields, publicSlug: slug || undefined });
+        await saveMembers(created?.id, values, null);
+        savedNote = `"${name}" was created.`;
       }
+      setNotice(savedNote);
       setReloadToken(current => current + 1);
       closeForm();
+      if (created?.id && values.isSmart) {
+        // Same as the web: a new smart list opens straight into its rules.
+        const summary = listSummaryFromPayload(created, getActiveAuthSession()?.user?.username || '');
+        navigate?.('ListDetail', { list: summary, editRules: true });
+      }
     } catch (cause) {
       setFormErrors({ form: cause?.message || 'The list could not be saved.' });
+    } finally {
+      setSaving(false);
     }
   }
 
   async function deleteList(list) {
-    if (transport.mode !== 'server') {
+    if (signedOut) {
       setNotice('Sign in to delete lists.');
       return;
     }
+    setSaving(true);
     try {
       await transport.remove({ listId: list.id });
-      setLists(current => current.filter(entry => entry.id !== list.id));
-      setRecommendations(current => {
-        const next = { ...current };
-        delete next[list.id];
-        return next;
-      });
       setNotice(`"${list.name}" was deleted.`);
+      setReloadToken(current => current + 1);
       closeForm();
     } catch (cause) {
       setNotice(cause?.message || 'The list could not be deleted.');
+    } finally {
+      setSaving(false);
     }
   }
 
-  function approveRecommendation(rec) {
-    setRecommendations(current => ({
-      ...current,
-      [approvalsFor]: (current[approvalsFor] || []).filter(entry => entry.id !== rec.id),
-    }));
-    setAddedItems(current => ({
-      ...current,
-      [approvalsFor]: [...(current[approvalsFor] || []), rec.catalogId],
-    }));
-    setLists(current => current.map(list => list.id === approvalsFor
-      ? { ...list, itemsCount: list.itemsCount + 1 }
-      : list));
-    setNotice(`"${rec.title}" has been added to the list in this demo.`);
-  }
-
-  function denyRecommendation(rec) {
-    setRecommendations(current => ({
-      ...current,
-      [approvalsFor]: (current[approvalsFor] || []).filter(entry => entry.id !== rec.id),
-    }));
-    setNotice(`Recommendation for "${rec.title}" has been removed in this demo.`);
-  }
+  const activeList = form?.mode === 'edit'
+    ? lists.find(list => list.id === form.listId)
+    : null;
 
   const formList = form?.mode === 'edit' && activeList
     ? {
         ...activeList,
-        urlPrefix: URL_PREFIX,
-        currentUrl: currentUrlFor(activeList),
+        urlPrefix,
+        currentUrl: ['public', 'unlisted'].includes(activeList.visibility)
+          ? `${urlPrefix}${activeList.publicSlug || activeList.id}`
+          : '',
       }
     : {
         name: '',
@@ -591,136 +265,154 @@ export default function ListsScreen({ onBack, navigate }) {
         publicSlug: '',
         includeNotes: false,
         allowRecommendations: false,
-        isSmart: false,
+        isSmart: Boolean(form?.smart),
         tags: [],
-        members: [{ id: 'you', name: 'Danny', handle: '@danny', role: 'owner' }],
-        urlPrefix: URL_PREFIX,
+        members: [],
+        urlPrefix,
         currentUrl: '',
       };
 
-  const addList = lists.find(list => list.id === addFor);
-  const recommendList = lists.find(list => list.id === recommendFor);
-  const approvalsList = lists.find(list => list.id === approvalsFor);
+  const tagSuggestions = useMemo(
+    () => [...new Set(lists.flatMap(list => list.tags || []))].sort((left, right) => left.localeCompare(right)),
+    [lists],
+  );
 
-  const listTools = list => <ListTools
-    list={list}
-    approvals={(recommendations[list.id] || []).length}
-    onEdit={() => openForm('edit', list.id)}
-    onAdd={() => openAdd(list)}
-    onRecommend={() => openRecommend(list)}
-    onApprovals={() => setApprovalsFor(list.id)} />;
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return lists;
+    return lists.filter(list => list.name.toLowerCase().includes(query));
+  }, [lists, search]);
 
-  return <Screen onBack={onBack}>
+  const searching = Boolean(search.trim());
+
+  const showProfile = Boolean(getActiveAuthSession()?.serverUrl && getActiveAuthSession()?.user?.username);
+
+  return <Screen>
     <ListsPageView
       title="Lists"
-      subtitle="Curated, smart and shared collections"
-      labels={{ search: 'Search lists', searchPlaceholder: 'Search lists...' }}
+      subtitle="Organize and share your media lists"
       palette={palette}
       actions={<>
-        <Button label="Public Profile" tone="surface" onPress={() => setNotice('Public profiles use the platform browser or share adapter.')} />
-        <Button label="New List" tone="primary" onPress={() => openForm('create')} />
+        {showProfile ? <Button label="Public Profile" tone="surface" icon={settingsNavIcons.person} onPress={openProfile} /> : null}
+        <View style={styles.splitButton}>
+          <Button label="New List" tone="primary" icon={actionIcons.plus} onPress={() => openForm('create')} />
+          <Pressable accessibilityRole="button" accessibilityLabel="More list actions"
+            onPress={() => setMenuOpen(true)} style={styles.splitToggle}>
+            <Icon spec={actionIcons.chevronDown} color={palette.onAccentStrong} size={16} />
+          </Pressable>
+        </View>
       </>}
-      searchValue={search}
-      onSearchChange={setSearch}
-      tags={tags}
-      activeTag={selectedTag}
-      onSelectTag={setSelectedTag}
+      search={<View style={styles.toolbar}>
+        <View style={styles.searchRow}>
+          <SearchIcon color={palette.textMuted} size={20} />
+          <TextInput
+            style={styles.searchInput}
+            accessibilityLabel="Search lists"
+            placeholder="Search lists..."
+            placeholderTextColor={palette.textMuted}
+            value={searchText}
+            onChangeText={setSearchText}
+            autoCorrect={false} />
+        </View>
+        <View style={styles.sortRow}>
+          <View style={styles.sortCell}>
+            <SelectField label="Media type" labelHidden filter iconChevron value={mediaType} palette={palette}
+              leadingIcon={<Icon spec={actionIcons.funnel} color={palette.textMuted} size={16} />}
+              options={LIST_TYPE_OPTIONS}
+              onChange={event => setMediaType(event.target.value)} />
+          </View>
+          <View style={styles.sortCell}>
+            <SelectField label="Sort lists" labelHidden filter iconChevron value={sortValue} palette={palette}
+              options={LIST_SORT_OPTIONS.map(option => ({ value: option.value, label: option.label }))}
+              onChange={event => chooseSort(LIST_SORT_OPTIONS.find(option => option.value === event.target.value))} />
+          </View>
+        </View>
+      </View>}
       lists={filtered}
-      renderListTools={listTools}
+      hideCardMetadata
       onOpenList={list => navigate?.('ListDetail', { list })}
       onListAction={(action, list) => {
         if (action.title === 'Settings') {
           openForm('edit', list.id);
         }
       }}
-      state={loading ? 'loading' : loadError ? 'error' : filtered.length ? 'ready' : 'empty'}
-      error={loadError ? { title: 'Lists could not load', body: loadError } : undefined}
-      onRetry={() => setReloadToken(current => current + 1)}
-      empty={{
-        title: 'No lists found.',
-        body: search || selectedTag !== 'All'
-          ? 'Clear the search or choose another tag to see your lists.'
-          : 'Create a list to collect and order the media you track.',
-        actionLabel: 'Create Your First List',
-      }}
-      onEmptyAction={() => openForm('create')}
+      state={signedOut
+        ? 'error'
+        : loading ? 'loading' : loadError ? 'error' : 'ready'}
+      error={signedOut
+        ? SIGNED_OUT_ERROR
+        : { title: 'Lists could not load', body: loadError, retryLabel: 'Try again' }}
+      onRetry={signedOut ? undefined : () => setReloadToken(current => current + 1)}
+      empty={searching
+        ? {
+            title: 'No lists match',
+            body: 'Clear the search or pick another sort to see your lists.',
+          }
+        : {
+            title: 'No Lists Created Yet',
+            body: 'Create custom lists to organize your media collection and share with friends.',
+            actionLabel: 'Create Your First List',
+          }}
+      onEmptyAction={searching ? undefined : () => openForm('create')}
       dialogs={<>
-        {notice ? <Text style={styles.notice}>{notice}</Text> : null}
+        <ListActionsMenu open={menuOpen} onClose={() => setMenuOpen(false)}
+          onSmart={() => { setMenuOpen(false); openForm('create', null, true); }}
+          onImport={setImportKind} />
+        {importKind ? <ListImportDialog kind={importKind} transport={transport}
+          onClose={() => setImportKind(null)}
+          onDone={() => setReloadToken(current => current + 1)} /> : null}
         {form ? <ListForm
-      key={form.listId || 'create'}
-      mode={form.mode}
-      list={formList}
-      tagSuggestions={tagSuggestions}
-      collaboratorSuggestions={collaboratorSuggestions}
-      errors={formErrors}
-      canDelete={form.mode === 'edit' ? !!activeList?.canDelete : false}
-      palette={palette}
-      onSubmit={submitForm}
-      onDelete={deleteList}
-      onClose={closeForm} /> : null}
-
-    {addList && !preview ? <ListItemSearch
-      mode="add"
-      listName={addList.name}
-      query={searchState.query}
-      mediaType={searchState.mediaType}
-      mediaTypes={MEDIA_TYPES}
-      results={searchResults}
-      status={searchStatus}
-      page={searchState.page}
-      totalPages={1}
-      palette={palette}
-      onQueryChange={value => updateSearch({ query: value })}
-      onMediaTypeChange={value => updateSearch({ mediaType: value })}
-      onPage={page => setSearchState(current => ({ ...current, page }))}
-      onSelectResult={selectResult}
-      onClose={closeSearch} /> : null}
-
-    {recommendList && !preview ? <ListItemSearch
-      mode="recommend"
-      listName={recommendList.name}
-      query={searchState.query}
-      mediaType={searchState.mediaType}
-      mediaTypes={MEDIA_TYPES}
-      results={searchResults}
-      status={searchStatus}
-      page={searchState.page}
-      totalPages={1}
-      palette={palette}
-      onQueryChange={value => updateSearch({ query: value })}
-      onMediaTypeChange={value => updateSearch({ mediaType: value })}
-      onPage={page => setSearchState(current => ({ ...current, page }))}
-      onSelectResult={selectResult}
-      onClose={closeSearch} /> : null}
-
-    {preview ? <ListItemPreview
-      open
-      mode={preview.mode}
-      media={preview.result.preview}
-      alreadyInList={preview.alreadyInList}
-      alreadyRecommended={preview.alreadyRecommended}
-      palette={palette}
-      onConfirm={confirmPreview}
-      onClose={() => setPreview(null)} /> : null}
-
-    {approvalsList ? <ListRecommendations
-      listName={approvalsList.name}
-      recommendations={recommendations[approvalsList.id] || []}
-      canEdit={!!approvalsList.canEdit}
-      palette={palette}
-      onApprove={approveRecommendation}
-      onDeny={denyRecommendation}
-      onView={() => {
-        setApprovalsFor(null);
-        setNotice('Item details use the platform navigation adapter.');
-      }}
-      onClose={() => setApprovalsFor(null)} /> : null}
+        key={form.listId || (form.smart ? 'create-smart' : 'create')}
+        mode={form.mode}
+        list={formList}
+        tagSuggestions={tagSuggestions}
+        collaboratorSuggestions={[]}
+        errors={formErrors}
+        pending={saving}
+        canDelete={form.mode === 'edit' ? !!activeList?.canDelete : false}
+        palette={palette}
+        onSubmit={submitForm}
+        onDelete={deleteList}
+        onClose={closeForm} /> : null}
       </>}
+      footer={notice ? <Text style={styles.notice}>{notice}</Text> : null}
     />
   </Screen>;
 }
 
 const styles = StyleSheet.create({
-  cardActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  splitButton: { flexDirection: 'row', alignItems: 'stretch', gap: 1 },
+  splitToggle: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+    backgroundColor: palette.accentStrong,
+    borderTopRightRadius: radius.sm,
+    borderBottomRightRadius: radius.sm,
+  },
+  menuBackdrop: { flex: 1, alignItems: 'flex-end', paddingTop: 120, paddingRight: spacing.lg },
+  menu: {
+    width: 208,
+    paddingVertical: spacing.xs,
+    backgroundColor: palette.surfaceStrong,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: palette.border,
+  },
+  menuRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  menuRowPressed: { backgroundColor: palette.surface },
+  menuText: { color: palette.textSecondary, fontSize: 14 },
+  toolbar: { gap: spacing.sm },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: palette.surfaceStrong,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+  },
+  searchInput: { flex: 1, color: palette.text, paddingVertical: spacing.sm },
+  sortRow: { flexDirection: 'row', gap: spacing.sm },
+  sortCell: { flex: 1, minWidth: 0 },
   notice: { color: palette.textMuted, fontSize: 12, lineHeight: 17 },
 });

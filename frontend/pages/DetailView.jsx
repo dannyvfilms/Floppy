@@ -45,17 +45,25 @@ export const detailLabels = {
   error: 'The detail could not be loaded.',
 };
 
-function PeopleSection({ title, people = [], palette }) {
+function PeopleSection({ title, people = [], palette, onOpen }) {
   if (!people.length) return null;
   return <View style={styles.contentSection}>
     <Text accessibilityRole="header" style={[styles.contentTitle, { color: palette.text }]}>{title}</Text>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.peopleGrid} accessibilityLabel={title}>
-      {people.map((person, index) => <View key={`${person.name}-${index}`} style={[styles.personCard, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-        {person.image ? <Image source={{ uri: person.image }} resizeMode="cover" style={styles.personImage}
-          accessibilityLabel={person.name} /> : <View style={[styles.personImage, styles.personPlaceholder, { backgroundColor: palette.surfaceStrong }]} />}
-        <Text numberOfLines={2} style={[styles.personName, { color: palette.text }]}>{person.name}</Text>
-        {person.role ? <Text numberOfLines={2} style={[styles.personRole, { color: palette.textMuted }]}>{person.role}</Text> : null}
-      </View>)}
+      {people.map((person, index) => {
+        const card = <>
+          {person.image ? <Image source={{ uri: person.image }} resizeMode="cover" style={styles.personImage}
+            accessibilityLabel={person.name} /> : <View style={[styles.personImage, styles.personPlaceholder, { backgroundColor: palette.surfaceStrong }]} />}
+          <Text numberOfLines={2} style={[styles.personName, { color: palette.text }]}>{person.name}</Text>
+          {person.role ? <Text numberOfLines={2} style={[styles.personRole, { color: palette.textMuted }]}>{person.role}</Text> : null}
+        </>;
+        const cardStyle = [styles.personCard, { backgroundColor: palette.surface, borderColor: palette.border }];
+        // The web cast and crew cards link to the person page.
+        return onOpen && person.person_id != null
+          ? <Pressable key={`${person.name}-${index}`} accessibilityRole="link" accessibilityLabel={person.name}
+            onPress={() => onOpen(person)} style={cardStyle}>{card}</Pressable>
+          : <View key={`${person.name}-${index}`} style={cardStyle}>{card}</View>;
+      })}
     </ScrollView>
   </View>;
 }
@@ -107,6 +115,11 @@ export function DetailView({
   onRateChild,
   onRateMain,
   hideContent = false,
+  actionsSlot,
+  scoreSlot,
+  sectionsSlot,
+  childrenSlot,
+  onOpenPerson,
   children,
 }) {
   const copy = { ...detailLabels, ...(labels || {}) };
@@ -127,8 +140,8 @@ export function DetailView({
   const immersive = width < 768 && Boolean(model?.artwork?.backdrop);
 
   return <View style={styles.root}>
-    {error ? <View style={[styles.notice, { borderColor: palette.danger || '#ef4444' }]}>
-      <Text accessibilityLiveRegion="polite" style={[styles.noticeText, { color: palette.danger || '#ef4444' }]}>{error || copy.error}</Text>
+    {error ? <View style={[styles.notice, { borderColor: palette.danger }]}>
+      <Text accessibilityLiveRegion="polite" style={[styles.noticeText, { color: palette.danger }]}>{error || copy.error}</Text>
       {onRetry ? <Button label={copy.retry} tone="surface" palette={palette} onPress={onRetry} /> : null}
     </View> : null}
     {loading ? <View accessibilityLiveRegion="polite" style={styles.loading}>
@@ -136,11 +149,12 @@ export function DetailView({
       <Text style={[styles.loadingText, { color: palette.textMuted || '#a1a1aa' }]}>{copy.loading}</Text>
     </View> : !hideContent ? <>
       {part !== 'sections' ? <>
-        {immersive ? <DetailMobileHero model={model} palette={palette} onOpenItem={onOpenItem} /> : <>
+        {immersive ? <DetailMobileHero model={model} palette={palette} onOpenItem={onOpenItem} actions={actionsSlot} /> : <>
           <DetailHero model={model} palette={palette} onOpenVideo={onOpenVideo} />
           <DetailHeader model={model} labels={labels} palette={palette} showArtwork={showArtwork} />
-          <DetailActions model={model} labels={labels} palette={palette} />
+          {actionsSlot || <DetailActions model={model} labels={labels} palette={palette} />}
         </>}
+        {scoreSlot || null}
         <DetailChips chips={model.scoreChips || []} palette={palette} onOpen={onOpenExternal} />
         <DetailLinks groups={model.linkSections} palette={palette} onOpen={onOpenExternal} />
         {renderSynopsis
@@ -160,6 +174,8 @@ export function DetailView({
         return <DetailSection key={section.id || section.title}
           section={{ ...section, body }} palette={palette} />;
       }) : null}
+      {sectionsSlot || null}
+      {childrenSlot || null}
       {model.children ? <DetailChildren
         model={model.children}
         labels={model.childLabels || labels}
@@ -172,8 +188,8 @@ export function DetailView({
         onLoadMore={model.children.nextPage ? onLoadMore : undefined}
         loadMoreLabel={model.children.nextLabel}
       /> : null}
-      {model.people?.cast?.length ? <PeopleSection title="Cast" people={model.people.cast} palette={palette} /> : null}
-      {model.people?.crew?.length ? <PeopleSection title="Crew" people={model.people.crew} palette={palette} /> : null}
+      {model.people?.cast?.length ? <PeopleSection title="Cast" people={model.people.cast} palette={palette} onOpen={onOpenPerson} /> : null}
+      {model.people?.crew?.length ? <PeopleSection title="Crew" people={model.people.crew} palette={palette} onOpen={onOpenPerson} /> : null}
       {model.relatedSections?.length ? <DetailRelated
         model={{ sections: model.relatedSections, steamDlcs: model.steamDlcs || [] }}
         labels={model.relatedLabels || labels}

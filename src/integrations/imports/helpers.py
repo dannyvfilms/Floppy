@@ -24,6 +24,7 @@ from app.db_retry import run_retryable_db_operation
 from app.history_cache_utils import history_deferred_item_fields
 from app.models import Episode, MediaTypes, Sources, Status
 from app.models.tv import _UNSET_END_DATE
+from app.public_errors import PublicMessageError
 from app.services import podcast_plays
 from app.services.completion import normalize_completed_entries
 from app.services.watch_state import (
@@ -132,7 +133,7 @@ TRAKT_EXPORT_UNSUPPORTED_MODE_MESSAGE = (
 )
 
 
-class MediaImportError(Exception):
+class MediaImportError(PublicMessageError):
     """Custom exception for import errors."""
 
 

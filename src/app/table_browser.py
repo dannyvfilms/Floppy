@@ -245,14 +245,14 @@ def _title_cell(row, item, table_type, public_list_reference):
         artist = getattr(row, "artist", None)
         return {
             "kind": "title",
-            "text": str(getattr(artist, "name", "") or "—"),
+            "text": str(getattr(artist, "name", "") or "-"),
             "href": music_artist_url(artist) if artist else "",
         }
     if table_type == "album":
         album = getattr(row, "album", None)
         return {
             "kind": "title",
-            "text": str(getattr(album, "title", "") or "—"),
+            "text": str(getattr(album, "title", "") or "-"),
             "href": music_album_url(album) if album else "",
         }
     href = media_url(item) if item is not None else ""
@@ -260,7 +260,7 @@ def _title_cell(row, item, table_type, public_list_reference):
         href = f"{href}?public_view=1&public_list={public_list_reference}"
     return {
         "kind": "title",
-        "text": str(getattr(item, "title", "") or str(item or "—")),
+        "text": str(getattr(item, "title", "") or str(item or "-")),
         "href": href,
         "repeats": getattr(tracker, "repeats", 1) or 1,
     }
@@ -291,7 +291,7 @@ def cell_for_column(
         authors = _attr(tracker, row, item, name="display_authors")
         if authors:
             return {"kind": "text", "text": ", ".join(str(author) for author in authors)}
-        return {"kind": "text", "text": "—", "muted": True}
+        return {"kind": "text", "text": "-", "muted": True}
 
     if key == "media_type":
         value = getattr(item, "media_type", "")
@@ -317,7 +317,7 @@ def cell_for_column(
         if not raw and getattr(tracker, "is_statusless", False):
             return {"kind": "status", "text": "No Status", "muted": True}
         if not raw:
-            return {"kind": "status", "text": "—", "muted": True}
+            return {"kind": "status", "text": "-", "muted": True}
         return {
             "kind": "status",
             "text": _status(raw),
@@ -328,7 +328,7 @@ def cell_for_column(
         aggregated = _attr(tracker, name="aggregated_progress")
         progress = aggregated if aggregated is not None else _attr(tracker, name="progress")
         if progress is None:
-            return {"kind": "text", "text": "—", "muted": True}
+            return {"kind": "text", "text": "-", "muted": True}
         text = _attr(tracker, name="formatted_aggregated_progress") if aggregated is not None else _attr(tracker, name="formatted_progress")
         max_progress = _attr(tracker, name="max_progress")
         max_text = ""
@@ -345,43 +345,43 @@ def cell_for_column(
         value = _attr(tracker, name="episodes_left_display" if key == "episodes_left" else "time_left_display")
         return {
             "kind": "progress",
-            "text": str(value or "—"),
+            "text": str(value or "-"),
             "note": _repeat_suffix(tracker, item, user, "Remaining" if key == "episodes_left" else "Total"),
         }
 
     if key == "time_to_beat":
-        return {"kind": "text", "text": str(_attr(item, name="formatted_game_time_to_beat") or "—")}
+        return {"kind": "text", "text": str(_attr(item, name="formatted_game_time_to_beat") or "-")}
 
     if key == "runtime":
-        return {"kind": "text", "text": str(_attr(tracker, name="formatted_total_runtime") or "—")}
+        return {"kind": "text", "text": str(_attr(tracker, name="formatted_total_runtime") or "-")}
 
     if key == "time_watched":
-        return {"kind": "text", "text": str(_attr(tracker, name="formatted_time_watched") or "—")}
+        return {"kind": "text", "text": str(_attr(tracker, name="formatted_time_watched") or "-")}
 
     if key == "popularity":
         rank = _attr(item, name="trakt_popularity_rank")
-        return {"kind": "text", "text": f"#{rank}" if rank else "—", "muted": not rank}
+        return {"kind": "text", "text": f"#{rank}" if rank else "-", "muted": not rank}
 
     if key == "user_rating":
         value = _attr(item, name="igdb_user_rating")
-        return {"kind": "text", "text": f"{value:.1f}" if value is not None else "—", "muted": value is None}
+        return {"kind": "text", "text": f"{value:.1f}" if value is not None else "-", "muted": value is None}
 
     if key == "critic_rating":
         value = _attr(item, name="provider_rating")
-        return {"kind": "text", "text": f"{value:.1f}" if value is not None else "—", "muted": value is None}
+        return {"kind": "text", "text": f"{value:.1f}" if value is not None else "-", "muted": value is None}
 
     if key == "platform":
         value = _attr(row, name="display_platform")
-        return {"kind": "text", "text": str(value or "—"), "muted": not value}
+        return {"kind": "text", "text": str(value or "-"), "muted": not value}
 
     if key == "last_watched":
         value = _attr(tracker, row, name="last_watched")
-        return {"kind": "text", "text": str(value or "—"), "muted": not value}
+        return {"kind": "text", "text": str(value or "-"), "muted": not value}
 
     if key == "genres":
         genres = list(getattr(item, "genres", None) or [])
         if not genres:
-            return {"kind": "text", "text": "—", "muted": True}
+            return {"kind": "text", "text": "-", "muted": True}
         return {
             "kind": "genres",
             "items": [{"label": str(genre)} for genre in genres],
@@ -390,7 +390,7 @@ def cell_for_column(
     if key == "tags":
         tag_names = _tags(item, user)
         if not tag_names:
-            return {"kind": "text", "text": "—", "muted": True}
+            return {"kind": "text", "text": "-", "muted": True}
         return {
             "kind": "tags",
             "items": [{"label": str(name)} for name in tag_names],
@@ -399,14 +399,14 @@ def cell_for_column(
     if key == "notes":
         notes = _attr(tracker, row, name="notes")
         if not show_public_notes or not notes:
-            return {"kind": "text", "text": "—", "muted": True, "limitLines": 1}
+            return {"kind": "text", "text": "-", "muted": True, "limitLines": 1}
         return {"kind": "text", "text": str(notes), "limitLines": 2}
 
     if key == "synopsis":
         synopsis = _attr(item, name="synopsis")
         return {
             "kind": "text",
-            "text": str(synopsis or "—"),
+            "text": str(synopsis or "-"),
             "muted": not synopsis,
             "limitLines": 2,
         }
@@ -414,7 +414,7 @@ def cell_for_column(
     if key == "entry_source":
         source = _attr(tracker, row, name="entry_source")
         if public_view or not source:
-            return {"kind": "text", "text": "—", "muted": True}
+            return {"kind": "text", "text": "-", "muted": True}
         return {"kind": "text", "text": _entry_source(source)}
 
     if key == "album_artist":
@@ -424,7 +424,7 @@ def cell_for_column(
             names = [getattr(credit, "artist", None) for credit in credit_rows]
             return {"kind": "text", "text": ", ".join(str(getattr(artist, "name", "")) for artist in names if artist)}
         artist = getattr(album, "artist", None)
-        return {"kind": "text", "text": str(getattr(artist, "name", "") or "—"), "muted": not artist}
+        return {"kind": "text", "text": str(getattr(artist, "name", "") or "-"), "muted": not artist}
 
     if key == "artist_release_date":
         value = _attr(row, name="first_release_date")
@@ -449,7 +449,7 @@ def cell_for_column(
 
     if value:
         return {"kind": "text", "text": _date(value, user)}
-    return {"kind": "text", "text": "—", "muted": True}
+    return {"kind": "text", "text": "-", "muted": True}
 
 
 def table_json_url(request, page: int) -> str:

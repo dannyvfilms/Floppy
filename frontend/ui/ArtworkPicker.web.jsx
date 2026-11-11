@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArtworkPicker as SharedArtworkPicker, EditionPicker as SharedEditionPicker } from './ArtworkPicker';
+import { ArtworkPicker as SharedArtworkPicker, EditionPicker as SharedEditionPicker } from './ArtworkPicker.jsx';
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;

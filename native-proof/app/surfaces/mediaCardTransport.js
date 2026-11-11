@@ -13,8 +13,8 @@ let config = { ...DEFAULT_CONFIG };
 const STATUS_BY_CODE = { 0: 'Planning', 1: 'In progress', 2: 'Paused', 3: 'Completed', 4: 'Dropped' };
 const STATUS_OPTIONS = ['Planning', 'In progress', 'Paused', 'Completed', 'Dropped']
   .map(value => ({ value, label: value }));
-const PROGRESS_TYPES = new Set(['anime', 'manga', 'book', 'comic', 'game', 'boardgame', 'music']);
-const DATE_TYPES = new Set(['movie', 'anime', 'manga', 'book', 'comic', 'game', 'boardgame', 'music']);
+const PROGRESS_TYPES = new Set(['anime', 'manga', 'book', 'comic', 'comicissue', 'game', 'boardgame', 'music']);
+const DATE_TYPES = new Set(['movie', 'anime', 'manga', 'book', 'comic', 'comicissue', 'game', 'boardgame', 'music']);
 const EPISODIC_TYPES = new Set(['tv', 'season', 'episode', 'anime']);
 
 export function configureMediaCardTransport(next = {}) {
@@ -38,7 +38,7 @@ export function hasMediaCardTransport() {
 
 export function mediaCardTransportLabel() {
   const auth = activeAuth();
-  return config.baseUrl || (auth && auth.serverUrl) || 'demo';
+  return config.baseUrl || (auth && auth.serverUrl) || '';
 }
 
 function queryString(query = {}) {
@@ -50,10 +50,11 @@ function queryString(query = {}) {
 
 export function mediaPath(identity) {
   const { mediaType, source, mediaId, seasonNumber, episodeNumber } = identity || {};
-  const pathType = mediaType === 'episode' ? 'tv' : mediaType;
-  let path = `/api/v1/media/${encodeURIComponent(pathType)}/${encodeURIComponent(source)}/${encodeURIComponent(mediaId)}`;
-  if (seasonNumber != null) path += `/${encodeURIComponent(seasonNumber)}`;
-  if (episodeNumber != null) path += `/${encodeURIComponent(episodeNumber)}`;
+  // Seasons and episodes live under the tv routes; other types carry no coordinates.
+  const coordinated = mediaType === 'season' || mediaType === 'episode' || mediaType === 'tv';
+  let path = `/api/v1/media/${encodeURIComponent(coordinated ? 'tv' : mediaType)}/${encodeURIComponent(source)}/${encodeURIComponent(mediaId)}`;
+  if (coordinated && seasonNumber != null) path += `/${encodeURIComponent(seasonNumber)}`;
+  if (coordinated && episodeNumber != null) path += `/${encodeURIComponent(episodeNumber)}`;
   return path;
 }
 
@@ -118,9 +119,30 @@ function resultList(payload) {
   return payload && Array.isArray(payload.results) ? payload.results : [];
 }
 
-function dateText(value) {
+function pad(value) {
+  return String(value).padStart(2, '0');
+}
+
+// A date, or with `withTime` the viewer's local "YYYY-MM-DDTHH:mm" the form's
+// date-time input edits. trackDate converts it back to an explicit instant.
+function dateText(value, withTime = false) {
   if (!value) return '';
-  return String(value).slice(0, 10);
+  const text = String(value);
+  if (!withTime) return text.slice(0, 10);
+  if (text.length <= 10) return `${text}T00:00`;
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return text.slice(0, 16);
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+    + `T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function trackDate(value) {
+  if (!value) return null;
+  // datetime-local has no offset; serialize the same local zone used by dateText.
+  // Date-only and already zoned values retain their existing API semantics.
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(value)) return value;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toISOString();
 }
 
 function statusLabel(value) {
@@ -137,30 +159,31 @@ function field(name, label, type, value, extra = {}) {
   return { name, label, type, value: value == null ? '' : String(value), ...extra };
 }
 
-function trackFields(identity, detail, consumption) {
+function trackFields(identity, detail, consumption, withTime = false) {
   const mediaType = identity.mediaType;
   const fields = [
     {
       name: 'status',
       label: 'Status',
       type: 'select',
-      value: statusLabel(consumption && consumption.status) || 'Planning',
-      required: true,
-      options: STATUS_OPTIONS,
+      value: mediaType === 'comicissue' && consumption ? statusLabel(consumption.status) : statusLabel(consumption && consumption.status) || 'Planning',
+      required: mediaType !== 'comicissue',
+      options: mediaType === 'comicissue' ? [{ value: '', label: 'No Status' }, ...STATUS_OPTIONS] : STATUS_OPTIONS,
     },
     field('score', 'Score', 'number', consumption && consumption.score, { min: 0, max: 10 }),
   ];
   if (PROGRESS_TYPES.has(mediaType)) {
-    fields.push(field('progress', 'Progress', 'number', consumption && consumption.progress, {
+    fields.push(field('progress', 'Progress', 'number', consumption?.progress ?? (mediaType === 'comicissue' ? 0 : ''), {
       min: 0,
       max: detail && detail.max_progress ? detail.max_progress : null,
       help: detail && detail.progress_unit ? String(detail.progress_unit) : '',
     }));
   }
   if (DATE_TYPES.has(mediaType)) {
-    fields.push(field('start_date', 'Start date', 'date', dateText(consumption && consumption.start_date)));
-    fields.push(field('end_date', 'End date', 'date', dateText(consumption && consumption.end_date)));
+    fields.push(field('start_date', 'Start date', 'date', dateText(consumption && consumption.start_date, withTime)));
+    fields.push(field('end_date', 'End date', 'date', dateText(consumption && consumption.end_date, withTime)));
   }
+  if (mediaType === 'comicissue') fields.push(field('entry_source', 'Source', 'text', consumption?.entry_source ?? consumption?.source));
   return fields;
 }
 
@@ -180,20 +203,15 @@ function metadataFields(detail) {
     .map(([label, value]) => ({ label, value: String(value) }));
 }
 
-function collectionRows(entries, identity) {
-  return resultList(entries)
-    .filter(entry => {
-      const item = (entry && entry.item) || {};
-      return String(item.media_id) === String(identity.mediaId) && (!item.source || item.source === identity.source);
-    })
-    .map(entry => ({
-      id: String(entry.id),
-      title: (entry.item && entry.item.title) || 'Owned copy',
-      detail: [entry.media_type, entry.resolution, entry.hdr, entry.is_3d ? '3D' : '']
-        .filter(Boolean)
-        .join(' · '),
-      date: dateText(entry.collected_at),
-    }));
+function collectionRows(entries) {
+  return resultList(entries).map(entry => ({
+    id: String(entry.id),
+    title: (entry.item && entry.item.title) || 'Owned copy',
+    detail: [entry.media_type, entry.resolution, entry.hdr, entry.is_3d ? '3D' : '']
+      .filter(Boolean)
+      .join(' · '),
+    date: dateText(entry.collected_at),
+  }));
 }
 
 function playRows(history) {
@@ -265,10 +283,8 @@ async function loadMetadataTab(identity) {
 }
 
 async function loadCollectionTab(identity) {
-  const entries = await request('/api/v1/collection/', {
-    query: { item_media_type: identity.mediaType, limit: 200 },
-  });
-  return { entries: collectionRows(entries, identity) };
+  const entries = await request(`${mediaPath(identity)}/collection/entries/`);
+  return { entries: collectionRows(entries) };
 }
 
 async function loadPlaysTab(identity) {
@@ -288,21 +304,21 @@ async function loadDiscoverTab(identity, detail) {
   return { hidden: Boolean(entry), itemId: itemId || null, canToggle: Boolean(itemId) };
 }
 
-function todayText() {
-  return new Date().toISOString().slice(0, 10);
+function todayText(withTime = false) {
+  return withTime ? dateText(new Date().toISOString(), true) : new Date().toISOString().slice(0, 10);
 }
 
-function variantFields(identity, consumption) {
+function variantFields(identity, consumption, withTime = false) {
   const podcast = identity.mediaType === 'podcast';
   return [field(
     'end_date',
     mediaCardVariant(identity) === 'episode' ? 'Watch date' : (podcast ? 'Play date' : 'Listen date'),
     'date',
-    dateText(consumption && consumption.end_date) || todayText(),
+    dateText(consumption && consumption.end_date, withTime) || todayText(withTime),
   )];
 }
 
-function variantModel(identity, detail, consumption) {
+function variantModel(identity, detail, consumption, withTime = false) {
   const variant = mediaCardVariant(identity);
   const podcast = identity.mediaType === 'podcast';
   return {
@@ -311,12 +327,12 @@ function variantModel(identity, detail, consumption) {
     title: (detail && detail.title) || identity.title || '',
     subtitle: identity.subtitle || '',
     action: variant === 'episode' ? episodeActionPath(identity, 'watch') : '',
-    deleteAction: variant === 'episode' ? episodeActionPath(identity, 'drop') : '',
-    fields: variantFields(identity, consumption),
+    deleteAction: variant === 'episode' ? episodeActionPath(identity, 'watch') : '',
+    fields: variantFields(identity, consumption, withTime),
     notes: null,
     submitLabel: variant === 'episode' ? 'Add watch' : (podcast ? 'Add play' : 'Add listen'),
-    deleteLabel: variant === 'episode' ? 'Drop' : 'Delete',
-    trackTime: false,
+    deleteLabel: variant === 'episode' ? 'Unwatch' : 'Delete',
+    trackTime: withTime,
   };
 }
 
@@ -324,7 +340,8 @@ function needsVariant(identity) {
   return mediaCardVariant(identity) !== '';
 }
 
-export async function loadTrack(identity) {
+// `fresh` opens the form for a new entry ("Add new entry") on an already tracked item.
+export async function loadTrack(identity, { trackTime = false, fresh = false } = {}) {
   if (needsVariant(identity)) {
     if (mediaCardVariant(identity) === 'episode') {
       const state = await request(`${mediaPath(identity)}/state/`);
@@ -332,21 +349,22 @@ export async function loadTrack(identity) {
       return {
         tracked: Boolean(state.tracked),
         title: (state.media && state.media.title) || identity.title || '',
-        model: variantModel(identity, state.media, consumption),
+        model: variantModel(identity, state.media, consumption, trackTime),
         tabs: [],
       };
     }
     return {
       tracked: false,
       title: identity.title || '',
-      model: variantModel(identity, null, null),
+      model: variantModel(identity, null, null, trackTime),
       tabs: [],
     };
   }
   const state = await request(`${mediaPath(identity)}/state/`);
   let detail = null;
   try { detail = await request(`${mediaPath(identity)}/`); } catch { detail = null; }
-  const consumption = currentConsumption(state);
+  const consumption = fresh ? null : currentConsumption(state);
+  const tracked = Boolean(state.tracked) && !fresh;
   const episodic = EPISODIC_TYPES.has(identity.mediaType);
   const tabs = [
     { id: 'tags', label: 'Tags', kind: 'tags', status: 'loading', error: '' },
@@ -366,23 +384,28 @@ export async function loadTrack(identity) {
   ]);
   const title = (detail && detail.title) || (state.media && state.media.title) || identity.title || '';
   return {
-    tracked: Boolean(state.tracked),
+    tracked,
     title,
     model: {
       mediaType: identity.mediaType,
       title,
       subtitle: identity.subtitle || '',
       action: `${mediaPath(identity)}/`,
-      deleteAction: state.tracked ? `${mediaPath(identity)}/` : '',
+      deleteAction: tracked ? `${mediaPath(identity)}/` : '',
       csrfToken: config.csrfToken,
-      fields: trackFields(identity, detail, consumption),
+      fields: trackFields(identity, detail, consumption, trackTime),
       notes: { value: (consumption && consumption.notes) || '', label: 'Notes' },
-      submitLabel: state.tracked ? 'Update' : 'Add',
+      submitLabel: tracked ? 'Update' : 'Add',
       deleteLabel: 'Delete',
-      trackTime: false,
+      trackTime,
     },
     tabs: loaded,
   };
+}
+
+/** Tags the viewer has, marked with the ones applied to this item. */
+export async function loadTags(identity) {
+  return (await loadTagTab(identity)).tags;
 }
 
 export async function loadTrackTabs(identity) {
@@ -441,10 +464,11 @@ function trackBody(model, values) {
     const value = values[fieldDefinition.name];
     if (value === undefined) continue;
     if (value === '') {
-      body[fieldDefinition.name] = null;
+      body[fieldDefinition.name] = fieldDefinition.name === 'entry_source' ? '' : null;
       continue;
     }
-    if (fieldDefinition.type === 'number') body[fieldDefinition.name] = Number(value);
+    if (fieldDefinition.type === 'date') body[fieldDefinition.name] = trackDate(value);
+    else if (fieldDefinition.type === 'number') body[fieldDefinition.name] = Number(value);
     else body[fieldDefinition.name] = value;
   }
   if (values.notes !== undefined) body.notes = values.notes || '';
@@ -455,7 +479,7 @@ export async function saveTrack(identity, model, values, tracked) {
   if (model && model.variant === 'episode') {
     await request(episodeActionPath(identity, 'watch'), {
       method: 'POST',
-      body: { end_date: values.end_date || null },
+      body: { end_date: trackDate(values.end_date) },
     });
     return { tracked: true };
   }
@@ -467,7 +491,7 @@ export async function saveTrack(identity, model, values, tracked) {
           show_id: identity.showId,
           episode_id: identity.trackId,
           episode_uuid: identity.mediaId,
-          end_date: values.end_date || null,
+          end_date: trackDate(values.end_date),
         },
       });
     } else {
@@ -477,7 +501,7 @@ export async function saveTrack(identity, model, values, tracked) {
           album_id: identity.albumId,
           track_id: identity.trackId,
           recording_id: identity.recordingId,
-          end_date: values.end_date || null,
+          end_date: trackDate(values.end_date),
         },
       });
     }
@@ -500,9 +524,25 @@ export async function saveTrack(identity, model, values, tracked) {
   return { tracked: true };
 }
 
+/**
+ * Remove the latest recorded watch of an episode. Dropping is a different
+ * write (it marks the episode dropped); an unwatch deletes the play itself.
+ * The server picks the most recent watch, so the client never guesses from a page.
+ */
+export async function unwatchEpisode(identity) {
+  try {
+    await request(episodeActionPath(identity, 'watch'), { method: 'DELETE' });
+  } catch (error) {
+    // 404: the episode has no watch (or its season is untracked); nothing to remove.
+    if (error?.status === 404) return { removed: false };
+    throw error;
+  }
+  return { removed: true };
+}
+
 export async function deleteTrack(identity, model) {
   if (model && model.variant === 'episode') {
-    await request(episodeActionPath(identity, 'drop'), { method: 'POST', body: {} });
+    await unwatchEpisode(identity);
     return;
   }
   await request(`${mediaPath(identity)}/`, { method: 'DELETE' });

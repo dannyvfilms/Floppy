@@ -1,3 +1,4 @@
+from bs4 import BeautifulSoup
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.test import TestCase
@@ -39,6 +40,9 @@ class CreateEntryViewTests(TestCase):
         self.assertEqual(response.context["media_types"], MediaTypes.values)
         self.assertContains(response, "data-parent-picker-root", count=2)
         self.assertNotContains(response, "onclick=\"document.getElementById('parent-tv-input')")
+        soup = BeautifulSoup(response.content, "html.parser")
+        for host in soup.select("[data-parent-picker-root]"):
+            self.assertIsNotNone(host.parent.find("script", id=host["data-props-id"]))
 
     def test_create_entry_post_movie(self):
         """Test creating a movie entry."""

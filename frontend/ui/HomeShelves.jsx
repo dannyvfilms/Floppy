@@ -19,19 +19,6 @@ export function shelfCardWidth(viewportWidth, mobileGridLayout = 'compact') {
   return SHELF_CARD_WIDTHS.phone;
 }
 
-// Video and mixed-media shelves keep the release card widths: landscape video
-// rows are 17rem, mixed rows give square artwork 16.5rem and video 29.33rem.
-// On phones they scale from the poster width the way the release CSS did.
-export function railItemWidth(row, item, baseWidth) {
-  const phone = baseWidth <= SHELF_CARD_WIDTHS.phone;
-  if (row?.videoLandscape) return phone ? 168 : 272;
-  if (row?.mixedMedia) {
-    if (item?.card?.video) return phone ? Math.round((baseWidth * 8) / 3) : 469;
-    if (item?.card?.shape === 'square') return phone ? Math.round(baseWidth * 1.5) : 264;
-  }
-  return baseWidth;
-}
-
 const DEFAULT_PALETTE = {
   text: '#fafafa',
   textSecondary: '#d4d4d8',
@@ -154,7 +141,6 @@ const RailRow = React.memo(function RailRow({
     loadingMore={loadingMore}
     sorting={sorting}
     itemWidth={itemWidth}
-    getItemWidth={item => railItemWidth(row, item, itemWidth)}
     items={items}
     viewAll={row.viewAll ? { label: row.viewAll.label, onPress: () => onOpenLink?.(row.viewAll.href, null, row) } : undefined}
     onTitlePress={row.url && onOpenRowTitle && (canOpenRowTitle ? canOpenRowTitle(row.url) : true) ? () => onOpenRowTitle(row.url, row) : undefined}

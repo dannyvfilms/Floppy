@@ -281,7 +281,7 @@ function main() {
   errors.push(...inspectUniversal(readFileSync(resolve(root, 'native-proof/App.js'), 'utf8'), 'native-proof/App.js'));
   const repositoryFiles = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: root, encoding: 'utf8' }).split('\0');
   for (const path of repositoryFiles) {
-    if (!/\.(jsx|tsx)$/.test(path) || path.startsWith('frontend/')) continue;
+    if (!/\.(jsx|tsx)$/.test(path) || path.startsWith('frontend/') || !existsSync(resolve(root, path))) continue; // deleted in the working tree: nothing to inspect
     if (isNativeAppShellPresentation(path)) {
       errors.push(...inspectUniversal(readFileSync(resolve(root, path), 'utf8'), path, { nativeAdapter: true, shell: true }));
       continue;

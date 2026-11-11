@@ -14,7 +14,7 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
 from rest_framework.authentication import SessionAuthentication
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
 import app.providers.tmdb
@@ -35,8 +35,10 @@ from app.services.tracking_hydration import ensure_item_metadata
 from app.templatetags.app_tags import media_url
 from integrations.delivery import get_or_record_receipt
 from integrations.models import IntegrationToken
+from integrations.oauth_scope_info import has_full_account_access
 
 from .authentication import APIKeyAuthentication, BearerAuthentication
+from .errors import failure_response
 from .helpers import paginate_data, parse_limit_offset, try_parse_datetime_input
 
 logger = logging.getLogger(__name__)
@@ -737,9 +739,8 @@ class PlaybackProgressView(drf_views.APIView):
                 create=True,
             )
         except Exception as e:
-            return Response(
-                {"detail": "Could not resolve media.", "errors": str(e)},
-                status=HTTP.NOT_FOUND,
+            return failure_response(
+                "Could not resolve media.", e, status=HTTP.NOT_FOUND
             )
         if item is None:
             return Response(
@@ -841,9 +842,8 @@ class PlaybackProgressView(drf_views.APIView):
                 create=False,
             )
         except Exception as e:
-            return Response(
-                {"detail": "Could not resolve media.", "errors": str(e)},
-                status=HTTP.NOT_FOUND,
+            return failure_response(
+                "Could not resolve media.", e, status=HTTP.NOT_FOUND
             )
         if item is None:
             return Response(
@@ -987,13 +987,29 @@ class NowPlayingView(drf_views.APIView):
         return Response(payload, status=HTTP.OK)
 
 
-class HomePlaybackCardsView(drf_views.APIView):
-    """Session-only Home playback cards and their native check-in controls."""
+class FirstPartyCredential(BasePermission):
+    """A browser session or the Floppy app's own full-access Bearer token.
 
-    # Playback controls are user actions, not a capability for integration
-    # tokens. SessionAuthentication also enforces CSRF on the action request.
-    authentication_classes = (SessionAuthentication,)
-    permission_classes = (IsAuthenticated,)
+    Playback controls are user actions, not a capability for integration
+    tokens: scoped tokens and the legacy account key are refused.
+    """
+
+    def has_permission(self, request, view):
+        """Allow a session login or a first-party full-account token."""
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if isinstance(request.successful_authenticator, SessionAuthentication):
+            return True
+        return has_full_account_access(request.auth)
+
+
+class HomePlaybackCardsView(drf_views.APIView):
+    """Home playback cards and their native check-in controls."""
+
+    # A session (CSRF enforced by SessionAuthentication) or the built-in
+    # app's Bearer device token; see FirstPartyCredential.
+    authentication_classes = (BearerAuthentication, SessionAuthentication)
+    permission_classes = (IsAuthenticated, FirstPartyCredential)
 
     @extend_schema(
         description="Return the signed-in user's active Home playback cards.",

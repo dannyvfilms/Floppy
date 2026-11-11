@@ -15,6 +15,7 @@ from django_celery_beat.models import PeriodicTask
 from requests import Response
 
 from app.providers import credentials
+from integrations import pending_auth
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError
 from integrations.models import PlexAccount
@@ -548,7 +549,7 @@ class TraktDeviceFlowViewTests(TestCase):
             reverse("trakt_device_verify"),
             fetch_redirect_response=False,
         )
-        state = self.client.session[TRAKT_DEVICE_SESSION_KEY]
+        state = pending_auth.get(TRAKT_DEVICE_SESSION_KEY, self.user.pk)
         self.assertEqual(state["device_code"], "device-code")
         self.assertEqual(state["mode"], "new")
         self.assertEqual(state["frequency"], "once")
@@ -573,7 +574,7 @@ class TraktDeviceFlowViewTests(TestCase):
         poll.assert_called_once_with("device-code")
         self.assertEqual(response.status_code, 204)
         self.assertNotIn("HX-Redirect", response)
-        self.assertIn(TRAKT_DEVICE_SESSION_KEY, self.client.session)
+        self.assertIsNotNone(pending_auth.get(TRAKT_DEVICE_SESSION_KEY, self.user.pk))
 
     def test_poll_success_queues_the_import(self):
         self._start()
@@ -599,7 +600,7 @@ class TraktDeviceFlowViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 204)
         self.assertEqual(response["HX-Redirect"], reverse("import_data"))
-        self.assertNotIn(TRAKT_DEVICE_SESSION_KEY, self.client.session)
+        self.assertIsNone(pending_auth.get(TRAKT_DEVICE_SESSION_KEY, self.user.pk))
 
     def test_poll_surfaces_a_denied_authorization(self):
         self._start()
@@ -611,17 +612,15 @@ class TraktDeviceFlowViewTests(TestCase):
 
         self.assertEqual(response.status_code, 204)
         self.assertEqual(response["HX-Redirect"], reverse("import_data"))
-        self.assertNotIn(TRAKT_DEVICE_SESSION_KEY, self.client.session)
+        self.assertIsNone(pending_auth.get(TRAKT_DEVICE_SESSION_KEY, self.user.pk))
         messages = [str(m) for m in get_messages(response.wsgi_request)]
         self.assertIn("Trakt authorization was denied.", messages)
 
     def test_expired_state_never_calls_trakt(self):
         self._start()
-        session = self.client.session
-        state = session[TRAKT_DEVICE_SESSION_KEY]
+        state = pending_auth.get(TRAKT_DEVICE_SESSION_KEY, self.user.pk)
         state["expires_at"] = (timezone.now() - timedelta(seconds=1)).isoformat()
-        session[TRAKT_DEVICE_SESSION_KEY] = state
-        session.save()
+        pending_auth.put(TRAKT_DEVICE_SESSION_KEY, self.user.pk, state)
 
         with patch("integrations.views.trakt.poll_device_token") as poll:
             response = self.client.get(reverse("trakt_device_poll"))
@@ -629,6 +628,6 @@ class TraktDeviceFlowViewTests(TestCase):
         poll.assert_not_called()
         self.assertEqual(response.status_code, 204)
         self.assertEqual(response["HX-Redirect"], reverse("import_data"))
-        self.assertNotIn(TRAKT_DEVICE_SESSION_KEY, self.client.session)
+        self.assertIsNone(pending_auth.get(TRAKT_DEVICE_SESSION_KEY, self.user.pk))
         messages = [str(m) for m in get_messages(response.wsgi_request)]
         self.assertIn("The Trakt authorization code expired. Start again.", messages)

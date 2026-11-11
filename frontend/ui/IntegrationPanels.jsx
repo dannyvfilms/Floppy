@@ -277,7 +277,7 @@ export function SeerrRequestsCard({ requests = [], error = '', labels, palette, 
     {error ? <Text accessibilityLiveRegion="assertive" style={[styles.errorText, { color: colors.danger }]}>{error}</Text>
       : requests.length ? <View style={styles.requestRows}>
         {requests.map((request, index) => <View key={`${request.by}-${request.created || index}`} style={styles.requestRow}>
-          <Text numberOfLines={1} style={[styles.requestBy, { color: colors.textSecondary }]}>{request.by || '—'}</Text>
+          <Text numberOfLines={1} style={[styles.requestBy, { color: colors.textSecondary }]}>{request.by || '-'}</Text>
           <Text style={[styles.requestWhen, { color: colors.textMuted }]}>{formatDate(request.when || request.created)}</Text>
           <StatusBadge label={request.status} tone="neutral" colors={colors} />
         </View>)}

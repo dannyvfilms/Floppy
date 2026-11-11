@@ -42,18 +42,18 @@ const defaultButtonPalette = {
 const defaultCacheCopy = {
   search: {
     title: 'Clear Search Cache?',
-    message: 'This is the one shared cache here — clearing it affects every user on this Floppy instance, not just you.',
+    message: 'This is the one shared cache here. Clearing it affects every user on this Floppy instance, not just you.',
     warning: 'No data is lost. The next search anyone makes will be a bit slower while it re-fetches from TMDB, TVDB, and the other providers.',
   },
   history: {
     title: 'Clear History Cache?',
-    message: 'Only affects your own account. Your watch history itself is not touched — this only clears the cached, day-by-day rendering of it.',
+    message: 'Only affects your own account. Your watch history itself is not touched. This only clears the cached, day-by-day rendering of it.',
     warning: 'The History page will rebuild itself the next time you open it, which may take a moment the first time.',
   },
   statistics: {
     title: 'Clear Statistics Cache?',
-    message: 'Only affects your own account. No underlying data is touched — only the cached charts and totals.',
-    warning: 'Statistics rebuild in the background rather than on your next page load — expect placeholder values for a bit until that finishes.',
+    message: 'Only affects your own account. No underlying data is touched, only the cached charts and totals.',
+    warning: 'Statistics rebuild in the background rather than on your next page load. Expect placeholder values for a bit until that finishes.',
   },
   discover: {
     title: 'Clear Discover Cache?',
@@ -68,10 +68,10 @@ const defaultCacheCopy = {
 };
 
 const defaultCacheRows = [
-  { key: 'search', title: 'Search Cache', description: 'Provider search results — shared instance-wide' },
-  { key: 'history', title: 'History Cache', description: 'Your cached History page — just you' },
-  { key: 'statistics', title: 'Statistics Cache', description: 'Your cached Statistics page — just you' },
-  { key: 'discover', title: 'Discover Cache', description: 'Your recommendation rows & taste profile — just you' },
+  { key: 'search', title: 'Search Cache', description: 'Provider search results (shared instance-wide)' },
+  { key: 'history', title: 'History Cache', description: 'Your cached History page (just you)' },
+  { key: 'statistics', title: 'Statistics Cache', description: 'Your cached Statistics page (just you)' },
+  { key: 'discover', title: 'Discover Cache', description: 'Your recommendation rows & taste profile (just you)' },
 ];
 
 const defaultCacheConfirms = Object.fromEntries(
@@ -116,7 +116,7 @@ const defaultLabels = {
   },
   cache: {
     title: 'Cache Management',
-    intro: 'Floppy caches computed pages (History, Statistics, Discover) and provider search results so they load fast. If one looks stale or wrong, clearing it forces a rebuild from your actual data — nothing about your library, watch history, ratings, or lists is touched by any of these.',
+    intro: 'Floppy caches computed pages (History, Statistics, Discover) and provider search results so they load fast. If one looks stale or wrong, clearing it forces a rebuild from your actual data. Nothing about your library, watch history, ratings, or lists is touched by any of these.',
     clear: 'Clear',
     clearAll: 'Clear All Caches',
     clearing: '{kind} cache is clearing…',
@@ -313,6 +313,7 @@ export function ImageCacheCard({
     {isSuperuser ? <>
       <View style={styles.actions}>
         <Pressable accessibilityRole="checkbox" accessibilityLabel={copy.toggleLabel}
+          aria-checked={draft}
           accessibilityState={{ checked: draft }} onPress={() => setDraft(value => !value)}
           style={({ pressed }) => [styles.checkRow, pressed && styles.pressed]}>
           <View style={[styles.checkbox, { borderColor: colors.border, backgroundColor: colors.surface }]}>

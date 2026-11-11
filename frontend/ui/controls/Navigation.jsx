@@ -234,6 +234,7 @@ export function Tabs({
     {tabs.map(({ item, index, key, isSelected, press, disabled }) => <Pressable
       key={String(key) + ':' + index}
       accessibilityRole="tab"
+      aria-selected={isSelected}
       accessibilityLabel={item?.label == null ? String(key) : String(item.label)}
       accessibilityState={{ selected: isSelected, disabled }}
       disabled={disabled}

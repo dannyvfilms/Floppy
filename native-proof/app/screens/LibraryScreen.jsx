@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { AlphabetBar } from '../../../frontend/ui/AlphabetBar.native';
+import { getActiveAuthSession } from '../data/authSession';
 import { LibraryPageView } from '../../../frontend/pages/LibraryPageView';
 import { FilterBar } from '../../../frontend/ui/FilterBar';
 import { Button } from '../../../frontend/ui/Button';
 import { Screen } from '../components/Screen';
 import { createLibraryTransport, mediaRowsFromPayload } from '../data/libraryTransport';
-import { libraryQuery } from '../data/libraryTransportCore';
+import { FILTER_MODES, libraryFilterSections, libraryQuery } from '../data/libraryTransportCore';
 import { palette, radius, spacing } from '../theme';
 import LibraryGrid from '../surfaces/LibraryGrid';
 import LibraryBulkActions from '../surfaces/LibraryBulkActions';
@@ -56,6 +58,42 @@ const RANGE_UNITS = [
   { value: 'days', label: 'Days' }, { value: 'weeks', label: 'Weeks' },
   { value: 'months', label: 'Months' }, { value: 'years', label: 'Years' },
 ];
+// The A to Z rail the web shows from 768px up: All, #, A-Z.
+const RAIL_MIN_WIDTH = 768;
+const ALPHABET = [
+  { value: '', label: 'All', caption: true, accessibilityLabel: 'All titles' },
+  { value: '0-9', label: '#', accessibilityLabel: 'Titles starting with a number' },
+  ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter => ({
+    value: letter.toLowerCase(), label: letter, accessibilityLabel: `Titles starting with ${letter}`,
+  })),
+];
+const RAIL_PALETTE = {
+  interactiveStyle: {},
+  focusStyle: {},
+  badgeHover: palette.surfaceMuted,
+  selectedText: palette.accent,
+  mutedText: palette.textMuted,
+  fontFamily: undefined,
+  captionSize: 10,
+  letterSize: 12,
+};
+// Web's music Media Type menu (filter_menu.html) lists Artists, Albums and Tracks;
+// the podcast library lists shows.
+const MUSIC_SUBVIEWS = [['artists', 'Artists'], ['albums', 'Albums'], ['items', 'Tracks']];
+const ENTITY_SUBVIEWS = ['artists', 'albums', 'shows'];
+const ALL_MATCHING_LIMIT = 200;
+
+// The server stores the status filter by status name; the query names them in lower case.
+const STORED_STATUS = { planning: 'Planning', in_progress: 'In progress', paused: 'Paused', completed: 'Completed', dropped: 'Dropped' };
+const QUERY_STATUS = Object.fromEntries(Object.entries(STORED_STATUS).map(([query, stored]) => [stored, query]));
+
+function defaultSubview(mediaType) {
+  if (mediaType === 'comic') return 'comics';
+  if (mediaType === 'music') return 'artists';
+  if (mediaType === 'podcast') return 'shows';
+  return 'items';
+}
+
 const buttonPalette = {
   primary: { background: palette.accentStrong, pressed: '#4338ca', hovered: '#4338ca', text: '#ffffff', border: 'transparent' },
   surface: { background: palette.surfaceStrong, pressed: palette.surfaceMuted, hovered: palette.surfaceMuted, text: palette.text, border: palette.border },
@@ -81,6 +119,7 @@ const BASE_FILTERS = mediaType => ({
   },
   fields: { genre: '', year: '', tags: [] },
   modes: { tags: 'or' },
+  initial: '',
 });
 
 // One query-string-to-filters mapping for saved views and for rows that open
@@ -95,9 +134,15 @@ export function filtersFromQuery(params, current) {
     rating: params.get('rating') || 'all',
     collection: params.get('collection') || 'all',
     progress: params.get('progress') || 'all',
+    initial: params.get('initial') || '',
     fields: { ...current.fields, genre: params.get('genre') || '', year: params.get('year') || '',
-      tags: params.getAll('tags') },
-    modes: { ...current.modes, tags: params.get('tag_mode') || 'or' },
+      rating: params.get('rating') || 'all', collection: params.get('collection') || 'all',
+      progress: params.get('progress') || 'all', release: params.get('release') || 'all',
+      ...Object.fromEntries(['implied_genre', 'source', 'media_status', 'language', 'country', 'format', 'author', 'provider']
+        .map(key => [key, params.get(key) || ''])),
+      platform: params.getAll('platform'),
+      tags: [...params.getAll('tag'), ...params.getAll('tags')] },
+    modes: { ...current.modes, tags: params.get('tag_mode') || 'or', platform: params.get('platform_mode') || 'or' },
     ranges: {
       ...current.ranges,
       rating: { ...current.ranges.rating, from: params.get('rating_min') || '', to: params.get('rating_max') || '' },
@@ -114,13 +159,34 @@ export function filtersFromQuery(params, current) {
   };
 }
 
-export default function LibraryScreen({ params, navigate }) {
+// One page instance per library, so the filters, rows and selection of one
+// media type never carry into the next one the drawer opens.
+export default function LibraryScreen(props) {
+  const { mediaType, query, tag } = props.params || {};
+  return <LibraryPage key={`${mediaType || ''}|${query || ''}|${tag || ''}`} {...props} />;
+}
+
+function LibraryPage({ params, navigate }) {
   const mediaType = params?.mediaType;
   const title = MEDIA_TYPE_LABELS[mediaType] || 'Library';
   const [transport] = useState(() => createLibraryTransport());
-  const [filters, setFilters] = useState(() => (params?.query
-    ? filtersFromQuery(new URLSearchParams(params.query), BASE_FILTERS(mediaType))
-    : BASE_FILTERS(mediaType)));
+  const [filters, setFilters] = useState(() => {
+    const base = params?.query
+      ? filtersFromQuery(new URLSearchParams(params.query), BASE_FILTERS(mediaType))
+      : BASE_FILTERS(mediaType);
+    // The Tags page opens a library already narrowed to one tag.
+    return params?.tag ? { ...base, fields: { ...base.fields, tags: [String(params.tag)] } } : base;
+  });
+  const { width: windowWidth } = useWindowDimensions();
+  const isServer = transport.mode === 'server';
+  const hasPreferences = isServer && Boolean(mediaType) && mediaType !== 'all';
+  // A library that arrives with its own filters (a Home row, a tag) keeps them.
+  const usesSavedPreferences = hasPreferences && !params?.query && !params?.tag;
+  const [prefs, setPrefs] = useState({ loaded: !usesSavedPreferences, columns: [] });
+  const savedPrefs = useRef(null);
+  const [filterData, setFilterData] = useState(null);
+  const [notice, setNotice] = useState('');
+  const [selectingAll, setSelectingAll] = useState(false);
   const [search, setSearch] = useState('');
   const [querySearch, setQuerySearch] = useState('');
   const [rows, setRows] = useState([]);
@@ -135,7 +201,7 @@ export default function LibraryScreen({ params, navigate }) {
   const [savedViews, setSavedViews] = useState([]);
   const [savedViewName, setSavedViewName] = useState('');
   const [tagOptions, setTagOptions] = useState([]);
-  const [subview, setSubview] = useState(params?.subview || (mediaType === 'comic' ? 'comics' : 'items'));
+  const [subview, setSubview] = useState(params?.subview || defaultSubview(mediaType));
   const [groupBy, setGroupBy] = useState(params?.groupBy || 'item');
   const queryState = useMemo(() => ({
     mediaType: filters.mediaTypes?.length === 1 ? filters.mediaTypes[0]
@@ -151,6 +217,7 @@ export default function LibraryScreen({ params, navigate }) {
     rating: filters.rating,
     collection: filters.collection,
     progress: filters.progress,
+    initial: filters.initial,
     group_by: groupBy,
     subview,
   }), [filters, groupBy, mediaType, querySearch, subview]);
@@ -167,6 +234,8 @@ export default function LibraryScreen({ params, navigate }) {
       setLoading(false);
       return undefined;
     }
+    // The saved layout, sort and status arrive first, so the page loads once.
+    if (!prefs.loaded) return undefined;
     let active = true;
     activeQueryKey.current = queryKey;
     setSelectionMode(false);
@@ -193,7 +262,58 @@ export default function LibraryScreen({ params, navigate }) {
         setLoading(false);
       });
     return () => { active = false; };
-  }, [transport, queryState, queryKey, reloadToken]);
+  }, [transport, queryState, queryKey, reloadToken, prefs.loaded]);
+
+  // The viewer's saved layout, sort, status and table columns open the page the way the web does.
+  useEffect(() => {
+    if (!hasPreferences) return undefined;
+    let active = true;
+    transport.loadPreferences(mediaType).then(payload => {
+      if (!active) return;
+      if (usesSavedPreferences && payload && !payload.local) {
+        const next = {
+          view: payload.layout === 'table' ? 'table' : 'grid',
+          sort: payload.sort || 'date_added',
+          direction: payload.direction || 'desc',
+          statuses: (Array.isArray(payload.statuses) ? payload.statuses : [])
+            .map(value => QUERY_STATUS[value]).filter(Boolean),
+        };
+        savedPrefs.current = { ...next, statuses: next.statuses.join(',') };
+        setFilters(current => ({ ...current, ...next }));
+      }
+      setPrefs({ loaded: true, columns: payload?.columns || [] });
+    }).catch(() => { if (active) setPrefs({ loaded: true, columns: [] }); });
+    return () => { active = false; };
+  }, [transport, hasPreferences, usesSavedPreferences, mediaType]);
+
+  // Changing layout, sort, direction or status stores it for the next visit,
+  // as the web media list does with its URL parameters.
+  useEffect(() => {
+    if (!usesSavedPreferences || !prefs.loaded) return;
+    const current = { view: filters.view, sort: filters.sort, direction: filters.direction, statuses: (filters.statuses || []).join(',') };
+    const last = savedPrefs.current;
+    savedPrefs.current = current;
+    if (!last) return;
+    const patch = {};
+    if (current.view !== last.view) patch.layout = current.view;
+    if (current.sort !== last.sort) patch.sort = current.sort;
+    if (current.direction !== last.direction) patch.direction = current.direction;
+    // "No Status" is not a stored status: it applies to this visit only.
+    if (current.statuses !== last.statuses) patch.statuses = (filters.statuses || []).map(value => STORED_STATUS[value]).filter(Boolean);
+    if (Object.keys(patch).length) transport.savePreferences(mediaType, patch).catch(() => {});
+  }, [transport, usesSavedPreferences, mediaType, prefs.loaded, filters.view, filters.sort, filters.direction, filters.statuses]);
+
+  // The filter menu's option lists come from the server, like the web menu. A failed
+  // load leaves the sections that need no list; nothing is made up in their place.
+  const entitySubview = ENTITY_SUBVIEWS.includes(subview);
+  useEffect(() => {
+    if (!hasPreferences || entitySubview) { setFilterData(null); return undefined; }
+    let active = true;
+    transport.loadFilterOptions({ ...queryState, fields: {}, ranges: {}, statuses: filters.statuses })
+      .then(payload => { if (active) setFilterData(payload && !payload.local ? payload : null); })
+      .catch(() => { if (active) setFilterData(null); });
+    return () => { active = false; };
+  }, [transport, hasPreferences, entitySubview, mediaType, filters.statuses, reloadToken]);
 
   useEffect(() => {
     if (transport.mode !== 'server' || !mediaType || mediaType === 'all') {
@@ -213,7 +333,7 @@ export default function LibraryScreen({ params, navigate }) {
     if (transport.mode !== 'server') return undefined;
     let active = true;
     transport.loadTags().then(payload => {
-      if (active) setTagOptions((payload?.results || []).map(tag => ({ value: String(tag.id), label: tag.name })));
+      if (active) setTagOptions((payload?.results || []).map(tag => ({ value: String(tag.name), label: tag.name })));
     }).catch(() => { if (active) setTagOptions([]); });
     return () => { active = false; };
   }, [transport]);
@@ -326,7 +446,7 @@ export default function LibraryScreen({ params, navigate }) {
     const value = row.media?.item?.release_datetime;
     return value ? String(new Date(value).getUTCFullYear()) : '';
   }).filter(Boolean))].map(value => ({ value, label: value })).sort((a, b) => b.value.localeCompare(a.value));
-  const musicSubview = mediaType === 'music' && ['artists', 'albums'].includes(subview);
+  const musicSubview = entitySubview;
   const filterOptions = {
     mediaTypes: Object.entries(MEDIA_TYPE_LABELS).map(([value, label]) => ({ value, label })),
     statuses: musicSubview ? [
@@ -350,13 +470,69 @@ export default function LibraryScreen({ params, navigate }) {
       })),
     ],
     sections: musicSubview ? [] : [
-      { key: 'genre', label: 'Genre', state: 'genre', type: 'single', clearValue: '', searchable: true, options: dynamicGenres },
-      { key: 'year', label: 'Year', state: 'year', type: 'single', clearValue: '', searchable: true, options: dynamicYears },
+      // Server-built sections replace the two the loaded rows could only approximate.
+      ...(filterData ? libraryFilterSections(filterData) : [
+        { key: 'genre', label: 'Genre', state: 'genre', type: 'single', clearValue: '', searchable: true, options: dynamicGenres },
+        { key: 'year', label: 'Year', state: 'year', type: 'single', clearValue: '', searchable: true, options: dynamicYears },
+      ]),
       { key: 'tags', label: 'Tags', type: 'multi', clearValue: [], searchable: true, modeValue: 'or',
-        modes: [{ value: 'or', label: 'Any' }, { value: 'and', label: 'All' }, { value: 'not', label: 'Not' }],
-        modeState: 'tags', options: tagOptions },
+        modes: FILTER_MODES, modeState: 'tags', options: tagOptions },
     ],
   };
+
+  async function shareView() {
+    setNotice('');
+    try {
+      const url = await transport.shareView({ ...queryState, mediaType });
+      if (!url) throw new Error('The view could not be shared.');
+      const server = String(getActiveAuthSession()?.serverUrl || '').replace(/\/$/, '');
+      await Linking.openURL(/^https?:/.test(url) ? url : `${server}${url}`);
+    } catch (cause) {
+      setNotice(cause?.message || 'The view could not be shared.');
+    }
+  }
+
+  // Select all selects every item behind the filters, not only the loaded page.
+  async function selectAllMatching() {
+    if (selectingAll) return;
+    setSelectingAll(true);
+    setError('');
+    const requestedQuery = queryKey;
+    try {
+      let all = rows;
+      let more = hasMore;
+      while (more && activeQueryKey.current === requestedQuery) {
+        const payload = await transport.load({ ...queryState, limit: ALL_MATCHING_LIMIT, offset: all.length });
+        const next = mediaRowsFromPayload(payload, { subview });
+        if (!next.length) break;
+        all = [...all, ...next];
+        more = Boolean(payload?.pagination?.next);
+      }
+      if (activeQueryKey.current !== requestedQuery) return;
+      setRows(all);
+      setHasMore(false);
+      setSelectedRows(all.map(row => String(row.id)));
+    } catch (cause) {
+      setError(cause?.message || 'The matching items could not be loaded.');
+    } finally {
+      setSelectingAll(false);
+    }
+  }
+
+  function saveColumns(columns) {
+    transport.savePreferences(mediaType, { columns }).then(next => {
+      if (next?.columns) setPrefs(current => ({ ...current, columns: next.columns }));
+    }).catch(() => {});
+  }
+
+  function openRow(row) {
+    // A podcast show opens its own page; the other rows open their detail.
+    if (row.identity?.entityType === 'show') navigate('Music', { showId: row.identity.entityId });
+    else navigate('Detail', { item: row });
+  }
+
+  const showRail = isServer && windowWidth >= RAIL_MIN_WIDTH && Boolean(mediaType) && mediaType !== 'all';
+  const allSelected = rows.length > 0 && !hasMore && selectedRows.length >= rows.length;
 
   const state = loading
     ? 'loading'
@@ -367,6 +543,11 @@ export default function LibraryScreen({ params, navigate }) {
         : 'empty';
 
   return <Screen chrome={false}>
+    {showRail ? <View style={styles.rail}>
+      <AlphabetBar options={ALPHABET.map(option => ({ ...option, selected: option.value === (filters.initial || '') }))}
+        label="Filter by starting character" palette={RAIL_PALETTE}
+        onNavigate={(_event, option) => setFilters(current => ({ ...current, initial: option.value }))} />
+    </View> : null}
     <LibraryPageView
       title={title}
       subtitle="Everything you track, filtered the way you left it"
@@ -421,25 +602,41 @@ export default function LibraryScreen({ params, navigate }) {
           </Pressable>)}
         </View> : null}
         {mediaType === 'music' ? <View style={styles.modeRow}>
-          {['items', 'artists', 'albums'].map(value => <Pressable key={value}
+          {MUSIC_SUBVIEWS.map(([value, label]) => <Pressable key={value}
             accessibilityRole="button" accessibilityState={{ selected: subview === value }}
             onPress={() => setSubview(value)} style={[styles.modeButton, subview === value && styles.modeButtonActive]}>
-            <Text style={styles.modeText}>{value[0].toUpperCase() + value.slice(1)}</Text>
+            <Text style={styles.modeText}>{label}</Text>
           </Pressable>)}
         </View> : null}
-        {!(mediaType === 'music' && ['artists', 'albums'].includes(subview)) ? <LibraryBulkActions rows={rows} selectedRows={selectedRows}
+        {mediaType === 'podcast' ? <View style={styles.modeRow}>
+          {[['shows', 'Shows'], ['items', 'Episodes']].map(([value, label]) => <Pressable key={value}
+            accessibilityRole="button" accessibilityState={{ selected: subview === value }}
+            onPress={() => setSubview(value)} style={[styles.modeButton, subview === value && styles.modeButtonActive]}>
+            <Text style={styles.modeText}>{label}</Text>
+          </Pressable>)}
+        </View> : null}
+        {!entitySubview ? <LibraryBulkActions rows={rows} selectedRows={selectedRows}
           transport={transport} selecting={selectionMode}
           onToggleSelect={() => { setSelectionMode(value => !value); setSelectedRows([]); }}
           onClearSelection={() => setSelectedRows([])}
           onDone={() => { setReloadToken(value => value + 1); setSelectedRows([]); setSelectionMode(false); }} /> : null}
+        {!entitySubview && (selectionMode || hasPreferences) ? <View style={styles.modeRow}>
+          {selectionMode ? <Button label={total ? `Select all ${total}` : 'Select all'} tone="surface"
+            busy={selectingAll} disabled={selectingAll || allSelected || !rows.length}
+            onPress={selectAllMatching} palette={buttonPalette} /> : null}
+          {hasPreferences && !selectionMode ? <Button label="Share View" tone="surface"
+            onPress={shareView} palette={buttonPalette} /> : null}
+        </View> : null}
+        {notice ? <Text accessibilityRole="alert" style={styles.inlineError}>{notice}</Text> : null}
       </View>}
       content={filters.view === 'grid'
         ? <LibraryGrid rows={rows} selecting={selectionMode} selected={selectedRows} onToggle={toggleSelected} groupBy={groupBy}
-          onOpen={row => navigate('Detail', { item: row })}
+          onOpen={openRow} onOpenHistory={() => navigate('History')}
           onRate={(row, score) => transport.update({ identity: row.identity, values: { score } })
             .then(() => setReloadToken(value => value + 1))
             .catch(cause => setError(cause?.message || 'Rating could not be saved.'))} />
-        : <TableSlot rows={rows} onOpenDetail={row => navigate('Detail', { item: row })}
+        : <TableSlot rows={rows} onOpenDetail={openRow}
+          columnConfig={prefs.columns} onColumnsSave={hasPreferences ? saveColumns : undefined}
           selecting={selectionMode} selectedRows={selectedRows} onToggleSelect={toggleSelected}
           querySort={filters.sort} queryDirection={filters.direction}
           onQuerySort={(sort, direction) => setFilters(current => ({ ...current, sort, direction }))}
@@ -458,6 +655,7 @@ export default function LibraryScreen({ params, navigate }) {
 }
 
 const styles = StyleSheet.create({
+  rail: { position: 'absolute', right: spacing.xs, top: 160, bottom: spacing.lg, width: 32, zIndex: 20 },
   searchGroup: { width: '100%' },
   searchInput: { color: palette.text, backgroundColor: palette.surface, borderColor: palette.border,
     borderWidth: 1, borderRadius: radius.sm, minHeight: 44, paddingHorizontal: spacing.md, fontSize: 15 },

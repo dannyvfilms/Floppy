@@ -1,41 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { SettingsPreferencesView } from '../../../frontend/pages/SettingsPreferencesView';
-import { createSettingsTransport, preferencesToForm } from '../data/settingsTransport';
-import { palette, radius } from '../theme';
+import { actionIcons } from '../../../frontend/ui/actionIcons';
+import { preferencesMeta, preferencesToForm } from '../data/settingsTransport';
+import { applyThemeSetting } from '../themeSync';
+import { getThemeSetting } from '../themeState';
+import SettingsLoadState from './SettingsLoadState';
+import { useSettingsPalettes } from './settingsPalettes';
+import { useSettingsResource } from './useSettingsResource';
+import SettingsSaveBar from './SettingsSaveBar';
 
 export const surface = {
   id: 'SET-PREFERENCES',
   title: 'Preferences and save states',
   where: 'Settings preferences',
   status: 'ported',
-  note: 'Theme, logo, date/time, locale, title, region, week start and general tracking fields render from the shared React Native preferences form with dirty/saving/error state and a polite save bar. Signed-in loads read /api/v1/user/preferences/ and saves PATCH the same route. The endpoint exposes the date/time, currency, week-start, locale, grid, title, rating, session and automation fields, but not theme, logo style, watch-provider region, metadata/UI language, or auto-pause rules, so those controls keep their defaults until a read endpoint exists.',
-};
-
-const settingsPalette = {
-  text: palette.text,
-  textSecondary: palette.textSecondary,
-  textMuted: palette.textMuted,
-  border: palette.border,
-  background: palette.surface,
-  surface: palette.surface,
-  surfaceStrong: palette.surfaceStrong,
-  surfaceMuted: palette.surfaceMuted,
-  badgeBorder: palette.surfaceMuted,
-  badgeBackground: palette.surfaceStrong,
-  badgeText: palette.textSecondary,
-  badgeHover: palette.surfaceMuted,
-  success: palette.success,
-  warning: palette.warning,
-  danger: palette.danger,
-  focusStyle: {},
-};
-
-const buttonPalette = {
-  primary: { background: palette.accentStrong, pressed: '#4338ca', hovered: '#4338ca', text: '#ffffff', border: 'transparent' },
-  surface: { background: palette.surfaceStrong, pressed: palette.surfaceMuted, hovered: palette.surfaceMuted, text: palette.text, border: palette.border },
-  'danger-solid': { background: palette.danger, pressed: '#b91c1c', hovered: '#b91c1c', text: '#ffffff', border: 'transparent' },
-  radius: radius.sm,
-  focusStyle: {},
+  note: 'Every control of the web preferences form loads from and saves to /api/v1/user/preferences/, including theme, logo, region, metadata and interface language, recommendations and auto-pause rules. Region and metadata-language options come from /api/v1/user/preferences/choices/ (the TMDB lists the web page renders). Saving a theme applies it to the running app. Loading, signed-out and error-with-retry states are real; a failed load never enables Save.',
 };
 
 const currencies = [
@@ -47,9 +26,12 @@ const currencies = [
   ['SGD', 'SGD (S$)'], ['HKD', 'HKD (HK$)'],
 ].map(([value, label]) => ({ value, label }));
 
-const sections = [
+const baseSections = [
   {
     id: 'display-layout',
+    icon: actionIcons.settings,
+    footer: 'Card subtitles, the progress bar, and zero ratings are on the Media Cards page.',
+    footerAfter: 'mobile_grid_layout',
     title: 'Display & Layout',
     copy: 'Control content display.',
     fields: [
@@ -71,24 +53,24 @@ const sections = [
       {
         name: 'date_format', label: 'Date Format', help: 'How dates appear.', type: 'select',
         options: [
-          { value: 'system_default', label: 'System default — Aug 12, 2025 / 12 Aug 2025' },
-          { value: 'iso_8601', label: 'ISO 8601 — 2025-08-12' },
-          { value: 'month_d_yyyy', label: 'Month D, YYYY — Aug 12, 2025' },
-          { value: 'd_mon_yyyy', label: 'D Mon YYYY — 12 Aug 2025' },
-          { value: 'm_d_yyyy', label: 'M/D/YYYY — 08/12/2025' },
-          { value: 'd_m_yyyy', label: 'D/M/YYYY — 12/08/2025' },
-          { value: 'dd_mm_yyyy', label: 'DD.MM.YYYY — 12.08.2025' },
-          { value: 'yyyy_mm_dd', label: 'YYYY/MM/DD — 2025/08/12' },
+          { value: 'system_default', label: 'System default: Aug 12, 2025 / 12 Aug 2025' },
+          { value: 'iso_8601', label: 'ISO 8601: 2025-08-12' },
+          { value: 'month_d_yyyy', label: 'Month D, YYYY: Aug 12, 2025' },
+          { value: 'd_mon_yyyy', label: 'D Mon YYYY: 12 Aug 2025' },
+          { value: 'm_d_yyyy', label: 'M/D/YYYY: 08/12/2025' },
+          { value: 'd_m_yyyy', label: 'D/M/YYYY: 12/08/2025' },
+          { value: 'dd_mm_yyyy', label: 'DD.MM.YYYY: 12.08.2025' },
+          { value: 'yyyy_mm_dd', label: 'YYYY/MM/DD: 2025/08/12' },
         ],
       },
       {
         name: 'time_format', label: 'Time Format', help: 'How times appear.', type: 'select',
         options: [
-          { value: 'system_default', label: 'System default — 6:45 PM / 18:45' },
-          { value: 'h_mm_ampm', label: '12-hour (h:mm AM/PM) — 6:45 PM' },
-          { value: 'hh_mm_ampm', label: '12-hour, leading zero (hh:mm AM/PM) — 06:45 PM' },
-          { value: 'hh_mm', label: '24-hour (HH:mm) — 18:45' },
-          { value: 'hh_mm_ss', label: '24-hour with seconds (HH:mm:ss) — 18:45:00' },
+          { value: 'system_default', label: 'System default: 6:45 PM / 18:45' },
+          { value: 'h_mm_ampm', label: '12-hour (h:mm AM/PM): 6:45 PM' },
+          { value: 'hh_mm_ampm', label: '12-hour, leading zero (hh:mm AM/PM): 06:45 PM' },
+          { value: 'hh_mm', label: '24-hour (HH:mm): 18:45' },
+          { value: 'hh_mm_ss', label: '24-hour with seconds (HH:mm:ss): 18:45:00' },
         ],
       },
       {
@@ -122,58 +104,37 @@ const sections = [
   },
   {
     id: 'language-metadata',
+    icon: actionIcons.globe,
     title: 'Language & Metadata',
     copy: 'Manage languages and providers.',
     fields: [
       {
         name: 'watch_provider_region', label: 'Provider Region', help: 'Provider region.', type: 'select',
-        options: [
-          { value: 'UNSET', label: 'Not set' },
-          { value: 'US', label: 'United States' },
-          { value: 'GB', label: 'United Kingdom' },
-          { value: 'DE', label: 'Germany' },
-          { value: 'FR', label: 'France' },
-          { value: 'JP', label: 'Japan' },
-        ],
+        options: [],
       },
       {
         name: 'metadata_language', label: 'Metadata Language', help: 'Metadata language.', type: 'select',
-        options: [
-          { value: '', label: 'Server Default (en)' },
-          { value: 'en', label: 'English' },
-          { value: 'es-ES', label: 'Spanish (Spain)' },
-          { value: 'fr', label: 'French' },
-          { value: 'de-DE', label: 'German' },
-          { value: 'ja', label: 'Japanese' },
-          { value: 'ko-KR', label: 'Korean' },
-          { value: 'zh-CN', label: 'Chinese (Simplified)' },
-        ],
+        options: [],
       },
       {
         name: 'ui_language', label: 'UI Language', help: 'Interface display language.', type: 'select',
-        options: [
-          { value: 'auto', label: 'Auto (browser language)' },
-          { value: 'en', label: 'English' },
-          { value: 'de', label: 'Deutsch' },
-          { value: 'es', label: 'Español' },
-          { value: 'fr', label: 'Français' },
-          { value: 'it', label: 'Italiano' },
-        ],
+        options: [],
       },
     ],
   },
   {
     id: 'tracking-interaction',
+    icon: actionIcons.pulse,
     title: 'Tracking & Interaction',
     copy: 'Control how Floppy tracks and interacts with your activity.',
     fields: [
       {
         name: 'hide_completed_recommendations', type: 'toggle', label: 'Hide Completed',
-        help: 'Hide completed items.', offLabel: 'Show completed', onLabel: 'Hide completed',
+        help: 'Hide completed items.', offLabel: 'Disabled - show completed items', onLabel: 'Enabled - hide completed items',
       },
       {
         name: 'show_recommendations', type: 'toggle', label: 'Recommendations',
-        help: 'Show recommendations on detail pages.', offLabel: 'Hidden', onLabel: 'Shown',
+        help: 'Show recommendations on detail pages.', offLabel: 'Disabled - hide recommendations', onLabel: 'Enabled - show recommendations',
       },
       {
         name: 'rating_scale', label: 'Rating Scale', help: 'Choose a rating scale, or turn ratings off.', type: 'select',
@@ -195,8 +156,8 @@ const sections = [
       {
         name: 'game_logging_style', label: 'Game Logging', help: 'Game history style.', type: 'select',
         options: [
-          { value: 'sessions', label: 'Sessions — new entry per play; exact history' },
-          { value: 'repeats', label: 'Repeats — update one entry; spreads time across range' },
+          { value: 'sessions', label: 'Sessions: new entry per play; exact history' },
+          { value: 'repeats', label: 'Repeats: update one entry; spreads time across range' },
         ],
       },
       {
@@ -216,63 +177,87 @@ const sections = [
     ],
   },
   {
-    id: 'general',
-    title: 'General',
-    copy: 'Calendar and library automation.',
+    id: 'automation',
+    icon: actionIcons.signal,
+    title: 'Automation',
+    copy: 'Manage automated rules.',
     fields: [
       {
-        name: 'week_start_day', label: 'Week Start', help: 'First day in calendars and date ranges.', type: 'select',
-        options: [
-          { value: 'monday', label: 'Monday' },
-          { value: 'sunday', label: 'Sunday' },
-        ],
-      },
-      {
         name: 'auto_pause_rules', type: 'autoPause', label: 'Library Management',
-        help: 'Pause in-progress items after a set number of weeks.',
-        addLabel: 'Add auto-pause rule',
-        addAnotherLabel: 'Enabled. Add another rule.',
+        help: 'Pause in-progress items.',
+        addLabel: 'Disabled. Click to add rule.',
+        addAnotherLabel: 'Enabled. Click to add additional rule.',
         emptyLabel: 'No auto-pause rules yet. Add one to get started.',
         libraryLabel: 'Library',
         weeksLabel: 'weeks',
         removeLabel: 'Remove',
-        defaultLibrary: 'tv',
+        defaultLibrary: 'all',
         defaultWeeks: 16,
-        options: [
-          { value: 'all', label: 'All Libraries' },
-          { value: 'movie', label: 'Movies' },
-          { value: 'tv', label: 'TV Shows' },
-          { value: 'anime', label: 'Anime' },
-          { value: 'book', label: 'Books' },
-          { value: 'game', label: 'Games' },
-        ],
+        options: [],
       },
     ],
   },
 ];
 
-const initialValues = {
-  theme: 'system',
-  logo_style: 'colorful',
-  date_format: 'system_default',
-  time_format: 'system_default',
-  currency: 'auto',
-  mobile_grid_layout: 'compact',
-  title_display_preference: 'localized',
-  top_talent_sort_by: 'plays',
-  watch_provider_region: 'UNSET',
-  metadata_language: '',
-  ui_language: 'auto',
-  hide_completed_recommendations: false,
-  show_recommendations: true,
-  rating_scale: '10',
-  quick_season_update_mobile: 'none',
-  game_logging_style: 'repeats',
-  book_comic_manga_progress_percentage: false,
-  session_duration: '1209600',
-  week_start_day: 'monday',
-  auto_pause_rules: [{ library: 'tv', weeks: 16 }],
+const uiLanguages = [
+  { value: 'auto', label: 'Auto (browser language)' },
+  { value: 'en', label: 'English' },
+  { value: 'de', label: 'Deutsch' },
+  { value: 'es', label: 'Español' },
+  { value: 'fr', label: 'Français' },
+  { value: 'it', label: 'Italiano' },
+];
+
+const THEME_OPTIONS = [
+  { value: 'system', label: 'System default' },
+  { value: 'dark', label: 'Dark' },
+  { value: 'light', label: 'Light' },
+];
+
+const AUTO_PAUSE_LABELS = {
+  all: 'All Libraries', movie: 'Movies', tv: 'TV Shows', season: 'TV Seasons', anime: 'Anime',
+  book: 'Books', game: 'Games', comic: 'Comics', manga: 'Manga', boardgame: 'Board Games',
 };
+
+function titleCase(value) {
+  return String(value).replace(/[_-]+/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+}
+
+// Keep the web wording for known values, follow the server's list of values.
+function matchServerChoices(options, serverValues) {
+  if (!Array.isArray(serverValues) || !serverValues.length) return options;
+  const labels = new Map(options.map(option => [String(option.value), option.label]));
+  return serverValues.map(value => ({ value: String(value), label: labels.get(String(value)) || titleCase(value) }));
+}
+
+function pairsToOptions(pairs) {
+  return (pairs || []).map(([value, label]) => ({ value, label }));
+}
+
+function buildSections(meta, lists, current) {
+  const choices = meta.choices || {};
+  const themeOptions = THEME_OPTIONS.some(option => option.value === current.theme)
+    ? THEME_OPTIONS
+    : [...THEME_OPTIONS, { value: current.theme, label: `${titleCase(current.theme)} (set in Appearance)` }];
+  return baseSections.map(section => ({
+    ...section,
+    fields: section.fields.map(field => {
+      if (field.name === 'theme') return { ...field, options: themeOptions };
+      if (field.name === 'watch_provider_region') return { ...field, placeholder: 'Disabled', options: pairsToOptions(lists.watch_provider_region) };
+      if (field.name === 'metadata_language') return { ...field, options: pairsToOptions(lists.metadata_language) };
+      if (field.name === 'ui_language') return { ...field, options: matchServerChoices(uiLanguages, choices.ui_language) };
+      if (field.name === 'auto_pause_rules') {
+        const libraries = ['all', ...meta.autoPauseLibraries];
+        const options = libraries.map(value => ({ value, label: AUTO_PAUSE_LABELS[value] || titleCase(value) }));
+        return { ...field, options, defaultLibrary: 'all' };
+      }
+      if (field.type === 'select' && Array.isArray(choices[field.name]) && field.options.length) {
+        return { ...field, options: matchServerChoices(field.options, choices[field.name]) };
+      }
+      return field;
+    }),
+  }));
+}
 
 function validate(values) {
   const errors = {};
@@ -283,69 +268,59 @@ function validate(values) {
   return errors;
 }
 
-function wait(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-export default function PreferencesSlot() {
-  const [transport] = useState(() => createSettingsTransport());
-  const [values, setValues] = useState(initialValues);
-  const [savedValues, setSavedValues] = useState(initialValues);
-  const [loading, setLoading] = useState(transport.mode === 'server');
+function PreferencesForm({ transport, payload, lists, reload, onOpenCards }) {
+  const { settingsPalette, buttonPalette } = useSettingsPalettes();
+  const [initial] = useState(() => preferencesToForm(payload));
+  const [meta] = useState(() => preferencesMeta(payload));
+  const [values, setValues] = useState(initial);
+  const [savedValues, setSavedValues] = useState(initial);
   const [formError, setFormError] = useState('');
 
-  useEffect(() => {
-    if (transport.mode !== 'server') {
-      setLoading(false);
-      return undefined;
-    }
-    let active = true;
-    transport.loadPreferences()
-      .then(payload => {
-        if (!active) return;
-        const loaded = preferencesToForm(payload);
-        const next = { ...initialValues, ...loaded };
-        setValues(next);
-        setSavedValues(next);
-        setLoading(false);
-      })
-      .catch(cause => {
-        if (!active) return;
-        setLoading(false);
-        setFormError(cause?.message || 'Preferences could not be loaded from the server.');
-      });
-    return () => { active = false; };
-  }, [transport]);
-
-  function change(name, value) {
-    setValues(current => ({ ...current, [name]: value }));
-  }
-
   async function save({ values: submitted }) {
-    if (transport.mode !== 'server') {
-      await wait(450);
-      setSavedValues(submitted);
-      return;
-    }
     setFormError('');
     try {
-      await transport.savePreferences(submitted);
-      setSavedValues(submitted);
+      const changes = Object.fromEntries(Object.entries(submitted)
+        .filter(([field, value]) => JSON.stringify(value) !== JSON.stringify(savedValues[field])));
+      const response = await transport.savePreferences(changes);
+      const fresh = { ...submitted, ...preferencesToForm(response) };
+      setValues(fresh);
+      setSavedValues(fresh);
+      if (fresh.theme && fresh.theme !== getThemeSetting().theme) {
+        applyThemeSetting({ theme: fresh.theme, custom: getThemeSetting().custom });
+      }
     } catch (cause) {
       setFormError(cause?.message || 'Preferences could not be saved.');
+      if (cause?.code === 'signed_out') reload();
     }
   }
 
   return <SettingsPreferencesView
-    sections={sections}
+    heading={false}
+    SaveBar={SettingsSaveBar}
+    sections={buildSections(meta, lists, values)}
     values={values}
     initialValues={savedValues}
-    onChange={change}
+    onChange={(name, value) => setValues(current => ({ ...current, [name]: value }))}
     onSave={save}
     validate={validate}
-    disabled={loading}
     formError={formError}
-    palette={settingsPalette}
+    palette={{ ...settingsPalette, preferenceCards: true }}
+    onSectionLink={onOpenCards}
     buttonPalette={buttonPalette}
   />;
+}
+
+export default function PreferencesSlot({ onOpenCards }) {
+  const resource = useSettingsResource(async transport => {
+    const [payload, lists] = await Promise.all([
+      transport.loadPreferences(),
+      transport.loadPreferenceChoices().catch(() => ({})),
+    ]);
+    return { payload, lists };
+  });
+  if (resource.state !== 'ready') {
+    return <SettingsLoadState state={resource.state} message={resource.message} onRetry={resource.reload} />;
+  }
+  return <PreferencesForm transport={resource.transport} payload={resource.data.payload}
+    lists={resource.data.lists} reload={resource.reload} onOpenCards={onOpenCards} />;
 }

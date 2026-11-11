@@ -27,6 +27,7 @@ export function HistoryView({
   header,
   footer,
   children,
+  Feed = HistoryFeed,
   onRetry,
   ...feedProps
 }) {
@@ -43,7 +44,7 @@ export function HistoryView({
       {onRetry ? <Text accessibilityRole="button" accessibilityLabel={copy.retry}
         onPress={onRetry} style={[styles.retry, { color: palette.link || '#818cf8' }]}>{copy.retry}</Text> : null}
     </View> : null}
-    <HistoryFeed model={model} labels={labels} palette={palette} chrome={chrome}
+    <Feed model={model} labels={labels} palette={palette} chrome={chrome}
       onRetry={onRetry} {...feedProps} />
     {footer || null}
     {children || null}

@@ -487,6 +487,7 @@ export function Sidebar({
         : <Text style={[styles.logoText, { color: palette.text }]}>{logo.text || labels.logo}</Text>}
     </View> : null}
     <ScrollView style={styles.primary}
+      aria-hidden={navOpen}
       accessibilityElementsHidden={navOpen}
       importantForAccessibility={navOpen ? 'no-hide-descendants' : 'auto'}
       contentContainerStyle={[styles.navContent, {
@@ -499,7 +500,9 @@ export function Sidebar({
         <View style={styles.navGroup}>{pinned.map(renderItem)}</View>
       </View>
     </ScrollView>
-    <View pointerEvents="box-none" style={[styles.exploreViewport, {
+    <View pointerEvents="box-none" aria-hidden={!navOpen}
+      accessibilityElementsHidden={!navOpen}
+      importantForAccessibility={navOpen ? 'auto' : 'no-hide-descendants'} style={[styles.exploreViewport, {
       top: overlayTop,
       bottom: bottomHeight,
     }]}>
@@ -520,6 +523,7 @@ export function Sidebar({
     <View onLayout={event => setBottomHeight(event.nativeEvent.layout.height)}>
       <View style={[styles.bottom, { borderTopColor: palette.border }]}>
         <Pressable accessibilityRole="button" accessibilityLabel={labels.explore}
+          aria-expanded={navOpen}
           accessibilityState={{ expanded: navOpen, disabled: !hasUnpinned }}
           onPress={hasUnpinned ? toggleNav : undefined}
           style={({ pressed, hovered, focused }) => [styles.explore, { borderTopLeftRadius: palette.radius, borderTopRightRadius: palette.radius,
@@ -569,7 +573,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center' },
   link: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center',
     gap: 12, paddingHorizontal: 16, paddingVertical: 8 },
-  linkText: { flexShrink: 1, fontSize: 14, lineHeight: 20 },
+  linkText: { flexShrink: 1, fontSize: 14 },
   action: { flexShrink: 0, marginRight: 8 },
   iconButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   savedViewList: { marginTop: 4, gap: 4 },

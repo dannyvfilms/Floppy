@@ -43,6 +43,7 @@ const defaultLabels = {
   personalSave: 'Save personal key',
   personalSaving: 'Saving…',
   personalSaved: 'Personal key saved',
+  personalRemoved: 'Personal key removed',
   personalError: 'Could not save the personal key. Try again.',
   instanceHelp: 'These credentials are shared across the instance.',
   personalHelp: 'Your key may avoid shared instance or bundled rate limits.',
@@ -155,8 +156,11 @@ export function ConnectionSettings({
     setError(null);
     setNotice(null);
     try {
-      await onSave?.(kind, kind === 'personal' ? personalValues : instanceValues);
-      setNotice({ kind, text: kind === 'personal' ? labels.personalSaved : labels.saved });
+      const values = kind === 'personal' ? personalValues : instanceValues;
+      await onSave?.(kind, values);
+      // The server removes a personal key saved with every field blank.
+      const removed = kind === 'personal' && !Object.values(values || {}).some(value => String(value ?? '').trim());
+      setNotice({ kind, text: kind === 'personal' ? (removed ? labels.personalRemoved : labels.personalSaved) : labels.saved });
     } catch (reason) {
       setError({ kind, text: reason?.message || (kind === 'personal' ? labels.personalError : labels.saveError) });
     } finally {

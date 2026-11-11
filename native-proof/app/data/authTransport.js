@@ -23,6 +23,11 @@ export const signIn = options => authTransport.signIn(options);
 export const signUp = options => authTransport.signUp(options);
 export const recoverPassword = options => authTransport.recoverPassword(options);
 export const signInWithToken = options => authTransport.signInWithToken(options);
+export const startDeviceSignIn = options => authTransport.startDeviceSignIn(options);
+export const pollDeviceSignIn = options => authTransport.pollDeviceSignIn(options);
+export const isBrowserAuth = false;
+// Native providers sign in through the device flow so the session returns to the app.
+export const beginProviderSignIn = null;
 export const signOut = () => authTransport.signOut();
 export const testAuthConnection = options => authTransport.testConnection(options);
 export const verifyAuthSession = () => authTransport.verify();

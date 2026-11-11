@@ -16,7 +16,7 @@ info:
     - `media_type`: the kind of media (`movie`, `tv`, `game`, ...). Path segment.
     - `source`: the provider that owns `media_id` (`tmdb`, `igdb`, `manual`, ...). It is called `source` everywhere in this API, including search; there is no `provider` field on the wire.
     - `media_id`: the provider's id for the item, always a string in paths.
-    - Statuses are written as an integer code (0 Planning, 1 In progress, 2 Paused, 3 Completed, 4 Dropped) or its case-insensitive label.
+    - Statuses are written as an integer code (0 Planning, 1 In progress, 2 Paused, 3 Completed, 4 Dropped) or its case-insensitive label. Comic issues also accept `null` or an empty string for no status.
     - `start_date` and `end_date` take an ISO 8601 date or date-time. A date alone means midnight, and a value without an offset is read in the server's active timezone, so send an offset (`2026-03-01T20:00:00Z`) to be exact.
 
     ## Golden path: add a play to a game
@@ -50,7 +50,7 @@ info:
     | `MEDIA_NOT_FOUND` | 404 | No such item (the provider does not know the id, or a manual item does not exist). Do not retry. |
     | `MEDIA_NOT_TRACKED` | 404 | The item may exist but you have not tracked it; track it first. |
     | `CONSUMPTION_NOT_FOUND` | 404 | `consumption_id` is not one of this item's entries; re-read `state`. |
-    | `INVALID_STATUS` | 400 | `status` is not a code 0-4 or a known label. |
+    | `INVALID_STATUS` | 400 | `status` is not a code 0-4 or a known label (comic issues also allow no status). |
     | `PROVIDER_UNAVAILABLE` | 503 | The metadata provider failed; `retryable: true`. |
     | `DATABASE_BUSY` | 503 | The database was locked; retry GET requests after `Retry-After`. |
 
@@ -440,6 +440,34 @@ paths:
                           nullable: true
                         allow_recommendations:
                           type: boolean
+                        is_smart:
+                          type: boolean
+                        tags:
+                          type: array
+                          items:
+                            type: string
+                        include_notes:
+                          type: boolean
+                        completed_count:
+                          type: integer
+                        completion_percent:
+                          type: integer
+                          nullable: true
+                        media_type_breakdown:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              value:
+                                type: string
+                              label:
+                                type: string
+                              count:
+                                type: integer
+                              percent:
+                                type: integer
+                              color:
+                                type: string
                         items:
                           oneOf:
                           - type: array
@@ -558,6 +586,34 @@ paths:
                     nullable: true
                   allow_recommendations:
                     type: boolean
+                  is_smart:
+                    type: boolean
+                  tags:
+                    type: array
+                    items:
+                      type: string
+                  include_notes:
+                    type: boolean
+                  completed_count:
+                    type: integer
+                  completion_percent:
+                    type: integer
+                    nullable: true
+                  media_type_breakdown:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        value:
+                          type: string
+                        label:
+                          type: string
+                        count:
+                          type: integer
+                        percent:
+                          type: integer
+                        color:
+                          type: string
                   items:
                     oneOf:
                     - type: array
@@ -684,6 +740,34 @@ paths:
                     nullable: true
                   allow_recommendations:
                     type: boolean
+                  is_smart:
+                    type: boolean
+                  tags:
+                    type: array
+                    items:
+                      type: string
+                  include_notes:
+                    type: boolean
+                  completed_count:
+                    type: integer
+                  completion_percent:
+                    type: integer
+                    nullable: true
+                  media_type_breakdown:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        value:
+                          type: string
+                        label:
+                          type: string
+                        count:
+                          type: integer
+                        percent:
+                          type: integer
+                        color:
+                          type: string
                   items:
                     oneOf:
                     - type: array
@@ -861,10 +945,29 @@ paths:
         schema:
           type: string
       - in: query
+        name: group
+        schema:
+          type: string
+        description: Games group key from the library groups response.
+      - in: query
+        name: group_by
+        schema:
+          type: string
+          enum:
+          - franchise
+          - item
+          - series
+      - in: query
         name: implied_genre
         schema:
           type: string
         description: Music-only implied genre filter.
+      - in: query
+        name: initial
+        schema:
+          type: string
+        description: 'A to Z rail: `a`-`z`, `0-9` or `other`; anything else means
+          all titles.'
       - in: query
         name: language
         schema:
@@ -995,6 +1098,15 @@ paths:
         name: search
         schema:
           type: string
+      - in: query
+        name: separate_entries
+        schema:
+          type: string
+          enum:
+          - '0'
+          - '1'
+        description: Show each matching tracking entry separately for movies, anime,
+          manga, games and books.
       - in: query
         name: sort
         schema:
@@ -1175,10 +1287,29 @@ paths:
         schema:
           type: string
       - in: query
+        name: group
+        schema:
+          type: string
+        description: Games group key from the library groups response.
+      - in: query
+        name: group_by
+        schema:
+          type: string
+          enum:
+          - franchise
+          - item
+          - series
+      - in: query
         name: implied_genre
         schema:
           type: string
         description: Music-only implied genre filter.
+      - in: query
+        name: initial
+        schema:
+          type: string
+        description: 'A to Z rail: `a`-`z`, `0-9` or `other`; anything else means
+          all titles.'
       - in: query
         name: language
         schema:
@@ -1313,6 +1444,15 @@ paths:
         name: search
         schema:
           type: string
+      - in: query
+        name: separate_entries
+        schema:
+          type: string
+          enum:
+          - '0'
+          - '1'
+        description: Show each matching tracking entry separately for movies, anime,
+          manga, games and books.
       - in: query
         name: sort
         schema:
@@ -3034,8 +3174,22 @@ paths:
       x-required-scope: catalog:read
   /api/v1/statistics/overview/:
     get:
-      operationId: api_v1_statistics_overview_retrieve
+      operationId: getStatisticsOverview
       description: 'Return statistics for the date range (default: user''s preference).'
+      parameters:
+      - in: query
+        name: compare
+        schema:
+          type: string
+        description: 'previous_period, last_year or none (default: preference)'
+      - in: query
+        name: end_date
+        schema:
+          type: string
+      - in: query
+        name: start_date
+        schema:
+          type: string
       tags:
       - api
       security:

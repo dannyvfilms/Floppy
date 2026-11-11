@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Icon } from './Icon';
+import { actionIcons } from './actionIcons';
 import { ProgressBar, progressFallbackPalette } from './ProgressBar';
 
 const defaultLabels = {
@@ -35,8 +37,12 @@ export function ProgressCard({ model, labels, palette, onOpen }) {
       <Text style={[styles.title, { color: colors.text }]}>{text.yourProgress}
         {subtitle ? <Text style={[styles.subtitle, { color: colors.textSecondary }]}>  {subtitle}</Text> : null}
       </Text>
-      <ProgressBar percent={percent} rewatch={rewatch} height={8} palette={colors} label={text.yourProgress} />
-      <Text style={[styles.value, { color: colors.text }]}>{percent}%</Text>
+      <View style={styles.barRow}>
+        <View style={styles.bar}>
+          <ProgressBar percent={percent} rewatch={rewatch} height={8} palette={colors} label={text.yourProgress} />
+        </View>
+        <Text style={[styles.value, { color: colors.text }]}>{percent}%</Text>
+      </View>
     </Pressable>
     <View style={styles.infoWrap}>
       <Pressable accessibilityRole="button"
@@ -44,7 +50,7 @@ export function ProgressCard({ model, labels, palette, onOpen }) {
         accessibilityState={{ expanded: infoOpen }}
         onPress={() => setInfoOpen(value => !value)}
         style={({ focused }) => [styles.infoButton, focused && colors.focusStyle]}>
-        <Text style={[styles.info, { color: colors.textMuted }]}>i</Text>
+        <Icon spec={actionIcons.info} size={14} color={colors.textMuted} />
       </Pressable>
       {infoOpen ? <View style={[styles.tip, { backgroundColor: colors.surfaceStrong, borderColor: colors.surfaceBorder }]}>
         <Text style={[styles.tipText, { color: colors.text }]}>{text.progressTip}</Text>
@@ -55,10 +61,12 @@ export function ProgressCard({ model, labels, palette, onOpen }) {
 
 const styles = StyleSheet.create({
   root: { position: 'relative', width: '100%' },
-  card: { gap: 6, width: '100%', borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
+  card: { gap: 14, width: '100%', borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 16 },
   title: { fontSize: 14, fontWeight: '600' },
   subtitle: { fontSize: 12, fontWeight: '500' },
-  value: { fontSize: 18, fontWeight: '700' },
+  value: { fontSize: 20, fontWeight: '700' },
+  barRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  bar: { flex: 1, minWidth: 0 },
   infoWrap: { position: 'absolute', top: 6, right: 8, alignItems: 'flex-end' },
   infoButton: { alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: 12 },
   info: { fontSize: 12, fontWeight: '700', fontStyle: 'italic' },
