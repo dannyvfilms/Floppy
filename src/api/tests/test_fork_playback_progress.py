@@ -1331,7 +1331,7 @@ class HomePlaybackCardsTests(FloppyApiTestCase):
             )
 
         self.assertEqual(response.status_code, HTTP.NO_CONTENT)
-        pause.assert_called_once_with(self.user1, "movie", "701")
+        pause.assert_called_once_with(self.user1, "movie", "701", source="plex")
 
     def test_stop_resolves_a_manual_session_control(self):
         self.client.force_login(self.user1)

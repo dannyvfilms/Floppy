@@ -77,6 +77,7 @@ class _Subject:
 
     media_type: str
     media_id: str
+    source: str
     item: Item  # the item whose position is saved
     duration: int | None
     code: str = ""  # "S02E05" for an episode
@@ -88,12 +89,17 @@ class _Subject:
         return self.media_type == MediaTypes.TV.value
 
 
+# Shows are tracked on TMDB or TVDB (a user's TV provider default can be either),
+# so a TV check-in follows the show's own source. Movies are TMDB-only.
+SUPPORTED_SOURCES = {
+    MediaTypes.MOVIE.value: {Sources.TMDB.value},
+    MediaTypes.TV.value: {Sources.TMDB.value, Sources.TVDB.value},
+}
+
+
 def supports(media_type, source):
-    """Return whether a title can be checked in (TMDB movies and shows)."""
-    return source == Sources.TMDB.value and media_type in (
-        MediaTypes.MOVIE.value,
-        MediaTypes.TV.value,
-    )
+    """Return whether a title can be checked in (TMDB movies, TMDB/TVDB shows)."""
+    return source in SUPPORTED_SOURCES.get(media_type, ())
 
 
 def card_control(user_id, state):
@@ -190,12 +196,12 @@ def _movie_item(media_id):
     ).first()
 
 
-def _tracked_show(user, media_id):
+def _tracked_show(user, source, media_id):
     return (
         TV.objects.filter(
             user=user,
             item__media_id=str(media_id),
-            item__source=Sources.TMDB.value,
+            item__source=source,
             item__media_type=MediaTypes.TV.value,
         )
         .select_related("item")
@@ -208,7 +214,7 @@ def _seconds(runtime_minutes):
     return minutes * 60 if minutes else None
 
 
-def _subject(user, media_type, media_id):
+def _subject(user, media_type, media_id, source):
     """Resolve what a check-in would be of, raising when there is nothing to start."""
     if media_type == MediaTypes.MOVIE.value:
         item = _movie_item(media_id)
@@ -218,12 +224,13 @@ def _subject(user, media_type, media_id):
         return _Subject(
             media_type=media_type,
             media_id=str(media_id),
+            source=Sources.TMDB.value,
             item=item,
             duration=_seconds(item.runtime_minutes),
             card={"title": item.title},
         )
 
-    show = _tracked_show(user, media_id)
+    show = _tracked_show(user, source, media_id)
     if show is None:
         msg = "Track this show before checking in."
         raise CheckInError(msg)
@@ -241,6 +248,7 @@ def _subject(user, media_type, media_id):
     return _Subject(
         media_type=media_type,
         media_id=str(media_id),
+        source=source,
         item=episode_item,
         duration=_seconds(episode_item.runtime_minutes),
         code=episode_code(season_number, episode_number),
@@ -373,9 +381,9 @@ def release_running(user, media_type):
         pause(user, running["media_type"], running["media_id"])
 
 
-def start(user, media_type, media_id):
+def start(user, media_type, media_id, *, source=Sources.TMDB.value):
     """Check in, resuming from a saved Pause if there is one."""
-    subject = _subject(user, media_type, media_id)
+    subject = _subject(user, media_type, media_id, source)
 
     # One check-in per media type; other types keep running beside it.
     release_running(user, media_type)
@@ -415,6 +423,7 @@ def start(user, media_type, media_id):
         "token": token,
         "media_type": media_type,
         "media_id": subject.media_id,
+        "source": subject.source,
         "item_id": subject.item.id,
         "code": subject.code,
         "started_at_ts": now_ts,
@@ -431,7 +440,7 @@ def start(user, media_type, media_id):
             MediaTypes.EPISODE.value if subject.is_episode else MediaTypes.MOVIE.value
         ),
         media_id=subject.media_id,
-        source=Sources.TMDB.value,
+        source=subject.source,
         view_offset_seconds=offset,
         duration_seconds=subject.duration,
         checkin_token=token,
@@ -449,9 +458,21 @@ def start(user, media_type, media_id):
     )
 
 
-def _active_record(user, media_type, media_id):
+def _is_record_of(record, source, media_id):
+    """Return whether a stored check-in is of this title.
+
+    Records written before ``source`` was stored are TMDB check-ins.
+    """
+    return (
+        record is not None
+        and record["media_id"] == str(media_id)
+        and record.get("source", Sources.TMDB.value) == source
+    )
+
+
+def _active_record(user, media_type, media_id, source):
     record = _record(user.id, media_type)
-    if record is None or record["media_id"] != str(media_id):
+    if not _is_record_of(record, source, media_id):
         msg = "No check-in is running here."
         raise CheckInError(msg)
     return record
@@ -472,9 +493,9 @@ def _row(user, record):
     return Movie.objects.filter(id=record["row_id"], user=user).first()
 
 
-def pause(user, media_type, media_id):
+def pause(user, media_type, media_id, *, source=Sources.TMDB.value):
     """Stop the check-in and keep where it got to; the row stays In Progress."""
-    record = _active_record(user, media_type, media_id)
+    record = _active_record(user, media_type, media_id, source)
     position = _position(record, _now_ts())
 
     from api.fork_views_playback import upsert_playback_progress
@@ -513,9 +534,9 @@ def _complete(user, record, at):
     )
 
 
-def finish(user, media_type, media_id):
+def finish(user, media_type, media_id, *, source=Sources.TMDB.value):
     """Complete the row now."""
-    record = _active_record(user, media_type, media_id)
+    record = _active_record(user, media_type, media_id, source)
     _close_card(user.id, record)
     _complete(user, record, timezone.now().replace(second=0, microsecond=0))
 
@@ -528,9 +549,9 @@ def _restore_parents(parents):
     TV.objects.filter(id=parents["tv_id"]).update(status=parents["tv"])
 
 
-def cancel(user, media_type, media_id):
+def cancel(user, media_type, media_id, *, source=Sources.TMDB.value):
     """Undo the check-in: remove the row it added, or restore what it changed."""
-    record = _active_record(user, media_type, media_id)
+    record = _active_record(user, media_type, media_id, source)
     row = _row(user, record)
     if row is not None and row.status == Status.IN_PROGRESS.value:
         if record["created"]:
@@ -639,7 +660,7 @@ def phase(user, instance):
     media_type = item.media_type
     record = _record(user.id, media_type)
     now_ts = _now_ts()
-    if record is not None and record["media_id"] == str(item.media_id):
+    if _is_record_of(record, item.source, item.media_id):
         return {**_running_phase(record, now_ts), "code": record["code"]}
 
     if media_type == MediaTypes.MOVIE.value:

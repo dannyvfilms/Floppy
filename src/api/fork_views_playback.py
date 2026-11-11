@@ -1122,9 +1122,9 @@ class HomePlaybackCardsView(drf_views.APIView):
             elif action == "cancel" and control["action"] == "stop":
                 checkin_session.cancel(request.user, source, media_type, media_id)
             elif action == "pause" and control["action"] == "pause":
-                checkin.pause(request.user, media_type, media_id)
+                checkin.pause(request.user, media_type, media_id, source=source)
             elif action == "finish" and control["action"] == "pause":
-                checkin.finish(request.user, media_type, media_id)
+                checkin.finish(request.user, media_type, media_id, source=source)
             else:
                 return Response({"detail": "Unsupported check-in action."}, status=HTTP.BAD_REQUEST)
         except checkin.CheckInError as error:
