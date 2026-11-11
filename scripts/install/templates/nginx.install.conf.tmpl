@@ -30,7 +30,9 @@ http {
 
     log_format floppy_safe '$remote_addr [$time_local] '
                            '"$request_method $server_protocol" '
-                           '$status $body_bytes_sent';
+                           '$status $body_bytes_sent '
+                           'rt=$request_time urt=$upstream_response_time '
+                           'uct=$upstream_connect_time rid=$request_id';
     access_log "@@LOG_DIR@@/nginx-access.log" floppy_safe;
 
     sendfile on;
@@ -59,6 +61,7 @@ http {
             proxy_pass http://app_server;
             proxy_set_header Host $http_host;
             proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Request-ID $request_id;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
         }
@@ -69,6 +72,7 @@ http {
             proxy_pass http://app_server;
             proxy_set_header Host $http_host;
             proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Request-ID $request_id;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
         }
