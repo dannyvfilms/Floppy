@@ -97,6 +97,7 @@ export function normalizeTrackForm(payload) {
     formId: source.formId || '',
     instanceId: source.instanceId ?? null,
     isNew: source.isNew,
+    defaultEditEntryDate: source.defaultEditEntryDate || 'current_date',
     action: source.action || '',
     deleteAction: source.deleteAction || '',
     csrfToken: source.csrfToken || '',

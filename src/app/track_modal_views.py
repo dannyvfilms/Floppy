@@ -723,6 +723,7 @@ def _track_form_presentation(
             "formId": track_form_id,
             "instanceId": str(media.id) if media is not None else None,
             "isNew": media is None,
+            "defaultEditEntryDate": request.user.default_edit_entry_date,
             "action": action,
             "deleteAction": delete_action if media is not None else "",
             "csrfToken": get_token(request),

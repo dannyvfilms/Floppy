@@ -83,8 +83,8 @@ function createCouplingState(model, values) {
   };
 }
 
-function shouldDefaultEnd(next, state) {
-  if (state.endCleared) return false;
+function shouldDefaultEnd(next, state, model) {
+  if (state.endCleared || model?.defaultEditEntryDate === 'no_date') return false;
   if (next.status !== 'Completed' && next.status !== 'In progress') return false;
   return state.isNew || next.status !== state.originalStatus;
 }
@@ -101,7 +101,7 @@ function syncStartFromProgress(next, state, model, now) {
     return;
   }
   if (!next.end_date) {
-    if (!shouldDefaultEnd(next, state)) return;
+    if (!shouldDefaultEnd(next, state, model)) return;
     next.end_date = formatDateValue(now(), Boolean(model?.trackTime));
     state.autoEnd = true;
   }
@@ -193,7 +193,7 @@ export function TrackDialog({
 
   function submit(nextValues) {
     const next = { ...nextValues };
-    if (!next.end_date && shouldDefaultEnd({ ...next, status: next.status }, coupling.current)) {
+    if (!next.end_date && shouldDefaultEnd({ ...next, status: next.status }, coupling.current, model)) {
       next.end_date = formatDateValue(now(), Boolean(model?.trackTime));
       onChange?.('end_date', next.end_date);
     }

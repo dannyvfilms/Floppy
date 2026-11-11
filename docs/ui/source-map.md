@@ -562,7 +562,7 @@ Status: `Partial / coexisting` — browser rows remain server-owned; Expo render
 
 ## TRACKING
 
-TrackForm keeps the accepted tabbed dialog and field composition. Date shortcuts retain runtime pairing, and mountTrackForm submits the normalized payload and watches episode popup state. SelectField retains its original filter chevron with additive style props for other consumers. Existing ownership and retirement conditions remain; browser interaction coverage and native runtime are distinct checks.
+TrackForm keeps the accepted tabbed dialog and field composition. Date shortcuts retain runtime pairing, and mountTrackForm submits the normalized payload and watches episode popup state. The Default End Date preference is serialized in the track model; React TrackDialog and Alpine fallbacks both suppress automatic dates for `no_date`, retaining `current_date` as the default. Chromium verified a Completed movie remained undated after save. Native ManualEntry stays explicit-date and does not inherit web auto-fill behavior. SelectField retains its original filter chevron with additive style props for other consumers. iOS/Android are not verified.
 
 Shared `ManualEntryView` is consumed by native `SearchScreen` create-entry mode and the shell /create route. Search transport supplies structured options, owner-scoped parents and web-form validation. Browser manual-entry/remaining popup consumers stay server-owned until parity and web adoption. Expo searched and selected Deep Field, created season 99, and the test entry was removed and verified absent; final layout comparison pending. iOS/Android not verified, Primitives.
 
@@ -878,15 +878,17 @@ Status: `Partial / coexisting`
 
 ## SET-PREFERENCES
 
-SelectField exposes optional trigger, text and label styles for the native manual-entry form; defaults preserve existing preference and browser consumers. iOS and Android not verified.
+SelectField exposes optional trigger, text and label styles for the native manual-entry form; defaults preserve existing consumers. The Default End Date browser preference uses this shared control through a DOM-only portal adapter and keeps the server `<select>` active as a fallback. Browser: React preference save and fallback save verified; screenshot reviewed. iOS and Android not verified.
 
 Status: `Partial / coexisting`
 
-Expo consumes `frontend/ui/PreferencesForm.jsx`, `frontend/ui/SelectField.jsx`, `frontend/pages/SettingsPreferencesView.jsx` through `native-proof/app/surfaces/PreferencesSlot.jsx`. Native section frames, icons, dropdowns and card link remain partial parity. Currency saved/restored in browser; iOS and Android not verified. Django/Alpine remains until complete parity.
+Expo consumes `frontend/ui/PreferencesForm.jsx`, `frontend/ui/SelectField.jsx`, `frontend/pages/SettingsPreferencesView.jsx` through `native-proof/app/surfaces/PreferencesSlot.jsx`; its preference transport round-trips `default_edit_entry_date`. Native ManualEntry keeps explicit dates rather than adding web-only auto-fill behavior. Native section frames, icons, dropdowns and card link remain partial parity. Browser settings uses the shared SelectField through the settings web adapter for this one control and preserves the Django `<select>` fallback; other preferences remain server-owned. Browser React save/fallback save verified; iOS and Android not verified.
 
 - `native-proof/app/surfaces/SettingsSaveBar.jsx` adapts shared `FormSaveBar` to the Settings viewport; consumed by `SettingsScreen`, `PreferencesSlot`, `AppearanceSettingsSlot`. Home Screen uses an inline save action. Props-only shared presentation; native readiness Primitives.
 
 - `src/templates/users/preferences.html`
+- `native-proof/app/data/settingsTransportCore.js`, `native-proof/app/surfaces/PreferencesSlot.jsx`
+- `src/users/models.py`, `src/users/views.py`, `src/users/migrations/0159_user_default_edit_entry_date_and_more.py`, `src/api/fork_views_users.py`
 
 ## SET-APPEARANCE
 

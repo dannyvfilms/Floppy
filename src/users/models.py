@@ -477,6 +477,13 @@ class QuickWatchDateChoices(models.TextChoices):
     NO_DATE = "no_date", _("No Date")
 
 
+class DefaultEditEntryDateChoices(models.TextChoices):
+    """Choices for automatic end dates in the track-entry dialog."""
+
+    CURRENT_DATE = "current_date", _("Current Date")
+    NO_DATE = "no_date", _("No End Date")
+
+
 class MetadataSourceDefaultChoices(models.TextChoices):
     """Choices for library metadata defaults."""
 
@@ -852,6 +859,12 @@ class User(AbstractUser):
         default=QuickWatchDateChoices.CURRENT_DATE,
         choices=QuickWatchDateChoices,
         help_text="Date to use when bulk-marking media as completed",
+    )
+    default_edit_entry_date = models.CharField(
+        max_length=20,
+        default=DefaultEditEntryDateChoices.CURRENT_DATE,
+        choices=DefaultEditEntryDateChoices,
+        help_text="Default end date when creating or completing a track entry",
     )
     rating_scale = models.CharField(
         max_length=2,
@@ -1745,6 +1758,12 @@ class User(AbstractUser):
             models.CheckConstraint(
                 name="quick_watch_date_valid",
                 condition=models.Q(quick_watch_date__in=QuickWatchDateChoices.values),
+            ),
+            models.CheckConstraint(
+                name="default_edit_entry_date_valid",
+                condition=models.Q(
+                    default_edit_entry_date__in=DefaultEditEntryDateChoices.values,
+                ),
             ),
             models.CheckConstraint(
                 name="rating_scale_valid",

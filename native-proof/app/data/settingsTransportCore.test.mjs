@@ -44,6 +44,7 @@ test('preferences round trip includes the fields the web form saves', () => {
       watch_provider_region: 'US',
       metadata_language: 'fr',
       auto_pause_rules: [{ library: 'tv', weeks: 4 }],
+      default_edit_entry_date: 'no_date',
       session_duration: 86400,
       rating_scale: '10',
     },
@@ -51,6 +52,7 @@ test('preferences round trip includes the fields the web form saves', () => {
   assert.equal(form.theme, 'dracula');
   assert.equal(form.session_duration, '86400');
   assert.deepEqual(form.auto_pause_rules, [{ library: 'tv', weeks: 4 }]);
+  assert.equal(form.default_edit_entry_date, 'no_date');
   const patch = preferencesPatch(form);
   assert.equal(patch.theme, 'dracula');
   assert.equal(patch.show_recommendations, false);
@@ -58,6 +60,7 @@ test('preferences round trip includes the fields the web form saves', () => {
   assert.equal(patch.rating_scale, '10');
   assert.equal(patch.auto_pause_in_progress_enabled, true);
   assert.deepEqual(patch.auto_pause_rules, [{ library: 'tv', weeks: 4 }]);
+  assert.equal(patch.default_edit_entry_date, 'no_date');
 });
 
 test('an empty rule list turns auto-pause off', () => {
