@@ -668,14 +668,22 @@ def _schedule_cache_reconcile(user, target_item: Item) -> None:
         if (day := history_cache.history_day_key(episode.end_date))
     }
     transaction.on_commit(
-        lambda: _reconcile_caches(user.id, history_days),
+        lambda: _reconcile_caches(user.id, history_days, target_item.id),
     )
 
 
-def _reconcile_caches(user_id: int, history_days: set[str]) -> None:
+def _reconcile_caches(user_id: int, history_days: set[str], target_item_id: int) -> None:
     signals._clear_media_runtime_caches(user_id, MediaTypes.EPISODE.value)
     if history_days:
         signals._invalidate_episode_history_changes({user_id: list(history_days)})
+    # The move suppresses media side effects, so the target's seasons have no
+    # release events yet. Next-episode, Check-in and upcoming all read those.
+    import events.tasks
+
+    events.tasks.reload_calendar.apply_async(
+        kwargs={"item_ids": [target_item_id]},
+        countdown=3,
+    )
 
 
 @dataclass(frozen=True, slots=True)
