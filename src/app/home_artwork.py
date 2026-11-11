@@ -33,6 +33,22 @@ def queue_missing_cover_prefetch(user):
                 cache.delete(cache_key)
 
 
+def cover_state_key(user) -> str:
+    """Cache key holding the missing-cover fingerprint the rows were last built against."""
+    return f"home_artwork_cover_state_{user.id}"
+
+
+def record_cover_baseline(user) -> None:
+    """Note the missing-cover state a cover row was just built against.
+
+    Without it the first poll after a page load has nothing to compare with and
+    rebuilds the rows the page built moments earlier. ``add`` keeps the oldest
+    baseline, so a cover that arrived since any polled row was built still
+    triggers a rebuild.
+    """
+    cache.add(cover_state_key(user), artwork_cover_fingerprint(user), 60 * 60)
+
+
 def artwork_cover_fingerprint(user):
     """Cheap fingerprint of the user's missing-cover state.
 
@@ -72,8 +88,7 @@ def refresh_home_artwork(user, row_ids, rows_pending):
         return [], [], bool(rows_pending)
 
     cover_state = artwork_cover_fingerprint(user)
-    cover_state_key = f"home_artwork_cover_state_{user.id}"
-    if cache.get(cover_state_key) == cover_state:
+    if cache.get(cover_state_key(user)) == cover_state:
         queue_missing_cover_prefetch(user)
         return [], sorted(row_ids), bool(rows_pending)
 
@@ -95,7 +110,7 @@ def refresh_home_artwork(user, row_ids, rows_pending):
     if any(row.get("poll_for_covers") for row in rows):
         queue_missing_cover_prefetch(user)
 
-    cache.set(cover_state_key, cover_state, 60 * 60)
+    cache.set(cover_state_key(user), cover_state, 60 * 60)
     poll_row_ids = sorted(
         row["row_id"] for row in rows if row.get("poll_for_covers")
     )

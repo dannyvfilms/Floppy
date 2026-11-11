@@ -1233,6 +1233,7 @@ Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.
 - `frontend/ui/HistoryFeed.native.jsx`
 - `frontend/ui/HistoryFeed.web.jsx`
 - `frontend/ui/HomeShelves.jsx` (shared browser and native Home shelf rows; compact phone cards are 110 pt wide)
+- `frontend/ui/fetchGate.js` (pure async concurrency gate: Home loads at most three rows at a time on web and native)
 - `frontend/ui/IconRenderer.native.jsx`
 - `frontend/ui/IconRenderer.web.jsx`
 - `frontend/ui/InstallPromptCard.jsx`
