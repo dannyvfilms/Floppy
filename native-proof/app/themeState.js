@@ -125,14 +125,14 @@ export function customEffects(custom) {
   };
 }
 
-// `scheme` is the colour scheme the operating system should use for native
-// chrome (status bar, keyboards, dialogs): null leaves it to the system.
+// `scheme` describes resolved colours; `override` controls native chrome.
+// React Native expects `auto`, not null, to follow the operating system.
 export function resolveTheme(setting, systemScheme = 'dark') {
   const theme = isKnownTheme(setting?.theme) ? setting.theme : 'system';
   if (theme === 'light') return { theme, scheme: 'light', override: 'light', tokens: LIGHT };
   if (theme === 'dark') return { theme, scheme: 'dark', override: 'dark', tokens: DARK };
   if (theme === 'system') {
-    return { theme, scheme: systemScheme === 'light' ? 'light' : 'dark', override: null, tokens: systemScheme === 'light' ? LIGHT : DARK };
+    return { theme, scheme: systemScheme === 'light' ? 'light' : 'dark', override: 'auto', tokens: systemScheme === 'light' ? LIGHT : DARK };
   }
   if (theme === 'custom') return { theme, scheme: 'dark', override: 'dark', tokens: customTokens(setting?.custom), effects: customEffects(setting?.custom) };
   return { theme, scheme: 'dark', override: 'dark', tokens: { ...DARK, ...PRESETS[theme], ...PRESET_SURFACES[theme] } };

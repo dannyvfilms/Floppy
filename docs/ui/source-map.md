@@ -109,6 +109,8 @@ PR #1878: `Modal.web.jsx` closes open dialogs on Escape while the native impleme
 
 ## TOKENS
 
+System theme resolution uses the React Native-supported `auto` override on iOS and Android, avoiding the Android null-argument startup failure while continuing to follow the operating system. Explicit light/dark, presets and custom themes retain their values. Web CSS resolution and its guarded Appearance adapter are unchanged. Theme logic tests cover both system schemes and valid platform overrides; runtime evidence is recorded separately from complete theme/state acceptance.
+
 Status: `Existing (no UI work needed)`
 
 Custom native surface/panel opacity and runtime radius getters are live; static module-level radii and true backdrop blur remain incomplete. Browser effect comparison pending; iOS and Android not verified.
@@ -395,7 +397,9 @@ Status: `Legacy`
 
 ## HOME
 
-HomeView forwards the shared card/progress renderers and row-title callbacks. HomeShelves retains the accepted common card widths and the three-request FIFO fetch gate on web and Expo. Mixed/video rows do not adopt a separate widening policy. Django placeholder fallback suppression and single-flight row builds remain; native has no HTMX fallback. Existing ownership and retirement conditions remain. Final integration browser and native evidence is recorded separately.
+Home retains the existing quick progress actions on web and Expo. Both adapters supply the shared progress renderer; card widths, shelf geometry and styling keep the accepted Home presentation.
+
+HomeView forwards the shared card/progress renderers and row-title callbacks, retaining the existing quick actions on both platforms. HomeShelves retains the accepted common card widths and the three-request FIFO fetch gate on web and Expo. Mixed/video rows do not adopt a separate widening policy. Django placeholder fallback suppression and single-flight row builds remain; native has no HTMX fallback. Existing ownership and retirement conditions remain. Final integration browser and native evidence is recorded separately.
 
 Status: `Partial / coexisting`
 

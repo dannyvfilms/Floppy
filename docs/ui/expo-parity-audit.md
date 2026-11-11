@@ -44,9 +44,10 @@ renders. Saving, date shortcuts and keyboard behavior are not established by tho
 captures. Data Management's backup paths and recorded backup history differ with
 the preview environment; those differences are not evidence of a design change.
 
-The owner's current uncommitted Home polish has not been confirmed as completely
-ported into this branch. Historical acceptance below must not be read as complete
-acceptance of the merged branch.
+Home, Sidebar, Search and Track preservation is integrated, including the Home
+loading improvements. Home retains its existing quick progress actions on web and
+Expo; their absence in earlier captures was not an instruction to remove them.
+Historical acceptance below is not full native parity acceptance.
 
 ### Evidence and acceptance limits
 
@@ -56,13 +57,17 @@ acceptance of the merged branch.
   theme. Both checkouts' generated browser bundles match their source. Previous
   Expo Web spot-checks opened Home, Search, Media Details, Statistics and Calendar.
   A complete PWA-versus-native screenshot comparison remains outstanding.
-- **iOS:** owner-reported manual Expo findings above, including the closed Duo grid
-  issue. No screenshots were captured or inspected for this report, so it does not
-  establish a new formal Runtime evidence level or visual parity acceptance.
-- **Android:** unverified for this branch review; no Android rendering evidence was
-  collected. The same loading, layout and interaction checks remain necessary.
+- **iOS:** Runtime smoke evidence: the real shared Search preview rendered in Expo
+  Go on an iPhone Duo simulator and its frame was inspected. This adds to the
+  owner's earlier reports, including the closed Duo grid issue. It does not verify
+  full pages, picker/error interactions or visual parity across the app.
+- **Android:** Runtime smoke evidence: the real shared Search preview cold-started
+  and its frame was inspected after correcting the system-theme Appearance value
+  from null to `auto`. Platform bundles and transport/theme logic also pass. Full
+  page, picker/error, layout and interaction verification remains outstanding.
 
-Continue development from this baseline. Prioritize the Settings loading failures
+The owner accepted integration as a baseline for continued Expo development, with
+native polish remaining. Prioritize the Settings loading failures
 and Discover's missing content, then the Library grid and the remaining page
 comparisons. Causes of the reported failures are not yet diagnosed. No platform
 carve-out or feature loss is accepted by documenting these gaps.

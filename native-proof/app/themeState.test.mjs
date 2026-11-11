@@ -8,10 +8,21 @@ import {
 test('system follows the operating system and nothing else does', () => {
   assert.equal(resolveTheme({ theme: 'system' }, 'light').tokens, LIGHT);
   assert.equal(resolveTheme({ theme: 'system' }, 'dark').tokens, DARK);
-  assert.equal(resolveTheme({ theme: 'system' }, 'light').override, null);
+  assert.equal(resolveTheme({ theme: 'system' }, 'light').override, 'auto');
+  assert.equal(resolveTheme({ theme: 'system' }, 'dark').override, 'auto');
   assert.equal(resolveTheme({ theme: 'dark' }, 'light').tokens, DARK);
   assert.equal(resolveTheme({ theme: 'light' }, 'dark').tokens, LIGHT);
   assert.equal(resolveTheme({ theme: 'dracula' }, 'light').scheme, 'dark');
+});
+
+test('every theme supplies a supported non-null native Appearance override', () => {
+  const supported = new Set(['light', 'dark', 'auto', 'unspecified']);
+  for (const scheme of ['light', 'dark']) {
+    for (const theme of ['system', 'light', 'dark', ...Object.keys(PRESETS), 'custom', 'unknown', undefined]) {
+      const resolved = resolveTheme({ theme }, scheme);
+      assert.ok(supported.has(resolved.override), `${theme}/${scheme}: invalid Appearance override`);
+    }
+  }
 });
 
 test('every preset resolves with the full token set', () => {
