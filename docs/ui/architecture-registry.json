@@ -490,15 +490,15 @@
       "verification": {
         "web": {
           "status": "verified",
-          "evidence": "Chromium via Playwright on macOS: signed-in Discover mounted the shared form at 1280x900 and 390x844; JSON suggestions, ArrowDown active descendant, type menu, GET search URL and suggestion navigation worked; the book barcode picker opened and an unreadable image showed and dismissed the error toast. Light and dark system palettes resolved distinct input colors."
+          "evidence": "Chromium via Playwright on macOS: signed-in Discover mounted the shared form at 1280x900 and 390x844; JSON suggestions, ArrowDown active descendant, type menu, GET search URL and suggestion navigation worked; the book barcode picker opened and an unreadable image showed and dismissed the error toast. Light and dark system palettes resolved distinct input colors. Expo supplies the reviewed menu and copy through SearchSlot while authenticated suggestions and keyboard overlap remain in native adapters. Final restoration runtime verification is recorded separately in the component register."
         },
         "ios": {
           "status": "verified",
-          "evidence": "On a physical iOS 27.2 Duo in Expo Go, the Home search field, type menu and empty-result suggestion were exercised; the field was also observed beside the open sidebar. Barcode and VoiceOver remain unverified."
+          "evidence": "On a physical iOS 27.2 Duo in Expo Go, the Home search field, type menu and empty-result suggestion were exercised; the field was also observed beside the open sidebar. Barcode and VoiceOver remain unverified. Expo supplies the reviewed menu and copy through SearchSlot while authenticated suggestions and keyboard overlap remain in native adapters. Final restoration runtime verification is recorded separately in the component register. Restored adapter runtime: inspected Home, Sidebar, Search and populated library/provider Search Results in Expo Go on the Duo. Initial rendering and search submission only; complete interactions, themes and accessibility remain unverified."
         },
         "android": {
           "status": "verified",
-          "evidence": "Android 15 Pixel 7 AVD: rendered the shared search on Home and Library; no suggestion, type-menu or barcode interaction and no TalkBack pass."
+          "evidence": "Android 15 Pixel 7 AVD: rendered the shared search on Home and Library; no suggestion, type-menu or barcode interaction and no TalkBack pass. Expo supplies the reviewed menu and copy through SearchSlot while authenticated suggestions and keyboard overlap remain in native adapters. Final restoration runtime verification is recorded separately in the component register. Restored Search preview rendered in Android Expo Go and its screenshot was inspected. Full Home, Sidebar and Search Results were not rendered in this restoration pass; their platform bundles and transport logic passed."
         }
       }
     },
@@ -510,15 +510,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The Django search page provides the props and server-rendered fallback and the UI bundle builds; the mounted results surface was not exercised in a browser."
+          "evidence": "The Django search page provides the props and server-rendered fallback and the UI bundle builds; the mounted results surface was not exercised in a browser. Expo SearchResultsSlot uses default shared shelf cards with the reviewed sizing and spacing, retaining token results and provider streaming. Final restoration runtime verification is recorded separately in the component register."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "Not exercised; the iOS pass rendered Home only."
+          "status": "verified",
+          "evidence": "Not exercised; the iOS pass rendered Home only. Expo SearchResultsSlot uses default shared shelf cards with the reviewed sizing and spacing, retaining token results and provider streaming. Final restoration runtime verification is recorded separately in the component register. Restored adapter runtime: inspected Home, Sidebar, Search and populated library/provider Search Results in Expo Go on the Duo. Initial rendering and search submission only; complete interactions, themes and accessibility remain unverified."
         },
         "android": {
           "status": "verified",
-          "evidence": "Android 15 Pixel 7 AVD: rendered the shared results surface on Search; no paging, scope, layout or TalkBack interaction; demo images did not load."
+          "evidence": "Android 15 Pixel 7 AVD: rendered the shared results surface on Search; no paging, scope, layout or TalkBack interaction; demo images did not load. Expo SearchResultsSlot uses default shared shelf cards with the reviewed sizing and spacing, retaining token results and provider streaming. Final restoration runtime verification is recorded separately in the component register. Restored Search preview rendered in Android Expo Go and its screenshot was inspected. Full Home, Sidebar and Search Results were not rendered in this restoration pass; their platform bundles and transport logic passed."
         }
       }
     },
@@ -2071,15 +2071,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compact Home shelf cards now use a shared 110 pt width on phone layouts; browser runtime verification after the sizing change remains pending."
+          "evidence": "Compact Home shelf cards now use a shared 110 pt width on phone layouts; browser runtime verification after the sizing change remains pending. Expo Home uses the reviewed default shared cards; the web retains its existing renderer and quick progress controls. Native row windowing and API transport remain adapter-owned. Final restoration runtime verification is recorded separately in the component register."
         },
         "ios": {
           "status": "verified",
-          "evidence": "The user reports extensive use of the native Home page in Expo Go on an iPhone Duo and considers Home done for the current milestone. Device Hub hot-reload on iOS 27.2 also confirmed 110 pt poster cards fill the row with three cards, with remaining cards reached by horizontal scrolling. OS and Expo Go versions and specific interaction coverage were not recorded; this is user-reported page acceptance, not a complete interaction checklist."
+          "evidence": "The user reports extensive use of the native Home page in Expo Go on an iPhone Duo and considers Home done for the current milestone. Device Hub hot-reload on iOS 27.2 also confirmed 110 pt poster cards fill the row with three cards, with remaining cards reached by horizontal scrolling. OS and Expo Go versions and specific interaction coverage were not recorded; this is user-reported page acceptance, not a complete interaction checklist. Expo Home uses the reviewed default shared cards; the web retains its existing renderer and quick progress controls. Native row windowing and API transport remain adapter-owned. Final restoration runtime verification is recorded separately in the component register. Restored adapter runtime: inspected Home, Sidebar, Search and populated library/provider Search Results in Expo Go on the Duo. Initial rendering and search submission only; complete interactions, themes and accessibility remain unverified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compact Home shelf cards now use a shared 110 pt width on phone layouts; Android runtime verification after the sizing change remains pending."
+          "evidence": "Compact Home shelf cards now use a shared 110 pt width on phone layouts; Android runtime verification after the sizing change remains pending. Expo Home uses the reviewed default shared cards; the web retains its existing renderer and quick progress controls. Native row windowing and API transport remain adapter-owned. Final restoration runtime verification is recorded separately in the component register. Restored Search preview rendered in Android Expo Go and its screenshot was inspected. Full Home, Sidebar and Search Results were not rendered in this restoration pass; their platform bundles and transport logic passed."
         }
       }
     },
@@ -2541,15 +2541,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The previous inline Explore sidebar was exercised in the in-app browser; the new overlay layout has not had a browser interaction pass. No responsive or screen-reader pass was performed. The existing server fallback controller now loads before Alpine and also supports late registration after startup, with its once guard retained. Browser regressions verify script order, late real fallback insertion and Explore toggling; shared React ownership/fallback retirement remain unchanged. This browser adapter check does not verify native runtime."
+          "evidence": "The previous inline Explore sidebar was exercised in the in-app browser; the new overlay layout has not had a browser interaction pass. No responsive or screen-reader pass was performed. The existing server fallback controller now loads before Alpine and also supports late registration after startup, with its once guard retained. Browser regressions verify script order, late real fallback insertion and Explore toggling; shared React ownership/fallback retirement remain unchanged. This browser adapter check does not verify native runtime. Expo mounts Sidebar directly in the drawer, with no extra layout wrapper or setup banner; browser adapters and fallback ownership are unchanged. Final restoration runtime verification is recorded separately in the component register."
         },
         "ios": {
-          "status": "unverified",
-          "evidence": "On the physical iOS 27.2 Duo in Expo Go, the sidebar was inspected on both sides against Claude. Screen-scoped safe-area insets changed with the side and the usual sidebar margin was reduced by the inset so the rail side received no duplicate padding. Explore displayed all seven unpinned entries in a content-sized overlay with navigation visible above, with an up chevron when closed and down when open. Direct side swapping and VoiceOver remain unverified."
+          "status": "verified",
+          "evidence": "On the physical iOS 27.2 Duo in Expo Go, the sidebar was inspected on both sides against Claude. Screen-scoped safe-area insets changed with the side and the usual sidebar margin was reduced by the inset so the rail side received no duplicate padding. Explore displayed all seven unpinned entries in a content-sized overlay with navigation visible above, with an up chevron when closed and down when open. Direct side swapping and VoiceOver remain unverified. Expo mounts Sidebar directly in the drawer, with no extra layout wrapper or setup banner; browser adapters and fallback ownership are unchanged. Final restoration runtime verification is recorded separately in the component register. Restored adapter runtime: inspected Home, Sidebar, Search and populated library/provider Search Results in Expo Go on the Duo. Initial rendering and search submission only; complete interactions, themes and accessibility remain unverified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native shell drawer; no Android emulator run was performed."
+          "evidence": "Compiled by the Expo export through the native shell drawer; no Android emulator run was performed. Expo mounts Sidebar directly in the drawer, with no extra layout wrapper or setup banner; browser adapters and fallback ownership are unchanged. Final restoration runtime verification is recorded separately in the component register. Restored Search preview rendered in Android Expo Go and its screenshot was inspected. Full Home, Sidebar and Search Results were not rendered in this restoration pass; their platform bundles and transport logic passed."
         }
       }
     },

@@ -34,6 +34,10 @@ whether a status is true; the register header says how to check that, and
 
 ## SHELL
 
+Restored adapter evidence: **web — Runtime**, PWA Home and Sidebar inspected beside Expo; browser source is unchanged. **iOS — Runtime**, Home, Sidebar, Search and populated library/provider Search Results inspected in Expo Go on the Duo. **Android — Runtime for Search preview only**, screenshot inspected; full Home, Sidebar and Search Results rendering remains unverified, with platform bundle and transport checks only. These checks do not establish complete interaction, theme or accessibility parity.
+
+`native-proof/app/surfaces/ShellSlot.jsx` → shared `Sidebar` and native drawer; direct flex layout, guided setup separate from navigation. The Expo adapter mounts the shared `Sidebar` directly in the drawer, preserving its full-height flex layout and the reviewed navigation spacing. Guided setup remains separate from the drawer; no setup banner is inserted above its rows. Account-backed pins, loading/retry, sign-out errors and onboarding remain adapter-owned. Shared Sidebar ownership stays fully React-owned with the existing coexisting web fallback and retirement conditions.
+
 Sidebar retains the accepted text metrics and anchored menu presentation while platform keyboard/menu-layer behavior stays in adapters. Account-backed pins and the legacy local-storage adoption path remain. Ownership and fallback retirement conditions are unchanged; the integration does not establish new iOS or Android runtime acceptance.
 
 The saved-view/sidebar fallback adapter loads before Alpine and also registers immediately when Alpine is already running, preserving its once guard. Browser regression coverage checks script order, late real-fallback insertion and Explore toggling without page errors. Shared Sidebar remains React-owned with the same coexisting server fallback and retirement conditions; actual iOS/Android runtime was not reverified by this browser bootstrap fix.
@@ -363,6 +367,8 @@ Status: `Partial / coexisting`
 
 ## SEARCH
 
+`native-proof/app/surfaces/SearchSlot.jsx` → shared `GlobalSearch`; `native-proof/app/screens/SearchScreen.jsx` → shared `SearchPageView`; `native-proof/app/surfaces/SearchResultsSlot.jsx` → shared `SearchResults` → `HomeShelves` → `MediaCard`. Expo `SearchSlot` supplies the reviewed media-type menu, barcode scopes and copy to shared `GlobalSearch`; keyboard overlap, authenticated suggestions and scanner behavior remain in native adapters. `SearchScreen` adds no extra top inset to results. `SearchResultsSlot` uses the default shared shelf card presentation instead of nesting a Library grid host inside each result; token results, streaming provider rows, music routing and manual-entry navigation remain. Shared presentation remains React-owned with the existing coexisting web fallback and retirement conditions. Deliberate platform difference: the restored native shelf card opens Detail while the browser retains its existing in-place actions.
+
 GlobalSearch and SearchResults retain the accepted menu/results geometry and theme accent. Browser keyboard overlap stays in keyboardOverlap.web.js; the native adapter supplies its own overlap hook and WindowedRail. Token results, manual-entry navigation and streaming provider rows remain. Existing ownership and fallback retirement conditions are unchanged; native runtime remains separately verified.
 
 ParentPicker's native manual-entry consumer opts into an unframed search field. The web create-entry template places each island's configuration within the host parent required by the loader, and the adapter explicitly imports shared presentation rather than resolving itself; its fallback remains. The mounted web picker retains its plain input, overlaid results and original result IDs. The TV manual-entry browser acceptance test covers parent search and selection; both web roots mounted and Expo also selected Deep Field. Ownership remains partial/coexisting and retirement still requires complete parity and web adoption. iOS and Android not verified.
@@ -397,9 +403,11 @@ Status: `Legacy`
 
 ## HOME
 
-Home retains the existing quick progress actions on web and Expo. Both adapters supply the shared progress renderer; card widths, shelf geometry and styling keep the accepted Home presentation.
+`native-proof/app/screens/HomeScreen.jsx` → shared `HomeView` → `HomeShelves` → default shared `MediaCard`; native adapter retains `WindowedRail`, row-title destinations and authenticated Home transport. The Expo Home adapter uses the default shared `HomeShelves` / `MediaCard` presentation, without an extra Library grid host, top inset, per-card progress row or floating settings button. Home row title navigation, bounded row loading, sorting, artwork refresh, signed-in transport and windowed native rails remain. Deliberate platform difference: the owner-approved native shelf opens Detail from card actions; the web adapter retains its existing in-place actions and quick progress controls. Page ownership stays partial/coexisting; server fallbacks and retirement conditions are unchanged.
 
-HomeView forwards the shared card/progress renderers and row-title callbacks, retaining the existing quick actions on both platforms. HomeShelves retains the accepted common card widths and the three-request FIFO fetch gate on web and Expo. Mixed/video rows do not adopt a separate widening policy. Django placeholder fallback suppression and single-flight row builds remain; native has no HTMX fallback. Existing ownership and retirement conditions remain. Final integration browser and native evidence is recorded separately.
+Web Home retains its existing quick progress actions. Expo uses the reviewed shared shelf-card composition described above.
+
+HomeView forwards optional card/progress renderers and row-title callbacks; the web supplies its progress renderer and Expo uses the default reviewed cards. HomeShelves retains the accepted common card widths and the three-request FIFO fetch gate on web and Expo. Mixed/video rows do not adopt a separate widening policy. Django placeholder fallback suppression and single-flight row builds remain; native has no HTMX fallback. Existing ownership and retirement conditions remain. Final integration browser and native evidence is recorded separately.
 
 Status: `Partial / coexisting`
 

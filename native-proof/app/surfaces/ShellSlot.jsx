@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHinge } from 'expo-hinge';
 import { useVerticalBarEdgeIOS } from 'expo-status-bar';
@@ -25,7 +25,7 @@ export const surface = {
   title: 'Application shell and navigation',
   where: 'Signed-in top bar, public header and mobile navigation',
   status: 'in_progress',
-  note: 'The native shell mirrors the web compact layout: a top bar with the menu button and global search, and a navigation drawer built from /api/v1/user/navigation/, the same sidebar model the web template renders, including icons, order and saved views. While it loads the drawer shows a loading state, and a failed load shows the matching error with Retry; there is no placeholder navigation. A "Finish setting up Floppy" row and the setup wizard follow the web onboarding state. The persistent desktop sidebar is not ported.',
+  note: 'The native shell mirrors the web compact layout: a top bar with the menu button and global search, and a navigation drawer built from /api/v1/user/navigation/, the same sidebar model the web template renders, including icons, order and saved views. While it loads the drawer shows a loading state, and a failed load shows the matching error with Retry; there is no placeholder navigation. The setup wizard follows the web onboarding state without adding a row to the reviewed drawer. The persistent desktop sidebar is not ported.',
 };
 
 const labels = {
@@ -148,7 +148,7 @@ export default function ShellSlot({
   const [navError, setNavError] = useState(null);
   const [navAttempt, setNavAttempt] = useState(0);
   const [signOutError, setSignOutError] = useState('');
-  const [onboarding, setOnboarding] = useState(null);
+  const [, setOnboarding] = useState(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [open, setOpen] = useState(false);
   const [pageType, setPageType] = useState(getShellPageType);
@@ -252,15 +252,9 @@ export default function ShellSlot({
       navContentPaddingRight: navigationPadding.paddingRight,
       navFontSize: 17, navIconSize: 22 }
     : shellPalette;
-  const offer = onboardingOffer(onboarding);
   const navPage = navError ? errorPageFor(navError) : null;
-  const sidebar = <View style={styles.sidebarStack}>
-    {offer.banner && !wizardOpen ? (
-      <Pressable accessibilityRole="button" accessibilityLabel="Finish setting up Floppy"
-        onPress={() => { setOpen(false); setWizardOpen(true); }} style={styles.setupRow}>
-        <Text style={styles.setupText}>Finish setting up Floppy</Text>
-      </Pressable>
-    ) : null}
+  // Keep Sidebar directly in the drawer so its flex layout fills the reviewed canvas.
+  const sidebar = <>
     {navStatus === 'loading' ? (
       <Text accessibilityLiveRegion="polite" style={styles.navStatus}>Loading navigation…</Text>
     ) : null}
@@ -285,7 +279,7 @@ export default function ShellSlot({
       }}
       showLogo={false} /> : null}
     {signOutError ? <Text accessibilityRole="alert" style={styles.navErrorText}>{signOutError}</Text> : null}
-  </View>;
+  </>;
   const content = wizardOpen
     ? <OnboardingScreen onFinish={closeWizard} onBack={closeWizard} />
     : <ErrorBoundary resetKey={activeHref} onGoHome={() => onNavigate?.('home')}>{children}</ErrorBoundary>;
@@ -330,7 +324,6 @@ export default function ShellSlot({
 }
 
 const styles = StyleSheet.create({
-  sidebarStack: { gap: 12 },
   navStatus: { color: palette.textMuted, fontSize: 13, lineHeight: 19 },
   navError: {
     borderWidth: 1,
@@ -341,11 +334,4 @@ const styles = StyleSheet.create({
   },
   navErrorTitle: { color: palette.danger, fontSize: 13, fontWeight: '700' },
   navErrorText: { color: palette.textSecondary, fontSize: 12, lineHeight: 17 },
-  setupRow: {
-    borderWidth: 1,
-    borderRadius: radius.md,
-    padding: 12,
-    borderColor: palette.accent,
-  },
-  setupText: { color: palette.text, fontSize: 13, fontWeight: '600' },
 });

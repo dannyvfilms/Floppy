@@ -107,6 +107,10 @@ can inform a focused completion pass.
 
 ### SHELL — Application and public shells
 
+Restored adapter evidence: **web — Runtime**, PWA Home and Sidebar inspected beside Expo; browser source is unchanged. **iOS — Runtime**, Home, Sidebar, Search and populated library/provider Search Results inspected in Expo Go on the Duo. **Android — Runtime for Search preview only**, screenshot inspected; full Home, Sidebar and Search Results rendering remains unverified, with platform bundle and transport checks only. These checks do not establish complete interaction, theme or accessibility parity.
+
+The Expo adapter mounts the shared `Sidebar` directly in the drawer, preserving its full-height flex layout and the reviewed navigation spacing. Guided setup remains separate from the drawer; no setup banner is inserted above its rows. Account-backed pins, loading/retry, sign-out errors and onboarding remain adapter-owned. Shared Sidebar ownership stays fully React-owned with the existing coexisting web fallback and retirement conditions.
+
 Sidebar retains the accepted text metrics and anchored menu presentation while platform keyboard/menu-layer behavior stays in adapters. Account-backed pins and the legacy local-storage adoption path remain. Ownership and fallback retirement conditions are unchanged; the integration does not establish new iOS or Android runtime acceptance.
 
 - The saved-view/sidebar fallback adapter loads before Alpine and also registers against an already-running Alpine instance; its global guard prevents duplicate registration. This preserves the shared React-owned Sidebar and its existing coexisting server fallback. Browser regressions verify script order, late fallback insertion and Explore toggling without JavaScript errors. Fallback retirement remains dependent on complete parity and the no-JavaScript policy; iOS/Android runtime is not established by this browser bootstrap check.
@@ -444,6 +448,8 @@ Shared MediaCard preserves the accepted status-specific icon shapes and colors, 
 
 ### SEARCH — Global autocomplete, results and barcode input
 
+Expo `SearchSlot` supplies the reviewed media-type menu, barcode scopes and copy to shared `GlobalSearch`; keyboard overlap, authenticated suggestions and scanner behavior remain in native adapters. `SearchScreen` adds no extra top inset to results. `SearchResultsSlot` uses the default shared shelf card presentation instead of nesting a Library grid host inside each result; token results, streaming provider rows, music routing and manual-entry navigation remain. Shared presentation remains React-owned with the existing coexisting web fallback and retirement conditions. Deliberate platform difference: the restored native shelf card opens Detail while the browser retains its existing in-place actions.
+
 GlobalSearch and SearchResults retain the accepted menu/results geometry and theme accent. Browser keyboard overlap stays in keyboardOverlap.web.js; the native adapter supplies its own overlap hook and WindowedRail. Token results, manual-entry navigation and streaming provider rows remain. Existing ownership and fallback retirement conditions are unchanged; native runtime remains separately verified.
 
 - ParentPicker adds an opt-in unframed native variant with a search icon for the Custom Entry page. The browser picker configuration sits inside its host's parent, satisfying the island loader's ownership check, and the web adapter imports the shared component explicitly to avoid resolving itself; the server fallback remains. The mounted web picker preserves the plain input, overlaid search results and original result element IDs. Browser: the TV manual-entry acceptance test covers parent search and selection; both web roots mounted and Deep Field was also selected in Expo. Native integer-field spinners and spacing differ; iOS and Android not verified. Native readiness: `Primitives`; retire the server fallback after complete parity and web adoption.
@@ -483,9 +489,11 @@ Rail retains optional per-item width and card windowing APIs. Native Home/Search
 
 ### HOME — Shelves, deferred groups and cover refresh
 
-Home retains the existing quick progress actions on web and Expo. Both adapters supply the shared progress renderer; card widths, shelf geometry and styling keep the accepted Home presentation.
+The Expo Home adapter uses the default shared `HomeShelves` / `MediaCard` presentation, without an extra Library grid host, top inset, per-card progress row or floating settings button. Home row title navigation, bounded row loading, sorting, artwork refresh, signed-in transport and windowed native rails remain. Deliberate platform difference: the owner-approved native shelf opens Detail from card actions; the web adapter retains its existing in-place actions and quick progress controls. Page ownership stays partial/coexisting; server fallbacks and retirement conditions are unchanged.
 
-HomeView forwards the shared card/progress renderers and row-title callbacks, retaining the existing quick actions on both platforms. HomeShelves retains the accepted common card widths and the three-request FIFO fetch gate (`createFetchGate` from `frontend/ui/fetchGate.js`) on web and Expo. Mixed/video rows do not adopt a separate widening policy. Django placeholder fallback suppression and single-flight row builds remain; native has no HTMX fallback. Existing ownership and retirement conditions remain. Final integration browser and native evidence is recorded separately.
+Web Home retains its existing quick progress actions. Expo uses the reviewed shared shelf-card composition described above.
+
+HomeView forwards optional card/progress renderers and row-title callbacks; the web supplies its progress renderer and Expo uses the default reviewed cards. HomeShelves retains the accepted common card widths and the three-request FIFO fetch gate (`createFetchGate` from `frontend/ui/fetchGate.js`) on web and Expo. Mixed/video rows do not adopt a separate widening policy. Django placeholder fallback suppression and single-flight row builds remain; native has no HTMX fallback. Existing ownership and retirement conditions remain. Final integration browser and native evidence is recorded separately.
 
 - Purpose/usage: personalized Home composition.
 - Status: `Partial / coexisting`. Page composition and server data remain Django templates and Alpine; the shared `HomeShelves` component owns shelf rows on browser and native surfaces, with the canonical shared React media cards inside each row. Phone cards use a 110 pt width so three cards fill the visible row; poster cards grow proportionally taller.
