@@ -84,6 +84,7 @@ const defaultLabels = {
   passwordStatus: 'Password updated.',
   error: 'Something went wrong. Try again.',
   close: 'Close',
+  sessionRequired: 'Sign in with your username and password to manage this.',
 };
 
 function fill(template, values) {
@@ -154,7 +155,7 @@ function PasswordDialog({ open, title, copy, value, label, saveLabel, cancelLabe
   </Modal>;
 }
 
-function UserRow({ member, labels, palette, busy, onToggle, onPassword, onDelete }) {
+function UserRow({ member, labels, palette, busy, sessionRequired, onToggle, onPassword, onDelete }) {
   const rowBusy = busy.startsWith(`${member.id}:`);
   return <View style={[styles.row, { backgroundColor: palette.surfaceStrong, borderRadius: palette.radius }]}>
     <View style={styles.rowTop}>
@@ -178,12 +179,12 @@ function UserRow({ member, labels, palette, busy, onToggle, onPassword, onDelete
     </View>
     <View style={styles.actions}>
       <Button label={member.isActive ? labels.deactivate : labels.activate}
-        tone="surface" disabled={rowBusy || member.isSelf}
+        tone="surface" disabled={sessionRequired || rowBusy || member.isSelf}
         onPress={() => onToggle(member, 'isActive')} palette={buttonPalette} />
       <Button label={member.isSuperuser ? labels.removeSuperuser : labels.makeSuperuser}
-        tone="surface" disabled={rowBusy || member.isSelf}
+        tone="surface" disabled={sessionRequired || rowBusy || member.isSelf}
         onPress={() => onToggle(member, 'isSuperuser')} palette={buttonPalette} />
-      <Button label={labels.resetPassword} tone="surface" disabled={rowBusy}
+      <Button label={labels.resetPassword} tone="surface" disabled={sessionRequired || rowBusy}
         onPress={() => onPassword(member)} palette={buttonPalette} />
       <Button label={labels.deleteUser} tone="danger-solid" disabled={rowBusy || !member.canDelete}
         onPress={() => onDelete(member)} palette={buttonPalette} />
@@ -195,6 +196,7 @@ function UserRow({ member, labels, palette, busy, onToggle, onPassword, onDelete
 export function UsersManagement({ initialUsers = [], labels: suppliedLabels = {},
   palette: suppliedPalette = {}, actions = {} }) {
   const labels = useMemo(() => ({ ...defaultLabels, ...suppliedLabels }), [suppliedLabels]);
+  const sessionRequired = Boolean(actions.sessionRequired);
   const palette = useMemo(() => ({ ...defaultPalette, ...suppliedPalette }), [suppliedPalette]);
   const [rows, setRows] = useState(initialUsers);
   const [query, setQuery] = useState('');
@@ -300,6 +302,7 @@ export function UsersManagement({ initialUsers = [], labels: suppliedLabels = {}
   return <View style={styles.page}>
     {statusMessage}
     <Panel title={labels.createTitle} palette={palette}>
+      {sessionRequired ? <Text style={[styles.copy, { color: palette.textMuted }]}>{labels.sessionRequired}</Text> : <>
       <Text style={[styles.copy, { color: palette.textMuted }]}>{labels.createCopy}</Text>
       <View style={styles.filters}>
         <View style={styles.field}>
@@ -320,6 +323,7 @@ export function UsersManagement({ initialUsers = [], labels: suppliedLabels = {}
         <Button label={labels.createAction} busy={busy === 'create'} disabled={busy === 'create'}
           onPress={createUser} palette={buttonPalette} />
       </View>
+      </>}
     </Panel>
 
     <Panel title={labels.overviewTitle} palette={palette}
@@ -333,17 +337,19 @@ export function UsersManagement({ initialUsers = [], labels: suppliedLabels = {}
         </View>
         <View style={styles.filterField}>
           <SelectField label={labels.statusFilter} name="status" value={statusFilter}
+            iconChevron={Boolean(palette.pageCards)}
             options={statusOptions(labels)} onChange={event => setStatusFilter(event.target.value)}
             palette={palette} />
         </View>
         <View style={styles.filterField}>
           <SelectField label={labels.roleFilter} name="role" value={roleFilter}
+            iconChevron={Boolean(palette.pageCards)}
             options={roleOptions(labels)} onChange={event => setRoleFilter(event.target.value)}
             palette={palette} />
         </View>
       </View>
       {filtered.length ? filtered.map(member => <UserRow key={member.id} member={member}
-        labels={labels} palette={palette} busy={busy}
+        labels={labels} palette={palette} busy={busy} sessionRequired={sessionRequired}
         onToggle={toggle} onPassword={openPassword} onDelete={openDelete} />)
         : <Text style={[styles.copy, { color: palette.textMuted }]}>{rows.length ? labels.empty : labels.noUsers}</Text>}
     </Panel>

@@ -17,3 +17,16 @@ export function playbackCardWidth(viewportWidth, mobileGridLayout = 'compact') {
   const width = Math.min(cardCap, (viewportWidth - 32 - (columns - 1) * gap) / columns);
   return width * columns + (columns - 1) * gap;
 }
+
+// Card width and gap of the library grid. Phones show the user's mobile grid
+// preference (three compact columns by default, two comfortable ones), the
+// with the web library's gutters; wider viewports use the Lists grid.
+export function libraryGridLayout(viewportWidth, mobileGridLayout = 'compact') {
+  if (viewportWidth >= 769) return { width: mediaCardGridWidth(viewportWidth), gap: 12 };
+
+  const compact = mobileGridLayout !== 'comfortable';
+  const columns = compact ? 3 : 2;
+  const gap = 12;
+  const cardCap = compact ? 110 : 168;
+  return { width: Math.min(cardCap, (viewportWidth - 32 - (columns - 1) * gap) / columns), gap };
+}

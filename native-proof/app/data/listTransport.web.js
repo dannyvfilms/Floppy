@@ -40,7 +40,11 @@ function buildBody({ json, form }) {
 function createRequest(baseUrl, csrfToken) {
   return async (path, options = {}) => {
     const { headers, body } = buildBody(options);
-    const response = await fetch(`${baseUrl}${path}`, {
+    const query = Object.entries(options.query || {})
+      .filter(([, value]) => value !== undefined && value !== null && value !== '')
+      .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+      .join('&');
+    const response = await fetch(`${baseUrl}${path}${query ? `?${query}` : ''}`, {
       method: options.method || 'GET',
       credentials: 'same-origin',
       headers: {
@@ -65,8 +69,8 @@ function createRequest(baseUrl, csrfToken) {
 }
 
 // The same-origin Django session and CSRF cookie are the web transport. When
-// they are absent (a static export or signed-out preview) the screen keeps its
-// local demo state instead of pretending a write succeeded.
+// they are absent (a static export or signed-out preview) the screen falls back
+// to a local transport instead of pretending a write succeeded.
 export function createListTransport(options = {}) {
   if (typeof options.request === 'function') {
     return createRemoteListActions(options.request);

@@ -6,7 +6,8 @@ it is named here; ``api.tests.test_fork_scope_enforcement`` fails the build when
 routed view is missing, so the omission cannot ship silently.
 
 Legacy ``User.token`` credentials and session logins are unaffected: they carry no
-token object and keep full access.
+token object and keep ordinary access. Credential disclosure and issuance
+require an actual session, including for legacy and first-party tokens.
 """
 
 # Any authenticated credential may reach the endpoint. Used for endpoints that
@@ -14,10 +15,12 @@ token object and keep full access.
 # own grants.
 ANY_SCOPE = "*any*"
 
-# No scoped token may reach the endpoint, whatever it holds. Reserved for
-# credential management, which a scoped token must never be able to escalate
-# through.
+# Ordinary scoped tokens are refused. First-party full-account tokens may pass.
 NEVER = "*never*"
+
+# Credential disclosure and issuance require a session, including for the
+# first-party app. No bearer credential may create access that outlives itself.
+SESSION_ONLY = "*session*"
 
 SCOPE_DESCRIPTIONS = {
     "scrobble:write": "Submit playback events.",
@@ -42,8 +45,8 @@ SCOPE_DESCRIPTIONS = {
     "exports:read": "Download exports.",
     "sync:read": "Read sync connections, change feeds, and conflicts.",
     "sync:write": "Resolve sync conflicts.",
-    "user:read": "Read preferences, sidebar, and notification settings.",
-    "user:write": "Change preferences, sidebar, and notification settings.",
+    "user:read": "Read preferences, saved views, sidebar, and notification settings.",
+    "user:write": "Change preferences, saved views, sidebar, and notification settings.",
 }
 
 ALL_SCOPES = frozenset(SCOPE_DESCRIPTIONS)
@@ -67,6 +70,7 @@ _W = "watchlist:write"
 VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.episode_order_views.EpisodeOrderView": {"GET": _R, "POST": _W},
     "api.fork_views.CollectionView": {"GET": _R, "POST": _W},
+    "api.fork_views_collection.CollectionFieldsView": {"GET": _R, "PUT": "user:write"},
     "api.fork_views.CollectionEntryView": {"GET": _R, "PATCH": _W, "DELETE": _W},
     "api.fork_views.MediaCollectionView": {"PUT": _W, "DELETE": _W},
     "api.fork_views.MediaProgressView": {"POST": "progress:write"},
@@ -75,6 +79,15 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_discover.CollectionSeasonView": {"DELETE": _W},
     "api.fork_views_discover.DiscoverRowsView": {"GET": "catalog:read"},
     "api.fork_views_discover.RecommendationsView": {"GET": "catalog:read"},
+    "api.fork_views_discover.DiscoverStatusView": {"GET": "catalog:read"},
+    "api.fork_views_search.SearchSourcesView": {"GET": "catalog:read"},
+    "api.fork_views_search.SearchSuggestionsView": {"GET": "catalog:read"},
+    "api.fork_views_search.SearchResultsView": {"GET": "catalog:read"},
+    "api.fork_views_search.SearchParentsView": {"GET": "catalog:read"},
+    "api.fork_views_search.ManualEntryView": {"GET": "catalog:read", "POST": NEVER},
+    "api.fork_views_search.SearchMusicCreateView": {"POST": "music:write"},
+    "api.fork_views_people.PersonView": {"GET": "catalog:read"},
+    "api.fork_views_people.StudioView": {"GET": "catalog:read"},
     "api.fork_views_discover.DiscoverRefreshView": {"POST": "catalog:write"},
     "api.fork_views_discover.DiscoverHiddenView": {
         "GET": "catalog:read",
@@ -85,19 +98,32 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_discover.HomeRowDirectionView": {"POST": "catalog:write"},
     "api.fork_views_discover.HomeArtworkView": {"GET": "catalog:read"},
     "api.fork_views_integrations.ImportDispatchView": {"POST": "imports:write"},
-    "api.fork_views_integrations.ImportActivityView": {"GET": "imports:read"},
+    "api.fork_views_integrations.ImportActivityView": {"GET": "imports:read", "POST": NEVER},
     "api.fork_views_integrations.ExportCsvView": {"GET": "exports:read"},
     "api.fork_views_integrations.ExportTemplateView": {"GET": "exports:read"},
     "api.fork_views_lists.ListSmartRulesView": {
         "GET": "lists:read",
         "PUT": "lists:write",
     },
+    "api.fork_views_lists.ListSmartRuleOptionsView": {"GET": "lists:read"},
     "api.fork_views_lists.ListSmartSyncView": {"POST": "lists:write"},
     "api.fork_views_lists.ListCollaboratorsView": {
         "GET": "lists:read",
         "PUT": "lists:write",
     },
+    "api.fork_views_lists.ListViewersView": {
+        "GET": "lists:read",
+        "PUT": "lists:write",
+    },
+    "api.fork_views_lists.ListTiersView": {
+        "GET": "lists:read",
+        "PUT": "lists:write",
+    },
+    "api.fork_views_lists.ListTierMoveView": {"POST": "lists:write"},
+    "api.fork_views_lists.ListTierFillView": {"POST": "lists:write"},
+    "api.fork_views_lists.ListTierFillUndoView": {"POST": "lists:write"},
     "api.fork_views_lists.ListItemsReorderView": {"POST": "lists:write"},
+    "api.fork_views_lists.ListItemsBulkAddView": {"POST": "lists:write"},
     "api.fork_views_lists.ListItemsOrderView": {"PUT": "lists:write"},
     "api.fork_views_lists.ListItemsRanksView": {"PUT": "lists:write"},
     "api.fork_views_lists.ListRecommendationsView": {
@@ -106,7 +132,15 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     },
     "api.fork_views_lists.ListRecommendationDecisionView": {"POST": "lists:write"},
     "api.fork_views_lists.ListActivityView": {"GET": "lists:read"},
+    "api.fork_views_list_imports.ListImportStatusView": {"GET": "imports:read"},
+    "api.fork_views_list_imports.ListImportCsvView": {"POST": "imports:write"},
+    # These mixed import actions also connect, disconnect and store provider keys.
+    "api.fork_views_list_imports.ListImportMdblistView": {"POST": NEVER},
+    "api.fork_views_list_imports.ListImportTraktView": {"POST": NEVER},
+    "api.fork_views_list_imports.ListExportCsvView": {"GET": "lists:read"},
     "api.fork_views_metadata.ItemImageView": {"PATCH": "metadata:write"},
+    "api.fork_views_metadata.ItemCoverView": {"GET": "metadata:read", "POST": "metadata:write"},
+    "api.fork_views_metadata.ItemHardcoverEditionsView": {"GET": "metadata:read", "POST": "metadata:write"},
     "api.fork_views_metadata.ItemMetadataView": {
         "GET": "metadata:read",
         "PATCH": "metadata:write",
@@ -145,6 +179,13 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_music.MusicArtistMembersSyncView": {"POST": "music:write"},
     "api.fork_views_music.MusicAlbumSyncView": {"POST": "music:write"},
     "api.fork_views_music.MusicTrackNotesView": {"PATCH": "music:write"},
+    "api.fork_views_music.MusicTrackDetailView": {"GET": "music:read"},
+    "api.fork_views_music.MusicTrackPlaysView": {"GET": "music:read"},
+    "api.fork_views_music.MusicTrackPlayDetailView": {"DELETE": "music:write"},
+    "api.fork_views_music.MusicAlbumReleasesView": {
+        "GET": "music:read",
+        "POST": "music:write",
+    },
     "api.fork_views_playback.PlaybackProgressView": {
         "GET": "progress:read",
         "PUT": "progress:write",
@@ -176,9 +217,24 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
         "DELETE": "podcasts:write",
     },
     "api.fork_views_podcast.PodcastEpisodeNotesView": {"PATCH": "podcasts:write"},
+    "api.fork_views_podcast.PodcastShowEpisodeManageView": {
+        "GET": "podcasts:read",
+        "POST": "podcasts:write",
+    },
+    "api.fork_views_podcast.PodcastEpisodeDetailView": {
+        "PATCH": "podcasts:write",
+        "DELETE": "podcasts:write",
+    },
+    "api.fork_views_podcast.PodcastEpisodeScoreView": {"PATCH": "podcasts:write"},
     "api.fork_views_scrobble.ScrobbleView": {"POST": "scrobble:write"},
     "api.fork_views_statistics.StatisticsOverviewView": {"GET": "statistics:read"},
     "api.fork_views_statistics.StatisticsRefreshView": {"POST": "statistics:write"},
+    "api.fork_views_statistics.StatisticsPreferencesView": {
+        "GET": "statistics:read",
+        "PATCH": "statistics:write",
+    },
+    "api.fork_views_statistics.StatisticsTalentView": {"GET": "statistics:read"},
+    "api.fork_views_statistics.StatisticsFeaturedPersonView": {"POST": "statistics:write"},
     "api.fork_views_tracking.MediaEpisodeWatchView": {"POST": _W, "DELETE": _W},
     "api.fork_views_tracking.MediaMovieWatchView": {"POST": _W, "DELETE": _W},
     "api.fork_views_video.VideoPlayView": {"GET": _R, "POST": _W},
@@ -188,6 +244,12 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_tracking.MediaEpisodeBulkView": {"POST": _W},
     "api.fork_views_consumption_batch.ConsumptionBatchView": {"POST": _W},
     "api.fork_views_consumption_batch.ConsumptionBatchDetailView": {"GET": _R},
+    "api.fork_views_library.LibraryFilterOptionsView": {"GET": _R},
+    "api.fork_views_library.LibraryItemIdsView": {"GET": _R},
+    "api.fork_views_library.LibraryPreferencesView": {"GET": "user:read", "PATCH": "user:write"},
+    "api.fork_views_library.LibraryShareView": {"POST": "lists:write"},
+    "api.fork_views_library.LibraryBulkStatusView": {"POST": _W},
+    "api.fork_views_library.LibraryBulkTagView": {"POST": _W},
     "api.fork_views_tracking.TagsView": {"GET": _R, "POST": _W},
     "api.fork_views_tracking.TagDetailView": {"PATCH": _W, "DELETE": _W},
     "api.fork_views_tracking.MediaTagsView": {"GET": _R, "PUT": _W},
@@ -196,6 +258,15 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_tracking.MediaSeasonStateView": {"GET": _R},
     "api.fork_views_tracking.MediaEpisodeStateView": {"GET": _R},
     "api.fork_views_tracking.HistoryRecordView": {"DELETE": _W},
+    "api.fork_views_history.HistoryGenresView": {"GET": _R},
+    "api.fork_views_history.HistorySessionsView": {"GET": _R},
+    "api.fork_views_history.HistoryDayView": {"GET": _R},
+    "api.fork_views_history.HistoryReleaseDaysView": {"GET": _R},
+    "api.fork_views_history.HistoryEntryView": {"PATCH": _W, "DELETE": _W},
+    "api.fork_views_history.HistorySavedViewsView": {"POST": "user:write"},
+    # The links embed the account token (full access), like token rotation.
+    "api.fork_views_calendar.CalendarLinksView": {"GET": SESSION_ONLY},
+    "api.fork_views_calendar.CalendarStatusesView": {"GET": "catalog:read"},
     "api.fork_views_watched_state.WatchedStateView": {"GET": _R, "PUT": _W},
     "api.fork_views_watched_state.WatchedStateChangeFeedView": {"GET": "sync:read"},
     "api.fork_views_progress_changes.ProgressChangeFeedView": {"GET": "sync:read"},
@@ -205,10 +276,38 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_watched_state.SyncConflictsView": {"GET": "sync:read"},
     "api.fork_views_watched_state.SyncConflictResolveView": {"POST": "sync:write"},
     "api.fork_views_metadata.MediaMetadataView": {"GET": "metadata:read"},
+    "api.fork_views_metadata.MediaSeasonMetadataView": {"GET": "metadata:read"},
+    "api.fork_views_metadata.MediaEpisodeMetadataView": {"GET": "metadata:read"},
+    "api.fork_views_detail.MediaCollectionEntriesView": {"GET": _R},
+    "api.fork_views_detail.MediaSeasonCollectionEntriesView": {"GET": _R},
+    "api.fork_views_detail.MediaEpisodeCollectionEntriesView": {"GET": _R},
+    "api.fork_views_detail.MediaProgressCardView": {"GET": _R},
+    "api.fork_views_detail.MediaActivityTimelineView": {"GET": _R},
+    "api.fork_views_detail.MediaSeasonActivityTimelineView": {"GET": _R},
+    "api.fork_views_detail.MediaEpisodeActivityTimelineView": {"GET": _R},
+    "api.fork_views_detail.MediaScoresView": {"GET": _R},
+    "api.fork_views_detail.MediaIssuesView": {"GET": _R},
+    "api.fork_views_detail.MediaAnimeEpisodesView": {"GET": _R},
+    "api.fork_views_library.LibraryGameGroupsView": {"GET": _R},
+    "api.fork_views_detail.MediaSeasonScoresView": {"GET": _R},
+    "api.fork_views_detail.MediaSeasonProgressCardView": {"GET": _R},
+    "api.fork_views_detail.MediaCheckInView": {"GET": _R, "POST": _W},
+    "api.fork_views_detail.MediaShowCollectView": {"PUT": _W},
+    "api.fork_views_detail.MediaSeasonCollectView": {"PUT": _W},
+    "api.fork_views_detail.MediaSeerrRequestView": {
+        "GET": "catalog:read",
+        "POST": "catalog:write",
+    },
+    "api.fork_views_detail.DetailPageView": {"GET": "watchlist:read"},
+    "api.fork_views_detail.DetailGalleryView": {"GET": "metadata:read"},
     "api.fork_views_users.UserNavigationView": {"GET": "user:read"},
     "api.fork_views_users.UserPreferencesView": {
         "GET": "user:read",
         "PATCH": "user:write",
+    },
+    "api.fork_views_onboarding.UserOnboardingView": {
+        "GET": "user:read",
+        "POST": "user:write",
     },
     "api.fork_views_users.UserSidebarView": {
         "GET": "user:read",
@@ -225,7 +324,69 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     },
     "api.fork_views_users.UserNotificationTestView": {"POST": "user:write"},
     # Rotating the account token would let a scoped token mint an unscoped one.
-    "api.fork_views_users.UserTokenRegenerateView": {"POST": NEVER},
+    "api.fork_views_users.UserTokenRegenerateView": {"POST": SESSION_ONLY},
+    "api.fork_views_settings.UserPreferencesChoicesView": {"GET": "user:read"},
+    "api.fork_views_settings.UserAppearanceView": {"GET": "user:read", "PUT": "user:write"},
+    "api.fork_views_settings.UserCardsView": {"GET": "user:read", "PUT": "user:write"},
+    "api.fork_views_settings.UserCardPreviewView": {"POST": "user:read"},
+    "api.fork_views_settings.UserHomeScreenView": {"GET": "user:read", "PUT": "user:write"},
+    "api.fork_views_settings.UserHomeScreenListsView": {"GET": "user:read"},
+    "api.fork_views_settings.UserHomeScreenFilterFieldsView": {"GET": "user:read"},
+    "api.fork_views_settings.UserTokenView": {"GET": SESSION_ONLY},
+    # Password, authenticator and account deletion: session or the Floppy app only.
+    "api.fork_views_settings.UserAccountView": {"GET": NEVER, "POST": NEVER},
+    "api.fork_views_settings.UserIntegrationTokensView": {"GET": NEVER, "POST": SESSION_ONLY},
+    "api.fork_views_settings.UserIntegrationTokenDetailView": {"DELETE": NEVER},
+    "api.fork_views_settings.UserCatalogGrantsView": {"GET": NEVER, "POST": SESSION_ONLY},
+    "api.fork_views_settings.UserCatalogGrantDetailView": {"DELETE": NEVER},
+    "api.fork_views_settings.UserOAuthApplicationsView": {"GET": NEVER},
+    "api.fork_views_settings.UserOAuthApplicationDetailView": {"DELETE": NEVER},
+    "api.fork_views_settings.ManagedUsersView": {"GET": NEVER, "POST": SESSION_ONLY},
+    "api.fork_views_settings.ManagedUserDetailView": {"PATCH": SESSION_ONLY, "DELETE": NEVER},
+    "api.fork_views_settings.ManagedUserPasswordView": {"POST": SESSION_ONLY},
+    "api.fork_views_settings.AdvancedSettingsView": {"GET": NEVER},
+    "api.fork_views_settings.ImageCacheView": {"PUT": NEVER, "DELETE": NEVER},
+    "api.fork_views_settings.CacheClearView": {"DELETE": NEVER},
+    "api.fork_views_settings.ServerPortView": {"PUT": NEVER, "DELETE": NEVER},
+    "api.fork_views_settings.LogsExportView": {"GET": NEVER},
+    "api.fork_views_settings.DiagnosticsExportView": {"GET": NEVER},
+    "api.fork_views_settings.AboutSettingsView": {"GET": "user:read"},
+    "api.fork_views_settings.WhatsNewView": {"GET": "user:read"},
+    "api.fork_views_settings.ExportSchedulesView": {"GET": "exports:read", "POST": NEVER, "DELETE": NEVER},
+    "api.fork_views_settings.ExportHistoryView": {"GET": "exports:read"},
+    "api.fork_views_settings.ExportBackupStatusView": {"GET": NEVER},
+    "api.fork_views_settings.LetterboxdExportView": {"GET": "exports:read"},
+    "api.fork_views_settings.UserImportSettingsView": {"GET": "user:read", "PUT": "user:write"},
+    "api.fork_views_settings.RestoreBackupView": {"POST": NEVER},
+    "api.fork_views_settings.UserRssView": {"GET": SESSION_ONLY},
+    "api.fork_views_settings.UserRssPreviewView": {"GET": NEVER},
+    # Provider, connection and match-review routes carry or act on credentials: session only.
+    "api.fork_views_providers.ProvidersView": {"GET": NEVER},
+    "api.fork_views_providers.ProviderPinView": {"POST": NEVER},
+    "api.fork_views_providers.ProviderDetailView": {"GET": NEVER},
+    "api.fork_views_providers.ProviderConnectView": {"POST": NEVER},
+    "api.fork_views_provider_connect.ProviderConnectStartView": {"POST": NEVER},
+    "api.fork_views_provider_connect.ProviderConnectPollView": {"GET": NEVER},
+    "api.fork_views_provider_connect.ProviderConnectCancelView": {"POST": NEVER},
+    "api.fork_views_providers.ProviderFormView": {"POST": NEVER},
+    "api.fork_views_providers.ProviderFileImportView": {"POST": NEVER},
+    "api.fork_views_providers.ProviderMetadataActionView": {"POST": NEVER},
+    "api.fork_views_providers.ProviderDisconnectView": {"POST": NEVER},
+    "api.fork_views_providers.ProviderCredentialsView": {"PUT": NEVER, "DELETE": NEVER},
+    "api.fork_views_providers.ProviderTestView": {"POST": NEVER},
+    "api.fork_views_providers.ProviderSyncView": {"POST": NEVER},
+    "api.fork_views_providers.ProviderImportView": {"POST": NEVER},
+    "api.fork_views_providers.ProviderSchedulesView": {"GET": NEVER, "DELETE": NEVER},
+    "api.fork_views_providers.ConnectionsView": {"GET": NEVER},
+    "api.fork_views_providers.DeviceApprovalView": {"GET": NEVER, "POST": SESSION_ONLY},
+    "api.fork_views_providers.ConnectionDirectionView": {"POST": NEVER},
+    "api.fork_views_providers.ConnectionPauseView": {"POST": NEVER},
+    "api.fork_views_providers.MetadataReviewQueueView": {"GET": NEVER},
+    "api.fork_views_providers.MetadataReviewReferenceView": {"POST": NEVER},
+    "api.fork_views_providers.MetadataMatchCandidatesView": {"GET": NEVER},
+    "api.fork_views_providers.MetadataMatchPreviewView": {"POST": NEVER},
+    "api.fork_views_providers.MetadataMatchApplyView": {"POST": NEVER},
+    "api.fork_views_settings.LibraryMaintenanceView": {"GET": "user:read", "POST": NEVER},
     "api.listenbrainz_views.SubmitListensView": {"POST": "scrobble:write"},
     "api.listenbrainz_views.UserListensView": {"GET": "music:read"},
     "api.listenbrainz_views.UserArtistsView": {"GET": "music:read"},
@@ -243,6 +404,14 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.views.StatisticsView": {"GET": "statistics:read"},
     "api.views.MediaListView": {"GET": _R},
     "api.views.MediaTypeListView": {"GET": _R, "POST": _W},
+    "api.fork_views_library_changes.LibraryActivityView": {"GET": _R},
+    "api.fork_views_library_changes.LibraryDeletedView": {"GET": _R},
+    "api.fork_views_library.LibrarySavedViewsView": {"GET": "user:read", "POST": "user:write"},
+    "api.fork_views_library.LibrarySavedViewDetailView": {"GET": "user:read", "DELETE": "user:write"},
+    "api.fork_views_library.LibrarySavedViewsReorderView": {"POST": "user:write"},
+    "api.fork_views_library.LibraryBulkCollectionView": {"POST": _W},
+    "api.fork_views_library.LibraryBulkPlaysView": {"POST": _W},
+    "api.fork_views_library.LibraryBulkPlaysStatusView": {"GET": _R},
     "api.views.MediaDetailView": {"GET": _R, "PATCH": _W, "DELETE": _W},
     "api.views.MediaSeasonsView": {"GET": _R},
     "api.views.MediaSeasonDetailView": {"GET": _R, "PATCH": _W, "DELETE": _W},
@@ -308,9 +477,11 @@ def resolve_required_scope(view, method: str) -> str | None:
     """Return the scope a scoped token needs for ``method`` on ``view``.
 
     Returns :data:`ANY_SCOPE` when any valid token is enough, :data:`NEVER` when
-    no scoped token may pass, and ``None`` when the endpoint is unmapped. An
+    no scoped token may pass, :data:`SESSION_ONLY` for session authentication only,
+    and ``None`` when the endpoint is unmapped. An
     unmapped endpoint is denied to scoped tokens; see the module docstring.
     """
+    method = "GET" if method.upper() == "HEAD" else method.upper()
     explicit = getattr(view, "required_scopes", None)
     if explicit:
         return explicit.get(method.upper())

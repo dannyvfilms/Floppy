@@ -1,11 +1,14 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Chip } from '../settings/Chip';
 import { SettingsCard } from '../settings/SettingsCard';
 import { Button } from '../ui/Button';
 import { SelectField } from '../ui/SelectField';
 import { SetupGuide } from '../ui/SetupGuide';
 import { TextField } from '../ui/TextField';
+import { Icon } from '../ui/Icon';
+import { ReorderList } from '../ui/ReorderList';
+import { ToggleChip } from '../ui/ToggleChip';
 
 const defaultPalette = {
   background: '#18181b',
@@ -98,9 +101,9 @@ function runTone(status) {
 function SourceIdentity({ source, colors }) {
   const initial = String(source?.name || source?.slug || '?').slice(0, 1).toUpperCase();
   return <View style={styles.sourceIdentity}>
-    <View style={[styles.avatar, { backgroundColor: colors.surfaceStrong, borderColor: colors.surfaceMuted }]}>
+    {source.logo ? <Image source={{ uri: source.logo }} style={{ width: 24, height: 24 }} resizeMode="contain" accessible={false} /> : <View style={[styles.avatar, { backgroundColor: colors.surfaceStrong, borderColor: colors.surfaceMuted }]}>
       <Text style={[styles.avatarText, { color: colors.textSecondary }]}>{initial}</Text>
-    </View>
+    </View>}
     <View style={styles.sourceCopy}>
       <Text style={[styles.sourceName, { color: colors.text }]}>{source?.name || source?.slug}</Text>
       {source?.description ? <Text style={[styles.sourceDescription, { color: colors.textMuted }]}>{source.description}</Text> : null}
@@ -163,9 +166,13 @@ export function OnboardingWizard({
   onSaveAndFinish,
   palette,
   buttonPalette,
+  standalone = false,
+  heroSource,
+  progressArrowIcon,
 }) {
   const colors = resolveColors(palette);
   const buttons = resolveButtons(buttonPalette);
+  const { width } = useWindowDimensions();
 
   if (blocked) {
     return <SettingsCard title={blockedTitle || 'Guided setup unavailable'} badge="Blocked" palette={toneChip(colors, 'warning')}>
@@ -174,6 +181,40 @@ export function OnboardingWizard({
       </Text>
     </SettingsCard>;
   }
+
+  if (standalone) return <View style={{ gap: 24, minWidth: 0 }}>
+    <View style={{ gap: 12 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, rowGap: 12 }}>
+        {steps.map((step, index) => <View key={step.slug} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6,
+            backgroundColor: step.slug === activeStep ? colors.accentStrong : completedSteps.includes(step.slug) ? colors.surfaceStrong : 'transparent' }}>
+            <Text style={{ color: step.slug === activeStep ? colors.accentText : colors.textMuted, fontSize: 12, lineHeight: 16 }}>{step.label}</Text>
+          </View>
+          {index < steps.length - 1 && progressArrowIcon ? <Icon spec={progressArrowIcon} color={colors.textMuted} size={10} /> : null}
+        </View>)}
+      </View>
+      {onSaveAndFinish && status !== 'completed' ? <Pressable accessibilityRole="link" onPress={onSaveAndFinish} style={{ alignSelf: 'flex-start' }}>
+        <Text style={{ color: colors.textMuted, fontSize: 12, lineHeight: 16, textDecorationLine: 'underline' }}>{saveLabel}</Text>
+      </Pressable> : null}
+    </View>
+    {notice ? <OnboardingNotice tone={notice.tone} title={notice.title} palette={colors}>{notice.text}</OnboardingNotice> : null}
+    <View style={{ backgroundColor: colors.surface, borderRadius: colors.radius, padding: width >= 768 ? 32 : 24,
+      flexDirection: width >= 768 ? 'row' : 'column', gap: width >= 768 ? 32 : 24 }}>
+      <View style={{ width: width >= 768 ? '33.333%' : '100%', gap: 16 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          {heroSource ? <Image source={heroSource} style={{ width: 52, height: 42, borderRadius: 8 }} resizeMode="contain" accessible={false} /> : null}
+          <Text role="heading" aria-level={1} style={{ color: colors.text, fontSize: 18, lineHeight: 28, fontWeight: '700', flexShrink: 1 }}>{title}</Text>
+        </View>
+        {typeof explanation === 'string' ? <View style={{ gap: 12 }}>{explanation.split('\n\n').map((paragraph, index) =>
+          <Text key={index} style={{ color: colors.textMuted, fontSize: 14, lineHeight: 20 }}>{paragraph}</Text>)}</View> : explanation}
+      </View>
+      <View style={{ flex: width >= 768 ? 1 : undefined, minWidth: 0,
+        borderLeftWidth: width >= 768 ? 1 : 0, borderLeftColor: colors.border, paddingLeft: width >= 768 ? 32 : 0 }}>
+        {children}
+        {footer || null}
+      </View>
+    </View>
+  </View>;
 
   return <View style={styles.stack}>
     <View style={styles.progressHeader}>
@@ -191,7 +232,7 @@ export function OnboardingWizard({
         : null}
     </View>
     {notice ? <OnboardingNotice tone={notice.tone} title={notice.title} palette={colors}>{notice.text}</OnboardingNotice> : null}
-    <SettingsCard title={title} badge={statusLabels[status] || statusLabels.in_progress} palette={colors}>
+    <SettingsCard title={title} badge={status === 'in_progress' ? undefined : statusLabels[status]} palette={colors}>
       {explanation ? <View style={styles.explanation}>
         {typeof explanation === 'string'
           ? <Text style={[styles.body, { color: colors.textMuted }]}>{explanation}</Text>
@@ -213,17 +254,30 @@ export function OnboardingMediaTypesStep({
   busy = false,
   palette,
   buttonPalette,
+  dragIcon,
+  onMove,
 }) {
   const colors = resolveColors(palette);
   const buttons = resolveButtons(buttonPalette);
   return <View style={styles.section}>
-    <View style={styles.optionList}>
+    {dragIcon ? <ReorderList items={options} keyForItem={option => option.value} labelForItem={option => option.label}
+      onMove={onMove} icon={dragIcon} palette={colors} disabled={busy} gap={12}
+      renderItem={(option, index, handle) => <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        minHeight: 44, padding: 12, gap: 8, borderRadius: 6, backgroundColor: colors.surfaceStrong }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 }}>
+          {handle}
+          {option.icon ? <Icon spec={option.icon} color={colors.textMuted} size={20} /> : null}
+          <Text style={{ color: colors.textSecondary, fontSize: 14, lineHeight: 20, flexShrink: 1 }}>{option.label}</Text>
+        </View>
+        <ToggleChip label={option.label} labelHidden value={selected.includes(option.value)} onChange={() => onToggle?.(option.value)}
+          disabled={busy} palette={{ ...colors, pageCards: true }} />
+      </View>} /> : <View style={styles.optionList}>
       {options.map(option => <CheckRow key={option.value} checked={selected.includes(option.value)}
         label={option.label} onPress={() => onToggle?.(option.value)} colors={colors} />)}
-    </View>
+    </View>}
     {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}
     <View style={styles.actions}>
-      <Button label="I’ll choose later" tone="surface" disabled={busy} onPress={onSkip} palette={buttons} />
+      <Button label="I'll choose later" tone="surface" disabled={busy} onPress={onSkip} palette={buttons} />
       <Button label="Continue" busy={busy} onPress={onContinue} palette={buttons} />
     </View>
   </View>;
@@ -293,7 +347,7 @@ export function OnboardingServicesStep({
         checked={selected.includes(source.slug)} label={source.name}
         description={source.description} onPress={() => onToggle?.(source.slug)} colors={colors} />)
         : <Text style={[styles.body, { color: colors.textMuted }]}>
-          {`No dedicated services yet for ${String(mediaTypeLabel).toLowerCase()} — you can always bring in existing data with a backup or CSV import later.`}
+          {`No dedicated services yet for ${String(mediaTypeLabel).toLowerCase()}. You can always bring in existing data with a backup or CSV import later.`}
         </Text>}
     </View>
     <Text style={[styles.hint, { color: colors.textMuted }]}>Shared services stay selected across media types.</Text>
@@ -316,9 +370,6 @@ export function OnboardingSummaryStep({
   const colors = resolveColors(palette);
   const buttons = resolveButtons(buttonPalette);
   return <View style={styles.section}>
-    <Text style={[styles.body, { color: colors.textSecondary }]}>
-      {`Tracking ${mediaTypeCount} media ${mediaTypeCount === 1 ? 'type' : 'types'}. Next we can walk through the services you picked and start an initial import.`}
-    </Text>
     {selectedSources.length ? <View style={styles.optionList}>
       {selectedSources.map(source => <View key={source.slug} style={[styles.sourceRow, { borderColor: colors.border, backgroundColor: colors.surfaceStrong }]}>
         <SourceIdentity source={source} colors={colors} />
@@ -326,7 +377,7 @@ export function OnboardingSummaryStep({
           palette={toneChip(colors, connectedSources.includes(source.slug) ? 'success' : 'neutral')} />
       </View>)}
     </View> : <Text style={[styles.body, { color: colors.textMuted }]}>
-      You did not pick any services to connect — that is fine, you can add them anytime from Settings &gt; Import.
+      You didn't pick any services to connect, that's fine, you can add them anytime from Settings &gt; Import.
     </Text>}
     <View style={styles.actions}>
       <Button label="Set up later" tone="surface" onPress={onLater} palette={buttons} />
@@ -338,6 +389,7 @@ export function OnboardingSummaryStep({
 export function OnboardingServiceSetupStep({
   source,
   remainingCount = 0,
+  showRemainingCount = true,
   values = {},
   onChange,
   onConnect,
@@ -352,6 +404,8 @@ export function OnboardingServiceSetupStep({
   onStartDevice,
   onCheckDevice,
   onOpenImport,
+  oauthContent,
+  deviceContent,
   palette,
   buttonPalette,
 }) {
@@ -371,9 +425,9 @@ export function OnboardingServiceSetupStep({
   ];
 
   return <View style={styles.section}>
-    <Text style={[styles.meta, { color: colors.textMuted }]}>
+    {showRemainingCount ? <Text style={[styles.meta, { color: colors.textMuted }]}>
       {`${remainingCount} ${remainingCount === 1 ? 'service' : 'services'} left to connect.`}
-    </Text>
+    </Text> : null}
     <View style={[styles.setupPanel, { borderColor: colors.border, backgroundColor: colors.surfaceStrong }]}>
       <SourceIdentity source={source} colors={colors} />
       <Text style={[styles.body, { color: colors.textMuted }]}>{source.setupCopy}</Text>
@@ -384,7 +438,7 @@ export function OnboardingServiceSetupStep({
           palette={fieldPalette} />)}
         <Button label="Connect" busy={busy} onPress={onConnect} palette={buttons} />
       </View> : null}
-      {variant === 'oauth' ? <View style={styles.fields}>
+      {variant === 'oauth' ? oauthContent || <View style={styles.fields}>
         <Button label={`Connect ${source.name}`} busy={busy} width="full" onPress={onConnect} palette={buttons} />
         <Text style={[styles.hint, { color: colors.textMuted }]}>
           {`You will be sent to ${source.name} to sign in, then brought right back here.`}
@@ -405,7 +459,7 @@ export function OnboardingServiceSetupStep({
             value={values.user || ''} onChangeText={text => onChange?.('user', text)} palette={fieldPalette} />
           <Button label="Import" busy={busy} onPress={onConnect} palette={buttons} />
         </View> : null}
-        {traktProfile === 'private' ? <Button label="Connect with Trakt" busy={busy} width="full"
+        {traktProfile === 'private' ? oauthContent || <Button label="Connect with Trakt" busy={busy} width="full"
           onPress={onConnect} palette={buttons} /> : null}
         {traktProfile === 'csv' ? <View style={styles.fields}>
           <Button label={uploadName ? `Selected ${uploadName}` : 'Select Export File'} busy={busy}
@@ -413,7 +467,7 @@ export function OnboardingServiceSetupStep({
           <Text style={[styles.hint, { color: colors.textMuted }]}>Accepted files: .zip, .json, .csv</Text>
         </View> : null}
       </View> : null}
-      {variant === 'device' ? <View style={styles.fields}>
+      {variant === 'device' ? deviceContent || <View style={styles.fields}>
         {!device.started ? <View style={styles.fields}>
           <TextField id="device-server-url" label="Server URL" name="server_url"
             type="url" value={values.server_url || ''} onChangeText={text => onChange?.('server_url', text)}
@@ -493,7 +547,7 @@ export function OnboardingImportStatusStep({
         {item.run?.error ? <Text style={[styles.error, { color: colors.danger }]}>{item.run.error}</Text> : null}
       </View>)}
     </View> : <Text style={[styles.body, { color: colors.textMuted }]}>
-      No services connected yet — you can connect one anytime from Settings &gt; Import.
+      No services connected yet. You can connect one anytime from Settings &gt; Import.
     </Text>}
     <View style={styles.actions}>
       <Button label="Refresh progress" tone="surface" busy={refreshing} onPress={onRefresh} palette={buttons} />

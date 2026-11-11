@@ -436,8 +436,9 @@ class TrackModalViewTests(TestCase):
         by_id = {tab["id"]: tab for tab in tabs}
         self.assertEqual(
             list(by_id),
-            ["tags", "metadata", "collection", "discover"],
+            ["general", "tags", "metadata", "collection", "discover"],
         )
+        self.assertEqual(by_id["general"]["kind"], "general")
         self.assertEqual(by_id["tags"]["kind"], "tags")
         self.assertEqual(
             [tag["name"] for tag in by_id["tags"]["tags"]],

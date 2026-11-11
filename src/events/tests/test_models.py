@@ -892,7 +892,7 @@ class CalendarActiveAnimeLoadTests(TestCase):
             query["sql"]
             for query in captured.captured_queries
             if 'FROM "app_item"' in query["sql"]
-            and 'JOIN "app_anime"' in query["sql"]
+            and '"app_anime"' in query["sql"]
             and "events_event" not in query["sql"]
         ]
         self.assertEqual(len(anime_reads), 1)
@@ -977,6 +977,62 @@ class CalendarOtherUserStatusIsolationTests(TestCase):
         event = Event.objects.create(item=movie, content_number=1, datetime=self.when)
 
         self.assertEqual(self._events_for(self.user), [event])
+
+    def test_anime_event_survives_other_users_paused_anime(self):
+        """An anime event stays visible when only another user paused it."""
+        anime = Item.objects.create(
+            media_id="52991",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Shared Anime",
+            image="",
+        )
+        Anime.objects.create(item=anime, user=self.user, status=Status.IN_PROGRESS.value)
+        Anime.objects.create(item=anime, user=self.other, status=Status.PAUSED.value)
+        event = Event.objects.create(item=anime, content_number=1, datetime=self.when)
+
+        self.assertEqual(self._events_for(self.user), [event])
+
+    def test_anime_dedupe_ignores_other_users_paused_anime(self):
+        """The anime/TV duplicate is still hidden when another user paused the anime."""
+        anime = Item.objects.create(
+            media_id="52992",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Dup Anime",
+            image="",
+        )
+        Anime.objects.create(item=anime, user=self.user, status=Status.IN_PROGRESS.value)
+        Anime.objects.create(item=anime, user=self.other, status=Status.PAUSED.value)
+        show = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Dup Anime",
+            image="",
+        )
+        season = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Dup Anime",
+            image="",
+            season_number=1,
+        )
+        TV.objects.create(item=show, user=self.user, status=Status.IN_PROGRESS.value)
+        anime_event = Event.objects.create(item=anime, content_number=1, datetime=self.when)
+        season_event = Event.objects.create(item=season, content_number=1, datetime=self.when)
+
+        with mock.patch(
+            "events.models.resolve_provider_series_id",
+            side_effect=lambda mal_id, provider: (
+                "1396" if provider == "tmdb" else None
+            ),
+        ):
+            events = self._events_for(self.user)
+
+        self.assertEqual(events, [season_event])
+        self.assertNotIn(anime_event, events)
 
     def test_own_paused_movie_is_still_hidden(self):
         """The user's own Paused tracker keeps hiding the event."""

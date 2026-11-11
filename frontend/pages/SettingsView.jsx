@@ -31,7 +31,7 @@ export const settingsNavigation = [
     id: 'providers-data',
     title: 'Providers & Data',
     items: [
-      { id: 'providers', label: 'Providers', page: 'providers', icon: 'database', availability: 'server' },
+      { id: 'providers', label: 'Providers', page: 'providers', icon: 'database' },
       { id: 'activity', label: 'Activity', page: 'providerActivity', icon: 'clock', availability: 'server' },
       { id: 'data', label: 'Data Management', page: 'settingsData', icon: 'database' },
       { id: 'access', label: 'Access & Tokens', page: 'settingsAccess', icon: 'padlock' },
@@ -161,10 +161,10 @@ export function SettingsView({
 // Page-level heading and section stack. Every settings provider/auth/error page
 // composition uses this so the order and spacing do not diverge per platform.
 export function SettingsPage({ title, copy, palette = {}, children, actions, heading = true }) {
-  return <View style={styles.content}>
+  return <View style={[styles.content, palette.pageCards && { gap: palette.pageGap ?? 24 }]}>
     {heading ? <View style={styles.contentHeading}>
       <View style={styles.contentHeadingText}>
-        <Text role="heading" aria-level={2} style={[styles.pageTitle, { color: palette.text || '#fafafa' }]}>{title}</Text>
+        <Text role="heading" aria-level={2} style={[styles.pageTitle, { color: palette.text || '#fafafa' }, palette.pageCards && { fontSize: 20 }]}>{title}</Text>
         {copy ? <Text style={[styles.pageCopy, { color: palette.textMuted || '#a1a1aa' }]}>{copy}</Text> : null}
       </View>
       {actions || null}

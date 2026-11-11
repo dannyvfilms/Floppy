@@ -1,8 +1,8 @@
-const STORAGE_KEY = 'floppy:calendar-preferences:v1';
+const storageKey = userId => `floppy:calendar-preferences:v1:${userId || 'device'}`;
 
-export async function readCalendarPreferences() {
+export async function readCalendarPreferences(userId) {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(storageKey(userId));
     if (!stored) {
       return null;
     }
@@ -13,9 +13,9 @@ export async function readCalendarPreferences() {
   }
 }
 
-export async function writeCalendarPreferences(preferences) {
+export async function writeCalendarPreferences(preferences, userId) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
+    localStorage.setItem(storageKey(userId), JSON.stringify(preferences));
   } catch (error) {
     // Storage is optional; the screen keeps working without it.
   }

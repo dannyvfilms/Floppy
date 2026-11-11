@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import threading
 import time
 from http import HTTPStatus
@@ -247,7 +248,7 @@ class RequestPerformanceLoggingMiddleware:
         ):
             logger.info(
                 "slow_request method=%s path=%s status=%s duration_ms=%.0f queries=%s "
-                "cpu_ms=%.1f db_ms=%.1f provider_ms=%.1f provider_calls=%s inflight=%s %s",
+                "cpu_ms=%.1f db_ms=%.1f provider_ms=%.1f provider_calls=%s inflight=%s %s rid=%s",
                 request.method,
                 request.path,
                 response.status_code,
@@ -259,8 +260,22 @@ class RequestPerformanceLoggingMiddleware:
                 provider_tally["calls"],
                 inflight,
                 boundary_fields,
+                _nginx_request_id(request),
             )
         return response
+
+
+_NGINX_REQUEST_ID = re.compile(r"[0-9a-f]{32}")
+
+
+def _nginx_request_id(request) -> str:
+    """Return the request id Nginx stamped on this request, to join its access log.
+
+    Only Nginx's own 32-hex form is kept, so a client-supplied header cannot
+    put arbitrary text in the log.
+    """
+    value = request.META.get("HTTP_X_REQUEST_ID", "")
+    return value if _NGINX_REQUEST_ID.fullmatch(value) else "-"
 
 
 class DatabaseRetryMiddleware:
@@ -612,6 +627,7 @@ class DemoAccountGuardMiddleware:
             "revoke_integration_token",
             "create_catalog_grant",
             "revoke_catalog_grant",
+            "oauth_revoke_application",
             "save_provider_credential",
             "save_personal_credential",
             "clear_provider_credential",

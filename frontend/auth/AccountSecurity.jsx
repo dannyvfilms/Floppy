@@ -48,7 +48,7 @@ const defaultLabels = {
   regularCopy: 'You are a regular user. Superuser access grants full administrative control over this Floppy instance.',
   promoteTitle: 'Upgrading to Superuser',
   promoteCopy: 'Floppy never grants superuser access automatically. If you have access to the host or container running this instance, promote this account from a terminal:',
-  promoteHelp: 'This must be run from a terminal with access to the Floppy container — it cannot be done from this UI.',
+  promoteHelp: 'This must be run from a terminal with access to the Floppy container. It cannot be done from this UI.',
   passwordTitle: 'Change Password',
   currentPassword: 'Current Password',
   newPassword: 'New Password',
@@ -86,6 +86,7 @@ const defaultLabels = {
   dialogConfirm: 'Delete My Account',
   cancel: 'Cancel',
   codeHint: 'Recovery codes are shown once after they are generated. Store them somewhere safe.',
+  sessionRequired: 'Sign in with your username and password to manage this.',
 };
 
 function StateMessage({ tone = 'error', palette, children }) {
@@ -143,6 +144,7 @@ export function PasswordCard({
   success,
   busy = false,
   disabled = false,
+  sessionRequired = false,
   palette = {},
   buttonPalette = {},
   labels = {},
@@ -153,6 +155,9 @@ export function PasswordCard({
   const buttons = { ...defaultButtonPalette, ...buttonPalette };
   const copy = { ...defaultLabels, ...labels };
   const update = (name, value) => onChange?.(name, value);
+  if (sessionRequired) return <SettingsCard title={copy.passwordTitle} palette={colors}>
+    <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.sessionRequired}</Text>
+  </SettingsCard>;
   return <SettingsCard title={copy.passwordTitle} palette={colors}>
     <TextField id="account-current-password" name="oldPassword" label={copy.currentPassword}
       type="password" value={values.oldPassword} autoComplete="current-password"
@@ -174,6 +179,7 @@ export function PasswordCard({
 }
 
 export function AuthenticatorCard({
+  children,
   configured = false,
   setup = false,
   values = {},
@@ -182,6 +188,7 @@ export function AuthenticatorCard({
   success,
   busy = false,
   disabled = false,
+  sessionRequired = false,
   demo = false,
   qrSlot,
   secretSlot,
@@ -197,6 +204,10 @@ export function AuthenticatorCard({
   const buttons = { ...defaultButtonPalette, ...buttonPalette };
   const copy = { ...defaultLabels, ...labels };
   const update = (name, value) => onChange?.(name, value);
+  if (sessionRequired) return <SettingsCard title={copy.authenticatorTitle} palette={colors}>
+    <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.sessionRequired}</Text>
+    {children}
+  </SettingsCard>;
   return <SettingsCard title={copy.authenticatorTitle} palette={colors}>
     <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.authenticatorIntro}</Text>
     {demo ? <View style={[styles.panel, { borderColor: colors.border, backgroundColor: colors.surfaceStrong }]}>
@@ -241,10 +252,12 @@ export function AuthenticatorCard({
 
     {error ? <StateMessage palette={colors}>{error}</StateMessage> : null}
     {success ? <StateMessage tone="success" palette={colors}>{success}</StateMessage> : null}
+    {children}
   </SettingsCard>;
 }
 
 export function RecoveryCodesCard({
+  embedded = false,
   unusedCount = 0,
   freshCodes = [],
   values = {},
@@ -253,6 +266,7 @@ export function RecoveryCodesCard({
   success,
   busy = false,
   disabled = false,
+  sessionRequired = false,
   demo = false,
   palette = {},
   buttonPalette = {},
@@ -263,7 +277,10 @@ export function RecoveryCodesCard({
   const colors = { ...defaultPalette, ...palette };
   const buttons = { ...defaultButtonPalette, ...buttonPalette };
   const copy = { ...defaultLabels, ...labels };
-  return <SettingsCard title={copy.recoveryTitle} palette={colors}>
+  if (sessionRequired) return <SettingsCard title={embedded ? undefined : copy.recoveryTitle} framed={!embedded} palette={colors}>
+    <Text style={[styles.copy, { color: colors.textMuted }]}>{copy.sessionRequired}</Text>
+  </SettingsCard>;
+  return <SettingsCard title={embedded ? undefined : copy.recoveryTitle} framed={!embedded} palette={colors}>
     <Text style={[styles.copy, { color: colors.textSecondary }]}>
       {`${copy.unusedCodes} ${unusedCount}`}
     </Text>
@@ -273,7 +290,7 @@ export function RecoveryCodesCard({
         {freshCodes.map(code => <Text key={code} style={[styles.code, { color: colors.textSecondary, backgroundColor: colors.surface }]}>{code}</Text>)}
       </View>
     </View> : null}
-    <Text style={[styles.help, { color: colors.textMuted }]}>{copy.codeHint}</Text>
+    {!embedded ? <Text style={[styles.help, { color: colors.textMuted }]}>{copy.codeHint}</Text> : null}
     {demo ? <View style={[styles.panel, { borderColor: colors.border, backgroundColor: colors.surfaceStrong }]}>
       <Text style={[styles.copy, { color: colors.textSecondary }]}>{copy.demoViewOnly}</Text>
     </View> : <View style={styles.setup}>

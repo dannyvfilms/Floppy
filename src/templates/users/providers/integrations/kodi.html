@@ -16,7 +16,7 @@
           <li>{% translate "In Kodi, go to" %} <strong>{% translate "Settings > Services > Control" %}</strong> {% translate "and enable" %} <strong>{% translate "Allow remote control via HTTP" %}</strong>.</li>
           <li>
             {% translate "In the HTTP Scrobbler add-on settings, set the webhook URL to:" %}
-            <em class="text-[var(--color-text-muted)] not-italic text-xs block mt-1 mb-2">{% translate "Tip: open the Kodi web interface at" %} <code>http://&lt;kodi-ip&gt;:8080</code> {% translate "to configure the add-on — easier than using the remote." %}</em>
+            <em class="text-[var(--color-text-muted)] not-italic text-xs block mt-1 mb-2">{% translate "Tip: open the Kodi web interface at" %} <code>http://&lt;kodi-ip&gt;:8080</code> {% translate "to configure the add-on, which is easier than using the remote." %}</em>
             {# djlint:off #}
             <div class="inline-flex items-center gap-2 w-full">
               <input readonly
@@ -34,7 +34,7 @@
           </li>
           <li>{% translate "Leave the username and password fields blank." %}</li>
           <li>{% blocktranslate %}In the add-on's "Scrobble at specific events" settings, make sure{% endblocktranslate %} <strong>{% translate "Start playback" %}</strong>, <strong>{% translate "Playback stopped (not finished)" %}</strong>{% translate ", and" %} <strong>{% translate "Playback finished (not stopped before reaching the end)" %}</strong> {% translate "are all enabled (they're on by default)." %}</li>
-          <li>{% translate "If you use the add-on's" %} <strong>{% translate "Skip all events after sending stop/end" %}</strong> {% translate "option, turn it off — it can suppress the events Floppy needs to mark an episode watched." %}</li>
+          <li>{% translate "If you use the add-on's" %} <strong>{% translate "Skip all events after sending stop/end" %}</strong> {% translate "option, turn it off. It can suppress the events Floppy needs to mark an episode watched." %}</li>
           <li>{% translate "An item is marked watched when playback reaches 80% or Kodi reports" %} <em>{% translate "Playback finished" %}</em>.</li>
         </ol>
       </div>

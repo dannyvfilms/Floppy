@@ -171,4 +171,4 @@ urlpatterns = [
 # FORK: fork-only endpoints (progress, collection, ...) live in fork_urls.py.
 from . import fork_urls  # noqa: E402
 
-urlpatterns += fork_urls.urlpatterns
+urlpatterns = fork_urls.priority_urlpatterns + urlpatterns + fork_urls.urlpatterns

@@ -23,7 +23,7 @@ if (!window.__floppySavedViewsBound) {
     }
   };
 
-  document.addEventListener("alpine:init", () => {
+  const registerSidebar = (Alpine) => {
     Alpine.directive("sidebar-reveal", (el, { expression }, { effect, evaluateLater, cleanup }) => {
       const evaluate = evaluateLater(expression);
       let initialized = false;
@@ -227,5 +227,10 @@ if (!window.__floppySavedViewsBound) {
         });
       },
     }));
-  });
+  };
+  if (window.Alpine) {
+    registerSidebar(window.Alpine);
+  } else {
+    document.addEventListener("alpine:init", () => registerSidebar(window.Alpine), { once: true });
+  }
 }

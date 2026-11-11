@@ -803,9 +803,9 @@ def media_rewatch(request):
         except RewatchAlreadyCompleteError as error:
             # htmx doesn't swap a non-2xx response, so without an explicit
             # trigger the button click would just silently do nothing.
-            response = HttpResponseBadRequest(str(error))
+            response = HttpResponseBadRequest(error.message)
             response["HX-Trigger"] = json.dumps(
-                {"showToast": {"message": str(error), "type": "error"}},
+                {"showToast": {"message": error.message, "type": "error"}},
             )
             return response
         if skipped_seasons:
@@ -824,7 +824,7 @@ def media_rewatch(request):
             messages.warning(
                 request,
                 gettext(
-                    "%(value_1)s %(value_2)s already fully watched from that date — left as is."
+                    "%(value_1)s %(value_2)s already fully watched from that date. Left as is."
                 )
                 % {"value_1": gettext(season_word), "value_2": skipped_list},
             )
@@ -1195,7 +1195,7 @@ def episode_save(request):
                 notes=form.cleaned_data.get("notes") or "",
             )
         except fork_services_episode.EpisodeWatchConflictError as error:
-            return HttpResponse(str(error), status=409)
+            return HttpResponse(error.code, status=409)
         episode = result.episode
     if episode_instance and hasattr(related_season, "_episode_stats_cache"):
         delattr(related_season, "_episode_stats_cache")

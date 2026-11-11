@@ -106,6 +106,7 @@ class StatisticsMediaTypeSelectionTests(SerialStaticLiveServerTestCase):
         page.locator(".stats-mediatype-button").click()
         menu = page.locator(".stats-mediatype-wrapper .stats-dropdown-panel")
         button = page.locator(".stats-mediatype-button")
+        expect(menu).to_be_visible()
         before_menu = menu.bounding_box()
         before_button = button.bounding_box()
 
@@ -113,6 +114,7 @@ class StatisticsMediaTypeSelectionTests(SerialStaticLiveServerTestCase):
         self.pick(page, "Games")
         expect(self.trigger(page)).to_have_text("Movies, Games")
 
+        expect(menu).to_be_visible()
         after_menu = menu.bounding_box()
         after_button = button.bounding_box()
         self.assertAlmostEqual(before_menu["x"], after_menu["x"], delta=1)

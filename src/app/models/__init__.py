@@ -100,7 +100,7 @@ from app.models.statistics import (
     StatisticsSnapshot,
     StatisticsSyncState,
 )
-from app.models.tombstone import DeletedMedia
+from app.models.tombstone import DeletedEntry, DeletedMedia
 from app.models.tv import (
     TV,
     Episode,
@@ -150,6 +150,7 @@ __all__ = [
     "ComicIssue",
     "ConsumptionBatchItem",
     "CreditRoleType",
+    "DeletedEntry",
     "DeletedMedia",
     "DiscoverApiCache",
     "DiscoverFeedback",

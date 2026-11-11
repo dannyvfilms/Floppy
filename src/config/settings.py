@@ -2296,6 +2296,16 @@ SOCIALACCOUNT_ONLY = config("SOCIALACCOUNT_ONLY", default=False, cast=bool)
 if SOCIALACCOUNT_ONLY:
     ACCOUNT_EMAIL_VERIFICATION = "none"
 
+# The built-in Floppy app signs social and OIDC accounts in through the OAuth
+# device flow under a fixed client id. When this is on, the person is told on
+# the approval page that the app gets full access, and its token may then manage
+# the account except for credential disclosure/issuance (including URL secrets,
+# OAuth approval, password/authenticator/recovery and admin credential changes),
+# which require a session (password sign-in). Off: the app gets a scoped token like
+# any other application, and tokens already issued lose full access at once.
+# See integrations.oauth_scope_info.has_full_account_access.
+FLOPPY_APP_FULL_ACCESS = config("FLOPPY_APP_FULL_ACCESS", default=True, cast=bool)
+
 REGISTRATION = config("REGISTRATION", default=True, cast=bool)
 if not REGISTRATION:
     ACCOUNT_ADAPTER = "users.account_adapter.NoNewUsersAccountAdapter"

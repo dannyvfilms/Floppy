@@ -517,6 +517,31 @@ class MediaEpisodeCollectionTests(FloppyApiTestCase):
         mock_metadata.assert_called_once()
 
     @patch(METADATA_PATH)
+    def test_strict_library_refuses_instead_of_using_the_default_library(
+        self, mock_metadata
+    ):
+        """strict_library never falls back to, or creates in, the default library (#1873)."""
+        args = (MediaTypes.TV.value, Sources.TMDB.value, "209867", 1, 6)
+        params = {
+            "library_media_type": MediaTypes.ANIME.value,
+            "strict_library": "true",
+        }
+
+        response = self.call_api(
+            "put",
+            "api_media_episode_collection",
+            args=args,
+            params=params,
+            payload={"media_type": "digital"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, HTTP.NOT_FOUND)
+        self.assertEqual(response.json()["code"], "LIBRARY_ITEM_NOT_FOUND")
+        self.assertFalse(Item.objects.filter(media_id="209867").exists())
+        mock_metadata.assert_not_called()
+
+    @patch(METADATA_PATH)
     def test_anime_parameter_finds_the_copy_after_a_watch_in_the_anime_library(
         self, mock_metadata
     ):

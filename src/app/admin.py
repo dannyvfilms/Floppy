@@ -5,6 +5,7 @@ from django.contrib import admin
 from django.contrib.admin.sites import AlreadyRegistered
 
 from app.models import (
+    DeletedEntry,
     DeletedMedia,
     Episode,
     Item,
@@ -150,6 +151,7 @@ SpecialModels = [
     "DiscoverTasteProfile",
     "DiscoverRowCache",
     "DeletedMedia",
+    "DeletedEntry",
     "ConsumptionBatchItem",
     "PlaybackProgress",
     "ApplicationSettings",
@@ -448,6 +450,15 @@ class DeletedMediaAdmin(admin.ModelAdmin):
     raw_id_fields = ["user"]
 
 
+class DeletedEntryAdmin(admin.ModelAdmin):
+    """Admin for the deletion log behind the library change feed."""
+
+    list_display = ["user", "media_type", "source", "media_id", "season_number", "deleted_at"]
+    list_filter = ["media_type", "source", "deleted_at"]
+    search_fields = ["user__username", "media_id"]
+    raw_id_fields = ["user"]
+
+
 class PlaybackProgressAdmin(admin.ModelAdmin):
     """Admin for durable resume positions."""
 
@@ -458,6 +469,7 @@ class PlaybackProgressAdmin(admin.ModelAdmin):
 
 
 admin.site.register(DeletedMedia, DeletedMediaAdmin)
+admin.site.register(DeletedEntry, DeletedEntryAdmin)
 admin.site.register(PlaybackProgress, PlaybackProgressAdmin)
 admin.site.register(DiscoverFeedback, DiscoverFeedbackAdmin)
 admin.site.register(DiscoverApiCache, DiscoverApiCacheAdmin)

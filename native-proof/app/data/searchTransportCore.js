@@ -1,3 +1,8 @@
+import { expectObject } from './payloadGuard.js';
+
+// Search endpoints. Library and online results, source pills, suggestions and
+// parent pickers all come from the server in the shapes the web page renders.
+
 const STATUS_LABELS = {
   0: 'Planning',
   1: 'In progress',
@@ -88,9 +93,56 @@ export function searchQuery({ search, limit = 20, offset = 0, source } = {}) {
   return query;
 }
 
-export function createRemoteSearchActions(request) {
+// The saved-library typeahead the web search bar uses, mapped for the shared search field.
+// Images may be server-relative; the app needs absolute addresses.
+export function suggestionsFromPayload(payload, serverUrl = '') {
+  const rows = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
+  // A null row is skipped, like the other mappers (tagsFromPayload etc.).
+  return rows.filter(row => row && typeof row === 'object').map((row, index) => ({
+    id: String(row.id ?? index),
+    title: row.title || '',
+    subtitle: row.subtitle || '',
+    image: row.image && row.image.startsWith('/') ? `${serverUrl}${row.image}` : row.image || null,
+    mediaType: row.identity?.mediaType || '',
+    identity: row.identity || null,
+    // Saved items carry their web detail URL; Detail resolves it to an identity.
+    href: row.url || '',
+    url: row.url || '',
+  }));
+}
+
+export function searchBarFromPayload(payload) {
+  return {
+    mediaTypes: Array.isArray(payload?.media_types) ? payload.media_types : [],
+    barcodeTypes: Array.isArray(payload?.barcode_types) ? payload.barcode_types : [],
+    labels: payload?.labels || {},
+    sources: Array.isArray(payload?.sources) ? payload.sources : [],
+    defaultSource: payload?.default_source || '',
+  };
+}
+
+export function resultsQuery({ query, mediaType, source, page, layout } = {}) {
+  const params = { q: query || '', media_type: mediaType || 'all' };
+  if (source) params.source = source;
+  if (page && page > 1) params.page = page;
+  if (layout) params.layout = layout;
+  return params;
+}
+
+export function createRemoteSearchActions(request, { suggestionsViaWeb = false, serverUrl = '' } = {}) {
   return {
     mode: 'server',
+    // One typeahead for both apps, so the same query gives the same results in the same order.
+    // It is the Django view, which reads the session; a token sign-in reads the same
+    // typeahead from the API (loadSuggestions) and keeps the media list as a fallback.
+    ...(suggestionsViaWeb ? {
+      async searchSuggestions({ search, mediaType } = {}) {
+        const payload = await request('/search/suggestions', {
+          query: { q: search, media_type: mediaType || 'all', format: 'json' },
+        });
+        return suggestionsFromPayload(payload, serverUrl);
+      },
+    } : {}),
     searchLocal({ search, mediaType, limit = 20, offset = 0 } = {}) {
       const path = mediaType && mediaType !== 'all'
         ? `/api/v1/media/${encodeURIComponent(mediaType)}/`
@@ -102,15 +154,44 @@ export function createRemoteSearchActions(request) {
         query: searchQuery({ search, source, limit, offset }),
       });
     },
+    loadSources({ mediaType = 'all' } = {}) {
+      return request('/api/v1/search/sources/', { query: { media_type: mediaType } }).then(data => expectObject(data, 'Search'));
+    },
+    loadSuggestions({ query, mediaType = 'all' } = {}) {
+      return request('/api/v1/search/suggestions/', { query: { q: query, media_type: mediaType } }).then(data => expectObject(data, 'Search'));
+    },
+    loadResults(params = {}) {
+      return request('/api/v1/search/results/', { query: resultsQuery(params) }).then(data => expectObject(data, 'Search'));
+    },
+    loadParents({ kind, query } = {}) {
+      return request('/api/v1/search/parents/', { query: { kind, q: query } });
+    },
+    loadManualOptions() {
+      return request('/api/v1/search/manual-entry/');
+    },
+    createManualEntry(data) {
+      return request('/api/v1/search/manual-entry/', { method: 'POST', body: data });
+    },
+    createMusic({ kind, id } = {}) {
+      return request('/api/v1/search/music/create/', { method: 'POST', body: { kind, id } });
+    },
   };
 }
 
 export function createLocalSearchActions(reason) {
   const local = async () => ({ local: true, reason });
+  const unavailable = async () => { throw new Error(reason); };
   return {
     mode: 'local',
     reason,
     searchLocal: local,
     searchOnline: local,
+    loadSources: unavailable,
+    loadSuggestions: unavailable,
+    loadResults: unavailable,
+    loadParents: unavailable,
+    loadManualOptions: unavailable,
+    createManualEntry: unavailable,
+    createMusic: unavailable,
   };
 }

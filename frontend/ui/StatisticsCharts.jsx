@@ -28,6 +28,9 @@ const DEFAULT_PALETTE = {
   success: '#10b981',
   radius: 18,
   radiusSmall: 6,
+  featuredMovies: '#60a5fa',
+  featuredGames: '#a78bfa',
+  featuredShows: '#34d399',
 };
 
 const DEFAULT_LABELS = {
@@ -623,11 +626,11 @@ export function StatisticsFeaturedRepeat({ model = {}, labels, palette, onSelect
   const title = model.title || copy.featuredTitle;
   const intro = model.copy || copy.featuredCopy;
   const split = [
-    { label: copy.featuredMovies, value: numberValue(featured?.uniqueMovies), color: '#60a5fa' },
+    { label: copy.featuredMovies, value: numberValue(featured?.uniqueMovies), color: colors.featuredMovies },
     numberValue(featured?.uniqueGames) > 0
-      ? { label: copy.featuredGames, value: numberValue(featured.uniqueGames), color: '#a78bfa' }
+      ? { label: copy.featuredGames, value: numberValue(featured.uniqueGames), color: colors.featuredGames }
       : null,
-    { label: copy.featuredShows, value: numberValue(featured?.uniqueShows), color: '#34d399' },
+    { label: copy.featuredShows, value: numberValue(featured?.uniqueShows), color: colors.featuredShows },
   ].filter(Boolean);
   const summary = featured
     ? `${featured.name}, featured in ${formatNumber(featured.uniqueTitles)} titles, ${pct} percent of titles. `

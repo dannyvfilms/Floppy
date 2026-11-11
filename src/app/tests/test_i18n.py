@@ -41,6 +41,19 @@ class GermanPresentationTests(SimpleTestCase):
             self.assertEqual(Status.PLANNING.value, "Planning")
             self.assertEqual(MediaTypes.MOVIE.label, "Movie")
 
+    def test_reworded_messages_render_from_compiled_german_catalog(self):
+        """Punctuation-only source edits retain their existing translations."""
+        template = engines["django"].from_string(
+            '{% load i18n %}'
+            '{% translate "Welcome to Floppy: create your first account" %}'
+            '|{% translate "Provider search results (shared instance-wide)" %}',
+        )
+        with translation.override("de"):
+            html = template.render()
+        self.assertIn("Willkommen bei Floppy: erstelle dein erstes Konto", html)
+        self.assertIn("Suchergebnisse der Datenanbieter", html)
+        self.assertNotIn("Provider search results", html)
+
     def test_progress_units_have_german_plurals_and_stable_raw_values(self):
         with translation.override("de"):
             for media_type, singular, plural, raw in (
@@ -207,3 +220,26 @@ class EpisodeFeedPluralTests(SimpleTestCase):
             with self.subTest(language=language), translation.override(language):
                 self.assertEqual(translation.ngettext("day", "days", 1), singular)
                 self.assertEqual(translation.ngettext("day", "days", 2), plural)
+
+
+class ItalianPlaceholderTests(SimpleTestCase):
+    """Compiled Italian messages keep the interpolation values supplied by Django."""
+
+    def test_repaired_messages_accept_runtime_values(self):
+        with translation.override("it"):
+            for message, values, expected in (
+                ("%(format)s series status", {"format": "TV"}, ("TV",)),
+                ("%(value_1)s%% done", {"value_1": 75}, ("75%",)),
+                (
+                    "%(value_1)s %(value_2)s already fully watched from that date. "
+                    "Left as is.",
+                    {"value_1": "S1", "value_2": "E2"},
+                    ("S1", "E2"),
+                ),
+            ):
+                with self.subTest(message=message):
+                    localized = translation.gettext(message)
+                    self.assertNotEqual(localized, message)
+                    rendered = localized % values
+                    for value in expected:
+                        self.assertIn(value, rendered)

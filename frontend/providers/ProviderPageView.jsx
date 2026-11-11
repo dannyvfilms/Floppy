@@ -42,7 +42,7 @@ const defaultPalette = {
   warningBadgeText: '#fde68a',
 };
 
-const BODY_SLOTS = new Set(['connection', 'import', 'activity', 'metadata']);
+const BODY_SLOTS = new Set(['connection', 'import', 'activity', 'metadata', 'tracking', 'sync']);
 
 function resolveSlot(slot, context) {
   if (typeof slot === 'function') return slot(context);

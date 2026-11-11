@@ -22,8 +22,7 @@
               {% for item in release.highlights %}
                 <li>
                   {% if item.title %}
-                    <span class="font-medium">{{ item.title }}</span>
-                    {% if item.text %}—{% endif %}
+                    <span class="font-medium">{{ item.title }}{% if item.text %}:{% endif %}</span>
                   {% endif %}
                   {{ item.text }}
                 </li>

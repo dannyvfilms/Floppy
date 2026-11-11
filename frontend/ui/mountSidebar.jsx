@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { mountRoot } from '../settings/root';
 import { Icon } from './Icon';
@@ -6,8 +6,7 @@ import { Sidebar } from './Sidebar';
 
 // Browser integration for the shared sidebar: theme tokens, HTMX boost, the
 // localStorage pin/view keys, Sortable drag, navigation forms and the mobile
-// open state. The onboarding banner stays server-rendered and is lifted in as
-// a node slot.
+// open state.
 
 const canvas = document.createElement('canvas');
 canvas.width = canvas.height = 1;
@@ -126,15 +125,6 @@ function enableSortable(container, onMove) {
   return () => sortable.destroy();
 }
 
-function NodeSlot({ node }) {
-  const ref = useRef(null);
-  useLayoutEffect(() => {
-    if (!node || !ref.current) return;
-    if (node.parentNode !== ref.current) ref.current.replaceChildren(node);
-  }, [node]);
-  return <View ref={ref} />;
-}
-
 function MobileState({ host }) {
   useEffect(() => {
     const aside = host.closest?.('aside');
@@ -182,7 +172,10 @@ function readPins() {
   } catch { return { nav: [], lists: [] }; }
 }
 
-function SidebarView({ host, props, onboarding }) {
+// Lets sidebar.css lift the row-options layer above the phone drawer.
+const MENU_LAYER_PROPS = { dataSet: { menuDropdown: '1' } };
+
+function SidebarView({ host, props }) {
   const palette = usePalette();
   const finePointer = useFinePointer();
   const [pins, setPins] = useState(readPins);
@@ -279,11 +272,10 @@ function SidebarView({ host, props, onboarding }) {
       renderIcon={renderIcon} rowActions={finePointer ? 'hover' : 'always'} enableSortable={enableSortable}
       onNavigate={onNavigate} onToggleGroup={writeOpen} onToggleLists={open => writeOpen('lists', open)}
       onUnpinList={unpinList} onDeleteView={onDeleteView} onFinishReorder={onFinishReorder}
-      onLogout={onLogout} onboarding={<NodeSlot node={onboarding} />} />
+      onLogout={onLogout} menuLayerProps={MENU_LAYER_PROPS} />
   </React.Fragment>;
 }
 
 export function mountSidebar(host, props) {
-  const onboarding = host.querySelector('[data-sidebar-slot="onboarding"]');
-  return mountRoot(host, <SidebarView host={host} props={props} onboarding={onboarding} />);
+  return mountRoot(host, <SidebarView host={host} props={props} />);
 }

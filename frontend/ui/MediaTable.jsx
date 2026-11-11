@@ -78,12 +78,12 @@ function fitWeight(column) {
 
 function cellText(cell) {
   if (!cell) {
-    return '—';
+    return '-';
   }
   if (cell.text != null) {
     return String(cell.text);
   }
-  return '—';
+  return '-';
 }
 
 // Only the date-shaped columns wrap in the server table; notes, synopsis and
@@ -141,7 +141,7 @@ export function MediaTableCell({
   if (type === 'tags' || type === 'genres') {
     const tags = cell?.items || [];
     if (!tags.length) {
-      return <Text style={[styles.cellText, { color: colors.textMuted }]}>—</Text>;
+      return <Text style={[styles.cellText, { color: colors.textMuted }]}>-</Text>;
     }
     return <View style={styles.tagList}>
       {tags.map((tag, index) => <Pressable key={`${tag.label}-${index}`}
@@ -304,6 +304,7 @@ export function MediaTable({
     </View>
     {shown.map((row, rowIndex) => {
       const rowId = row.id ?? rowIndex;
+      const rowKey = row.entryId ? `${rowId}:${row.entryId}` : rowId;
       const rowContent = <>
         {selectMode ? <Pressable accessibilityRole="checkbox"
           accessibilityLabel={`${copy.selectItem} ${row.title || ''}`}
@@ -323,10 +324,10 @@ export function MediaTable({
         </View>)}
       </>;
       if (!onOpen) {
-        return <View key={rowId} accessibilityRole="row"
+        return <View key={rowKey} accessibilityRole="row"
           style={styles.row}>{rowContent}</View>;
       }
-      return <Pressable key={rowId} accessibilityRole="button"
+      return <Pressable key={rowKey} accessibilityRole="button"
         accessibilityLabel={row.title || ''}
         onPress={() => onOpen(row)}
         style={({ pressed }) => [styles.row, {

@@ -112,6 +112,7 @@ export function historyCalendarLinkUrl(baseUrl, { mediaTypes = [] }) {
 }
 
 export function CalendarLinks({
+  sessionRequired = false,
   initialFeed = 'releases',
   releaseMediaTypes = [],
   historyMediaTypes = [],
@@ -230,6 +231,11 @@ export function CalendarLinks({
       borderWidth: 1,
     },
   };
+
+  if (sessionRequired) return <View style={styles.card}>
+    <Text style={styles.title}>{copy.title}</Text>
+    <Text style={styles.help}>Sign in with your username and password to manage this.</Text>
+  </View>;
 
   return <View style={styles.card}>
     <Text style={styles.title}>{copy.title}</Text>

@@ -37,7 +37,9 @@
     {% djdt_enabled as djdt_is_enabled %}
     {% if djdt_is_enabled %}
       <link rel="stylesheet" href="{% static 'debug_toolbar/css/toolbar.css' %}">
-      <script type="module" src="{% static 'debug_toolbar/js/toolbar.js' %}"></script>
+      <script type="module">
+        if (document.getElementById('djDebug')) import("{% static 'debug_toolbar/js/toolbar.js' %}");
+      </script>
     {% endif %}
 
     <script defer src="{% javascript_catalog_url %}"></script>
@@ -118,6 +120,7 @@
     <script defer src="{% static 'js/libraries/marked-12.0.2.min.js' %}"></script>
     <script type="module"
             src="{% static 'ui/markdown-islands.js' %}{% get_static_file_mtime 'ui/markdown-islands.js' %}"></script>
+    <script defer src="{% static 'js/savedViews.js' %}{% get_static_file_mtime 'js/savedViews.js' %}"></script>
     <script defer src="{% static 'js/libraries/alpinejs-3.14.9.min.js' %}"></script>
     <script src="{% static 'js/libraries/lazysizes-5.3.2.min.js' %}" async></script>
     <script defer
@@ -320,12 +323,6 @@
                 </div>
             </nav>
 
-            <div data-sidebar-slot="onboarding" class="contents">
-            {% if request.user.is_authenticated and request.user.onboarding_status == "in_progress" %}
-              {% include "users/components/onboarding_banner.html" %}
-            {% endif %}
-            </div>
-
             <div class="p-4 border-t border-[var(--color-border)] mt-auto">
               <div class="space-y-2">
                 <div style="min-height: 2.25rem">
@@ -450,18 +447,18 @@
 
                           </button>
                           {# Camera button (only visible for types sold with a book barcode) #}
-                          <button type="button"
-                                  x-show="['book', 'manga', 'comic', 'comicissue'].includes(selectedType.value)"
+                          {% if search_type == "all" or search_type == "book" or search_type == "manga" or search_type == "comic" or search_type == "comicissue" %}<button type="button"
+                                  x-show="['all', 'book', 'manga', 'comic', 'comicissue'].includes(selectedType.value)"
                                   @click="$refs.barcodeInput?.click()"
                                   x-bind:disabled="barcodeScanning"
                                   class="absolute right-2 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-(--color-accent) rounded-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                   title="{% translate "Scan barcode" %}"
                                   aria-label="{% translate "Scan barcode" %}">
-                            <span x-show="barcodeScanning" class="block">
+                            <span x-show="barcodeScanning" class="hidden">
                               {% spinner 20 "muted" %}
                             </span>
                             <span x-show="!barcodeScanning" class="block">{% include "app/icons/camera.svg" with classes="w-5 h-5" %}</span>
-                          </button>
+                          </button>{% endif %}
                           {# Hidden file input for barcode scanning #}
                           <input type="file"
                                  accept="image/*"
@@ -845,7 +842,6 @@
     <script src="{% static 'js/matchFixReview.js' %}{% get_static_file_mtime 'js/matchFixReview.js' %}"></script>
     <script src="{% static 'js/bulkSelection.js' %}{% get_static_file_mtime 'js/bulkSelection.js' %}"></script>
     <script src="{% static 'js/libraryFilterState.js' %}{% get_static_file_mtime 'js/libraryFilterState.js' %}"></script>
-    <script src="{% static 'js/savedViews.js' %}{% get_static_file_mtime 'js/savedViews.js' %}"></script>
     <script src="{% static 'js/collectionCustomFields.js' %}{% get_static_file_mtime 'js/collectionCustomFields.js' %}"></script>
     {# Loaded globally so a boosted Statistics body swap cannot run Alpine before these define its controller (#1667). #}
     <script src="{% static 'js/stats-media-merge.js' %}{% get_static_file_mtime 'js/stats-media-merge.js' %}"></script>

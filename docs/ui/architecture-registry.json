@@ -1,5 +1,65 @@
 {
   "universal": {
+    "frontend/ui/MdblistConnect.jsx": {
+      "components": [
+        "MdblistConnect"
+      ],
+      "register": "LISTS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Expo import dialog has server-owned schedule choices; final browser comparison pending. Browser list import remains server-owned."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not verified on iOS."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified on Android."
+        }
+      }
+    },
+    "frontend/pages/ManualEntryView.jsx": {
+      "components": [
+        "ManualEntryView"
+      ],
+      "register": "TRACKING",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Expo browser: searched and selected Deep Field, created season 99, then removed the test entry and verified absence. Final layout comparison remains pending. Browser /create remains server-owned until parity and a web adapter are complete."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        }
+      }
+    },
+    "frontend/ui/ReorderList.jsx": {
+      "components": [
+        "ReorderList"
+      ],
+      "register": "SET-NAV",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Expo Sidebar at 375x812: TV Shows dragged below TV Seasons, saved and web confirmed, then dragged back/saved and web confirmed. Home uses the same measured-layout presentation; its drag remains unverified. No browser server-template owner retired."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        }
+      }
+    },
     "frontend/pages/DiscoverView.jsx": {
       "components": [
         "DiscoverView"
@@ -116,15 +176,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the server-rendered account and recovery pages remain the browser implementation and fallback. No browser pass was performed."
+          "evidence": "Native Settings embeds `AuthScreen` in account mode through `SettingsScreen`, using shared `SettingsAccountView` / `AccountSecurityView`. `AuthenticatorCard` accepts shared `RecoveryCodesCard` content so recovery stays in the same card; native Settings hides the separate sign-out and connection actions. Browser account remains server-owned until full parity. Browser: account route verified at 375x812; empty password/authenticator/recovery submissions rejected without credential changes. Exact visual parity remains partial. iOS: Not verified. Android: Not verified. Native readiness: Primitives. PasswordCard, AuthenticatorCard and RecoveryCodesCard also accept AuthScreen sessionRequired props. Bearer account responses withhold pending TOTP bootstrap and credential mutations while profile/username access remains. Session/web defaults remain; SSR checks cover both states. Browser appearance and actual iOS/Android runtime for this state are not verified; partial/coexisting ownership and full-parity retirement remain."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the wired native Auth screen; server URL, sign-in, session, account-security and redirect-intent paths were not exercised in a simulator."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the wired native Auth screen; server URL, sign-in, session, account-security and redirect-intent paths were not exercised on an emulator."
+          "evidence": "Not verified."
         }
       }
     },
@@ -174,6 +234,9 @@
       "components": [
         "DetailComposition",
         "DetailHeader",
+        "DetailHero",
+        "DetailMobileHero",
+        "DetailChips",
         "DetailSynopsis",
         "DetailActions",
         "DetailSection"
@@ -182,15 +245,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The browser adapter mounts the shared synopsis over the server-rendered detail fallback; build and targeted Django tests only, no browser pass during this change."
+          "evidence": "The browser remains the server-rendered visual reference. Expo-only hero, chip, child-action and section changes compiled through Expo web export; no browser-versus-Expo comparison or browser interaction pass was run."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Not exercised; the iOS pass rendered Home only."
+          "evidence": "Device Hub iPhone Duo on iOS 27.2 loaded the current Expo bundle against the local server. Breaking Bad show metadata, backdrop and logo rendered; a side-by-side comparison with the web season page showed remaining differences in crop, spacing, actions and sections. Season interactions and accessibility remain unverified."
         },
         "android": {
-          "status": "verified",
-          "evidence": "Android 15 Pixel 7 AVD: rendered the shared detail composition on Detail; no action, synopsis or TalkBack interaction; demo images did not load."
+          "status": "unverified",
+          "evidence": "Expo web export compiled the updated view. Android runtime, interactions and TalkBack have not been verified."
         }
       }
     },
@@ -202,7 +265,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The browser adapter mounts the shared related sections and Steam DLC links over the server fallback; build and targeted Django tests only, no browser pass during this change."
+          "evidence": "The browser adapter mounts the shared related sections and Steam DLC links over the server fallback; build and targeted Django tests only, no browser pass."
         },
         "ios": {
           "status": "unverified",
@@ -227,7 +290,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The browser adapter mounts the shared comic-issue rows over the secondary-content server fallback; build, targeted Django tests and static checks only, no browser pass during this change."
+          "evidence": "The browser adapter mounts the shared comic-issue rows over the secondary-content server fallback; build, targeted Django tests and static checks only, no browser pass."
         },
         "ios": {
           "status": "unverified",
@@ -307,7 +370,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Web adapter and Expo export compile; not exercised in a browser during this change."
+          "evidence": "Web adapter and Expo export compile; not exercised in a browser."
         },
         "ios": {
           "status": "unverified",
@@ -327,7 +390,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Expo export and the web bundles compile; the browser detail card uses ProgressCard.web.jsx and this universal implementation was not exercised in a browser during this change."
+          "evidence": "Expo export and the web bundles compile; the browser detail card uses ProgressCard.web.jsx and this universal implementation was not exercised in a browser."
         },
         "ios": {
           "status": "unverified",
@@ -347,7 +410,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Web adapter and Expo export compile; the mounted breakdown was not exercised in a browser during this change."
+          "evidence": "Web adapter and Expo export compile; the mounted breakdown was not exercised in a browser."
         },
         "ios": {
           "status": "unverified",
@@ -407,15 +470,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Rendered by the web bundle built with npm run build:ui; no browser comparison was run."
+          "evidence": "Portable Button accepts opt-in palette.size with explicit size taking precedence and the established web small default unchanged. Provider/setup browser comparisons at 375x812 identified height/radius gaps; final comparison of the native medium-size path is pending. Legacy form consumers and web adapters retain their current ownership."
         },
         "ios": {
           "status": "unverified",
           "evidence": "Compiled by the Expo export through the native Button slot; no simulator run was performed."
         },
         "android": {
-          "status": "verified",
-          "evidence": "Android 15 Pixel 7 AVD: rendered primary, surface and danger buttons on Settings and Library; no press, disabled or accessibility interaction pass."
+          "status": "unverified",
+          "evidence": "Android 15 Pixel 7 AVD: rendered primary, surface and danger buttons on Settings and Library; no press, disabled or accessibility interaction pass. Historical rendering only; the new optional palette.size path has no Android runtime verification."
         }
       }
     },
@@ -447,7 +510,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The Django search page provides the props and server-rendered fallback and the UI bundle builds; the mounted results surface was not exercised in a browser in this pass."
+          "evidence": "The Django search page provides the props and server-rendered fallback and the UI bundle builds; the mounted results surface was not exercised in a browser."
         },
         "ios": {
           "status": "unverified",
@@ -466,8 +529,8 @@
       "register": "SEARCH",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "The browser adapter mounts the shared picker on the create-entry parent TV and season fields and reads rows from the existing htmx endpoints; build and architecture checks only, no browser runtime pass."
+          "status": "verified",
+          "evidence": "Shared primitives retain the native unframed option. The mounted Create Entry web picker preserves its plain input, overlaid results and original IDs; the Chromium TV manual-entry acceptance test passes. Partial/coexisting server fallback remains until complete parity and web adoption. Actual iOS/Android runtime for this revision is not verified."
         },
         "ios": {
           "status": "unverified",
@@ -475,7 +538,7 @@
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native search screens; no AVD run was performed in this pass."
+          "evidence": "Compiled by the Expo export through the native search screens; no AVD run was performed."
         }
       }
     },
@@ -507,15 +570,57 @@
       "verification": {
         "web": {
           "status": "verified",
-          "evidence": "Chromium on macOS: all 42 settings-card browser tests passed after the shared card/chip port, covering card headings, info dialogs, keyboard-only focus rings, link hover/target/popup, provider Connection/Import surfaces, themes and responsive widths."
+          "evidence": "Historical Chromium card/chip checks cover browser headings, dialogs, keyboard, provider surfaces and themes. The optional icon and pageCards variant are used by native DataSettingsSlot; Django and Expo Data were compared at 375x812. Export title/frame geometry was observed; lower Data sections remain partial. Default browser card appearance is retained. Optional headingLevel preserves native Activity level-2 sections while omitted values retain browser/provider defaults. Initial browser comparison exposed level-4 headings; the new override awaits semantics recheck. No iOS/Android runtime pass for the new override."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Not exercised; Expo export compile only."
+          "evidence": "Not verified."
         },
         "android": {
-          "status": "verified",
-          "evidence": "Android 15 Pixel 7 AVD: rendered the shared settings card and chip on Settings; no help dialog, link or TalkBack interaction."
+          "status": "unverified",
+          "evidence": "Historical Android 15 Pixel 7 AVD rendered the prior card/chip. Current icon and pageCards changes: Not verified."
+        }
+      }
+    },
+    "frontend/ui/StatisticsPreferences.jsx": {
+      "components": [
+        "StatisticsPreferencesButton",
+        "StatisticsPreferencesModal",
+        "StatisticsBanner"
+      ],
+      "register": "STATISTICS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Expo web build in a browser at phone width (preferences modal opened, one value saved and restored); not mounted by the Django web bundle."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "No simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "No emulator run was performed."
+        }
+      }
+    },
+    "frontend/ui/ViewToggle.jsx": {
+      "components": [
+        "ViewToggle"
+      ],
+      "register": "LISTS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Expo web build in a browser at phone width (list detail layout icons); not mounted by the Django web bundle."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "No simulator run was performed."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "No emulator run was performed."
         }
       }
     },
@@ -527,15 +632,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the Django/Alpine preferences selectors and the legacy controls.jsx SelectField remain the browser implementations."
+          "evidence": "Expo Preferences Currency saved/restored, Home Label appearance saved/restored, Access expiry and permissions prepared at 375x812. Native manual entry opts into trigger and label styles; defaults unchanged. Exact dropdown geometry parity incomplete."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared field through the native Settings preferences slot; no simulator run was performed."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared field through the native Settings preferences slot; no emulator run was performed."
+          "evidence": "Not verified."
         }
       }
     },
@@ -547,15 +652,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the legacy controls.jsx ToggleChip remains the browser implementation."
+          "evidence": "Expo Sidebar Discover visibility saved/restored and Django confirmed; compact page-card switches, checkbox scope labels/help and optional hidden labels use shared primitives. Explicit aria-checked exposes selected state on affected checkboxes. iOS/Android current runtime unverified."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared chip through the native Settings preferences slot; no simulator run was performed."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared chip through the native Settings preferences slot; no emulator run was performed."
+          "evidence": "Not verified."
         }
       }
     },
@@ -567,15 +672,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the Django form_save_bar and Alpine dirty tracker remain the browser implementation."
+          "evidence": "Expo Preferences saved/restored Currency, and Appearance saved/restored Theme with the native dock adapter; Django confirmed both. Appearance uses its own footer copy and theme accent; no current iOS/Android runtime evidence."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared save bar through the native Settings preferences slot; no simulator run was performed."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared save bar through the native Settings preferences slot; no emulator run was performed."
+          "evidence": "Not verified."
         }
       }
     },
@@ -587,15 +692,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the server-rendered preferences page, Alpine selectors and form_save_bar remain the browser implementation and regression target."
+          "evidence": "Expo Preferences compared at 375x812: section/field frames, icons, boolean dropdowns, card link and docked save adapter; Currency saved/restored and confirmed on Django. Exact visual parity incomplete; Django/Alpine remains browser owner."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared form through the native Settings preferences slot; no simulator run or accessibility pass was performed."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the shared form through the native Settings preferences slot; no emulator run or accessibility pass was performed."
+          "evidence": "Not verified."
         }
       }
     },
@@ -607,15 +712,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the legacy controls.jsx provider fields remain the browser implementation. The configurable trailing inset does not change existing web consumers."
+          "evidence": "Expo Notifications compared at 375x812 with opt-in help after fields. Native manual entry opts into input and label styles and a decimal keyboard; defaults preserved. Full spacing/control parity incomplete."
         },
         "ios": {
-          "status": "verified",
-          "evidence": "In the current Expo Go bundle on Device Hub iOS 27.2, both the server field placeholder and an entered server URL appeared vertically centered in the row. Username and password use the same shared large TextField style; secure credential entry was not separately exercised."
+          "status": "unverified",
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "The shared auth field keeps URL values on one line and uses a single state-dependent trailing action; Android runtime and accessibility verification are pending."
+          "evidence": "Not verified."
         }
       }
     },
@@ -667,7 +772,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the legacy providers/AccountConnection.jsx browser form remains the active implementation."
+          "evidence": "Plex, Seerr, KOReader and Hardcover compared between Django and Expo native-variant preview at 375x812. Native AccountSettings retains account context during sign-in; KOReader formContent fixes form-before-status order. Seerr invalid URL rejected and unchanged blank-key save succeeded; KOReader empty connect clicked without credentials. Final geometry/settled validation remains partial; existing web account adapters remain."
         },
         "ios": {
           "status": "unverified",
@@ -708,7 +813,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Rendered by the existing web mounts; not exercised in a browser during this change."
+          "evidence": "Rendered by the existing web mounts; not exercised in a browser."
         },
         "ios": {
           "status": "unverified",
@@ -748,7 +853,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Mounted through the web adapter into the static tracking date/time fields; build and targeted tests only, no browser pass during this change."
+          "evidence": "Mounted through the web adapter into the static tracking date/time fields; build and targeted tests only, no browser pass."
         },
         "ios": {
           "status": "unverified",
@@ -760,6 +865,46 @@
         }
       }
     },
+    "frontend/pages/SettingsSidebarView.jsx": {
+      "components": [
+        "SettingsSidebarView"
+      ],
+      "register": "SET-SIDEBAR",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Expo Sidebar drag saved/restored and web order confirmed at 375x812. Shared handle and native frame adjustments; exact switch/spacing parity incomplete. Django Sidebar remains browser owner."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        }
+      }
+    },
+    "frontend/pages/SettingsActivityView.jsx": {
+      "components": [
+        "SettingsActivityView"
+      ],
+      "register": "SET-ACTIVITY",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Django and Expo browser comparison exercised all four empty MAL tabs with matching copy and opened/cancelled Undo and source Delete confirmations. The final populated local CSV import pair was refreshed after pageCards/accessibility changes; run-card structure, 24px frames, 20px icon headings, status/date/count rows and red Undo link match. The receipt counts/date came from the real importer and only its disposable data/history/provenance were cleaned afterward. Named tabpanel, level-2 headings and explicit selected state are implemented. Connected MAL and outbound provider actions remain unverified without a configured account; no live sync sent. Existing Django central/non-AniList bodies remain until full browser port."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        }
+      }
+    },
     "frontend/ui/ListCard.jsx": {
       "components": [
         "ListCard"
@@ -768,7 +913,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not exercised in a browser; the existing Django list grid remains the active web consumer. The shared card now labels unlisted lists and renders owner/collaborator/viewer roles."
+          "evidence": "The native Lists hub opts into hiding card metadata; the Django list grid and shared default remain unchanged. Browser recheck of this change pending."
         },
         "ios": {
           "status": "unverified",
@@ -788,7 +933,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not exercised in a browser; the existing Django list header remains the active web consumer. The shared header now labels unlisted lists alongside public ones."
+          "evidence": "Native editor selection now sits in the ListHeader trailing slot; browser recheck pending. The existing Django header remains the web owner."
         },
         "ios": {
           "status": "unverified",
@@ -812,7 +957,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted on the Django list detail page; the server-rendered grid, table and bulk toolbar remain the active web consumers."
+          "evidence": "Native list detail moves its selection toggle to the header and reuses ListBulkBar with tier view; shared default remains unchanged. Browser recheck pending; Django grid, table and toolbar remain web owners."
         },
         "ios": {
           "status": "unverified",
@@ -850,7 +995,7 @@
       "components": [
         "HistoryFeed",
         "HistoryDayGroup",
-        "HistoryEntryRow",
+        "HistoryEntryCard",
         "HistoryDaySummary",
         "HistoryActivitySummary",
         "HistoryFilterPanel",
@@ -863,15 +1008,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The adapter and feed compiled in npm run build:ui; node checks cover the bounded model and transport. The prior Chromium pass covered only the day rows. Month navigation, filters, cache banner, lazy days, load-more, pagination and the shared activity dialog were not exercised in a browser in this pass."
+          "evidence": "The adapter and feed compiled in npm run build:ui; node checks cover the bounded model and transport. The prior Chromium pass covered only the day rows. Month navigation, filters, cache banner, lazy days, load-more, pagination and the shared activity dialog were not exercised in a browser. Compared with the web page in a browser at 375px through the Expo web build's native-variant preview."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Not exercised in this pass; no iOS runtime was started."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Not exercised in this pass. The earlier Android pass rendered only the earlier shared feed; the new chrome, activity dialog and transport were not run."
+          "evidence": "Not verified."
         }
       }
     },
@@ -883,7 +1028,7 @@
       "verification": {
         "web": {
           "status": "verified",
-          "evidence": "Chromium on macOS at 1280x1000 on a seeded Django calendar: the links root mounted over the static server fallback, both release and history feed tabs changed the help text and subscription URL, media switches rewrote media_types, Copy link reported Copied, Download calendar produced calendar.ics, and the console was clean."
+          "evidence": "Chromium on macOS at 1280x1000 on a seeded Django calendar: the links root mounted over the static server fallback, both release and history feed tabs changed the help text and subscription URL, media switches rewrote media_types, Copy link reported Copied, Download calendar produced calendar.ics, and the console was clean. Shared CalendarLinks accepts a session-required state from CalendarScreen. Calendar subscription URLs contain the permanent account token and require password-session sign-in; bearer calendar browsing remains. Defaults preserve browser/session links. Existing ownership and fallback retirement conditions remain; transport checks cover denial handling, while browser appearance and actual iOS/Android runtime for this state are not verified."
         },
         "ios": {
           "status": "unverified",
@@ -902,16 +1047,16 @@
       "register": "RELEASE-CALENDAR",
       "verification": {
         "web": {
-          "status": "verified",
-          "evidence": "Chromium on macOS at 1280x1000 on a seeded Django calendar: the React root mounted over the static server fallback; month, agenda and list views rendered releases; a filter change persisted to localStorage and restored after reload; the week-start preference saved and reloaded with Sunday first; Copy link, ICS download and the fetch POST/queued message all worked; the console was clean."
+          "status": "unverified",
+          "evidence": "Native CalendarSlot now passes surfaceMutedSoft for blank days. Current blank-day browser comparison pending; prior browser evidence does not verify this change."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Floating filter/menu corner symmetry updated; runtime verification pending. Compact bottom-sheet corner geometry retained."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiles the shared calendar and its durable file-system preference adapter; no Android emulator run was performed."
+          "evidence": "Not verified."
         }
       }
     },
@@ -928,7 +1073,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compiled into the web bundle through the Lists form adapter; not exercised in a browser during this change."
+          "evidence": "Compiled into the web bundle through the Lists form adapter; not exercised in a browser."
         },
         "ios": {
           "status": "unverified",
@@ -948,7 +1093,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Rendered by the Lists web adapter inside the existing React ModalHost; the web bundle builds, but no browser interaction pass was run during this change."
+          "evidence": "Rendered by the Lists web adapter inside the existing React ModalHost; the web bundle builds, but no browser interaction pass was run."
         },
         "ios": {
           "status": "unverified",
@@ -1063,15 +1208,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted on the Django lists page; the existing server-rendered list form remains the active web consumer. The web bundle builds. The shared form now includes unlisted visibility and view-only viewer shares."
+          "evidence": "Not mounted on the Django lists page; the existing server-rendered list form remains the active web consumer. The web bundle builds. The shared form now includes unlisted visibility and view-only viewer shares. Browser: not compared."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiles the form; not exercised in a simulator."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiles the form; not exercised on an emulator."
+          "evidence": "Not verified."
         }
       }
     },
@@ -1174,31 +1319,33 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the existing Django/Alpine destructive confirmations remain the browser implementation. No browser pass was performed."
+          "evidence": "Expo Data danger dialog composition accepts props-only confirmation children; destructive confirmation not executed. Browser defaults retained; full parity incomplete."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the component through the native Settings slot; no simulator run or accessibility pass was performed."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the component through the native Settings slot; no emulator run or accessibility pass was performed."
+          "evidence": "Not verified."
         }
       }
     },
     "frontend/settings/DataSettings.jsx": {
       "components": [
         "ExportScheduleCard",
+        "ExportOtherSitesCard",
         "ScheduledExportsCard",
         "ExportHistoryCard",
         "RestoreBackupCard",
-        "RssFeedCard"
+        "RssFeedCard",
+        "LibraryMaintenanceCard"
       ],
       "register": "SET-DATA",
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the server-rendered data management, export and RSS templates remain the browser implementation and regression target. No browser pass was performed."
+          "evidence": "Django Data and Expo native-variant preview compared at 375x812. Native export card typography, frame and icon were observed. Other title icons are wired and duplicate repair is gated by the API count; lower sections and controls remain partial. The Django Data body remains server-owned; no full parity claim. Native readiness: Primitives. Shared RssFeedCard accepts a session-required model from DataSettingsSlot. Bearer clients show password sign-in guidance instead of a credential-bearing RSS URL; other Data cards and browser/session defaults remain. Existing ownership and retirement conditions remain; transport checks cover denial handling, while browser appearance and actual iOS/Android runtime for this state are not verified."
         },
         "ios": {
           "status": "unverified",
@@ -1221,15 +1368,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the server-rendered access-token, install-credential and OAuth application pages remain the browser implementation. No browser pass was performed."
+          "evidence": "AccessTokenCard, AppTokensCard and CatalogGrantsCard accept adapter-supplied sessionRequired props. Bearer clients show password sign-in guidance for account-token disclosure and credential issuance while lists and revocation remain available. Browser defaults and partial/coexisting ownership remain. Transport unit tests cover skipping the protected secret fetch; browser appearance and actual iOS/Android runtime for this state are not verified."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the component through the native Settings slot; no simulator run or accessibility pass was performed."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the component through the native Settings slot; no emulator run or accessibility pass was performed."
+          "evidence": "Not verified."
         }
       }
     },
@@ -1242,15 +1389,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the server-rendered notifications page and Alpine exclusion search remain the browser implementation. No browser pass was performed."
+          "evidence": "Expo Notifications at 375x812: help panel opened/closed, Daily Digest saved/restored, The Matrix excluded/reincluded and all writes confirmed on Django. Page framing, field/help order, inline actions, row icons/artwork and readable types implemented; not compared with the web page beyond the interactions listed."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the component through the native Settings slot; no simulator run or accessibility pass was performed."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the component through the native Settings slot; no emulator run or accessibility pass was performed."
+          "evidence": "Not verified."
         }
       }
     },
@@ -1262,15 +1409,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The appearance page remains the Django/Alpine editor; this shared editor is not mounted in the browser bundle during this change."
+          "evidence": "Expo Appearance compared at 375x812: full-size theme swatches, section framing, checkbox layout rows and sticky footer. Light saved and System default restored with Django confirmation. Scrolled layout controls/custom effects remain partial."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Settings screen; theme selection, custom palette, detail reorder and save states were not exercised at runtime."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Settings screen; theme selection, custom palette, detail reorder and save states were not exercised at runtime."
+          "evidence": "Not verified."
         }
       }
     },
@@ -1282,7 +1429,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The browser cards page remains Django/Alpine-owned; the native editor's touch-action dirty baseline is updated in this revision. Browser runtime was not checked."
+          "evidence": "The browser cards page remains Django/Alpine-owned; the native editor's touch-action dirty baseline is updated. Browser runtime was not checked."
         },
         "ios": {
           "status": "verified",
@@ -1302,15 +1449,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The Home screen page remains the Django/Alpine/SortableJS editor; this shared editor is not mounted in the browser bundle during this change."
+          "evidence": "Expo Home at 375x812: invalid colour rejected, TV Shows colour saved/restored and Django confirmed; All media dragged below TV Shows, saved/restored and Django confirmed; Label appearance dropdown Outline saved and Soft restored with web confirmation. Shared row drag/expanded filters remain unverified."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Settings screen; section, row, filter and sort interactions were not exercised at runtime."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Settings screen; section, row, filter and sort interactions were not exercised at runtime."
+          "evidence": "Not verified."
         }
       }
     },
@@ -1369,7 +1516,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted on the web list page; the Django tier board and listTiers.js remain the active browser consumers."
+          "evidence": "Native list detail places ListBulkBar above TierBoard in selection mode, matching the web toolbar outside the board; tier tiles have no bulk checkbox. Browser recheck pending; Django tier board and listTiers.js remain web owners."
         },
         "ios": {
           "status": "unverified",
@@ -1389,7 +1536,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; src/static/js/copy-item.js remains the browser copy control. No browser pass during this change."
+          "evidence": "Not mounted by the web bundle; src/static/js/copy-item.js remains the browser copy control. No browser pass."
         },
         "ios": {
           "status": "unverified",
@@ -1409,7 +1556,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the About page install control in users/about.html remains the browser implementation. No browser pass during this change."
+          "evidence": "Not mounted by the web bundle; the About page install control in users/about.html remains the browser implementation. No browser pass."
         },
         "ios": {
           "status": "unverified",
@@ -1429,7 +1576,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; base.html still registers the service worker and the About page does not show cache status. No browser pass during this change."
+          "evidence": "Not mounted by the web bundle; base.html still registers the service worker and the About page does not show cache status. No browser pass."
         },
         "ios": {
           "status": "unverified",
@@ -1540,20 +1687,21 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The browser adapter mounts all four Advanced cards into users/advanced.html from server-built props, with the server-rendered forms retained as fallback. Cache and port writes send the existing CSRF-protected fields with Accept: application/json and update the cards in place; log download keeps the authenticated server response. The no-JS forms still POST and redirect. No browser runtime pass during this change."
+          "evidence": "CacheManagementCard uses the complete parenthesized provider-cache description, matching server props and fallback. Server-rendering regression coverage verifies copy; browser layout and actual iOS/Android runtime for this copy revision are not verified. Existing island ownership and fallback retirement conditions remain unchanged."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the component through the native SettingsAdvanced screen; no simulator run or accessibility pass was performed."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the component through the native SettingsAdvanced screen; no emulator run or accessibility pass was performed."
+          "evidence": "Not verified."
         }
       }
     },
     "frontend/settings/AboutSettings.jsx": {
       "components": [
+        "AboutSpecificationPreview",
         "ReleaseUpdateBanner",
         "AboutOverviewCard",
         "WhatsNewCard",
@@ -1568,15 +1716,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The browser card adapter mounts the shared About, What's New, Install, resource, API specification, attribution, licence and version cards into users/about.html from server-built props, and the global update banner mounts the shared banner with localStorage dismissal. API preview dispatches to the existing schema viewer and download requests the contract endpoints with download=1; the server tables and modal remain fallbacks. No browser runtime pass during this change."
+          "evidence": "Expo About compared at 375x812: translated labels/icons and full page frame. AboutSpecificationPreview loads all four specification formats and copies their original text; verified schema downloaded. Loading and initial diagnostic 406 failure observed, Accept negotiation corrected and retested. Static browser cache/Utilities placement still partial."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the component through the native SettingsAdvanced screen; no simulator run or accessibility pass was performed."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the component through the native SettingsAdvanced screen; no emulator run or accessibility pass was performed."
+          "evidence": "Not verified."
         }
       }
     },
@@ -1597,7 +1745,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the Django onboarding views and templates remain the browser implementation. No browser pass was performed."
+          "evidence": "Refreshed Django/Expo 375x812 first-step comparison confirmed standalone shell, logo, drag handles/icons and switches. TV Shows toggled off/on with aria-checked false/true and original selections restored; no Continue/provider save. Partial visual differences remain: native title wraps despite its existing 18px size, and progress/card starts 4px higher. Shared optional slots preserve browser defaults and existing template ownership. Later steps/connected providers and current iOS/Android runtime remain unverified; no provider keys entered."
         },
         "ios": {
           "status": "unverified",
@@ -1641,15 +1789,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Mounted by frontend/settings/index.js; UI build and targeted Django tests only, no browser pass during this change."
+          "evidence": "Native `UsersSlot` omits the duplicate heading; shared `UsersManagement` uses the native page variant and shared chevron icons. Shared `TextField` / `SelectField` use the supplied field-border token. Browser: empty Create user rejected; current-account password dialog opened without entering a credential and cancelled. Existing credentials/roles unchanged. Browser adapter and remaining server fallback remain until full visual/control parity. iOS: Not verified. Android: Not verified. Native readiness: Primitives. UsersSlot supplies a sessionRequired capability: bearer sessions retain permitted lists, filtering and deletion while creation, privilege mutation and password reset show password sign-in guidance. Session/web defaults remain; SSR checks cover these states. Browser appearance and actual iOS/Android runtime for this state are not verified; ownership and fallback retirement conditions remain."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Settings users slot; no simulator run was performed."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Settings users slot; no emulator run was performed."
+          "evidence": "Not verified."
         }
       }
     },
@@ -1667,7 +1815,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The person and studio heroes, cast/crew person rails and game medium extras mount through frontend/ui/mountPeople.jsx over retained server markup. The filmography grid stays on the shared media card for hover/tracking actions, and the detail carousel stays server-owned because the shared gallery does not keep the embedded YouTube player. The UI build compiles the mounts; no browser interaction pass was performed."
+          "evidence": "The native person hero opts into the web action button size; paired pre-fix screenshots were compared and post-fix verification is pending. Web hero/cast/extras mounts retain their defaults over server markup; filmography remains server-owned and uses shared media cards."
         },
         "ios": {
           "status": "unverified",
@@ -1687,15 +1835,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The browser adapter mounts the shared grid over the Django collection results and loads later JSON pages; the server toolbar, grouped rows, table layout and card-host fallback remain server-owned. The web build compiles it, but grid mounting, load-more and card parity were not exercised in a browser."
+          "evidence": "The browser adapter mounts the shared grid over the Django collection results and loads later JSON pages; the server toolbar, grouped rows, table layout and card-host fallback remain server-owned. The web build compiles it, but grid mounting, load-more and card parity were not exercised in a browser. Compared with the web page in a browser at 375px through the Expo web build's native-variant preview."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Collection screen; grid, rows, table, filter sheets and copy opening were not exercised on a simulator or device."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native Collection screen; grid, rows, table, filter sheets and copy opening were not exercised on an emulator or device."
+          "evidence": "Not verified."
         }
       }
     },
@@ -1731,7 +1879,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The shared value and definition editors are compiled by the UI build and Expo web export; collectionCustomFields.js, its JSON save and SortableJS remain the browser owner."
+          "evidence": "Native field manager now receives all server media and field-type choices. Browser manager/sort recheck pending; collectionCustomFields.js, JSON save and SortableJS remain the web owner."
         },
         "ios": {
           "status": "unverified",
@@ -1794,7 +1942,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "npm run build:ui compiles the shared picker into the metadata tab; the server upload, link, candidate, edition and fallback paths were not exercised in a browser in this pass."
+          "evidence": "npm run build:ui compiles the shared picker into the metadata tab; the server upload, link, candidate, edition and fallback paths were not exercised in a browser."
         },
         "ios": {
           "status": "unverified",
@@ -1985,7 +2133,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compiled into the web bundle; no browser interaction pass in this foundation batch."
+          "evidence": "Compiled into the web bundle; no browser interaction pass."
         },
         "ios": {
           "status": "unverified",
@@ -2006,7 +2154,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compiled into the web bundle; no browser interaction pass in this foundation batch."
+          "evidence": "Compiled into the web bundle; no browser interaction pass."
         },
         "ios": {
           "status": "unverified",
@@ -2026,7 +2174,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compiled into the web bundle; no browser interaction pass in this foundation batch."
+          "evidence": "Compiled into the web bundle; no browser interaction pass."
         },
         "ios": {
           "status": "unverified",
@@ -2046,7 +2194,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compiled into the web bundle; no browser interaction pass in this foundation batch."
+          "evidence": "Compiled into the web bundle; no browser interaction pass."
         },
         "ios": {
           "status": "unverified",
@@ -2067,7 +2215,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compiled into the web bundle; no browser interaction pass in this foundation batch."
+          "evidence": "Compiled into the web bundle; no browser interaction pass."
         },
         "ios": {
           "status": "unverified",
@@ -2087,7 +2235,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compiled into the web bundle; no browser interaction pass in this foundation batch."
+          "evidence": "Compiled into the web bundle; no browser interaction pass."
         },
         "ios": {
           "status": "unverified",
@@ -2108,7 +2256,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compiled into the web bundle; no browser interaction pass in this foundation batch."
+          "evidence": "Compiled into the web bundle; no browser interaction pass."
         },
         "ios": {
           "status": "unverified",
@@ -2129,7 +2277,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compiled into the web bundle; no browser interaction pass in this foundation batch."
+          "evidence": "Compiled into the web bundle; no browser interaction pass."
         },
         "ios": {
           "status": "unverified",
@@ -2151,7 +2299,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compiled into the web bundle; no browser interaction pass in this foundation batch."
+          "evidence": "Compiled into the web bundle; no browser interaction pass. Tabs now explicitly exposes aria-selected for shared native/browser tab semantics. All four empty MAL Activity tabs were exercised against the browser page with matching copy; native named tabpanel and selected-state semantics await recheck. Existing owners/appearance remain unchanged; no current iOS/Android runtime pass."
         },
         "ios": {
           "status": "unverified",
@@ -2171,7 +2319,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compiled into the web bundle; no browser interaction pass in this foundation batch."
+          "evidence": "Compiled into the web bundle; no browser interaction pass."
         },
         "ios": {
           "status": "unverified",
@@ -2191,11 +2339,11 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "This revision changes native touch reveal behavior only; browser adapter behavior was not runtime-checked for this revision. The shared 24px status/next-episode sizing remains build-checked but browser runtime is pending."
+          "evidence": "Native person/studio credit grids use canonical shared card models and an opt-in hover-line policy; paired pre-fix screenshots showed drift and post-fix browser comparison is pending. Existing browser adapter and other model defaults are unchanged."
         },
         "ios": {
           "status": "verified",
-          "evidence": "On iPhone Duo (Device Hub, iOS 27.2), compact Home Up Next cards show Next clear of the play/status badge. This revision also opened Settings > Media Cards in Expo Go and showed both touch-action choices; a local proof card with actions.clickable: true opened detail on first tap. No server session was available, so preference load/save and the false-value reveal-then-open path were not device-verified; native behavior tests cover both values."
+          "evidence": "Earlier iPhone Duo (iOS 27.2) testing covered compact Home cards and one touch-action path. The new person/studio hover-line behavior has not been run on iOS."
         },
         "android": {
           "status": "unverified",
@@ -2283,6 +2431,26 @@
         }
       }
     },
+    "frontend/ui/DeviceApproval.jsx": {
+      "components": [
+        "DeviceApprovalCard"
+      ],
+      "register": "DEVICE-CONNECT",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Rendered over the OAuth device approval server fallback in a 375px browser page and compared with the fallback; layout, copy and states match. Allow/Deny submit the existing POST form (not exercised, to avoid consuming the test code)."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "react-native primitives only; no simulator pass was run."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "react-native primitives only; no emulator pass was run."
+        }
+      }
+    },
     "frontend/ui/StremioConfigurator.jsx": {
       "components": [
         "StremioAddonConfigurator"
@@ -2333,7 +2501,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Mounted through the browser detail adapter and compiled into the web bundles; dialog opening, Escape and focus were not exercised in a browser during this change."
+          "evidence": "Mounted through the browser detail adapter and compiled into the web bundles; dialog opening, Escape and focus were not exercised in a browser."
         },
         "ios": {
           "status": "unverified",
@@ -2373,7 +2541,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The previous inline Explore sidebar was exercised in the in-app browser; the new overlay layout has not had a browser interaction pass. No responsive or screen-reader pass was performed."
+          "evidence": "The previous inline Explore sidebar was exercised in the in-app browser; the new overlay layout has not had a browser interaction pass. No responsive or screen-reader pass was performed. The existing server fallback controller now loads before Alpine and also supports late registration after startup, with its once guard retained. Browser regressions verify script order, late real fallback insertion and Explore toggling; shared React ownership/fallback retirement remain unchanged. This browser adapter check does not verify native runtime."
         },
         "ios": {
           "status": "unverified",
@@ -2413,7 +2581,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The web provider mount composes credentials, import, account and setup guides through the universal view; browser interaction not yet exercised."
+          "evidence": "Shared headings/guide/account order now wrap native browser-account and KOReader form slots. Django and Expo provider pages compared at 375x812; native-only heading/order/frame fixes await final comparison. Existing web provider mount and Django body consumers remain; no full parity claim. Shared ProviderSettingsView and ProviderDetailView receive guidesSessionRequired from the provider adapter. Bearer responses omit credential-bearing webhook/install/configure guides and show password sign-in guidance; other connection forms, settings and browser/session defaults remain. Existing partial/coexisting ownership and full-parity retirement conditions remain. Transport/server regressions cover redaction; browser appearance and actual iOS/Android runtime for this state are not verified."
         },
         "ios": {
           "status": "unverified",
@@ -2433,7 +2601,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The web provider mount supplies the activity JSON transport and form posts; browser interaction not yet exercised."
+          "evidence": "Existing AniList web adapter remains; native ActivitySettingsSlot also consumes bounded all-source schedules, history, import runs and source cleanup. Final Django/Expo populated receipt comparison matches native-only pageCards frames/icons, rounded source/status rows, separate date, wrapped generated counts, red text actions and exact item plurals. All four empty MAL tabs and Undo/Delete confirmation cancellation were exercised. Disposable receipt/history/provenance cleaned afterward; baseline data preserved. Existing web defaults remain unchanged. Connected-provider workflows remain unverified without a configured account."
         },
         "ios": {
           "status": "unverified",
@@ -2554,7 +2722,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The web alphabet adapter mounts the shared bar; no browser interaction pass during this change."
+          "evidence": "The web alphabet adapter mounts the shared bar; no browser interaction pass."
         },
         "ios": {
           "status": "unverified",
@@ -2575,7 +2743,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The web renderer is installed by the settings island loader and renders parsed SVG shapes; no browser icon pass during this change."
+          "evidence": "The web renderer is installed by the settings island loader and renders parsed SVG shapes; no browser icon pass."
         },
         "ios": {
           "status": "unverified",
@@ -2595,7 +2763,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The browser error mount renders the shared traceback panel; no browser pass during this change."
+          "evidence": "The browser error mount renders the shared traceback panel; no browser pass."
         },
         "ios": {
           "status": "unverified",
@@ -2615,7 +2783,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Used by the browser search/history card wrappers; no browser pass during this change."
+          "evidence": "Used by the browser search/history card wrappers; no browser pass."
         },
         "ios": {
           "status": "unverified",
@@ -2635,7 +2803,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The Home adapter renders the shared HomeView around the server shelf model; no browser interaction pass during this change."
+          "evidence": "The Home adapter renders the shared HomeView around the server shelf model; no browser interaction pass."
         },
         "ios": {
           "status": "verified",
@@ -2657,7 +2825,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Consumed by the shared Tags and Search page compositions; a browser interaction pass over heading, section and loading/error/empty states was not run in this change."
+          "evidence": "Consumed by shared page compositions including native LibraryPageView. Optional titleStyle/countStyle props preserve all defaults while the native library supplies source-backed title typography and mobile badge padding. Final browser comparison of the library spacing remains incomplete; no broader heading/state verification is inferred."
         },
         "ios": {
           "status": "unverified",
@@ -2677,15 +2845,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Native placement only: the release web library keeps its server table, Alpine filter form and htmx pagination. No browser pass was run."
+          "evidence": "The Expo LibraryScreen consumes this shared composition. The browser library remains server-owned with its server table, Alpine filters and htmx pagination; no browser pass was run."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export on the native Library screen; no simulator run was performed."
+          "evidence": "Expo iOS export compiled this view. Runtime verification is blocked because xcrun simctl reports CoreSimulatorService is unavailable."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export on the native Library screen; no emulator run was performed."
+          "evidence": "Expo Android export compiled this view. Runtime verification is blocked because adb cannot start its local daemon (operation not permitted)."
         }
       }
     },
@@ -2697,7 +2865,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The browser results adapter composes SearchPageView around the shared SearchResults surface; no browser interaction pass during this change."
+          "evidence": "The browser results adapter composes SearchPageView around the shared SearchResults surface; no browser interaction pass."
         },
         "ios": {
           "status": "unverified",
@@ -2717,7 +2885,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Native placement only: the web Lists hub remains a server-owned page with Alpine modals and htmx fragments. No browser pass was run."
+          "evidence": "Native Lists hub opts into hiding metadata while the web default is unchanged. Browser recheck pending; the web hub remains server-owned with Alpine modals and htmx fragments."
         },
         "ios": {
           "status": "unverified",
@@ -2757,7 +2925,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The browser tag index mount composes TagsPageView over the server fallback inside data-tag-index-root; no browser interaction pass during this change."
+          "evidence": "The browser tag index mount composes TagsPageView over the server fallback inside data-tag-index-root; no browser interaction pass."
         },
         "ios": {
           "status": "unverified",
@@ -2776,16 +2944,16 @@
       "register": "DETAIL",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "Shared detail content composition: header, synopsis, actions and the ordered rating/progress/check-in/tracking/notes/artwork/children/related sections with loading, error and retry states. Web mounts it in header/synopsis parts over the server-owned detail shell; the native Detail screen mounts the full composition. Build, architecture and targeted tests only; no browser interaction pass during this change."
+          "status": "verified",
+          "evidence": "Expo web build in native-variant preview at 375px compared with the Django detail page of the same seeded items (a TMDB film and show, a season, an episode, an anime, a comic and a book): the action bar, score row, sections, seasons, people and related slots render in the shared view. Order and hero treatment still differ from the web page; see the component register."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiles the shared view on the native screen; no simulator runtime pass during this change."
+          "evidence": "Device Hub iPhone Duo on iOS 27.2 loaded a Breaking Bad show detail from the local server. The web reference was a season page on another instance; this was not a same-record interaction or accessibility verification."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiles the shared view on the native screen; no emulator runtime pass during this change."
+          "evidence": "Expo web export compiled the shared view; Android runtime and TalkBack verification are outstanding."
         }
       }
     },
@@ -2797,15 +2965,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Shared person/studio composition: hero, watched/read credits, filmography/bibliography, cast, crew, gallery and medium extras with loading, error and retry states. Web mounts it in hero/cast/extras parts over the server fallbacks; the native People screen mounts the full composition. Build, architecture and targeted tests only; no browser interaction pass during this change."
+          "evidence": "Native People screen now renders canonical credit cards in a grid slot and uses an opt-in hero action size. Paired pre-fix person/credit screenshots exposed drift; post-fix browser comparison pending. Web hero/cast/extras islands and server credit grids remain."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiles the shared view on the native screen; no simulator runtime pass during this change."
+          "evidence": "Expo export --platform all compiles the shared view on the native screen; no simulator runtime pass."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiles the shared view on the native screen; no emulator runtime pass during this change."
+          "evidence": "Expo export --platform all compiles the shared view on the native screen; no emulator runtime pass."
         }
       }
     },
@@ -2817,15 +2985,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Shared music/podcast composition: tabs, notice and loading/error states plus the ordered artist, album, track and show sections; the same view renders the album and relation grids for the web islands. Build, architecture and targeted tests only; no browser interaction pass during this change."
+          "evidence": "Shared music/podcast composition: tabs, notice and loading/error states plus the ordered artist, album, track and show sections; the same view renders the album and relation grids for the web islands. Build, architecture and targeted tests only; no browser interaction pass."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiles the shared view on the native screen; no simulator runtime pass during this change."
+          "evidence": "Expo export --platform all compiles the shared view on the native screen; no simulator runtime pass."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiles the shared view on the native screen; no emulator runtime pass during this change."
+          "evidence": "Expo export --platform all compiles the shared view on the native screen; no emulator runtime pass."
         }
       }
     },
@@ -2837,15 +3005,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Shared collection composition: heading, loading/error/retry and notice states around the shared CollectionBrowser, with server copy dialogs supplied through a slot. Web mounts it without chrome over the server toolbar; the native Collection screen mounts it with the copy dialog. Build, architecture and targeted tests only; no browser interaction pass during this change."
+          "evidence": "Shared collection composition: heading, loading/error/retry and notice states around the shared CollectionBrowser, with server copy dialogs supplied through a slot. Web mounts it without chrome over the server toolbar; the native Collection screen mounts it with the copy dialog. Build, architecture and targeted tests only; no browser interaction pass. Compared with the web page in a browser at 375px through the Expo web build's native-variant preview."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiles the shared view on the native screen; no simulator runtime pass during this change."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiles the shared view on the native screen; no emulator runtime pass during this change."
+          "evidence": "Not verified."
         }
       }
     },
@@ -2859,7 +3027,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Shared settings navigation and page shell added for SettingsView, SettingsNav and SettingsPage; browser adapter and native runtime not exercised in this change."
+          "evidence": "SettingsView, SettingsNav and SettingsPage observed in Django and Expo at 375x812. Native SettingsScreen supplies the shared chevron and top spacing; Data opts into pageCards spacing and title sizing. Other settings pages retain their own parity verification requirements."
         },
         "ios": {
           "status": "unverified",
@@ -2899,15 +3067,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Preferences page composition added over the shared PreferencesForm; browser page stays server-owned and native runtime was not exercised."
+          "evidence": "Expo Preferences composed without duplicate heading using shared docked save adapter; Currency saved/restored and web confirmed at 375x812. Full visual parity incomplete."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Preferences page composition added over the shared PreferencesForm; browser page stays server-owned and native runtime was not exercised."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Preferences page composition added over the shared PreferencesForm; browser page stays server-owned and native runtime was not exercised."
+          "evidence": "Not verified."
         }
       }
     },
@@ -2919,15 +3087,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Appearance page composition added over the shared AppearanceEditor; browser page and native runtime were not exercised."
+          "evidence": "Expo Appearance forwards theme swatch specs and icon into shared editor, without duplicate page heading. Theme saved/restored and Django confirmed at 375x812; full parity incomplete."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Appearance page composition added over the shared AppearanceEditor; browser page and native runtime were not exercised."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Appearance page composition added over the shared AppearanceEditor; browser page and native runtime were not exercised."
+          "evidence": "Not verified."
         }
       }
     },
@@ -2959,15 +3127,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Home Screen page composition added over the shared HomeScreenEditor; browser page and native runtime were not exercised."
+          "evidence": "Expo Home Screen uses a single heading, shared drag presentation and inline save. Label appearance saved/restored and Django confirmed at 375x812; full parity incomplete."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Home Screen page composition added over the shared HomeScreenEditor; browser page and native runtime were not exercised."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Home Screen page composition added over the shared HomeScreenEditor; browser page and native runtime were not exercised."
+          "evidence": "Not verified."
         }
       }
     },
@@ -2999,15 +3167,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Data Management page composition added over the shared export/restore/RSS cards; browser page stays server-owned and native runtime was not exercised."
+          "evidence": "Expo Data compared at 375x812: RSS subpage/template links and caller-owned duplicate gating. Import mode saved/restored and web confirmed. Full parity incomplete."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Data Management page composition added over the shared export/restore/RSS cards; browser page stays server-owned and native runtime was not exercised."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Data Management page composition added over the shared export/restore/RSS cards; browser page stays server-owned and native runtime was not exercised."
+          "evidence": "Not verified."
         }
       }
     },
@@ -3019,15 +3187,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Access and Tokens page composition added over the shared token/grant cards; browser page stays server-owned and native runtime was not exercised."
+          "evidence": "Expo Access provides Authorized applications navigation and separates that subpage from account/app token controls. Native main page uses matching Access header/copy framing. Application navigation is not compared with the web page; browser server bodies remain."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Access and Tokens page composition added over the shared token/grant cards; browser page stays server-owned and native runtime was not exercised."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Access and Tokens page composition added over the shared token/grant cards; browser page stays server-owned and native runtime was not exercised."
+          "evidence": "Not verified."
         }
       }
     },
@@ -3039,15 +3207,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Advanced page composition added over the shared log/cache/server-port cards; browser page and native runtime were not exercised."
+          "evidence": "Native `AdvancedSettingsSlot` wraps shared `SettingsAdvancedView` / `AdvancedSettings` cards in the shared page-card variant; translated labels and parsed icons come from the existing account-scoped API. Checkbox selected state now exposes aria-checked. Browser: six cache confirmations opened/cancelled; invalid port rejected, original input restored; image caching enabled then disabled with hydrated web confirmation. No cache clear or port mutation executed. Browser Advanced island remains React-owned and surrounding server shell remains coexisting; retirement requires full page parity. iOS: Not verified. Android: Not verified. Native readiness: Primitives."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Advanced page composition added over the shared log/cache/server-port cards; browser page and native runtime were not exercised."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Advanced page composition added over the shared log/cache/server-port cards; browser page and native runtime were not exercised."
+          "evidence": "Not verified."
         }
       }
     },
@@ -3059,15 +3227,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "About page composition added over the shared About cards; browser page and native runtime were not exercised."
+          "evidence": "Expo About frame and per-card translated labels/icons compared at 375x812 against Django. Preview/copy for four schemas and verified schema download exercised. Full scrolled parity incomplete."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "About page composition added over the shared About cards; browser page and native runtime were not exercised."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "About page composition added over the shared About cards; browser page and native runtime were not exercised."
+          "evidence": "Not verified."
         }
       }
     },
@@ -3121,15 +3289,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Authentication and account-security page compositions added; the browser keeps the allauth/server pages and native runtime was not exercised."
+          "evidence": "Native Settings embeds `AuthScreen` in account mode through `SettingsScreen`, using shared `SettingsAccountView` / `AccountSecurityView`. `AuthenticatorCard` accepts shared `RecoveryCodesCard` content so recovery stays in the same card; native Settings hides the separate sign-out and connection actions. Browser account remains server-owned until full parity. Browser: account route verified at 375x812; empty password/authenticator/recovery submissions rejected without credential changes. Exact visual parity remains partial. iOS: Not verified. Android: Not verified. Native readiness: Primitives."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Authentication and account-security page compositions added; the browser keeps the allauth/server pages and native runtime was not exercised."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Authentication and account-security page compositions added; the browser keeps the allauth/server pages and native runtime was not exercised."
+          "evidence": "Not verified."
         }
       }
     },
@@ -3141,7 +3309,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Onboarding page composition added over the shared wizard; the browser setup pages stay server-owned and native runtime was not exercised."
+          "evidence": "Refreshed Django/Expo 375x812 first-step comparison confirmed standalone shell, logo, drag handles/icons and switches. TV Shows toggled off/on with aria-checked false/true and original selections restored; no Continue/provider save. Partial visual differences remain: native title wraps despite its existing 18px size, and progress/card starts 4px higher. Shared optional slots preserve browser defaults and existing template ownership. Later steps/connected providers and current iOS/Android runtime remain unverified; no provider keys entered."
         },
         "ios": {
           "status": "unverified",
@@ -3182,7 +3350,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Clipboard/install/cache utility page composition added; browser surfaces stay server-owned and native runtime was not exercised."
+          "evidence": "Expo browser: About > Open Utilities > Copy Server URL copied the exact connected 8090 address successfully; prior clipboard restored. Native Utilities screenshot compared with WEB About static-cache utilities; their platform-specific scopes differ, so overall parity remains Partial. Browser utilities remain server-owned. No iOS/Android runtime verification."
         },
         "ios": {
           "status": "unverified",
@@ -3256,10 +3424,201 @@
           "evidence": "Retains RN Modal and inline close controls; runtime unverified."
         }
       }
+    },
+    "frontend/pages/ConnectionsView.jsx": {
+      "components": [
+        "ConnectionsView"
+      ],
+      "register": "CONNECTIONS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Expo Connections preview opened at phone width. Explicit direction Save, Pause/Resume, all capability states and server-formatted check/conflict labels are implemented; final comparison and binding save/restore are pending. Existing web sync sections remain; no live device grant approved. Shared ConnectionsView.DeviceApproval accepts a session-required state from ConnectionsScreen. Creating an account-bound device grant requires password-session sign-in; existing list/revoke controls and browser defaults remain. Existing ownership and fallback retirement conditions remain; browser appearance and actual iOS/Android runtime for this state are not verified."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        }
+      }
+    },
+    "frontend/pages/MetadataReviewView.jsx": {
+      "components": [
+        "MetadataReviewView"
+      ],
+      "register": "REVIEW-QUEUE",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Bundle compile and node/Django tests only. Not compared with the web page in a browser."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        }
+      }
+    },
+    "frontend/pages/ProviderDetailView.jsx": {
+      "components": [
+        "ProviderDetailView"
+      ],
+      "register": "SET-PROVIDERS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Django and Expo Plex/Seerr/KOReader/Hardcover compared at 375x812. Native settings shell, account/guide order, Seerr intro, KOReader form nesting, frame/size and Stremio install consumer were corrected; final pairs pending. Seerr invalid URL and unchanged blank-key save exercised; no real provider credentials entered. Web body retirement still requires full parity. Shared ProviderSettingsView and ProviderDetailView receive guidesSessionRequired from the provider adapter. Bearer responses omit credential-bearing webhook/install/configure guides and show password sign-in guidance; other connection forms, settings and browser/session defaults remain. Existing partial/coexisting ownership and full-parity retirement conditions remain. Transport/server regressions cover redaction; browser appearance and actual iOS/Android runtime for this state are not verified."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        }
+      }
+    },
+    "frontend/providers/ProviderLinkCard.jsx": {
+      "components": [
+        "ProviderLinkCard"
+      ],
+      "register": "SET-PROVIDERS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Native idle rendering reuses AccountSettings while active OAuth/device phases stay in ProviderLinkCard. Plex idle account compared at phone width; live provider approval was not initiated. Native sign-in handoff and returned states remain unverified."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        }
+      }
+    },
+    "frontend/providers/ProviderImportPanel.jsx": {
+      "components": [
+        "ProviderImportPanel",
+        "ProviderActivityList"
+      ],
+      "register": "SET-PROVIDERS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Bundle compile and node/Django tests only. Not compared with the web page in a browser."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        }
+      }
+    },
+    "frontend/ui/DetailPage.jsx": {
+      "components": [
+        "DetailActionBar",
+        "DetailScoreRow",
+        "DetailBlock",
+        "DetailEmpty",
+        "DetailLoading",
+        "DetailNotesBlock",
+        "DetailCollectionBlock",
+        "DetailIssueCards",
+        "DetailEpisodeCards",
+        "DetailRelatedGrid",
+        "DetailSeriesGraph"
+      ],
+      "register": "DETAIL",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Expo web build in native-variant preview at 375px compared with the Django detail page: track action bar (check-in started and cancelled, edit dialog saved), quick buttons (tags, notes, lists, more), provider score chip, collection block with its add dialog, notes block (one note saved and cleared), season poster grid, comic issue cards and anime episode cards."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        }
+      }
+    },
+    "frontend/ui/DetailEpisode.jsx": {
+      "components": [
+        "DetailEpisodeHeader"
+      ],
+      "register": "DETAIL",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Expo web build in native-variant preview at 375px, episode page of the seeded show compared with the Django page: season and episode line, episode picker with previous and next. The still and the show title come from the shared hero, and the page has no cast, crew or genres, unlike the web page."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        }
+      }
+    },
+    "frontend/ui/PeopleToolbar.jsx": {
+      "components": [
+        "PeopleToolbar"
+      ],
+      "register": "PEOPLE",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Bundle compile and node/Django tests only. Not compared with the web page in a browser."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        }
+      }
     }
   },
   "legacy": {},
   "logic": {
+    "frontend/ui/actionIcons.js": {
+      "components": [
+        "actionIcons"
+      ],
+      "register": "ACTION-ICONS",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Icon spec data (same shapes as app/icons/*.svg) drawn through the shared Icon; chevronDown was added for the select caret. Compared with the web page in a browser at 375px through the Expo web build's native-variant preview."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        }
+      }
+    },
     "frontend/ui/dateTime.js": {
       "components": [
         "pad2",
@@ -3290,7 +3649,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Pure date/time calculations imported by the web adapter and component; no browser pass during this change."
+          "evidence": "Pure date/time calculations imported by the web adapter and component; no browser pass."
         },
         "ios": {
           "status": "unverified",
@@ -3332,13 +3691,15 @@
     },
     "frontend/ui/mediaCardBehavior.js": {
       "components": [
-        "shouldRevealMediaCardActions"
+        "shouldRevealMediaCardActions",
+        "shouldShowMediaCardLine",
+        "shouldShowMediaCardCorner"
       ],
       "register": "MEDIA-CARD",
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Pure shared touch-action policy used by the native MediaCard; browser adapter behavior was not runtime-checked for this revision."
+          "evidence": "Pure native card reveal and opt-in hover-line policies have targeted Node tests; the browser adapter is unchanged."
         },
         "ios": {
           "status": "unverified",
@@ -3386,7 +3747,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Imported by the browser provider shell; no browser interaction pass during this change."
+          "evidence": "Imported by the browser provider shell; no browser interaction pass."
         },
         "ios": {
           "status": "unverified",
@@ -3431,11 +3792,95 @@
         },
         "ios": {
           "status": "verified",
-          "evidence": "Device Hub iPhone Duo (iOS 27.2) hot-reloaded the shared 110 pt Home shelf and compact Now Playing sizing; both right edges align at 110 pt × 3 plus the Home rail's 16 pt × 2 gaps. Comfortable and desktop variants were not exercised on iOS."
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) hot-reloaded the shared 110 pt Home shelf and compact Now Playing sizing; both right edges align at 110 pt \u00d7 3 plus the Home rail's 16 pt \u00d7 2 gaps. Comfortable and desktop variants were not exercised on iOS."
         },
         "android": {
           "status": "unverified",
           "evidence": "Native playback sizing uses three 110 pt cards plus gaps on compact phone layouts; Android runtime verification remains pending."
+        }
+      }
+    },
+    "frontend/ui/dropdownMetrics.js": {
+      "components": [
+        "DROPDOWN"
+      ],
+      "register": "SEARCH",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium on macOS with the local dev server: Search results, suggestions and the sidebar menus rendered with these values; no other engine."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) showed the Search suggestions and menus sized by these values; no pixel comparison."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised on Android in this change."
+        }
+      }
+    },
+    "frontend/ui/searchRows.js": {
+      "components": [
+        "searchRowParams",
+        "searchRowUrl",
+        "mergeSearchRowPage",
+        "onlineRowParams",
+        "useStreamedRows"
+      ],
+      "register": "SEARCH",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium on macOS: library row first, then provider rows streamed in as each answered."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled through the Expo export; not exercised on a device in this change."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised on Android in this change."
+        }
+      }
+    },
+    "frontend/ui/statusChipIcons.js": {
+      "components": [
+        "STATUS_ICON_SPECS"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium on macOS: status chip icons on Home cards."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) showed the chip icons on Home cards."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised on Android in this change."
+        }
+      }
+    },
+    "frontend/ui/fetchGate.js": {
+      "components": [
+        "createFetchGate"
+      ],
+      "register": "HOME",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "node --test scripts/fetchGate.test.mjs (limit, ordering, failure frees the slot); Chromium Home load via scripts/benchmark_browser.py."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Pure JavaScript with no platform API; shared with the Expo Home screen through HomeShelves but not run on a simulator or device."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Pure JavaScript with no platform API; not run on an emulator or device."
         }
       }
     }
@@ -3495,7 +3940,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Preserves the existing browser file-picker/ZXing flow; not exercised in a browser in this pass."
+          "evidence": "Preserves the existing browser file-picker/ZXing flow; not exercised in a browser."
         },
         "ios": {
           "status": "unverified",
@@ -3583,7 +4028,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compiled into the web bundle; not exercised in a browser during this change."
+          "evidence": "Compiled into the web bundle; not exercised in a browser."
         },
         "ios": {
           "status": "unverified",
@@ -3671,7 +4116,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; existing copy controls still use src/static/js/copy-item.js. No browser pass during this change."
+          "evidence": "Not mounted by the web bundle; existing copy controls still use src/static/js/copy-item.js. No browser pass."
         },
         "ios": {
           "status": "unverified",
@@ -3718,7 +4163,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; the About page Alpine install control remains the active browser consumer. No browser pass during this change."
+          "evidence": "Not mounted by the web bundle; the About page Alpine install control remains the active browser consumer. No browser pass."
         },
         "ios": {
           "status": "unverified",
@@ -3765,7 +4210,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not mounted by the web bundle; base.html still owns registration and no browser pass read registration or cache state during this change."
+          "evidence": "Not mounted by the web bundle; base.html still owns registration and no browser pass read registration or cache state."
         },
         "ios": {
           "status": "unverified",
@@ -4073,7 +4518,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Compiled into the web bundle through the detail progress adapter; the card was not compared in a browser during this change."
+          "evidence": "Compiled into the web bundle through the detail progress adapter; the card was not compared in a browser."
         },
         "ios": {
           "status": "unverified",
@@ -4103,7 +4548,7 @@
         },
         "android": {
           "status": "unverified",
-          "evidence": "Compiled by the Expo export through the native progress slot; the wrapper itself was not exercised on an emulator during this change."
+          "evidence": "Compiled by the Expo export through the native progress slot; the wrapper itself was not exercised on an emulator."
         }
       }
     },
@@ -4117,7 +4562,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Imported by the web bundle and UI build; no browser interaction pass during this change."
+          "evidence": "Imported by the web bundle and UI build; no browser interaction pass."
         },
         "ios": {
           "status": "unverified",
@@ -4161,7 +4606,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Imported by the web bundle; no browser interaction pass during this change."
+          "evidence": "Imported by the web bundle; no browser interaction pass."
         },
         "ios": {
           "status": "unverified",
@@ -4205,7 +4650,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Imported by the web island loader; no browser icon pass during this change."
+          "evidence": "Imported by the web island loader; no browser icon pass."
         },
         "ios": {
           "status": "unverified",
@@ -4227,15 +4672,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not applicable to this native implementation."
+          "evidence": "Native SVG renderer accepts defs, linear/radial gradients and stop attributes for Appearance swatches. Expo standard swatches observed at 375x812; Glass/custom swatches still require browser inspection. Actual device runtime unverified."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the native module; no simulator run was performed."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the native module; no emulator run was performed."
+          "evidence": "Not verified."
         }
       }
     },
@@ -4249,7 +4694,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "No browser interaction pass during this change."
+          "evidence": "No browser interaction pass."
         },
         "ios": {
           "status": "unverified",
@@ -4293,7 +4738,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "No browser interaction pass during this change."
+          "evidence": "No browser interaction pass."
         },
         "ios": {
           "status": "unverified",
@@ -4337,7 +4782,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "No browser interaction pass during this change."
+          "evidence": "No browser interaction pass."
         },
         "ios": {
           "status": "unverified",
@@ -4359,15 +4804,15 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Not applicable to this native implementation."
+          "evidence": "Not applicable to this native implementation. Compared with the web page in a browser at 375px through the Expo web build's native-variant preview."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the native wrapper; no simulator run was performed."
+          "evidence": "Not verified."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Expo export --platform all compiled the native wrapper; no emulator run was performed."
+          "evidence": "Not verified."
         }
       }
     },
@@ -4381,7 +4826,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Rendered by the detail page; no browser interaction pass during this change."
+          "evidence": "Rendered by the detail page; no browser interaction pass."
         },
         "ios": {
           "status": "unverified",
@@ -4425,7 +4870,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Rendered by the detail page; no browser interaction pass during this change."
+          "evidence": "Rendered by the detail page; no browser interaction pass."
         },
         "ios": {
           "status": "unverified",
@@ -4603,7 +5048,7 @@
     },
     "frontend/ui/mountSidebar.jsx": {
       "register": "SHELL",
-      "purpose": "Django/browser integration for the shared sidebar: resolve theme tokens, read and write the existing pin, pinned-list and saved-view-localStorage keys, supply HTMX-boosted anchors and Sortable drag, submit saved-view and logout forms, lift the server onboarding slot, and control the aside's mobile open state while the Alpine server fallback remains."
+      "purpose": "Django/browser integration for the shared sidebar: resolve theme tokens, read and write the existing pin, pinned-list and saved-view-localStorage keys, supply HTMX-boosted anchors and Sortable drag, submit saved-view and logout forms, lift the server onboarding slot, and control the aside's mobile open state while the Alpine server fallback remains. The coexisting savedViews.js fallback adapter is loaded before Alpine and also supports registration against an already-running Alpine instance."
     },
     "frontend/ui/mountGlobalSearch.jsx": {
       "register": "SEARCH",
@@ -4833,6 +5278,10 @@
       "register": "WEB-UTILITIES",
       "purpose": "Mount the shared static-cache card over the About page fallback: read the browser service-worker registration, controller, scope and floppy cache names through the platform adapter and refresh on request."
     },
+    "frontend/ui/mountDeviceApproval.jsx": {
+      "register": "DEVICE-CONNECT",
+      "purpose": "Browser adapter for the OAuth device approval card: look a code up with a GET and answer it with the existing CSRF-protected POST form; the server template stays the fallback."
+    },
     "frontend/ui/mountDeviceConnect.jsx": {
       "register": "DEVICE-CONNECT",
       "purpose": "Django/browser integration for the shared device-code card: poll the existing Trakt endpoint, follow its HTMX redirect, copy the code and open the activation page."
@@ -4920,6 +5369,14 @@
     "frontend/ui/mountPodcastEpisodeManager.jsx": {
       "register": "PODCAST-EPISODES",
       "purpose": "Browser adapter for the shared manual podcast episode manager: mount the island, read the current theme palette, load the show's manual episodes as JSON, and POST create/edit/delete through the existing Django forms and CSRF contract."
+    },
+    "frontend/ui/shelfWidth.web.js": {
+      "register": "HOME",
+      "purpose": "Browser adapter that sizes shelf cards from the viewport and the Mobile Grid preference the page carries, so Home and Search results use one width."
+    },
+    "frontend/ui/keyboardOverlap.web.js": {
+      "register": "SEARCH",
+      "purpose": "Browser adapter that reports how far the on-screen keyboard covers the page, from the visual viewport, for the Search suggestion window."
     }
   }
 }
