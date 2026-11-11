@@ -25,6 +25,7 @@ from app.models import (
     MoviePlay,
     Music,  # FORK: fork-only media type
     Podcast,  # FORK: fork-only media type
+    PodcastPlay,
     Season,
     Status,
 )
@@ -364,6 +365,7 @@ class CompleteMediaSerializer(serializers.Serializer):
                         "id": None,
                         "item": item,
                         "created_at": None,
+                        "updated_at": None,
                         "score": None,
             "scored_at": None,
                         "status": None,
@@ -590,6 +592,7 @@ class EpisodeSerializer(serializers.ModelSerializer):
                 else None,
                 "tracked": True,
                 "created_at": instance.created_at,
+                "updated_at": getattr(instance, "updated_at", None),
                 # FORK: episodes expose the same tracking details as other media.
                 "score": float(instance.score)
                 if getattr(instance, "score", None) is not None
@@ -798,6 +801,23 @@ class HistorySerializer(serializers.Serializer):
                 # FORK: client-supplied play id, so a syncing client can match
                 # its own event to the stored play after a restart.
                 "external_id": getattr(instance, "external_id", None),
+            }
+        if isinstance(instance, PodcastPlay):
+            tracker = instance.podcast
+            return {
+                "consumption_id": instance.id,
+                "created": instance.created_at,
+                "score": float(tracker.score) if tracker.score is not None else None,
+                "scored_at": getattr(tracker, "scored_at", None),
+                "progress": instance.progress,
+                "played_up_to_seconds": instance.played_up_to_seconds,
+                "progressed_at": instance.end_date or instance.updated_at,
+                "status": get_media_status(instance.status),
+                "start_date": instance.start_date,
+                "end_date": instance.end_date,
+                "notes": tracker.notes,
+                "source": instance.entry_source,
+                "external_id": instance.external_id,
             }
         status = StatusField().to_representation(instance)
 
@@ -1012,6 +1032,7 @@ class MediaSerializer(serializers.ModelSerializer):
             else None,
             "tracked": getattr(instance, "id", None) is not None,
             "created_at": instance.created_at,
+            "updated_at": getattr(instance, "updated_at", None),
             "score": float(instance.score)
             if hasattr(instance, "score") and instance.score is not None
             else None,
@@ -1098,6 +1119,7 @@ class UntrackedMediaSerializer(serializers.Serializer):
             "parent_id": ParentIdField().to_representation(instance),
             "tracked": False,
             "created_at": None,
+            "updated_at": None,
             "score": None,
             "scored_at": None,
             "status": None,

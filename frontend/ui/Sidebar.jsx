@@ -1,8 +1,7 @@
 import { Modal } from './Modal';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
   Image,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -112,11 +111,14 @@ function popoverPlacement(anchor, windowWidth, windowHeight) {
 // The row's options open as a dropdown under their button, like the preference
 // dropdowns: no scrim, and a tap outside closes it. Without a measured button
 // (no window position available) it falls back to a centred, dimmed menu.
+// Props the platform adapter adds to the menu layer (the web marker for sidebar.css).
+const MenuLayerContext = createContext(null);
+
 function MenuModal({ open, onClose, children, palette, labels, anchor }) {
   const { width, height } = useWindowDimensions();
   const dropdown = Boolean(anchor);
-  // Web only: lets sidebar.css lift this modal layer above the phone drawer.
-  const webMarker = Platform.OS === 'web' ? { dataSet: { menuDropdown: '1' } } : null;
+  // The web adapter marks this layer so sidebar.css can lift it above the phone drawer.
+  const webMarker = useContext(MenuLayerContext);
   return <Modal transparent visible={open} animationType={dropdown ? 'none' : 'fade'} onRequestClose={onClose}>
     <View {...webMarker} style={dropdown ? StyleSheet.absoluteFill : styles.modalRoot}>
       <Pressable accessibilityRole="button" accessibilityLabel={labels.closeMenu}
@@ -427,6 +429,7 @@ export function Sidebar({
   onFinishReorder,
   enableSortable,
   onLogout,
+  menuLayerProps = null,
   rowActions = 'always',
   showLogo = true,
   labels: labelOverrides,
@@ -474,7 +477,7 @@ export function Sidebar({
   const overlayTop = showLogo ? 64 : 0;
   const overlayHeight = Math.max(rootHeight - bottomHeight - overlayTop, 0);
 
-  return <View onLayout={event => setRootHeight(event.nativeEvent.layout.height)}
+  return <MenuLayerContext.Provider value={menuLayerProps}><View onLayout={event => setRootHeight(event.nativeEvent.layout.height)}
     style={[styles.root, { backgroundColor: palette.sidebar }, style]}>
     {showLogo ? <View style={[styles.header, { borderBottomColor: palette.border }]}>
       {logo.src
@@ -545,7 +548,7 @@ export function Sidebar({
         </Pressable>
       </View>
     </View>
-  </View>;
+  </View></MenuLayerContext.Provider>;
 }
 
 const styles = StyleSheet.create({

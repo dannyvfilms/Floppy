@@ -3,7 +3,7 @@ import { MediaCard } from './MediaCard.web';
 import { SearchResults as SharedSearchResults } from './SearchResults.jsx';
 import { RatingStarIcon } from './RatingStarIcon.web';
 import { RatingStars } from './RatingStars';
-import { useShelfCardWidth } from './webShelfWidth';
+import { useShelfCardWidth } from './shelfWidth.web';
 import { mergeSearchRowPage, onlineRowParams, searchRowUrl } from './searchRows';
 
 const canvas = document.createElement('canvas');

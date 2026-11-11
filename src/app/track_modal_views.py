@@ -1958,11 +1958,7 @@ def track_modal(
                 all_history = []
                 for podcast in all_podcasts:
                     # Only include history records with end_date (completed plays)
-                    history = (
-                        podcast.history.filter(end_date__isnull=False)
-                        if hasattr(podcast.history, "filter")
-                        else [h for h in podcast.history.all() if h.end_date]
-                    )
+                    history = podcast.plays.filter(end_date__isnull=False)
                     # Convert queryset to list if needed to ensure proper evaluation
                     if hasattr(history, "__iter__") and not isinstance(
                         history, (list, tuple)

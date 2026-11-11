@@ -65,6 +65,8 @@ next to the code, not only in a PR. Also list the carve-out in the register entr
   Extend those; do not build a second system. Open the images and look at them. On a
   Mac, `docs/agents/native_cloud_runtimes.md` is the recipe for real iOS and Android
   frames (`scripts/native_shots.sh <label>`).
+- The v26.10.29 web release is the visual baseline for React and React Native components.
+  Treat a layout or visual change from it as a regression unless a redesign is documented.
 - Report one evidence level per platform (web, iOS, Android), never a combined pass:
   1. **Runtime**: the real Expo app ran on a simulator, emulator, device or hosted
      runtime and screenshots were inspected. On a Mac, if Xcode or an Android SDK is
@@ -393,6 +395,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - `docs/architecture/log-redaction.md`: the log boundary contract — where credentials are removed, what the rules match, and what they do not cover.
 - `docs/architecture/log-levels.md`: what each log level means, the start/progress/finish lines every long-running process must write so a hang is visible, and what the Settings > Advanced downloads include.
 - `docs/architecture/theming.md`: the theme resolution contract and the six theme states any colour change must hold.
+- `docs/architecture/podcast-plays.md`: what a podcast listen is (`PodcastPlay`), the one service that writes it, how a direct tracker save is carried onto its play, and the API lifecycle.
 - `docs/architecture/webhook-write-rules.md`: when a media-server webhook may write tracking rows — the shared policy table every integration is listed in, its exceptions, and the test that catches a missing row.
 - `docs/architecture/webhook-delivery.md`: the sync/async boundary, expected webhook queue latency, the structured `event_id`/`queue_delay_ms`/`outcome` log contract, time limits, and the ordering guard that stops a late play erasing a scrobble (#1708).
 - `docs/architecture/connection-health.md`: when an integration account may be marked `connection_broken` (rejected credentials only), how scheduled work re-probes it, and the test that catches a direct write.
@@ -453,6 +456,11 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
   `docs/ui/react-components.md` and `docs/ui/settings-cards.md` for current consumers.
 
 ## Frontend Tooling
+- React UI bundles are committed. After changes to `frontend/`, the UI build
+  script, or npm dependencies, run `npm ci --ignore-scripts`,
+  `npm run build:ui` and `npm run check:ui`. Commit the regenerated
+  `src/static/ui/` files with the source. Never hand-edit hashed bundles or
+  claim completion if the verification fails.
 - Tailwind CLI install (supported): `brew install tailwindcss`.
 - Alternatives: `npm/pnpm/yarn add -D tailwindcss` and run `npx tailwindcss ...`, or download the standalone Tailwind binary and add it to `PATH`.
 - Note: `README.md` may reference output to `tailwind.css`; the supported committed output path is `src/static/css/main.css`.

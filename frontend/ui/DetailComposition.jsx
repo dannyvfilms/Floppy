@@ -143,7 +143,7 @@ export function DetailHero({ model, palette, onOpenVideo }) {
   </View>;
 }
 
-export function DetailMobileHero({ model, palette, onOpenItem }) {
+export function DetailMobileHero({ model, palette, onOpenItem, actions }) {
   const colors = resolvePalette(palette);
   const [seasonsOpen, setSeasonsOpen] = useState(false);
   const { width } = useWindowDimensions();
@@ -176,7 +176,7 @@ export function DetailMobileHero({ model, palette, onOpenItem }) {
       </View> : null}
       {model.activityText ? <Text style={styles.mobileHeroMeta}>{model.activityText}</Text> : null}
       {model.mobileMeta ? <Text style={styles.mobileHeroMeta}>{model.mobileMeta}</Text> : null}
-      <DetailActions model={model} palette={colors} />
+      {actions ? <View style={styles.mobileHeroActions}>{actions}</View> : <DetailActions model={model} palette={colors} />}
     </View>
   </View>;
 }
@@ -288,6 +288,7 @@ const styles = StyleSheet.create({
   mobileHero: { overflow: 'hidden', marginHorizontal: -22, backgroundColor: '#18181b' },
   mobileHeroImage: { position: 'absolute', top: 0, left: 0, right: 0, width: '100%' },
   mobileHeroContent: { alignItems: 'center', gap: 16, paddingHorizontal: 22, paddingBottom: 22 },
+  mobileHeroActions: { alignSelf: 'stretch' },
   mobileHeroLogo: { width: '66%', height: 96 },
   mobileHeroTitle: { color: '#fff', fontSize: 32, fontWeight: '800', textAlign: 'center' },
   mobileHeroMeta: { color: '#fff', fontSize: 14, textAlign: 'center', textShadowColor: '#000', textShadowRadius: 4 },

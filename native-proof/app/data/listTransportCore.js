@@ -630,8 +630,8 @@ export function createRemoteListActions(request) {
     undoTierFill({ listId, placements }) {
       return request(`${tiersPath(listId)}fill/undo/`, { method: 'POST', json: { placements } });
     },
-    // Bulk actions run through the same /library/bulk endpoints as the
-    // Library toolbar; they take numeric item ids.
+    // Bulk actions run through the same endpoints as the Library toolbar;
+    // they take numeric item ids.
     bulkStatus({ itemIds, status }) {
       return request('/api/v1/library/bulk/status/', { method: 'POST', json: { item_ids: itemIds, status } });
     },
@@ -639,9 +639,9 @@ export function createRemoteListActions(request) {
       return request('/api/v1/library/bulk/collection/', { method: 'POST', json: { item_ids: itemIds } });
     },
     bulkList({ itemIds, listId }) {
-      return request('/api/v1/library/bulk/list/', {
+      return request(`/api/v1/lists/${encodeURIComponent(listId)}/items/bulk/`, {
         method: 'POST',
-        json: { item_ids: itemIds, list_id: Number(listId) },
+        json: { item_ids: itemIds },
       });
     },
     bulkTag({ itemIds, tagId }) {

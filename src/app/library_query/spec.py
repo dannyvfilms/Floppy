@@ -62,6 +62,8 @@ class FilterValues:
     completed_date_to: str = ""
     date_added_from: str = ""
     date_added_to: str = ""
+    # ISO 8601 moment: keep items with a tracking row changed at or after it.
+    updated_since: str = ""
     release: str = "all"
     release_date_from: str = ""
     release_date_to: str = ""

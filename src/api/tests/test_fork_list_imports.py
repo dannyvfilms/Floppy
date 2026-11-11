@@ -134,6 +134,29 @@ class ListImportApiTests(FloppyApiTestCase):
         )
         self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
 
+    def test_trakt_errors_return_the_written_message(self):
+        """A Trakt refusal answers with the importer's own text."""
+        from integrations.imports.helpers import MediaImportError
+
+        self.call_api(
+            "post",
+            "api_list_import_trakt",
+            payload={"action": "credentials", "client_id": "cid"},
+            headers=self.auth_headers,
+        )
+        with patch(
+            "api.fork_views_list_imports.trakt_imports.request_device_code",
+            side_effect=MediaImportError("Could not start Trakt authorization."),
+        ):
+            response = self.call_api(
+                "post",
+                "api_list_import_trakt",
+                payload={"action": "start"},
+                headers=self.auth_headers,
+            )
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+        self.assertEqual(response.json()["detail"], "Could not start Trakt authorization.")
+
     @patch(
         "api.fork_views_list_imports.trakt_imports.request_device_code",
         return_value={

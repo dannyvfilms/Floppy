@@ -125,7 +125,9 @@ function StatusChip({ chip, palette, labels }) {
     accessible accessibilityLabel={chip.label || status}>
     {STATUS_ICON_SPECS[status]
       ? <Icon spec={STATUS_ICON_SPECS[status]} color={color} size={16} />
-      : <Text style={[styles.chipGlyph, { color }]}>•</Text>}
+      : chip.icon
+        ? <Icon spec={chip.icon} color={color} size={16} />
+        : <Text style={[styles.chipGlyph, { color }]}>•</Text>}
   </View>;
 }
 

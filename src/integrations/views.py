@@ -35,7 +35,6 @@ from django.templatetags.static import static
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
-from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import (
@@ -312,13 +311,9 @@ def _integration_redirect(request, *, connected_slug=None, next_url=None):
         # Back into the native app: only its own scheme, never another URL.
         # Django's redirect() refuses custom schemes, so answer directly.
         return HttpResponse(status=HTTPStatus.FOUND, headers={"Location": destination})
-    if destination and not url_has_allowed_host_and_scheme(
-        destination,
-        allowed_hosts={request.get_host()},
-        require_https=request.is_secure(),
-    ):
-        destination = None
-    return redirect(destination or "import_data")
+    return redirect(
+        app_helpers.safe_return_url(request, destination, reverse("import_data"))
+    )
 
 
 def _consume_oauth_state(request, provider):
@@ -951,7 +946,7 @@ def poll_trakt_device(request):
         result = trakt.poll_device_token(state["device_code"])
     except helpers.MediaImportError as error:
         pending_auth.clear(TRAKT_DEVICE_SESSION_KEY, request.user.pk)
-        return "error", str(error), state
+        return "error", error.message, state
 
     if result is None:
         return "pending", "", state
@@ -2408,6 +2403,12 @@ def import_trakt_export_file(request):
             "The task to import collection data from the Trakt CSV file has been "
             "queued.",
         )
+        return _integration_redirect(request, connected_slug="trakt")
+
+    if mode not in helpers.TRAKT_EXPORT_MODES:
+        for path in staged_files:
+            discard_staged_upload(path)
+        messages.error(request, helpers.TRAKT_EXPORT_UNSUPPORTED_MODE_MESSAGE)
         return _integration_redirect(request, connected_slug="trakt")
 
     if len(payloads) == 1 and staged_payload_is_zip(payloads[0][1]):
@@ -3986,7 +3987,9 @@ def storyteller_poll(request):
     try:
         data, status_code = client.poll_device_token(pending["device_code"])
     except Exception as exc:
-        return JsonResponse({"status": "pending", "detail": str(exc)})
+        # requests errors carry the server URL: log the class, answer plainly.
+        logger.warning("Storyteller device poll failed: %s", exception_summary(exc))
+        return JsonResponse({"status": "pending"})
 
     access_token = data.get("access_token") if isinstance(data, dict) else None
     if access_token:
@@ -6202,8 +6205,8 @@ def stremio_addon_catalog(
 
     try:
         skip = stremio_catalog.parse_skip(extra)
-    except ValueError as error:
-        return _stremio_addon_response({"error": str(error)}, status=400)
+    except stremio_catalog.CatalogSkipError as error:
+        return _stremio_addon_response({"error": error.message}, status=400)
 
     metas, unresolved_count = stremio_catalog.project_catalog(user, spec, skip)
     logger.info(

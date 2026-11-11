@@ -297,6 +297,24 @@ def _date_added_row(values: FilterValues, source: TrackerSource, ctx: TypeContex
     return condition
 
 
+def _updated_since(values: FilterValues) -> datetime.datetime | None:
+    text = str(values.updated_since or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def _updated_since_row(values: FilterValues, source: TrackerSource, ctx: TypeContext):
+    # Episode rows have no stamp of their own; changing one moves the season
+    # and show that own it (see app.library_changes).
+    if not source.has_field("updated_at"):
+        return Q(pk__in=[])
+    return Q(updated_at__gte=_updated_since(values))
+
+
 def _completed_row(values: FilterValues, source: TrackerSource, ctx: TypeContext):
     date_from = _date(values.completed_date_from)
     date_to = _date(values.completed_date_to)
@@ -581,6 +599,11 @@ FILTERS: tuple[FilterDef, ...] = (
         "date_added",
         lambda v: bool(_date(v.date_added_from) or _date(v.date_added_to)),
         row=_date_added_row,
+    ),
+    FilterDef(
+        "updated_since",
+        lambda v: _updated_since(v) is not None,
+        row=_updated_since_row,
     ),
     FilterDef(
         "completed_date",

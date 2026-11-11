@@ -355,7 +355,12 @@ if [ -z "$DB_HOST" ]; then
         echo "[entrypoint] Cannot set ownership for FLOPPY_DB_PATH parent ${DB_PARENT} with PUID=${PUID} and PGID=${PGID}. Fix the mount permissions or the IDs." >&2
         exit 1
     fi
-    for path in "$DB_FILE" "$DB_FILE-wal" "$DB_FILE-shm" "$DB_FILE.verification.lock"; do
+    # The sidecars are published by the root-run startup verification and
+    # migration permit steps above, so they are root-owned (and recreated on
+    # every boot) unless repaired here (#1901).
+    for path in "$DB_FILE" "$DB_FILE-wal" "$DB_FILE-shm" "$DB_FILE.verification.lock" \
+        "$DB_FILE.verification.json" "$DB_FILE.migration-ready.json" \
+        "$DB_FILE.integrity.status.json" "$DB_FILE.integrity.verified.json"; do
         if { [ -e "$path" ] || [ -L "$path" ]; } && \
            ! timeout 600 chown -h abc:abc -- "$path"; then
             echo "[entrypoint] Cannot set ownership for SQLite file ${path} with PUID=${PUID} and PGID=${PGID}. Fix the mount permissions or the IDs." >&2

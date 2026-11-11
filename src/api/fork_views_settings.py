@@ -337,7 +337,7 @@ class UserHomeScreenView(drf_views.APIView):
         try:
             save_home_screen_configuration(user, json.dumps(body.get("sections", [])))
         except HomeScreenValidationError as exc:
-            return Response({"detail": str(exc)}, status=HTTP.BAD_REQUEST)
+            return Response({"detail": " ".join(exc.messages)}, status=HTTP.BAD_REQUEST)
         fields = []
         headers = bool(body.get("show_media_type_headers"))
         if user.home_show_media_type_headers != headers:
@@ -995,6 +995,18 @@ class LogsExportView(drf_views.APIView):
         if denied:
             return denied
         return export_logs(request._request)
+
+
+# /api/v1/user/advanced/diagnostics/
+class DiagnosticsExportView(drf_views.APIView):
+    """The sanitized diagnostic report any signed-in user may download."""
+
+    @extend_schema(responses={200: OpenApiTypes.STR})
+    def get(self, request):
+        """Return server details and recent warnings and errors as text."""
+        from users.views import export_diagnostics
+
+        return export_diagnostics(request._request)
 
 
 # /api/v1/user/about/

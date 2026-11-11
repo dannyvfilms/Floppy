@@ -31,6 +31,7 @@ from integrations.imports.mdblist import (
 )
 from integrations.imports.mdblist import request as _request
 from integrations.imports.mdblist import resolve_tmdb_id as _resolve_tmdb_id
+from lists.imports.trakt import get_or_create_tmdb_item
 from lists.models import CustomList, CustomListItem
 from lists.smart_rules import sync_smart_lists_for_item
 
@@ -129,15 +130,11 @@ def _build_item_from_entry(entry):
         "image": metadata.get("image") or settings.IMG_NONE,
     }
 
-    item, _ = Item.objects.get_or_create(
-        media_id=str(tmdb_id),
-        source=Sources.TMDB.value,
-        media_type=media_type,
-        season_number=None,
-        episode_number=None,
+    return get_or_create_tmdb_item(
+        media_type,
+        str(tmdb_id),
         defaults=defaults,
     )
-    return item
 
 
 def _get_metadata(media_type, tmdb_id, title):

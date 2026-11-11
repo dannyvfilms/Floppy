@@ -87,6 +87,23 @@ class HistoryEntryTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, HTTP.NO_CONTENT)
         self.assertFalse(Movie.objects.filter(id=self.movie.id).exists())
 
+    def test_delete_failure_returns_the_written_message(self):
+        """A deletion that fails answers with the service's own text."""
+        from app.fork_services_history import HistoryDeletionError
+
+        with patch(
+            "api.fork_views_history.delete_history_record_core",
+            side_effect=HistoryDeletionError("Deletion failed"),
+        ):
+            response = self.call_api(
+                "delete",
+                "api_history_entry",
+                args=("movie", self.movie.id),
+                headers=self.auth_headers,
+            )
+        self.assertEqual(response.status_code, HTTP.INTERNAL_SERVER_ERROR)
+        self.assertEqual(response.json(), {"detail": "Deletion failed"})
+
     def test_delete_without_history_record_runs_the_same_cleanup(self):
         """The fallback syncs the season and clears History/Statistics caches."""
         from app.models import Season

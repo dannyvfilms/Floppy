@@ -21,7 +21,7 @@ from lists.models import (
     ListActivityType,
     ListRecommendation,
 )
-from lists.tiers import clean_tiers, resolve_tiers
+from lists.tiers import TierError, clean_tiers, resolve_tiers
 from lists.views_add_reorder import apply_full_order, apply_reorder_action
 from lists.views_helpers import list_has_item_identity
 from lists.views_recommendations import get_or_create_recommendation_item
@@ -33,6 +33,7 @@ from .contract_serializers import (
     ListItemsRanksRequestSerializer,
     ListItemsReorderRequestSerializer,
 )
+from .errors import failure_response
 
 logger = logging.getLogger(__name__)
 
@@ -112,8 +113,8 @@ class ListTiersView(drf_views.APIView):
             return error
         try:
             tiers = clean_tiers(request.data.get("tiers"))
-        except ValueError as exc:
-            return Response({"detail": str(exc)}, status=HTTP.BAD_REQUEST)
+        except TierError as exc:
+            return Response({"detail": exc.message}, status=HTTP.BAD_REQUEST)
         with transaction.atomic():
             custom_list.tiers = tiers
             custom_list.save(update_fields=["tiers"])
@@ -218,7 +219,14 @@ def _serialize_smart_rules(custom_list):
 class ListItemsBulkAddView(drf_views.APIView):
     """Add a bounded set of library items to an editable manual list."""
 
-    @_OBJ_WRITE
+    @extend_schema(
+        request={"application/json": {"type": "object", "properties": {
+            "item_ids": {"type": "array", "items": {"type": "integer"}, "maxItems": MAX_BULK_LIST_ITEM_IDS},
+        }, "required": ["item_ids"]}},
+        responses={"200": {"type": "object", "properties": {
+            "added": {"type": "integer"}, "skipped": {"type": "integer"},
+        }}},
+    )
     def post(self, request, list_id):
         """Add owned-catalog item ids, skipping missing or existing entries."""
         custom_list, error = _get_editable_list(request, list_id)
@@ -715,9 +723,8 @@ class ListRecommendationsView(drf_views.APIView):
                 ),
             )
         except Exception as e:
-            return Response(
-                {"detail": "Could not resolve item.", "errors": str(e)},
-                status=HTTP.BAD_GATEWAY,
+            return failure_response(
+                "Could not resolve item.", e, status=HTTP.BAD_GATEWAY
             )
 
         if list_has_item_identity(custom_list, item):

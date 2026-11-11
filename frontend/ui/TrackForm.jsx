@@ -253,20 +253,19 @@ export function TrackForm({
     } else if (type === 'date') {
       control = <FormField label={field.label} required={field.required}
         help={field.help} error={fieldErrors[field.name]} palette={palette}>
-        <DateTimePicker value={value} onChange={next => change(field.name, next)}
+        <DateTimePicker value={value}
+          onChange={(next, detail) => changeDate(field, next, detail)}
           trackTime={Boolean(model.trackTime)} labels={labels.dateTime || {}}
           palette={palette.dateTime || {}}
           quickActions={field.quickActions || []}
           suggestionDate={field.suggestionDate || ''}
           suggestionLabel={field.suggestionLabel || ''}
           suggestionExtras={field.suggestionExtras || []}
+          runtimeMinutes={field.runtimeMinutes || ''}
           copyValue={field.copyFrom ? (values[field.copyFrom] || '') : ''}
           copyLabel={field.copyFromLabel || ''}
           copyEmptyMessage={field.copyEmptyMessage || ''}
-          onQuickAction={action => change(field.name,
-            action === 'release-date'
-              ? (field.suggestionDate || '')
-              : valueFromDate(new Date(), Boolean(model.trackTime)))} />
+          onQuickAction={action => quickDate(field, action)} />
       </FormField>;
     } else if (type === 'rating') {
       const scaleMax = Math.max(1, Number(field.max) || 10);

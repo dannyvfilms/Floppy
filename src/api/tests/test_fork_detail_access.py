@@ -1,5 +1,5 @@
 # Tests for detail-page endpoints that the existing fork tests did not
-# exercise yet (season/episode collection entries, season artwork, season
+# exercise yet (season/episode collection entries, season
 # scores, season/episode activity timelines).
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
@@ -134,57 +134,6 @@ class SeasonCollectionEntriesTests(SeasonSubresourceTests):
             headers=self.invalid_auth_headers,
         )
         self.assertEqual(response.status_code, HTTP.FORBIDDEN)
-
-
-class SeasonArtworkTests(SeasonSubresourceTests):
-    """GET /media/tv/[source]/[id]/[season]/artwork/."""
-
-    def test_requires_authentication(self):
-        response = self.call_api(
-            "get",
-            "api_media_season_artwork",
-            args=("tv", "tmdb", "9100", 2),
-            headers=self.invalid_auth_headers,
-        )
-        self.assertEqual(response.status_code, HTTP.FORBIDDEN)
-
-    def test_without_carousel_media_returns_the_empty_shape(self):
-        with patch("app.carousel.resolve_carousel_media", return_value=None):
-            response = self.call_api(
-                "get",
-                "api_media_season_artwork",
-                args=("tv", "tmdb", "9100", 2),
-                headers=self.auth_headers,
-            )
-        self.assertEqual(response.status_code, HTTP.OK)
-        self.assertEqual(
-            response.json(),
-            {"available": False, "video": None, "overview": None, "hero": None, "photos": []},
-        )
-
-    def test_carousel_media_are_relayed(self):
-        carousel = {
-            "video": {"key": "abc123", "site": "YouTube"},
-            "overview": "Season two overview",
-            "hero": {"url": "https://example.com/hero.jpg"},
-            "photos": [{"url": "https://example.com/p1.jpg"}],
-        }
-        with (
-            patch("app.carousel.carousel_supported", return_value=True),
-            patch("app.carousel.resolve_carousel_media", return_value=carousel),
-        ):
-            response = self.call_api(
-                "get",
-                "api_media_season_artwork",
-                args=("tv", "tmdb", "9100", 2),
-                headers=self.auth_headers,
-            )
-        self.assertEqual(response.status_code, HTTP.OK)
-        payload = response.json()
-        self.assertTrue(payload["available"])
-        self.assertEqual(payload["video"]["key"], "abc123")
-        self.assertEqual(payload["overview"], "Season two overview")
-        self.assertEqual(payload["photos"], [{"url": "https://example.com/p1.jpg"}])
 
 
 class SeasonScoresTests(SeasonSubresourceTests):

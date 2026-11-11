@@ -70,6 +70,13 @@ test('entries expose delete and edit rights per media type', () => {
   assert.equal(m.instanceId, 7);
 });
 
+test('entry notes lose their tags, nested ones included', () => {
+  const notes = ['<p>Great <b>film</b></p>', '<scr<script>ipt>alert(1)</scr</script>ipt>', 'a <<b>i>b</<b>i> c', 'plain note'];
+  const [day] = historyDaysFromPayload({ results: [{ date: '2026-11-09', entries: notes.map(note => ({ ...movie, notes: note })) }] });
+  assert.deepEqual(day.entries.map(entry => entry.sessions[0].note), ['Great film', 'ipt>alert(1)ipt>', 'a i>bi> c', 'plain note']);
+  day.entries.forEach(entry => assert.doesNotMatch(entry.sessions[0].note, /<[^>]*>/));
+});
+
 test('an entry without an instance id cannot be edited or deleted', () => {
   const [day] = historyDaysFromPayload({ results: [{ date: '2026-11-09', entries: [{ ...movie, instance_id: null }] }] });
   assert.equal(day.entries[0].canEdit, false);

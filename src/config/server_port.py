@@ -27,6 +27,11 @@ NGINX_DEFAULT_LISTEN = "listen 8000;"
 class ServerPortError(ValueError):
     """Raised when the server port configuration cannot be used."""
 
+    def __init__(self, message):
+        """Keep the message Floppy wrote on its own attribute."""
+        super().__init__(message)
+        self.message = message
+
 
 @dataclass(frozen=True, slots=True)
 class ServerPortStatus:
@@ -167,7 +172,7 @@ def get_server_port_status(
     try:
         saved_port = load_saved_port(environ=env, data_dir=data_dir)
     except ServerPortError as exc:
-        saved_error = str(exc)
+        saved_error = exc.message
         if environment_port is None:
             raise
 

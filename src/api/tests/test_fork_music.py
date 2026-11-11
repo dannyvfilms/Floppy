@@ -450,6 +450,66 @@ class DiscographySyncTests(MusicApiTestCase):
         mock_dedupe.assert_called_once_with(self.artist)
 
 
+class MusicFailureTextTests(MusicApiTestCase):
+    """A failed provider call answers with a fixed detail, never its text."""
+
+    def _assert_fixed(self, response, detail):
+        self.assertEqual(response.status_code, HTTP.BAD_GATEWAY)
+        self.assertEqual(response.json(), {"detail": detail})
+
+    def test_resolution_failure_does_not_return_exception_text(self):
+        error = RuntimeError("secret /srv/private/path")
+        with patch(
+            "api.fork_views_music.fork_services_music.get_or_create_artist_from_musicbrainz",
+            side_effect=error,
+        ):
+            self._assert_fixed(
+                self.call_api(
+                    "post",
+                    "api_music_artists",
+                    payload={"musicbrainz_id": "11111111-1111-1111-1111-111111111111"},
+                    headers=self.auth_headers,
+                ),
+                "Could not fetch artist.",
+            )
+        with patch("api.fork_views_music.sync_artist_discography", side_effect=error):
+            self._assert_fixed(
+                self.call_api(
+                    "post",
+                    "api_music_artist_sync",
+                    args=(self.artist.id,),
+                    payload={},
+                    headers=self.auth_headers,
+                ),
+                "Discography sync failed.",
+            )
+        with patch("api.fork_views_music.sync_artist_members", side_effect=error):
+            self._assert_fixed(
+                self.call_api(
+                    "post",
+                    "api_music_artist_members_sync",
+                    args=(self.artist.id,),
+                    payload={},
+                    headers=self.auth_headers,
+                ),
+                "Artist member sync failed.",
+            )
+        with patch(
+            "api.fork_views_music.sync_album_metadata",
+            return_value={"album": self.album, "error": "secret /srv/private/path"},
+        ):
+            self._assert_fixed(
+                self.call_api(
+                    "post",
+                    "api_music_album_sync",
+                    args=(self.album.id,),
+                    payload={},
+                    headers=self.auth_headers,
+                ),
+                "Album metadata sync failed.",
+            )
+
+
 class AlbumTrackerScopeTests(MusicApiTestCase):
     """Per-user isolation of trackers."""
 

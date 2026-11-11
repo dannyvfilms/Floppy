@@ -23,6 +23,7 @@ from app.models.choices import USER_HELD_STATUSES, MediaTypes, Sources, Status
 from app.models.item import Item
 from app.models.manager import MediaManager
 from app.models.media import Media, ScoreMonitorField
+from app.public_errors import PublicMessageError
 from app.services.sync_lock import serialized_state_write
 from integrations.import_scope import ImportScopedManager
 
@@ -116,7 +117,7 @@ def classify_production_status(raw_status):
     return PRODUCTION_STATUS_UNKNOWN
 
 
-class RewatchAlreadyCompleteError(Exception):
+class RewatchAlreadyCompleteError(PublicMessageError):
     """Raised when a rewatch's start date leaves nothing left to rewatch."""
 
 
@@ -180,6 +181,7 @@ class TV(Media):
     def save(self, *args, **kwargs):
         """Save the media instance."""
         is_create = self._state.adding
+        self._include_updated_at(kwargs)
         super(Media, self).save(*args, **kwargs)
 
         # A show created directly as COMPLETED (rather than transitioned into it)
@@ -1245,6 +1247,7 @@ class Season(Media):
             self.related_tv = self.get_tv()
 
         is_create = self._state.adding
+        self._include_updated_at(kwargs)
         super(Media, self).save(*args, **kwargs)
 
         # A season created directly as COMPLETED (rather than transitioned into

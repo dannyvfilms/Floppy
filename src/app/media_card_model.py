@@ -142,15 +142,20 @@ def _progress_bar(ctx, media_type):
     status = _safe(media, "aggregated_status") or _safe(media, "status")
     if status not in {Status.IN_PROGRESS.value, Status.PAUSED.value}:
         return None
-    dormant = ctx.get("card_progress_display") == "dormant"
     percent = _safe(media, "progress_percentage")
     if media_type == MediaTypes.PODCAST.value:
-        return None if percent is None else {"percent": percent, "paused": status == Status.PAUSED.value, "dormant": dormant}
-    if media_type == MediaTypes.MOVIE.value or not (_safe(media, "max_progress") and _safe(media, "progress")):
+        if percent is None:
+            return None
+    elif media_type == MediaTypes.MOVIE.value or not (_safe(media, "max_progress") and _safe(media, "progress")):
         return None
-    if percent is None:
+    elif percent is None:
         percent = int(_safe(media, "progress") * 100 / _safe(media, "max_progress"))
-    return {"percent": percent, "paused": status == Status.PAUSED.value, "dormant": dormant}
+    return {
+        "percent": percent,
+        "paused": status == Status.PAUSED.value,
+        # "dormant" keeps the bar visible at rest instead of only on hover.
+        "dormant": ctx.get("card_progress_display") == "dormant",
+    }
 
 
 def _plays(count):

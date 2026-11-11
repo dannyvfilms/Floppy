@@ -8,8 +8,6 @@ import {
   TextInput,
   View,
   useWindowDimensions,
-  Keyboard,
-  Platform,
 } from 'react-native';
 import { DROPDOWN } from './dropdownMetrics';
 import { Spinner } from './Spinner';
@@ -49,40 +47,25 @@ const BLUR_CLOSE_MS = 250;
 const SUGGESTION_ROWS_MIN = 2;
 const SUGGESTION_ROWS_MAX = 5;
 
-function useSuggestionRows(open, anchorRef) {
+// A platform adapter supplies how far the keyboard covers the bottom of the window (the
+// native keyboard, or the web visual viewport); without one nothing is covered.
+function useSuggestionRows(open, anchorRef, useKeyboardOverlap) {
   const { height: windowHeight } = useWindowDimensions();
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(null);
+  const keyboardOverlap = useKeyboardOverlap();
   const [anchorBottom, setAnchorBottom] = useState(0);
-
-  useEffect(() => {
-    // Native reports the keyboard; on the web the visual viewport shrinks when it opens.
-    if (Platform.OS === 'web') {
-      const viewport = typeof window !== 'undefined' ? window.visualViewport : null;
-      if (!viewport) return undefined;
-      const update = () => setViewportHeight(viewport.height);
-      update();
-      viewport.addEventListener('resize', update);
-      return () => viewport.removeEventListener('resize', update);
-    }
-    // The keyboard may already be up when the field mounts, so read it as well as listen.
-    const current = Keyboard.metrics?.();
-    if (current?.height) setKeyboardHeight(current.height);
-    const shown = Keyboard.addListener('keyboardDidShow', event => setKeyboardHeight(event.endCoordinates?.height || 0));
-    const hidden = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
-    return () => { shown.remove(); hidden.remove(); };
-  }, []);
 
   useEffect(() => {
     if (!open || !anchorRef.current?.measureInWindow) return;
     anchorRef.current.measureInWindow((_x, y, _width, height) => setAnchorBottom(y + height));
-  }, [open, windowHeight, keyboardHeight, viewportHeight, anchorRef]);
+  }, [open, windowHeight, keyboardOverlap, anchorRef]);
 
-  const bottom = Platform.OS === 'web' ? (viewportHeight ?? windowHeight) : windowHeight - keyboardHeight;
+  const bottom = windowHeight - keyboardOverlap;
   const room = bottom - anchorBottom - SUGGESTION_PANEL_GAP - SUGGESTION_FOOTER_HEIGHT - SUGGESTION_BOTTOM_AIR;
   const rows = Math.max(SUGGESTION_ROWS_MIN, Math.min(SUGGESTION_ROWS_MAX, Math.floor(room / SUGGESTION_ROW_HEIGHT)));
   return rows;
 }
+
+const noKeyboardOverlap = () => 0;
 
 const label = (value, fallback) => (
   typeof value === 'string' && value.length ? value : fallback
@@ -154,6 +137,7 @@ export function GlobalSearch({
   expanded = false,
   dismissSignal = 0,
   onLoadSuggestions,
+  useKeyboardOverlap = noKeyboardOverlap,
   onSubmit,
   onSelectSuggestion,
   onBarcodeRequest,
@@ -172,7 +156,7 @@ export function GlobalSearch({
   useEffect(() => () => clearTimeout(blurTimer.current), []);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [panel, setPanel] = useState({ status: 'idle', suggestions: [] });
-  const visibleRows = useSuggestionRows(panel.status !== 'idle', barRef);
+  const visibleRows = useSuggestionRows(panel.status !== 'idle', barRef, useKeyboardOverlap);
   const [barcodeBusy, setBarcodeBusy] = useState(false);
   const [barcodeError, setBarcodeError] = useState(null);
   const loader = useRef(onLoadSuggestions);

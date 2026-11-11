@@ -851,7 +851,7 @@ class CalendarActiveShowLoadTests(TestCase):
         active_show_reads = [
             query["sql"]
             for query in queries
-            if 'FROM "app_item"' in query["sql"] and 'JOIN "app_tv"' in query["sql"]
+            if 'FROM "app_item"' in query["sql"] and '"app_tv"' in query["sql"]
         ]
         self.assertEqual(len(active_show_reads), 1)
         self.assertNotIn('"app_item"."title"', active_show_reads[0])
@@ -892,7 +892,7 @@ class CalendarActiveAnimeLoadTests(TestCase):
             query["sql"]
             for query in captured.captured_queries
             if 'FROM "app_item"' in query["sql"]
-            and 'JOIN "app_anime"' in query["sql"]
+            and '"app_anime"' in query["sql"]
             and "events_event" not in query["sql"]
         ]
         self.assertEqual(len(anime_reads), 1)
@@ -917,3 +917,133 @@ class EventDatetimeIndexTests(TestCase):
             ),
             "events_event.datetime must be indexed for the calendar's date range",
         )
+
+
+class CalendarOtherUserStatusIsolationTests(TestCase):
+    """One account's Paused/Dropped tracker must not hide another's events (#1873)."""
+
+    def setUp(self):
+        """Two users track the same items; only the second one pauses them."""
+        User = get_user_model()
+        self.user = User.objects.create_user(username="active", password="pw")
+        self.other = User.objects.create_user(username="paused", password="pw")
+        self.when = timezone.now()
+
+    def _events_for(self, user):
+        return list(
+            Event.objects.get_user_events(user, self.when.date(), self.when.date()),
+        )
+
+    def test_tv_season_event_survives_other_users_paused_show(self):
+        """A season event stays visible when only another user paused the show."""
+        show = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Shared Show",
+            image="",
+        )
+        season = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Shared Show",
+            image="",
+            season_number=1,
+        )
+        TV.objects.create(item=show, user=self.user, status=Status.IN_PROGRESS.value)
+        TV.objects.create(item=show, user=self.other, status=Status.PAUSED.value)
+        Season.objects.create(
+            item=season,
+            user=self.user,
+            related_tv=TV.objects.get(item=show, user=self.user),
+            status=Status.IN_PROGRESS.value,
+        )
+        event = Event.objects.create(item=season, content_number=1, datetime=self.when)
+
+        self.assertEqual(self._events_for(self.user), [event])
+
+    def test_movie_event_survives_other_users_dropped_movie(self):
+        """A movie event stays visible when only another user dropped it."""
+        movie = Item.objects.create(
+            media_id="238",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Shared Movie",
+            image="",
+        )
+        Movie.objects.create(item=movie, user=self.user, status=Status.PLANNING.value)
+        Movie.objects.create(item=movie, user=self.other, status=Status.DROPPED.value)
+        event = Event.objects.create(item=movie, content_number=1, datetime=self.when)
+
+        self.assertEqual(self._events_for(self.user), [event])
+
+    def test_anime_event_survives_other_users_paused_anime(self):
+        """An anime event stays visible when only another user paused it."""
+        anime = Item.objects.create(
+            media_id="52991",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Shared Anime",
+            image="",
+        )
+        Anime.objects.create(item=anime, user=self.user, status=Status.IN_PROGRESS.value)
+        Anime.objects.create(item=anime, user=self.other, status=Status.PAUSED.value)
+        event = Event.objects.create(item=anime, content_number=1, datetime=self.when)
+
+        self.assertEqual(self._events_for(self.user), [event])
+
+    def test_anime_dedupe_ignores_other_users_paused_anime(self):
+        """The anime/TV duplicate is still hidden when another user paused the anime."""
+        anime = Item.objects.create(
+            media_id="52992",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Dup Anime",
+            image="",
+        )
+        Anime.objects.create(item=anime, user=self.user, status=Status.IN_PROGRESS.value)
+        Anime.objects.create(item=anime, user=self.other, status=Status.PAUSED.value)
+        show = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Dup Anime",
+            image="",
+        )
+        season = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Dup Anime",
+            image="",
+            season_number=1,
+        )
+        TV.objects.create(item=show, user=self.user, status=Status.IN_PROGRESS.value)
+        anime_event = Event.objects.create(item=anime, content_number=1, datetime=self.when)
+        season_event = Event.objects.create(item=season, content_number=1, datetime=self.when)
+
+        with mock.patch(
+            "events.models.resolve_provider_series_id",
+            side_effect=lambda mal_id, provider: (
+                "1396" if provider == "tmdb" else None
+            ),
+        ):
+            events = self._events_for(self.user)
+
+        self.assertEqual(events, [season_event])
+        self.assertNotIn(anime_event, events)
+
+    def test_own_paused_movie_is_still_hidden(self):
+        """The user's own Paused tracker keeps hiding the event."""
+        movie = Item.objects.create(
+            media_id="239",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Own Paused Movie",
+            image="",
+        )
+        Movie.objects.create(item=movie, user=self.user, status=Status.PAUSED.value)
+        Event.objects.create(item=movie, content_number=1, datetime=self.when)
+
+        self.assertEqual(self._events_for(self.user), [])

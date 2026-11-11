@@ -420,6 +420,35 @@ class NotificationsTests(FloppyApiTestCase):
         self.assertTrue(response.json()["sent"])
 
 
+class NotificationTestFailureTests(FloppyApiTestCase):
+    """A failing notification URL never reaches the response or the log."""
+
+    URL = "https://hooks.example.com/services/T000/B000/tokenSECRET123"
+
+    @patch("apprise.Apprise")
+    def test_test_notification_failure_hides_apprise_text(self, mock_apprise):
+        self.user1.notification_urls = self.URL
+        self.user1.save(update_fields=["notification_urls"])
+        mock_apprise.return_value.notify.side_effect = RuntimeError(
+            f"Could not reach {self.URL}",
+        )
+        with self.assertLogs("api.errors", level="WARNING") as logs:
+            response = self.call_api(
+                "post",
+                "api_user_notification_test",
+                payload={},
+                headers=self.auth_headers,
+            )
+        self.assertEqual(response.status_code, HTTP.BAD_GATEWAY)
+        self.assertEqual(
+            response.json(), {"detail": "Failed to send test notification."}
+        )
+        for text in (response.content.decode(), *logs.output):
+            self.assertNotIn("tokenSECRET123", text)
+            self.assertNotIn("hooks.example.com", text)
+        self.assertFalse(logs.records[0].exc_text)
+
+
 class TokenRegenerateTests(FloppyApiTestCase):
     """POST user/token/regenerate."""
 

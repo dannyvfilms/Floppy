@@ -32,16 +32,17 @@ export function DetailEpisodeHeader({
   labels = {},
   onOpenShow,
   onOpenSeason,
+  showStill = true,
 }) {
   const [open, setOpen] = React.useState(false);
   const picker = selector || {};
   const items = picker.items || [];
   const current = items.find(item => item.current);
   return <View style={styles.header}>
-    <Still src={episode.image} title={episode.title} palette={palette} />
-    <Pressable accessibilityRole="link" onPress={onOpenShow} disabled={!onOpenShow}>
+    {showStill ? <Still src={episode.image} title={episode.title} palette={palette} /> : null}
+    {episode.showTitle ? <Pressable accessibilityRole="link" onPress={onOpenShow} disabled={!onOpenShow}>
       <Text accessibilityRole="header" style={[styles.title, { color: palette.text }]}>{episode.showTitle}</Text>
-    </Pressable>
+    </Pressable> : null}
     <View style={styles.metaLine}>
       {episode.seasonTitle ? <Pressable accessibilityRole="link" onPress={onOpenSeason} disabled={!onOpenSeason}>
         <Text style={[styles.meta, { color: palette.textMuted }]}>{episode.seasonTitle}</Text>
@@ -93,31 +94,6 @@ export function DetailEpisodeHeader({
           <Text numberOfLines={1} style={[styles.pickerText, { color: item.current ? palette.text : palette.textSecondary }]}>{item.label}</Text>
         </Pressable>)}
       </ScrollView>
-    </View> : null}
-  </View>;
-}
-
-export function DetailEpisodeActions({ track, quick = [], palette }) {
-  return <View style={styles.actions}>
-    {track ? <Pressable accessibilityRole="button" onPress={track.onPress} disabled={track.disabled}
-      style={({ pressed }) => [styles.track, {
-        backgroundColor: track.watched
-          ? (pressed ? palette.accent : palette.accentStrong)
-          : (pressed ? palette.surfaceStrong : palette.surfaceMuted),
-        opacity: track.disabled ? 0.6 : 1,
-      }]}>
-      <Icon spec={actionIcons[track.watched ? 'eye' : 'eyeClosed']} size={20} color={palette.accentContrast} />
-      <Text style={[styles.trackText, { color: palette.accentContrast }]}>{track.label}</Text>
-    </Pressable> : null}
-    {quick.length ? <View style={styles.quickRow}>
-      {quick.map(item => <Pressable key={item.key} accessibilityRole="button" accessibilityLabel={item.label}
-        onPress={item.onPress}
-        style={({ pressed }) => [styles.quick, {
-          backgroundColor: pressed ? palette.surfaceMuted : palette.surface,
-          borderColor: palette.border,
-        }]}>
-        <Icon spec={actionIcons[item.icon]} size={16} color={palette.text} />
-      </Pressable>)}
     </View> : null}
   </View>;
 }

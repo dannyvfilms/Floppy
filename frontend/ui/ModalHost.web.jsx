@@ -68,7 +68,15 @@ function Modal({ spec, onClose }) {
     node.addEventListener('floppy-modal-closed', closed);
     const key = (event) => { if (event.key === 'Escape') closed(); };
     window.addEventListener('keydown', key);
-    return () => { clearTimeout(timer); node.removeEventListener('floppy-modal-closed', closed); window.removeEventListener('keydown', key); };
+    return () => {
+      clearTimeout(timer);
+      node.removeEventListener('floppy-modal-closed', closed);
+      window.removeEventListener('keydown', key);
+      // React removes this host without htmx, so the React islands inside it (the
+      // Track form's dialog is portaled to document.body) would never be disposed
+      // and stay on screen. Ask the island mounter to dispose them, after this commit.
+      queueMicrotask(() => document.dispatchEvent(new CustomEvent('htmx:beforeCleanupElement', { detail: { elt: node } })));
+    };
   }, []);
   const scope = `{ ${shell.key}: true }`;
   return <div ref={host} data-floppy-modal="" x-data={scope} {...{ 'x-effect': `if (!${shell.key}) $el.dispatchEvent(new CustomEvent('floppy-modal-closed'))` }}>

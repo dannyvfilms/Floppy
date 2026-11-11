@@ -284,8 +284,8 @@ function cardHandlers(item, labels, onOpenCopy, onOpenItem) {
 }
 
 function GridView({ items, labels, palette, onOpenCopy, onOpenItem, renderCard }) {
-  return <View style={styles.grid}>
-    {items.map(item => <View key={item.id} style={styles.gridItem}>
+  return <View style={styles.grid} testID="collection-grid">
+    {items.map(item => <View key={item.id} style={styles.gridItem} testID="collection-grid-item">
       {renderCard ? renderCard(item) : <MediaCard model={cardModel(item)} width={164} palette={{
         ...palette,
         card: palette.surface,

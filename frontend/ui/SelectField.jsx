@@ -94,9 +94,10 @@ export function SelectField({
       ]}>
       {filter && leadingIcon ? <View style={styles.filterIcon}>{leadingIcon}</View> : null}
       <Text numberOfLines={colors.preferenceCards ? undefined : 1} style={[styles.triggerText, { color: filter ? colors.text : colors.textSecondary }, colors.preferenceCards && { lineHeight: 20, textAlign: 'center' }, triggerTextStyle]}>{selected?.label ?? placeholder}</Text>
-      {iconChevron
-        ? <View style={[styles.chevron, filter && styles.filterChevron]}><Icon spec={actionIcons.chevronDown} color={colors.textMuted} size={16} style={{ color: colors.textMuted, fontSize: 14 }}>{'▾'}</Icon></View>
-        : <Text style={[styles.chevron, filter && styles.filterChevron, { color: colors.textMuted }]}>▾</Text>}
+      {filter ? <View style={styles.filterChevron}><Icon spec={CHEVRON_DOWN} color={colors.textMuted} size={16} /></View>
+        : iconChevron
+          ? <View style={styles.chevron}><Icon spec={actionIcons.chevronDown} color={colors.textMuted} size={16} style={{ color: colors.textMuted, fontSize: 14 }}>{'▾'}</Icon></View>
+          : <Text style={[styles.chevron, { color: colors.textMuted }]}>▾</Text>}
     </Pressable>
     {error ? <Text accessibilityRole="alert" style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}
     <Modal transparent visible={open} animationType="fade" onRequestClose={() => setOpen(false)}>

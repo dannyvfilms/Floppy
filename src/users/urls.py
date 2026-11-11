@@ -11,6 +11,7 @@ from users import (
 urlpatterns = [
     path("settings/providers", provider_views.providers, name="providers"),
     path("settings/providers/pin", provider_views.pin_provider, name="pin_settings_provider"),
+    path("settings/sidebar-pins", provider_views.save_sidebar_pins, name="sidebar_pins"),
     path("settings/activity", provider_views.activity, name="provider_activity"),
     path("settings/data", provider_views.data_management, name="data_management"),
     path("settings/access", provider_views.access_tokens, name="access_tokens"),

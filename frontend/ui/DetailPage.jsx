@@ -4,48 +4,10 @@ import { Icon } from './Icon';
 import { Modal } from './Modal';
 import { actionIcons } from './actionIcons';
 
-// Shared presentation for the phone-width media detail page: poster hero,
-// action bar, rating and score chips, detail cards, notes, history, collection
-// and the people and recommendation rails. Props only: the screen adapter owns
-// every request, dialog and permission, and passes colors in `palette`.
-
-function Poster({ src, title, palette, width = 137, ratio = 2 / 3 }) {
-  const [failed, setFailed] = React.useState(false);
-  const uri = failed ? '' : src;
-  return <View style={[styles.poster, { width, aspectRatio: ratio, backgroundColor: palette.placeholder }]}>
-    {uri ? <Image source={{ uri }} resizeMode="cover" style={StyleSheet.absoluteFill}
-      accessible={false} onError={() => setFailed(true)} /> : <Text numberOfLines={3}
-      style={[styles.posterPlaceholder, { color: palette.textMuted }]}>{title}</Text>}
-  </View>;
-}
-
-export function DetailPageHero({ title, altTitle, artwork, meta, activityLine, activityDates, parent, onOpenParent, seasonSwitch, palette, children }) {
-  // A season page titles itself with its show; the season is a switcher under it.
-  const heading = seasonSwitch && parent ? parent.title : title;
-  return <View style={styles.hero}>
-    <Poster src={artwork?.src} title={title} palette={palette}
-      ratio={artwork?.aspect === 'landscape' ? 16 / 9 : 2 / 3}
-      width={artwork?.aspect === 'landscape' ? 160 : 137} />
-    <View style={styles.heroBody}>
-      {parent && !seasonSwitch ? <Pressable accessibilityRole="link" onPress={onOpenParent}>
-        <Text numberOfLines={1} style={[styles.parent, { color: palette.link }]}>{parent.title}</Text>
-      </Pressable> : null}
-      {seasonSwitch && parent ? <Pressable accessibilityRole="link" onPress={onOpenParent}>
-        <Text accessibilityRole="header" numberOfLines={5} style={[styles.title, { color: palette.text }]}>{heading}</Text>
-      </Pressable> : <Text accessibilityRole="header" numberOfLines={5} style={[styles.title, { color: palette.text }]}>{heading}</Text>}
-      {seasonSwitch ? <Pressable accessibilityRole="button" accessibilityState={{ expanded: seasonSwitch.expanded }}
-        disabled={!seasonSwitch.onPress} onPress={seasonSwitch.onPress} style={styles.seasonSwitch}>
-        <Text style={[styles.activity, { color: palette.textMuted }]}>{title}</Text>
-        {seasonSwitch.onPress ? <Icon spec={actionIcons.chevronDown} size={14} color={palette.textMuted} /> : null}
-      </Pressable> : null}
-      {altTitle && !seasonSwitch ? <Text numberOfLines={2} style={[styles.activity, { color: palette.textMuted }]}>{altTitle}</Text> : null}
-      {children}
-      {meta ? <Text style={[styles.activity, { color: palette.textMuted }]}>{meta}</Text> : null}
-      {activityLine ? <Text style={[styles.activity, { color: palette.textMuted }]}>{activityLine}</Text> : null}
-      {activityDates ? <Text style={[styles.activity, { color: palette.textMuted }]}>{activityDates}</Text> : null}
-    </View>
-  </View>;
-}
+// Shared presentation for the detail page's own controls: the track action bar,
+// provider score chips and series graph, the collection and notes blocks, the
+// related grid, comic issue cards and anime episode cards. Props only: the screen
+// adapter owns every request, dialog and permission, and passes colors in `palette`.
 
 function QuickButton({ item, palette }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={item.label} onPress={item.onPress}
@@ -81,22 +43,6 @@ export function DetailActionBar({ primary, edit, quick = [], palette }) {
     {quick.length ? <View style={styles.quickRow}>
       {quick.map(item => <QuickButton key={item.key} item={item} palette={palette} />)}
     </View> : null}
-  </View>;
-}
-
-export function DetailLinkRow({ items, palette }) {
-  const visible = items.filter(Boolean);
-  if (!visible.length) return null;
-  return <View style={styles.linkRow}>
-    {visible.map(item => <Pressable key={item.key} accessibilityRole="button" disabled={item.disabled}
-      onPress={item.onPress}
-      style={({ pressed }) => [styles.linkButton, {
-        borderColor: palette.border,
-        backgroundColor: pressed ? palette.surfaceStrong : palette.surface,
-        opacity: item.disabled ? 0.5 : 1,
-      }]}>
-      <Text style={[styles.linkText, { color: palette.textSecondary }]}>{item.label}</Text>
-    </Pressable>)}
   </View>;
 }
 
@@ -187,124 +133,7 @@ export function DetailSeriesGraph({ graph, title, palette, onClose }) {
   </Modal>;
 }
 
-/**
- * The web phone hero backdrop with the title logo, the trailer link and the
- * artwork gallery strip. Pressing a gallery image opens it in a lightbox.
- */
-export function DetailBackdrop({ artwork, palette, labels = {}, onOpenLink }) {
-  const [open, setOpen] = React.useState('');
-  const { width } = useWindowDimensions();
-  if (!artwork || (!artwork.hero && !artwork.photos.length && !artwork.video)) return null;
-  const height = Math.round(Math.min(width, 640) * 9 / 16);
-  return <View style={styles.backdropBlock}>
-    {artwork.hero ? <View style={[styles.backdrop, { height, backgroundColor: palette.placeholder }]}>
-      <Image source={{ uri: artwork.hero.url }} resizeMode="cover" style={StyleSheet.absoluteFill} accessible={false} />
-      {artwork.logoUrl ? <Image source={{ uri: artwork.logoUrl }} resizeMode="contain" accessibilityLabel={labels.logo || 'Media title logo'}
-        style={styles.backdropLogo} /> : null}
-    </View> : null}
-    {artwork.video ? <Pressable accessibilityRole="link" onPress={() => onOpenLink?.(artwork.video.url)}
-      style={[styles.linkButton, styles.trailer, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-      <Icon spec={actionIcons.play} size={16} color={palette.textSecondary} />
-      <Text style={[styles.linkText, { color: palette.textSecondary }]}>{labels.trailer || 'Watch trailer'}</Text>
-    </Pressable> : null}
-    {artwork.photos.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.rail}>
-      {artwork.photos.map(photo => <Pressable key={photo.url} accessibilityRole="button" accessibilityLabel={labels.photo || 'Open image'}
-        onPress={() => setOpen(photo.url)} style={[styles.thumb, { backgroundColor: palette.placeholder }]}>
-        <Image source={{ uri: photo.thumbUrl }} resizeMode="cover" style={StyleSheet.absoluteFill} accessible={false} />
-      </Pressable>)}
-    </ScrollView> : null}
-    {open ? <Modal transparent animationType="fade" visible onRequestClose={() => setOpen('')}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setOpen('')} style={[styles.graphScrim, { backgroundColor: palette.overlay }]}>
-        <Image source={{ uri: open }} resizeMode="contain" style={styles.lightbox} />
-      </Pressable>
-    </Modal> : null}
-  </View>;
-}
-
-
 const PHONE_HERO_MAX = 768;
-
-/**
- * The web phone hero: the backdrop runs edge to edge, fades into the page
- * colour, and the title logo (or the title as text) and the meta line sit on
- * its lower half. There is no poster, trailer link or gallery strip on a phone.
- */
-export function DetailHeroBackdrop({ artwork, title, meta, activityLine, seasonSwitch, palette, bleed = 16 }) {
-  const { height } = useWindowDimensions();
-  const heroHeight = Math.round(height * 0.47) + 30;
-  const logo = artwork?.logoUrl || artwork?.hero?.logoUrl || '';
-  const steps = 48;
-  const fade = Math.round(heroHeight * 0.55);
-  return <View style={[styles.heroFrame, { marginHorizontal: -bleed, minHeight: heroHeight, backgroundColor: palette.background }]}>
-    <Image source={{ uri: artwork.hero.url }} resizeMode="cover" accessible={false}
-      style={[styles.heroImage, { height: heroHeight }]} />
-    <View pointerEvents="none" style={[styles.heroFade, { height: fade }]}>
-      {Array.from({ length: steps }, (_, index) => <View key={index}
-        style={{ flex: 1, backgroundColor: palette.background, opacity: (index + 1) / steps }} />)}
-    </View>
-    <View style={[styles.heroContent, { minHeight: heroHeight }]}>
-      {logo ? <Image source={{ uri: logo }} resizeMode="contain" accessible accessibilityLabel={title}
-        style={styles.heroLogo} /> : <Text accessibilityRole="header" numberOfLines={4}
-        style={[styles.heroTitle, { color: palette.heroText || palette.text }]}>{title}</Text>}
-      {seasonSwitch ? <Pressable accessibilityRole="button" accessibilityState={{ expanded: seasonSwitch.expanded }}
-        disabled={!seasonSwitch.onPress} onPress={seasonSwitch.onPress} style={styles.heroSeason}>
-        <Text style={[styles.heroSeasonText, { color: palette.heroText || palette.text }]}>{seasonSwitch.label}</Text>
-        {seasonSwitch.onPress ? <Icon spec={actionIcons.chevronDown} size={16} color={palette.heroText || palette.text} /> : null}
-      </Pressable> : null}
-      {meta ? <Text style={[styles.heroMeta, { color: palette.heroText || palette.text }]}>{meta}</Text> : null}
-      {activityLine ? <Text style={[styles.heroMeta, { color: palette.heroText || palette.text }]}>{activityLine}</Text> : null}
-    </View>
-  </View>;
-}
-
-/** The web "Time to Beat" section: one card per length with its submission count. */
-export function DetailGameLengths({ data, onOpenLink, title = 'Time to Beat', unavailable = 'Time-to-beat data is not available yet.', palette }) {
-  if (!data) return null;
-  return <View style={styles.block}>
-    <View style={styles.blockHeader}>
-      <Text accessibilityRole="header" style={[styles.blockTitle, { color: palette.text }]}>{title}</Text>
-      {data.sourceLabel ? <Pressable accessibilityRole={data.sourceUrl ? 'link' : undefined} disabled={!data.sourceUrl}
-        onPress={() => onOpenLink?.(data.sourceUrl)}
-        style={[styles.chip, { borderColor: palette.border }]}>
-        <Text style={[styles.chipText, { color: palette.link || palette.textSecondary }]}>{data.sourceLabel}</Text>
-      </Pressable> : null}
-    </View>
-    {data.available && data.cards.length ? data.cards.map(card => <View key={card.label}
-      style={[styles.card, styles.lengthCard, { backgroundColor: palette.surface }]}>
-      <Text style={[styles.infoLabel, { color: palette.textMuted }]}>{card.label}</Text>
-      <Text style={[styles.lengthValue, { color: palette.text }]}>{card.value}</Text>
-      <Text style={[styles.infoLabel, { color: palette.textMuted }]}>{`${Number(card.count).toLocaleString('en-US')} ${Number(card.count) === 1 ? 'submission' : 'submissions'}`}</Text>
-    </View>) : <Text style={[styles.empty, { color: palette.textSecondary }]}>{unavailable}</Text>}
-  </View>;
-}
-
-export function DetailInfoCard({ title, rows, emptyText, palette }) {
-  if (!rows.length && !emptyText) return null;
-  return <View style={styles.block}>
-    <Text accessibilityRole="header" style={[styles.blockTitle, { color: palette.text }]}>{title}</Text>
-    <View style={[styles.card, { backgroundColor: palette.surface }]}>
-      {rows.length ? null : <Text style={[styles.infoValue, { color: palette.textSecondary }]}>{emptyText}</Text>}
-      {rows.map(row => <View key={row.label} style={styles.infoCell}>
-        <Text style={[styles.infoLabel, { color: palette.textMuted }]}>{row.label}</Text>
-        <Text style={[styles.infoValue, { color: palette.textSecondary }]}>{row.value}</Text>
-      </View>)}
-    </View>
-  </View>;
-}
-
-export function DetailChipCard({ title, items, palette, outlined = false }) {
-  if (!items.length) return null;
-  return <View style={styles.block}>
-    <Text accessibilityRole="header" style={[styles.blockTitle, { color: palette.text }]}>{title}</Text>
-    <View style={[styles.card, { backgroundColor: palette.surface }]}>
-      <View style={styles.chips}>
-        {items.map(item => <View key={item} style={[styles.chip, { borderColor: outlined ? palette.scoreAccents?.mal?.border || palette.accent : palette.border, backgroundColor: outlined ? palette.scoreAccents?.mal?.fill || palette.surfaceStrong : palette.surfaceStrong }]}>
-          <Text style={[styles.chipText, { color: outlined ? palette.accent : palette.textSecondary }]}>{item}</Text>
-        </View>)}
-      </View>
-    </View>
-  </View>;
-}
 
 export function DetailBlock({ title, action, palette, children }) {
   return <View style={styles.block}>
@@ -332,20 +161,6 @@ export function DetailLoading({ text, palette }) {
   </View>;
 }
 
-/** Placeholder blocks shown while the first detail load is in flight. */
-export function DetailSkeleton({ palette }) {
-  const bar = (width, height = 14) => <View style={{ width, height, borderRadius: 6, backgroundColor: palette.surfaceStrong }} />;
-  return <View accessibilityLabel="Loading" style={styles.skeleton}>
-    <View style={styles.hero}>
-      <View style={[styles.poster, { width: 137, aspectRatio: 2 / 3, backgroundColor: palette.surfaceStrong }]} />
-      <View style={styles.heroBody}>{bar('80%', 22)}{bar('50%')}{bar('35%')}</View>
-    </View>
-    {bar('100%', 44)}
-    {bar('100%', 80)}
-    {bar('100%', 120)}
-  </View>;
-}
-
 export function DetailNotesBlock({ title, notes, editLabel, onEdit, palette }) {
   if (!notes.length) return null;
   return <View style={styles.block}>
@@ -360,33 +175,6 @@ export function DetailNotesBlock({ title, notes, editLabel, onEdit, palette }) {
         </Pressable> : null}
       </View>
     </View>)}
-  </View>;
-}
-
-export function DetailHistoryBlock({ title, entries, toggleLabel, removeLabel, onRemove, palette }) {
-  const [shown, setShown] = React.useState(false);
-  if (!entries.length) return null;
-  return <View style={styles.block}>
-    <Text accessibilityRole="header" style={[styles.blockTitle, { color: palette.text }]}>{title}</Text>
-    <Pressable accessibilityRole="button" accessibilityState={{ expanded: shown }}
-      onPress={() => setShown(value => !value)}
-      style={({ pressed }) => [styles.repeatsToggle, { backgroundColor: pressed ? palette.surfaceMuted : palette.surfaceStrong }]}>
-      <View style={shown ? styles.flipped : null}>
-        <Icon spec={actionIcons.chevronDown} size={16} color={palette.text} />
-      </View>
-      <Text style={[styles.linkText, { color: palette.text }]}>{`${toggleLabel} (${entries.length})`}</Text>
-    </Pressable>
-    {shown ? entries.map(entry => <View key={entry.id} style={[styles.historyRow, { backgroundColor: palette.surface, borderColor: palette.border }]}>
-      <View style={styles.historyBody}>
-        <Text numberOfLines={1} style={[styles.infoValue, { color: palette.text, textAlign: 'left' }]}>{entry.title}</Text>
-        {entry.date ? <Text style={[styles.infoLabel, { color: palette.textMuted }]}>{entry.date}</Text> : null}
-        {entry.detail ? <Text style={[styles.infoLabel, { color: palette.textMuted }]}>{entry.detail}</Text> : null}
-      </View>
-      {onRemove ? <Pressable accessibilityRole="button" accessibilityLabel={`${removeLabel} ${entry.date || entry.title}`}
-        onPress={() => onRemove(entry)} style={styles.noteEdit}>
-        <Icon spec={actionIcons.x} size={16} color={palette.danger} />
-      </Pressable> : null}
-    </View>) : null}
   </View>;
 }
 
@@ -562,91 +350,6 @@ function OverlayCard({ src, title, palette, width, height, accessibilityLabel, a
   return <Pressable accessibilityRole={accessibilityRole || 'link'} accessibilityLabel={accessibilityLabel} onPress={onPress} style={frame}>{body}</Pressable>;
 }
 
-/** A horizontally scrolling rail with the web's previous, next and collapse controls. */
-function DetailRail({ title, palette, children }) {
-  const ref = React.useRef(null);
-  const [offset, setOffset] = React.useState(0);
-  const [collapsed, setCollapsed] = React.useState(false);
-  const { width } = useWindowDimensions();
-  const step = Math.max(160, width - 80);
-  const scrollBy = delta => ref.current?.scrollTo?.({ x: Math.max(0, offset + delta), animated: true });
-  return <View style={styles.block}>
-    <View style={styles.blockHeader}>
-      <Text accessibilityRole="header" style={[styles.blockTitle, { color: palette.text }]}>{title}</Text>
-      <View style={styles.railControls}>
-        {!collapsed && offset > 2 ? <Pressable accessibilityRole="button" accessibilityLabel={`Scroll ${title} back`}
-          onPress={() => scrollBy(-step)} style={styles.railControl}>
-          <Icon spec={actionIcons.chevronLeft} size={18} color={palette.text} />
-        </Pressable> : null}
-        {!collapsed ? <Pressable accessibilityRole="button" accessibilityLabel={`Scroll ${title} forward`}
-          onPress={() => scrollBy(step)} style={styles.railControl}>
-          <Icon spec={actionIcons.chevronRight} size={18} color={palette.text} />
-        </Pressable> : null}
-        <Pressable accessibilityRole="button" accessibilityLabel={collapsed ? `Expand ${title}` : `Collapse ${title}`}
-          accessibilityState={{ expanded: !collapsed }} onPress={() => setCollapsed(value => !value)} style={styles.railControl}>
-          <View style={collapsed ? null : styles.flipped}>
-            <Icon spec={actionIcons.chevronDown} size={18} color={palette.text} />
-          </View>
-        </Pressable>
-      </View>
-    </View>
-    {collapsed ? null : <ScrollView ref={ref} horizontal showsHorizontalScrollIndicator={false}
-      scrollEventThrottle={64} onScroll={event => setOffset(event.nativeEvent.contentOffset.x)}
-      contentContainerStyle={styles.rail}>{children}</ScrollView>}
-  </View>;
-}
-
-export function DetailPeopleRail({ title, people, palette, onOpen }) {
-  if (!people.length) return null;
-  return <DetailRail title={title} palette={palette}>
-    {people.map((person, index) => <View key={`${person.id}-${index}`} style={styles.railItem}>
-      <OverlayCard src={person.image} title={person.name} palette={palette} width={128} height={192}
-        accessibilityLabel={person.role ? `${person.name}, ${person.role}` : person.name}
-        disabled={!onOpen || !person.personId} onPress={() => onOpen(person)} />
-    </View>)}
-  </DetailRail>;
-}
-
-
-/** The episode page's cast and crew: a three-column grid that opens six, then "Show more". */
-export function DetailPeopleGrid({ title, people, palette, onOpen, moreLabel = 'Show more', lessLabel = 'Show less' }) {
-  const [all, setAll] = React.useState(false);
-  const [collapsed, setCollapsed] = React.useState(false);
-  if (!people.length) return null;
-  const shown = all ? people : people.slice(0, 6);
-  return <View style={styles.block}>
-    <View style={styles.blockHeader}>
-      <Text accessibilityRole="header" style={[styles.blockTitle, { color: palette.text }]}>{title}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel={collapsed ? `Expand ${title}` : `Collapse ${title}`}
-        accessibilityState={{ expanded: !collapsed }} onPress={() => setCollapsed(value => !value)} style={styles.railControl}>
-        <View style={collapsed ? null : styles.flipped}><Icon spec={actionIcons.chevronDown} size={18} color={palette.text} /></View>
-      </Pressable>
-    </View>
-    {collapsed ? null : <>
-      <View style={styles.relatedGrid}>
-        {shown.map((person, index) => <View key={`${person.id}-${index}`} style={styles.relatedCell}>
-          <OverlayCard src={person.image} title={person.name} palette={palette} width={2} height={3} fillWidth
-            accessibilityLabel={person.role ? `${person.name}, ${person.role}` : person.name}
-            disabled={!onOpen || !person.personId} onPress={() => onOpen(person)} />
-        </View>)}
-      </View>
-      {people.length > 6 ? <Pressable accessibilityRole="button" onPress={() => setAll(value => !value)} style={styles.showMore}>
-        <Text style={[styles.linkText, { color: palette.link }]}>{all ? lessLabel : moreLabel}</Text>
-      </Pressable> : null}
-    </>}
-  </View>;
-}
-
-export function DetailPosterRail({ title, items, palette, onOpen }) {
-  if (!items.length) return null;
-  return <DetailRail title={title} palette={palette}>
-    {items.map(item => <View key={item.key} style={styles.railItem}>
-      <OverlayCard src={item.image} title={item.title} palette={palette} width={100} height={150}
-        accessibilityLabel={item.title} onPress={() => onOpen?.(item)} />
-    </View>)}
-  </DetailRail>;
-}
-
 /** The web related-media grid (franchise collection, DLC): three cards a row, current title outlined. */
 export function DetailRelatedGrid({ title, items, palette, onOpen, current, moreLabel = 'Show more', lessLabel = 'Show less' }) {
   const [all, setAll] = React.useState(false);
@@ -720,54 +423,6 @@ export function DetailIssueCards({ title = 'Issues', rows, total, loading, error
         <Text style={[styles.linkText, { color: palette.link }]}>{`Show ${Math.min(20, total - rows.length)} more`}</Text>
       </Pressable> : null}
     </>}
-  </View>;
-}
-
-/** A titled card of plain names, one per line (the web Studios card). */
-export function DetailListCard({ title, items, palette, onOpen }) {
-  if (!items.length) return null;
-  return <View style={styles.block}>
-    <Text accessibilityRole="header" style={[styles.blockTitle, { color: palette.text }]}>{title}</Text>
-    <View style={[styles.card, styles.listCard, { backgroundColor: palette.surface }]}>
-      {items.map(item => typeof item === 'object' && item.id && onOpen
-        ? <Pressable key={item.id} accessibilityRole="link" onPress={() => onOpen(item)}>
-          <Text style={[styles.infoValue, { color: palette.textSecondary }]}>{item.name}</Text>
-        </Pressable>
-        : <Text key={typeof item === 'object' ? item.id || item.name : item} style={[styles.infoValue, { color: palette.textSecondary }]}>{typeof item === 'object' ? item.name : item}</Text>)}
-    </View>
-  </View>;
-}
-
-export function DetailSeasonSelector({ seasons, activeNumber, label, onSelect, palette }) {
-  if (!seasons || seasons.length < 2) return null;
-  return <ScrollView horizontal showsHorizontalScrollIndicator={false} accessibilityLabel={label}
-    contentContainerStyle={styles.seasonRow}>
-    {seasons.map(season => {
-      const active = Number(season.number) === Number(activeNumber);
-      return <Pressable key={season.key} accessibilityRole="button" accessibilityState={{ selected: active }}
-        onPress={() => onSelect(season)}
-        style={[styles.seasonChip, {
-          backgroundColor: active ? palette.accentStrong : palette.surface,
-          borderColor: active ? palette.accentStrong : palette.border,
-        }]}>
-        <Text style={[styles.linkText, { color: active ? palette.accentContrast : palette.textSecondary }]}>{season.title}</Text>
-        {season.countLabel ? <Text style={[styles.scoreLabel, { color: active ? palette.accentContrast : palette.textMuted }]}>{season.countLabel}</Text> : null}
-      </Pressable>;
-    })}
-  </ScrollView>;
-}
-
-export function DetailStepper({ previous, next, labels, onOpen, palette }) {
-  if (!previous && !next) return null;
-  return <View style={styles.stepper}>
-    {previous ? <Pressable accessibilityRole="button" onPress={() => onOpen(previous)}
-      style={[styles.step, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-      <Text numberOfLines={1} style={[styles.linkText, { color: palette.textSecondary }]}>{`‹ ${labels.previous}`}</Text>
-    </Pressable> : <View style={styles.step} />}
-    {next ? <Pressable accessibilityRole="button" onPress={() => onOpen(next)}
-      style={[styles.step, { borderColor: palette.border, backgroundColor: palette.surface }]}>
-      <Text numberOfLines={1} style={[styles.linkText, { color: palette.textSecondary }]}>{`${labels.next} ›`}</Text>
-    </Pressable> : <View style={styles.step} />}
   </View>;
 }
 

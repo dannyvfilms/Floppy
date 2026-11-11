@@ -1,5 +1,8 @@
 import { expectObject } from './payloadGuard.js';
 
+// Search endpoints. Library and online results, source pills, suggestions and
+// parent pickers all come from the server in the shapes the web page renders.
+
 const STATUS_LABELS = {
   0: 'Planning',
   1: 'In progress',
@@ -94,6 +97,7 @@ export function searchQuery({ search, limit = 20, offset = 0, source } = {}) {
 // Images may be server-relative; the app needs absolute addresses.
 export function suggestionsFromPayload(payload, serverUrl = '') {
   const rows = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
+  // A null row is skipped, like the other mappers (tagsFromPayload etc.).
   return rows.filter(row => row && typeof row === 'object').map((row, index) => ({
     id: String(row.id ?? index),
     title: row.title || '',
@@ -101,6 +105,7 @@ export function suggestionsFromPayload(payload, serverUrl = '') {
     image: row.image && row.image.startsWith('/') ? `${serverUrl}${row.image}` : row.image || null,
     mediaType: row.identity?.mediaType || '',
     identity: row.identity || null,
+    // Saved items carry their web detail URL; Detail resolves it to an identity.
     href: row.url || '',
     url: row.url || '',
   }));
@@ -128,7 +133,8 @@ export function createRemoteSearchActions(request, { suggestionsViaWeb = false, 
   return {
     mode: 'server',
     // One typeahead for both apps, so the same query gives the same results in the same order.
-    // It is the Django view, which reads the session, so a token sign-in keeps the media list.
+    // It is the Django view, which reads the session; a token sign-in reads the same
+    // typeahead from the API (loadSuggestions) and keeps the media list as a fallback.
     ...(suggestionsViaWeb ? {
       async searchSuggestions({ search, mediaType } = {}) {
         const payload = await request('/search/suggestions', {
@@ -137,6 +143,17 @@ export function createRemoteSearchActions(request, { suggestionsViaWeb = false, 
         return suggestionsFromPayload(payload, serverUrl);
       },
     } : {}),
+    searchLocal({ search, mediaType, limit = 20, offset = 0 } = {}) {
+      const path = mediaType && mediaType !== 'all'
+        ? `/api/v1/media/${encodeURIComponent(mediaType)}/`
+        : '/api/v1/media/';
+      return request(path, { query: searchQuery({ search, limit, offset }) });
+    },
+    searchOnline({ search, mediaType, source, limit = 20, offset = 0 } = {}) {
+      return request(`/api/v1/search/${encodeURIComponent(mediaType)}/`, {
+        query: searchQuery({ search, source, limit, offset }),
+      });
+    },
     loadSources({ mediaType = 'all' } = {}) {
       return request('/api/v1/search/sources/', { query: { media_type: mediaType } }).then(data => expectObject(data, 'Search'));
     },
@@ -158,34 +175,23 @@ export function createRemoteSearchActions(request, { suggestionsViaWeb = false, 
     createMusic({ kind, id } = {}) {
       return request('/api/v1/search/music/create/', { method: 'POST', body: { kind, id } });
     },
-    searchLocal({ search, mediaType, limit = 20, offset = 0 } = {}) {
-      const path = mediaType && mediaType !== 'all'
-        ? `/api/v1/media/${encodeURIComponent(mediaType)}/`
-        : '/api/v1/media/';
-      return request(path, { query: searchQuery({ search, limit, offset }) });
-    },
-    searchOnline({ search, mediaType, source, limit = 20, offset = 0 } = {}) {
-      return request(`/api/v1/search/${encodeURIComponent(mediaType)}/`, {
-        query: searchQuery({ search, source, limit, offset }),
-      });
-    },
   };
 }
 
 export function createLocalSearchActions(reason) {
   const local = async () => ({ local: true, reason });
-  const reject = async () => { throw new Error(reason); };
+  const unavailable = async () => { throw new Error(reason); };
   return {
     mode: 'local',
     reason,
     searchLocal: local,
     searchOnline: local,
-    loadSources: reject,
-    loadSuggestions: reject,
-    loadResults: reject,
-    loadParents: reject,
-    loadManualOptions: reject,
-    createManualEntry: reject,
-    createMusic: reject,
+    loadSources: unavailable,
+    loadSuggestions: unavailable,
+    loadResults: unavailable,
+    loadParents: unavailable,
+    loadManualOptions: unavailable,
+    createManualEntry: unavailable,
+    createMusic: unavailable,
   };
 }

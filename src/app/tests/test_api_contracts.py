@@ -419,6 +419,7 @@ class OpenAPIArtifactTests(SimpleTestCase):
                 "parent_id",
                 "tracked",
                 "created_at",
+                "updated_at",
                 "score",
                 "scored_at",
                 "status",

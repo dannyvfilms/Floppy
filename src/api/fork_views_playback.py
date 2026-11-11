@@ -38,6 +38,7 @@ from integrations.models import IntegrationToken
 from integrations.oauth_scope_info import has_full_account_access
 
 from .authentication import APIKeyAuthentication, BearerAuthentication
+from .errors import failure_response
 from .helpers import paginate_data, parse_limit_offset, try_parse_datetime_input
 
 logger = logging.getLogger(__name__)
@@ -738,9 +739,8 @@ class PlaybackProgressView(drf_views.APIView):
                 create=True,
             )
         except Exception as e:
-            return Response(
-                {"detail": "Could not resolve media.", "errors": str(e)},
-                status=HTTP.NOT_FOUND,
+            return failure_response(
+                "Could not resolve media.", e, status=HTTP.NOT_FOUND
             )
         if item is None:
             return Response(
@@ -842,9 +842,8 @@ class PlaybackProgressView(drf_views.APIView):
                 create=False,
             )
         except Exception as e:
-            return Response(
-                {"detail": "Could not resolve media.", "errors": str(e)},
-                status=HTTP.NOT_FOUND,
+            return failure_response(
+                "Could not resolve media.", e, status=HTTP.NOT_FOUND
             )
         if item is None:
             return Response(
@@ -852,10 +851,21 @@ class PlaybackProgressView(drf_views.APIView):
                 status=HTTP.NOT_FOUND,
             )
 
+        # A position is bucket-agnostic, but the same provider media can have
+        # an Item row per library bucket and a check-in may have saved against
+        # any of them, so clear every one or the delete can succeed and leave
+        # the position behind (#1873).
+        same_media = Item.objects.filter(
+            source=item.source,
+            media_id=item.media_id,
+            media_type=item.media_type,
+            season_number=item.season_number,
+            episode_number=item.episode_number,
+        )
         with state_transaction(request.user.pk):
             PlaybackProgress.objects.filter(
                 user=request.user,
-                item=item,
+                item__in=same_media,
             ).delete()
         return Response(status=HTTP.NO_CONTENT)
 

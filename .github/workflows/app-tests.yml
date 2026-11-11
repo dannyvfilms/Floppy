@@ -270,7 +270,9 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
-  lint:
+  release_lint:
+    name: release lint
+    # Keep this check separate from the required PR lint job.
     if: github.event_name != 'pull_request'
     uses: ./.github/workflows/lint.yml
 

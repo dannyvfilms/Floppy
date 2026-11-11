@@ -44,6 +44,18 @@ function AdvancedBody({ transport, payload }) {
     }
   }
 
+  // Everyone may download the diagnostic report; the full log stays superuser-only.
+  async function downloadDiagnostics() {
+    setLogs({ busy: true, success: '', error: '' });
+    try {
+      const text = await transport.downloadDiagnostics();
+      await saveTextFile({ name: `floppy-diagnostics-${stamp()}.txt`, text: typeof text === 'string' ? text : '', mimeType: 'text/plain' });
+      setLogs({ busy: false, success: 'Diagnostic report saved. It holds server details and recent warnings and errors only.', error: '' });
+    } catch (cause) {
+      setLogs({ busy: false, success: '', error: cause?.message || 'Could not download the diagnostic report.' });
+    }
+  }
+
   async function saveImageCache(enabled) {
     setImage(current => ({ ...current, busy: true, success: '', error: '' }));
     try {
@@ -91,7 +103,7 @@ function AdvancedBody({ transport, payload }) {
   return <SettingsCard title="Advanced" palette={{ ...settingsPalette, pageCards: true }}
     icon={<Icon spec={settingsNavIcons['vertical-sliders']} color={settingsPalette.link} size={24} />}>
     <SettingsAdvancedView heading={false} labels={payload.labels || {}} icons={payload.icons || {}}
-    logs={{ ...initial.logs, ...logs, onDownloadLogs: downloadLogs, onOpenUrl: openUrl }}
+    logs={{ ...initial.logs, ...logs, onDownloadLogs: downloadLogs, onDownloadDiagnostics: downloadDiagnostics, onOpenUrl: openUrl }}
     imageCache={{ isSuperuser: initial.isSuperuser, ...image, onSave: saveImageCache, onClear: clearImageCache }}
     cacheManagement={{ ...cache, onClear: clearCache }}
     serverPort={{

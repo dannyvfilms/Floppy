@@ -258,3 +258,28 @@ test('watch providers come from the metadata projection', () => {
   });
   assert.deepEqual(model.watchProviders, [{ market: 'US', names: ['Netflix'] }]);
 });
+
+test('trackingFromPayloads carries the ids the write controls need', async () => {
+  const { trackingFromPayloads } = await import('./detailTransportCore.js');
+  const tracked = trackingFromPayloads({
+    identity: { mediaType: 'movie', source: 'tmdb', mediaId: '603' },
+    metadata: { item_id: 12, attribution: { source_url: 'https://example.test/603', source: 'tmdb' } },
+    state: { tracked: true, consumptions: [
+      { consumption_id: 4, status: 3, score: 8, end_date: '2026-01-02T00:00:00Z', notes: 'Again' },
+      { consumption_id: 3, status: 3, score: null, end_date: null, notes: '' },
+    ] },
+  });
+  assert.equal(tracked.catalogItemId, 12);
+  assert.equal(tracked.tracked, true);
+  assert.equal(tracked.tracking.id, 4);
+  assert.equal(tracked.score, 8);
+  assert.equal(tracked.plays, 1);
+  assert.deepEqual(tracked.notes.map(note => [note.id, note.text]), [['4', 'Again']]);
+  assert.deepEqual(tracked.history.map(entry => entry.id), ['4', '3']);
+  assert.equal(tracked.sourceUrl, 'https://example.test/603');
+  assert.equal(tracked.sourceName, 'TMDB');
+  // Untracked, or both reads failed: every control that needs an id stays off.
+  const none = trackingFromPayloads({ identity: { source: 'manual' }, metadata: null, state: null });
+  assert.deepEqual([none.tracked, none.tracking, none.catalogItemId, none.notes, none.history, none.sourceUrl],
+    [false, null, null, [], [], '']);
+});

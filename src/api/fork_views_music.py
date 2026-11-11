@@ -39,6 +39,7 @@ from app.services.music import (
 from app.services.music_scrobble import dedupe_artist_albums
 from app.tasks_bulk_plays import bulk_music_plays_task
 
+from .errors import failure_response
 from .helpers import paginate_data, parse_limit_offset, try_parse_datetime_input
 from .serializers import serialize_data
 
@@ -281,9 +282,8 @@ class MusicArtistsView(drf_views.APIView):
                     musicbrainz_id,
                 )
             except Exception as e:
-                return Response(
-                    {"detail": "Could not fetch artist.", "errors": str(e)},
-                    status=HTTP.BAD_GATEWAY,
+                return failure_response(
+                    "Could not fetch artist.", e, status=HTTP.BAD_GATEWAY
                 )
         else:
             return Response(
@@ -404,9 +404,8 @@ class MusicArtistSyncView(drf_views.APIView):
         try:
             count = sync_artist_discography(artist, force=True)
         except Exception as e:
-            return Response(
-                {"detail": "Discography sync failed.", "errors": str(e)},
-                status=HTTP.BAD_GATEWAY,
+            return failure_response(
+                "Discography sync failed.", e, status=HTTP.BAD_GATEWAY
             )
         if count:
             dedupe_artist_albums(artist)
@@ -465,9 +464,8 @@ class MusicArtistMembersSyncView(drf_views.APIView):
         try:
             count = sync_artist_members(artist, force=True)
         except Exception as e:
-            return Response(
-                {"detail": "Artist member sync failed.", "errors": str(e)},
-                status=HTTP.BAD_GATEWAY,
+            return failure_response(
+                "Artist member sync failed.", e, status=HTTP.BAD_GATEWAY
             )
         return Response({"synced_members": count or 0}, status=HTTP.OK)
 
@@ -661,7 +659,7 @@ class MusicAlbumSyncView(drf_views.APIView):
         result = sync_album_metadata(album)
         if result["error"]:
             return Response(
-                {"detail": "Album metadata sync failed.", "errors": result["error"]},
+                {"detail": "Album metadata sync failed."},
                 status=HTTP.BAD_GATEWAY,
             )
         return Response(

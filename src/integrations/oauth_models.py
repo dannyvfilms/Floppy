@@ -10,6 +10,7 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+from app.public_errors import PublicMessageError
 from integrations.models import IntegrationToken
 from integrations.oauth_scope_info import (
     FIRST_PARTY_CLIENT_ID,
@@ -51,6 +52,10 @@ def default_oauth_scopes() -> list[str]:
 def normalise_user_code(user_code: str) -> str:
     """Canonicalise a human-entered device user code."""
     return "".join(character for character in user_code.upper() if character.isalnum())
+
+
+class DeviceAuthorizationStateError(PublicMessageError, ValueError):
+    """The device authorisation is already settled. The message is fixed text."""
 
 
 class OAuthClient(models.Model):
@@ -285,7 +290,7 @@ class OAuthDeviceAuthorization(models.Model):
         """Approve this request for the authenticated user."""
         if self.is_terminal:
             msg = "This device authorisation can no longer be approved."
-            raise ValueError(msg)
+            raise DeviceAuthorizationStateError(msg)
         self.user = user
         self.approved_at = timezone.now()
         self.save(update_fields=["user", "approved_at"])
@@ -294,7 +299,7 @@ class OAuthDeviceAuthorization(models.Model):
         """Deny this request for the authenticated user."""
         if self.is_terminal:
             msg = "This device authorisation can no longer be denied."
-            raise ValueError(msg)
+            raise DeviceAuthorizationStateError(msg)
         self.user = user
         self.denied_at = timezone.now()
         self.save(update_fields=["user", "denied_at"])

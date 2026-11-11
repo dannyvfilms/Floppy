@@ -571,14 +571,8 @@ def _all_scope_barcode_groups(request, query, groups):
     return sorted(by_type.values(), key=lambda g: order.get(g["media_type"], 99))
 
 
-def media_search_context(request, notify=None):
-    """Return the search context; ``notify`` receives provider errors (the API puts them in its payload)."""
-    return _search_context(request, notify)
-
-
-def _search_context(request, notify=None):
+def _search_context(request):
     """Return the template context for a search request, whatever its media type."""
-    notify = notify or (lambda message: messages.error(request, message))
     requested_media_type = request.GET.get("media_type", "")
     if request.user.is_authenticated:
         media_type = request.user.update_preference(
@@ -705,10 +699,11 @@ def _search_context(request, notify=None):
                 )
         except services.ProviderNotConfiguredError as exc:
             logger.warning("Search skipped for media_type=%s: %s", media_type, exception_summary(exc))
-            notify(str(exc))
+            messages.error(request, str(exc))
         except services.ProviderAPIError as exc:
             logger.warning("Search failed for media_type=%s: %s", media_type, exception_summary(exc))
-            notify(
+            messages.error(
+                request,
                 gettext("%(value_1)s is currently unavailable. Please try again shortly.")
                 % {"value_1": exc.provider_label},
             )
@@ -781,9 +776,9 @@ def _provider_result_sets(request, media_type, query, sources, page):
             with services.interactive_request_scope():
                 return services.search(
                     media_type, query, page, source, user=request.user, language=language
-                )
-        except Exception as exc:  # returned and handled by the caller
-            return exc
+                ), None
+        except Exception as exc:  # returned apart from the data, handled by the caller
+            return None, exc
         finally:
             if in_thread:
                 connection.close()
@@ -793,20 +788,20 @@ def _provider_result_sets(request, media_type, query, sources, page):
             fetched = list(pool.map(lambda source: fetch(source, True), sources))
     else:
         fetched = [fetch(source) for source in sources]
-    for source, data in zip(sources, fetched, strict=True):
-        if isinstance(data, services.ProviderNotConfiguredError):
+    for source, (data, error) in zip(sources, fetched, strict=True):
+        if isinstance(error, services.ProviderNotConfiguredError):
             continue
-        if isinstance(data, services.ProviderAPIError):
+        if isinstance(error, services.ProviderAPIError):
             logger.warning(
                 "Search failed for media_type=%s source=%s: %s",
                 media_type,
                 source,
-                exception_summary(data),
+                exception_summary(error),
             )
             unavailable.append(metadata_resolution.metadata_provider_label(source))
             continue
-        if isinstance(data, Exception):
-            raise data
+        if error is not None:
+            raise error
         if not data.get("results"):
             continue
         if data.get("fallback_source") and data["fallback_source"] != source:
@@ -1302,6 +1297,7 @@ def _local_music_artist_model(tracker, user, request):
             "kind": "status",
             "status": tracker.status,
             "label": tracker.status,
+            "colorClass": app_tags.status_color(tracker.status),
         },
         "cornerChips": [],
         "titleLinks": [],
@@ -1344,6 +1340,7 @@ def _local_music_album_model(tracker, user, request):
             "kind": "status",
             "status": tracker.status,
             "label": tracker.status,
+            "colorClass": app_tags.status_color(tracker.status),
         },
         "cornerChips": [],
         "titleLinks": [],

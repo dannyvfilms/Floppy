@@ -264,7 +264,7 @@ class HistoryEntryView(drf_views.APIView):
         except HistoryRecordNotFoundError:
             return Response({"detail": "History record not found."}, status=HTTP.NOT_FOUND)
         except HistoryDeletionError as exc:
-            return Response({"detail": str(exc)}, status=HTTP.INTERNAL_SERVER_ERROR)
+            return Response({"detail": exc.message}, status=HTTP.INTERNAL_SERVER_ERROR)
         return Response(status=HTTP.NO_CONTENT)
 
 

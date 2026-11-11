@@ -34,6 +34,8 @@ whether a status is true; the register header says how to check that, and
 
 ## SHELL
 
+Sidebar retains the accepted text metrics and anchored menu presentation while platform keyboard/menu-layer behavior stays in adapters. Account-backed pins and the legacy local-storage adoption path remain. Ownership and fallback retirement conditions are unchanged; the integration does not establish new iOS or Android runtime acceptance.
+
 The saved-view/sidebar fallback adapter loads before Alpine and also registers immediately when Alpine is already running, preserving its once guard. Browser regression coverage checks script order, late real-fallback insertion and Explore toggling without page errors. Shared Sidebar remains React-owned with the same coexisting server fallback and retirement conditions; actual iOS/Android runtime was not reverified by this browser bootstrap fix.
 
 The Django head conditionally initializes the development toolbar when its root exists. Provider browser coverage exercises responses without that root. Shell ownership and existing fallback retirement conditions are unchanged; iOS and Android do not consume this browser adapter and were not verified for it.
@@ -48,8 +50,8 @@ Status: `Partial / coexisting`
 - `src/templates/app/components/sidebar_navigation_items.html`
 - `src/templates/app/components/sidebar_pin_menu.html`
 - `src/templates/base.html`
-- `frontend/ui/GlobalSearch.jsx`, `frontend/ui/mountGlobalSearch.jsx`, `frontend/ui/global-search.css` (header search form inside `base.html`; suggestions stay a server fragment; shared Shell stacks Expo search menus above following screen content, verified by pointer selection over a Settings card)
-- `frontend/ui/Sidebar.jsx`, `frontend/ui/mountSidebar.jsx`, `frontend/ui/sidebar.css`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html` and Expo; Explore overlays the media-type rows at its content height, capped to the sidebar viewport, scrolls its options when needed and closes when the last option is pinned; native adapter supplies 44-point rows, a 25-point top inset on iOS side-rail layouts, margins accounting for each safe-area inset, and hides Appearance; the onboarding banner stays a server slot)
+- `frontend/ui/GlobalSearch.jsx`, `frontend/ui/mountGlobalSearch.jsx`, `frontend/ui/global-search.css` (header search form inside `base.html`; suggestions stay a server fragment)
+- `frontend/ui/Sidebar.jsx`, `frontend/ui/mountSidebar.jsx`, `frontend/ui/sidebar.css`, `frontend/ui/dropdownMetrics.js`, `src/app/sidebar_model.py` (signed-in sidebar inside `base.html` and Expo; Explore overlays the media-type rows at its content height, capped to the sidebar viewport, scrolls its options when needed and closes when the last option is pinned; native adapter supplies 44-point rows, a 25-point top inset on iOS side-rail layouts, margins accounting for each safe-area inset, and hides Appearance; the onboarding banner stays a server slot)
 - `native-proof/app/surfaces/ShellSlot.jsx`, `native-proof/app/surfaces/NativeShell.ios.jsx`, `native-proof/app/surfaces/NativeShell.jsx`, `native-proof/app/surfaces/NativeRoot.ios.jsx`, `native-proof/app/surfaces/NativeRoot.jsx`, `native-proof/app/safeAreaSpacing.mjs`, `native-proof/app/surfaces/menuGeometry.mjs`, `native-proof/app/routes/_layout.jsx`, `native-proof/app/routes/index.jsx`, `native-proof/App.js` (Expo navigation model, native toolbar and drawer/canvas transition; iOS animates drawer geometry in both fold directions unless Reduce Motion is enabled; an iOS screen-scoped safe-area provider supplies live horizontal insets while the navigator supplies vertical insets; the foreground shell reserves those insets and shared spacing subtracts them from the usual Search and sidebar margins; `useVerticalBarEdgeIOS` supplies the rail trait and reserved regions remain for fold layout; Android and web retain the shared modal path)
 - `frontend/ui/Icon.jsx`, `src/app/icon_specs.py` (shared icon shapes for React; used by the sidebar and the card hover buttons)
 - `src/app/card_events.py` (the floppyCardUpdate event sent by `media_save` and the score views so React cards refresh their status chip and rating)
@@ -176,7 +178,7 @@ Status: `Legacy`
 
 ## ERRORS-DOCS
 
-Status: `Legacy`
+Status: `Partial / coexisting`
 
 - `src/templates/400.html`
 - `src/templates/403.html`
@@ -186,7 +188,11 @@ Status: `Legacy`
 - `src/templates/api/docs.html`
 - `src/templates/includes/error_report_panel.html`
 
+Interactive/native recovery uses shared ErrorRecovery and ErrorReportPanel. The native traceback wrapper explicitly selects the shared module; web keeps its existing adapter. Root error documents and API docs remain server-owned fallbacks. Native-priority dependency tests pass; native error-screen appearance remains unverified.
+
 ## MEDIA-CARD
+
+Shared MediaCard preserves the accepted status-specific icon shapes and colors, with provider icons as a fallback for unknown statuses. Native action hosts and progress renderers remain supplied by adapters. Ownership and remaining server consumers are unchanged; browser and native verification are recorded independently.
 
 Status: `Web Migrated`
 
@@ -202,7 +208,7 @@ PeopleScreen now consumes canonical credit card models with an opt-in hover meta
 
 Status: `Partial / coexisting`
 
-- `frontend/ui/ModalHost.web.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted once from `base.html`; the card hover buttons and the Add-to-lists buttons open it through `floppy-open-modal`; the Track body is still the server form, see the register)
+- `frontend/ui/ModalHost.web.jsx`, `frontend/ui/mountModalHost.jsx` (shared popup host, mounted once from `base.html`; the card hover buttons and the Add-to-lists buttons open it through `floppy-open-modal`; the Track body is still the server form, see the register; unmounting a host disposes the React islands inside it, so the Track dialog is not stranded when Escape closes the popup mid-load)
 - `frontend/ui/ListsFormView.jsx`
 - `frontend/ui/modal-forms.css`
 
@@ -263,11 +269,11 @@ Status: `Web Migrated`
 - `frontend/ui/AlphabetBar.native.jsx`
 ## FILTERS
 
-`savedViews.js` retains browser-only controller registration and storage/Sortable behavior for the shared Sidebar's coexisting server fallback. Early and late Alpine startup are supported without duplicate binding. Browser regression covers fallback initialization and Explore; saved-view reorder and actual iOS/Android runtime were not reverified. Existing filter ownership and fallback retirement conditions remain unchanged.
+Status: `Partial / coexisting`
 
-Status: `Legacy`
-
-- `native-proof/app/surfaces/FiltersSlot.jsx` (`LibrarySettingsMenu`) and native `LibraryScreen` adapt persisted entry grouping, Games Group By, saved views and range/field queries into shared `FilterBar`. Grouping sections opt out of clear counts. Status `Partial / coexisting`, readiness `Primitives`; legacy menus below retire with their owning page adapters. Browser preference write/persistence verified; final menu layout and control recheck pending. iOS and Android runtime not verified.
+- `frontend/ui/FilterBar.jsx`
+- `native-proof/app/screens/LibraryScreen.jsx`
+- `native-proof/app/data/libraryTransportCore.js`
 
 - `src/static/js/libraryFilterState.js`
 - `src/static/js/savedViews.js`
@@ -351,6 +357,8 @@ Status: `Partial / coexisting`
 
 ## SEARCH
 
+GlobalSearch and SearchResults retain the accepted menu/results geometry and theme accent. Browser keyboard overlap stays in keyboardOverlap.web.js; the native adapter supplies its own overlap hook and WindowedRail. Token results, manual-entry navigation and streaming provider rows remain. Existing ownership and fallback retirement conditions are unchanged; native runtime remains separately verified.
+
 ParentPicker's native manual-entry consumer opts into an unframed search field. The web create-entry template places each island's configuration within the host parent required by the loader, and the adapter explicitly imports shared presentation rather than resolving itself; its fallback remains. The mounted web picker retains its plain input, overlaid results and original result IDs. The TV manual-entry browser acceptance test covers parent search and selection; both web roots mounted and Expo also selected Deep Field. Ownership remains partial/coexisting and retirement still requires complete parity and web adoption. iOS and Android not verified.
 
 - `src/templates/app/icons/magnifying-glass.svg` (connected SVG shared by GlobalSearch, CollectionBrowser, ProviderDirectoryView and remaining server-template search controls; shared SearchIcon is mapped under SHELL)
@@ -373,6 +381,8 @@ Status: `Partial / coexisting`
 
 ## RAILS
 
+Rail retains optional per-item width and card windowing APIs. Native Home/Search use WindowedRail to mount nearby cards; web retains its established DOM/image lazy-loading behavior. This native-specific mount policy is documented beside WindowedRail and is not a visual redesign. Existing ownership, web consumers and retirement conditions remain.
+
 Status: `Legacy`
 
 - `src/static/js/horizontal-scroll.js`
@@ -381,6 +391,8 @@ Status: `Legacy`
 
 ## HOME
 
+HomeView forwards the shared card/progress renderers and row-title callbacks. HomeShelves retains the accepted common card widths and the three-request FIFO fetch gate on web and Expo. Mixed/video rows do not adopt a separate widening policy. Django placeholder fallback suppression and single-flight row builds remain; native has no HTMX fallback. Existing ownership and retirement conditions remain. Final integration browser and native evidence is recorded separately.
+
 Status: `Partial / coexisting`
 
 - `src/templates/app/components/home_artwork_poller.html`
@@ -388,6 +400,10 @@ Status: `Partial / coexisting`
 - `src/templates/app/components/home_grid.html`
 - `src/templates/app/components/home_groups.html`
 - `src/templates/app/home.html`
+- Web parity pass against v26.10.29: `frontend/pages/HomeView.jsx` forwards `renderCard` and `renderProgress`; `frontend/ui/HomeShelves.jsx` keeps the accepted common shelf width; `frontend/ui/Rail.jsx` retains optional per-item sizing for other consumers.
+- Home row title links (#1899): `frontend/ui/HomeShelves.jsx` (`onOpenRowTitle`, `canOpenRowTitle`), `frontend/ui/mountHome.jsx`, `native-proof/app/screens/HomeScreen.jsx`, `native-proof/app/screens/LibraryScreen.jsx` (`filtersFromQuery`, `params.query`) and `native-proof/app/data/homeRowDestinationCore.js`.
+
+- `frontend/ui/fetchGate.js` (shared Home row request concurrency).
 
 ## PLAYBACK
 
@@ -415,7 +431,7 @@ Status: `Legacy`
 
 Status: `Partial / coexisting` — Expo uses the shared detail composition; the browser page remains server-owned.
 
-- Shared `DetailPageView`/`DetailEpisodePageView`, `DetailChipCard`, `DetailListCard`, `DetailIssueCards` and `DetailEpisodeCards`: `Partial / coexisting`, `Primitives`; native `DetailScreen` owns navigation, issue-specific dialog targets, studio links, mapped 25-row anime previews with viewer-owned rating-only projection, and field writes through `detailTransport.js`/`mediaCardTransport.js`. TV Details uses optional computed metadata total runtime with the shared server model property and hides API-only episode-season helpers; browser full reload verified AIR DATES→Status→RUNTIME(3SEASONS),7h44min·19episodes and absent technical rows, matching the web. Outlined Genres and anime layouts are native-only props; anime Rate is a sibling of its episode links. Web detail/episode shells below remain until their composition and interactions migrate. Browser provider sections and mapped anime list observed. Native comic Add and the web Track bridge succeeded; new issue/tracker/history were restored to the captured baseline. Anime watched and unwatched Rate save/reopen/clear and Add watch succeeded; unwatched rating retained Unwatched. Test-only mapped parents/history were restored with existing MAL tracking unchanged. Native track datetime-local submission sends an explicit instant; browser save/reopen preserved Nov 10, 2026 04:19:00 exactly. First page25 and Load more were observed; test watches, ratings and new mapped parents/history were restored with existing MAL tracking unchanged. Later-page loading, remaining collection actions and restored comic Source/Notes/No Status fields remain unverified. iOS and Android runtime not verified.
+- Shared `DetailView` slots (`actionsSlot`, `scoreSlot`, `sectionsSlot`, `childrenSlot`, `onOpenPerson`) with `DetailActionBar`, `DetailScoreRow`, `DetailCollectionBlock`, `DetailNotesBlock`, `DetailRelatedGrid`, `DetailIssueCards`, `DetailEpisodeCards` and `DetailEpisodeHeader`: `Partial / coexisting`, `Primitives`; native `DetailScreen` owns the page payload and navigation, and `surfaces/DetailFeatures.jsx` owns the track dialog and check-in, tags, notes, lists, activity history, progress card, collection copies, cover and edition pickers, Seerr and metadata sync through `detailTransport.js`/`mediaCardTransport.js`. Web detail and episode shells below remain until their composition and interactions migrate. Browser: compared with the web pages at 375px through the Expo web build (film, show, season, episode, anime, comic, book); one check-in, note, list membership, tag and track save were written and undone. iOS and Android runtime not verified.
 
 - `src/templates/app/components/detail_action_buttons.html`
 - `src/templates/app/components/detail_activity_subtitle.html`
@@ -430,9 +446,17 @@ Status: `Partial / coexisting` — Expo uses the shared detail composition; the 
 - `src/templates/app/components/trakt_series_graph_fragment.html`
 - `src/templates/app/components/video_details_extra.html`
 - `src/templates/app/media_details.html`
-- `native-proof/app/screens/DetailScreen.jsx`, `native-proof/app/surfaces/detailModel.js`, `native-proof/app/data/detailTransportCore.js` (+ `detailTransportCore.test.mjs`) (Expo detail screen: composes the shared DetailView section plan over `/metadata/`, `/state/`, the media detail GET and per-season episodes; drives the shared TrackDialog and DetailChildren through `mediaCardTransport.js`; the demo "Quiet Orbit" model is removed; identity resolves from cards, suggestions, releases and base-path-tolerant web hrefs)
-- `frontend/ui/DetailPage.jsx`
-- `frontend/ui/DetailEpisode.jsx` (episode page top section: centered still, show title, season/episode line, episode picker, track button with notes, lists and history buttons; consumer `DetailEpisodePageView` in `frontend/pages/DetailView.jsx`, mounted by the Expo `DetailScreen` for episode identities; the web page `src/templates/app/episode_details.html` stays server-rendered)
+- `native-proof/app/screens/DetailScreen.jsx`
+- `native-proof/app/surfaces/DetailSlot.jsx`
+- `native-proof/app/surfaces/DetailFeatures.jsx`
+- `native-proof/app/data/detailTransport.js`
+- `native-proof/app/surfaces/detailIdentity.mjs`
+- `src/api/fork_views_detail.py`
+- `src/api/fork_urls.py`
+- `frontend/pages/DetailView.jsx`
+- `frontend/ui/DetailComposition.jsx`
+- `frontend/ui/DetailPage.jsx` (action bar, score row, collection, notes, related grid, issue and episode cards; mounted by `native-proof/app/surfaces/DetailFeatures.jsx`)
+- `frontend/ui/DetailEpisode.jsx` (episode title line and picker; mounted by `native-proof/app/surfaces/DetailFeatures.jsx`)
 
 ## CHILDREN
 
@@ -456,6 +480,8 @@ Status: `Partial / coexisting` — browser rows remain server-owned; Expo render
 - `frontend/ui/DetailChildren.jsx`
 
 ## TRACKING
+
+TrackForm keeps the accepted tabbed dialog and field composition. Date shortcuts retain runtime pairing, and mountTrackForm submits the normalized payload and watches episode popup state. SelectField retains its original filter chevron with additive style props for other consumers. Existing ownership and retirement conditions remain; browser interaction coverage and native runtime are distinct checks.
 
 Shared `ManualEntryView` is consumed by native `SearchScreen` create-entry mode and the shell /create route. Search transport supplies structured options, owner-scoped parents and web-form validation. Browser manual-entry/remaining popup consumers stay server-owned until parity and web adoption. Expo searched and selected Deep Field, created season 99, and the test entry was removed and verified absent; final layout comparison pending. iOS/Android not verified, Primitives.
 
@@ -533,7 +559,7 @@ Status: `Legacy`
 
 ## ARTWORK
 
-Status: `Legacy`
+Status: `Partial / coexisting`
 
 - `src/templates/app/components/cover_change_section.html`
 - `src/templates/app/components/edition_picker_result.html`
@@ -541,6 +567,13 @@ Status: `Legacy`
 - `src/templates/app/components/hardcover_edition_results.html`
 - `src/templates/app/components/image_picker.html`
 - `src/templates/app/components/image_picker_tiles.html`
+
+Shared ArtworkPicker and EditionPicker presentation is consumed by the browser tracking/detail mounts and native DetailFeatures. Browser adapters explicitly import the shared module to prevent self-resolution. Server fallback fragments remain until all entry points retain equivalent behavior and permissions. Browser resolution tests pass; picker actions on iOS and Android remain unverified.
+
+- `frontend/ui/ArtworkPicker.jsx`
+- `frontend/ui/ArtworkPicker.web.jsx`
+- `frontend/ui/mountArtworkPicker.jsx`
+- `frontend/ui/mountEditionPicker.jsx`
 
 ## MUSIC
 
@@ -671,6 +704,7 @@ Status: `Legacy`
 - `src/templates/app/components/taste_signals_genres.html`
 - `src/templates/app/statistics.html`
 - `src/templates/app/components/reading_consumption_section.html` (Books "Listening Time" card)
+- Web parity pass against v26.10.29: `frontend/ui/StatisticsSummary.jsx` caps the summary card text block at the card width.
 
 ## RELEASE-CALENDAR
 
@@ -1060,7 +1094,6 @@ The browser wizard remains server-owned. Native shared presentation coexists thr
 - `frontend/pages/OnboardingView.jsx`
 - `native-proof/app/screens/OnboardingScreen.jsx` (standalone App/ShellSlot consumer; source icons/hero, local reorder/toggles, inline forms/uploads and provider sign-in adapter)
 
-- `src/templates/users/components/onboarding_banner.html`
 - `src/templates/users/onboarding/_layout.html`
 - `src/templates/users/onboarding/components/connect_form.html`
 - `src/templates/users/onboarding/components/connect_oauth.html`
@@ -1124,6 +1157,8 @@ Status: `Partial / coexisting`
 
 PR #1878: the Track dialog adapter (`mountTrackForm.jsx`) posts its payload, mirrors the card's Alpine open flag when it has no legacy modal root, and `mediaCardForms.js` passes date shortcuts and runtime through to `TrackForm.jsx`; shared status options set `aria-checked`.
 
+Track dialog layout restore: `TrackForm.jsx`, `TrackFormTabs.jsx`, `SelectField.jsx`, `DateTimePicker.jsx`, `TagManagement.jsx` and `CollectionCopies.jsx` render the v26.10.29 layout (title bar, icon sidebar, two-column General grid, dropdown selects, date chips, Delete / Update footer) from the shared React form. Browser verified; iOS and Android not verified.
+
 - `frontend/auth/AccountSecurity.jsx`
 - `frontend/discover/DiscoverScreen.jsx`
 - `frontend/discover/mountDiscover.jsx`
@@ -1180,7 +1215,7 @@ PR #1878: the Track dialog adapter (`mountTrackForm.jsx`) posts its payload, mir
 - `frontend/settings/DataSettings.jsx`
 - `frontend/settings/HomeScreenEditor.jsx`
 - `frontend/settings/NotificationSettings.jsx`
-- `frontend/settings/island-reveal.css`
+- `frontend/settings/island-reveal.css` (the sidebar root is excluded from the hide rule; see the Shell navigation entry in the component register)
 - `frontend/settings/mountAbout.jsx`
 - `frontend/settings/mountAdvanced.jsx`
 - `frontend/settings/mountBackupStatus.jsx`
@@ -1188,8 +1223,6 @@ PR #1878: the Track dialog adapter (`mountTrackForm.jsx`) posts its payload, mir
 - `frontend/ui/ArtworkImage.jsx`
 - `frontend/ui/ArtworkImage.native.jsx`
 - `frontend/ui/ArtworkImage.web.jsx`
-- `frontend/ui/ArtworkPicker.jsx`
-- `frontend/ui/ArtworkPicker.web.jsx`
 - `frontend/ui/Badge.jsx`
 - `frontend/ui/BadgeTheme.web.jsx`
 - `frontend/ui/BulkActionBar.native.jsx`
@@ -1275,7 +1308,10 @@ PR #1878: the Track dialog adapter (`mountTrackForm.jsx`) posts its payload, mir
 - `native-proof/app/data/useMobileGridLayout.js`
 - `frontend/ui/SearchResults.web.jsx`
 - `frontend/ui/searchRows.js`
-- `frontend/ui/webShelfWidth.js`
+- `frontend/ui/shelfWidth.web.js`
+- `frontend/ui/keyboardOverlap.web.js`
+- `native-proof/app/data/useKeyboardOverlap.js`
+- `native-proof/app/surfaces/WindowedRail.jsx`
 - `frontend/ui/SelectField.jsx`
 - `frontend/ui/SetupGuide.jsx`
 - `frontend/ui/Shell.jsx`
@@ -1316,7 +1352,6 @@ PR #1878: the Track dialog adapter (`mountTrackForm.jsx`) posts its payload, mir
 - `frontend/ui/installPrompt.web.js`
 - `frontend/ui/markdown.js`
 - `frontend/ui/mediaCardForms.js`
-- `frontend/ui/mountArtworkPicker.jsx`
 - `frontend/ui/mountBulkEpisodeForm.jsx`
 - `frontend/ui/mountCacheStatus.jsx`
 - `frontend/ui/mountCheckInState.jsx`
@@ -1330,7 +1365,6 @@ PR #1878: the Track dialog adapter (`mountTrackForm.jsx`) posts its payload, mir
 - `frontend/ui/mountDetailRelated.jsx`
 - `frontend/ui/mountDeviceApproval.jsx`
 - `frontend/ui/mountDeviceConnect.jsx`
-- `frontend/ui/mountEditionPicker.jsx`
 - `frontend/ui/mountFilterBar.jsx`
 - `frontend/ui/mountHistoryFeed.jsx`
 - `frontend/ui/mountHome.jsx`

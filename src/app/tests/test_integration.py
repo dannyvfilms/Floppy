@@ -1,6 +1,7 @@
 import copy
 import os
 import re
+import time
 from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
@@ -209,7 +210,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
             search = touch_page.locator('[data-global-search-root][data-react-mounted="true"]')
             search.locator("#global-search").fill("breaking bad")
             search.get_by_role("button", name="Search", exact=True).click()
-            expect(touch_page.get_by_role("heading", name="Search Results")).to_be_visible()
+            expect(touch_page.get_by_role("heading", name="Online Results")).to_be_visible()
 
             card = touch_page.locator(".media-card").filter(has_text="Breaking Bad").first
             overlay = card.locator(".media-card-overlay")
@@ -241,7 +242,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                     card_box["x"] + card_box["width"],
                 )
 
-            touch_page.get_by_role("heading", name="Search Results").click()
+            touch_page.get_by_role("heading", name="Online Results").click()
             self.assertNotIn(
                 "media-card-revealed",
                 card.get_attribute("class") or "",
@@ -285,9 +286,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         try:
             page = touch_context.new_page()
             page.goto(self.live_server_url + "/")
-            card = page.get_by_role("link", name="Poster Action Test", exact=True).first
+            card = page.locator(".media-card").first
             expect(card).to_be_visible()
-            card.click()
+            card.locator("img.media-card-poster").first.tap()
             expect(page.get_by_role("button", name="Add to tracker")).to_be_visible()
             expect(page.get_by_role("button", name="Add to custom lists")).to_be_visible()
             expect(page.get_by_role("link", name="View your activity history")).to_be_visible()
@@ -333,6 +334,59 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
                     expect(
                         self.page.locator("div.fixed.inset-0:visible")
                     ).to_have_count(0)
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_escape_while_track_form_loads_leaves_no_dialog(self, mock_get_metadata):
+        """Closing the tracker before its React form settles must not strand it.
+
+        The Track form's dialog is portaled to document.body. When Escape
+        removed the popup host mid-load, that dialog stayed on screen and
+        blocked every later click, so a slow load stranded the page.
+        """
+        mock_get_metadata.return_value = {
+            "media_id": "1579",
+            "title": "Modal Test",
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "image": "http://example.com/image.jpg",
+            "max_progress": 1,
+            "details": {"release_date": "2007-01-01"},
+            "related": {},
+        }
+        item = Item.objects.create(
+            media_id="1579",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Modal Test",
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.COMPLETED.value)
+
+        def slow(route):
+            time.sleep(0.6)
+            route.continue_()
+
+        self.user.theme = "custom"
+        self.user.save(update_fields=["theme"])
+        self.page.route("**/static/ui/mountTrackForm-*.js", slow)
+        self.page.route("**/track_modal/**", slow)
+        # The race only strands the dialog for some timings, so sweep several.
+        for delay_ms in (0, 50, 100, 200, 400, 800, 1200):
+            self.page.goto(f"{self.live_server_url}/medialist/movie?layout=grid")
+            card = self.page.locator(".media-card").first
+            expect(card).to_be_visible()
+            card.hover()
+            card.get_by_role("button", name="Add to tracker", exact=True).click()
+            self.page.wait_for_timeout(delay_ms)
+            self.page.keyboard.press("Escape")
+            # The stranded dialog mounts after the delayed form arrives, so an
+            # immediate count would see none; let both delayed loads settle.
+            self.page.wait_for_timeout(2000)
+            # A leaked dialog blocks every later click, so fail on the first one.
+            self.assertEqual(
+                self.page.get_by_role("dialog").count(),
+                0,
+                f"Tracker dialog stranded after Escape {delay_ms}ms after opening",
+            )
 
     def test_episode_track_modal_fills_viewport_in_card_and_list_layouts(self):
         """Episode surface blur must not confine the tracker to its row."""
@@ -381,6 +435,17 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
     def shared_dialog(self):
         """Return the topmost shared dialog (the Track dialog or its picker)."""
         return self.page.get_by_role("dialog").last
+
+    def pick_track_status(self, dialog, label):
+        """Choose a status in the Track dialog's Status dropdown."""
+        dialog.get_by_role("button", name=re.compile(r"^Status:")).click()
+        self.page.get_by_role("radio", name=label, exact=True).click()
+
+    def expect_track_status(self, dialog, label):
+        """Assert the Track dialog's Status dropdown shows the given status."""
+        expect(
+            dialog.get_by_role("button", name=re.compile(rf"^Status: {label}$", re.IGNORECASE)),
+        ).to_be_visible()
 
     def shared_date_buttons(self, dialog):
         """Return each Track date field's chevron, in field order.
@@ -596,7 +661,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
     def test_season_progress_edit(self):
         """Test the progress edit of a season."""
         self.search_and_submit("breaking bad")
-        expect(self.page.get_by_role("heading", name="Search Results")).to_be_visible()
+        expect(self.page.get_by_role("heading", name="Online Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
         season_href = self.page.locator(
@@ -647,16 +712,13 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
     def test_tv_completed(self):
         """Test the completed status of a TV show."""
         self.search_and_submit("breaking bad")
-        expect(self.page.get_by_role("heading", name="Search Results")).to_be_visible()
+        expect(self.page.get_by_role("heading", name="Online Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
         self.page.locator("button").filter(has_text="Add to tracker").click()
         track_form = self.page.locator("#track-tv-1396")
         expect(track_form).to_contain_text("Score")
-        # Status is now a shared accessible radio group, not an HTML select.
-        self.page.get_by_role("dialog").last.get_by_role(
-            "radio", name="Completed", exact=True,
-        ).click()
+        self.pick_track_status(self.shared_dialog(), "Completed")
         with self.page.expect_request(
             lambda request: request.method == "POST" and "/media_save" in request.url,
         ) as save_request:
@@ -671,7 +733,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
     def test_season_completed(self):
         """Test the completed status of a season."""
         self.search_and_submit("breaking bad")
-        expect(self.page.get_by_role("heading", name="Search Results")).to_be_visible()
+        expect(self.page.get_by_role("heading", name="Online Results")).to_be_visible()
         self.page.get_by_title("Breaking Bad", exact=True).click()
         expect(self.page.get_by_role("main")).to_contain_text("Breaking Bad")
         season_href = self.page.locator(
@@ -872,9 +934,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.assertEqual(end_dt - start_dt, timedelta(minutes=95))
         expect(start_now).to_have_count(0)
         expect(just_finished).to_have_count(0)
-        expect(
-            create_modal.get_by_role("radio", name="In Progress", exact=True),
-        ).to_be_checked()
+        self.expect_track_status(create_modal, "In Progress")
 
         clear_dates()
         expect(start_now).to_be_visible()
@@ -1325,8 +1385,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         modal = self.shared_dialog()
         expect(modal).to_be_visible()
         if status:
-            # Status is a radio group in the shared dialog, labelled by status.
-            modal.get_by_role("radio", name=Status(status).label, exact=True).click()
+            self.pick_track_status(modal, Status(status).label)
         return modal
 
     def _create_test_movie_item(self, mock_get_metadata):
@@ -1416,9 +1475,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.assertGreaterEqual(start_ms, before - 60 * 1000)
         self.assertLessEqual(start_ms, after + 1000)
         self.assertEqual(end_dt - start_dt, timedelta(milliseconds=runtime_ms))
-        expect(
-            modal.get_by_role("radio", name="In Progress", exact=True),
-        ).to_be_checked()
+        self.expect_track_status(modal, "In Progress")
 
         # An end date the user picked is kept when Start Now is pressed.
         modal = self._open_new_movie_tracker(Status.COMPLETED.value)
@@ -1519,7 +1576,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.page.get_by_role("button", name="Add to tracker").click()
         modal = self.shared_dialog()
         expect(modal).to_be_visible()
-        modal.get_by_role("radio", name="In Progress", exact=True).click()
+        self.pick_track_status(modal, "In Progress")
 
         dates = modal.get_by_role("button", name=re.compile(r"^Date picker:"))
         expect(dates).to_have_count(0)

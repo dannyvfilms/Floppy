@@ -12,6 +12,7 @@ from . import (
     fork_views_history,
     fork_views_integrations,
     fork_views_library,
+    fork_views_library_changes,
     fork_views_list_imports,
     fork_views_lists,
     fork_views_metadata,
@@ -91,14 +92,14 @@ urlpatterns = [
         name="api_library_game_groups",
     ),
     re_path(
+        r"^lists/(?P<list_id>\d+)/items/bulk/?$",
+        fork_views_lists.ListItemsBulkAddView.as_view(),
+        name="api_list_items_bulk_add",
+    ),
+    re_path(
         r"^library/saved-views/?$",
         fork_views_library.LibrarySavedViewsView.as_view(),
         name="api_library_saved_views",
-    ),
-    re_path(
-        r"^library/saved-views/(?P<view_id>\d+)/?$",
-        fork_views_library.LibrarySavedViewDetailView.as_view(),
-        name="api_library_saved_view",
     ),
     re_path(
         r"^library/share-view/?$",
@@ -111,29 +112,9 @@ urlpatterns = [
         name="api_library_bulk_status",
     ),
     re_path(
-        r"^library/bulk/collection/?$",
-        fork_views_library.LibraryBulkCollectionView.as_view(),
-        name="api_library_bulk_collection",
-    ),
-    re_path(
-        r"^library/bulk/list/?$",
-        fork_views_library.LibraryBulkListView.as_view(),
-        name="api_library_bulk_list",
-    ),
-    re_path(
         r"^library/bulk/tags/?$",
         fork_views_library.LibraryBulkTagView.as_view(),
         name="api_library_bulk_tags",
-    ),
-    re_path(
-        r"^library/bulk/plays/?$",
-        fork_views_library.LibraryBulkPlaysView.as_view(),
-        name="api_library_bulk_plays",
-    ),
-    re_path(
-        r"^library/bulk/plays/(?P<operation_id>[0-9a-f]+)/?$",
-        fork_views_library.LibraryBulkPlaysStatusView.as_view(),
-        name="api_library_bulk_plays_status",
     ),
     re_path(
         r"^library/saved-views/reorder/?$",
@@ -141,9 +122,34 @@ urlpatterns = [
         name="api_library_saved_views_reorder",
     ),
     re_path(
-        r"^lists/(?P<list_id>\d+)/items/bulk/?$",
-        fork_views_lists.ListItemsBulkAddView.as_view(),
-        name="api_list_items_bulk_add",
+        r"^library/bulk/plays/?$",
+        fork_views_library.LibraryBulkPlaysView.as_view(),
+        name="api_library_bulk_plays",
+    ),
+    re_path(
+        r"^library/bulk/collection/?$",
+        fork_views_library.LibraryBulkCollectionView.as_view(),
+        name="api_library_bulk_collection",
+    ),
+    re_path(
+        r"^library/bulk/plays/(?P<operation_id>[a-f0-9]+)/?$",
+        fork_views_library.LibraryBulkPlaysStatusView.as_view(),
+        name="api_library_bulk_plays_status",
+    ),
+    re_path(
+        r"^library/activity/?$",
+        fork_views_library_changes.LibraryActivityView.as_view(),
+        name="api_library_activity",
+    ),
+    re_path(
+        r"^library/deleted/?$",
+        fork_views_library_changes.LibraryDeletedView.as_view(),
+        name="api_library_deleted",
+    ),
+    re_path(
+        r"^library/saved-views/(?P<view_id>\d+)/?$",
+        fork_views_library.LibrarySavedViewDetailView.as_view(),
+        name="api_library_saved_view_detail",
     ),
     re_path(
         r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/detail/gallery/?$",
@@ -211,16 +217,6 @@ urlpatterns = [
         r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/(?P<episode_number>\d+)/collection/entries/?$",
         fork_views_detail.MediaEpisodeCollectionEntriesView.as_view(),
         name="api_media_episode_collection_entries",
-    ),
-    re_path(
-        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/artwork/?$",
-        fork_views_detail.MediaArtworkView.as_view(),
-        name="api_media_artwork",
-    ),
-    re_path(
-        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/artwork/?$",
-        fork_views_detail.MediaSeasonArtworkView.as_view(),
-        name="api_media_season_artwork",
     ),
     re_path(
         r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/issues/?$",
@@ -588,6 +584,11 @@ urlpatterns = [
         name="api_podcast_episode_play",
     ),
     re_path(
+        r"^podcasts/episodes/plays/(?P<consumption_id>\d+)/?$",
+        fork_views_podcast.PodcastEpisodePlayDetailView.as_view(),
+        name="api_podcast_episode_play_detail",
+    ),
+    re_path(
         r"^lists/(?P<list_id>\d+)/smart-rules/?$",
         fork_views_lists.ListSmartRulesView.as_view(),
         name="api_list_smart_rules",
@@ -901,6 +902,11 @@ urlpatterns = [
         r"^user/advanced/server-port/?$",
         fork_views_settings.ServerPortView.as_view(),
         name="api_settings_server_port",
+    ),
+    re_path(
+        r"^user/advanced/diagnostics/?$",
+        fork_views_settings.DiagnosticsExportView.as_view(),
+        name="api_settings_diagnostics_export",
     ),
     re_path(
         r"^user/advanced/logs/?$",

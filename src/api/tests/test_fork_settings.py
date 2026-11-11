@@ -268,6 +268,18 @@ class AppearanceCardsHomeTests(SettingsTestCase):
         )
         self.assertIn(response.status_code, {HTTP.BAD_REQUEST, HTTP.OK})
 
+    def test_invalid_home_sections_return_the_message(self):
+        response = self.call_api(
+            "put",
+            "api_settings_user_home_screen",
+            payload={"sections": "not a list"},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+        self.assertEqual(
+            response.json(), {"detail": "Home Screen settings payload must be a list."}
+        )
+
     def test_filter_fields_unknown_media_type(self):
         response = self.call_api(
             "get",
@@ -531,6 +543,14 @@ class AdvancedAboutTests(SettingsTestCase):
             "get", "api_settings_logs_export", headers=self.auth_headers
         )
         self.assertEqual(response.status_code, HTTP.FORBIDDEN)
+
+    def test_diagnostics_report_for_any_signed_in_user(self):
+        response = self.call_api(
+            "get", "api_settings_diagnostics_export", headers=self.auth_headers
+        )
+        self.assertEqual(response.status_code, HTTP.OK, response.content)
+        self.assertIn("text/plain", response["Content-Type"])
+        self.assertIn("floppy-diagnostics-", response["Content-Disposition"])
 
     def test_superuser_toggles_image_cache(self):
         from app.models import ApplicationSettings

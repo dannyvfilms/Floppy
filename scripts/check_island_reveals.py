@@ -17,7 +17,8 @@ For every page this check loads two states:
 Roots excluded from the gate are the deliberate no-op adapters
 (``data-media-table-root`` and ``data-media-column-menu-root``). They keep
 server markup, must stay visible in both states, and must not change size
-between them.
+between them. The sidebar root is the other exception: it mounts like any
+island but stays visible while it does, so a body swap never blanks it.
 
 Usage:
     python scripts/check_island_reveals.py
@@ -94,6 +95,10 @@ PAGES = [
 # data-react-mounted. They are excluded from the reveal gate by
 # frontend/settings/island-reveal.css.
 NOOP_ROOTS = {"data-media-table-root", "data-media-column-menu-root"}
+# Shell roots whose server fallback matches the mounted island. They mount like
+# any island but stay visible meanwhile, because hx-boost swaps the body on every
+# navigation and a hidden fallback would blank them each time.
+VISIBLE_FALLBACK_ROOTS = {"data-sidebar-root"}
 # A no-op adapter keeps server markup, so it may not resize between states.
 NOOP_WIDTH_TOLERANCE = 2
 NOOP_HEIGHT_TOLERANCE = 8
@@ -254,6 +259,12 @@ def check_page(browser, base: str, origin: str, cookies, path: str, settle_ms: i
     live_top = [root for root in live if not root["nested"]]
 
     for root in early_top:
+        if root_label(root) in VISIBLE_FALLBACK_ROOTS:
+            if root["visibility"] == "hidden":
+                violations.append(
+                    f"{root_label(root)} is hidden in the fallback; it must stay visible"
+                )
+            continue
         if root_label(root) in NOOP_ROOTS:
             if not is_painted(root):
                 violations.append(

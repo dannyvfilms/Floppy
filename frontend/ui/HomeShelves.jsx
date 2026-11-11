@@ -59,7 +59,6 @@ const ROW_LOAD_RETRIES = 3;
 // with every other request, so only a few row loads run at a time and the rest
 // start as those finish. Shared component: web and native behave the same.
 const ROW_FETCH_CONCURRENCY = 3;
-
 // Image loading is first-come on every platform, so prefetches queue ahead of the
 // covers a person is waiting for (measured on both web and Expo). A card loads
 // its own cover when it is shown; the only early fetch is a small budget of the
@@ -121,6 +120,7 @@ const RailRow = React.memo(function RailRow({
   onOpenCard,
   onOpenLink,
   onOpenRowTitle,
+  canOpenRowTitle,
   onAction,
   onRate,
   onSortRow,
@@ -142,7 +142,7 @@ const RailRow = React.memo(function RailRow({
     itemWidth={itemWidth}
     items={items}
     viewAll={row.viewAll ? { label: row.viewAll.label, onPress: () => onOpenLink?.(row.viewAll.href, null, row) } : undefined}
-    onTitlePress={row.url && onOpenRowTitle ? () => onOpenRowTitle(row.url, row) : undefined}
+    onTitlePress={row.url && onOpenRowTitle && (canOpenRowTitle ? canOpenRowTitle(row.url) : true) ? () => onOpenRowTitle(row.url, row) : undefined}
     onSort={onSortRow ? () => onSortRow(row) : undefined}
     sortLabel={sortLabel(row, labels)}
     onLoadMore={onLoadMore ? () => onLoadMore(row) : undefined}
@@ -200,6 +200,7 @@ export function HomeShelves({
   onOpenCard,
   onOpenLink,
   onOpenRowTitle,
+  canOpenRowTitle,
   onAction,
   onRate,
   onSortRow,
@@ -415,7 +416,7 @@ export function HomeShelves({
       renderCard={renderCard} renderProgress={renderProgress}
       renderRating={renderRating} renderActionIcon={renderActionIcon}
       RailComponent={railComponent}
-      onOpenCard={onOpenCard} onOpenLink={onOpenLink} onOpenRowTitle={onOpenRowTitle} onAction={onAction} onRate={onRate}
+      onOpenCard={onOpenCard} onOpenLink={onOpenLink} onOpenRowTitle={onOpenRowTitle} canOpenRowTitle={canOpenRowTitle} onAction={onAction} onRate={onRate}
       onSortRow={onSortRow ? sortRow : undefined}
       onLoadMore={onLoadMore ? loadMore : undefined} />);
   }

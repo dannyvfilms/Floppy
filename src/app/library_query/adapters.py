@@ -91,6 +91,7 @@ def filter_values_from_media_list_filters(filters: MediaListFilters) -> FilterVa
         completed_date_to=filters.completed_date_to,
         date_added_from=filters.date_added_from,
         date_added_to=filters.date_added_to,
+        updated_since=filters.updated_since,
         release=filters.release,
         release_date_from=filters.release_date_from,
         release_date_to=filters.release_date_to,

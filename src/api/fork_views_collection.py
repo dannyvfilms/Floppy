@@ -74,7 +74,7 @@ class CollectionFieldsView(drf_views.APIView):
         try:
             groups = save_collection_field_schema(request.user, request.data)
         except CollectionFieldValidationError as exc:
-            return Response({"detail": str(exc)}, status=HTTP.BAD_REQUEST)
+            return Response({"detail": exc.message}, status=HTTP.BAD_REQUEST)
         except CollectionFieldNotFoundError as exc:
-            return Response({"detail": str(exc)}, status=HTTP.NOT_FOUND)
+            return Response({"detail": exc.message}, status=HTTP.NOT_FOUND)
         return Response({"groups": groups}, status=HTTP.OK)

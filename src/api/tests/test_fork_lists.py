@@ -1,6 +1,7 @@
 # FORK: tests for the advanced list API endpoints — smart rules,
 # collaborators, reorder, recommendations, and activity.
 from http import HTTPStatus as HTTP  # noqa: N814
+from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
@@ -659,6 +660,16 @@ class RecommendationTests(FloppyApiTestCase):
             },
             headers=headers or self.auth_headers2,
         )
+
+    def test_resolution_failure_does_not_return_exception_text(self):
+        """A failed lookup answers with the fixed detail only."""
+        with patch(
+            "api.fork_views_lists.get_or_create_recommendation_item",
+            side_effect=RuntimeError("secret /srv/private/path"),
+        ):
+            response = self._submit()
+        self.assertEqual(response.status_code, HTTP.BAD_GATEWAY)
+        self.assertEqual(response.json(), {"detail": "Could not resolve item."})
 
     def test_submit_list_and_approve(self):
         """A recommendation can be submitted, listed, and approved."""

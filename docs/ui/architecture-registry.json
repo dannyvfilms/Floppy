@@ -1,21 +1,43 @@
 {
   "universal": {
     "frontend/ui/MdblistConnect.jsx": {
-      "components": ["MdblistConnect"],
+      "components": [
+        "MdblistConnect"
+      ],
       "register": "LISTS",
       "verification": {
-        "web": { "status": "unverified", "evidence": "Expo import dialog has server-owned schedule choices; final browser comparison pending. Browser list import remains server-owned." },
-        "ios": { "status": "unverified", "evidence": "Not verified on iOS." },
-        "android": { "status": "unverified", "evidence": "Not verified on Android." }
+        "web": {
+          "status": "unverified",
+          "evidence": "Expo import dialog has server-owned schedule choices; final browser comparison pending. Browser list import remains server-owned."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not verified on iOS."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified on Android."
+        }
       }
     },
     "frontend/pages/ManualEntryView.jsx": {
-      "components": ["ManualEntryView"],
+      "components": [
+        "ManualEntryView"
+      ],
       "register": "TRACKING",
       "verification": {
-        "web": { "status": "unverified", "evidence": "Expo browser: searched and selected Deep Field, created season 99, then removed the test entry and verified absence. Final layout comparison remains pending. Browser /create remains server-owned until parity and a web adapter are complete." },
-        "ios": { "status": "unverified", "evidence": "Not verified." },
-        "android": { "status": "unverified", "evidence": "Not verified." }
+        "web": {
+          "status": "unverified",
+          "evidence": "Expo browser: searched and selected Deep Field, created season 99, then removed the test entry and verified absence. Final layout comparison remains pending. Browser /create remains server-owned until parity and a web adapter are complete."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not verified."
+        }
       }
     },
     "frontend/ui/ReorderList.jsx": {
@@ -223,7 +245,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The browser adapter mounts the shared synopsis over the server-rendered detail fallback; build and targeted Django tests only, no browser pass."
+          "evidence": "The browser remains the server-rendered visual reference. Expo-only hero, chip, child-action and section changes compiled through Expo web export; no browser-versus-Expo comparison or browser interaction pass was run."
         },
         "ios": {
           "status": "unverified",
@@ -2823,7 +2845,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Expo web at 375x812: Games group overview, drilldown and return controls exercised; separate-entry preference write reflected on the Django web menu and restored. Final menu/layout comparison and populated duplicate-entry table remain incomplete. The web library retains its server composition, filters and pagination."
+          "evidence": "The Expo LibraryScreen consumes this shared composition. The browser library remains server-owned with its server table, Alpine filters and htmx pagination; no browser pass was run."
         },
         "ios": {
           "status": "unverified",
@@ -2917,23 +2939,21 @@
     },
     "frontend/pages/DetailView.jsx": {
       "components": [
-        "DetailView",
-        "DetailPageView",
-        "DetailEpisodePageView"
+        "DetailView"
       ],
       "register": "DETAIL",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "Shared header/synopsis mounts coexist with the server-owned web detail shell; native DetailScreen mounts the full composition. At 375x812 the browser showed provider scores/synopses, mapped anime episodes and an issue-specific Track dialog. Anime pagination/card controls, linked studios and comic write/undo require final re-verification after repairs; no complete parity claim. Native-only outline/layout props preserve web defaults."
+          "status": "verified",
+          "evidence": "Expo web build in native-variant preview at 375px compared with the Django detail page of the same seeded items (a TMDB film and show, a season, an episode, an anime, a comic and a book): the action bar, score row, sections, seasons, people and related slots render in the shared view. Order and hero treatment still differ from the web page; see the component register."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Not verified."
+          "evidence": "Device Hub iPhone Duo on iOS 27.2 loaded a Breaking Bad show detail from the local server. The web reference was a season page on another instance; this was not a same-record interaction or accessibility verification."
         },
         "android": {
           "status": "unverified",
-          "evidence": "Not verified."
+          "evidence": "Expo web export compiled the shared view; Android runtime and TalkBack verification are outstanding."
         }
       }
     },
@@ -3508,32 +3528,23 @@
     },
     "frontend/ui/DetailPage.jsx": {
       "components": [
-        "DetailPageHero",
         "DetailActionBar",
-        "DetailLinkRow",
         "DetailScoreRow",
-        "DetailInfoCard",
-        "DetailChipCard",
         "DetailBlock",
         "DetailEmpty",
         "DetailLoading",
-        "DetailSkeleton",
         "DetailNotesBlock",
-        "DetailHistoryBlock",
         "DetailCollectionBlock",
-        "DetailPeopleRail",
-        "DetailPosterRail",
-        "DetailSeasonSelector",
-        "DetailStepper",
-        "DetailListCard",
         "DetailIssueCards",
-        "DetailEpisodeCards"
+        "DetailEpisodeCards",
+        "DetailRelatedGrid",
+        "DetailSeriesGraph"
       ],
       "register": "DETAIL",
       "verification": {
         "web": {
-          "status": "unverified",
-          "evidence": "Expo browser at 375x812 observed mapped anime episode cards and an issue-specific Track dialog; discrepancies led to native-only card/list/collapse controls, separate episode-link/Rate targets, 25-row loading, synopsis clamping, studio links, outlined Genres and correct issue form fields. Native issue Add and the web modal bridge succeeded; newly created issue/tracker/history were removed against baseline. Anime Rate save/reopen/clear and Add watch succeeded. Native datetime-local submission sends an explicit instant; browser save/reopen preserved Nov 10, 2026 04:19:00 exactly. First page25 and Load more were observed; current-page viewer-owned rating-only projection preserves ratings saved without a watch; browser save/reopen/clear passed with Unwatched retained, and new parents/history restored with existing MAL tracking unchanged. test watches/ratings and new mapped parents/history restored with existing MAL tracking unchanged. Later pages, unexercised collection actions and restored comic Source/Notes/No Status fields remain unverified; tab/date-helper/layout differences remain. TV Details uses the shared server runtime property through metadata, season-count labels and no API-only episode-season helpers; browser full reload verified AIR DATES→Status→RUNTIME(3SEASONS),7h44min·19episodes and absent technical rows, matching the web. Shared components use props and RN primitives; server detail/child fallbacks remain."
+          "status": "verified",
+          "evidence": "Expo web build in native-variant preview at 375px compared with the Django detail page: track action bar (check-in started and cancelled, edit dialog saved), quick buttons (tags, notes, lists, more), provider score chip, collection block with its add dialog, notes block (one note saved and cleared), season poster grid, comic issue cards and anime episode cards."
         },
         "ios": {
           "status": "unverified",
@@ -3547,14 +3558,13 @@
     },
     "frontend/ui/DetailEpisode.jsx": {
       "components": [
-        "DetailEpisodeHeader",
-        "DetailEpisodeActions"
+        "DetailEpisodeHeader"
       ],
       "register": "DETAIL",
       "verification": {
         "web": {
           "status": "verified",
-          "evidence": "Expo web build in native-variant preview at 375px, episode page of the seeded show compared with the Django page: still, title, season and episode line, picker (menu opened, episode switched), Watched button, notes, lists and history buttons (history dialog opened), rating (one write, undone). Compared with the web page in a browser at 375px through the Expo web build's native-variant preview."
+          "evidence": "Expo web build in native-variant preview at 375px, episode page of the seeded show compared with the Django page: season and episode line, episode picker with previous and next. The still and the show title come from the shared hero, and the page has no cast, crew or genres, unlike the web page."
         },
         "ios": {
           "status": "unverified",
@@ -3782,11 +3792,95 @@
         },
         "ios": {
           "status": "verified",
-          "evidence": "Device Hub iPhone Duo (iOS 27.2) hot-reloaded the shared 110 pt Home shelf and compact Now Playing sizing; both right edges align at 110 pt × 3 plus the Home rail's 16 pt × 2 gaps. Comfortable and desktop variants were not exercised on iOS."
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) hot-reloaded the shared 110 pt Home shelf and compact Now Playing sizing; both right edges align at 110 pt \u00d7 3 plus the Home rail's 16 pt \u00d7 2 gaps. Comfortable and desktop variants were not exercised on iOS."
         },
         "android": {
           "status": "unverified",
           "evidence": "Native playback sizing uses three 110 pt cards plus gaps on compact phone layouts; Android runtime verification remains pending."
+        }
+      }
+    },
+    "frontend/ui/dropdownMetrics.js": {
+      "components": [
+        "DROPDOWN"
+      ],
+      "register": "SEARCH",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium on macOS with the local dev server: Search results, suggestions and the sidebar menus rendered with these values; no other engine."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) showed the Search suggestions and menus sized by these values; no pixel comparison."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised on Android in this change."
+        }
+      }
+    },
+    "frontend/ui/searchRows.js": {
+      "components": [
+        "searchRowParams",
+        "searchRowUrl",
+        "mergeSearchRowPage",
+        "onlineRowParams",
+        "useStreamedRows"
+      ],
+      "register": "SEARCH",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium on macOS: library row first, then provider rows streamed in as each answered."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Compiled through the Expo export; not exercised on a device in this change."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised on Android in this change."
+        }
+      }
+    },
+    "frontend/ui/statusChipIcons.js": {
+      "components": [
+        "STATUS_ICON_SPECS"
+      ],
+      "register": "MEDIA-CARD",
+      "verification": {
+        "web": {
+          "status": "verified",
+          "evidence": "Chromium on macOS: status chip icons on Home cards."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Device Hub iPhone Duo (iOS 27.2) showed the chip icons on Home cards."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Not exercised on Android in this change."
+        }
+      }
+    },
+    "frontend/ui/fetchGate.js": {
+      "components": [
+        "createFetchGate"
+      ],
+      "register": "HOME",
+      "verification": {
+        "web": {
+          "status": "unverified",
+          "evidence": "Pure shared FIFO concurrency gate covered by scripts/fetchGate.test.mjs; Home limits row requests to three on web and native. Runtime rendering is recorded separately for HomeShelves."
+        },
+        "ios": {
+          "status": "unverified",
+          "evidence": "Same pure shared concurrency gate and unit tests; no native rendering evidence is implied."
+        },
+        "android": {
+          "status": "unverified",
+          "evidence": "Same pure shared concurrency gate and unit tests; no native rendering evidence is implied."
         }
       }
     }
@@ -5275,6 +5369,14 @@
     "frontend/ui/mountPodcastEpisodeManager.jsx": {
       "register": "PODCAST-EPISODES",
       "purpose": "Browser adapter for the shared manual podcast episode manager: mount the island, read the current theme palette, load the show's manual episodes as JSON, and POST create/edit/delete through the existing Django forms and CSRF contract."
+    },
+    "frontend/ui/shelfWidth.web.js": {
+      "register": "HOME",
+      "purpose": "Browser adapter that sizes shelf cards from the viewport and the Mobile Grid preference the page carries, so Home and Search results use one width."
+    },
+    "frontend/ui/keyboardOverlap.web.js": {
+      "register": "SEARCH",
+      "purpose": "Browser adapter that reports how far the on-screen keyboard covers the page, from the visual viewport, for the Search suggestion window."
     }
   }
 }

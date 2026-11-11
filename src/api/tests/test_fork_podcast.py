@@ -124,6 +124,25 @@ class ShowTrackerTests(PodcastApiTestCase):
         )
         self.assertEqual(response.status_code, HTTP.NOT_FOUND)
 
+    def test_itunes_import_error_returns_the_written_message(self):
+        """An import refusal answers with the importer's own text."""
+        from app.services.podcast_import import PodcastImportError
+
+        with patch(
+            "api.fork_views_podcast.podcast_import.import_show_from_itunes_id",
+            side_effect=PodcastImportError("No podcast found for iTunes id 12345."),
+        ):
+            response = self.call_api(
+                "post",
+                "api_podcast_shows",
+                payload={"itunes_id": "12345"},
+                headers=self.auth_headers,
+            )
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+        self.assertEqual(
+            response.json(), {"detail": "No podcast found for iTunes id 12345."}
+        )
+
     @patch("api.fork_views_podcast.podcast_import.import_show_from_itunes_id")
     def test_itunes_id_track_rejects_invalid_tracker_before_importing(
         self,

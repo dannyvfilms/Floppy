@@ -177,8 +177,8 @@ class SearchEndpointTests(FloppyApiTestCase):
         payload = response.json()
         self.assertEqual(payload["mediaType"], "all")
         self.assertEqual(payload["state"], "ready")
-        self.assertTrue(payload["sections"])
-        card = payload["sections"][0]["subsections"][0]["items"][0]
+        self.assertTrue(payload["rows"])
+        card = payload["rows"][0]["items"][0]["card"]
         self.assertEqual(card["title"], "Movie 1")
         self.assertTrue(payload["notes"])
 
@@ -201,7 +201,7 @@ class SearchEndpointTests(FloppyApiTestCase):
         self,
         mock_search,
     ):
-        """Online search reports the source pills; a provider failure says so."""
+        """Online search lists the provider rows to stream; a failed provider is named."""
         from app.providers import services
 
         mock_search.side_effect = services.ProviderAPIError(
@@ -217,9 +217,19 @@ class SearchEndpointTests(FloppyApiTestCase):
         )
         self.assertEqual(response.status_code, HTTP.OK)
         payload = response.json()
-        self.assertTrue(payload["scope"]["options"])
-        self.assertEqual(payload["state"], "error")
-        self.assertTrue(payload["errors"])
+        self.assertTrue(payload["onlineSources"])
+        row = self.call_api(
+            "get",
+            "api_search_results",
+            params={
+                "q": "nothing here",
+                "media_type": MediaTypes.MOVIE.value,
+                "row": payload["onlineSources"][0]["rowId"],
+            },
+            headers=self.auth_headers,
+        ).json()
+        self.assertIsNone(row["row"])
+        self.assertTrue(row["unavailable"])
 
     def test_results_reject_unknown_type(self):
         """An unsearchable type is a 400."""

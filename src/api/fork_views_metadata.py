@@ -29,6 +29,7 @@ from app.services.metadata_projection import project_item_metadata
 from integrations.state.ratings import rating_edit
 
 from .contract_serializers import DetailErrorSerializer
+from .errors import failure_response
 from .helpers import (
     apply_episode_score,
     body_too_large_response,
@@ -37,7 +38,11 @@ from .helpers import (
     resolve_episode_coordinate_for_request,
     validate_episode_score,
 )
-from .schema import MEDIA_TYPE_PARAM, MEDIA_TYPE_TV_ONLY_PARAM
+from .schema import (
+    LIBRARY_MEDIA_TYPE_PARAM,
+    MEDIA_TYPE_PARAM,
+    MEDIA_TYPE_TV_ONLY_PARAM,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -340,7 +345,7 @@ class MediaEpisodeScoreView(drf_views.APIView):
     """Set or clear the score on all plays of an episode."""
 
     @extend_schema(
-        parameters=[MEDIA_TYPE_TV_ONLY_PARAM],
+        parameters=[MEDIA_TYPE_TV_ONLY_PARAM, LIBRARY_MEDIA_TYPE_PARAM],
         responses={404: DetailErrorSerializer},
     )
     @rating_edit
@@ -377,9 +382,8 @@ class MediaEpisodeScoreView(drf_views.APIView):
                 language=metadata_resolution.metadata_language_default(request.user),
             )
         except Exception as error:
-            return Response(
-                {"detail": "Could not resolve episode.", "errors": str(error)},
-                status=HTTP.NOT_FOUND,
+            return failure_response(
+                "Could not resolve episode.", error, status=HTTP.NOT_FOUND
             )
         if coordinate_error:
             return coordinate_error
@@ -393,7 +397,14 @@ class MediaEpisodeScoreView(drf_views.APIView):
         if error:
             return error
 
-        season = get_tracked_season(request.user, media_id, source, season_number)
+        library_media_type = request.query_params.get("library_media_type") or None
+        season = get_tracked_season(
+            request.user,
+            media_id,
+            source,
+            season_number,
+            library_media_type,
+        )
         if season is None and score is not None:
             # Like movies, shows and seasons, rating an untracked episode
             # starts tracking it as Planning; the rating is not a watch.
@@ -403,6 +414,7 @@ class MediaEpisodeScoreView(drf_views.APIView):
                     media_id,
                     source,
                     int(season_number),
+                    library_media_type or "",
                     status=Status.PLANNING.value,
                 )
             except Exception:
@@ -506,7 +518,7 @@ class ItemCoverView(drf_views.APIView):
         try:
             value = self._stored_cover(request, local_covers)
         except local_covers.CoverError as error:
-            return Response({"detail": str(error)}, status=HTTP.BAD_REQUEST)
+            return Response({"detail": error.message}, status=HTTP.BAD_REQUEST)
         if item.image != value:
             cover_views._set_cover(item, value)
         return Response({"id": item.id, "image": item.image}, status=HTTP.OK)

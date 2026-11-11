@@ -65,16 +65,16 @@ export const PRESETS = {
 export const BASIC_THEMES = ['system', 'light', 'dark'];
 
 const PRESET_SURFACES = Object.fromEntries([
-  ['catppuccin_mocha', '#585b70', '#181825', '#181825'],
-  ['dracula', '#6272a4', '#21222c', '#21222c'],
-  ['nord', '#4c566a', '#2b303b', '#242933'],
-  ['gruvbox', '#665c54', '#32302f', '#1d2021'],
-  ['oled', '#303030', '#050505', '#000000'],
-  ['glass', '#4c567a', '#11162a', '#0c1122'],
-  ['plex', '#444444', '#141414', '#0a0a0a'],
-  ['projector', '#5c4d32', '#1d1a14', '#191711'],
-  ['video_store', '#4652a0', '#151938', '#11152f'],
-].map(([key, surfaceBorder, panel, surfaceDim]) => [key, { surfaceBorder, panel, surfaceDim }]));
+  ['catppuccin_mocha', '#585b70', '#181825', '#181825', '#11111b'],
+  ['dracula', '#6272a4', '#21222c', '#21222c', '#21222c'],
+  ['nord', '#4c566a', '#2b303b', '#242933', '#242933'],
+  ['gruvbox', '#665c54', '#32302f', '#1d2021', '#1d2021'],
+  ['oled', '#303030', '#050505', '#000000', '#030303'],
+  ['glass', '#4c567a', '#11162a', '#0c1122', '#0c1020'],
+  ['plex', '#444444', '#141414', '#0a0a0a', '#090909'],
+  ['projector', '#5c4d32', '#1d1a14', '#191711', '#0d0c09'],
+  ['video_store', '#4652a0', '#151938', '#11152f', '#090b1d'],
+].map(([key, surfaceBorder, panel, surfaceDim, sidebar]) => [key, { surfaceBorder, panel, surfaceDim, sidebar }]));
 
 // Tokens that platforms can keep live without re-rendering (CSS variables on the
 // web, dynamic colours on iOS). `accent` stays out: shared code appends alpha

@@ -830,7 +830,8 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   summaryIcon: { alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
-  summaryCopy: { flexShrink: 1, minWidth: 0, gap: 0 },
+  // maxWidth keeps a stacked card's one-line text inside it with a wide font.
+  summaryCopy: { flexShrink: 1, minWidth: 0, maxWidth: '100%', gap: 0 },
   summaryLabel: { fontWeight: '500' },
   summaryValue: { fontWeight: '700' },
   summaryCaptionRow: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },

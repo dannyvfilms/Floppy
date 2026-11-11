@@ -34,7 +34,6 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.formats import date_format
-from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.timesince import timesince
 from django.utils.translation import gettext
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -53,6 +52,7 @@ from app import (
 from app import helpers as app_helpers
 from app.discover.feeds import get_external_row_definitions
 from app.discover.registry import DISCOVER_MEDIA_TYPES
+from app.log_safety import exception_summary
 from app.models import (
     Album,
     AlbumTracker,
@@ -354,8 +354,9 @@ def _refresh_cached_plex_sections(
         )
     except plex.PlexAuthError:
         return cached_sections, "Plex token expired or revoked. Please reconnect."
-    except Exception as exc:  # pragma: no cover - defensive
-        return cached_sections, f"Could not refresh Plex libraries: {exc}"
+    except Exception as exc:
+        logger.warning("Plex section refresh failed: %s", exception_summary(exc))
+        return cached_sections, "Could not refresh Plex libraries."
 
     return account.sections or [], None
 
@@ -2680,11 +2681,12 @@ def import_data_plex_status(request):
                 "error": "Plex token expired or revoked. Please reconnect.",
             },
         )
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:
+        logger.warning("Plex account check failed: %s", exception_summary(exc))
         return JsonResponse(
             {
                 "state": "error",
-                "error": str(exc),
+                "error": "Could not verify the Plex account.",
             },
         )
 
@@ -5086,14 +5088,13 @@ def saved_view_delete(request, view_id: int):
     if not request.user.is_demo:
         saved_view.delete()
 
-    next_url = request.POST.get("next", "")
-    if not url_has_allowed_host_and_scheme(
-        next_url,
-        allowed_hosts={request.get_host()},
-        require_https=request.is_secure(),
-    ):
-        next_url = saved_view.get_absolute_url().split("?")[0]
-    return redirect(next_url)
+    return redirect(
+        app_helpers.safe_return_url(
+            request,
+            request.POST.get("next", ""),
+            saved_view.get_absolute_url().split("?")[0],
+        ),
+    )
 
 
 @login_required

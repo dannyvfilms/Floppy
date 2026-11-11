@@ -241,7 +241,7 @@ class ListImportTraktView(drf_views.APIView):
         try:
             device = trakt_imports.request_device_code(client_id=credentials[0])
         except import_helpers.MediaImportError as error:
-            return _bad_request(str(error))
+            return _bad_request(error.message)
         expires_in = int(device["expires_in"])
         cache.set(
             _DEVICE_KEY.format(user_id=request.user.id),
@@ -277,7 +277,7 @@ class ListImportTraktView(drf_views.APIView):
             )
         except import_helpers.MediaImportError as error:
             cache.delete(_DEVICE_KEY.format(user_id=request.user.id))
-            return _bad_request(str(error))
+            return _bad_request(error.message)
         if result is None:
             return Response({"status": "pending"}, status=HTTP.OK)
         cache.delete(_DEVICE_KEY.format(user_id=request.user.id))

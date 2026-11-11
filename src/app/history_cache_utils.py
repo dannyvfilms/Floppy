@@ -12,12 +12,13 @@ from django.db import models
 from django.utils import timezone
 
 from app.models import MediaTypes, Music
+from app.public_errors import PublicMessageError
 from app.stats_utils import _coerce_genre_list
 
 logger = logging.getLogger(__name__)
 
 
-class UnsupportedHistoryMediaTypeError(ValueError):
+class UnsupportedHistoryMediaTypeError(PublicMessageError, ValueError):
     """Raised when a history API media-type filter is unknown."""
 
     def __init__(self, token):
