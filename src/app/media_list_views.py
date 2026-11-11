@@ -69,7 +69,11 @@ from app.services import metadata_resolution
 from app.stats_music import _country_name_from_code
 from app.table_browser import build_table_browser_props, table_json_url
 from app.templatetags import app_tags
-from app.tv_sort import _sort_tv_media_by_time_left
+from app.tv_sort import (
+    _sort_tv_media_by_time_left,
+    build_time_left_records,
+    is_caught_up_record,
+)
 from lists import smart_rules
 from users.models import (
     MediaSortChoices,
@@ -398,24 +402,21 @@ def _tracked_media_entries(entries):
     return tracked_entries
 
 
-def _serialize_time_left_order(entries):
+def _serialize_time_left_order(records):
     """Compact, cache-friendly representation of a time_left sorted list.
 
     Stores primary keys plus the display values computed during the sort so
-    cache hits can hydrate a single page without re-sorting the library.
+    any page can be hydrated without re-sorting the library.
     """
-    order = []
-    for entry in entries:
-        media = getattr(entry, "media", None)
-        order.append(
-            {
-                "media_pk": getattr(media, "pk", None),
-                "item_pk": entry.item_id,
-                "time_left_display": entry.__dict__.get("time_left_display"),
-                "episodes_left_display": entry.__dict__.get("episodes_left_display", 0),
-            }
-        )
-    return order
+    return [
+        {
+            "media_pk": record.media_pk,
+            "item_pk": record.item_pk,
+            "time_left_display": record.time_left_display,
+            "episodes_left_display": record.episodes_left_display,
+        }
+        for record in records
+    ]
 
 
 def _hydrate_time_left_page(user, order_slice):
@@ -2173,6 +2174,21 @@ def media_list(request, media_type):
 
     # Cache tracker-backed list results and filter summaries separately.
     _time_left_active = sort_filter == "time_left" and media_type == MediaTypes.TV.value
+    _time_left_record_by_entry = {}
+
+    def _time_left_records(entries):
+        """Ranking records for time-left entries, read once per request."""
+        missing = [
+            entry for entry in entries if id(entry) not in _time_left_record_by_entry
+        ]
+        for entry, record in zip(
+            missing,
+            build_time_left_records(request.user, missing),
+            strict=True,
+        ):
+            _time_left_record_by_entry[id(entry)] = record
+        return [_time_left_record_by_entry[id(entry)] for entry in entries]
+
     # Platform ordering is resolved from collection entries after the base query,
     # so cache only the database-backed sort orders.
     _use_media_list_cache = (
@@ -2204,6 +2220,7 @@ def media_list(request, media_type):
                 search=search_query,
                 direction=direction,
                 list_sql_filters=tag_free_filters,
+                prefetch_graph=not _time_left_active,
             )
         ]
         if _include_untracked_entries:
@@ -2567,6 +2584,7 @@ def media_list(request, media_type):
                 search=search_query,
                 direction=direction,
                 list_sql_filters=list_sql_filters,
+                prefetch_graph=not _time_left_active,
             )
         )
 
@@ -2791,7 +2809,18 @@ def media_list(request, media_type):
         media_list = apply_collection_filter(
             media_list, collection_filter, request.user, media_type
         )
-        media_list = apply_progress_filter(media_list, progress_filter, media_type)
+        if not _time_left_active:
+            media_list = apply_progress_filter(media_list, progress_filter, media_type)
+        elif progress_filter != "all":
+            media_list = [
+                entry
+                for entry, record in zip(
+                    media_list, _time_left_records(media_list), strict=True
+                )
+                if entry.media is not None
+                and is_caught_up_record(record, entry.item)
+                == (progress_filter == "caught_up")
+            ]
         if media_type in AUTHOR_FILTER_MEDIA_TYPES:
             media_list = apply_author_filter(media_list, author_filter)
         if media_type in AUTHOR_MEDIA_TYPES:
@@ -3084,35 +3113,29 @@ def media_list(request, media_type):
                 media_page.object_list,
             )
         else:
-            logger.debug("DEBUG: Starting time_left sort for page %s (no cache)", page)
-
-            # media_list already has filters applied from above
-            logger.debug("DEBUG: Got %s media objects after filtering", len(media_list))
-
-            # Annotate max_progress first
-            BasicMedia.objects.annotate_max_progress(
-                _tracked_media_entries(media_list),
-                media_type,
+            # No cached order. media_list holds the filtered library as
+            # trackers with only their item; rank it from grouped facts, then
+            # hydrate this page exactly as a cache hit does.
+            _time_left_order = _serialize_time_left_order(
+                _sort_tv_media_by_time_left(
+                    _time_left_records(media_list),
+                    direction,
+                ),
             )
-
-            prefill_episode_runtime_index(media_list)
-
-            # Apply time_left sorting
-            media_list = _sort_tv_media_by_time_left(media_list, direction)
 
             # Cache the compact sort order for 5 minutes (300 seconds)
-            cache.set(
-                _time_left_cache_key,
-                _serialize_time_left_order(media_list),
-                300,
-            )
+            cache.set(_time_left_cache_key, _time_left_order, 300)
             cache_utils.register_time_left_cache_key(
                 request.user.id,
                 _time_left_cache_key,
             )
 
-            paginator = Paginator(media_list, items_per_page)
+            paginator = Paginator(_time_left_order, items_per_page)
             media_page = paginator.get_page(page)
+            media_page.object_list = _hydrate_time_left_page(
+                request.user,
+                media_page.object_list,
+            )
 
         BasicMedia.objects.annotate_max_progress(
             _tracked_media_entries(media_page.object_list),
