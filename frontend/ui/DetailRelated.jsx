@@ -169,12 +169,12 @@ export function DetailRelated({
   const [expanded, setExpanded] = useState({});
   const { width: viewportWidth } = useWindowDimensions();
   const width = measuredWidth || 320;
-  const columns = web ? webColumns(width) : width >= 720 ? 4 : width >= 520 ? 3 : 2;
-  const gap = web ? (width <= 600 ? 12 : width <= 768 ? 12 : 16) : 12;
+  const columns = webColumns(width);
+  const gap = width <= 768 ? 12 : 16;
   const computedWidth = Math.max(96, Math.floor((width - gap * (columns - 1)) / columns));
   // The release grid caps phone cards at 6.75rem (108px) and lets the spare
   // width sit at the end of the row.
-  const cardWidth = web && viewportWidth <= 600 ? Math.min(computedWidth, 108) : computedWidth;
+  const cardWidth = viewportWidth <= 600 ? Math.min(computedWidth, 108) : computedWidth;
   const sections = (model?.sections || []).filter(section => section?.items?.length);
   const steamDlcs = model?.steamDlcs || [];
 

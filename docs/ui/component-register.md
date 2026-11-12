@@ -539,6 +539,27 @@ HomeView forwards optional card/progress renderers and row-title callbacks; the 
 
 ### DETAIL — Detail composition and metadata
 
+Media Details uses shared `DetailSecondary`, `DetailMetadata`, `DetailWatchProviders`,
+`DetailStudios`, `DetailPromotedFacts` and `DetailMediumExtras` for Expo's saved
+sidebar/content layout. `DetailView` reuses `Rail`, `PersonCard`, `MediaCard` and
+`DetailRelated` for people, recommendations and related grids. `DetailScoreRow`
+places the viewer rating beside provider scores; `ProgressCard` has an opt-in
+detail presentation. Native metadata adapters preserve server formatting and
+viewer rating preferences. `detailHeroLayout` and `detailArtworkCrop` anchor artwork geometry.
+`detailSecondaryModel` and `detailSecondaryOrder` project ordered sections.
+`DetailBackdrop` and its layout logic anchor sharp
+artwork and clearlogos to the inner content strip. Intentional native carve-out:
+artwork extends underneath the search bar and into the side rail; the PWA keeps
+its search divider. Search overlay and overflow are enabled only for Details.
+`ProviderLogo` renders native SVG sources in its native adapter. Shared components
+remain props-only; permissions, requests and dialogs stay in feature adapters.
+PWA secondary templates remain server-owned; ownership is partial/coexisting.
+Retire those consumers only after shared web mounting preserves all section
+preferences, responsive states and interactions. Genre/link modal contents remain
+deferred. Current revision evidence: web — unverified comparison; iOS — pending
+simulator comparison; Android — pending emulator comparison. Builds and logic tests
+do not establish native appearance or complete page parity.
+
 - Shared components `DetailPageView`, `DetailEpisodePageView`, `DetailChipCard`, `DetailListCard`, `DetailIssueCards` and `DetailEpisodeCards` (`frontend/pages/DetailView.jsx`, `frontend/ui/DetailPage.jsx`, `frontend/ui/DetailEpisode.jsx`) have no mounting screen: Expo `DetailScreen` renders `DetailView` from the structured detail endpoint. Status `Partial / coexisting`, native readiness `Primitives`. Browser, iOS and Android: not verified.
 
 - Purpose/usage: general and medium-specific detail pages.
