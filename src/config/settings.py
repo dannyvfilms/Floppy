@@ -2000,6 +2000,16 @@ WARMUP_USER_LIMIT = config(
     default=by_tier(10, 20, 50),
     cast=int,
 )
+# History day payloads built ahead of a visit: the days of the last
+# HISTORY_COVERAGE_WINDOW_DAYS (and at least one page), in the user's own game
+# logging style. Older days and the other style are built when a page asks.
+# 0 warms every day; True below also warms the style the user does not use.
+HISTORY_COVERAGE_WINDOW_DAYS = config(
+    "HISTORY_COVERAGE_WINDOW_DAYS", default=62, cast=int
+)
+HISTORY_COVERAGE_BOTH_STYLES = config(
+    "HISTORY_COVERAGE_BOTH_STYLES", default=False, cast=bool
+)
 METADATA_BACKFILL_SCALE = by_tier(0.25, 0.5, 1.0)
 # The nightly calendar reload queues a metadata backfill rather than running one
 # inline at up to 5000 items, which used to hold a worker while filling the cache

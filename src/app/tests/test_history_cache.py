@@ -117,7 +117,7 @@ class HistoryMonthCacheTests(TestCase):
 
     @patch("app.history_cache_reader.schedule_history_day_cache_coverage")
     @patch("app.history_cache_reader.schedule_history_refresh")
-    def test_history_view_repairs_cold_month_inline_without_scheduling_refresh(
+    def test_history_view_repairs_cold_month_inline_and_refreshes_index_later(
         self,
         mock_schedule_history_refresh,
         mock_schedule_history_day_cache_coverage,
@@ -137,7 +137,17 @@ class HistoryMonthCacheTests(TestCase):
             logging_style_override=self.logging_style,
         )
         self.assertNotIn("notes", cached_day["entries"][0])
-        self.assertEqual(mock_schedule_history_refresh.call_count, 0)
+        # The month came from a bounded build; the index is rebuilt in the
+        # background and the month list is never published in its place.
+        mock_schedule_history_refresh.assert_called_once_with(
+            self.user.id,
+            self.logging_style,
+            warm_days=0,
+            allow_inline=False,
+        )
+        self.assertIsNone(
+            cache.get(history_cache._cache_key(self.user.id, self.logging_style)),
+        )
 
         active_month_day_keys = self._active_month_day_keys()
         cache_keys = [
@@ -167,6 +177,9 @@ class HistoryMonthCacheTests(TestCase):
         self.assertEqual(first_response.status_code, 200)
         self.assertFalse(first_response.context["history_refreshing"])
         mock_schedule_history_day_cache_coverage.reset_mock()
+        # Stand in for the background refresh the cold request scheduled.
+        history_cache.refresh_history_cache(self.user.id, self.logging_style)
+        mock_schedule_history_refresh.reset_mock()
 
         cache.delete_many(
             [

@@ -1011,13 +1011,17 @@ class DeleteHistoryRecordViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(cache.get(later_cache_key))
-        for logging_style in ("sessions", "repeats"):
-            mock_schedule_history_refresh.assert_any_call(
-                self.user.id,
-                logging_style,
-                warm_days=0,
-                day_keys=[later_day_key],
-            )
+        # Only the user's style (repeats) is rebuilt; the other is deleted.
+        mock_schedule_history_refresh.assert_any_call(
+            self.user.id,
+            logging_style,
+            warm_days=0,
+            day_keys=[later_day_key],
+        )
+        self.assertEqual(
+            {call.args[1] for call in mock_schedule_history_refresh.call_args_list},
+            {logging_style},
+        )
 
         later_page = self.client.get(
             reverse("history")
