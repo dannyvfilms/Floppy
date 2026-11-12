@@ -133,7 +133,7 @@ large, which is a responsiveness problem rather than a memory one.
 | Pocket Casts recurring poll | process-anonymous + duration | convergence fixed, counters added |
 | Statistics restart thrash | duration / worker occupancy | settling window added |
 | Statistics FINISH | process-anonymous | **profiled, partly reduced**, documented below |
-| History day-cache warming | process-anonymous | **uninvestigated** |
+| History day-cache warming | process-anonymous | bounded to a recent window, one style |
 | Interactive worker first-webhook growth | process-anonymous | measured, **not** imports; see below |
 
 ### `reconcile_trakt_popularity` — 600 MiB of Python, for four scalars
@@ -475,10 +475,14 @@ day-cache repair loop fixed (above) and Statistics FINISH profiled, the largest
 known *unfixed* process-anonymous source is still the All Time aggregate: its
 day walk and the model instances its snapshot carries.
 
-**History day-cache warming, remaining questions.** Whether thousands of
-historical days need eager warming at all (the reader builds missing days on
-demand), and whether 120 is the right fixed batch, are open but no longer
-urgent: a full pass now costs minutes, and it converges.
+**History day-cache warming.** Thousands of historical days did not need
+eager warming: every reader builds a missing day on demand and caches it.
+Warming now covers only the recent window of the style the user reads (see
+"A missing index and which days stay warm" in `history-memory.md`). On a
+3,650-day fixture one full pass had cost about 96 s of CPU, 55,000 queries and
+10 MB of payloads per style, and with the 30-day TTL that repeated for every
+day, in both styles, indefinitely; a cold old page costs about 0.1 to 0.3 s
+the first time someone opens it.
 
 **Interactive worker first-webhook growth — measured, and it is not imports.**
 The first real Plex webhook took the interactive child from ~99 MiB to
