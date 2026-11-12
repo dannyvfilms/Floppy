@@ -154,7 +154,12 @@ class SaveAndRestoreTests(TempDirMixin, SimpleTestCase):
         self.addCleanup(plain.close)
         typed = sqlite3.connect(path, detect_types=sqlite3.PARSE_DECLTYPES)
         self.addCleanup(typed.close)
-        sqlite3.register_converter("datetime", lambda value: ("parsed", value))
+        # The converter registry is process-global; undo the change afterwards.
+        patched = mock.patch.dict(
+            sqlite3.converters, {"DATETIME": lambda value: ("parsed", value)}
+        )
+        patched.start()
+        self.addCleanup(patched.stop)
 
         self.assertNotEqual(
             plain.execute("SELECT at FROM seen").fetchall(),
@@ -280,7 +285,8 @@ class RunnerSetupTests(TempDirMixin, SimpleTestCase):
 class TemplateAppliesTests(SimpleTestCase):
     def applies(self, env, aliases=None, **runner_kwargs):
         runner = ResilientDiscoverRunner(verbosity=0, **runner_kwargs)
-        with mock.patch.dict(os.environ, env):
+        # The positive cases must hold whatever mode the surrounding run is in.
+        with mock.patch.dict(os.environ, {"FLOPPY_TEST_FAST_DB": "0", **env}):
             return runner._template_applies(aliases)
 
     def test_applies_to_the_in_memory_sqlite_database(self):
