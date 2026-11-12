@@ -521,9 +521,9 @@ class PageCostTests(LibraryQueryTestCase):
         seen_batch_sizes = []
         original = executor_module._attach_media
 
-        def spy(user, batch, needs):
+        def spy(user, batch, needs, **kwargs):
             seen_batch_sizes.append(len(batch))
-            return original(user, batch, needs)
+            return original(user, batch, needs, **kwargs)
 
         query = _query(sort=SortSpec("time_to_beat", "asc"))
         with mock.patch.object(executor_module, "_attach_media", spy):
