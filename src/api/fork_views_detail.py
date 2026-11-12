@@ -420,6 +420,23 @@ def _child_row(raw, *, media_type, parent_media_type, source, media_id, public_v
     if score is None and plays:
         score = getattr(plays[0], "score", None)
     can_rate = bool(editable_episode and viewer and viewer.ratings_enabled)
+    season_card = None
+    if media_type == "season" and number is not None:
+        from dataclasses import asdict
+
+        from app.card_surfaces import SURFACES, _card_render_context
+        from app.media_card_model import _corner_chips, _progress_bar, _status_chip
+
+        item = {**raw, "media_type": "season", "source": source,
+                "media_id": identity["mediaId"], "title": title,
+                "season_number": number, "library_media_type": parent_media_type}
+        context = {**asdict(SURFACES["home"]), "item": item,
+                   "media": None if public_view else tracking, "user": viewer,
+                   "card_media_type": "season", "public_view": public_view}
+        context.update(_card_render_context(context))
+        season_card = {"statusChip": _status_chip(context),
+                       "cornerChips": _corner_chips(context, "season"),
+                       "progressBar": _progress_bar(context, "season")}
     return {
         "key": f"{media_type}-{source}-{identity['mediaId']}-{number}",
         "number": number,
@@ -428,6 +445,7 @@ def _child_row(raw, *, media_type, parent_media_type, source, media_id, public_v
         "image": {"src": image, "fallback": ""},
         "overview": overview,
         "dateLabel": date_value,
+        "card": season_card,
         "code": raw.get("code") or (f"S{raw['season_number']}E{raw['episode_number']}" if media_type == "episode" and raw.get("season_number") is not None and raw.get("episode_number") is not None else ""),
         "runtime": raw.get("runtime") or "",
         "countLabel": raw.get("episode_count") or raw.get("details", {}).get("episodes") or "",

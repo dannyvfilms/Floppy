@@ -49,12 +49,18 @@ export const detailLabels = {
   error: 'The detail could not be loaded.',
 };
 
-function PeopleSection({ title, people = [], palette, onOpen }) {
+function PeopleSection({ title, people = [], palette, onOpen, cardWidth, RailComponent = Rail }) {
   if (!people.length) return null;
-  return <Rail title={title} items={people} itemWidth={132} itemGap={16}
+  // Expo supplies Home's width; web detail casts use their separate media-card adapter.
+  return <RailComponent title={title} items={people} itemWidth={cardWidth || 132} itemGap={16}
     windowCards palette={palette}
-    renderItem={person => <PersonCard person={person} palette={palette}
-      onOpen={onOpen && person.person_id != null ? () => onOpen(person) : undefined} />} />;
+    renderItem={person => cardWidth ? <MediaCard width={cardWidth} palette={palette.mediaCard || palette}
+      model={{ title: person.name, image: { src: person.imageUrl, fallback: person.imageFallback },
+        lines: (person.cardLines ? person.cardLines.map(line => line.text) : [person.role]).filter(Boolean)
+          .map(text => ({ parts: [{ text }], dormant: true })) }}
+      onOpen={onOpen && person.person_id != null ? () => onOpen(person) : undefined} />
+      : <PersonCard person={person} palette={palette}
+        onOpen={onOpen && person.person_id != null ? () => onOpen(person) : undefined} />} />;
 }
 
 function DetailLinks({ groups = [], palette, onOpen }) {
@@ -116,6 +122,8 @@ export function DetailView({
   onOpenMetadata,
   children,
   heroViewport,
+  shelfCardWidth,
+  railComponent: RailComponent = Rail,
 }) {
   const copy = { ...detailLabels, ...(labels || {}) };
   const { width } = useWindowDimensions();
@@ -148,15 +156,15 @@ export function DetailView({
     ...sectionSlots,
     ...childSlots,
     ...(childContent && !childSlots?.[childSection] ? { [childSection]: childContent } : {}),
-    cast: model.people?.cast?.length ? <PeopleSection title="Cast" people={model.people.cast} palette={palette} onOpen={onOpenPerson} /> : null,
-    crew: model.people?.crew?.length ? <PeopleSection title="Crew" people={model.people.crew} palette={palette} onOpen={onOpenPerson} /> : null,
+    cast: model.people?.cast?.length ? <PeopleSection title="Cast" people={model.people.cast} palette={palette} onOpen={onOpenPerson} cardWidth={shelfCardWidth} RailComponent={RailComponent} /> : null,
+    crew: model.people?.crew?.length ? <PeopleSection title="Crew" people={model.people.crew} palette={palette} onOpen={onOpenPerson} cardWidth={shelfCardWidth} RailComponent={RailComponent} /> : null,
     related: related.length || model.steamDlcs?.length ? <DetailRelated
       model={{ sections: related, steamDlcs: model.steamDlcs || [] }} labels={model.relatedLabels || labels}
       palette={palette.mediaCard || palette} onOpen={onOpenItem} onOpenLink={onOpenExternal}
       onOpenExternal={onOpenExternal} onRate={onRate} /> : null,
-    recommendations: recommendations?.items?.length ? <Rail title={recommendations.label || 'Recommendations'}
-      items={recommendations.items} itemWidth={144} itemGap={16} windowCards palette={palette}
-      renderItem={item => <MediaCard model={item.model || item} width={144} palette={palette.mediaCard || palette}
+    recommendations: recommendations?.items?.length ? <RailComponent title={recommendations.label || 'Recommendations'}
+      items={recommendations.items} itemWidth={shelfCardWidth || 144} itemGap={16} windowCards palette={palette}
+      renderItem={item => <MediaCard model={{ ...(item.model || item), altTitle: null }} width={shelfCardWidth || 144} palette={palette.mediaCard || palette}
         onOpen={() => onOpenItem?.(item.model || item)} onOpenLink={onOpenExternal}
         onRate={score => onRate?.(item.model || item, score)} />} /> : null,
   };
@@ -217,10 +225,11 @@ export function DetailView({
         onLoadMore={model.children.nextPage ? onLoadMore : undefined}
         loadMoreLabel={model.children.nextLabel}
       /> : null}
-      {model.people?.cast?.length ? <PeopleSection title="Cast" people={model.people.cast} palette={palette} onOpen={onOpenPerson} /> : null}
-      {model.people?.crew?.length ? <PeopleSection title="Crew" people={model.people.crew} palette={palette} onOpen={onOpenPerson} /> : null}
-      {model.relatedSections?.length ? <DetailRelated
-        model={{ sections: model.relatedSections, steamDlcs: model.steamDlcs || [] }}
+      {(secondarySections.cast || secondarySections.crew || model.relatedSections?.length || model.steamDlcs?.length) ? <View style={styles.relatedRows}>
+      {secondarySections.cast}
+      {secondarySections.crew}
+      {(shelfCardWidth ? related.length || model.steamDlcs?.length : model.relatedSections?.length) ? <DetailRelated
+        model={{ sections: shelfCardWidth ? related : model.relatedSections, steamDlcs: model.steamDlcs || [] }}
         labels={model.relatedLabels || labels}
         palette={palette.mediaCard || palette}
         onOpen={onOpenItem}
@@ -229,6 +238,8 @@ export function DetailView({
         onRate={onRate}
         web={false}
       /> : null}
+      {shelfCardWidth ? secondarySections.recommendations : null}
+      </View> : null}
       </>}
     </> : null}
     {children || null}
@@ -237,6 +248,7 @@ export function DetailView({
 
 const styles = StyleSheet.create({
   root: { gap: 18, minWidth: 0 },
+  relatedRows: { gap: 12 },
   notice: { gap: 8, borderWidth: 1, borderRadius: 8, padding: 12, alignItems: 'flex-start' },
   noticeText: { fontSize: 13, lineHeight: 18 },
   loading: { alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 48 },

@@ -102,6 +102,18 @@ class MediaCardSurfaceContractTest(TestCase):
         self.assertIn("Existing Home subtitle", content)
         self.assertIn("Contract Movie", content)
 
+    @patch("app.media_card_model.app_tags.alternative_title", return_value="Alternate")
+    def test_detail_recommendation_uses_home_card_without_alternative_title(self, _alternative):
+        content = self.render(
+            '{% include "app/components/home_grid.html" %}',
+            media_list={"card_surface": "detail_recommendations", "items": [{
+                "item": self.item, "media": self.movie, "subtitle_override": "2022",
+            }]},
+        )
+        model = card_model(content)
+        self.assertIsNone(model["altTitle"])
+        self.assertIn("2022", json.dumps(model["lines"]))
+
     def test_mixed_home_row_marks_square_and_video_cards(self):
         for media_type, expected_class in (
             (MediaTypes.MUSIC.value, "home-row-card-mixed-square"),
@@ -413,7 +425,6 @@ class MediaCardTemplateUsageTest(TestCase):
 # media item card. Each is a different kind of card (see docs/architecture/
 # media-card.md, "Not this card"), listed here so a new one is a decision.
 DOCUMENTED_EXCEPTIONS = {
-    "app/episode_details.html": "cast and crew person cards",
     "app/components/person_card_inline.html": "person card, not a media item",
     "app/components/person_filmography_card.html": "Statistics repeat-player strip",
     "app/components/statistics/highlight_set.html": "Statistics highlight tiles",
@@ -550,7 +561,6 @@ PROFILE_CARDS = (
     "app/components/statistics/highlight_set.html",
     # The Now Playing fallback has one fixed episode/progress subtitle, not
     # profile-controlled metadata lines, matching the shared PlaybackCard.
-    "app/episode_details.html",
     "events/components/calendar_list.html",
     "events/components/calendar_grid.html",
 )

@@ -423,7 +423,7 @@ def card_model(ctx):
         },
         "title": _title(ctx, media_type),
         "altTitle": None
-        if ctx.get("use_podcast_show") or media_type == MediaTypes.SEASON.value
+        if ctx.get("use_podcast_show") or ctx.get("hide_alt_title") or media_type == MediaTypes.SEASON.value
         else app_tags.alternative_title(item, ctx.get("user")),
         "statusChip": _status_chip(ctx),
         "cornerChips": _corner_chips(ctx, media_type),

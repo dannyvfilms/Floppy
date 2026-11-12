@@ -397,6 +397,11 @@ Status: `Partial / coexisting`
 
 ## RAILS
 
+`Rail` reduces the bottom space below cards by 4px for its Home, Search, detail
+and other consumers on web and Expo; consecutive detail rails use Home's 12px
+section gap. Existing partial/coexisting ownership and
+server fallback retirement conditions are unchanged; Android runtime is unverified.
+
 Rail retains optional per-item width and card windowing APIs. Native Home/Search use WindowedRail to mount nearby cards; web retains its established DOM/image lazy-loading behavior. This native-specific mount policy is documented beside WindowedRail and is not a visual redesign. Existing ownership, web consumers and retirement conditions remain.
 
 Status: `Legacy`
@@ -452,8 +457,21 @@ Status: `Legacy`
 Media Details uses shared `DetailSecondary`, `DetailMetadata`, `DetailWatchProviders`,
 `DetailStudios`, `DetailPromotedFacts` and `DetailMediumExtras` for Expo's saved
 sidebar/content layout. `DetailView` reuses `Rail`, `PersonCard`, `MediaCard` and
-`DetailRelated` for people, recommendations and related grids. `DetailScoreRow`
-places the viewer rating beside provider scores; `ProgressCard` has an opt-in
+`DetailRelated` for people, recommendations and related grids. Expo detail cast,
+crew, seasons and recommendation rails use Home's responsive card width and windowed
+rail, with `MediaCard` for people as well as media. Web detail cast and crew use
+the web media card; seasons and recommendations use Home's mounted rail and media
+cards. Ownership remains partial/coexisting until the web detail shell migrates.
+The Duo PWA and Expo Go rendered the changed rows; Android runtime is unverified.
+Detail season card indicators are projected by the detail API using the Home card
+rules; the web season cards use the Home card surface. Detail recommendations use
+the Home card surface without the alternative-title control. The web rail owns
+the item width once mounted, so its embedded cards fill the rail item.
+Episode cast and crew also mount the shared people rail over a server fallback;
+the episode template remains partially owned until its remaining sections migrate.
+The Expo detail adapter omits its Notes slot when there are no notes, avoiding an
+empty section gap. Browser and Android verification for that state is separate.
+`DetailScoreRow` places the viewer rating beside provider scores; `ProgressCard` has an opt-in
 detail presentation. Native metadata adapters preserve server formatting and
 viewer rating preferences. `DetailBackdrop` and its layout logic anchor sharp
 artwork and clearlogos to the inner content strip. Intentional native carve-out:

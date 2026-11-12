@@ -2,6 +2,9 @@ import React, { useCallback, useContext, useEffect, useMemo, useState } from 're
 import { Linking, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DetailView } from '../../../frontend/pages/DetailView';
+import { shelfCardWidth } from '../../../frontend/ui/HomeShelves';
+import WindowedRail from '../surfaces/WindowedRail';
+import { useMobileGridLayout } from '../data/useMobileGridLayout';
 import { Screen } from '../components/Screen';
 import { createDetailModelForItem, loadDetailModel } from '../surfaces/DetailSlot';
 import { useDetailFeatures } from '../surfaces/DetailFeatures';
@@ -13,6 +16,7 @@ import { palette } from '../theme';
 
 export default function DetailScreen({ params, onBack, navigate }) {
   const viewportWindow = useWindowDimensions();
+  const mobileGridLayout = useMobileGridLayout();
   const insets = useSafeAreaInsets();
   const shellLayout = useContext(ShellLayoutContext);
   const heroViewport = { width: shellLayout?.width || viewportWindow.width - insets.left - insets.right,
@@ -210,6 +214,7 @@ export default function DetailScreen({ params, onBack, navigate }) {
     navigate,
     onOpenItem: openDetail,
     onOpenExternal: openExternal,
+    shelfWidth: shelfCardWidth(viewportWindow.width, mobileGridLayout),
   });
 
   // The header search follows the page like the web header: a film page searches Movies.
@@ -252,6 +257,8 @@ export default function DetailScreen({ params, onBack, navigate }) {
     <DetailView
       model={viewModel}
       heroViewport={heroViewport}
+      shelfCardWidth={shelfCardWidth(viewportWindow.width, mobileGridLayout)}
+      railComponent={WindowedRail}
       labels={model.labels}
       palette={palette}
       loading={loading}

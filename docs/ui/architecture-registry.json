@@ -430,11 +430,11 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "The Home and detail-recommendation mounts compile through the UI build and architecture checks; no browser interaction or runtime pass was performed."
+          "evidence": "Duo PWA rendered Home and detail rails; bottom padding was subsequently reduced by 4px and still needs a refreshed browser comparison."
         },
         "ios": {
           "status": "verified",
-          "evidence": "iOS 17.2 simulator: rendered the shared rail on Home; no scroll, load-more or VoiceOver interaction."
+          "evidence": "Duo Expo Go rendered detail rails; bottom padding was subsequently reduced by 4px. Full Home, Search, scroll and accessibility regression remains pending."
         },
         "android": {
           "status": "unverified",
@@ -2945,11 +2945,11 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "PWA remains the server-owned reference; shared header and synopsis mounts coexist. Current composition comparison and browser regression checks pending."
+          "evidence": "Duo PWA rendered the shared detail seasons, cast, crew and recommendations. Wider browser and interaction regression remains pending."
         },
         "ios": {
           "status": "unverified",
-          "evidence": "Implemented in Expo with React Native primitives and native SVG adapters. Current simulator visual and interaction comparison pending."
+          "evidence": "Duo Expo Go rendered detail rows; an in-progress season showed the status, Next chip, release year and progress bar. Wider interaction and posture regression remains pending."
         },
         "android": {
           "status": "unverified",
@@ -2965,7 +2965,7 @@
       "verification": {
         "web": {
           "status": "unverified",
-          "evidence": "Native People screen now renders canonical credit cards in a grid slot and uses an opt-in hero action size. Paired pre-fix person/credit screenshots exposed drift; post-fix browser comparison pending. Web hero/cast/extras islands and server credit grids remain."
+          "evidence": "Web cast adapter supplies shared media cards to PeopleView; browser comparison is pending. Web hero/cast/extras islands and server credit grids remain."
         },
         "ios": {
           "status": "unverified",

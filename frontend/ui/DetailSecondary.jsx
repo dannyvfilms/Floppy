@@ -149,14 +149,18 @@ export function DetailSecondary({ model = {}, sections = {}, layout = model.layo
   const available = Object.keys(slots).filter(key => slots[key]);
   const sidebar = detailSecondaryOrder(layout, available, 'sidebar');
   const content = detailSecondaryOrder(layout, available, 'content');
-  const rows = (keys, compact = false) => keys.map(key => <View key={key}
-    style={compact ? (['genres', 'studios', 'collection'].includes(key) ? styles.compactSection : styles.fullSection) : undefined}>{slots[key]}</View>);
+  const railSections = ['seasons', 'cast', 'crew', 'recommendations'];
+  const rows = (keys, compact = false, gap = 32) => keys.map((key, index) => <View key={key}
+    style={[
+      compact ? (['genres', 'studios', 'collection'].includes(key) ? styles.compactSection : styles.fullSection) : undefined,
+      railSections.includes(key) && railSections.includes(keys[index - 1]) ? { marginTop: 12 - gap } : undefined,
+    ]}>{slots[key]}</View>);
   return <View style={styles.secondary}>
     {promoted && sidebar.includes('details') ? <DetailPromotedFacts facts={model.promoted} palette={palette} /> : null}
     <View style={[styles.columns, wide && styles.columnsWide]}>
       {!wide ? providers : null}
       {sidebar.length ? <View style={[styles.sidebar, wide && styles.sidebarWide,
-        width >= 600 && !wide && styles.sidebarCompact]}>{rows(sidebar, width >= 600 && !wide)}</View> : null}
+        width >= 600 && !wide && styles.sidebarCompact]}>{rows(sidebar, width >= 600 && !wide, width >= 600 && !wide ? 16 : 24)}</View> : null}
       {content.length ? <View style={[styles.content, wide && styles.contentWide]}>{rows(content)}</View> : null}
     </View>
   </View>;

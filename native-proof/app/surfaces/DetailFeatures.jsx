@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Button } from '../../../frontend/ui/Button';
+import { MediaCard } from '../../../frontend/ui/MediaCard';
+import WindowedRail from './WindowedRail';
 import { Icon } from '../../../frontend/ui/Icon';
 import { actionIcons } from '../../../frontend/ui/actionIcons';
 import { ProgressCard } from '../../../frontend/ui/ProgressCard.native';
@@ -29,7 +31,6 @@ import {
   DetailIssueCards,
   DetailLoading,
   DetailNotesBlock,
-  DetailRelatedGrid,
   DetailScoreRow,
 } from '../../../frontend/ui/DetailPage';
 import { DetailTrackingHistory } from '../../../frontend/ui/DetailSecondary';
@@ -350,7 +351,7 @@ function SeerrDialog({ open, state, busy, error, onRequest, onClose }) {
  * @param version bumps when the screen reloaded the page model
  * @param refresh reloads the page model after a write
  */
-export function useDetailFeatures({ model, ready, version, refresh, navigate, onOpenItem, onOpenExternal }) {
+export function useDetailFeatures({ model, ready, version, refresh, navigate, onOpenItem, onOpenExternal, shelfWidth }) {
   const { width } = useWindowDimensions();
   const [ratingOpen, setRatingOpen] = useState(false);
   const identityKey = JSON.stringify(featureIdentity(model));
@@ -891,8 +892,8 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
       {collection.status === 'ready' ? <DetailCollectionBlock counts={collection.counts}
         entries={collection.entries} empty="No collection data available" palette={palette} /> : null}
     </DetailBlock>;
-  const notesSlot = <DetailNotesBlock title="Your Notes" notes={tracking.notes} editLabel="Edit notes"
-    onEdit={openNotes} palette={palette} />;
+  const notesSlot = tracking.notes.length ? <DetailNotesBlock title="Your Notes" notes={tracking.notes} editLabel="Edit notes"
+    onEdit={openNotes} palette={palette} /> : null;
   const noticeSlot = notice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text> : null;
   const historySlot = ['tv', 'season'].includes(identity.mediaType) && model.trackingEntries?.count > 1
     ? <DetailTrackingHistory entries={model.trackingEntries.entries.slice(1)} count={model.trackingEntries.count}
@@ -915,10 +916,16 @@ export function useDetailFeatures({ model, ready, version, refresh, navigate, on
     key: season.key,
     title: season.number === 0 ? 'Specials' : `Season ${season.number}`,
     image: season.image?.src || '',
+    date: season.dateLabel,
+    card: season.card,
     identity: season.identity,
   })) : [];
-  const seasonsSlot = seasonCards.length ? <DetailRelatedGrid title="Seasons" items={seasonCards} palette={palette}
-    onOpen={openChild} /> : null;
+  const seasonsSlot = seasonCards.length ? <WindowedRail title="Seasons" items={seasonCards}
+    itemWidth={shelfWidth} palette={palette}
+    renderItem={season => <MediaCard width={shelfWidth} palette={palette.mediaCard || palette}
+      model={{ ...season.card, title: season.title, image: { src: season.image },
+        lines: season.date ? [{ parts: [{ text: String(season.date).slice(0, 4) }] }] : [] }}
+      onOpen={() => openChild(season)} onOpenLink={href => onOpenItem?.({ href })} />} /> : null;
   const issuesSlot = isComic && (issues.rows.length || issues.status === 'loading') ? <DetailIssueCards
     rows={issues.rows} total={issues.total} loading={issues.status === 'loading'} error={issues.error}
     layout={issues.layout} onLayout={layout => setIssues(current => ({ ...current, layout }))}

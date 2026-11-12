@@ -16,6 +16,7 @@ from app.models import (
     MediaTypes,
     Person,
     Sources,
+    Status,
     Studio,
 )
 from app.providers.services import ProviderAPIError
@@ -40,6 +41,23 @@ class DetailPageTests(FloppyApiTestCase):
     def tearDown(self):
         self.carousel_patch.stop()
         super().tearDown()
+
+    @patch("app.templatetags.app_tags.next_episode_url", return_value="/details/next/")
+    def test_detail_season_card_reuses_home_progress_and_next_episode(self, _next):
+        self.user1.quick_season_update_mobile = "next_episode"
+        tracking = SimpleNamespace(status=Status.IN_PROGRESS.value, progress=2, max_progress=8,
+                                   progress_percentage=25, next_event=None)
+        raw = {"item": {"season_number": 1, "title": "Series", "release_date": "2022-01-01"},
+               "media": tracking}
+        child = _child_row(raw, media_type="season", parent_media_type="tv", source="tmdb",
+                           media_id="1", public_view=False, can_write=True, viewer=self.user1)
+        self.assertEqual(child["dateLabel"], "2022-01-01")
+        self.assertEqual(child["card"]["progressBar"]["percent"], 25)
+        self.assertEqual(child["card"]["cornerChips"][0]["href"], "/details/next/")
+        public = _child_row(raw, media_type="season", parent_media_type="tv", source="tmdb",
+                            media_id="1", public_view=True, can_write=False, viewer=None)
+        self.assertIsNone(public["card"]["progressBar"])
+        self.assertEqual(public["card"]["cornerChips"], [])
 
     def test_card_and_child_rating_preferences_do_not_disable_watch_actions(self):
         self.user1.rating_scale = "5"
