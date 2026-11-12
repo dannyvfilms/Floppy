@@ -9,7 +9,7 @@ from typing import Any, NoReturn
 import requests
 from django.db import IntegrityError, transaction
 
-from app import history_cache, signals
+from app import cache_utils, history_cache, signals
 from app.models import (
     TV,
     Anime,
@@ -682,7 +682,10 @@ def _schedule_cache_reconcile(user, target_item: Item) -> None:
 
 
 def _reconcile_caches(user_id: int, history_days: set[str], target_item_id: int) -> None:
-    signals._clear_media_runtime_caches(user_id, MediaTypes.EPISODE.value)
+    cache_utils.clear_library_view_caches(
+        user_id,
+        media_types=(MediaTypes.EPISODE.value,),
+    )
     if history_days:
         signals._invalidate_episode_history_changes({user_id: list(history_days)})
     # The move suppresses media side effects, so the target's seasons have no
